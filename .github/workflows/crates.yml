@@ -1,5 +1,8 @@
 name: Crates
 
+env:
+  npm_config_audit: "false"
+
 on:
   pull_request:
   push:

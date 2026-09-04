@@ -18,8 +18,9 @@ type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
 interface ChatIdbOpenerOptions {
   readonly openDatabase?: OpenChatIdbDatabase;
   // Required: the page reloads itself, while the shared database worker has no
-  // window to reload and instead tells its clients to reload. Keeping this
-  // explicit is what allows this module to stay free of DOM globals.
+  // window to reload and instead tells its clients that it is unavailable.
+  // Keeping this explicit is what allows this module to stay free of DOM
+  // globals.
   readonly reload: () => void;
 }
 

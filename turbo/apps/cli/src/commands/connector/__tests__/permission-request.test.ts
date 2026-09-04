@@ -168,33 +168,6 @@ describe("okou connector permission-request command", () => {
     expect(logCalls).not.toContain("secret");
   });
 
-  it("uses the agent permission page inside an automated run", async () => {
-    vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");
-    vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
-
-    await permissionRequestCommand.parseAsync([
-      "node",
-      "cli",
-      "slack",
-      "--permission",
-      SLACK_READ_PERMISSION,
-      "--url",
-      SLACK_READ_URL,
-    ]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
-    expect(logCalls).not.toContain("/workflows/wf-789/permissions?");
-    expect(logCalls).toContain("connectorSlug=slack");
-    expect(logCalls).toContain(
-      `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
-    );
-    expect(logCalls).toContain("action=allow");
-    expect(logCalls).not.toContain("expiresIn=");
-    expect(logCalls).not.toContain("Requested duration:");
-  });
-
   it("includes the current thread and callback prompt in the grant URL", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");

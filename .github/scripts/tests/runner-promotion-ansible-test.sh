@@ -58,34 +58,16 @@ trap cleanup EXIT
 
 test_home="$tmp/home"
 data_dir="$tmp/vm0-runner"
-test_bin="$tmp/bin"
 runner_release=v999.0.0
 runner_bin_dir="$data_dir/bin/$runner_release"
 invocation_log="$data_dir/runner-invocations"
 gc_arrivals="$data_dir/gc-arrivals"
 mkdir -p \
   "$test_home" \
-  "$test_bin" \
   "$data_dir/locks" \
   "$data_dir/runners/$runner_release" \
   "$gc_arrivals" \
   "$runner_bin_dir"
-
-ln -s "$(command -v flock)" "$test_bin/real-flock"
-cat > "$test_bin/flock" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [ "${1:-}" != "--exclusive" ] || [ -z "${2:-}" ]; then
-  echo "unexpected flock invocation: $*" >&2
-  exit 1
-fi
-
-data_dir="$(cd "$(dirname "$2")/.." && pwd)"
-touch "$data_dir/gc-arrivals/$BASHPID"
-exec "$(dirname "$0")/real-flock" "$@"
-EOF
-chmod +x "$test_bin/flock"
 
 fake_runner="$runner_bin_dir/runner"
 cat > "$fake_runner" <<'EOF'
@@ -112,6 +94,10 @@ case "${1:-}" in
       echo "unexpected gc arguments: $*" >&2
       exit 1
     fi
+
+    touch "$data_dir/gc-arrivals/$BASHPID"
+    exec 9> "$data_dir/locks/deployment-gc.lock"
+    flock --exclusive 9
 
     active_dir="$data_dir/gc-active"
     if ! mkdir "$active_dir"; then
@@ -154,10 +140,14 @@ done
 
 assert_contains "$promote_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
 assert_contains "$rollback_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
-assert_contains "$gc_task" "{{ data_dir }}/locks/deployment-gc.lock"
+assert_contains "$gc_task" '      - "{{ bin_dir }}/runner"'
+if grep -Fq -- "flock" "$gc_task"; then
+  echo "shared GC task must rely on runner-owned serialization" >&2
+  cat "$gc_task" >&2
+  exit 1
+fi
 
-if ! PATH="$test_bin:$PATH" \
-  HOME="$test_home" \
+if ! HOME="$test_home" \
   ANSIBLE_CONFIG="$ansible_config" \
   ANSIBLE_NOCOLOR=1 \
   ansible-playbook \

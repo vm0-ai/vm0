@@ -827,7 +827,8 @@ function buildFeedbackItemChrome(
 // nodes: the placeholder text lives in an attribute and appears via CSS.
 const FEEDBACK_PLACEHOLDER_PARAGRAPH_CLASS =
   "before:pointer-events-none before:float-left before:h-0 " +
-  "before:text-muted-foreground/40 before:content-[attr(data-placeholder)]";
+  "before:text-muted-foreground/40 new-ui:before:text-muted-foreground/80 " +
+  "before:content-[attr(data-placeholder)]";
 
 function buildFeedbackChromeDecorations(
   doc: ProseMirrorNode,

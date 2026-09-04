@@ -13,6 +13,8 @@ const c = initContract();
 export const agentDraftResponseSchema = z
   .object({
     draftUserMessage: userMessageInputDocumentSchema.nullable(),
+    // New App clients may receive responses from a pre-#31562 API while it is
+    // serving or retained for rollback. Remove with #31612 after that window.
     draftVoice: draftVoiceSchema.nullable().optional(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
@@ -21,6 +23,8 @@ export const agentDraftResponseSchema = z
 export const agentDraftRequestSchema = z
   .object({
     draftUserMessage: userMessageInputDocumentSchema.nullable(),
+    // Pre-#31562 App clients may omit this for about two days. Remove the
+    // optional bridge with #31612 once the client-version floor excludes them.
     draftVoice: draftVoiceSchema.nullable().optional(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   })

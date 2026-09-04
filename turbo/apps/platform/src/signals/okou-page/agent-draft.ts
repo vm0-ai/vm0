@@ -84,6 +84,8 @@ function userMessageAgentDraftState(args: {
   readonly draftAttachments: PersistedAttachment[] | null;
 }): RestoredAgentDraftState | null {
   const document = args.draftUserMessage ?? null;
+  // A new App may receive a pre-#31562 API response during serving or rollback.
+  // Remove this new-App -> old-API bridge with #31612 after that window closes.
   const draftVoice = args.draftVoice ?? null;
   if (draftToEditorDoc(document, draftVoice) === null) {
     return null;

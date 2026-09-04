@@ -124,6 +124,8 @@ function userMessageDraftState(
   threadDraft: ChatThreadDraft,
 ): RestoredDraftState | null {
   const document = threadDraft.draftUserMessage;
+  // A new App may receive a pre-#31562 API response during serving or rollback.
+  // Remove this new-App -> old-API bridge with #31612 after that window closes.
   const draftVoice = threadDraft.draftVoice ?? null;
   if (draftToEditorDoc(document, draftVoice) === null) {
     return null;

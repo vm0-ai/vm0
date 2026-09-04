@@ -1,8 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -23,47 +23,43 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
-describe("geist typeface feature switch", () => {
-  it("keeps the default typeface in the app shell when the switch is off", async () => {
-    prepareDefaultAgent();
+test("The app shell keeps its default typeface when Geist is unavailable", async () => {
+  prepareDefaultAgent();
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await screen.findByRole("textbox", { name: "Message" });
-
-    expect(document.documentElement.dataset.typeface).toBeUndefined();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
   });
 
-  it("switches the app shell to geist when the switch is on", async () => {
-    prepareDefaultAgent();
+  await screen.findByRole("textbox", { name: "Message" });
+  expect(document.documentElement.dataset.typeface).toBeUndefined();
+});
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.GeistTypeface]: true },
-    });
+test("The app shell uses Geist when the typeface is available", async () => {
+  prepareDefaultAgent();
 
-    await screen.findByRole("textbox", { name: "Message" });
-
-    await waitFor(() => {
-      expect(document.documentElement.dataset.typeface).toBe("geist");
-    });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.GeistTypeface]: true },
   });
 
-  it("switches the minimal shell to geist so directed pages match the app", async () => {
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=approve`,
-      featureSwitches: { [FeatureSwitchKey.GeistTypeface]: true },
-    });
+  await screen.findByRole("textbox", { name: "Message" });
+  await waitFor(() => {
+    expect(document.documentElement.dataset.typeface).toBe("geist");
+  });
+});
 
-    await screen.findByText("Unknown permission action: approve");
+test("A directed page uses Geist with the rest of the app", async () => {
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=approve`,
+    featureSwitches: { [FeatureSwitchKey.GeistTypeface]: true },
+  });
 
-    await waitFor(() => {
-      expect(document.documentElement.dataset.typeface).toBe("geist");
-    });
+  await screen.findByText("Unknown permission action: approve");
+
+  await waitFor(() => {
+    expect(document.documentElement.dataset.typeface).toBe("geist");
   });
 });

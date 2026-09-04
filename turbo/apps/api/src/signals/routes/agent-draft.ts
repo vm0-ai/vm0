@@ -89,6 +89,8 @@ const patchAgentDraftInner$ = command(
 
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
     const draftUserMessage = bodyResult.data.draftUserMessage;
+    // Pre-#31562 App clients may omit this for about two days. Remove this
+    // old-App -> new-API bridge with #31612 after the client-version floor moves.
     const draftVoice = bodyResult.data.draftVoice ?? null;
     const writeDb = set(writeDb$);
     const updatedAt = nowDate();

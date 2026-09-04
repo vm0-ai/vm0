@@ -11,7 +11,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
-import { describe, expect, test as vitestTest } from "vitest";
+import { aroundEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
@@ -69,15 +69,9 @@ function commandInput(command: unknown): Record<string, unknown> {
   return command.input as Record<string, unknown>;
 }
 
-function it(name: string, test: () => Promise<void>, timeout?: number): void {
-  vitestTest(
-    name,
-    async () => {
-      await withMockNowForTest(STARTED_AT_MS, test);
-    },
-    timeout,
-  );
-}
+aroundEach(async (runTest) => {
+  await withMockNowForTest(STARTED_AT_MS, runTest);
+});
 
 function isoAt(offsetMs: number): string {
   return new Date(STARTED_AT_MS + offsetMs).toISOString();

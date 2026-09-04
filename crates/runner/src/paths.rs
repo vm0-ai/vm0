@@ -267,6 +267,13 @@ impl HomePaths {
         self.locks_dir().join("systemd-daemon-reload.lock")
     }
 
+    /// Host-global lock serializing complete garbage collection runs.
+    pub fn gc_lock(&self) -> PathBuf {
+        // Keep the historical filename so runner-owned locking coordinates
+        // with deployment processes that acquired the external lock.
+        self.locks_dir().join("deployment-gc.lock")
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         self.locks_dir().join(base_dir_lock_name(base_dir))
     }

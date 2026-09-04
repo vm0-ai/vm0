@@ -41,6 +41,12 @@ to choose a refresh before continuing; it does not force the reload without
 user action, and an idle page does not discover the requirement until it makes
 a handled API request.
 
+The shared database Worker reports the same response to its connected tabs as
+a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
+that event through the same update dialog instead of reloading automatically.
+Other Worker-unavailable reasons continue to use the bounded automatic reload
+recovery and raise an error so the failure remains visible in Sentry.
+
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
 old controlled clients during rollout. The current service worker calls
@@ -130,6 +136,12 @@ When removing a backend response or request variant consumed by the CLI:
    supported external caller, can still use the old variant.
 4. Remove compatibility in a later backend release.
 
+Presentation runbook content is independent of the CLI release after the
+current-template download route is deployed. Current CLIs send only the
+resource id and receive the canonical storage HEAD; older CLIs keep using the
+existing digest-pinned route and its immutable archive. Publish new template
+HEADs only after the current-template route and CLI are in production.
+
 This drain is separate from runner binary drain: a current runner can execute an
 older CLI package retained by an older execution context. If the same cleanup
 raises the frontend compatibility floor, rolling the frontend below that floor
@@ -165,8 +177,8 @@ Use **sandbox** for provider-neutral runner lifecycle, ownership, status,
 network-policy, and operator concepts. Use **VM** only for concrete
 Firecracker/KVM implementation details such as the Firecracker `/vm` API, VM
 pause and resume, snapshots, vCPUs, VMGenID, KVM, and Firecracker processes.
-The VM0 brand, established environment-variable namespace, and fixed paths are
-not lifecycle terminology and remain unchanged.
+Product brand names, the established environment-variable namespace, and fixed
+paths are not lifecycle terminology and remain unchanged.
 
 Each runner version's `status.json` is a host-local persisted cross-version
 boundary. Current runner maintenance commands can inspect status files written

@@ -359,10 +359,13 @@ function ExpandedManageSection() {
 
 function ExpandedSidebarSections() {
   return (
-    <div className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2 flex flex-col overflow-hidden">
-      <PinnedAgentListSection />
+    <div className="flex-1 min-h-0 -mx-2 mt-2 pt-2 flex flex-col overflow-hidden">
+      <div className="px-2">
+        <PinnedAgentListSection />
+      </div>
       <ChatThreadsSection
         scrollSignals={responsiveSidebarChatThreadScrollSignals}
+        contentClassName="px-2"
       />
     </div>
   );
@@ -537,7 +540,7 @@ function LabeledRailLink({
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive
             ? "zero-nav-copy text-sidebar-foreground"
-            : "zero-nav-copy-muted text-sidebar-foreground/60"
+            : "zero-nav-copy-muted text-sidebar-foreground/60 new-ui:text-sidebar-foreground/70"
         }`}
       >
         {caption}
@@ -799,10 +802,13 @@ function ChatListColumn() {
           <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />
         </TooltipProvider>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-1">
-        <PinnedAgentListSection layout="horizontal" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1">
+        <div className="px-3">
+          <PinnedAgentListSection layout="horizontal" />
+        </div>
         <ChatThreadsSection
           scrollSignals={threeColumnSidebarChatThreadScrollSignals}
+          contentClassName="px-3"
           showMarkAllRead
         />
       </div>

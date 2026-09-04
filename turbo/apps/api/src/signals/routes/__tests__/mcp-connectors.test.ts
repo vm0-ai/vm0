@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
+import {
+  CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES,
+  type CreateCustomConnectorBody,
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -550,7 +553,7 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "automatic",
-          context_format: "legacy",
+          context_format: "canonical",
           context_valid: true,
         },
       });
@@ -629,7 +632,7 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "automatic",
-          context_format: "legacy",
+          context_format: "canonical",
           context_valid: true,
         },
       });
@@ -663,7 +666,11 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
         }),
         [409],
       );
-      expect(removedIssuer.body.error.code).toBe("CONFLICT");
+      expect(removedIssuer.body.error).toStrictEqual({
+        code: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.BINDING_CHANGED,
+        message:
+          "Automatic MCP OAuth authorization changed. Reconnect the account and try again.",
+      });
       await runs.requestCancelRun(actor, run.runId, [200]);
     },
   );
