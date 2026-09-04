@@ -696,6 +696,11 @@ test("Drag the sidebar scrollbar when enabled", async () => {
 
   const scrollbar = await screen.findByTestId("sidebar-scrollbar");
   const thumb = await screen.findByTestId("sidebar-scrollbar-thumb");
+  // The thumb sits against the viewport's edge rather than centred in the
+  // track. Beside the workspace card the chat list keeps only four pixels of
+  // right inset, and a centred thumb lands on the trailing menu button of the
+  // row it is scrolling past.
+  expect(scrollbar).toHaveClass("justify-end");
   scrollbar.style.paddingBlockStart = "0px";
   scrollbar.style.paddingBlockEnd = "0px";
   thumb.style.marginBlockStart = "0px";
@@ -799,6 +804,11 @@ test("Collapse and expand Manage navigation", async () => {
   }
 
   expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
+  // The track hugs the viewport's edge for the same reason the Base UI thumb
+  // does: beside the workspace card the chat list keeps only four pixels of
+  // right inset, and anything further in overlaps the row's trailing menu
+  // button.
+  expect(scrollbarTrack).toHaveClass("right-px");
   expect(scrollbarTrack).toHaveClass(
     "opacity-0",
     "transition-opacity",
