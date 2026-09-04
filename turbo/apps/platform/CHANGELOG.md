@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.840.0](https://github.com/vm0-ai/vm0/compare/app-v0.839.0...app-v0.840.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+* **platform:** preview recent run messages when collapsed ([#31687](https://github.com/vm0-ai/vm0/issues/31687)) ([7ba50ee](https://github.com/vm0-ai/vm0/commit/7ba50eebe75cc1d9cf6785e143aa408854405757))
+* **ui:** move the new ui primary to cobalt ([#31680](https://github.com/vm0-ai/vm0/issues/31680)) ([f4393f0](https://github.com/vm0-ai/vm0/commit/f4393f057b98c5d9a3aca3e92c2eb7c8dc9c0fae))
+
+
+### Bug Fixes
+
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+* **chat:** skip empty event tails in batch catch-up ([#31718](https://github.com/vm0-ai/vm0/issues/31718)) ([289d858](https://github.com/vm0-ai/vm0/commit/289d858a4b2a3b5f43e906b7efe961e785b71aed))
+
+
+### Refactoring
+
+* **platform:** consolidate app lifecycle and sidebar cleanup ([#31585](https://github.com/vm0-ai/vm0/issues/31585)) ([8a58754](https://github.com/vm0-ai/vm0/commit/8a58754c07930b35ddabf326d8fd91f31a19bc03))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.0
+    * @okouai/core bumped to 8.621.0
+    * @okouai/ui bumped to 1.5.0
+
 ## [0.839.0](https://github.com/vm0-ai/vm0/compare/app-v0.838.0...app-v0.839.0) (2026-09-04)
 
 

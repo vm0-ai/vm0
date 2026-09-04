@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.545.0](https://github.com/vm0-ai/vm0/compare/api-v1.544.0...api-v1.545.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+* **pi:** activate Terra API-key routes ([#31717](https://github.com/vm0-ai/vm0/issues/31717)) ([9539c77](https://github.com/vm0-ai/vm0/commit/9539c777bf68f926cb29efc6a6e06e79f3bc1310))
+
+
+### Bug Fixes
+
+* **api:** classify Fal image generation failures ([#31690](https://github.com/vm0-ai/vm0/issues/31690)) ([0faf86b](https://github.com/vm0-ai/vm0/commit/0faf86b5bbd09d2b3480261936e8b3712d443181))
+* **api:** give reasoning-enabled fast-path calls enough token budget ([#31715](https://github.com/vm0-ai/vm0/issues/31715)) ([4dbd97e](https://github.com/vm0-ai/vm0/commit/4dbd97e443a2999e13c4cbf9af31f6454b3dbac7))
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.0
+    * @okouai/core bumped to 8.621.0
+    * @okouai/db bumped to 1.240.5
+    * @okouai/pi-agent-runtime bumped to 1.16.1
+
 ## [1.544.0](https://github.com/vm0-ai/vm0/compare/api-v1.543.0...api-v1.544.0) (2026-09-04)
 
 

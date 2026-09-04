@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.310.1](https://github.com/vm0-ai/vm0/compare/cli-v9.310.0...cli-v9.310.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **api:** classify Fal image generation failures ([#31690](https://github.com/vm0-ai/vm0/issues/31690)) ([0faf86b](https://github.com/vm0-ai/vm0/commit/0faf86b5bbd09d2b3480261936e8b3712d443181))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.402.0
+    * @okouai/core bumped to 8.621.0
+    * @okouai/pi-agent-runtime bumped to 1.16.1
+
 ## [9.310.0](https://github.com/vm0-ai/vm0/compare/cli-v9.309.6...cli-v9.310.0) (2026-09-04)
 
 
