@@ -1,5 +1,6 @@
 """Request-header field-count and field-name admission integration tests."""
 
+import pytest
 from mitmproxy import connection
 from mitmproxy.addons.proxyserver import Proxyserver
 from mitmproxy.flow import Error
@@ -94,10 +95,18 @@ async def test_requestheaders_rejects_over_budget_names_before_header_processing
     assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
 
 
+@pytest.mark.parametrize(
+    "body_field",
+    [
+        (b"cOnTeNt-LeNgTh", b"0"),
+        (b"TrAnSfEr-EnCoDiNg", b"chunked"),
+    ],
+)
 async def test_requestheaders_accepts_name_budget_and_preserves_existing_header_behavior(
     registry_file,
     real_flow,
     mitm_ctx,
+    body_field,
 ):
     boundary_name = b"X" * _MAX_REQUEST_HEADER_NAME_BYTES
     repeated_fields = (
@@ -106,7 +115,7 @@ async def test_requestheaders_accepts_name_budget_and_preserves_existing_header_
     )
     fixed_fields = (
         (b"hOsT", b"example.com"),
-        (b"cOnTeNt-LeNgTh", b"0"),
+        body_field,
         (b"uSeR-aGeNt", _BROWSER_USER_AGENT),
         *repeated_fields,
         (boundary_name, b"accepted"),
@@ -128,6 +137,7 @@ async def test_requestheaders_accepts_name_budget_and_preserves_existing_header_
     assert (boundary_name, b"accepted") in flow.request.headers.fields
     assert all(field in flow.request.headers.fields for field in repeated_fields)
     assert (b"hOsT", b"example.com") in flow.request.headers.fields
+    assert body_field in flow.request.headers.fields
     assert (b"uSeR-aGeNt", _BROWSER_USER_AGENT) in flow.request.headers.fields
     assert all(
         name
