@@ -178,12 +178,12 @@ test("Reload a tab whose shared-data registration has expired", async () => {
   await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
 });
 
-test("Reports the complete shared database query without entity identifiers", async () => {
+test("Reports preview shared worker queries without entity identifiers", async () => {
   vi.stubEnv("VITE_AXIOM_CLIENT_TELEMETRY_TOKEN", "xaat-test-ingest-token");
   context.signal.addEventListener("abort", () => {
     vi.unstubAllEnvs();
   });
-  context.mocks.browser.url("https://app.vm0.ai/");
+  context.mocks.browser.url("https://pr-123-app.omby.ai/");
   axiomTelemetry.ingest.mockClear();
   const bridges: FakeBridge[] = [];
   const bridge = new SingleConnectionSharedDatabaseBridge({
@@ -218,18 +218,19 @@ test("Reports the complete shared database query without entity identifiers", as
   expect(events).toHaveLength(1);
   expect(events[0]).toMatchObject({
     "attributes.custom": {
-      "vm0.client.outcome": "success",
-      "vm0.client.runtime": "window",
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "window",
     },
     kind: "client",
     name: "chat-event.cache-only",
-    "resource.deployment.environment.name": "production",
-    "scope.name": "vm0-app/shared-database",
-    "service.name": "vm0-app",
+    "resource.deployment.environment.name": "preview",
+    "scope.name": "okou-app/shared-worker-query",
+    "service.name": "Okou-app",
     "service.version": "0.540.0",
     "status.code": "OK",
   });
   expect(events[0]?.duration).toStrictEqual(expect.any(Number));
   expect(JSON.stringify(events[0])).not.toContain(sensitiveThreadId);
   expect(events[0]).not.toHaveProperty("after_seq_id");
+  expect(events[0]).not.toHaveProperty("resource.custom");
 });

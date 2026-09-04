@@ -1,9 +1,16 @@
 // @vitest-environment-options {"url":"https://app.vm0.ai/"}
 
 import { openDB, type DBSchema } from "idb";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { beforeEach, expect, test, vi } from "vitest";
 
-import { testContext } from "../../__tests__/test-helpers.ts";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADERS } from "../../../shared-database/chat-event-schema-version.ts";
+import {
+  chatEventRowsResponse,
+  testContext,
+} from "../../__tests__/test-helpers.ts";
+import { createAuthedContractClient } from "../../api-client-base.ts";
 import {
   deleteIntroVideoDraft,
   readIntroVideoDraft,
@@ -105,25 +112,23 @@ test("Reports one parameter-free event for a physical IndexedDB transaction", as
     "attributes.custom": {
       "db.namespace": "chat",
       "db.system": "indexeddb",
-      "vm0.client.outcome": "success",
-      "vm0.client.runtime": "shared_worker",
-      "vm0.db.request.count": 2,
-      "vm0.db.transaction.mode": "readwrite",
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "shared_worker",
+      "okou.db.request.count": 2,
+      "okou.db.transaction.mode": "readwrite",
     },
     kind: "client",
     name: "records.put+get",
-    "resource.custom": {
-      "vm0.public_brand": "vm0",
-    },
     "resource.deployment.environment.name": "production",
-    "scope.name": "vm0-app/indexeddb",
-    "service.name": "vm0-app",
+    "scope.name": "okou-app/indexeddb",
+    "service.name": "Okou-app",
     "service.version": "0.540.0",
     "status.code": "OK",
   });
   expect(event.duration).toStrictEqual(expect.any(Number));
   expect(event).not.toHaveProperty("duration_ms");
   expect(event).not.toHaveProperty("event_name");
+  expect(event).not.toHaveProperty("resource.custom");
   expect(event).not.toHaveProperty("template");
   expect(JSON.stringify(event)).not.toContain(sensitiveKey);
   expect(JSON.stringify(event)).not.toContain(sensitiveValue);
@@ -155,16 +160,17 @@ test("Reports an aborted IndexedDB transaction without hiding its error", async 
     database.close();
   }
 
-  await expect(capturedEvent()).resolves.toMatchObject({
+  const event = await capturedEvent();
+  expect(event).toMatchObject({
     "attributes.custom": {
       "db.namespace": "intro_video_drafts",
-      "vm0.client.outcome": "aborted",
-      "vm0.db.request.count": 1,
-      "vm0.db.transaction.mode": "readwrite",
+      "okou.client.outcome": "aborted",
+      "okou.db.request.count": 1,
+      "okou.db.transaction.mode": "readwrite",
     },
     name: "records.put",
-    "status.code": "ERROR",
   });
+  expect(event).not.toHaveProperty("status.code");
 });
 
 test("Routes every intro video draft operation through one transaction event", async () => {
@@ -201,30 +207,113 @@ test("Routes every intro video draft operation through one transaction event", a
     {
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
-        "vm0.db.request.count": 1,
+        "okou.db.request.count": 1,
       },
       name: "intro_video_drafts.put",
     },
     {
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
-        "vm0.db.request.count": 1,
+        "okou.db.request.count": 1,
       },
       name: "intro_video_drafts.get",
     },
     {
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
-        "vm0.db.request.count": 1,
+        "okou.db.request.count": 1,
       },
       name: "intro_video_drafts.delete",
     },
     {
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
-        "vm0.db.request.count": 1,
+        "okou.db.request.count": 1,
       },
       name: "intro_video_drafts.get",
     },
   ]);
+});
+
+test("Reports typed API requests with route templates and no parameters", async () => {
+  const sensitiveThreadId = crypto.randomUUID();
+  const sensitiveToken = `private-token-${crypto.randomUUID()}`;
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, chatEventRowsResponse([], query));
+  });
+  const client = createAuthedContractClient(chatThreadEventsContract, {
+    baseUrl: location.origin,
+    clientVersion: "test-version",
+    getRootSignal: () => {
+      return context.signal;
+    },
+    getToken: () => {
+      return Promise.resolve(sensitiveToken);
+    },
+    getVercelProtectionBypass: () => {
+      return undefined;
+    },
+  });
+
+  await expect(
+    client.rows({
+      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+      params: { threadId: sensitiveThreadId },
+      query: { limit: 50, sinceSeqId: 0 },
+    }),
+  ).resolves.toMatchObject({ status: 200 });
+
+  const event = await capturedEvent();
+  expect(event).toMatchObject({
+    "attributes.custom": {
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "window",
+    },
+    "attributes.http.request.method": "GET",
+    "attributes.http.response.status_code": 200,
+    "attributes.http.route": "/api/chat-threads/:threadId/event-rows",
+    kind: "client",
+    name: "GET /api/chat-threads/:threadId/event-rows",
+    "resource.deployment.environment.name": "production",
+    "scope.name": "okou-app/http",
+    "service.name": "Okou-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
+  });
+  expect(JSON.stringify(event)).not.toContain(sensitiveThreadId);
+  expect(JSON.stringify(event)).not.toContain(sensitiveToken);
+  expect(JSON.stringify(event)).not.toContain("sinceSeqId");
+});
+
+test("Reports API server failures as RED errors", async () => {
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    return respond(500, {
+      error: { code: "internal_error", message: "Internal server error" },
+    });
+  });
+  const client = createAuthedContractClient(featureSwitchesContract, {
+    baseUrl: location.origin,
+    clientVersion: "test-version",
+    getRootSignal: () => {
+      return context.signal;
+    },
+    getToken: () => {
+      return Promise.resolve("test-token");
+    },
+    getVercelProtectionBypass: () => {
+      return undefined;
+    },
+  });
+
+  await expect(client.get()).resolves.toMatchObject({ status: 500 });
+
+  await expect(capturedEvent()).resolves.toMatchObject({
+    "attributes.custom": {
+      "okou.client.outcome": "error",
+    },
+    "attributes.http.response.status_code": 500,
+    name: "GET /api/feature-switches",
+    "scope.name": "okou-app/http",
+    "status.code": "ERROR",
+  });
 });

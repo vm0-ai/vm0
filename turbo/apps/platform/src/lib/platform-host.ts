@@ -30,7 +30,6 @@ interface PlatformRuntimeConfig {
 
 export interface PlatformClientTelemetryConfig {
   readonly environment: PlatformEnvironment;
-  readonly publicBrand: PlatformPublicBrand;
   readonly token: string | null;
 }
 
@@ -222,17 +221,17 @@ export function resolvePlatformClientTelemetryConfig(): PlatformClientTelemetryC
   const environment = resolvePlatformEnvironment();
   return {
     environment,
-    publicBrand: resolvePlatformPublicBrand(browserHostname()),
     token:
-      environment === "production"
-        ? optionalBuildValue(import.meta.env.VITE_AXIOM_CLIENT_TELEMETRY_TOKEN)
-        : null,
+      environment === "development"
+        ? null
+        : optionalBuildValue(import.meta.env.VITE_AXIOM_CLIENT_TELEMETRY_TOKEN),
   };
 }
 
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const clientTelemetryConfig = resolvePlatformClientTelemetryConfig();
-  const { environment, publicBrand } = clientTelemetryConfig;
+  const { environment } = clientTelemetryConfig;
+  const publicBrand = resolvePlatformPublicBrand(browserHostname());
   const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
     "https://static.vm0.io",
     publicBrand,

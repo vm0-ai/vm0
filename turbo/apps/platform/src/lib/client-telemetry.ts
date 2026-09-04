@@ -1,4 +1,5 @@
 import { Axiom } from "@axiomhq/js";
+import type { HttpMethod } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { logger } from "../signals/log.ts";
 import { detach, onRejection, Reason } from "../signals/utils.ts";
@@ -8,7 +9,7 @@ import { nowDate } from "./time.ts";
 // The browser-visible token is a write-only credential whose dataset scope is
 // the security boundary for this direct-ingest client.
 const AXIOM_CLIENT_TELEMETRY_DATASET = "vm0-client-telemetry-prod";
-const CLIENT_TELEMETRY_SERVICE_NAME = "vm0-app";
+const CLIENT_TELEMETRY_SERVICE_NAME = "Okou-app";
 const NANOSECONDS_PER_MILLISECOND = 1_000_000;
 const L = logger("ClientTelemetry");
 
@@ -37,37 +38,82 @@ interface SharedDatabaseQueryTelemetry {
   readonly template: string;
 }
 
+interface HttpRequestTelemetry {
+  readonly event_name: "http.request";
+  readonly method: HttpMethod;
+  readonly route: string;
+  readonly response_status_code?: number;
+}
+
 export type ClientTelemetryOperation =
   | IndexedDbTransactionTelemetry
-  | SharedDatabaseQueryTelemetry;
+  | SharedDatabaseQueryTelemetry
+  | HttpRequestTelemetry;
 
 function runtimeName(): "shared_worker" | "window" {
   return typeof window === "undefined" ? "shared_worker" : "window";
 }
 
 function scopeName(operation: ClientTelemetryOperation): string {
-  return operation.event_name === "indexeddb.transaction"
-    ? "vm0-app/indexeddb"
-    : "vm0-app/shared-database";
+  if (operation.event_name === "indexeddb.transaction") {
+    return "okou-app/indexeddb";
+  }
+  return operation.event_name === "shared_database.query"
+    ? "okou-app/shared-worker-query"
+    : "okou-app/http";
 }
 
 function statusCode(
+  operation: ClientTelemetryOperation,
   outcome: ClientTelemetryOutcome,
-): ClientTelemetryStatusCode {
+): ClientTelemetryStatusCode | undefined {
+  if (
+    outcome === "aborted" ||
+    (operation.event_name === "http.request" &&
+      operation.response_status_code !== undefined &&
+      operation.response_status_code >= 400 &&
+      operation.response_status_code < 500)
+  ) {
+    return undefined;
+  }
   return outcome === "success" ? "OK" : "ERROR";
+}
+
+function operationName(operation: ClientTelemetryOperation): string {
+  return operation.event_name === "http.request"
+    ? `${operation.method} ${operation.route}`
+    : operation.template;
 }
 
 function operationAttributes(
   operation: ClientTelemetryOperation,
 ): ClientTelemetryAttributes {
-  if (operation.event_name === "shared_database.query") {
+  if (operation.event_name !== "indexeddb.transaction") {
     return {};
   }
   return {
     "db.namespace": operation.database,
     "db.system": "indexeddb",
-    "vm0.db.request.count": operation.request_count,
-    "vm0.db.transaction.mode": operation.transaction_mode,
+    "okou.db.request.count": operation.request_count,
+    "okou.db.transaction.mode": operation.transaction_mode,
+  };
+}
+
+function httpAttributes(
+  operation: ClientTelemetryOperation,
+): ClientTelemetryAttributes {
+  if (operation.event_name !== "http.request") {
+    return {};
+  }
+  return {
+    "attributes.http.request.method": operation.method,
+    "attributes.http.route": operation.route,
+    ...(operation.response_status_code === undefined
+      ? {}
+      : {
+          "attributes.http.response.status_code":
+            operation.response_status_code,
+        }),
   };
 }
 
@@ -128,26 +174,27 @@ async function ingestClientTelemetry(
     Math.max(0, performance.now() - measurement.startedAtMonotonic) *
       NANOSECONDS_PER_MILLISECOND,
   );
+  const resolvedStatusCode = statusCode(operation, outcome);
 
   client.ingest(AXIOM_CLIENT_TELEMETRY_DATASET, [
     {
       _time: measurement.startedAt,
       "attributes.custom": {
-        "vm0.client.outcome": outcome,
-        "vm0.client.runtime": runtimeName(),
+        "okou.client.outcome": outcome,
+        "okou.client.runtime": runtimeName(),
         ...operationAttributes(operation),
       },
       duration,
       kind: "client",
-      name: operation.template,
-      "resource.custom": {
-        "vm0.public_brand": config.publicBrand,
-      },
+      name: operationName(operation),
+      ...httpAttributes(operation),
       "resource.deployment.environment.name": config.environment,
       "scope.name": scopeName(operation),
       "service.name": CLIENT_TELEMETRY_SERVICE_NAME,
       "service.version": __OKOU_APP_VERSION__,
-      "status.code": statusCode(outcome),
+      ...(resolvedStatusCode === undefined
+        ? {}
+        : { "status.code": resolvedStatusCode }),
     },
   ]);
 }
