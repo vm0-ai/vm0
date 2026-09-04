@@ -274,6 +274,25 @@ async function renderWaitingGoalContinuation(currentRunGroupId: string) {
         model: "gpt-5.6-sol",
         createdAt: createdAt(2),
       }),
+      {
+        id: "waiting-goal-queued-automation",
+        role: "user",
+        eventType: "input.automation",
+        content: null,
+        runId: undefined,
+        seqId: 8,
+        createdAt: createdAt(2, 1),
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "automation",
+              workflowName: "release-followup",
+              automationBrief: "Queued release follow-up",
+            },
+          ],
+        },
+      },
     ],
     activeRunIds: [RUN_C],
   });
@@ -301,10 +320,13 @@ async function renderWaitingGoalContinuation(currentRunGroupId: string) {
   return { previousAssistantGroup, thinkingIndicator };
 }
 
-test("Keep a waiting goal continuation in its existing assistant group", async () => {
+test("Keep a waiting goal continuation grouped with queued automation", async () => {
   const { previousAssistantGroup, thinkingIndicator } =
     await renderWaitingGoalContinuation(WAITING_GOAL_GROUP_ID);
 
+  await expect(
+    screen.findByRole("listitem", { name: "Pending automation event" }),
+  ).resolves.toBeVisible();
   expect(previousAssistantGroup).toContainElement(thinkingIndicator);
   expect(
     queryAllByRoleFast("link").filter((link) => {
