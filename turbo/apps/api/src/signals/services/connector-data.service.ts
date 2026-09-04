@@ -184,7 +184,7 @@ export function connectorConnectionWriteFailureMessage(
       return "Multiple connector accounts require an exact choice";
     }
     case "siblingDisabled": {
-      return "Additional connector accounts are not enabled yet";
+      return "This connector does not support additional accounts";
     }
   }
 }

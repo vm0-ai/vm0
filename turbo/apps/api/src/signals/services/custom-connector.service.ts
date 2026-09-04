@@ -2900,7 +2900,7 @@ async function prepareCustomConnectorValueWrite(args: {
       : conflict(
           resolution.kind === "ambiguous"
             ? "Multiple connector accounts require an exact choice"
-            : "Additional connector accounts are not enabled yet",
+            : "This connector does not support additional accounts",
         );
   }
   const storedConnector =

@@ -1008,7 +1008,7 @@ export const startConnectorExternalCodeSession$ = command(
         : conflict(
             sessionResult.kind === "ambiguous"
               ? "Multiple connector accounts require an exact choice"
-              : "Additional connector accounts are not enabled yet",
+              : "This connector does not support additional accounts",
           );
     }
 

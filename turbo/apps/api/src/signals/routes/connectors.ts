@@ -121,7 +121,7 @@ function connectorAccountMutationFailureResponse(
   if (kind === "ambiguous" || kind === "accountAmbiguous") {
     return conflict("Multiple connector accounts require an exact choice");
   }
-  return conflict("Additional connector accounts are not enabled yet");
+  return conflict("This connector does not support additional accounts");
 }
 
 type ActionGrantKind =
