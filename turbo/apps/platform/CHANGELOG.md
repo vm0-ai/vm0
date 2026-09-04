@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.837.0](https://github.com/vm0-ai/vm0/compare/app-v0.836.0...app-v0.837.0) (2026-09-04)
+
+
+### Features
+
+* **platform:** merge goal continuations into triggering run work ([#31515](https://github.com/vm0-ai/vm0/issues/31515)) ([1d60ff7](https://github.com/vm0-ai/vm0/commit/1d60ff7a8877c996ddd9b56cadbc5935d84a4371))
+
+
+### Bug Fixes
+
+* **app:** keep voice drafts recording through silence ([#31559](https://github.com/vm0-ai/vm0/issues/31559)) ([0ba3421](https://github.com/vm0-ai/vm0/commit/0ba342178d4c5119fbfd54e14c806c94e903fa45))
+* **platform:** align sidebar scrollbar with Base UI layout ([#31564](https://github.com/vm0-ai/vm0/issues/31564)) ([5eae694](https://github.com/vm0-ai/vm0/commit/5eae6943caf38bfec71dd7ce163add224074d6a8))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31557](https://github.com/vm0-ai/vm0/issues/31557)) ([6e158f2](https://github.com/vm0-ai/vm0/commit/6e158f23952e2b19dccedda6921043779630e543))
+
+
+### Performance Improvements
+
+* **platform:** cache pinned agent previews ([#31506](https://github.com/vm0-ai/vm0/issues/31506)) ([044fe5b](https://github.com/vm0-ai/vm0/commit/044fe5b7b22d59dd4062ed7fafaa31b4ef723338))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.400.1
+    * @okouai/core bumped to 8.619.1
+
 ## [0.836.0](https://github.com/vm0-ai/vm0/compare/app-v0.835.0...app-v0.836.0) (2026-09-03)
 
 

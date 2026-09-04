@@ -28,11 +28,12 @@ pub(crate) const PRESSURE_AVAILABLE_MIB: i64 = TARGET_FREE_MIB - DEFLATE_HYSTERE
 /// Caps the per-tick increase to prevent sudden memory pressure spikes in the
 /// guest when a large amount of free memory is detected on the first tick.
 const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
-/// Minimum guaranteed guest memory — never inflate beyond `memory_mb - MIN_GUEST_MIB`.
+/// Minimum supported guest memory — never inflate beyond
+/// `memory_mb - MIN_GUEST_MIB`.
 ///
 /// Exposed to the rest of the crate so that idle-park logic in `sandbox.rs`
 /// can use the same lower bound when one-shot inflating on idle transitions.
-pub(crate) const MIN_GUEST_MIB: u32 = 512;
+pub(crate) const MIN_GUEST_MIB: u32 = guest_contracts::process_containment::MIN_PROFILE_MEMORY_MB;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// Fast-start polling while a post-unpark controller protects the lifecycle's
@@ -665,12 +666,12 @@ mod tests {
 
     #[tokio::test]
     async fn tick_releases_high_retention_near_pressure_boundary() {
-        // A 4-GiB Guest can retain 3584 MiB. Just below the 192-MiB pressure
+        // A 4-GiB Guest can retain 3072 MiB. Just below the 192-MiB pressure
         // boundary, the retired policy requested only partial relief. When
         // physical actual stalled behind that pending target, its
         // actual-relative candidate could not continue toward zero.
-        let stats = r#"{"target_mib":3584,"actual_mib":3584,"target_pages":917504,"actual_pages":917504,"free_memory":52428800,"available_memory":200278016}"#;
-        let patch = run_tick_with_mock(stats, 3584)
+        let stats = r#"{"target_mib":3072,"actual_mib":3072,"target_pages":786432,"actual_pages":786432,"free_memory":52428800,"available_memory":200278016}"#;
+        let patch = run_tick_with_mock(stats, 3072)
             .await
             .expect("expected PATCH releasing high balloon retention");
         assert_eq!(patch_amount_mib(&patch), 0);
@@ -738,7 +739,7 @@ mod tests {
 
     #[tokio::test]
     async fn tick_respects_max_inflate() {
-        // free_memory = 2 GiB, max_inflate is 512 (memory_mb=1024, MIN_GUEST=512).
+        // free_memory = 2 GiB and the supplied maximum inflation is 512 MiB.
         // Per-tick cap (256) < max_inflate (512), so cap wins.
         let stats = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0,"free_memory":2147483648,"available_memory":2147483648}"#;
         let patch = run_tick_with_mock(stats, 512).await;

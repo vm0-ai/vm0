@@ -1,13 +1,52 @@
-import { describe, expect, it, vi, type Mock } from "vitest";
-import { animationFrame, timeout } from "signal-timers";
+import { expect, test, vi, type Mock } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise, resetSignal } from "../../signals/utils.ts";
+import { createChildAbortController } from "../../signals/utils.ts";
 import { setupVisualViewportKeyboardState } from "../visual-viewport-keyboard.ts";
 
-const VIEWPORT_SETTLE_WAIT_MS = 75;
 const context = testContext();
-const resetViewportSettleSignal$ = resetSignal();
+
+class ControlledViewportClock {
+  private readonly animationFrames = new Map<number, FrameRequestCallback>();
+  private nextFrameId = 1;
+
+  constructor(signal: AbortSignal) {
+    vi.useFakeTimers();
+    vi.stubGlobal("cancelAnimationFrame", (frameId: number): void => {
+      this.animationFrames.delete(frameId);
+    });
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback): number => {
+        const frameId = this.nextFrameId;
+        this.nextFrameId += 1;
+        this.animationFrames.set(frameId, callback);
+        return frameId;
+      },
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        vi.useRealTimers();
+      },
+      { once: true },
+    );
+  }
+
+  async flushUpdate(): Promise<void> {
+    this.flushAnimationFrames();
+    await vi.runOnlyPendingTimersAsync();
+    this.flushAnimationFrames();
+  }
+
+  private flushAnimationFrames(): void {
+    const frames = Array.from(this.animationFrames.entries());
+    for (const [frameId, callback] of frames) {
+      this.animationFrames.delete(frameId);
+      callback(0);
+    }
+  }
+}
 
 class MockVisualViewport extends EventTarget {
   height: number;
@@ -94,259 +133,232 @@ function focusComposer(inExistingThread: boolean): {
   return { editor, scrollIntoView };
 }
 
-function waitForViewportSettle(): Promise<void> {
-  const settled = createDeferredPromise<void>(context.signal);
-  timeout(
-    () => {
-      animationFrame(
-        () => {
-          settled.resolve();
-        },
-        { signal: context.signal },
-      );
-    },
-    VIEWPORT_SETTLE_WAIT_MS,
-    { signal: context.signal },
-  );
-  return settled.promise;
-}
-
 async function resizeAndSettle(
   viewport: MockVisualViewport,
+  clock: ControlledViewportClock,
   height: number,
   offsetTop = viewport.offsetTop,
 ): Promise<void> {
   viewport.resizeTo(height, offsetTop);
-  await waitForViewportSettle();
+  await clock.flushUpdate();
 }
 
-function startViewportKeyboardState(): () => void {
-  return setupVisualViewportKeyboardState(context.signal, () => {
-    return context.store.set(resetViewportSettleSignal$, context.signal);
+function startViewportKeyboardState(): ControlledViewportClock {
+  const clock = new ControlledViewportClock(context.signal);
+  let settledController: AbortController | null = null;
+  setupVisualViewportKeyboardState(context.signal, () => {
+    settledController?.abort();
+    settledController = createChildAbortController(context.signal);
+    return settledController.signal;
   });
+  return clock;
 }
 
-describe("visual viewport keyboard state", () => {
-  it("keeps the keyboard closed when focus does not shrink the viewport", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
+test("Focusing a mobile text field without a viewport shrink does not activate keyboard layout", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
 
-    startViewportKeyboardState();
-    focusTextEntry();
-    await resizeAndSettle(viewport, 844);
+  const clock = startViewportKeyboardState();
+  focusTextEntry();
+  await resizeAndSettle(viewport, clock, 844);
 
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-  });
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+});
 
-  it("waits for late standalone viewport metrics before opening", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
+test("Late mobile keyboard metrics still reveal the composer", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
 
-    startViewportKeyboardState();
-    focusTextEntry();
-    viewport.dispatchEvent(new Event("resize"));
+  const clock = startViewportKeyboardState();
+  focusTextEntry();
+  viewport.dispatchEvent(new Event("resize"));
 
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 
-    // Standalone WebKit can update the final height without another event.
-    viewport.height = 520;
-    viewport.offsetTop = 100;
-    await waitForViewportSettle();
-    expect(document.documentElement.dataset.keyboardOpen).toBe("true");
-  });
+  // Standalone WebKit can update the final height without another event.
+  viewport.height = 520;
+  viewport.offsetTop = 100;
+  await clock.flushUpdate();
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+});
 
-  it("reveals an existing thread composer once across each of five keyboard sessions", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    setStandalone(true);
-    installVisualViewport(viewport);
-    const { editor, scrollIntoView } = focusComposer(true);
+test("Repeated mobile keyboard sessions keep an existing-chat composer visible", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(true);
+  installVisualViewport(viewport);
+  const { editor, scrollIntoView } = focusComposer(true);
 
-    startViewportKeyboardState();
+  const clock = startViewportKeyboardState();
 
-    for (let cycle = 0; cycle < 5; cycle += 1) {
-      await resizeAndSettle(viewport, 520, 100 + cycle * 20);
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    await resizeAndSettle(viewport, clock, 520, 100 + cycle * 20);
 
-      expect(scrollIntoView).toHaveBeenCalledTimes(cycle + 1);
-      expect(
-        document.documentElement.style.getPropertyValue(
-          "--zero-keyboard-scroll-reserve",
-        ),
-      ).toBe("340px");
-      expect(scrollIntoView).toHaveBeenLastCalledWith({
-        behavior: "auto",
-        block: "end",
-        inline: "nearest",
-      });
+    expect(scrollIntoView).toHaveBeenCalledTimes(cycle + 1);
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--zero-keyboard-scroll-reserve",
+      ),
+    ).toBe("340px");
+    expect(scrollIntoView).toHaveBeenLastCalledWith({
+      behavior: "auto",
+      block: "end",
+      inline: "nearest",
+    });
 
-      viewport.offsetTop = 280;
-      viewport.dispatchEvent(new Event("scroll"));
-      await waitForViewportSettle();
-      expect(scrollIntoView).toHaveBeenCalledTimes(cycle + 1);
+    viewport.offsetTop = 280;
+    viewport.dispatchEvent(new Event("scroll"));
+    await clock.flushUpdate();
+    expect(scrollIntoView).toHaveBeenCalledTimes(cycle + 1);
 
-      if (cycle % 2 === 0) {
-        // Hiding the software keyboard can leave its accessory bar visible
-        // while the editor stays focused.
-        await resizeAndSettle(viewport, 740, 100 + cycle * 20);
-      } else {
-        editor.blur();
-        // WebKit can restore height fractionally before offsetTop clears.
-        await resizeAndSettle(viewport, 843.4, 100 + cycle * 20);
-      }
-      expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-      expect(
-        document.documentElement.style.getPropertyValue(
-          "--zero-keyboard-scroll-reserve",
-        ),
-      ).toBe("");
-      if (document.activeElement !== editor) {
-        editor.focus();
-      }
+    if (cycle % 2 === 0) {
+      // Hiding the software keyboard can leave its accessory bar visible
+      // while the editor stays focused.
+      await resizeAndSettle(viewport, clock, 740, 100 + cycle * 20);
+    } else {
+      editor.blur();
+      // WebKit can restore height fractionally before offsetTop clears.
+      await resizeAndSettle(viewport, clock, 843.4, 100 + cycle * 20);
     }
-  });
-
-  it("does not add a second focus scroll on the agent homepage", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    setStandalone(true);
-    installVisualViewport(viewport);
-    const { scrollIntoView } = focusComposer(false);
-
-    startViewportKeyboardState();
-    await resizeAndSettle(viewport, 520, 100);
-
-    expect(document.documentElement.dataset.keyboardOpen).toBe("true");
-    expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it("does not scroll the web app outside standalone mode", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    setStandalone(false);
-    installVisualViewport(viewport);
-    const { scrollIntoView } = focusComposer(true);
-
-    startViewportKeyboardState();
-    await resizeAndSettle(viewport, 520, 100);
-
-    expect(document.documentElement.dataset.keyboardOpen).toBe("true");
-    expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it("keeps the closed baseline stable across five mixed viewport cycles", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
-    focusTextEntry();
-    startViewportKeyboardState();
-
-    for (let cycle = 0; cycle < 5; cycle += 1) {
-      await resizeAndSettle(viewport, 520, 100 + cycle * 20);
-      expect(document.documentElement.dataset.keyboardOpen).toBe("true");
-
-      // Standalone WebKit can restore height before clearing offsetTop. This
-      // mixed sample must not become the next cycle's layout baseline.
-      await resizeAndSettle(viewport, 844, 100 + cycle * 20);
-      expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--zero-keyboard-scroll-reserve",
+      ),
+    ).toBe("");
+    if (document.activeElement !== editor) {
+      editor.focus();
     }
-  });
+  }
+});
 
-  it("keeps keyboard state while focus moves between text entries", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
-    const firstEntry = focusTextEntry();
-    const secondEntry = appendTextEntry();
+test("The Home composer does not receive a redundant keyboard scroll", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(true);
+  installVisualViewport(viewport);
+  const { scrollIntoView } = focusComposer(false);
 
-    startViewportKeyboardState();
-    await resizeAndSettle(viewport, 520, 100);
+  const clock = startViewportKeyboardState();
+  await resizeAndSettle(viewport, clock, 520, 100);
 
-    secondEntry.focus();
-    await waitForViewportSettle();
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+  expect(scrollIntoView).not.toHaveBeenCalled();
+});
+
+test("An ordinary mobile browser does not force-scroll the page for the keyboard", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  installVisualViewport(viewport);
+  const { scrollIntoView } = focusComposer(true);
+
+  const clock = startViewportKeyboardState();
+  await resizeAndSettle(viewport, clock, 520, 100);
+
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+  expect(scrollIntoView).not.toHaveBeenCalled();
+});
+
+test("Mobile keyboard layout stays stable across mixed open and close cycles", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
+  focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    await resizeAndSettle(viewport, clock, 520, 100 + cycle * 20);
     expect(document.documentElement.dataset.keyboardOpen).toBe("true");
 
-    secondEntry.blur();
-    await waitForViewportSettle();
+    // Standalone WebKit can restore height before clearing offsetTop. This
+    // mixed sample must not become the next cycle's layout baseline.
+    await resizeAndSettle(viewport, clock, 844, 100 + cycle * 20);
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-    expect(document.activeElement).not.toBe(firstEntry);
-  });
+  }
+});
 
-  it("does not treat visual viewport zoom as keyboard occlusion", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
+test("The keyboard remains open while moving between text fields", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
+  const firstEntry = focusTextEntry();
+  const secondEntry = appendTextEntry();
 
-    startViewportKeyboardState();
-    focusTextEntry();
-    viewport.scale = 2;
-    await resizeAndSettle(viewport, 422);
+  const clock = startViewportKeyboardState();
+  await resizeAndSettle(viewport, clock, 520, 100);
 
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-  });
+  secondEntry.focus();
+  await clock.flushUpdate();
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
 
-  it("resets the baseline after orientation metrics settle", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
-    const entry = focusTextEntry();
-    startViewportKeyboardState();
+  secondEntry.blur();
+  await clock.flushUpdate();
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+  expect(document.activeElement).not.toBe(firstEntry);
+});
 
-    window.dispatchEvent(new Event("orientationchange"));
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+test("Pinch zoom does not activate mobile keyboard layout", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
 
-    // The new orientation metrics arrive after orientationchange.
-    setInnerHeight(390);
-    viewport.height = 390;
-    viewport.offsetTop = 0;
-    viewport.dispatchEvent(new Event("resize"));
-    await waitForViewportSettle();
+  const clock = startViewportKeyboardState();
+  focusTextEntry();
+  viewport.scale = 2;
+  await resizeAndSettle(viewport, clock, 422);
 
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+});
 
-    await resizeAndSettle(viewport, 250, 40);
-    expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+test("An orientation change recalibrates mobile keyboard layout", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
 
-    entry.blur();
-    await resizeAndSettle(viewport, 389.5, 40);
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-  });
+  window.dispatchEvent(new Event("orientationchange"));
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 
-  it("updates the closed baseline after an unfocused viewport resize", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
-    startViewportKeyboardState();
+  // The new orientation metrics arrive after orientationchange.
+  setInnerHeight(390);
+  viewport.height = 390;
+  viewport.offsetTop = 0;
+  viewport.dispatchEvent(new Event("resize"));
+  await clock.flushUpdate();
 
-    setInnerHeight(700);
-    await resizeAndSettle(viewport, 700, 0);
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 
-    focusTextEntry();
-    await resizeAndSettle(viewport, 700, 0);
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-  });
+  await resizeAndSettle(viewport, clock, 250, 40);
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
 
-  it("cancels a pending opening update during cleanup", async () => {
-    const viewport = new MockVisualViewport(844);
-    setInnerHeight(844);
-    installVisualViewport(viewport);
-    focusTextEntry();
-    const cleanup = startViewportKeyboardState();
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 389.5, 40);
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+});
 
-    viewport.resizeTo(520);
-    cleanup();
-    await waitForViewportSettle();
+test("An unfocused resize becomes the new mobile layout baseline", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  installVisualViewport(viewport);
+  const clock = startViewportKeyboardState();
 
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-  });
+  setInnerHeight(700);
+  await resizeAndSettle(viewport, clock, 700, 0);
 
-  it("does not mark keyboard state without VisualViewport support", () => {
-    setInnerHeight(844);
+  focusTextEntry();
+  await resizeAndSettle(viewport, clock, 700, 0);
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+});
 
-    startViewportKeyboardState();
-    focusTextEntry();
+test("Browsers without visual-viewport support keep the normal layout", () => {
+  setInnerHeight(844);
 
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-  });
+  startViewportKeyboardState();
+  focusTextEntry();
+
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 });

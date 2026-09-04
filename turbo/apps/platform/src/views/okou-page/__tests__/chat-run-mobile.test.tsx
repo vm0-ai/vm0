@@ -1,0 +1,190 @@
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { expect, test } from "vitest";
+
+import { fill } from "../../../__tests__/page-helper.ts";
+import {
+  activeElementIsInside,
+  chatComposerTextarea,
+  chatScrollContainer,
+  mockThinkingTypewriterLayout,
+  setScrollMetrics,
+  setupPage,
+} from "./chat-lifecycle-test-helpers.ts";
+import {
+  assistantEvent,
+  context,
+  installRunChat,
+  promptEvent,
+  readyChat,
+  RUN_PATH,
+  thinkingEvent,
+} from "./chat-run-test-fixtures.ts";
+
+const ACTIVE_RUN_ID = "a0000000-0000-4000-a000-000000000601";
+
+function setKeyboardOpenFixture(): void {
+  const root = document.documentElement;
+  const previous = root.dataset.keyboardOpen;
+  root.dataset.keyboardOpen = "true";
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (previous === undefined) {
+        delete root.dataset.keyboardOpen;
+      } else {
+        root.dataset.keyboardOpen = previous;
+      }
+    },
+    { once: true },
+  );
+}
+
+function swipe(
+  target: Element,
+  start: { readonly x: number; readonly y: number },
+  end: { readonly x: number; readonly y: number },
+): boolean {
+  fireEvent.touchStart(target, {
+    touches: [{ clientX: start.x, clientY: start.y }],
+  });
+  const allowed = fireEvent.touchMove(target, {
+    cancelable: true,
+    touches: [{ clientX: end.x, clientY: end.y }],
+  });
+  fireEvent.touchEnd(target, { touches: [] });
+  return allowed;
+}
+
+function installScrollableActiveChat(): void {
+  installRunChat({
+    activeRunIds: [ACTIVE_RUN_ID],
+    chatEvents: [
+      promptEvent({
+        id: "mobile-request",
+        runId: ACTIVE_RUN_ID,
+        seqId: 1,
+        text: "Prepare the mobile launch plan",
+      }),
+      assistantEvent({
+        id: "mobile-update",
+        runId: ACTIVE_RUN_ID,
+        seqId: 2,
+        text: "The first launch section is ready.",
+      }),
+      thinkingEvent({
+        id: "mobile-progress",
+        runId: ACTIVE_RUN_ID,
+        seqId: 3,
+        text: "Preparing the remaining launch sections",
+      }),
+    ],
+  });
+}
+
+test("Keep streamed thinking lines readable", async () => {
+  const thinkingText = "ABCDEFGH should not wrap\nReady";
+  mockThinkingTypewriterLayout({
+    text: thinkingText,
+    labelWidth: 64,
+    parentWidth: 64,
+    graphemeWidth: 8,
+  });
+  installRunChat({
+    activeRunIds: [ACTIVE_RUN_ID],
+    chatEvents: [
+      promptEvent({
+        id: "thinking-lines-request",
+        runId: ACTIVE_RUN_ID,
+        seqId: 1,
+        text: "Show the current progress",
+      }),
+      thinkingEvent({
+        id: "thinking-lines-progress",
+        runId: ACTIVE_RUN_ID,
+        seqId: 2,
+        text: thinkingText,
+      }),
+    ],
+  });
+
+  await setupPage({ context, path: RUN_PATH });
+
+  await readyChat();
+  const indicator = await screen.findByLabelText(
+    /ABCDEFGH should not wrap\s+Ready/u,
+  );
+  await waitFor(() => {
+    expect(indicator).toHaveTextContent("ABCDEF…");
+  });
+  expect(indicator).not.toHaveTextContent("should not wrap");
+
+  await waitFor(() => {
+    expect(indicator).toHaveTextContent("Ready");
+  });
+  expect(indicator).not.toHaveTextContent("GH should not wrap");
+});
+
+test("Keep mobile chat gestures predictable in the standalone app", async () => {
+  context.mocks.browser.standaloneDisplayMode(true);
+  context.mocks.browser.maxTouchPoints(5);
+  installScrollableActiveChat();
+
+  await setupPage({ context, path: RUN_PATH });
+
+  await readyChat();
+  const composer = chatComposerTextarea();
+  await fill(composer, "Short standalone draft");
+  composer.focus();
+  setKeyboardOpenFixture();
+
+  const upwardAllowed = swipe(composer, { x: 40, y: 120 }, { x: 40, y: 80 });
+  expect(upwardAllowed).toBeFalsy();
+  expect(activeElementIsInside(composer)).toBeTruthy();
+  expect(composer.closest("[data-chat-composer]")).not.toBeNull();
+
+  swipe(composer, { x: 40, y: 80 }, { x: 40, y: 120 });
+  expect(activeElementIsInside(composer)).toBeFalsy();
+  expect(composer.closest("[data-chat-composer]")).not.toBeNull();
+
+  composer.focus();
+  const history = chatScrollContainer();
+  swipe(history, { x: 40, y: 80 }, { x: 40, y: 120 });
+  expect(activeElementIsInside(composer)).toBeFalsy();
+  expect(composer.closest("[data-chat-composer]")).not.toBeNull();
+});
+
+test("Preserve normal composer scrolling in a mobile browser", async () => {
+  context.mocks.browser.standaloneDisplayMode(false);
+  context.mocks.browser.maxTouchPoints(5);
+  installScrollableActiveChat();
+
+  await setupPage({ context, path: RUN_PATH });
+
+  await readyChat();
+  const composer = chatComposerTextarea();
+  await fill(
+    composer,
+    "A long mobile-browser draft that can scroll independently through several paragraphs and should retain normal native touch behavior.",
+  );
+  composer.style.overflowY = "auto";
+  setScrollMetrics(composer, { scrollHeight: 640, clientHeight: 120 });
+  composer.scrollTop = 120;
+  composer.focus();
+  setKeyboardOpenFixture();
+
+  const composerScrollAllowed = swipe(
+    composer,
+    { x: 40, y: 120 },
+    { x: 40, y: 80 },
+  );
+  expect(composerScrollAllowed).toBeTruthy();
+  expect(activeElementIsInside(composer)).toBeTruthy();
+
+  const historyScrollAllowed = swipe(
+    chatScrollContainer(),
+    { x: 40, y: 80 },
+    { x: 40, y: 120 },
+  );
+  expect(historyScrollAllowed).toBeTruthy();
+  expect(activeElementIsInside(composer)).toBeTruthy();
+});

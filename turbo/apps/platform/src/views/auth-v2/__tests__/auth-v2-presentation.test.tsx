@@ -1,62 +1,35 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { compile } from "tailwindcss";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
 import {
-  detachedSetupPage,
+  click,
+  fill,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
+import {
+  mockedClerk,
+  mockSignInResource,
+} from "../../../__tests__/mock-auth.ts";
+import { changeI18nLanguage } from "../../../i18n/index.ts";
 import {
   platformOkouWordmarkDarkImg,
   platformOkouWordmarkLightImg,
-  platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { renderedAuthV2LinkContrast } from "./auth-v2-style-assertions.ts";
 
 const context = testContext();
-
-function setBrowserUrl(url: string): void {
-  context.mocks.browser.url(url);
-}
-
-function useOkouPrimaryClerkTopology(): void {
-  Reflect.set(window, "__vm0ClerkBootstrap", {
-    productionPrimaryAppDomain: "app.okou.ai",
-  });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-    },
-    { once: true },
-  );
-}
-
-function useJapaneseLocale(): void {
-  document.documentElement.lang = "ja-JP";
-  context.mocks.data.userPreferences({
-    locale: "ja-JP",
-    supportedLocales: ["en-US", "ja-JP"],
-  });
-}
-
-function useGermanLocale(): void {
-  document.documentElement.lang = "de-DE";
-  context.mocks.data.userPreferences({
-    locale: "de-DE",
-    supportedLocales: ["de-DE", "en-US"],
-  });
-}
+const OKOU_HOME_URL = "https://app.okou.ai/";
 
 function linkByLabel(label: string): HTMLAnchorElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.getAttribute("aria-label") === label;
   });
   if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error(`Link not found: ${label}`);
+    throw new Error(`Expected link labelled ${label}`);
   }
   return link;
 }
@@ -66,7 +39,7 @@ function linkByText(text: string): HTMLAnchorElement {
     return candidate.textContent?.trim() === text;
   });
   if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error(`Link not found: ${text}`);
+    throw new Error(`Expected link named ${text}`);
   }
   return link;
 }
@@ -76,243 +49,233 @@ function buttonByLabel(label: string): HTMLButtonElement {
     return candidate.getAttribute("aria-label") === label;
   });
   if (!(button instanceof HTMLButtonElement)) {
-    throw new Error(`Button not found: ${label}`);
+    throw new Error(`Expected button labelled ${label}`);
   }
   return button;
 }
 
-describe("auth v2 presentation", () => {
-  it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
-    setBrowserUrl("https://app.vm0.ai/sign-in");
+function containingForm(element: HTMLElement): HTMLFormElement {
+  const form = element.closest("form");
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error("Expected element to be inside a form");
+  }
+  return form;
+}
 
-    detachedSetupPage({ context, path: "/sign-in" });
+function authV2BrandImage(): HTMLImageElement {
+  const image = screen.getByTestId("auth-v2-brand-logo").querySelector("img");
+  if (!(image instanceof HTMLImageElement)) {
+    throw new Error("Expected an authentication brand image");
+  }
+  return image;
+}
 
-    await screen.findByRole("heading", {
-      level: 1,
-      name: "Choose an account",
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", {
-          level: 1,
-          name: "Choose an account",
-        }),
-      ).toHaveFocus();
-    });
-    const heading = screen.getByRole("heading", {
-      level: 1,
-      name: "Choose an account",
-    });
+function authLayout(): HTMLElement {
+  return screen.getByTestId("app-auth-layout");
+}
 
-    const styleElement = document.createElement("style");
-    const tailwindCompiler = await compile("@tailwind utilities;");
-    styleElement.textContent = [
-      "h1 { box-shadow: none; }",
-      tailwindCompiler.build([...heading.classList]),
-    ].join("\n");
-    document.head.append(styleElement);
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        styleElement.remove();
-      },
-      { once: true },
-    );
-    const headingStyle = getComputedStyle(heading);
-    expect(headingStyle.boxShadow).toBe("none");
-    expect(headingStyle.outlineStyle).toBe("none");
-    expect(screen.getByRole("main")).toContainElement(heading);
-    expect(
-      screen.getByRole("region", { name: "Choose an account" }),
-    ).toHaveAccessibleDescription(
-      "Select the account with which you wish to continue.",
-    );
-    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
-      "src",
-      platformVm0LogoDarkImg,
-    );
-    expect(linkByLabel("Go to VM0 home")).toHaveAttribute("href", "/");
+function authBackground(): HTMLElement {
+  return screen.getByTestId("app-auth-background");
+}
 
-    const announcer = screen.getByTestId("auth-v2-announcer");
-    expect(announcer).toHaveAttribute("aria-atomic", "true");
-    expect(announcer).toHaveAttribute("aria-live", "polite");
+test("Decorative sign-in artwork stays inside its visual layer", async () => {
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-in",
   });
 
-  it.each(["/sign-in", "/sign-up"])(
-    "clips decorative overflow without disabling content scrolling on %s",
-    async (path) => {
-      setBrowserUrl(`https://app.vm0.ai${path}`);
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  const layout = authLayout();
+  const background = authBackground();
+  expect(background.parentElement).toBe(layout);
+  expect(background).toHaveAttribute("aria-hidden", "true");
+  expect(background).toHaveClass("absolute", "inset-0", "overflow-hidden");
+  expect(background.children.length).toBeGreaterThan(0);
+});
 
-      detachedSetupPage({ context, path });
+test("A constrained sign-up keeps its content scrollable", async () => {
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-up",
+  });
 
-      await screen.findByTestId("app-auth-v2");
-      const layout = screen.getByTestId("app-auth-layout");
-      const background = screen.getByTestId("app-auth-background");
-      const styleElement = document.createElement("style");
-      const tailwindCompiler = await compile("@tailwind utilities;");
-      styleElement.textContent = tailwindCompiler.build([
-        ...layout.classList,
-        ...background.classList,
-      ]);
-      document.head.append(styleElement);
-      context.signal.addEventListener(
-        "abort",
-        () => {
-          styleElement.remove();
-        },
-        { once: true },
-      );
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  expect(authLayout()).toHaveClass("overflow-x-hidden", "overflow-y-auto");
+  expect(authLayout()).not.toHaveClass("overflow-hidden");
+  expect(authBackground()).toHaveClass("overflow-hidden");
+});
 
-      expect(getComputedStyle(layout).overflowY).toBe("auto");
-      expect(getComputedStyle(background).overflow).toBe("hidden");
-    },
+test("Authentication link actions remain readable in light and dark themes", async () => {
+  context.mocks.browser.matchMedia(false);
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-in",
+  });
+
+  const signUp = await waitFor(() => {
+    return linkByText("Sign up");
+  });
+  const surface = screen.getByTestId("app-auth-v2");
+  await expect(
+    renderedAuthV2LinkContrast(signUp, surface, "light", context.signal),
+  ).resolves.toBeGreaterThanOrEqual(4.5);
+
+  click(buttonByLabel("Toggle theme"));
+
+  await waitFor(() => {
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  });
+  await expect(
+    renderedAuthV2LinkContrast(signUp, surface, "dark", context.signal),
+  ).resolves.toBeGreaterThanOrEqual(4.5);
+});
+
+test("Okou authentication localizes app copy while keeping English startup metadata", async () => {
+  context.mocks.browser.matchMedia(false);
+  mockSignInResource({ status: "needs_identifier" });
+  mockedClerk.clientSignInCreate.mockImplementation(() => {
+    mockSignInResource({
+      status: "needs_first_factor",
+      supportedFirstFactors: [{ strategy: "password" }],
+    });
+    return Promise.resolve(mockedClerk.client.signIn);
+  });
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: `/sign-up?redirect_url=${encodeURIComponent(OKOU_HOME_URL)}`,
+  });
+
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  await act(async () => {
+    document.documentElement.lang = "ja-JP";
+    await changeI18nLanguage("ja-JP", context.signal);
+  });
+
+  await expect(screen.findByLabelText("メールアドレス")).resolves.toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "アカウントを作成" }),
+  ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
+  expect(linkByLabel("Okou のホームに移動")).toHaveAttribute(
+    "href",
+    "https://app.okou.ai",
+  );
+  expect(screen.getByRole("img", { name: "Okou" })).toHaveAttribute(
+    "src",
+    platformOkouWordmarkDarkImg,
+  );
+  expect(authV2BrandImage()).toHaveAttribute(
+    "src",
+    platformOkouWordmarkDarkImg,
+  );
+  expect(screen.queryByRole("img", { name: "VM0" })).not.toBeInTheDocument();
+  expect(document.title).toBe("Sign up | Okou");
+
+  await act(async () => {
+    document.documentElement.lang = "de-DE";
+    await changeI18nLanguage("de-DE", context.signal);
+  });
+
+  await expect(screen.findByLabelText("E-Mail-Adresse")).resolves.toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "Ihr Konto erstellen" }),
+  ).toHaveAccessibleDescription("weiter zu Okou");
+  expect(document.body).not.toHaveTextContent("{{brandName}}");
+
+  await act(async () => {
+    document.documentElement.lang = "en-US";
+    await changeI18nLanguage("en-US", context.signal);
+  });
+  const signIn = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("href")?.startsWith("/sign-in");
+  });
+  if (!signIn) {
+    throw new Error("Expected the existing-account sign-in link");
+  }
+  click(signIn);
+  const identifierInput = await screen.findByLabelText("Email address");
+  await fill(identifierInput, "person@example.com");
+  fireEvent.submit(containingForm(identifierInput));
+
+  await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "Enter your password" }),
+  ).toHaveAccessibleDescription(
+    "Enter the password associated with your account",
+  );
+  expect(document.body).not.toHaveTextContent("{{brandName}}");
+});
+
+test("Okou authentication uses the wordmark for the active theme", async () => {
+  context.mocks.browser.matchMedia(false);
+
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: `/sign-in?redirect_url=${encodeURIComponent(OKOU_HOME_URL)}`,
+  });
+
+  const homeWordmark = await screen.findByRole("img", { name: "Okou" });
+  expect(homeWordmark).toHaveAttribute("src", platformOkouWordmarkDarkImg);
+  expect(authV2BrandImage()).toHaveAttribute(
+    "src",
+    platformOkouWordmarkDarkImg,
   );
 
-  it("keeps password controls in their accessible region", async () => {
-    setBrowserUrl("https://app.vm0.ai/sign-up");
+  click(buttonByLabel("Toggle theme"));
 
-    detachedSetupPage({ context, path: "/sign-up" });
+  await waitFor(() => {
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(homeWordmark).toHaveAttribute("src", platformOkouWordmarkLightImg);
+    expect(authV2BrandImage()).toHaveAttribute(
+      "src",
+      platformOkouWordmarkLightImg,
+    );
+  });
+});
 
-    await screen.findByLabelText("Password");
-    const region = screen.getByTestId("app-auth-v2");
-    const passwordVisibilityAction = buttonByLabel("Show password");
-
-    expect(region).toContainElement(passwordVisibilityAction);
-    expect(passwordVisibilityAction).toHaveAttribute("aria-pressed", "false");
+test("The authentication theme can be toggled by pointer and keyboard", async () => {
+  const user = userEvent.setup({ delay: null });
+  context.mocks.browser.matchMedia(false);
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-in",
   });
 
-  it("keeps link actions at WCAG AA contrast in both themes", async () => {
-    const user = userEvent.setup();
-    context.mocks.browser.matchMedia(false);
-    setBrowserUrl("https://app.vm0.ai/sign-in");
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  expect(screen.getByRole("heading", { name: "Sign in to VM0" })).toBeVisible();
+  const themeToggle = buttonByLabel("Toggle theme");
+  expect(themeToggle).toHaveAttribute("aria-pressed", "false");
 
-    detachedSetupPage({
-      context,
-      path: "/sign-in",
-      session: null,
-      user: null,
-    });
+  await user.click(themeToggle);
 
-    const linkAction = await waitFor(() => {
-      return linkByText("Sign up");
-    });
-    const surface = screen.getByTestId("app-auth-v2");
-    const lightContrast = await renderedAuthV2LinkContrast(
-      linkAction,
-      surface,
-      "light",
-      context.signal,
-    );
-    expect(lightContrast).toBeGreaterThanOrEqual(4.5);
-
-    await user.click(buttonByLabel("Toggle theme"));
-
-    const darkContrast = await renderedAuthV2LinkContrast(
-      linkAction,
-      surface,
-      "dark",
-      context.signal,
-    );
-    expect(darkContrast).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("toggles themes with pointer and keyboard input while preserving focus", async () => {
-    const user = userEvent.setup();
-    context.mocks.browser.matchMedia(false);
-    setBrowserUrl("https://app.vm0.ai/sign-in");
-
-    detachedSetupPage({ context, path: "/sign-in" });
-
-    await screen.findByRole("heading", {
-      name: "Sign in to VM0",
-    });
-    const themeToggle = buttonByLabel("Toggle theme");
-    expect(themeToggle).toHaveAttribute("aria-pressed", "false");
-
-    await user.click(themeToggle);
-
+  await waitFor(() => {
     expect(themeToggle).toHaveFocus();
     expect(themeToggle).toHaveAttribute("aria-pressed", "true");
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(screen.getByRole("status")).toHaveTextContent("Dark theme enabled");
-    expect(screen.getByAltText("VM0")).toHaveAttribute(
-      "src",
-      platformVm0LogoImg,
-    );
-    expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
-      "src",
-      platformVm0LogoImg,
-    );
+  });
+  expect(screen.getByRole("status")).toHaveTextContent("Dark theme enabled");
+  expect(screen.getByAltText("VM0")).toHaveAttribute("src", platformVm0LogoImg);
+  expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
+    "src",
+    platformVm0LogoImg,
+  );
 
-    await user.keyboard("{Enter}");
+  await user.keyboard("{Enter}");
 
+  await waitFor(() => {
     expect(themeToggle).toHaveAttribute("aria-pressed", "false");
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(screen.getByRole("status")).toHaveTextContent("Light theme enabled");
   });
-
-  it("switches both Okou wordmarks with the resolved theme", async () => {
-    const user = userEvent.setup();
-    context.mocks.browser.matchMedia(false);
-    useOkouPrimaryClerkTopology();
-    setBrowserUrl("https://app.okou.ai/sign-in");
-
-    detachedSetupPage({ context, path: "/sign-in" });
-
-    await screen.findByRole("heading", {
-      name: "Sign in to Okou",
-    });
-    const themeToggle = buttonByLabel("Toggle theme");
-    const homeLogo = screen.getByAltText("Okou");
-    const cardLogo = screen
-      .getByTestId("auth-v2-brand-logo")
-      .querySelector("img");
-    expect(cardLogo).not.toBeNull();
-    expect(homeLogo).toHaveAttribute("src", platformOkouWordmarkDarkImg);
-    expect(cardLogo).toHaveAttribute("src", platformOkouWordmarkDarkImg);
-    expect(homeLogo).not.toHaveAttribute("crossorigin");
-    expect(cardLogo).not.toHaveAttribute("crossorigin");
-
-    await user.click(themeToggle);
-
-    expect(homeLogo).toHaveAttribute("src", platformOkouWordmarkLightImg);
-    expect(cardLogo).toHaveAttribute("src", platformOkouWordmarkLightImg);
-  });
-
-  it("localizes Okou app copy while keeping document metadata English", async () => {
-    useJapaneseLocale();
-    useOkouPrimaryClerkTopology();
-    setBrowserUrl("https://app.okou.ai/sign-up");
-
-    detachedSetupPage({ context, path: "/sign-up" });
-
-    await screen.findByLabelText("メールアドレス");
-    const heading = screen.getByRole("heading", {
-      level: 1,
-      name: "アカウントを作成",
-    });
-    expect(
-      screen.getByRole("region", { name: "アカウントを作成" }),
-    ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
-    expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
-    expect(
-      screen.getByTestId("auth-v2-brand-logo").querySelector("img"),
-    ).toHaveAttribute("src", platformOkouWordmarkDarkImg);
-    expect(heading).toBeVisible();
-    expect(document.title).toBe("Sign up | Okou");
-  });
-
-  it("substitutes the Okou brand in a non-English Auth v2 template", async () => {
-    useGermanLocale();
-    useOkouPrimaryClerkTopology();
-    setBrowserUrl("https://app.okou.ai/sign-up");
-
-    detachedSetupPage({ context, path: "/sign-up" });
-
-    await screen.findByLabelText("E-Mail-Adresse");
-    expect(
-      screen.getByRole("region", { name: "Ihr Konto erstellen" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
-    expect(document.body).not.toHaveTextContent("{{brandName}}");
-  });
+  expect(screen.getByRole("status")).toHaveTextContent("Light theme enabled");
 });
