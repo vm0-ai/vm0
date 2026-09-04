@@ -1239,6 +1239,17 @@ body {
   border-radius: 4px;
   overflow-wrap: break-word;
 }
+/* An inline chip has no border, so its fill is the only thing marking it as
+   code. Under the new palette gray-100 clears 1.06:1 against the page and the
+   chip disappears into the sentence. Take the gray-200 step, which is what
+   `--color-neutral-muted` already resolves to in dark.
+
+   Only inline chips: a fenced block carries its own fill and resets its inner
+   `code` to transparent, and this selector outranks that reset. */
+[data-new-ui] .wmde-markdown :not(pre) > code,
+[data-new-ui] .wmde-markdown :not(pre) > tt {
+  background-color: hsl(var(--gray-200));
+}
 
 /* --- Code Blocks -------------------------------------------------------- */
 .wmde-markdown pre {
