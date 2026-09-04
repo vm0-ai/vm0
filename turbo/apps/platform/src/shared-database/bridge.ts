@@ -20,6 +20,10 @@ export interface SharedDatabaseBridge {
   ): Promise<SharedDatabaseQueryResult<TKey>>;
 }
 
+export type SharedDatabaseTokenProvider = (
+  signal: AbortSignal,
+) => Promise<string | null>;
+
 export interface SharedDatabaseBridgeEvents {
   readonly databaseInvalidated: (
     dataKey: SharedDatabaseDataKey,

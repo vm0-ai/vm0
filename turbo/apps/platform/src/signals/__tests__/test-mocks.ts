@@ -20,10 +20,6 @@ import {
 } from "../../mocks/handlers/clerk-localizations.ts";
 import { mockClerkResource } from "../../test/mocks/clerk-resource.ts";
 import {
-  mockClerkWorker,
-  type ClerkWorkerMock,
-} from "../../test/mocks/clerk-worker.ts";
-import {
   mockSentry,
   type SentryMock,
 } from "../../test/mocks/sentry-behavior.ts";
@@ -241,7 +237,6 @@ interface ClerkMock {
   readonly loads: readonly (MockedClerkLoadOptions | undefined)[];
   readonly localizationRequests: ClerkLocalizationLocale[];
   readonly resourceRequests: ClerkResourceRequest[];
-  readonly worker: ClerkWorkerMock;
   readonly loaded: (loaded: boolean) => void;
   readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;
   readonly organization: (...args: Parameters<typeof mockOrganization>) => void;
@@ -686,7 +681,6 @@ function mockClerk(
   const localizationRequests: ClerkLocalizationLocale[] = [];
   const unavailableLocalizations = new Set<ClerkLocalizationLocale>();
   const resource = mockClerkResource(signal);
-  const worker = mockClerkWorker(signal);
   const originalClerk = Reflect.get(globalThis, "Clerk");
   const hadOriginalClerk = Reflect.has(globalThis, "Clerk");
 
@@ -721,7 +715,6 @@ function mockClerk(
     },
     localizationRequests,
     resourceRequests: resource.requests,
-    worker,
     loaded: mockClerkLoaded,
     localizationUnavailable(locale): void {
       unavailableLocalizations.add(locale);

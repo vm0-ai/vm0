@@ -11,6 +11,7 @@ import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
+import { readClerkToken } from "./clerk-token.ts";
 import { setupSharedDatabaseBridge$ } from "./shared-database-browser.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
@@ -548,8 +549,13 @@ export const bootstrap$ = command(
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const vercelProtectionBypass =
       getCapturedPreviewBypassForTarget(apiBaseUrl);
+    const clerk = get(clerk$);
     set(setApiClientRuntime$, {
-      clerk: get(clerk$),
+      getToken: async (requestSignal) => {
+        const resolvedClerk = await clerk;
+        requestSignal.throwIfAborted();
+        return await readClerkToken(resolvedClerk, requestSignal);
+      },
       apiBaseUrl,
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
