@@ -12,11 +12,9 @@ import {
   IDBRequest,
   IDBTransaction,
   IDBVersionChangeEvent,
-  indexedDB,
 } from "fake-indexeddb";
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
-import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
 for (const [name, content] of [
@@ -29,31 +27,6 @@ for (const [name, content] of [
   document.head.append(meta);
 }
 
-vi.mock("@clerk/shared/loadClerkJsScript", () => {
-  return {
-    loadClerkJSScript: (options: {
-      readonly domain?: string;
-      readonly publishableKey: string;
-    }) => {
-      if (options.domain) {
-        mockedClerk.initialize(options.publishableKey, {
-          domain: options.domain,
-        });
-      } else {
-        mockedClerk.initialize(options.publishableKey);
-      }
-      Reflect.set(globalThis, "Clerk", mockedClerk);
-      return Promise.resolve(null);
-    },
-  };
-});
-
-vi.hoisted(() => {
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", "test_preview_key");
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
-});
-
-globalThis.indexedDB = indexedDB;
 globalThis.IDBCursor = IDBCursor;
 globalThis.IDBCursorWithValue = IDBCursorWithValue;
 globalThis.IDBDatabase = IDBDatabase;
@@ -297,6 +270,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
   ensureTestLocalStorage();
   document.documentElement.dataset.appBrandName = "VM0";
 

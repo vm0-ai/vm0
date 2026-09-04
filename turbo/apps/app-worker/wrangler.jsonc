@@ -31,14 +31,6 @@
           "pattern": "app.vm0.ai/*",
           "zone_name": "vm0.ai",
         },
-        {
-          "pattern": "app-worker.okou.ai",
-          "custom_domain": true,
-        },
-        {
-          "pattern": "app-worker.vm0.ai",
-          "custom_domain": true,
-        },
       ],
     },
   },
