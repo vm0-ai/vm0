@@ -1569,6 +1569,14 @@ fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
         (
             {
                 let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["baseUrl"] = json!("not a URL");
+                config
+            },
+            "Pi model config baseUrl is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
                 config["model"] = json!("");
                 config
             },
