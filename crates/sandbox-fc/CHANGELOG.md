@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.10...sandbox-fc-v0.38.11) (2026-09-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** bound snapshot marker reads ([#31582](https://github.com/vm0-ai/vm0/issues/31582)) ([e72c363](https://github.com/vm0-ai/vm0/commit/e72c36312d49dbc6a73ed5a0f14d68583d9ed779))
+
 ## [0.38.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.9...sandbox-fc-v0.38.10) (2026-09-04)
 
 
