@@ -207,16 +207,54 @@ fn is_pi_credential_secret_name(value: &str) -> bool {
         && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
+enum PiModelConfigCommonError {
+    InvalidBaseUrl,
+    EmptyModel,
+    EmptyCatalogModel,
+}
+
+fn validate_pi_model_config_common(
+    base_url: &str,
+    model: &str,
+    catalog_model: Option<&str>,
+) -> Result<(), PiModelConfigCommonError> {
+    url::Url::parse(base_url).map_err(|_| PiModelConfigCommonError::InvalidBaseUrl)?;
+    if model.is_empty() {
+        return Err(PiModelConfigCommonError::EmptyModel);
+    }
+    if catalog_model.is_some_and(str::is_empty) {
+        return Err(PiModelConfigCommonError::EmptyCatalogModel);
+    }
+    Ok(())
+}
+
 fn validate_legacy_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
     let model: PiModelConfig = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi legacy model config is invalid: {error}"))?;
-    url::Url::parse(&model.base_url)
-        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
-    if model.model.is_empty() {
-        return Err("Pi model config model must not be empty".to_string());
-    }
+    validate_pi_model_config_common(
+        &model.base_url,
+        &model.model,
+        model.catalog_model.as_deref(),
+    )
+    .map_err(|error| match error {
+        PiModelConfigCommonError::InvalidBaseUrl => {
+            "Pi model config baseUrl is invalid".to_string()
+        }
+        PiModelConfigCommonError::EmptyModel => {
+            "Pi model config model must not be empty".to_string()
+        }
+        PiModelConfigCommonError::EmptyCatalogModel => {
+            "Pi model config catalogModel must not be empty".to_string()
+        }
+    })?;
     if !is_pi_credential_secret_name(&model.credential_secret_name) {
         return Err("Pi model config credentialSecretName is invalid".to_string());
+    }
+    if value
+        .get("credentialHeader")
+        .is_some_and(|header| !is_valid_pi_credential_header(header))
+    {
+        return Err("Pi model config credentialHeader is invalid".to_string());
     }
     Ok(())
 }
@@ -379,9 +417,21 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
     if model.schema_version != i64::from(PI_MODEL_CONFIG_CURRENT_GENERATION) {
         return Err("Pi model config schemaVersion is unsupported".to_string());
     }
-    url::Url::parse(&model.base_url)
-        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
-    if model.model.is_empty() || model.model.encode_utf16().count() > 512 {
+    validate_pi_model_config_common(
+        &model.base_url,
+        &model.model,
+        model.catalog_model.as_deref(),
+    )
+    .map_err(|error| match error {
+        PiModelConfigCommonError::InvalidBaseUrl => {
+            "Pi model config baseUrl is invalid".to_string()
+        }
+        PiModelConfigCommonError::EmptyModel => "Pi model config model is invalid".to_string(),
+        PiModelConfigCommonError::EmptyCatalogModel => {
+            "Pi model config catalogModel is invalid".to_string()
+        }
+    })?;
+    if model.model.encode_utf16().count() > 512 {
         return Err("Pi model config model is invalid".to_string());
     }
     let Some(object) = value.as_object() else {
@@ -416,12 +466,10 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
     if object.get("transport").and_then(serde_json::Value::as_str) != Some("sse") {
         return Err("Pi model config transport must be sse".to_string());
     }
-    if object
-        .get("catalogModel")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|catalog_model| {
-            catalog_model.is_empty() || catalog_model.encode_utf16().count() > 512
-        })
+    if model
+        .catalog_model
+        .as_deref()
+        .is_some_and(|catalog_model| catalog_model.encode_utf16().count() > 512)
     {
         return Err("Pi model config catalogModel is invalid".to_string());
     }
