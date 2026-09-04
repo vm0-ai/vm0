@@ -5063,8 +5063,8 @@ async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
     );
     assert_eq!(event.level, Level::INFO);
     assert_event_field(event, "actual", "Some(2314)");
-    assert_event_field(event, "target", "3584");
-    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "target", "3072");
+    assert_event_field(event, "deficit_mib", "Some(758)");
     assert_event_field(event, "previous_actual_mib", "Some(256)");
     assert_event_field(event, "reported_free_mib", "Some(2136)");
     assert_event_field(event, "reported_available_mib", "Some(2265)");
@@ -5136,7 +5136,7 @@ async fn wait_for_balloon_progress_grace_remains_bounded() {
     );
     assert_eq!(event.level, Level::WARN);
     assert_event_field(event, "actual", "Some(2314)");
-    assert_event_field(event, "deficit_mib", "Some(1270)");
+    assert_event_field(event, "deficit_mib", "Some(758)");
     assert_event_field(event, "reason", "severe_deficit");
     assert_event_field(event, "admission_action", "reject_and_destroy");
 }
@@ -5174,15 +5174,15 @@ async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
         "balloon inflated within tolerance, proceeding to pause",
     );
     assert_eq!(event.level, Level::INFO);
-    assert_event_field(event, "actual", "3545");
-    assert_event_field(event, "target", "3584");
+    assert_event_field(event, "actual", "3033");
+    assert_event_field(event, "target", "3072");
     assert_event_field(event, "deficit_mib", "39");
     assert_event_field(event, "sample_count", "1");
-    assert_event_field(event, "requested_target_mib", "3584");
+    assert_event_field(event, "requested_target_mib", "3072");
     assert_event_field(event, "target_observed", "true");
-    assert_event_field(event, "observed_target_mib", "Some(3584)");
-    assert_event_field(event, "first_actual_mib", "Some(3545)");
-    assert_event_field(event, "max_actual_mib", "Some(3545)");
+    assert_event_field(event, "observed_target_mib", "Some(3072)");
+    assert_event_field(event, "first_actual_mib", "Some(3033)");
+    assert_event_field(event, "max_actual_mib", "Some(3033)");
     assert_event_field(event, "actual_delta_mib", "Some(0)");
 }
 
@@ -5192,7 +5192,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-            target_mib, 1250,
+            target_mib, 800,
         ))]),
     );
     let client = ApiClient::new(api.socket_path()).unwrap();
@@ -5212,14 +5212,14 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
         "balloon inflate incomplete after 5s, pausing anyway",
     );
     assert_eq!(event.level, Level::WARN);
-    assert_event_field(event, "actual", "Some(1250)");
-    assert_event_field(event, "target", "1536");
-    assert_event_field(event, "deficit_mib", "Some(286)");
-    assert_event_field(event, "requested_target_mib", "1536");
+    assert_event_field(event, "actual", "Some(800)");
+    assert_event_field(event, "target", "1024");
+    assert_event_field(event, "deficit_mib", "Some(224)");
+    assert_event_field(event, "requested_target_mib", "1024");
     assert_event_field(event, "target_observed", "true");
-    assert_event_field(event, "observed_target_mib", "Some(1536)");
-    assert_event_field(event, "first_actual_mib", "Some(1250)");
-    assert_event_field(event, "max_actual_mib", "Some(1250)");
+    assert_event_field(event, "observed_target_mib", "Some(1024)");
+    assert_event_field(event, "first_actual_mib", "Some(800)");
+    assert_event_field(event, "max_actual_mib", "Some(800)");
     assert_event_field(event, "actual_delta_mib", "Some(0)");
     assert_event_field(event, "reason", "actual_stalled");
     assert_event_field(event, "admission_action", "reuse");
@@ -5228,7 +5228,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
 #[tokio::test]
 async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-    let stats = MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
+    let stats = MockBalloonStats::new(target_mib, 800).with_memory(mib(64), mib(128), mib(2048));
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
@@ -5256,10 +5256,10 @@ async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
         "balloon pressure-limited partial reclaim, proceeding to pause",
     );
     assert_eq!(event.level, Level::INFO);
-    assert_event_field(event, "actual", "1250");
-    assert_event_field(event, "target", "1536");
-    assert_event_field(event, "deficit_mib", "286");
-    assert_event_field(event, "tolerance_mib", "192");
+    assert_event_field(event, "actual", "800");
+    assert_event_field(event, "target", "1024");
+    assert_event_field(event, "deficit_mib", "224");
+    assert_event_field(event, "tolerance_mib", "128");
     assert_event_field(event, "sample_count", "1");
     assert_event_field(event, "target_observed", "true");
     assert_event_field(event, "reported_free_mib", "Some(64)");
@@ -5275,11 +5275,11 @@ fn balloon_settle_tolerance_is_capped_and_scales_for_small_targets() {
     );
     assert_eq!(
         balloon_settle_tolerance_mib(2048 - balloon::MIN_GUEST_MIB),
-        192
+        128
     );
     assert_eq!(
         balloon_settle_tolerance_mib(1024 - balloon::MIN_GUEST_MIB),
-        64
+        0
     );
     assert_eq!(balloon_settle_tolerance_mib(1), 0);
 }
@@ -5289,15 +5289,15 @@ fn balloon_settle_summary_classifies_progressing_timeout() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let mut summary = BalloonSettleSummary::new(target_mib);
 
-    summary.observe(&balloon_statistics(target_mib, 1200));
-    summary.observe(&balloon_statistics(target_mib, 1300));
+    summary.observe(&balloon_statistics(target_mib, 700));
+    summary.observe(&balloon_statistics(target_mib, 800));
 
     assert_eq!(summary.reason(), "actual_progressing_timeout");
     assert_eq!(summary.park_outcome(), SandboxParkOutcome::Reusable);
-    assert_eq!(summary.last_actual_mib, Some(1300));
-    assert_eq!(summary.last_deficit_mib, Some(236));
-    assert_eq!(summary.first_actual_mib, Some(1200));
-    assert_eq!(summary.max_actual_mib, Some(1300));
+    assert_eq!(summary.last_actual_mib, Some(800));
+    assert_eq!(summary.last_deficit_mib, Some(224));
+    assert_eq!(summary.first_actual_mib, Some(700));
+    assert_eq!(summary.max_actual_mib, Some(800));
     assert_eq!(summary.actual_delta_mib(), Some(100));
 }
 
@@ -5306,7 +5306,7 @@ fn pressure_limited_reclaim_ignores_free_memory_when_available_memory_is_missing
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut available_summary = BalloonSettleSummary::new(target_mib);
-    let mut available_stats = balloon_statistics(target_mib, 1250);
+    let mut available_stats = balloon_statistics(target_mib, 800);
     available_stats.free_memory = Some(mib(2048));
     available_stats.available_memory = Some(mib(128));
     available_stats.total_memory = Some(mib(2048));
@@ -5317,7 +5317,7 @@ fn pressure_limited_reclaim_ignores_free_memory_when_available_memory_is_missing
     );
 
     let mut missing_available_summary = BalloonSettleSummary::new(target_mib);
-    let mut missing_available_stats = balloon_statistics(target_mib, 1250);
+    let mut missing_available_stats = balloon_statistics(target_mib, 800);
     missing_available_stats.free_memory = Some(mib(32));
     missing_available_stats.total_memory = Some(mib(2048));
     let missing_available_deficit_mib = missing_available_summary.observe(&missing_available_stats);
@@ -5334,7 +5334,7 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
-            1024, 1200,
+            512, 800,
         ))]),
     );
     let client = ApiClient::new(api.socket_path()).unwrap();
@@ -5355,7 +5355,7 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     );
     assert_eq!(event.level, Level::WARN);
     assert_event_field(event, "target_observed", "false");
-    assert_event_field(event, "observed_target_mib", "Some(1024)");
+    assert_event_field(event, "observed_target_mib", "Some(512)");
     assert_event_field(event, "reason", "target_not_observed");
 }
 
@@ -5412,7 +5412,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
 #[tokio::test]
 async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-    let stats = MockBalloonStats::new(target_mib, 900)
+    let stats = MockBalloonStats::new(target_mib, 600)
         .with_memory(mib(32), mib(0), mib(2048))
         .with_extended_counters(11, 12, 13, 14, 15);
     let api = MockLifecycleApi::with_stats(
@@ -5435,10 +5435,10 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     assert_eq!(diagnostics.first_observed_target_mib, Some(target_mib));
     assert_eq!(diagnostics.observed_target_mib, Some(target_mib));
     assert!(diagnostics.target_observed);
-    assert_eq!(diagnostics.first_actual_mib, Some(900));
-    assert_eq!(diagnostics.actual_mib, Some(900));
-    assert_eq!(diagnostics.max_actual_mib, Some(900));
-    assert_eq!(diagnostics.deficit_mib, Some(636));
+    assert_eq!(diagnostics.first_actual_mib, Some(600));
+    assert_eq!(diagnostics.actual_mib, Some(600));
+    assert_eq!(diagnostics.max_actual_mib, Some(600));
+    assert_eq!(diagnostics.deficit_mib, Some(424));
     assert_eq!(diagnostics.actual_delta_mib, Some(0));
     assert_eq!(diagnostics.sample_count, 1);
     assert_eq!(diagnostics.reported_free_memory_bytes, Some(mib(32)));
@@ -5455,8 +5455,8 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
         "balloon inflate incomplete after 5s, pausing anyway",
     );
     assert_eq!(event.level, Level::WARN);
-    assert_event_field(event, "actual", "Some(900)");
-    assert_event_field(event, "deficit_mib", "Some(636)");
+    assert_event_field(event, "actual", "Some(600)");
+    assert_event_field(event, "deficit_mib", "Some(424)");
     assert_event_field(event, "reported_free_mib", "Some(32)");
     assert_event_field(event, "reported_available_mib", "Some(0)");
     assert_event_field(event, "reported_total_mib", "Some(2048)");
@@ -5833,7 +5833,7 @@ async fn park_inflates_and_pauses() {
     );
     assert_eq!(ps[0].path, "/balloon");
     let parsed: serde_json::Value = serde_json::from_str(&ps[0].body).unwrap();
-    assert_eq!(parsed["amount_mib"].as_u64().unwrap(), 1536); // 2048 - 512
+    assert_eq!(parsed["amount_mib"].as_u64().unwrap(), 1024);
     assert_eq!(ps[1].path, "/vm");
     assert!(ps[1].body.contains("Paused"));
 }
@@ -5847,7 +5847,7 @@ async fn park_inflates_by_one_at_min_plus_one() {
 
     park_inner(
         &mut is_parked,
-        513,
+        balloon::MIN_GUEST_MIB + 1,
         &mut controller,
         api.socket_path(),
         "test-min-plus-1",
@@ -5880,7 +5880,7 @@ async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
     let result = {
         let (_events, result) = park_inner_with_guest(
             &mut is_parked,
-            512,
+            balloon::MIN_GUEST_MIB,
             &mut controller,
             api.socket_path(),
             "test-park-small",
@@ -6093,7 +6093,7 @@ async fn unpark_small_vm_skips_balloon_but_resumes_vcpus() {
 
     unpark_inner(
         &mut is_parked,
-        512,
+        balloon::MIN_GUEST_MIB,
         &mut controller,
         api.socket_path(),
         state_rx.clone(),
@@ -6297,11 +6297,11 @@ async fn park_unpark_park_cycle() {
     assert_eq!(
         ops,
         vec![
-            ("/balloon", Some(1536)), // park 1: inflate
+            ("/balloon", Some(1024)), // park 1: inflate
             ("/vm", None),            // park 1: pause
             ("/vm", None),            // unpark: resume
             ("/balloon", Some(0)),    // unpark: deflate
-            ("/balloon", Some(1536)), // park 2: inflate
+            ("/balloon", Some(1024)), // park 2: inflate
             ("/vm", None),            // park 2: pause
         ],
         "unexpected PATCH sequence: {ops:?}"
@@ -6673,7 +6673,7 @@ async fn park_pauses_when_balloon_is_within_settle_tolerance() {
     // low-hundreds MiB residual while the guest reports little available
     // memory. That is close enough to park without waiting for the full
     // timeout and emitting a WARN.
-    let balloon_actual = Arc::new(AtomicU32::new(3545));
+    let balloon_actual = Arc::new(AtomicU32::new(4096 - balloon::MIN_GUEST_MIB - 39));
     let mut api = MockLifecycleApi::new(
         std::collections::VecDeque::new(),
         Some(Arc::clone(&balloon_actual)),
@@ -6755,7 +6755,7 @@ async fn park_pauses_when_balloon_deficit_equals_settle_tolerance() {
 #[tokio::test]
 async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-    let stats = MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
+    let stats = MockBalloonStats::new(target_mib, 800).with_memory(mib(64), mib(128), mib(2048));
     let mut api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
@@ -6977,7 +6977,7 @@ async fn reusable_park_does_not_request_terminal_guest_memory() {
 
 #[tokio::test]
 async fn park_small_vm_pause_failure_preserves_controller() {
-    // Small VM (≤512 MiB): no balloon work, just pause. If pause
+    // A minimum-size VM does no balloon work and only pauses. If pause
     // fails, the controller must be preserved (not aborted) — unlike
     // large VMs where the controller is already gone.
     let api = MockLifecycleApi::new(std::collections::VecDeque::from(vec![500]), None);
@@ -6991,7 +6991,7 @@ async fn park_small_vm_pause_failure_preserves_controller() {
     let result = {
         let (_events, result) = park_inner_with_guest(
             &mut is_parked,
-            512,
+            balloon::MIN_GUEST_MIB,
             &mut controller,
             api.socket_path(),
             "small-fail",

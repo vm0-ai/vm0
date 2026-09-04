@@ -5146,7 +5146,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Consenti agli agenti di usare un browser cloud nelle nuove chat",
+          "description": "Attiva il browser cloud per impostazione predefinita nelle nuove chat. Puoi modificarlo in qualsiasi chat.",
           "title": "Browser cloud"
         },
         "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",
