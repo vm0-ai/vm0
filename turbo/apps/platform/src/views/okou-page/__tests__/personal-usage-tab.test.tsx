@@ -833,6 +833,39 @@ test("Label Talking Avatar usage by the product feature", async () => {
   });
 });
 
+test("Label HeyGen Avatar III usage by the product feature", async () => {
+  const user = userEvent.setup();
+  const row = usageRow({
+    title: "Avatar rendering usage",
+    credits: 100,
+    runId: "run-heygen-avatar",
+  });
+  mockPersonalUsageStory([
+    {
+      ...row,
+      breakdown: [
+        {
+          kind: "video",
+          credits: 100,
+          providers: [{ provider: "heygen-avatar-iii", credits: 100 }],
+        },
+      ],
+    },
+  ]);
+  await openUsageSettings("usage-records");
+
+  await user.hover(screen.getByTestId("usage-kind-segment-video"));
+
+  await waitFor(() => {
+    expect(
+      screen.getAllByText("Avatar").some((element) => {
+        return element.parentElement?.textContent === "Avatar100";
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/heygen/iu)).not.toBeInTheDocument();
+  });
+});
+
 test("Make personal usage-record titles keyboard accessible", async () => {
   mockPersonalUsageStory();
   await openUsageSettings("usage-records");

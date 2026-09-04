@@ -1863,6 +1863,13 @@
       "when": 1788530536993,
       "tag": "1073_spicy_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 1074,
+      "version": "7",
+      "when": 1788539714726,
+      "tag": "1074_add_heygen_avatar_iii_pricing",
+      "breakpoints": true
     }
   ]
 }
