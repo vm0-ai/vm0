@@ -101,6 +101,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
+    name: "__intro-video-voice",
+    description: "Internal Intro Video HeyGen narration renderer",
+    load: async () => {
+      return (await import("./commands/__intro-video-voice"))
+        .introVideoVoiceCommand;
+    },
+  },
+  {
     name: "model",
     description: "List available models and model-switching guidance",
     load: async () => {

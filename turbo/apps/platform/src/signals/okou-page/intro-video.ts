@@ -1,4 +1,4 @@
-import type { AvatarVideoVoice } from "@okouai/api-contracts/contracts/avatar-video";
+import type { IntroVideoVoice } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import type { IntroVideoAvatar } from "@okouai/core/intro-video-avatars";
 import { command, computed, state, type Command, type State } from "ccstate";
 
@@ -72,7 +72,7 @@ interface AdoptedIntroVideoRecording {
 }
 
 export type IntroVideoVoiceSelection =
-  | { readonly kind: "catalog"; readonly voice: AvatarVideoVoice }
+  | { readonly kind: "catalog"; readonly voice: IntroVideoVoice }
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
@@ -188,8 +188,8 @@ function buildIntroVideoPrompt(args: {
     switch (args.voice?.kind) {
       case "catalog": {
         return [
-          `- Narration audio: synthesize exactly once with catalog voice ID ${args.voice.voice.id} in the voice's owning provider, then reuse that exact audio for lip sync and the final mix`,
-          "- Voice interoperability: never send the catalog voice ID as a HeyGen voice_id and never replace it with an avatar default voice; if the exact selected voice cannot produce audio, stop with an actionable error",
+          `- HeyGen narration command: synthesize exactly once with okou __intro-video-voice --voice-id ${args.voice.voice.id} --text <final-narration-script> --json`,
+          "- Narration reuse: use the command's returned permanent audio URL for presenter lip sync and reuse that exact audio in the final mix; never replace the selected voice with an avatar default voice",
         ];
       }
       case "original": {

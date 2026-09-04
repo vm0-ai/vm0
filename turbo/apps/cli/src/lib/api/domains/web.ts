@@ -23,6 +23,8 @@ import {
 import type {
   IntroVideoPresenterGenerateRequest,
   IntroVideoPresenterGenerateResponse,
+  IntroVideoVoiceGenerateRequest,
+  IntroVideoVoiceGenerateResponse,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
@@ -1045,6 +1047,44 @@ export async function generateWebIntroVideoPresenter(
     baseUrl,
     token,
     fallback: "Failed to generate Intro Video presenter",
+  });
+}
+
+/**
+ * Generate the private HeyGen narration track used by Intro Video.
+ * The returned permanent URL is reused for presenter lip sync and final mix.
+ */
+export async function generateWebIntroVideoVoice(
+  options: IntroVideoVoiceGenerateRequest,
+): Promise<IntroVideoVoiceGenerateResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/voice/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate Intro Video narration",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return readBuiltInGenerationResponse<IntroVideoVoiceGenerateResponse>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate Intro Video narration",
   });
 }
 
