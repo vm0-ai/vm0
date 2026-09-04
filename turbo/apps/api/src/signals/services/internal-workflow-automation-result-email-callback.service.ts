@@ -4,6 +4,7 @@ import {
   MORNING_BRIEF_PREFERENCES_PATH,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import type { AgentRunOfficialWorkflowProvenance } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
@@ -32,6 +33,7 @@ import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
 } from "./internal-run-callback";
+import { readAcceptedOfficialWorkflowRevision } from "./official-workflow-catalog-read.service";
 import { getRunOutputText } from "./run-output.service";
 
 const log = logger("api:official-automation-result-email");
@@ -84,10 +86,30 @@ function resultEmailTitle(workflowName: string): string {
 
 function resultEmailSubject(workflowName: string): string {
   return truncateWithMarker(
-    `${workflowName} completed`,
+    workflowName,
     OFFICIAL_AUTOMATION_RESULT_EMAIL_SUBJECT_MAX_CHARACTERS,
     SHORT_TRUNCATION_MARKER,
   );
+}
+
+async function resultEmailWorkflowLabel(
+  db: Db,
+  workflowName: string,
+  provenance: AgentRunOfficialWorkflowProvenance | null,
+  signal: AbortSignal,
+): Promise<string> {
+  const definition = provenance?.definitions.find((candidate) => {
+    return candidate.name === workflowName;
+  });
+  if (!definition) {
+    return workflowName;
+  }
+  const revision = await readAcceptedOfficialWorkflowRevision(
+    db,
+    { name: definition.name, revision: definition.revision },
+    signal,
+  );
+  return revision?.definition.workflow.displayName ?? workflowName;
 }
 
 function boundedResultText(output: string | undefined): string {
@@ -159,6 +181,7 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
     .select({
       status: agentRuns.status,
       userId: agentRuns.userId,
+      officialWorkflowProvenance: agentRuns.officialWorkflowProvenance,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, envelope.runId))
@@ -181,6 +204,12 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
   }
 
   const output = await getRunOutputText(db, envelope.runId, signal);
+  const workflowLabel = await resultEmailWorkflowLabel(
+    db,
+    payload.data.workflowName,
+    run.officialWorkflowProvenance ?? null,
+    signal,
+  );
   const productUrl = appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
   const manageUrl = await workflowAutomationManageUrl(
     db,
@@ -236,7 +265,7 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
       id: claim.emailOutboxId,
       fromAddress: buildFromAddress(),
       toAddresses: userEmail,
-      subject: resultEmailSubject(payload.data.workflowName),
+      subject: resultEmailSubject(workflowLabel),
       headers: buildUnsubscribeHeaders(buildOneClickUnsubscribeUrl(run.userId)),
       publicBrand: EMAIL_PUBLIC_BRAND,
       template: {
