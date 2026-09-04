@@ -284,7 +284,7 @@ test("Use composer defaults while a pre-v2 switch cache is being refreshed", asy
     await setupPage({
       context,
       path: "/agents",
-      seedFeatureSwitchCache: false,
+      preserveFeatureSwitchCache: true,
     });
     await featureRequestStarted.promise;
     const creationDialog = await openCreateDialog("Private");
@@ -309,7 +309,6 @@ test("Use composer defaults while a pre-v2 switch cache is being refreshed", asy
     ).not.toBeNull();
   } finally {
     releaseFeatureRequest.resolve(undefined);
-    globalThis.localStorage.removeItem(previousCacheKey);
   }
 });
 
