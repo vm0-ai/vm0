@@ -346,8 +346,8 @@ async function seedGmailMailCardFixture() {
   return { actor, agent, thread, gmail };
 }
 
-function client() {
-  return setupApp({ context, routes: mailRoutes })(mailContract);
+function client(options?: { readonly rethrowErrors?: boolean }) {
+  return setupApp({ context, routes: mailRoutes, ...options })(mailContract);
 }
 
 function connectorSelectionsClient() {
@@ -612,7 +612,7 @@ describe("POST /api/mail/drafts/link", () => {
     gmail.permissionDenied = true;
 
     await expect(
-      client().linkDraft({
+      client({ rethrowErrors: true }).linkDraft({
         headers: authHeaders(),
         body: {
           threadId: fixture.thread.id,
