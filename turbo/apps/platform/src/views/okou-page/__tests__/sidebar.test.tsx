@@ -261,10 +261,11 @@ function mockChatThreadSnapshot(
     return [];
   },
   targetContext = context,
-): void {
+): { readonly responseReturned: Promise<void> } {
+  const responseReturned = targetContext.mocks.deferred<void>();
   targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
-    return respond(200, {
+    const response = respond(200, {
       chatThreads: snapshotThreads.map((thread, index) => {
         return {
           id: thread.id,
@@ -288,6 +289,8 @@ function mockChatThreadSnapshot(
       latestEventId: null,
       latestSeqId: null,
     });
+    responseReturned.resolve();
+    return response;
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
@@ -302,6 +305,7 @@ function mockChatThreadSnapshot(
       ),
     });
   });
+  return { responseReturned: responseReturned.promise };
 }
 
 function mockUnreadAgents(
@@ -544,10 +548,11 @@ function mockSidebarThreadStory(
   targetContext = context,
 ): {
   threads: SidebarThread[];
+  snapshotResponseReturned: Promise<void>;
 } {
   let threads = [...firstPageThreads];
 
-  mockChatThreadSnapshot(
+  const { responseReturned: snapshotResponseReturned } = mockChatThreadSnapshot(
     () => {
       return [...threads, ...extraThreads];
     },
@@ -605,7 +610,7 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads };
+  return { threads, snapshotResponseReturned };
 }
 
 test("Browse a long sidebar chat history", async () => {
@@ -1399,7 +1404,7 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponseReturned = context.mocks.deferred<void>();
   const indicatorRequestStarted = context.mocks.deferred<void>();
 
-  mockSidebarThreadStory([
+  const { snapshotResponseReturned } = mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
@@ -1421,7 +1426,10 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   });
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-  await indicatorRequestStarted.promise;
+  await Promise.all([
+    snapshotResponseReturned,
+    indicatorRequestStarted.promise,
+  ]);
 
   await waitFor(() => {
     expect(
@@ -1532,12 +1540,16 @@ test("Keep pin management usable with many pinned agents", async () => {
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
   const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
   expect(within(pinnedSection).getByText("Pinned agents")).toBeVisible();
-  expect(buttonByLabel("Pin an agent", grid)).toBeVisible();
+  expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(1);
+  expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
+  expect(within(grid).queryByLabelText("Pin an agent")).toBeNull();
 
   preferencesGate.resolve();
 
   await waitFor(() => {
-    expect(pinnedAgentLink(grid, "Billing Agent")).toBeVisible();
+    expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+    expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    expect(buttonByLabel("Pin an agent", grid)).toBeVisible();
   });
   expect(
     queryAllByRoleFast("link", grid).map((link) => {
