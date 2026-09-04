@@ -1,3 +1,5 @@
+import { useGet } from "ccstate-react";
+import { avatarNeckSweaterEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   AVATAR_HEAD_TRANSFORM_ORIGIN,
   avatarSvgComposition,
@@ -23,7 +25,10 @@ export function AvatarSvgPreview({
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
-  const { behind, head, front, headScale } = avatarSvgComposition(config);
+  const neckSweater = useGet(avatarNeckSweaterEnabled$);
+  const { behind, head, front, headScale } = avatarSvgComposition(config, {
+    neckSweater,
+  });
   const layerClassName = "absolute inset-0 h-full w-full object-cover";
   const layer = (src: string) => {
     return <img key={src} alt="" src={src} className={layerClassName} />;

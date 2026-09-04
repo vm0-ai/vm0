@@ -124,6 +124,10 @@ export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
 });
 
+export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
+});
+
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });

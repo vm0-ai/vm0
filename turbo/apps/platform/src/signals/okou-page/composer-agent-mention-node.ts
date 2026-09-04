@@ -28,12 +28,26 @@ interface AgentMentionAvatarSource {
 export interface AgentMentionAvatarRuntime {
   readonly resolve: (agentId: string, fallback: string | null) => string | null;
   readonly replaceAgents: (agents: readonly AgentMentionAvatarSource[]) => void;
+  /**
+   * The `avatarNeckSweater` switch. Mention chips are ProseMirror node views
+   * built outside React and outside command scope, so the switch is pushed in
+   * from the sync command that already feeds this runtime rather than read
+   * from `featureSwitch$` here.
+   */
+  readonly setNeckSweaterEnabled: (enabled: boolean) => void;
+  readonly neckSweaterEnabled: () => boolean;
   readonly subscribe: (listener: () => void) => () => void;
 }
 
 export function createAgentMentionAvatarRuntime(): AgentMentionAvatarRuntime {
   let agents: readonly AgentMentionAvatarSource[] = [];
+  let neckSweater = false;
   const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of listeners) {
+      listener();
+    }
+  };
   return {
     resolve(agentId, fallback) {
       const agent = agents.find((candidate) => {
@@ -43,9 +57,17 @@ export function createAgentMentionAvatarRuntime(): AgentMentionAvatarRuntime {
     },
     replaceAgents(nextAgents) {
       agents = nextAgents;
-      for (const listener of listeners) {
-        listener();
+      notify();
+    },
+    setNeckSweaterEnabled(enabled) {
+      if (neckSweater === enabled) {
+        return;
       }
+      neckSweater = enabled;
+      notify();
+    },
+    neckSweaterEnabled() {
+      return neckSweater;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -78,11 +100,14 @@ export function agentMentionText(node: ProseMirrorNode): string {
 function renderAgentMentionAvatar(
   container: HTMLElement,
   avatarUrl: string | null,
+  neckSweater: boolean,
 ): void {
   container.replaceChildren();
   const svgConfig = resolveAvatarSvgConfig(avatarUrl);
   if (svgConfig) {
-    const { behind, head, front, headScale } = avatarSvgComposition(svgConfig);
+    const { behind, head, front, headScale } = avatarSvgComposition(svgConfig, {
+      neckSweater,
+    });
     const layers = document.createElement("span");
     layers.className = isLegacyAvatarSvgConfig(svgConfig)
       ? "absolute inset-0 scale-[1.25]"
@@ -139,12 +164,17 @@ function createAgentMentionNodeView(
 
   let currentNode = node;
   let currentAvatarUrl: string | null | undefined;
+  // The chip is redrawn only when its picture would actually change. The
+  // switch is part of that picture, not just the URL: flipping it swaps the
+  // layer set for the same avatar.
+  let currentNeckSweater: boolean | undefined;
   function render(nextNode: ProseMirrorNode): void {
     const attributes = agentMentionAttributes(nextNode);
     const avatarUrl = avatarRuntime.resolve(
       attributes.agentId,
       attributes.avatarUrl,
     );
+    const neckSweater = avatarRuntime.neckSweaterEnabled();
     dom.dataset.agentMention = attributes.agentId;
     dom.dataset.agentName = attributes.name;
     if (avatarUrl === null) {
@@ -153,9 +183,10 @@ function createAgentMentionNodeView(
       dom.dataset.agentAvatarUrl = avatarUrl;
     }
     name.textContent = attributes.name;
-    if (avatarUrl !== currentAvatarUrl) {
+    if (avatarUrl !== currentAvatarUrl || neckSweater !== currentNeckSweater) {
       currentAvatarUrl = avatarUrl;
-      renderAgentMentionAvatar(avatar, avatarUrl);
+      currentNeckSweater = neckSweater;
+      renderAgentMentionAvatar(avatar, avatarUrl, neckSweater);
     }
   }
   render(node);

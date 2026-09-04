@@ -111,8 +111,15 @@ export interface AvatarSvgComposition {
   readonly headScale: number;
 }
 
+/**
+ * `neckSweater` is the `avatarNeckSweater` switch. With it off the result is
+ * byte-for-byte the four head layers at their original scale, because the neck
+ * and the chin baseline are one change: a scaled head with no collar under it
+ * is just a smaller or larger avatar than the one already saved.
+ */
 export function avatarSvgComposition(
   config: ResolvedAvatarSvgConfig,
+  { neckSweater }: { readonly neckSweater: boolean },
 ): AvatarSvgComposition {
   if (isLegacyAvatarSvgConfig(config)) {
     return {
@@ -133,16 +140,20 @@ export function avatarSvgComposition(
 
   const hairBase = `hairs/${config.face}/${config.hair}-${config.hairColor}`;
   const expressionSkin = config.expression === "calm" ? `-${config.skin}` : "";
+  const head = [
+    avatarComposerAssetUrl(`${hairBase}-rear.svg`),
+    avatarComposerAssetUrl(`faces/${config.face}-${config.skin}.svg`),
+    avatarComposerAssetUrl(`${hairBase}-front.svg`),
+    avatarComposerAssetUrl(
+      `expressions/${config.expression}-${config.face}${expressionSkin}.svg`,
+    ),
+  ];
+  if (!neckSweater) {
+    return { behind: [], head, front: [], headScale: 1 };
+  }
   return {
     behind: [avatarComposerAssetUrl(`neck/${config.skin}.svg`)],
-    head: [
-      avatarComposerAssetUrl(`${hairBase}-rear.svg`),
-      avatarComposerAssetUrl(`faces/${config.face}-${config.skin}.svg`),
-      avatarComposerAssetUrl(`${hairBase}-front.svg`),
-      avatarComposerAssetUrl(
-        `expressions/${config.expression}-${config.face}${expressionSkin}.svg`,
-      ),
-    ],
+    head,
     front: [avatarComposerAssetUrl(`sweater/${config.sweater}.svg`)],
     headScale:
       (AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_TOP_Y) /

@@ -34,6 +34,10 @@ function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
   });
 }
 
+function isNeckOrSweaterLayer(src: string): boolean {
+  return src.includes("/neck/") || src.includes("/sweater/");
+}
+
 function findCreateCustomAvatarButton(): Promise<HTMLElement> {
   return screen.findByLabelText("Create custom avatar");
 }
@@ -167,11 +171,35 @@ test("Load only the visible avatar SVG layers", async () => {
   });
   const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
 
-  // Six layers each — four for the head, plus the neck under it and the
-  // sweater over it — across the preview and the six face options. The shared
-  // neck and sweater are one request each no matter how many avatars use them.
+  // Four head layers across the preview and the six face options.
+  expect(layerSrcs).toHaveLength(28);
+  expect(new Set(layerSrcs).size).toBe(24);
+  expect(layerSrcs.filter(isNeckOrSweaterLayer)).toStrictEqual([]);
+});
+
+test("Add the neck and sweater layers once the switch is on", async () => {
+  prepareAgentProfile();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
+  });
+
+  click(await findCreateCustomAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
+
+  // Two more layers per avatar, but the shared neck and sweater are one
+  // request each no matter how many avatars wear them.
   expect(layerSrcs).toHaveLength(42);
   expect(new Set(layerSrcs).size).toBe(26);
+  expect(new Set(layerSrcs.filter(isNeckOrSweaterLayer)).size).toBe(2);
 });
 
 test("Keep every composer step and its edge options usable in one dialog", async () => {
@@ -179,7 +207,10 @@ test("Keep every composer step and its edge options usable in one dialog", async
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
   });
 
   click(await findCreateCustomAvatarButton());
@@ -243,7 +274,10 @@ test("Create and save a composer avatar from the profile page", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
   });
 
   click(await findCreateCustomAvatarButton());
