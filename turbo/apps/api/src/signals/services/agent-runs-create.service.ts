@@ -420,6 +420,7 @@ function buildAgentToolsPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
@@ -435,6 +436,11 @@ function buildAgentToolsPrompt(args: {
     "- Manage recurring workflow automations: `okou workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     ...(args.presentationTemplatesEnabled
       ? [`- ${presentationTemplateSkillInstruction()}`]
+      : []),
+    ...(args.introVideoEnabled
+      ? [
+          "- Click-driven intro-video camera moves: when a screen recording includes a synchronized same-stem `.clicks.json` sidecar, run `okou video camera --help` and follow its plan/review workflow.",
+        ]
       : []),
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `okou scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
     ...(args.cloudBrowserEnabled === true
@@ -560,6 +566,7 @@ function buildAppendSystemPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
@@ -572,6 +579,7 @@ function buildAppendSystemPrompt(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
       connectorAccountsEnabled: args.connectorAccountsEnabled,
+      introVideoEnabled: args.introVideoEnabled,
       presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
@@ -753,6 +761,7 @@ function createRunBody(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }) {
@@ -765,6 +774,7 @@ function createRunBody(args: {
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
     connectorAccountsEnabled: args.connectorAccountsEnabled,
+    introVideoEnabled: args.introVideoEnabled,
     presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
@@ -967,6 +977,10 @@ function buildZeroCreateAgentRunArgs(args: {
       ),
       connectorAccountsEnabled: isFeatureEnabled(
         FeatureSwitchKey.ConnectorAccounts,
+        args.featureSwitchContext,
+      ),
+      introVideoEnabled: isFeatureEnabled(
+        FeatureSwitchKey.IntroVideo,
         args.featureSwitchContext,
       ),
       presentationScreenshotEnabled: isFeatureEnabled(

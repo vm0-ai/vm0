@@ -1686,6 +1686,38 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const toolHint = "Click-driven intro-video camera moves:";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.IntroVideo]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(toolHint);
+    expect(appendSystemPrompt).toContain("okou video camera --help");
+  });
+
   it("advertises presentation screenshots only while their rollout switch is on", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
