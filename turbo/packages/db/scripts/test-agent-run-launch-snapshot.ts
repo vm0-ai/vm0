@@ -266,6 +266,7 @@ async function validateConstraintValues(
   client: Client,
   runId: string,
   supportsV2: boolean,
+  supportsV3: boolean,
 ): Promise<void> {
   await client.query(
     `UPDATE "agent_runs" SET "launch_snapshot" = NULL WHERE "id" = $1`,
@@ -313,6 +314,26 @@ async function validateConstraintValues(
     }
   }
 
+  if (supportsV3) {
+    for (const framework of ["claude-code", "codex", "pi"] as const) {
+      await client.query(
+        `
+          UPDATE "agent_runs"
+          SET "launch_snapshot" = $1::jsonb
+          WHERE "id" = $2
+        `,
+        [
+          JSON.stringify({
+            schemaVersion: 3,
+            framework,
+            runnerProfile: "vm0/default",
+          }),
+          runId,
+        ],
+      );
+    }
+  }
+
   await client.query(
     `
       UPDATE "agent_runs"
@@ -353,6 +374,25 @@ async function validateConstraintValues(
       piMemoryGenerationEnabled: true,
       extra: "rejected",
     },
+    {
+      schemaVersion: 3,
+      framework: "codex",
+      runnerProfile: "vm0/default",
+      piMemoryGenerationEnabled: true,
+    },
+    {
+      schemaVersion: 3,
+      framework: "codex",
+      runnerProfile: "vm0/default",
+      extra: "rejected",
+    },
+    { schemaVersion: 3, framework: "codex" },
+    { schemaVersion: 3, runnerProfile: "vm0/default" },
+    { schemaVersion: 3, framework: "gemini", runnerProfile: "vm0/default" },
+    { schemaVersion: 3, framework: "codex", runnerProfile: "" },
+    { schemaVersion: 3, framework: "codex", runnerProfile: "x".repeat(256) },
+    { schemaVersion: 4, framework: "codex", runnerProfile: "vm0/default" },
+    { schemaVersion: "3", framework: "codex", runnerProfile: "vm0/default" },
     ...(!supportsV2
       ? [
           {
@@ -626,7 +666,7 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
 
     const validatedConstraint = await readConstraintCatalog(setup);
     assert.equal(validatedConstraint.validated, true);
-    await validateConstraintValues(setup, fixture.runId, false);
+    await validateConstraintValues(setup, fixture.runId, false, false);
 
     await applyMigrationsFromDirectoryUpToTag(
       setup,
@@ -703,9 +743,9 @@ export async function validateAgentRunLaunchSnapshotSchema(
     });
     assert.equal((await readConstraintCatalog(client)).validated, true);
     await seedCanonicalAgentRun(client, fixture);
-    await validateConstraintValues(client, fixture.runId, true);
+    await validateConstraintValues(client, fixture.runId, true, true);
     console.log(
-      "   ✅ fresh schema matches the nullable strict v1/v2 contract\n",
+      "   ✅ fresh schema matches the nullable strict v1/v2/v3 contract\n",
     );
   } finally {
     await client.end();

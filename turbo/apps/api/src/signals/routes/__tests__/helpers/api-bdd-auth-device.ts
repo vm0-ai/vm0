@@ -297,6 +297,7 @@ interface CodexDeviceAuthProviderRecorder {
 export function mockCodexDeviceAuthProvider(
   options: {
     readonly accessTokenExpiresAt?: number;
+    readonly refreshedAccessTokenExpiresAt?: number;
     readonly tokenScope?: "org" | "personal";
     readonly accountId?: string;
     readonly refreshToken?: string;
@@ -333,9 +334,23 @@ export function mockCodexDeviceAuthProvider(
       },
     ),
     http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
-      recorded.oauthToken.push(new URLSearchParams(await request.text()));
+      const rawBody = await request.text();
+      const body = request.headers
+        .get("content-type")
+        ?.includes("application/json")
+        ? new URLSearchParams(JSON.parse(rawBody) as Record<string, string>)
+        : new URLSearchParams(rawBody);
+      recorded.oauthToken.push(body);
       return HttpResponse.json(
-        makeCodexTokenResponse(options.tokenScope ?? "org", options),
+        makeCodexTokenResponse(options.tokenScope ?? "org", {
+          ...options,
+          ...(body.get("grant_type") === "refresh_token" &&
+          options.refreshedAccessTokenExpiresAt !== undefined
+            ? {
+                accessTokenExpiresAt: options.refreshedAccessTokenExpiresAt,
+              }
+            : {}),
+        }),
       );
     }),
   );

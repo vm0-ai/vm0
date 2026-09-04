@@ -305,7 +305,7 @@ function mockOpenRouterSummary(summary: string): unknown[] {
       async ({ request }) => {
         requests.push(await request.json());
         return HttpResponse.json({
-          choices: [{ message: { content: summary } }],
+          choices: [{ finish_reason: "stop", message: { content: summary } }],
         });
       },
     ),

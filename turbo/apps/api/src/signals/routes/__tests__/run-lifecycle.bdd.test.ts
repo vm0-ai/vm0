@@ -1686,6 +1686,38 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const toolHint = "Click-driven intro-video camera moves:";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.IntroVideo]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(toolHint);
+    expect(appendSystemPrompt).toContain("okou video camera --help");
+  });
+
   it("advertises presentation screenshots only while their rollout switch is on", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -8119,7 +8151,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const agentId = onboarding.defaultAgentId;
     await expect(api.readBillingStatus(actor)).resolves.toMatchObject({
       tier: "limited-free-1",
-      credits: 3000,
+      credits: 1000,
       onboardingPaymentPending: false,
     });
     const modelPolicies = await misc.listModelPolicies(actor);
@@ -14952,7 +14984,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
 
     const directEnvironment = {
-      ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
+      CUSTOM_AGENT_ID: `\${{ vars.CUSTOM_AGENT_ID }}`,
       CUSTOM_API_TOKEN: `\${{ secrets.CUSTOM_API_TOKEN }}`,
     };
     const directAgent = await api.createDirectAgent(actor, {
@@ -14974,13 +15006,13 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       agentId: directAgent.agentId,
       prompt: "consume an application-owned Zero context",
       modelProviderType: "anthropic-api-key",
-      vars: { ZERO_AGENT_ID: directAgent.agentId },
+      vars: { CUSTOM_AGENT_ID: directAgent.agentId },
       secrets: { CUSTOM_API_TOKEN: directOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
     const directClaim = await api.claimRunnerJob(direct.runId);
     expect(directClaim.environment).toMatchObject({
-      ZERO_AGENT_ID: directAgent.agentId,
+      CUSTOM_AGENT_ID: directAgent.agentId,
       CUSTOM_API_TOKEN: directOkouToken,
     });
     expect(directClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
@@ -15292,9 +15324,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       value: "***",
     });
     expect(claim.environment?.APP_URL).toBeUndefined();
-    expect(claim.environment ?? {}).not.toHaveProperty(
-      "ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED",
-    );
     expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
       kind: "builtin",
       name: "slack",

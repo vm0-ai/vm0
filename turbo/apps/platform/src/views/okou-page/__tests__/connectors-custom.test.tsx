@@ -572,7 +572,13 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
     listAgent(RESEARCH_ID, "Research"),
     listAgent(SUPPORT_ID, "Support"),
   ]);
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    },
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("tab", "Custom");

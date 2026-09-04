@@ -27,9 +27,6 @@ import { pathParams$ } from "../../signals/route.ts";
 import {
   agentCardCollapsed$,
   setAgentCardCollapsed$,
-  pinnedAgentGridRows$,
-  cachePinnedAgentGridRowsRef$,
-  PINNED_AGENT_GRID_COLUMNS,
   openPinAgentDialog$,
   pinAgentDialogOpen$,
   setPinAgentDialogOpen$,
@@ -453,8 +450,6 @@ export function PinnedAgentListSection({
   const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
-  const cachedPinnedAgentGridRows = useGet(pinnedAgentGridRows$);
-  const cachePinnedAgentGridRowsRef = useSet(cachePinnedAgentGridRowsRef$);
   const draggingAgentId = useGet(draggingPinnedAgentId$);
   const dropTargetAgentId = useGet(pinnedAgentDropTargetId$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
@@ -479,14 +474,9 @@ export function PinnedAgentListSection({
         : displayedPinnedAgents;
     const pinnedAgentCards =
       horizontalPinnedAgents === null
-        ? Array.from(
-            {
-              length: cachedPinnedAgentGridRows * PINNED_AGENT_GRID_COLUMNS - 1,
-            },
-            (_, index) => {
-              return <PinnedAgentGridSkeletonCard key={index} />;
-            },
-          )
+        ? Array.from({ length: 4 }, (_, index) => {
+            return <PinnedAgentGridSkeletonCard key={index} />;
+          })
         : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
@@ -525,7 +515,6 @@ export function PinnedAgentListSection({
           })}
         </span>
         <div
-          ref={cachePinnedAgentGridRowsRef}
           className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2.5"
           data-testid="pinned-agents-grid"
         >

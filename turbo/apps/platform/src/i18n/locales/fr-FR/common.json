@@ -5146,7 +5146,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Autorisez les agents à utiliser un navigateur cloud dans les nouvelles discussions",
+          "description": "Activez le navigateur cloud par défaut dans les nouvelles discussions. Vous pouvez le modifier dans chaque discussion.",
           "title": "Navigateur cloud"
         },
         "description": "Choisissez les paramètres par défaut des nouvelles discussions et le mode d’envoi des messages.",

@@ -5089,7 +5089,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Agenten die Verwendung eines Cloud-Browsers in neuen Chats erlauben",
+          "description": "Cloud-Browser in neuen Chats standardmäßig aktivieren. Du kannst das in jedem Chat ändern.",
           "title": "Cloud-Browser"
         },
         "description": "Lege Standardeinstellungen für neue Chats und die Art des Nachrichtenversands fest.",

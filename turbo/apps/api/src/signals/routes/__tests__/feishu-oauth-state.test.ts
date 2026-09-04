@@ -13,6 +13,7 @@ const context = testContext();
 const NOW = Date.parse("2026-08-25T00:00:00.000Z");
 const NOW_SECONDS = Math.floor(NOW / 1000);
 const SECRET = "a".repeat(64);
+const REDIRECT_URI = "https://app.vm0.ai/connectors/feishu/callback";
 
 function oauthClient() {
   return setupApp({ context, routes: feishuOauthRoutes })(feishuOauthContract);
@@ -24,6 +25,7 @@ function statePayload(): Readonly<Record<string, unknown>> {
     orgId: `org_${randomUUID()}`,
     userId: `user_${randomUUID()}`,
     callbackTarget: "app",
+    redirectUri: REDIRECT_URI,
     timestamp: NOW_SECONDS,
   };
 }
@@ -81,6 +83,14 @@ describe("Feishu OAuth state", () => {
   ])("rejects an $kind public brand", async ({ payload }) => {
     await expectConnectError(
       signedState(payload),
+      "Invalid or expired connect state",
+    );
+  });
+
+  it("rejects an omitted redirect URI", async () => {
+    const { redirectUri: _redirectUri, ...payload } = statePayload();
+    await expectConnectError(
+      signedState({ ...payload, publicBrand: "vm0" }),
       "Invalid or expired connect state",
     );
   });

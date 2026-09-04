@@ -107,6 +107,7 @@ export interface SetupPageOptions {
   readonly env?: PageEnvironment;
   readonly cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  readonly preserveFeatureSwitchCache?: boolean;
   readonly sharedWorkerAppVersion?: string;
   readonly sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
@@ -223,28 +224,31 @@ async function setupPageAsync(
   }
 
   // Simulate browser state before app startup: clear any prior cache, then
-  // optionally seed it as if the user is returning with a populated cache.
+  // seed it as if the user is returning with a populated cache. Tests for a
+  // historical raw cache can preserve the browser state they installed.
   // Reading featureSwitch$ is synchronous, so the cache must be in place
   // before bootstrap starts its SWR refresh.
   const auth = resolveAuth(options);
   const clerk = options.context.mocks.clerk();
   const activeOrgId = auth.organization.activeOrg?.id ?? null;
-  options.context.store.set(clearFeatureSwitchCacheForTest$);
   const featureSwitchOverrides = { ...options.featureSwitches };
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
-  const cachedFeatureSwitchOverrides = {
-    ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
-  };
-  const cachedFeatureSwitches = getAllFeatureStates({
-    orgId: activeOrgId ?? undefined,
-    overrides: cachedFeatureSwitchOverrides,
-  });
-  options.context.store.set(
-    setFeatureSwitchCacheForTest$,
-    cachedFeatureSwitches,
-  );
+  if (!options.preserveFeatureSwitchCache) {
+    options.context.store.set(clearFeatureSwitchCacheForTest$);
+    const cachedFeatureSwitchOverrides = {
+      ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
+    };
+    const cachedFeatureSwitches = getAllFeatureStates({
+      orgId: activeOrgId ?? undefined,
+      overrides: cachedFeatureSwitchOverrides,
+    });
+    options.context.store.set(
+      setFeatureSwitchCacheForTest$,
+      cachedFeatureSwitches,
+    );
+  }
   clerk.sessionSignedOut(auth.signedOut);
   clerk.user(auth.user, auth.session);
   clerk.organization(auth.organization);

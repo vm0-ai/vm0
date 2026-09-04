@@ -590,6 +590,9 @@ describe("CONN-02: OAuth start and callback", () => {
 
     const bdd = createBddApi(context);
     const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    });
     const initialStart = await connectorsApi.startOauth(
       actor,
       "github",

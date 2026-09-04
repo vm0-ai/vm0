@@ -304,28 +304,11 @@ describe("okou connector status command", () => {
 
     it("fails closed for canonical run context without a projection", async () => {
       vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
-      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
-      vi.stubEnv("ZERO_CHAT_THREAD_ID", "zero-thread-456");
 
       await statusCommand.parseAsync(["node", "cli", "github"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Account used by this run is unavailable");
-      expect(logCalls).not.toContain(ALT_AGENT_UUID);
-      expect(logCalls).not.toContain("zero-thread-456");
-    });
-
-    it("ignores legacy Zero runtime context without canonical values", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
-      vi.stubEnv("ZERO_CHAT_THREAD_ID", "zero-thread-456");
-      server.use(stubConnector(connectedGithub));
-
-      await statusCommand.parseAsync(["node", "cli", "github"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).not.toContain("Authorized:");
-      expect(logCalls).not.toContain(ALT_AGENT_UUID);
-      expect(logCalls).not.toContain("zero-thread-456");
     });
 
     it("uses the production app origin in authorization links", async () => {

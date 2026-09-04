@@ -5080,7 +5080,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Izinkan agen menggunakan browser cloud di chat baru",
+          "description": "Aktifkan browser cloud secara default di chat baru. Anda tetap bisa mengubahnya di chat mana pun.",
           "title": "Browser cloud"
         },
         "description": "Pilih default untuk chat baru dan cara pesan dikirim.",

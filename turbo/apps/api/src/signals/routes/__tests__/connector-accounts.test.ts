@@ -208,7 +208,8 @@ describe("connector account lifecycle routes", () => {
   }
 
   it("hides canonical account resources while the feature is disabled", async () => {
-    await seedFixture();
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, false);
     const response = await accept(
       accountClient().summaries({ headers: authHeaders() }),
       [404],

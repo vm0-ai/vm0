@@ -44,7 +44,7 @@ import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
 import {
   forwardChatThreadReadCursorUpdated$,
   registerConnection$,
-  reloadConnections$,
+  reportWorkerUnavailableForConnections$,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import {
@@ -134,8 +134,8 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.chatThreadReadCursorUpdated(event.payload);
         return;
       }
-      if (event.type === "reload-required") {
-        this.events.reloadRequired();
+      if (event.type === "worker-unavailable") {
+        this.events.workerUnavailable(event.reason);
         return;
       }
       this.events.statusChanged(event.status);
@@ -274,7 +274,10 @@ export const setupSharedWorkerTestBootstrap$ = command(
           clerk: options.clerk,
           oauthApiBaseUrl: resolveOAuthApiBase(),
           onForceUpgrade: () => {
-            options.workerStore.set(reloadConnections$);
+            options.workerStore.set(
+              reportWorkerUnavailableForConnections$,
+              "force-upgrade-required",
+            );
           },
         },
         signal,
