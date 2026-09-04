@@ -36,7 +36,7 @@
     "prettier": "^3.6.2",
     "tsx": "^4.21.0",
     "turbo": "^2.10.11",
-    "typescript": "6.0.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.10"
   },
   "packageManager": "pnpm@10.33.4",
