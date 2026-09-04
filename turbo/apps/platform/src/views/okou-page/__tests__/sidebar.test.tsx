@@ -1894,17 +1894,24 @@ describe("zero sidebar", () => {
       return within(sidebar()).getByText("Chats with Zero");
     });
 
-    const content = within(sidebar()).getByTestId(
+    const pinnedContent = within(sidebar()).getByTestId(
       "pinned-agents-horizontal",
     ).parentElement;
-    if (!(content instanceof HTMLElement)) {
+    const content = pinnedContent?.parentElement;
+    if (
+      !(pinnedContent instanceof HTMLElement) ||
+      !(content instanceof HTMLElement)
+    ) {
       throw new Error("Chat list content wrapper not found");
     }
 
+    // Horizontal spacing belongs to the content inside the full-width scroll
+    // area, while this outer column only owns the spacing above the list.
+    expect(pinnedContent).toHaveClass("px-3");
     // The footer below supplies the bottom boundary out of its own padding.
     // A bottom padding here stacks a second one on top of it, which reads as
     // a void under the last thread row.
-    expect(content).toHaveClass("px-3", "pt-1");
+    expect(content).toHaveClass("pt-1");
     expect(content).not.toHaveClass("p-3");
     expect(content).not.toHaveClass("pb-3");
   });
@@ -2941,6 +2948,12 @@ describe("zero sidebar", () => {
 
     const scrollbar = await within(nav).findByTestId("sidebar-scrollbar");
     const thumb = within(scrollbar).getByTestId("sidebar-scrollbar-thumb");
+    // Browsers expose unspecified logical spacing as 0px. happy-dom returns
+    // an empty string, which Base UI's drag geometry parses as NaN.
+    scrollbar.style.paddingBlockStart = "0px";
+    scrollbar.style.paddingBlockEnd = "0px";
+    thumb.style.marginBlockStart = "0px";
+    thumb.style.marginBlockEnd = "0px";
     let capturedPointerId: number | null = null;
     Object.defineProperties(scrollbar, {
       offsetHeight: { configurable: true, value: 200 },
