@@ -6,10 +6,8 @@ import {
 import {
   findColorSystem,
   findPresentationRunbookPackage,
-  listPresentationRunbookPackages,
   listTemplates,
 } from "../resource-registry";
-import { findPresentationTemplateStorageId } from "../presentation-template-storage-ids";
 
 const FORBIDDEN_ASSET_URL_PARTS = [
   "drive.google.com",
@@ -339,18 +337,6 @@ describe("presentation template items", () => {
       ).toBeDefined();
       expect(findColorSystem(item.colorSystemId ?? "")).toBeDefined();
     }
-  });
-
-  it("maps every presentation runbook to one canonical storage", () => {
-    const storageIds = listPresentationRunbookPackages().map((pkg) => {
-      const storageId = findPresentationTemplateStorageId(pkg.resourceId);
-      expect(storageId, pkg.resourceId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,
-      );
-      return storageId;
-    });
-
-    expect(new Set(storageIds).size).toBe(storageIds.length);
   });
 
   it("keeps picker prompts free of retired registry selector language", () => {

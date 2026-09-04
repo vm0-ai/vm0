@@ -1,6 +1,5 @@
 import { computed } from "ccstate";
 import { registryResourceDownloadContract } from "@okouai/api-contracts/contracts/registry-resources";
-import { findPresentationTemplateStorageId } from "@okouai/core/presentation-template-storage-ids";
 import {
   findColorSystem,
   findDesignSystem,
@@ -299,12 +298,40 @@ const downloadPresentationTemplateInner$ = computed(async (get) => {
     queryOf(registryResourceDownloadContract.downloadPresentationTemplate),
   );
   const entry = findPresentationRunbookResource(query.id);
-  const storageId = findPresentationTemplateStorageId(query.id);
-  if (!entry || !entry.source.archive || !storageId) {
+  if (!entry || !entry.source.archive) {
+    return notFound(`Presentation template "${query.id}" was not found`);
+  }
+
+  const anchor = resolvePrivateRegistryResourceArchive(
+    query.id,
+    entry.source.archive.sha256,
+    entry.source.archive.sha256,
+  );
+  if (!anchor) {
     return notFound(`Presentation template "${query.id}" was not found`);
   }
 
   const db = get(db$);
+  const [storage] = await db
+    .select({
+      id: storages.id,
+      headVersionId: storages.headVersionId,
+    })
+    .from(storageVersions)
+    .innerJoin(
+      storages,
+      and(
+        eq(storages.id, storageVersions.storageId),
+        eq(storages.name, anchor.storageName),
+      ),
+    )
+    .where(eq(storageVersions.id, anchor.versionId))
+    .limit(1);
+
+  if (!storage?.headVersionId) {
+    return notFound(`Current archive for "${query.id}" was not found`);
+  }
+
   const [version] = await db
     .select({
       versionId: storageVersions.id,
@@ -312,18 +339,11 @@ const downloadPresentationTemplateInner$ = computed(async (get) => {
       fileCount: storageVersions.fileCount,
       size: storageVersions.size,
     })
-    .from(storages)
-    .innerJoin(
-      storageVersions,
-      and(
-        eq(storageVersions.storageId, storages.id),
-        eq(storageVersions.id, storages.headVersionId),
-      ),
-    )
+    .from(storageVersions)
     .where(
       and(
-        eq(storages.id, storageId),
-        eq(storages.name, `registry-resource@${query.id}`),
+        eq(storageVersions.storageId, storage.id),
+        eq(storageVersions.id, storage.headVersionId),
       ),
     )
     .limit(1);

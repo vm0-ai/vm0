@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../signals/external/db";
 
@@ -20,21 +20,25 @@ interface PrivateRegistryResourceVersionFixture {
  * production API surface.
  */
 export async function seedPrivateRegistryResourceVersionFixture(args: {
-  readonly storageId?: string;
-  readonly headVersionId?: string;
   readonly storageName: string;
   readonly versionId: string;
   readonly s3Key: string;
   readonly size: number;
   readonly archiveSize: number;
   readonly fileCount: number;
+  readonly headVersion?: {
+    readonly versionId: string;
+    readonly s3Key: string;
+    readonly size: number;
+    readonly archiveSize: number;
+    readonly fileCount: number;
+  };
 }): Promise<PrivateRegistryResourceVersionFixture> {
   const db = createStore().set(writeDb$);
   const fixtureId = randomUUID();
   const [storage] = await db
     .insert(storages)
     .values({
-      ...(args.storageId ? { id: args.storageId } : {}),
       orgId: `org_registry_fixture_${fixtureId}`,
       userId: `user_registry_fixture_${fixtureId}`,
       name: args.storageName,
@@ -58,10 +62,21 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
     createdBy: "private-registry-resource-fixture",
   });
 
-  if (args.headVersionId) {
+  if (args.headVersion) {
+    await db.insert(storageVersions).values({
+      id: args.headVersion.versionId,
+      storageId: storage.id,
+      s3Key: args.headVersion.s3Key,
+      size: args.headVersion.size,
+      archiveSize: args.headVersion.archiveSize,
+      fileCount: args.headVersion.fileCount,
+      message: "Seeded current HEAD for private registry route coverage",
+      createdBy: "private-registry-resource-fixture",
+    });
+
     await db
       .update(storages)
-      .set({ headVersionId: args.headVersionId })
+      .set({ headVersionId: args.headVersion.versionId })
       .where(eq(storages.id, storage.id));
   }
 
@@ -73,12 +88,7 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
         .where(eq(storages.id, storage.id));
       await db
         .delete(storageVersions)
-        .where(
-          and(
-            eq(storageVersions.id, args.versionId),
-            eq(storageVersions.storageId, storage.id),
-          ),
-        );
+        .where(eq(storageVersions.storageId, storage.id));
       await db.delete(storages).where(eq(storages.id, storage.id));
     },
   };

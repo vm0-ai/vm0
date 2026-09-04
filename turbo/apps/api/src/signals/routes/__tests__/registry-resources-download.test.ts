@@ -36,18 +36,24 @@ describe("registry resource download", () => {
 
   it("downloads the current presentation template HEAD by resource id", async () => {
     const id = "template:html-ppt-schoolhouse-runbook";
-    const storageId = "ed26bc87-163b-47cc-8a23-66e5cd25fad6";
-    const versionId = "a".repeat(64);
+    const anchorVersionId =
+      "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c";
+    const headVersionId = "a".repeat(64);
     const s3Key = "registry-fixture/schoolhouse-runbook/latest";
     const fixture = await seedPrivateRegistryResourceVersionFixture({
-      storageId,
-      headVersionId: versionId,
       storageName: `registry-resource@${id}`,
-      versionId,
-      s3Key,
-      size: 5432,
-      archiveSize: 2345,
-      fileCount: 13,
+      versionId: anchorVersionId,
+      s3Key: "registry-fixture/schoolhouse-runbook/anchor",
+      size: 4321,
+      archiveSize: 1234,
+      fileCount: 12,
+      headVersion: {
+        versionId: headVersionId,
+        s3Key,
+        size: 5432,
+        archiveSize: 2345,
+        fileCount: 13,
+      },
     });
     onTestFinished(fixture.cleanup);
 
@@ -69,7 +75,7 @@ describe("registry resource download", () => {
       id,
       type: "tar.gz",
       expiresInSeconds: 900,
-      versionId,
+      versionId: headVersionId,
       fileCount: 13,
       size: 5432,
     });
