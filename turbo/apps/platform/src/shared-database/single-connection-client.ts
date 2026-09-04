@@ -1,5 +1,6 @@
 import { delay } from "signal-timers";
 
+import { observeClientOperation } from "../lib/client-telemetry.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
@@ -111,9 +112,19 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
     const bridge = this.requireBridge();
-    return await this.runWithReload(() => {
-      return bridge.query(query, signal);
-    }, signal);
+    return await observeClientOperation(
+      {
+        event_name: "shared_database.query",
+        // Dataset kind and consistency are the complete low-cardinality query
+        // shape; cursor and entity identifiers are intentionally omitted.
+        template: `${query.dataKey.kind}.${query.consistency}`,
+      },
+      async () => {
+        return await this.runWithReload(() => {
+          return bridge.query(query, signal);
+        }, signal);
+      },
+    );
   }
 
   async getComputed<TKey extends ComputedKey>(

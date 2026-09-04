@@ -1,5 +1,8 @@
 import { openDB, type DBSchema } from "idb";
 
+import { withCleanup } from "../utils.ts";
+import { runIndexedDbTransaction } from "./indexeddb-client.ts";
+
 /**
  * Which entry of the source step the user came in through, which is all the
  * wizard knows about a source until an agent opens it.
@@ -46,6 +49,11 @@ interface IntroVideoDraftDatabase extends DBSchema {
 
 const DATABASE_NAME = "zero-intro-video-drafts";
 const DATABASE_VERSION = 1;
+const TRANSACTION_TEMPLATES = {
+  delete: "intro_video_drafts.delete",
+  read: "intro_video_drafts.get",
+  save: "intro_video_drafts.put",
+} as const;
 
 async function openIntroVideoDraftDatabase() {
   return await openDB<IntroVideoDraftDatabase>(
@@ -61,8 +69,23 @@ async function openIntroVideoDraftDatabase() {
 
 export async function readIntroVideoDraft(): Promise<IntroVideoDraftRecord | null> {
   const database = await openIntroVideoDraftDatabase();
-  const draft = await database.get("drafts", "latest");
-  database.close();
+  const draft = await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "intro_video_drafts",
+        template: TRANSACTION_TEMPLATES.read,
+      },
+      () => {
+        return database.transaction("drafts", "readonly");
+      },
+      async (transaction, trackRequest) => {
+        return await trackRequest(transaction.store.get("latest"));
+      },
+    ),
+    () => {
+      database.close();
+    },
+  );
   if (!draft) {
     return null;
   }
@@ -73,12 +96,42 @@ export async function saveIntroVideoDraft(
   draft: IntroVideoDraftRecord,
 ): Promise<void> {
   const database = await openIntroVideoDraftDatabase();
-  await database.put("drafts", draft, "latest");
-  database.close();
+  await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "intro_video_drafts",
+        template: TRANSACTION_TEMPLATES.save,
+      },
+      () => {
+        return database.transaction("drafts", "readwrite");
+      },
+      async (transaction, trackRequest) => {
+        await trackRequest(transaction.store.put(draft, "latest"));
+      },
+    ),
+    () => {
+      database.close();
+    },
+  );
 }
 
 export async function deleteIntroVideoDraft(): Promise<void> {
   const database = await openIntroVideoDraftDatabase();
-  await database.delete("drafts", "latest");
-  database.close();
+  await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "intro_video_drafts",
+        template: TRANSACTION_TEMPLATES.delete,
+      },
+      () => {
+        return database.transaction("drafts", "readwrite");
+      },
+      async (transaction, trackRequest) => {
+        await trackRequest(transaction.store.delete("latest"));
+      },
+    ),
+    () => {
+      database.close();
+    },
+  );
 }

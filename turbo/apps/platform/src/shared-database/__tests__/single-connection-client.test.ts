@@ -21,6 +21,28 @@ import {
 } from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 
+const axiomTelemetry = vi.hoisted(() => {
+  return {
+    ingest:
+      vi.fn<
+        (dataset: string, events: readonly Record<string, unknown>[]) => void
+      >(),
+  };
+});
+
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: class {
+      ingest(
+        dataset: string,
+        events: readonly Record<string, unknown>[],
+      ): void {
+        axiomTelemetry.ingest(dataset, events);
+      }
+    },
+  };
+});
+
 class FakeBridge implements SharedDatabaseBridge {
   readonly registrationSignals: AbortSignal[] = [];
   readonly querySignals: AbortSignal[] = [];
@@ -154,4 +176,53 @@ test("Reload a tab whose shared-data registration has expired", async () => {
   expect(bridges[0]!.queryCalls).toBe(1);
   owner.abort(new DOMException("App unloaded", "AbortError"));
   await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
+});
+
+test("Reports the complete shared database query without entity identifiers", async () => {
+  vi.stubEnv("VITE_AXIOM_CLIENT_TELEMETRY_TOKEN", "xaat-test-ingest-token");
+  context.signal.addEventListener("abort", () => {
+    vi.unstubAllEnvs();
+  });
+  context.mocks.browser.url("https://app.vm0.ai/");
+  axiomTelemetry.ingest.mockClear();
+  const bridges: FakeBridge[] = [];
+  const bridge = new SingleConnectionSharedDatabaseBridge({
+    createBridge: () => {
+      const created = new FakeBridge();
+      bridges.push(created);
+      return created;
+    },
+    events: createEvents(),
+  });
+  const owner = createChildAbortController(context.signal);
+  await bridge.registerTab(owner.signal);
+  const sensitiveThreadId = `private-thread-${crypto.randomUUID()}`;
+
+  await expect(
+    bridge.query(
+      {
+        dataKey: { kind: "chat-event", threadId: sensitiveThreadId },
+        afterSeqId: 42,
+        consistency: "cache-only",
+      },
+      owner.signal,
+    ),
+  ).resolves.toStrictEqual([]);
+
+  expect(bridges[0]?.queryCalls).toBe(1);
+  await vi.waitFor(() => {
+    expect(axiomTelemetry.ingest).toHaveBeenCalledOnce();
+  });
+  const [dataset, events] = axiomTelemetry.ingest.mock.calls[0]!;
+  expect(dataset).toBe("vm0-client-telemetry-prod");
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({
+    environment: "production",
+    event_name: "shared_database.query",
+    outcome: "success",
+    source: "window",
+    template: "chat-event.cache-only",
+  });
+  expect(JSON.stringify(events[0])).not.toContain(sensitiveThreadId);
+  expect(events[0]).not.toHaveProperty("after_seq_id");
 });
