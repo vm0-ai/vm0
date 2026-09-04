@@ -2207,8 +2207,12 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000012";
     const audioReady = context.mocks.deferred<void>();
+    let audioContextCloseCount = 0;
     context.mocks.browser.voiceInput({
       audioContextReady: audioReady.promise,
+      onAudioContextClose: () => {
+        audioContextCloseCount += 1;
+      },
       rms: 0.1,
     });
     mockChatLifecycle(context, { threadId });
@@ -2236,18 +2240,105 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Stop recording"));
+    await waitFor(() => {
+      expect(audioContextCloseCount).toBe(1);
+    });
     audioReady.resolve(undefined);
 
     await waitFor(() => {
       expect(transcriptionCalled).toBeTruthy();
       expect(textarea).toHaveTextContent("first words");
+      expect(audioContextCloseCount).toBe(1);
+    });
+  });
+
+  it("closes the voice audio context when its activity monitor fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000031";
+    const audioReady = context.mocks.deferred<void>();
+    let audioContextCloseCount = 0;
+    context.mocks.browser.voiceInput({
+      audioContextReady: audioReady.promise,
+      onAudioContextClose: () => {
+        audioContextCloseCount += 1;
+      },
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await user.click(await enabledVoiceInputButton());
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    audioReady.reject(new Error("Audio activity monitor failed to start"));
+
+    await waitFor(() => {
+      expect(audioContextCloseCount).toBe(1);
+    });
+    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+  });
+
+  it("closes the voice audio context when page navigation aborts recording", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000032";
+    const nextThreadId = "e2000000-0000-4000-a000-000000000033";
+    let audioContextCloseCount = 0;
+    context.mocks.browser.voiceInput({
+      rms: 0.1,
+      onAudioContextClose: () => {
+        audioContextCloseCount += 1;
+      },
+    });
+    const lifecycle = mockChatLifecycle(context, { threadId });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Recording voice thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: nextThreadId,
+        title: "Other voice thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await user.click(await enabledVoiceInputButton());
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await user.click(
+      await waitFor(() => {
+        return linkByText("Other voice thread");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(document.title).toBe("Other voice thread | VM0");
+      expect(audioContextCloseCount).toBe(1);
     });
   });
 
   it("cancels silent voice input without calling transcription", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000013";
-    context.mocks.browser.voiceInput({ rms: 0 });
+    let audioContextCloseCount = 0;
+    context.mocks.browser.voiceInput({
+      rms: 0,
+      onAudioContextClose: () => {
+        audioContextCloseCount += 1;
+      },
+    });
     mockChatLifecycle(context, { threadId });
     let transcriptionCalled = false;
     context.mocks.http.post("*/api/voice-io/stt", () => {
@@ -2273,6 +2364,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+      expect(audioContextCloseCount).toBe(1);
     });
     expect(transcriptionCalled).toBeFalsy();
     expect(textarea.textContent ?? "").toBe("");
