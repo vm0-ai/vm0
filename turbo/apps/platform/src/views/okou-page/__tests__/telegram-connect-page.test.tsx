@@ -58,6 +58,10 @@ function telegramConnectPath(signature = "b".repeat(64)): string {
   return `/telegram/connect?${params.toString()}`;
 }
 
+function telegramLoginConnectPath(): string {
+  return `/telegram/connect?${new URLSearchParams({ bot: botId }).toString()}`;
+}
+
 describe("zero Telegram connect page", () => {
   it("shows invalid signed links through the rendered page", async () => {
     detachedSetupPage({ context, path: telegramConnectPath("invalid") });
@@ -68,6 +72,35 @@ describe("zero Telegram connect page", () => {
     expect(
       screen.getByText("The signature on this link is not valid."),
     ).toBeInTheDocument();
+  });
+
+  it("continues after the Telegram login domain is configured", async () => {
+    let domainConfigured = false;
+    context.mocks.api(
+      integrationsTelegramContract.getLinkStatus,
+      ({ respond }) => {
+        return respond(200, {
+          linked: false,
+          installation: {
+            id: botId,
+            botUsername: "agent_bot",
+            domainConfigured,
+          },
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: telegramLoginConnectPath() });
+
+    await expect(
+      screen.findByRole("heading", { name: "Set Telegram login domain" }),
+    ).resolves.toBeInTheDocument();
+
+    domainConfigured = true;
+
+    await expect(
+      screen.findByRole("heading", { name: "Connect to Telegram" }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("links the Telegram user and shows the connected state", async () => {
@@ -85,7 +118,7 @@ describe("zero Telegram connect page", () => {
         });
       },
     );
-    context.mocks.browser.locationAssign();
+    const locationAssign = context.mocks.browser.locationAssign();
 
     detachedSetupPage({ context, path: telegramConnectPath() });
 
@@ -110,6 +143,9 @@ describe("zero Telegram connect page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Open Telegram")).toBeInTheDocument();
     expect(screen.getByText("Back to Telegram settings")).toBeInTheDocument();
+    expect(locationAssign.calls).toStrictEqual([
+      "tg://resolve?domain=agent_bot",
+    ]);
     // Product brand is carried by the app/API Host. Keeping this request body
     // byte-for-byte compatible lets old and new app/API versions interoperate.
     expect(capturedLinkBody).toStrictEqual({
