@@ -12,6 +12,7 @@ if [[ ! -f "$package_path" ]]; then
   exit 1
 fi
 package_path="$(cd "$(dirname "$package_path")" && pwd -P)/$(basename "$package_path")"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -24,6 +25,11 @@ clean_bin="${tmp_dir}/bin"
 mkdir -p "$clean_bin"
 ln -s "$node_path" "$clean_bin/node"
 clean_path="${clean_bin}:/usr/bin:/bin"
+
+tar -xzf "$package_path" -C "$tmp_dir"
+"$node_path" \
+  "$script_dir/smoke-okou-cli-image-resize.mjs" \
+  "$tmp_dir/package"
 
 if PATH="$clean_path" command -v zero >/dev/null 2>&1; then
   echo "Clean CLI smoke environment unexpectedly contains zero" >&2

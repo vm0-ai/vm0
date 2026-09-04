@@ -1,0 +1,14 @@
+diff --git a/dist/utils/photon.js b/dist/utils/photon.js
+index 3078895bedba898ce26c439b6123425834ca2586..2ad6a42c60d6277dd0ab49c3e972eaa42a2e3ff3 100644
+--- a/dist/utils/photon.js
++++ b/dist/utils/photon.js
+@@ -105,7 +105,8 @@ export async function loadPhoton() {
+     loadPromise = (async () => {
+         const restoreReadFileSync = patchPhotonWasmRead();
+         try {
+-            photonModule = await import("@silvia-odwyer/photon-node");
++            const imported = await import("@silvia-odwyer/photon-node");
++            photonModule = imported.default ?? imported;
+             return photonModule;
+         }
+         catch {
