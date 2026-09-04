@@ -167,8 +167,11 @@ test("Load only the visible avatar SVG layers", async () => {
   });
   const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
 
-  expect(layerSrcs).toHaveLength(28);
-  expect(new Set(layerSrcs).size).toBe(24);
+  // Six layers each — four for the head, plus the neck under it and the
+  // sweater over it — across the preview and the six face options. The shared
+  // neck and sweater are one request each no matter how many avatars use them.
+  expect(layerSrcs).toHaveLength(42);
+  expect(new Set(layerSrcs).size).toBe(26);
 });
 
 test("Keep every composer step and its edge options usable in one dialog", async () => {
@@ -190,6 +193,7 @@ test("Keep every composer step and its edge options usable in one dialog", async
     { label: "Mood", first: "Neutral smile", last: "Stubble smile" },
     { label: "Skin", first: "Gold", last: "Brown" },
     { label: "Color", first: "Blue", last: "Brown" },
+    { label: "Sweater", first: "Lime", last: "Orange" },
   ] as const;
 
   for (const [index, step] of steps.entries()) {
@@ -254,6 +258,8 @@ test("Create and save a composer avatar from the profile page", async () => {
     await expect(within(dialog).findByText(step)).resolves.toBeVisible();
   }
   click(within(dialog).getByLabelText("Blue"));
+  await expect(within(dialog).findByText("Sweater")).resolves.toBeVisible();
+  click(within(dialog).getByLabelText("Pink"));
   click(within(dialog).getByText("Use this avatar"));
 
   await waitFor(() => {
@@ -267,10 +273,12 @@ test("Create and save a composer avatar from the profile page", async () => {
     throw new Error("Avatar profile row not found");
   }
   expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/neck\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-rear\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-front\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/expressions\//u),
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/sweater\/pink\.svg$/u),
   ]);
 });
 

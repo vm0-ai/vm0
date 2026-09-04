@@ -51,7 +51,8 @@
       "face": "Wajah",
       "hair": "Rambut",
       "mood": "Suasana hati",
-      "skin": "Kulit"
+      "skin": "Kulit",
+      "sweater": "Sweter"
     },
     "title": "Beri agen Anda wajah",
     "use": "Gunakan avatar ini"

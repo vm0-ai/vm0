@@ -51,7 +51,8 @@
       "face": "Gesicht",
       "hair": "Haar",
       "mood": "Stimmung",
-      "skin": "Haut"
+      "skin": "Haut",
+      "sweater": "Pullover"
     },
     "title": "Geben Sie Ihrem Agenten ein Gesicht",
     "use": "Diesen Avatar verwenden"

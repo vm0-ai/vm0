@@ -20,7 +20,8 @@ export type ComposerStep =
   | "hair"
   | "expression"
   | "skin"
-  | "hairColor";
+  | "hairColor"
+  | "sweater";
 export type LegacyStep =
   | "rotation"
   | "skin"
@@ -68,6 +69,7 @@ export const AVATAR_MAKER_STEPS: readonly Step[] = [
   "expression",
   "skin",
   "hairColor",
+  "sweater",
 ];
 
 const LEGACY_AVATAR_MAKER_STEPS: readonly Step[] = [

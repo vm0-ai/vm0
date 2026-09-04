@@ -51,7 +51,8 @@
       "face": "Face",
       "hair": "Hair",
       "mood": "Mood",
-      "skin": "Skin"
+      "skin": "Skin",
+      "sweater": "Sweater"
     },
     "title": "Give your agent a face",
     "use": "Use this avatar"

@@ -3,6 +3,7 @@ import {
   parseAvatarComposerUrl,
   randomAvatarComposerConfig,
   type AvatarComposerConfig,
+  type AvatarComposerFaceShape,
 } from "@okouai/core/agent-avatar";
 import {
   avatarComposerAssetUrl,
@@ -73,31 +74,80 @@ export function isLegacyAvatarSvgConfig(
   return "rotation" in config;
 }
 
-export function avatarSvgLayerUrls(
+/**
+ * Where each face asset puts its chin inside the 380px composer canvas. Every
+ * face starts at y=116, but they end anywhere between 307 (`wide`) and 353
+ * (`tall`), because the assets are normalized on width rather than height.
+ */
+const AVATAR_FACE_CHIN_Y: Readonly<Record<AvatarComposerFaceShape, number>> = {
+  round: 314,
+  square: 334,
+  "round-angled-ears": 318,
+  tall: 353,
+  wide: 307,
+  oval: 334,
+};
+
+const AVATAR_FACE_TOP_Y = 116;
+
+/**
+ * The chin of the Okou brand avatar rescaled onto the 380px canvas. The neck
+ * and sweater are one shared pair of shapes, so they only fit in one place;
+ * head layers are scaled about the top of the face until every chin reaches
+ * this line and the same collar sits under all of them.
+ */
+const AVATAR_CHIN_BASELINE_Y = 327.6;
+
+/** The face pivot (190, 116) of the 380px canvas, as a CSS transform origin. */
+export const AVATAR_HEAD_TRANSFORM_ORIGIN = "50% 30.5263%";
+
+export interface AvatarSvgComposition {
+  /** Drawn behind the head, and never scaled with it. */
+  readonly behind: readonly string[];
+  /** Head layers, scaled about `AVATAR_HEAD_TRANSFORM_ORIGIN`. */
+  readonly head: readonly string[];
+  /** Drawn in front of the head, and never scaled with it. */
+  readonly front: readonly string[];
+  readonly headScale: number;
+}
+
+export function avatarSvgComposition(
   config: ResolvedAvatarSvgConfig,
-): readonly string[] {
+): AvatarSvgComposition {
   if (isLegacyAvatarSvgConfig(config)) {
-    return [
-      avatarSvgAssetUrl(`head-r${config.rotation}-s${config.skin}.svg`),
-      avatarSvgAssetUrl(
-        `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
-      ),
-      avatarSvgAssetUrl(
-        `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
-      ),
-    ];
+    return {
+      behind: [],
+      head: [
+        avatarSvgAssetUrl(`head-r${config.rotation}-s${config.skin}.svg`),
+        avatarSvgAssetUrl(
+          `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
+        ),
+        avatarSvgAssetUrl(
+          `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
+        ),
+      ],
+      front: [],
+      headScale: 1,
+    };
   }
 
   const hairBase = `hairs/${config.face}/${config.hair}-${config.hairColor}`;
   const expressionSkin = config.expression === "calm" ? `-${config.skin}` : "";
-  return [
-    avatarComposerAssetUrl(`${hairBase}-rear.svg`),
-    avatarComposerAssetUrl(`faces/${config.face}-${config.skin}.svg`),
-    avatarComposerAssetUrl(`${hairBase}-front.svg`),
-    avatarComposerAssetUrl(
-      `expressions/${config.expression}-${config.face}${expressionSkin}.svg`,
-    ),
-  ];
+  return {
+    behind: [avatarComposerAssetUrl(`neck/${config.skin}.svg`)],
+    head: [
+      avatarComposerAssetUrl(`${hairBase}-rear.svg`),
+      avatarComposerAssetUrl(`faces/${config.face}-${config.skin}.svg`),
+      avatarComposerAssetUrl(`${hairBase}-front.svg`),
+      avatarComposerAssetUrl(
+        `expressions/${config.expression}-${config.face}${expressionSkin}.svg`,
+      ),
+    ],
+    front: [avatarComposerAssetUrl(`sweater/${config.sweater}.svg`)],
+    headScale:
+      (AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_TOP_Y) /
+      (AVATAR_FACE_CHIN_Y[config.face] - AVATAR_FACE_TOP_Y),
+  };
 }
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {

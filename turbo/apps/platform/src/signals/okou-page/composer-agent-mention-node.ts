@@ -7,7 +7,8 @@ import {
   resolveAvatarUrl,
 } from "../../views/okou-page/avatar-utils.ts";
 import {
-  avatarSvgLayerUrls,
+  AVATAR_HEAD_TRANSFORM_ORIGIN,
+  avatarSvgComposition,
   isLegacyAvatarSvgConfig,
 } from "../../views/okou-page/avatar-svg-utils.ts";
 import { serializeAgentMention } from "./composer-agent-suggestion-domain.ts";
@@ -81,18 +82,28 @@ function renderAgentMentionAvatar(
   container.replaceChildren();
   const svgConfig = resolveAvatarSvgConfig(avatarUrl);
   if (svgConfig) {
-    const urls = avatarSvgLayerUrls(svgConfig);
+    const { behind, head, front, headScale } = avatarSvgComposition(svgConfig);
     const layers = document.createElement("span");
     layers.className = isLegacyAvatarSvgConfig(svgConfig)
       ? "absolute inset-0 scale-[1.25]"
       : "absolute inset-0";
-    for (const src of urls) {
-      const image = document.createElement("img");
-      image.alt = "";
-      image.src = src;
-      image.className = "absolute inset-0 h-full w-full object-cover";
-      layers.append(image);
-    }
+    const appendLayers = (parent: HTMLElement, urls: readonly string[]) => {
+      for (const src of urls) {
+        const image = document.createElement("img");
+        image.alt = "";
+        image.src = src;
+        image.className = "absolute inset-0 h-full w-full object-cover";
+        parent.append(image);
+      }
+    };
+    const headLayers = document.createElement("span");
+    headLayers.className = "absolute inset-0";
+    headLayers.style.transform = `scale(${headScale})`;
+    headLayers.style.transformOrigin = AVATAR_HEAD_TRANSFORM_ORIGIN;
+    appendLayers(layers, behind);
+    appendLayers(headLayers, head);
+    layers.append(headLayers);
+    appendLayers(layers, front);
     container.append(layers);
     return;
   }

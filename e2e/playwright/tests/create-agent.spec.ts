@@ -122,5 +122,10 @@ test("avatar composer keeps a stable dialog and compact option rows", async ({
   await composer.getByRole("button", { name: "Next step" }).click();
   await expect(composer.getByText("Color", { exact: true })).toBeVisible();
   await expectStableDialog();
+
+  await composer.getByRole("button", { name: "Next step" }).click();
+  await expect(composer.getByText("Sweater", { exact: true })).toBeVisible();
+  await expect(composer.getByRole("button", { name: "Orange" })).toBeVisible();
+  await expectStableDialog();
   await composer.getByRole("button", { name: "Cancel" }).click();
 });

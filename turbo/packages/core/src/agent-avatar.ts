@@ -66,6 +66,14 @@ export const AVATAR_COMPOSER_HAIR_COLORS = [
   "black",
   "brown",
 ] as const;
+export const AVATAR_COMPOSER_SWEATER_COLORS = [
+  "lime",
+  "blue",
+  "yellow",
+  "teal",
+  "pink",
+  "orange",
+] as const;
 
 const FEMININE_AVATAR_HAIR_STYLES = new Set<AvatarComposerHairStyle>([
   "high-bun",
@@ -87,6 +95,8 @@ export type AvatarComposerSkinTone =
   (typeof AVATAR_COMPOSER_SKIN_TONES)[number];
 export type AvatarComposerHairColor =
   (typeof AVATAR_COMPOSER_HAIR_COLORS)[number];
+export type AvatarComposerSweaterColor =
+  (typeof AVATAR_COMPOSER_SWEATER_COLORS)[number];
 
 export interface AvatarComposerConfig {
   readonly face: AvatarComposerFaceShape;
@@ -94,6 +104,7 @@ export interface AvatarComposerConfig {
   readonly expression: AvatarComposerExpression;
   readonly skin: AvatarComposerSkinTone;
   readonly hairColor: AvatarComposerHairColor;
+  readonly sweater: AvatarComposerSweaterColor;
 }
 
 export type AvatarComposerSelection =
@@ -101,7 +112,8 @@ export type AvatarComposerSelection =
   | { readonly field: "hair"; readonly value: AvatarComposerHairStyle }
   | { readonly field: "expression"; readonly value: AvatarComposerExpression }
   | { readonly field: "skin"; readonly value: AvatarComposerSkinTone }
-  | { readonly field: "hairColor"; readonly value: AvatarComposerHairColor };
+  | { readonly field: "hairColor"; readonly value: AvatarComposerHairColor }
+  | { readonly field: "sweater"; readonly value: AvatarComposerSweaterColor };
 
 /** Avatar used by the default assistant across branded chat surfaces. */
 export const DEFAULT_AGENT_AVATAR_URL =
@@ -190,6 +202,8 @@ export function updateAvatarComposerConfig(
       return { ...config, skin: selection.value };
     case "hairColor":
       return { ...config, hairColor: selection.value };
+    case "sweater":
+      return { ...config, sweater: selection.value };
   }
 }
 
@@ -204,7 +218,26 @@ export function randomAvatarComposerConfig(): AvatarComposerConfig {
     expression,
     skin: oneOf(AVATAR_COMPOSER_SKIN_TONES),
     hairColor: oneOf(AVATAR_COMPOSER_HAIR_COLORS),
+    sweater: oneOf(AVATAR_COMPOSER_SWEATER_COLORS),
   };
+}
+
+/**
+ * Avatars saved before the sweater layer existed carry no `sweater` parameter.
+ * Deriving one from the rest of the configuration keeps each of those avatars
+ * on the same colour across reloads, and spreads the palette over the existing
+ * population instead of dressing everybody in the same sweater.
+ */
+function inheritedSweaterColor(
+  config: Omit<AvatarComposerConfig, "sweater">,
+): AvatarComposerSweaterColor {
+  const key = `${config.face}|${config.hair}|${config.expression}|${config.skin}|${config.hairColor}`;
+  const hash = [...key].reduce((total, character) => {
+    return (total * 31 + character.charCodeAt(0)) % 1_000_003;
+  }, 0);
+  return AVATAR_COMPOSER_SWEATER_COLORS[
+    hash % AVATAR_COMPOSER_SWEATER_COLORS.length
+  ]!;
 }
 
 export function avatarComposerUrl(config: AvatarComposerConfig): string {
@@ -214,6 +247,7 @@ export function avatarComposerUrl(config: AvatarComposerConfig): string {
     expression: config.expression,
     skin: config.skin,
     hairColor: config.hairColor,
+    sweater: config.sweater,
   });
   return `${AVATAR_COMPOSER_BASE_URL}?${query}`;
 }
@@ -230,6 +264,7 @@ export function parseAvatarComposerUrl(
   const expression = query.get("expression");
   const skin = query.get("skin");
   const hairColor = query.get("hairColor");
+  const sweater = query.get("sweater");
   if (
     !isOneOf(face, AVATAR_COMPOSER_FACE_SHAPES) ||
     !isOneOf(hair, AVATAR_COMPOSER_HAIR_STYLES) ||
@@ -240,7 +275,13 @@ export function parseAvatarComposerUrl(
   ) {
     return null;
   }
-  return { face, hair, expression, skin, hairColor };
+  const head = { face, hair, expression, skin, hairColor };
+  return {
+    ...head,
+    sweater: isOneOf(sweater, AVATAR_COMPOSER_SWEATER_COLORS)
+      ? sweater
+      : inheritedSweaterColor(head),
+  };
 }
 
 export function randomAvatarUrl(): string {

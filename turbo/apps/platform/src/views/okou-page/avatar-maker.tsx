@@ -22,6 +22,7 @@ import {
   AVATAR_COMPOSER_HAIR_COLORS,
   AVATAR_COMPOSER_HAIR_STYLES,
   AVATAR_COMPOSER_SKIN_TONES,
+  AVATAR_COMPOSER_SWEATER_COLORS,
   isAvatarComposerCombinationCompatible,
   updateAvatarComposerConfig,
   type AvatarComposerSelection,
@@ -158,6 +159,11 @@ function avatarMakerSelections(
     case "hairColor": {
       return AVATAR_COMPOSER_HAIR_COLORS.map((value) => {
         return { mode: "composer", field: "hairColor", value };
+      });
+    }
+    case "sweater": {
+      return AVATAR_COMPOSER_SWEATER_COLORS.map((value) => {
+        return { mode: "composer", field: "sweater", value };
       });
     }
   }
@@ -331,12 +337,13 @@ function isComposerStep(step: Step): step is ComposerStep {
     step === "hair" ||
     step === "expression" ||
     step === "skin" ||
-    step === "hairColor"
+    step === "hairColor" ||
+    step === "sweater"
   );
 }
 
 function isLegacyStep(step: Step): step is LegacyStep {
-  return step !== "face" && step !== "hair";
+  return step !== "face" && step !== "hair" && step !== "sweater";
 }
 
 function StepOptions({
@@ -449,6 +456,9 @@ function StepNavigator() {
     }),
     hairColor: t(($) => {
       return $.avatar.steps.color;
+    }),
+    sweater: t(($) => {
+      return $.avatar.steps.sweater;
     }),
     rotation: t(($) => {
       return $.avatar.steps.angle;
