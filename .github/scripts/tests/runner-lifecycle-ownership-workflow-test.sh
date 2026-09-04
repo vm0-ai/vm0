@@ -162,8 +162,8 @@ locked_probe_index = namespace_cleanup.index("RUNNER_OWNER_ASSERT_IDLE=true")
 barrier_index = namespace_cleanup.index("cancel-superseded-merge-group-runs.sh")
 delete_index = namespace_cleanup.index("playbooks/cleanup-pr-runner.yml")
 unless state_index && closed_index && locked_probe_index && barrier_index && delete_index &&
-    state_index < closed_index && closed_index < locked_probe_index &&
-    locked_probe_index < barrier_index && barrier_index < delete_index &&
+    locked_probe_index < barrier_index && barrier_index < state_index &&
+    state_index < closed_index && closed_index < delete_index &&
     namespace_cleanup.include?("RUNNER_OWNER_SCOPE=closed-pr-cleanup")
   raise "locked cleanup must recheck PR state and stabilized ownership before deletion"
 end
