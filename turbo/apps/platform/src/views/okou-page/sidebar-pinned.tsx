@@ -13,7 +13,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  Button,
   Skeleton,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
@@ -24,11 +23,8 @@ import {
 } from "../../signals/okou-page/nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
+import { pathParams$ } from "../../signals/route.ts";
 import {
-  chatListOpen$,
-  setChatListOpen$,
-  openAgentListDialog$,
   agentCardCollapsed$,
   setAgentCardCollapsed$,
   pinnedAgentGridRows$,
@@ -43,11 +39,7 @@ import {
   setPinnedAgentDropTarget$,
   endPinnedAgentDrag$,
 } from "../../signals/okou-page/sidebar-state.ts";
-import {
-  subagents$,
-  defaultAgentId$,
-  defaultAgentName$,
-} from "../../signals/agent.ts";
+import { subagents$, defaultAgentId$ } from "../../signals/agent.ts";
 import {
   displayedPinnedAgents$,
   setAgentPinned$,
@@ -61,8 +53,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { assistantName$ } from "../../signals/branding.ts";
-import { AgentListDialog, PinAgentDialog } from "./sidebar-dialogs.tsx";
+import { PinAgentDialog } from "./sidebar-dialogs.tsx";
 import {
   AgentUnreadIndicator,
   AgentRowContextActions,
@@ -193,60 +184,6 @@ function PinnedAgentContextDecorator({
     <AgentRowContextActions actions={actions}>
       {children}
     </AgentRowContextActions>
-  );
-}
-
-function AgentListDialogContainer() {
-  const open = useGet(chatListOpen$);
-  const onOpenChange = useSet(setChatListOpen$);
-
-  if (!open) {
-    return null;
-  }
-
-  return <OpenAgentListDialog onOpenChange={onOpenChange} />;
-}
-
-function OpenAgentListDialog({
-  onOpenChange,
-}: {
-  onOpenChange: (open: boolean) => void;
-}) {
-  const assistantName = useGet(assistantName$);
-  const displayNameLoadable = useLastLoadable(defaultAgentName$);
-  const displayName =
-    displayNameLoadable.state === "hasData"
-      ? (displayNameLoadable.data ?? assistantName)
-      : assistantName;
-  const subagents = useLastResolved(subagents$) ?? [];
-  const defaultAgentId = useLastResolved(defaultAgentId$);
-  const navigate = useSet(detachedNavigateTo$);
-  const setExpanded = useSet(setSidebarExpanded$);
-  const openAgentChat = (agentId: string | null) => {
-    const resolvedAgentId = agentId ?? defaultAgentId;
-    if (!resolvedAgentId) {
-      return;
-    }
-    navigate("/agents/:agentId/chat", {
-      pathParams: { agentId: resolvedAgentId },
-    });
-    setExpanded(false);
-  };
-  const openChatThread = (threadId: string) => {
-    navigate("/chats/:threadId", {
-      pathParams: { threadId },
-    });
-    setExpanded(false);
-  };
-  return (
-    <AgentListDialog
-      open
-      onOpenChange={onOpenChange}
-      displayName={displayName}
-      subagents={subagents}
-      onSelectChatAgent={openAgentChat}
-      onSelectChatThread={openChatThread}
-    />
   );
 }
 
@@ -395,7 +332,7 @@ function PinnedAgentGridCard({
         <span
           aria-hidden="true"
           data-testid="pinned-agent-drop-caret"
-          className={`pointer-events-none absolute inset-y-0 z-10 w-0.5 rounded-full bg-[hsl(var(--primary-700))] ${
+          className={`pointer-events-none absolute inset-y-0 z-10 w-0.5 rounded-full bg-primary ${
             dropSide === "before" ? "-left-[3px]" : "-right-[3px]"
           }`}
         />
@@ -471,7 +408,7 @@ function resolveDropSide({
   return from > to ? "before" : "after";
 }
 
-function PinAgentDialogContainer() {
+export function PinAgentDialogContainer() {
   const open = useGet(pinAgentDialogOpen$);
   const onOpenChange = useSet(setPinAgentDialogOpen$);
   const subagents = useLastResolved(subagents$) ?? [];
@@ -495,15 +432,6 @@ function PinAgentDialogContainer() {
   );
 }
 
-export function PinnedAgentDialogs() {
-  return (
-    <>
-      <AgentListDialogContainer />
-      <PinAgentDialogContainer />
-    </>
-  );
-}
-
 export function PinnedAgentListSection({
   layout = "vertical",
 }: {
@@ -521,7 +449,6 @@ export function PinnedAgentListSection({
     equalityFn: equalSets,
   });
 
-  const openAgentListDialog = useSet(openAgentListDialog$);
   const openPinAgentDialog = useSet(openPinAgentDialog$);
   const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
@@ -631,7 +558,7 @@ export function PinnedAgentListSection({
   return (
     <div className="shrink-0">
       <div
-        className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
+        className="group flex h-8 cursor-pointer items-center rounded-lg px-2 hover:bg-state-hover transition-colors"
         data-testid="pinned-section-header"
         onClick={() => {
           return setCollapsed(!collapsed);
@@ -648,35 +575,6 @@ export function PinnedAgentListSection({
             />
           </span>
         </span>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openAgentListDialog();
-                }}
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-                className="relative z-10 shrink-0"
-                aria-label={t(($) => {
-                  return $.sidebar.openConversation;
-                })}
-              >
-                <Plus size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p className="text-xs">
-                {t(($) => {
-                  return $.sidebar.openConversation;
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
       {!collapsed && (
         <div className="flex flex-col gap-0.5 mt-1">

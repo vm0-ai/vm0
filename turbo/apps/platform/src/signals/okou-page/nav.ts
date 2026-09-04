@@ -6,10 +6,7 @@ import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
-import {
-  openAgentListDialog$,
-  openThreeColumnSearchDialog$,
-} from "./sidebar-state.ts";
+import { openThreeColumnSearchDialog$ } from "./sidebar-state.ts";
 import { displayedPinnedAgents$ } from "./pinned-agents.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { isStandaloneMode } from "./settings/connectors.ts";
@@ -100,6 +97,10 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
   }
 });
 
+function shouldHandleUniversalSearchShortcut(event: KeyboardEvent): boolean {
+  return !event.repeat && !event.isComposing && event.keyCode !== 229;
+}
+
 export const setupGlobalKeyboardShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
     setupGlobalShortcut(
@@ -108,12 +109,6 @@ export const setupGlobalKeyboardShortcuts$ = command(
           allowInEditableTarget: true,
           run: () => {
             set(toggleSidebarOff$);
-          },
-        },
-        "mod+k": {
-          allowInEditableTarget: true,
-          run: () => {
-            set(openThreeColumnSearchDialog$);
           },
         },
         "mod+l": {
@@ -131,10 +126,12 @@ export const setupGlobalKeyboardShortcuts$ = command(
             await set(navigateToNewChat$, signal);
           },
         },
-        "mod+shift+a": {
+        "mod+shift+f": {
           allowInEditableTarget: true,
-          run: () => {
-            set(openAgentListDialog$);
+          shouldHandle: shouldHandleUniversalSearchShortcut,
+          run: (event) => {
+            event.stopPropagation();
+            set(openThreeColumnSearchDialog$);
           },
         },
         "ctrl+shift+[": {

@@ -530,6 +530,42 @@ describe("GET /api/artifacts/catalog", () => {
     ]);
   }, 180_000);
 
+  it("lists the source URL for a video without a poster", async () => {
+    const owner = await catalogActor("Artifact catalog video source owner");
+    const run = await api.createDirectRun(owner.actor, {
+      agentId: owner.agentId,
+      prompt: "upload a video",
+      modelProviderType: "anthropic-api-key",
+      triggerSource: "automation-schedule",
+      vars: { OKOU_AGENT_ID: owner.agentId },
+      secrets: { OKOU_TOKEN: "bdd-artifact-video-source-token" },
+    });
+    const fileId = randomUUID();
+    stageUploadObject(
+      `artifacts/${owner.actor.userId}/${fileId}/source-fallback.webm`,
+      1024,
+    );
+    const completed = await chat.completeUploadWithBearer(
+      `Bearer ${scopedOkouToken(owner, run.runId, ["file:write"])}`,
+      { id: fileId, contentType: "video/webm" },
+      [200],
+    );
+    if (completed.status !== 200) {
+      throw new Error("Expected video upload completion to succeed");
+    }
+
+    const catalog = await chat.listArtifactCatalog(owner.actor);
+
+    expect(catalog.artifacts).toStrictEqual([
+      expect.objectContaining({
+        kind: "file",
+        videoSourceUrl: completed.body.url,
+        thumbnail: null,
+        title: "source-fallback.webm",
+      }),
+    ]);
+  }, 180_000);
+
   it("reconciles a file written by the previous API after migration", async () => {
     const owner = await catalogActor("Artifact catalog promotion owner");
     const url = `https://files.vm0.test/${randomUUID()}/legacy-output.zip`;

@@ -37,6 +37,7 @@ import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { sharedThreads } from "@okouai/db/schema/shared-thread";
 import { z } from "zod";
 
+import { canonicalOkouArtifactCatalogUrl } from "../../lib/file-url";
 import { nowDate } from "../../lib/time";
 import {
   isSharedThreadArtifactLogicalKey,
@@ -44,6 +45,7 @@ import {
   SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
 } from "../../lib/shared-thread-artifact";
 import { writeDb$, type Db } from "../external/db";
+import { safeUrlParse } from "../utils";
 import { inferMimetype } from "./chat-event-shared.service";
 import { runOwnedChatEventForRunCondition } from "./chat-event-type.service";
 
@@ -598,6 +600,12 @@ async function syncArtifactCatalogFile(
     return;
   }
 
+  const parsedFileUrl = safeUrlParse(row.url);
+  const logicalFileUrl = parsedFileUrl
+    ? (canonicalOkouArtifactCatalogUrl(parsedFileUrl) ?? row.url)
+    : row.url;
+  const logicalKey = `file:${logicalFileUrl}`;
+
   const authorUserId = await resolveAuthorUserId(db, row, signal);
   const hostedKind = hostedArtifactKind(row);
   if (hostedKind) {
@@ -634,7 +642,7 @@ async function syncArtifactCatalogFile(
         and(
           eq(artifacts.orgId, row.orgId),
           eq(artifacts.authorUserId, authorUserId),
-          eq(artifacts.logicalKey, `file:${row.url}`),
+          eq(artifacts.logicalKey, logicalKey),
           eq(artifacts.projectionFileId, row.id),
         ),
       );
@@ -653,7 +661,6 @@ async function syncArtifactCatalogFile(
   }
 
   const orgId = row.orgId;
-  const logicalKey = `file:${row.url}`;
   const synced = await db.transaction(async (tx) => {
     // Serialize retries for one file before touching either artifact key.
     const [lockedFile] = await tx
@@ -758,16 +765,27 @@ function toArtifactSummary(row: {
   readonly kind: ArtifactKind;
   readonly logicalKey: string;
   readonly projectionMetadata: Record<string, unknown> | null;
+  readonly sourceContentType: string | null;
+  readonly sourceUrl: string | null;
   readonly title: string;
   readonly thumbnail: ArtifactThumbnail | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }): ArtifactSummary {
+  const kind = catalogArtifactKind(
+    row.kind,
+    row.projectionMetadata,
+    row.logicalKey,
+  );
   return {
     id: row.id,
-    kind: catalogArtifactKind(row.kind, row.projectionMetadata, row.logicalKey),
+    kind,
     title: row.title,
     thumbnail: row.thumbnail,
+    ...(row.sourceUrl &&
+    (row.sourceContentType ?? inferMimetype(row.title)).startsWith("video/")
+      ? { videoSourceUrl: row.sourceUrl }
+      : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -855,6 +873,8 @@ export const listArtifactCatalog$ = command(
         kind: artifacts.kind,
         logicalKey: artifacts.logicalKey,
         projectionMetadata: runUploadedFiles.metadata,
+        sourceContentType: runUploadedFiles.contentType,
+        sourceUrl: runUploadedFiles.url,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,
@@ -1039,6 +1059,8 @@ export const getArtifactCatalogEntry$ = command(
         entityId: artifacts.entityId,
         projectionFileId: artifacts.projectionFileId,
         projectionMetadata: runUploadedFiles.metadata,
+        sourceContentType: runUploadedFiles.contentType,
+        sourceUrl: runUploadedFiles.url,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,

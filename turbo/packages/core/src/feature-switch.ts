@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CloudBrowserPreference]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Let members choose whether Cloud browser is enabled by default in new chats.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -348,6 +355,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerVoiceInputShortcut]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Start or stop composer voice input with Mod+Shift+E.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -389,6 +402,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MarkdownHexColorPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -409,6 +429,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.BaseUiSidebarScrollArea]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Use the Base UI Scroll Area for draggable chat sidebar scrollbars.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -468,6 +495,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NewUi]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Lay the workspace out as a card floating on the shell's grey, with the two sidebars on the site's own greys and a brand-hued composer focus ring in dark.",
+    enabled: false,
+    // Ming only while the shell settles; widen once the layout is signed off.
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
 };
 

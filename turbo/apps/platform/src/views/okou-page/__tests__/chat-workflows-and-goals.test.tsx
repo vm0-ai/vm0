@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
+  FeatureSwitchKey,
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
@@ -1136,6 +1137,495 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.queryByText(goalPrompt)).not.toBeInTheDocument();
       expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
+  });
+
+  it("folds goal continuations into their triggering run work", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000023";
+    const runGroupId = "f0000001-0000-4000-a000-000000000b2b";
+    const goalBrief = "Keep the release moving";
+    const goalPrompt = `${goalBrief}\n\nFull autonomous goal prompt`;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Goal run work folding",
+      chatEvents: [
+        {
+          id: "msg-goal-work-trigger-user",
+          role: "user",
+          content: "Resume the release goal",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Resume the release goal" },
+              { type: "model", selectedModel: "gpt-5.5" },
+            ],
+          },
+          runId: "f0000001-0000-4000-a000-000000000b2c",
+          createdAt: "2026-09-03T10:00:00Z",
+        },
+        {
+          id: "msg-goal-work-trigger-assistant",
+          role: "assistant",
+          content: "The goal is running again.",
+          runId: "f0000001-0000-4000-a000-000000000b2c",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:00:10Z",
+        },
+        {
+          id: "msg-goal-work-user-1",
+          role: "user",
+          content: goalPrompt,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "claude-sonnet-4-6" },
+            ],
+          },
+          runId: "f0000001-0000-4000-a000-000000000b2d",
+          runGroupId,
+          createdAt: "2026-09-03T10:01:00Z",
+        },
+        {
+          id: "msg-goal-work-assistant-1",
+          role: "assistant",
+          content: "Checked the first release blocker.",
+          runId: "f0000001-0000-4000-a000-000000000b2d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:01:30Z",
+        },
+        {
+          id: "msg-goal-work-user-2",
+          role: "user",
+          content: goalPrompt,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "claude-sonnet-4-6" },
+            ],
+          },
+          runId: "f0000001-0000-4000-a000-000000000b2e",
+          runGroupId,
+          createdAt: "2026-09-03T10:02:00Z",
+        },
+        {
+          id: "msg-goal-work-assistant-final",
+          role: "assistant",
+          content: "The release is ready.",
+          runId: "f0000001-0000-4000-a000-000000000b2e",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:03:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
+    });
+
+    const expandWork = await screen.findByLabelText("Expand work history");
+    expect(expandWork).toHaveTextContent("Worked for 3m");
+    expect(screen.getByText("Resume the release goal")).toBeInTheDocument();
+    expect(screen.getByText("The release is ready.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Expand grouped run history"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("The goal is running again."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Checked the first release blocker."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Model changed to Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(expandWork);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The goal is running again."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Checked the first release blocker."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Model changed to Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
+    });
+    expectTextBefore(
+      document.body,
+      "The goal is running again.",
+      "Model changed to Claude Sonnet 4.6",
+    );
+    expectTextBefore(
+      document.body,
+      "Model changed to Claude Sonnet 4.6",
+      "Checked the first release blocker.",
+    );
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Expand grouped run history"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("starts a separate goal work fold after a new trigger", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000024";
+    const runGroupId = "f0000001-0000-4000-a000-000000000c2b";
+    const goalBrief = "Finish the release goal";
+    const goalPrompt = `${goalBrief}\n\nFull autonomous goal prompt`;
+
+    const segments = [
+      {
+        triggerId: "msg-goal-segment-start-user",
+        triggerText: "Start the release goal",
+        triggerResponse: "The release goal has started.",
+        triggerRunId: "f0000001-0000-4000-a000-000000000c2c",
+        goalInputId: "msg-goal-segment-start-input",
+        goalResponse: "The first goal segment finished.",
+        goalRunId: "f0000001-0000-4000-a000-000000000c2d",
+        startTime: "2026-09-03T10:00:00Z",
+        endTime: "2026-09-03T10:01:00Z",
+      },
+      {
+        triggerId: "msg-goal-segment-resume-user",
+        triggerText: "Resume the release goal",
+        triggerResponse: "The release goal has resumed.",
+        triggerRunId: "f0000001-0000-4000-a000-000000000c2e",
+        goalInputId: "msg-goal-segment-resume-input",
+        goalResponse: "The resumed goal segment finished.",
+        goalRunId: "f0000001-0000-4000-a000-000000000c2f",
+        startTime: "2026-09-03T10:10:00Z",
+        endTime: "2026-09-03T10:11:00Z",
+      },
+    ];
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Interrupted goal run work folding",
+      chatEvents: segments.flatMap((segment) => {
+        return [
+          {
+            id: segment.triggerId,
+            role: "user" as const,
+            content: segment.triggerText,
+            runId: segment.triggerRunId,
+            createdAt: segment.startTime,
+          },
+          {
+            id: `${segment.triggerId}-assistant`,
+            role: "assistant" as const,
+            content: segment.triggerResponse,
+            runId: segment.triggerRunId,
+            runLifecycleEvent: "completed" as const,
+            createdAt: segment.startTime,
+          },
+          {
+            id: segment.goalInputId,
+            role: "user" as const,
+            content: goalPrompt,
+            userMessage: {
+              version: 1 as const,
+              parts: [{ type: "goal" as const, goalBrief }],
+            },
+            runId: segment.goalRunId,
+            runGroupId,
+            createdAt: segment.endTime,
+          },
+          {
+            id: `${segment.goalInputId}-assistant`,
+            role: "assistant" as const,
+            content: segment.goalResponse,
+            runId: segment.goalRunId,
+            runGroupId,
+            runLifecycleEvent: "completed" as const,
+            createdAt: segment.endTime,
+          },
+        ];
+      }),
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
+    });
+
+    await screen.findByText("The resumed goal segment finished.");
+    expect(screen.getByText("Start the release goal")).toBeInTheDocument();
+    expect(screen.getByText("Resume the release goal")).toBeInTheDocument();
+    expect(
+      screen.getByText("The first goal segment finished."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Expand work history")).toHaveLength(2);
+    expect(
+      screen.queryByText("The release goal has started."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("The release goal has resumed."),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByLabelText("Expand work history")[1]!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The release goal has resumed."),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("The release goal has started."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps merged goal work active while the latest continuation is running", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000025";
+    const runGroupId = "f0000001-0000-4000-a000-000000000d2b";
+    const goalBrief = "Keep checking the release";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Active goal run work folding",
+      chatEvents: [
+        {
+          id: "msg-active-goal-work-trigger-user",
+          role: "user",
+          content: "Start checking the release",
+          runId: "f0000001-0000-4000-a000-000000000d2c",
+          createdAt: "2026-09-03T10:00:00Z",
+        },
+        {
+          id: "msg-active-goal-work-trigger-assistant",
+          role: "assistant",
+          content: "The release check has started.",
+          runId: "f0000001-0000-4000-a000-000000000d2c",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:00:10Z",
+        },
+        {
+          id: "msg-active-goal-work-user-1",
+          role: "user",
+          content: goalBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-000000000d2d",
+          runGroupId,
+          createdAt: "2026-09-03T10:01:00Z",
+        },
+        {
+          id: "msg-active-goal-work-assistant-1",
+          role: "assistant",
+          content: "The first release check passed.",
+          runId: "f0000001-0000-4000-a000-000000000d2d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:01:30Z",
+        },
+        {
+          id: "msg-active-goal-work-user-2",
+          role: "user",
+          content: goalBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-000000000d2e",
+          runGroupId,
+          createdAt: "2026-09-03T10:02:00Z",
+        },
+        {
+          id: "msg-active-goal-work-thinking-2",
+          eventType: "output.thinking",
+          role: "assistant",
+          content: null,
+          thinking: "Checking the next release gate",
+          runId: "f0000001-0000-4000-a000-000000000d2e",
+          runGroupId,
+          createdAt: "2026-09-03T10:02:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
+    });
+
+    const expandWork = await screen.findByLabelText("Expand work history");
+    expect(expandWork).toHaveTextContent(/^Working for /);
+    expect(screen.getByText("Start checking the release")).toBeInTheDocument();
+    expect(
+      screen.getByText("The first release check passed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Expand grouped run history"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("keeps cancelled goal continuations folded with their triggering run", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000026";
+    const runGroupId = "f0000001-0000-4000-a000-000000000e2b";
+    const goalBrief = "Keep checking the release";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Cancelled goal run work folding",
+      chatEvents: [
+        {
+          id: "msg-cancelled-goal-work-trigger-user",
+          role: "user",
+          content: "Start checking the release",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Start checking the release" },
+              { type: "model", selectedModel: "gpt-5.5" },
+            ],
+          },
+          runId: "f0000001-0000-4000-a000-000000000e2c",
+          createdAt: "2026-09-03T10:00:00Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-trigger-assistant",
+          role: "assistant",
+          content: "The release check has started.",
+          runId: "f0000001-0000-4000-a000-000000000e2c",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:00:10Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-user-1",
+          role: "user",
+          content: goalBrief,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "gpt-5.5" },
+            ],
+          },
+          runId: "f0000001-0000-4000-a000-000000000e2d",
+          runGroupId,
+          createdAt: "2026-09-03T10:01:00Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-assistant-1",
+          role: "assistant",
+          content: "The first release check passed.",
+          runId: "f0000001-0000-4000-a000-000000000e2d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:01:30Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-user-2",
+          role: "user",
+          content: goalBrief,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "claude-sonnet-4-6" },
+            ],
+          },
+          runId: "f0000001-0000-4000-a000-000000000e2e",
+          runGroupId,
+          createdAt: "2026-09-03T10:02:00Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-assistant-2",
+          role: "assistant",
+          content: "Run cancelled",
+          error: "Run cancelled",
+          runId: "f0000001-0000-4000-a000-000000000e2e",
+          runGroupId,
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-09-03T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
+    });
+
+    await screen.findByText("Paused mid-thought — pick it back up whenever.");
+    const expandWork = screen.getByLabelText("Expand work history");
+    expect(expandWork).toHaveTextContent(/^Worked for /);
+    expect(screen.getByText("Start checking the release")).toBeInTheDocument();
+    expect(
+      screen.queryByText("The release check has started."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("The first release check passed."),
+    ).toBeInTheDocument();
+    expectTextBefore(
+      document.body,
+      "The first release check passed.",
+      "Paused mid-thought — pick it back up whenever.",
+    );
+    expect(
+      screen.queryByText("Model changed to Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
+    const finalOutputGroup = screen
+      .getByText("The first release check passed.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    const cancellationGroup = screen
+      .getByText("Paused mid-thought — pick it back up whenever.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    expect(cancellationGroup).toBe(finalOutputGroup);
+    expect(
+      within(finalOutputGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
+    expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Expand grouped run history"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(expandWork);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The release check has started."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Model changed to Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
+    });
+    expectTextBefore(
+      document.body,
+      "The first release check passed.",
+      "Model changed to Claude Sonnet 4.6",
+    );
+    expectTextBefore(
+      document.body,
+      "Model changed to Claude Sonnet 4.6",
+      "Paused mid-thought — pick it back up whenever.",
+    );
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
   });
 
   it("expands archived goal history for an event hash", async () => {

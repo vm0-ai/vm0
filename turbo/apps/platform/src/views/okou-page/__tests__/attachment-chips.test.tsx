@@ -1190,7 +1190,10 @@ describe("zero attachment chips", () => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
         "attachment-photo",
       );
-      return HttpResponse.json({ url: presignedFileUrl("attachment-photo") });
+      return HttpResponse.json({
+        url: presignedFileUrl("attachment-photo"),
+        publicUrl: publicFileUrl("attachment-photo"),
+      });
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -1250,7 +1253,7 @@ describe("zero attachment chips", () => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
       const url = ownerUrls[Math.min(nextOwnerUrl, ownerUrls.length - 1)]!;
       nextOwnerUrl += 1;
-      return HttpResponse.json({ url });
+      return HttpResponse.json({ url, publicUrl: publicFileUrl(fileId) });
     });
     const lifecycle = mockChatLifecycle(context, {
       threadId: leftThreadId,
@@ -1357,7 +1360,10 @@ describe("zero attachment chips", () => {
     let pageOwner: keyof typeof pageUrls = "first";
     context.mocks.http.get("/api/web/file-url", ({ request }) => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(fileId);
-      return HttpResponse.json({ url: pageUrls[pageOwner] });
+      return HttpResponse.json({
+        url: pageUrls[pageOwner],
+        publicUrl: publicFileUrl(fileId),
+      });
     });
     context.mocks.api(logsListContract.list, ({ respond }) => {
       return respond(200, {
@@ -3081,6 +3087,42 @@ describe("zero attachment chips", () => {
     expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
   });
 
+  it("renders short Okou artifact cards without trusting lookalike hosts", async () => {
+    const bareVideoUrl = "https://a.okou.io/0123456789.mp4";
+    const linkedVideoUrl = "https://a.okou.io/abcdefghij.mp4";
+    const legacyVideoUrl = "https://cdn.okou.io/artifacts/9876543210.mp4";
+    const lookalikeVideoUrl =
+      "https://a.okou.io.attacker.example/klmnopqrst.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-short-okou-artifact-video-links",
+          role: "assistant",
+          content: [
+            bareVideoUrl,
+            `[Generated clip](${linkedVideoUrl})`,
+            legacyVideoUrl,
+            `[Forged clip](${lookalikeVideoUrl})`,
+          ].join("\n"),
+          runId: "run-short-okou-artifact-video-links",
+          createdAt: "2026-09-03T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 0123456789.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview 9876543210.mp4")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Preview klmnopqrst.mp4"),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders exact Okou public links without trusting lookalike hosts", async () => {
     context.mocks.browser.url(`https://app.okou.ai/chats/${THREAD_ID}`);
     const legacySiteUrl = "https://legacy-site.sites.vm0.io/";
@@ -3467,52 +3509,6 @@ describe("zero attachment chips", () => {
       screen.findByText(`![1280x720](${imageUrl})`),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByAltText("1280x720")).toBeNull();
-  });
-
-  it("hides the share action when the api reports no public attachment url", async () => {
-    context.mocks.http.get("/api/web/file-url", ({ request }) => {
-      const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
-      return HttpResponse.json({ url: presignedFileUrl(fileId) });
-    });
-    context.mocks.http.get(PRESIGNED_FILE_PATTERN, () => {
-      return new Response("# Release notes\n\nThe rollout is ready.", {
-        headers: { "Content-Type": "text/markdown" },
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-no-public-url",
-          role: "user",
-          content: "Review this attachment",
-          fileParts: [
-            {
-              type: "file",
-              fileId: "attachment-markdown",
-              filenameSnapshot: "release-notes.md",
-              contentType: "text/markdown",
-            },
-          ],
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    click(
-      await screen.findByLabelText(
-        "Open markdown preview for release-notes.md",
-      ),
-    );
-
-    // The body renders from the same resolution that would have carried a
-    // share URL, so its arrival means "no share URL" is settled, not pending.
-    await waitFor(() => {
-      expect(screen.getByText("The rollout is ready.")).toBeInTheDocument();
-    });
-    expect(screen.queryByLabelText("Share")).toBeNull();
   });
 
   it("shares a public artifact by its cdn url", async () => {

@@ -101,7 +101,12 @@ import {
   TooltipTrigger,
 } from "@okouai/ui/components/ui/tooltip";
 import { cn } from "@okouai/ui/lib/utils";
-import { processShortcut, type KeyboardEventLike } from "@okouai/ui";
+import {
+  ElapsedTime,
+  getShortcutLabel,
+  processShortcut,
+  type KeyboardEventLike,
+} from "@okouai/ui";
 import {
   bestEffort,
   detach,
@@ -129,8 +134,13 @@ import type {
 import { AttachmentChips } from "./attachment-chips.tsx";
 import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
+import { VoiceLevelWaveform } from "./voice-level-waveform.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import {
+  COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS,
+  COMPOSER_VOICE_INPUT_SHORTCUT,
+} from "../../lib/composer-voice-input-shortcut.ts";
 import {
   previewPresentationHtml,
   type PresentationPreviewDraft,
@@ -211,9 +221,9 @@ import {
 } from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
+  composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
   imageRecognitionAvailable$,
-  voiceDraftEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -244,12 +254,12 @@ import type {
 import {
   audioInputAvailable$,
   audioInputQuota$,
-  openAudioInputQuotaRecovery$,
   sttRecording$,
+  sttRecordingStartedAt$,
   sttStarting$,
   sttTranscribing$,
   sttVoiceLevel$,
-  startRecording$,
+  sttVoiceLevelSamples$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";
@@ -353,6 +363,7 @@ interface ComposerComputerUse {
   readonly selectedHostId: string | null;
   readonly onChange: (hostId: string | null) => void;
   readonly cloudBrowserEnabled: boolean;
+  readonly cloudBrowserLoading: boolean;
   readonly onCloudBrowserChange: (enabled: boolean) => void;
   readonly downloadUrl: string;
 }
@@ -1564,7 +1575,7 @@ function WorkflowTemplateCard({
           className={cn(
             "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
-              ? "border-primary/40 bg-primary/10 text-primary"
+              ? "border-primary/40 bg-primary/10 text-brand-text"
               : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
@@ -4599,7 +4610,7 @@ function IllustrationTemplateCard({
           className={cn(
             "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
-              ? "border-primary/40 bg-primary/10 text-primary"
+              ? "border-primary/40 bg-primary/10 text-brand-text"
               : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
@@ -7287,14 +7298,14 @@ function ConnectorTriggerIcons({
       })}
       {hasComputerUse && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text zero-border sm:h-7 sm:w-7">
             <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text zero-border sm:h-7 sm:w-7">
             <Globe size={16} />
           </span>
         </span>
@@ -7524,7 +7535,7 @@ function ComputerUseConnectorMenuSection({
             onCheckedChange={onDomEventFn((enabled) => {
               computerUse.onCloudBrowserChange(enabled);
             })}
-            loading={false}
+            loading={computerUse.cloudBrowserLoading}
             ariaLabel={
               computerUse.cloudBrowserEnabled
                 ? t(($) => {
@@ -8005,7 +8016,7 @@ function ComposerConnectorAccountChoices({
         className={choiceClassName}
         onClick={onUseDefault}
       >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-brand-text">
           {!selection ? <Check size={15} strokeWidth={2.5} /> : null}
         </span>
         <span className="min-w-0 flex-1">
@@ -8076,7 +8087,7 @@ function ComposerConnectorAccountChoices({
               onSelect(connection);
             }}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-brand-text">
               {checked ? <Check size={15} strokeWidth={2.5} /> : null}
             </span>
             <span className="min-w-0 flex-1">
@@ -8884,19 +8895,9 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const voiceLevel = useGet(sttVoiceLevel$);
-  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
-  const startRec = useSet(startRecording$);
-  const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
-  const appendText = useSet(signals.editor.appendText$);
-  const startVoiceDraft = useSet(signals.voiceDraft.start$);
-  const appendVoiceDraftTranscript = useSet(
-    signals.voiceDraft.appendTranscript$,
-  );
-  const markVoiceDraftFailed = useSet(signals.voiceDraft.markFailed$);
-  const finishVoiceDraft = useSet(signals.voiceDraft.finish$);
-  const saveDraft = useSet(signals.draft.save$);
+  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
+  const toggleVoiceInput = useSet(signals.voice.toggle$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
   const status = {
@@ -8910,56 +8911,8 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
     return null;
   }
 
-  const onTranscribed = (text: string) => {
-    appendText(text);
-    detach(saveDraft(signal), Reason.DomCallback);
-  };
-
   const handleClick = () => {
-    if (starting || transcribing) {
-      return;
-    }
-    if (recording) {
-      detach(stopAndTranscribe(signal), Reason.DomCallback);
-      return;
-    }
-    if (!quota) {
-      return;
-    }
-    if (!quota.allowed) {
-      detach(openQuotaRecovery(signal), Reason.DomCallback);
-      return;
-    }
-    if (voiceDraftEnabled) {
-      const id = startVoiceDraft();
-      detach(
-        startRec(
-          (text) => {
-            appendVoiceDraftTranscript(id, text);
-            detach(saveDraft(signal), Reason.DomCallback);
-          },
-          quota.limit === null,
-          {
-            finish: async () => {
-              await finishVoiceDraft(id, false, signal);
-              signal.throwIfAborted();
-              await saveDraft(signal);
-            },
-            fail: async () => {
-              markVoiceDraftFailed(id);
-              await saveDraft(signal);
-            },
-          },
-          signal,
-        ),
-        Reason.DomCallback,
-      );
-      return;
-    }
-    detach(
-      startRec(onTranscribed, quota.limit === null, undefined, signal),
-      Reason.DomCallback,
-    );
+    detach(toggleVoiceInput(signal), Reason.DomCallback);
   };
 
   return (
@@ -8979,6 +8932,11 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             onClick={handleClick}
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
+            aria-keyshortcuts={
+              voiceInputShortcutEnabled
+                ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
+                : undefined
+            }
           >
             {starting || transcribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
@@ -9002,9 +8960,101 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {micButtonTooltip(status)}
+          {voiceInputShortcutEnabled
+            ? ` (${getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})`
+            : null}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function formatVoiceRecordingDuration(elapsedTime: number): string {
+  const totalSeconds = Math.floor(elapsedTime / 1000);
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function VoiceDraftFooter({
+  signals,
+  status,
+}: {
+  signals: ComposerSignals;
+  status: "recording" | "processing";
+}) {
+  const { t } = useTranslation();
+  const recording = useGet(sttRecording$);
+  const starting = useGet(sttStarting$);
+  const transcribing = useGet(sttTranscribing$);
+  const recordingStartedAt = useGet(sttRecordingStartedAt$);
+  const toggleVoiceInput = useSet(signals.voice.toggle$);
+  const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
+  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
+  const signal = useGet(pageSignal$);
+  const processing = transcribing || status === "processing";
+
+  if (processing) {
+    return (
+      <div
+        className="flex min-h-8 w-full items-center justify-center gap-2.5 text-sm text-muted-foreground"
+        role="status"
+      >
+        <Loader2 size={16} className="animate-spin text-[#2E9E9F]" />
+        <span>
+          {t(($) => {
+            return $.chat.voice.transcribingProgress;
+          })}
+        </span>
+      </div>
+    );
+  }
+
+  const stopRecordingLabel = t(($) => {
+    return $.chat.voice.stopRecording;
+  });
+  return (
+    <div className="flex min-h-8 w-full items-center gap-3">
+      <span
+        className="size-2 shrink-0 rounded-full bg-destructive"
+        aria-hidden="true"
+      />
+      {recordingStartedAt === null ? (
+        <time className="w-11 shrink-0 text-sm tabular-nums text-foreground">
+          00:00
+        </time>
+      ) : (
+        <ElapsedTime
+          startTime={recordingStartedAt}
+          className="w-11 shrink-0 text-sm tabular-nums text-foreground"
+        >
+          {formatVoiceRecordingDuration}
+        </ElapsedTime>
+      )}
+      <VoiceLevelWaveform samples={voiceLevelSamples} />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="ml-auto min-w-14 shrink-0 bg-background"
+        aria-label={stopRecordingLabel}
+        aria-keyshortcuts={
+          voiceInputShortcutEnabled
+            ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
+            : undefined
+        }
+        disabled={starting || !recording}
+        onClick={() => {
+          detach(toggleVoiceInput(signal), Reason.DomCallback);
+        }}
+      >
+        {t(($) => {
+          return $.chat.voice.confirmRecording;
+        })}
+      </Button>
+    </div>
   );
 }
 
@@ -10453,7 +10503,16 @@ function ComposerConnectorConnectDialogs({
 
 function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
-  const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
+  const cloudBrowserState = useLastLoadable(
+    signals.computer.cloudBrowserEnabled$,
+  );
+  const lastCloudBrowserEnabled = useLastResolved(
+    signals.computer.cloudBrowserEnabled$,
+  );
+  const cloudBrowserEnabled =
+    cloudBrowserState.state === "hasData"
+      ? cloudBrowserState.data
+      : (lastCloudBrowserEnabled ?? true);
   const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
   const setCloudBrowserEnabled = useSet(
     signals.computer.setCloudBrowserEnabled$,
@@ -10483,6 +10542,9 @@ function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
       );
     },
     cloudBrowserEnabled,
+    cloudBrowserLoading:
+      cloudBrowserState.state === "loading" &&
+      lastCloudBrowserEnabled === undefined,
     onCloudBrowserChange: (enabled) => {
       detach(
         setCloudBrowserEnabled(enabled, composerPageSignal),
@@ -10874,6 +10936,35 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
+function ComposerFooter({ signals }: { signals: ComposerSignals }) {
+  const voiceDraftStatus = useGet(signals.voiceDraft.status$);
+  return (
+    <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
+      {voiceDraftStatus === "recording" || voiceDraftStatus === "processing" ? (
+        <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
+      ) : (
+        <>
+          <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+            <ComposerAttachButton signals={signals} />
+            <ComposerTemplatePickerSlot signals={signals} />
+            <ComposerWorkflowPromptSlot signals={signals} />
+            <ComposerConnectorsSlot signals={signals} />
+            {/* Sits with the other input-scoped controls rather than beside
+                the model picker: it configures the message being written,
+                not which model the composer points at. */}
+            <ComposerVideoOptionsChip signals={signals} />
+          </div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <ComposerModelPickerSlot signals={signals} />
+            <MicButton signals={signals} />
+            <ComposerSendControl signals={signals} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
@@ -10915,23 +11006,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}
-          <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
-            <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-              <ComposerAttachButton signals={signals} />
-              <ComposerTemplatePickerSlot signals={signals} />
-              <ComposerWorkflowPromptSlot signals={signals} />
-              <ComposerConnectorsSlot signals={signals} />
-              {/* Sits with the other input-scoped controls rather than beside
-                  the model picker: it configures the message being written,
-                  not which model the composer points at. */}
-              <ComposerVideoOptionsChip signals={signals} />
-            </div>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <ComposerModelPickerSlot signals={signals} />
-              <MicButton signals={signals} />
-              <ComposerSendControl signals={signals} />
-            </div>
-          </div>
+          <ComposerFooter signals={signals} />
         </div>
       </CardContent>
     </Card>

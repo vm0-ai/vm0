@@ -2,6 +2,8 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
+import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   click,
@@ -1649,7 +1651,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps chat work visible when the run was cancelled", async () => {
+  it("folds a cancelled run around its last assistant output", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000016",
       chatEvents: [
@@ -1664,6 +1666,18 @@ describe("chat lifecycle", () => {
           content: "Checking launch status.",
           runId: "run-work-folding-cancelled",
           createdAt: "2026-06-09T10:00:25Z",
+        },
+        {
+          role: "assistant",
+          content: "The latest launch status is ready.",
+          runId: "run-work-folding-cancelled",
+          createdAt: "2026-06-09T10:00:45Z",
+        },
+        {
+          role: "user",
+          content: null,
+          interruptsRunId: "run-work-folding-cancelled",
+          createdAt: "2026-06-09T10:00:50Z",
         },
         {
           role: "assistant",
@@ -1682,12 +1696,40 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
+      expect(
+        screen.getByText("The latest launch status is ready."),
+      ).toBeInTheDocument();
       expect(
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expect(
+      screen.queryByText("Checking launch status."),
+    ).not.toBeInTheDocument();
+    const expandWork = screen.getByLabelText("Expand work history");
+    expect(expandWork).toHaveTextContent(/^Worked for /);
+    expectTextBefore(
+      document.body,
+      "The latest launch status is ready.",
+      "Paused mid-thought — pick it back up whenever.",
+    );
+    const finalOutputGroup = screen
+      .getByText("The latest launch status is ready.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    const cancellationGroup = screen
+      .getByText("Paused mid-thought — pick it back up whenever.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    expect(finalOutputGroup).not.toBeNull();
+    expect(cancellationGroup).toBe(finalOutputGroup);
+    expect(
+      within(finalOutputGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
+
+    fireEvent.click(expandWork);
+
+    await expect(
+      screen.findByText("Checking launch status."),
+    ).resolves.toBeInTheDocument();
   });
 
   it("shows only Worked when a completed run has no assistant message", async () => {
@@ -1954,6 +1996,13 @@ describe("chat lifecycle", () => {
         "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
       title: "This model is busy right now",
     },
+    {
+      name: "unsupported model",
+      threadId: "e7000000-0000-4000-a000-000000000039",
+      error:
+        '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.6-sol\' model is not supported when using Codex with a ChatGPT account."}}',
+      title: "Selected model isn't available",
+    },
   ])(
     "recognizes the latest $name error",
     async ({ threadId, error, title }) => {
@@ -1990,6 +2039,151 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByTestId("assistant-error-recovery"),
       ).toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    {
+      name: "usage limit",
+      threadId: "e7000000-0000-4000-a000-000000000033",
+      selectedModel: "claude-sonnet-4-6",
+      failureReason: "usage_limit",
+      error: "You've hit your weekly limit · resets Friday at 5:00 PM",
+      title: "Claude Code limit reached",
+    },
+    {
+      name: "model capacity with contradictory usage text",
+      threadId: "e7000000-0000-4000-a000-000000000034",
+      selectedModel: "claude-sonnet-4-6",
+      failureReason: "provider_overloaded",
+      error: "You've hit your usage limit. Try again at 5:00 PM.",
+      title: "This model is busy right now",
+    },
+    {
+      name: "unsupported model",
+      threadId: "e7000000-0000-4000-a000-000000000035",
+      selectedModel: "gpt-5.6-sol",
+      failureReason: "unsupported_model",
+      error:
+        '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.6-sol\' model is not supported when using Codex with a ChatGPT account."}}',
+      title: "Selected model isn't available",
+    },
+  ] satisfies readonly {
+    readonly name: string;
+    readonly threadId: string;
+    readonly selectedModel: SupportedRunModel;
+    readonly failureReason: RunFailureReasonToken;
+    readonly error: string;
+    readonly title: string;
+  }[])(
+    "uses the structured $name reason",
+    async ({ threadId, selectedModel, failureReason, error, title }) => {
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: threadId,
+          model: selectedModel,
+          modelLabel: selectedModel,
+          isDefault: true,
+          defaultProviderType: "built-in",
+          credentialScope: "org",
+        }),
+      ]);
+      mockChatLifecycle(context, {
+        threadId,
+        selectedModel,
+        chatEvents: [
+          {
+            id: `${threadId}-user`,
+            role: "user",
+            content: "Continue",
+            runId: `${threadId}-run`,
+            createdAt: "2026-07-30T09:00:00Z",
+          },
+          {
+            id: `${threadId}-failure`,
+            role: "assistant",
+            content: null,
+            error,
+            failureReason,
+            runId: `${threadId}-run`,
+            runLifecycleEvent: "failed",
+            createdAt: "2026-07-30T09:00:01Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+        path: `/chats/${threadId}`,
+      });
+
+      const card = await screen.findByTestId("assistant-error-recovery");
+      expect(within(card).getByText(title)).toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    {
+      name: "provider rate limiting",
+      threadId: "e7000000-0000-4000-a000-000000000036",
+      failureReason: "provider_rate_limited",
+      error: "You've hit your usage limit. Try again at 5:00 PM.",
+    },
+    {
+      name: "known non-recovery failure",
+      threadId: "e7000000-0000-4000-a000-000000000037",
+      failureReason: "invalid_credentials",
+      error: "Selected model is at capacity. Please try a different model.",
+    },
+    {
+      name: "future failure",
+      threadId: "e7000000-0000-4000-a000-000000000038",
+      failureReason: "future_reason",
+      error: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+    },
+  ] satisfies readonly {
+    readonly name: string;
+    readonly threadId: string;
+    readonly failureReason: RunFailureReasonToken;
+    readonly error: string;
+  }[])(
+    "does not text-classify a present $name reason",
+    async ({ threadId, failureReason, error }) => {
+      mockChatLifecycle(context, {
+        threadId,
+        selectedModel: "gpt-5.6-sol",
+        chatEvents: [
+          {
+            id: `${threadId}-user`,
+            role: "user",
+            content: "Continue",
+            runId: `${threadId}-run`,
+            createdAt: "2026-07-30T09:00:00Z",
+          },
+          {
+            id: `${threadId}-failure`,
+            role: "assistant",
+            content: null,
+            error,
+            failureReason,
+            runId: `${threadId}-run`,
+            runLifecycleEvent: "failed",
+            createdAt: "2026-07-30T09:00:01Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+        path: `/chats/${threadId}`,
+      });
+
+      await expect(screen.findByText(error)).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("assistant-error-recovery"),
+      ).not.toBeInTheDocument();
     },
   );
 
@@ -2195,6 +2389,7 @@ describe("chat lifecycle", () => {
             role: "assistant",
             content: null,
             error,
+            failureReason: "usage_limit",
             runId: "codex-limit-run",
             runLifecycleEvent: "failed",
             createdAt: "2026-07-30T09:00:01Z",
@@ -2263,6 +2458,7 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           error: "You've hit your usage limit. Try again at 5:00 PM.",
+          failureReason: "usage_limit",
           runId: "codex-reset-run",
           runLifecycleEvent: "failed",
           createdAt: "2026-07-30T09:00:01Z",
@@ -2329,6 +2525,7 @@ describe("chat lifecycle", () => {
           content: null,
           error:
             "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+          failureReason: "provider_overloaded",
           runId: "claude-capacity-run",
           runLifecycleEvent: "failed",
           createdAt: "2026-07-30T09:00:01Z",
@@ -2421,6 +2618,7 @@ describe("chat lifecycle", () => {
           role: "assistant",
           content: null,
           error,
+          failureReason: "unsupported_model",
           runId: "unsupported-model-run",
           runLifecycleEvent: "failed",
           createdAt: "2026-07-30T09:00:01Z",

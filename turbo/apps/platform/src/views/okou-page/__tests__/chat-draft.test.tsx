@@ -699,6 +699,7 @@ describe("chat drafts", () => {
       validationRequests += 1;
       return respond(200, {
         url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+        publicUrl: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
       });
     });
 
@@ -1890,6 +1891,49 @@ describe("chat drafts", () => {
           return text.length > 0;
         }),
       ).toStrictEqual(["Before pasted after"]);
+    });
+  });
+
+  it("keeps composer line breaks stable across copy and paste", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e3000000-0000-4000-a000-000000000006";
+
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    let editor = await findComposerEditor();
+    await waitFor(async () => {
+      const mountedEditor = document.querySelector(
+        '.zero-composer [contenteditable="true"]',
+      );
+      if (!(mountedEditor instanceof HTMLElement)) {
+        throw new Error("Composer editor not found");
+      }
+      await fill(mountedEditor, "1\n2\n3");
+      expect(
+        Array.from(mountedEditor.children, (element) => {
+          return element.textContent ?? "";
+        }),
+      ).toStrictEqual(["1", "2", "3"]);
+      if (!mountedEditor.isConnected) {
+        throw new Error("Composer editor was remounted while filling");
+      }
+      editor = mountedEditor;
+    });
+
+    await user.click(editor);
+    await user.keyboard("{Control>}a{/Control}");
+    const clipboard = await user.copy();
+    await user.keyboard("{Backspace}");
+    await user.paste(clipboard);
+
+    await waitFor(() => {
+      expect(
+        Array.from(editor.children, (element) => {
+          return element.textContent ?? "";
+        }),
+      ).toStrictEqual(["1", "2", "3"]);
     });
   });
 

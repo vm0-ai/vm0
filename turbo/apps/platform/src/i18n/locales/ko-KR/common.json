@@ -385,7 +385,6 @@
         "newChat": "새 채팅",
         "nextAgent": "다음 에이전트",
         "nextThread": "다음 스레드",
-        "openAgentList": "에이전트 목록 열기",
         "openFirstThread": "첫 번째 스레드 열기",
         "previousAgent": "이전 에이전트",
         "previousThread": "이전 스레드",
@@ -2393,6 +2392,7 @@
     },
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
+      "confirmRecording": "OK",
       "draft": "음성 초안",
       "draftTooLong": "이 음성 초안은 너무 깁니다. 새 녹음을 시작하세요.",
       "finishDraft": "완료",
@@ -5077,6 +5077,14 @@
           "system": "시스템",
           "title": "테마"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "새 채팅에서 에이전트가 클라우드 브라우저를 사용하도록 허용합니다",
+          "title": "클라우드 브라우저"
+        },
+        "description": "새 채팅의 기본값과 메시지 전송 방식을 선택하세요.",
+        "sectionTitle": "채팅"
       },
       "debug": {
         "builtInModelCooldown": {

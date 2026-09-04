@@ -268,6 +268,10 @@ mod tests {
     use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
     use httpmock::prelude::*;
     use serde_json::json;
+    #[cfg(target_os = "linux")]
+    use std::ffi::CString;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::ffi::OsStrExt;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
@@ -287,6 +291,87 @@ mod tests {
         fn drop(&mut self) {
             guest_common::telemetry::clear_sandbox_ops_log_file();
         }
+    }
+
+    fn assert_artifact_hash_failure(telemetry_path: &std::path::Path, expected_error: &str) {
+        let expected_error = expected_error
+            .strip_prefix("checkpoint: ")
+            .unwrap_or(expected_error);
+        let telemetry_entries = std::fs::read_to_string(telemetry_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let matching_failure = telemetry_entries.iter().any(|entry| {
+            entry.get("action_type").and_then(serde_json::Value::as_str)
+                == Some("artifact_hash_compute")
+                && entry.get("success").and_then(serde_json::Value::as_bool) == Some(false)
+                && entry.get("error").and_then(serde_json::Value::as_str) == Some(expected_error)
+        });
+        assert!(
+            matching_failure,
+            "missing failed artifact_hash_compute telemetry for {expected_error:?}"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    fn make_fifo(path: &std::path::Path) -> std::io::Result<()> {
+        let path = CString::new(path.as_os_str().as_bytes())
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+        // SAFETY: `path` is a NUL-terminated filesystem path owned for the call.
+        let result = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn artifact_snapshot_preflight_error(mount: &std::path::Path) -> String {
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: None,
+        }];
+
+        let error = snapshot_artifact_entries(&http, "test-run", &entries)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        prepare.assert_calls(0);
+        upload.assert_calls(0);
+        commit.assert_calls(0);
+        assert_artifact_hash_failure(&telemetry_path, &message);
+        message
     }
 
     async fn start_artifact_checkpoint_test_server(
@@ -563,27 +648,7 @@ mod tests {
         upload.assert_calls(0);
         commit.assert_calls(0);
 
-        let telemetry_entries = std::fs::read_to_string(&telemetry_path)
-            .unwrap()
-            .lines()
-            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-            .collect::<Vec<_>>();
-        let failure = telemetry_entries
-            .iter()
-            .find(|entry| {
-                entry.get("action_type").and_then(serde_json::Value::as_str)
-                    == Some("artifact_hash_compute")
-                    && entry.get("success").and_then(serde_json::Value::as_bool) == Some(false)
-            })
-            .expect("failed artifact_hash_compute telemetry entry");
-        assert_eq!(
-            failure.get("error").and_then(serde_json::Value::as_str),
-            Some(
-                count_message
-                    .strip_prefix("checkpoint: ")
-                    .unwrap_or(&count_message)
-            )
-        );
+        assert_artifact_hash_failure(&telemetry_path, &count_message);
 
         std::fs::remove_file(over_limit_path).unwrap();
         let path_error = vas::walk_files_for_checkpoint(dir.path().to_str().unwrap())
@@ -605,6 +670,91 @@ mod tests {
                 STORAGE_MANIFEST_MAX_FILES + 1
             )),
             "path-byte limit must fail before the file-count limit: {path_message}"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn artifact_snapshot_enforces_traversal_entry_limit_before_storage_api_calls() {
+        const PARENT_COUNT: usize = 2;
+
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        guest_common::log::clear_system_log_file();
+
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("wide");
+        std::fs::create_dir(&mount).unwrap();
+        std::fs::create_dir(mount.join(".git")).unwrap();
+        let max_entries = usize::try_from(vas::ARTIFACT_TRAVERSAL_MAX_ENTRIES).unwrap();
+        let links_per_parent = (max_entries - PARENT_COUNT) / PARENT_COUNT - 1;
+        assert_eq!(
+            PARENT_COUNT * (links_per_parent + 2),
+            max_entries,
+            "fixture must contain exactly the traversal limit before .git"
+        );
+        for parent_index in 0..PARENT_COUNT {
+            let parent = mount.join(format!("p{parent_index:03}"));
+            std::fs::create_dir(&parent).unwrap();
+            let source = parent.join("source");
+            make_fifo(&source).unwrap();
+            for link_index in 0..links_per_parent {
+                std::fs::hard_link(&source, parent.join(format!("l{link_index:05}"))).unwrap();
+            }
+        }
+
+        let message = artifact_snapshot_preflight_error(&mount).await;
+        assert!(
+            message.contains(&format!(
+                "observed entries {}/{}",
+                vas::ARTIFACT_TRAVERSAL_MAX_ENTRIES + 1,
+                vas::ARTIFACT_TRAVERSAL_MAX_ENTRIES
+            )),
+            "got: {message}"
+        );
+        assert!(
+            message.contains(&format!("/{}", vas::ARTIFACT_TRAVERSAL_MAX_DEPTH)),
+            "got: {message}"
+        );
+        assert!(
+            message.contains(&format!("/{}", vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES)),
+            "got: {message}"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn artifact_snapshot_enforces_traversal_depth_before_storage_api_calls() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        guest_common::log::clear_system_log_file();
+
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("deep");
+        std::fs::create_dir(&mount).unwrap();
+        let mut deepest = mount.clone();
+        for _ in 0..=vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
+            deepest.push("d");
+            std::fs::create_dir(&deepest).unwrap();
+        }
+        std::fs::File::create(deepest.join(std::ffi::OsString::from_vec(vec![0xff]))).unwrap();
+
+        let message = artifact_snapshot_preflight_error(&mount).await;
+        assert!(
+            message.contains(&format!(
+                "directory depth {}/{}",
+                vas::ARTIFACT_TRAVERSAL_MAX_DEPTH + 1,
+                vas::ARTIFACT_TRAVERSAL_MAX_DEPTH
+            )),
+            "got: {message}"
+        );
+        assert!(
+            message.contains(&format!(
+                "active UTF-8 path bytes {}/{}",
+                2 * vas::ARTIFACT_TRAVERSAL_MAX_DEPTH + 1,
+                vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES
+            )),
+            "got: {message}"
         );
     }
 

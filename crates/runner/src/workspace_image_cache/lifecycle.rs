@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
@@ -31,15 +32,18 @@ use super::path_safety::{
     normalize_safe_guest_working_dir,
 };
 use super::types::{
-    CacheBudget, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
-    WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareLockPolicy,
-    WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentity,
+    CacheBudget, WorkspaceCacheCheckoutResult, WorkspaceCacheLockDecision, WorkspaceCacheLockOwner,
+    WorkspaceCacheTerminalStatus, WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareLockPolicy, WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentity,
     WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
     WorkspaceImagePromotionRequest, WorkspaceSessionHistorySidecar,
     WorkspaceSessionHistorySidecarMiss, WorkspaceSessionHistorySidecarPromotionSource,
     WorkspaceSessionHistorySidecarPublication,
 };
-use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
+use super::{
+    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheLockRegistration,
+    WorkspaceImageCache, WorkspaceImageCacheInner,
+};
 
 const WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT: Duration = Duration::from_millis(50);
 
@@ -56,13 +60,14 @@ pub(crate) struct WorkspaceImageLease {
     workspace_drive_enabled: bool,
     result: WorkspaceCacheCheckoutResult,
     previous_storage: Option<StorageFingerprints>,
-    entry_lock: Option<Flock<std::fs::File>>,
+    entry_lock: Option<WorkspaceEntryLock>,
+    lock_decision: Option<WorkspaceCacheLockDecision>,
 }
 
 pub(crate) struct WorkspaceImagePromotionContext {
     cache: WorkspaceImageCache,
     cache_key: String,
-    entry_lock: Option<Flock<std::fs::File>>,
+    entry_lock: Option<WorkspaceEntryLock>,
     run_id: RunId,
     sandbox_id: sandbox::SandboxId,
     profile_name: String,
@@ -82,7 +87,7 @@ pub(crate) struct WorkspaceSessionHistorySidecarEntryGuard {
     cache_key: String,
     run_id: RunId,
     restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
-    _late_entry_lock: Option<Flock<std::fs::File>>,
+    _late_entry_lock: Option<WorkspaceEntryLock>,
 }
 
 pub(crate) struct WorkspaceImagePromotionIdentityFailure {
@@ -140,9 +145,92 @@ struct WorkspaceImageLeaseState {
     source_image: Option<PathBuf>,
     consumed_cache_hit: bool,
     previous_storage: Option<StorageFingerprints>,
-    entry_lock: Option<Flock<std::fs::File>>,
+    entry_lock: Option<WorkspaceEntryLock>,
     workspace_drive_enabled: bool,
     result: WorkspaceCacheCheckoutResult,
+    lock_decision: Option<WorkspaceCacheLockDecision>,
+}
+
+/// Couples a locally provable lifecycle phase to the flock that establishes ownership.
+///
+/// Separate cache instances and processes do not share the registry, so their busy locks remain
+/// explicitly `unknown` rather than being inferred from other runner state.
+struct WorkspaceEntryLock {
+    inner: Arc<WorkspaceImageCacheInner>,
+    cache_key: String,
+    identity: Arc<()>,
+    lock: Option<Flock<std::fs::File>>,
+}
+
+impl WorkspaceEntryLock {
+    fn new(
+        cache: &WorkspaceImageCache,
+        cache_key: &str,
+        lock: Flock<std::fs::File>,
+        owner: WorkspaceCacheLockOwner,
+    ) -> Self {
+        let identity = Arc::new(());
+        let mut owners = cache
+            .inner
+            .entry_lock_owners
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registration = owners.entry(cache_key.to_owned());
+        assert!(
+            matches!(&registration, std::collections::hash_map::Entry::Vacant(_)),
+            "workspace entry lock acquired while a local owner remains registered"
+        );
+        if let std::collections::hash_map::Entry::Vacant(registration) = registration {
+            registration.insert(WorkspaceCacheLockRegistration {
+                identity: Arc::clone(&identity),
+                owner,
+            });
+        }
+        drop(owners);
+        Self {
+            inner: Arc::clone(&cache.inner),
+            cache_key: cache_key.to_owned(),
+            identity,
+            lock: Some(lock),
+        }
+    }
+
+    fn set_owner(&mut self, owner: WorkspaceCacheLockOwner) {
+        let mut owners = self
+            .inner
+            .entry_lock_owners
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registered = owners.get_mut(&self.cache_key);
+        assert!(
+            registered
+                .as_ref()
+                .is_some_and(|registered| Arc::ptr_eq(&registered.identity, &self.identity)),
+            "workspace entry lock ownership transition requires the original registration"
+        );
+        if let Some(registered) = registered {
+            registered.owner = owner;
+        }
+    }
+}
+
+impl Drop for WorkspaceEntryLock {
+    fn drop(&mut self) {
+        let mut owners = self
+            .inner
+            .entry_lock_owners
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let owns_registration = owners
+            .get(&self.cache_key)
+            .is_some_and(|registered| Arc::ptr_eq(&registered.identity, &self.identity));
+        debug_assert!(owns_registration);
+        if owns_registration {
+            owners.remove(&self.cache_key);
+        }
+        drop(owners);
+        drop(self.lock.take());
+    }
 }
 
 fn workspace_image_size_mb(image_size_bytes: u64) -> u32 {
@@ -208,11 +296,38 @@ impl WorkspaceImageLease {
             result: state.result,
             previous_storage: state.previous_storage,
             entry_lock: state.entry_lock,
+            lock_decision: state.lock_decision,
         }
     }
 }
 
 impl WorkspaceImageCache {
+    fn local_entry_lock_observation(
+        &self,
+        cache_key: &str,
+    ) -> Option<WorkspaceCacheLockRegistration> {
+        self.inner
+            .entry_lock_owners
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(cache_key)
+            .cloned()
+    }
+
+    fn stable_local_entry_lock_owner(
+        &self,
+        cache_key: &str,
+        before: Option<&WorkspaceCacheLockRegistration>,
+    ) -> WorkspaceCacheLockOwner {
+        let after = self.local_entry_lock_observation(cache_key);
+        match (before, after) {
+            (Some(before), Some(after)) if Arc::ptr_eq(&before.identity, &after.identity) => {
+                after.owner
+            }
+            _ => WorkspaceCacheLockOwner::Unknown,
+        }
+    }
+
     async fn acquire_prepare_lock(
         &self,
         lock_path: PathBuf,
@@ -269,7 +384,7 @@ impl WorkspaceImageCache {
         request: WorkspaceImageActiveLeaseRequest<'_>,
     ) -> WorkspaceImageLease {
         let common = WorkspaceImageLeaseCommon::new(self, request.identity);
-        let active_lease = |result, entry_lock, cache_key| {
+        let active_lease = |result, entry_lock, cache_key, lock_decision| {
             WorkspaceImageLease::from_parts(
                 common.lease_base(self),
                 WorkspaceImageLeaseState {
@@ -280,6 +395,7 @@ impl WorkspaceImageCache {
                     entry_lock,
                     workspace_drive_enabled: request.workspace_drive_available,
                     result,
+                    lock_decision,
                 },
             )
         };
@@ -290,27 +406,59 @@ impl WorkspaceImageCache {
                 working_dir = %common.raw_working_dir,
                 "workspace image cache active lease disabled for unsafe working directory"
             );
-            return active_lease(WorkspaceCacheCheckoutResult::InvalidWorkingDir, None, None);
+            return active_lease(
+                WorkspaceCacheCheckoutResult::InvalidWorkingDir,
+                None,
+                None,
+                None,
+            );
         };
         let Some(reuse_key) = common.reuse_key else {
-            return active_lease(WorkspaceCacheCheckoutResult::NoReuseKey, None, None);
+            return active_lease(WorkspaceCacheCheckoutResult::NoReuseKey, None, None, None);
         };
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
-        match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
-            Ok(lock) => active_lease(
+        let owner_before = self.local_entry_lock_observation(&cache_key);
+        match crate::lock::try_acquire_or_busy(self.entry_lock_path(&cache_key)).await {
+            Ok(crate::lock::TryLock::Acquired(lock)) => active_lease(
                 WorkspaceCacheCheckoutResult::Miss,
-                Some(lock),
+                Some(WorkspaceEntryLock::new(
+                    self,
+                    &cache_key,
+                    lock,
+                    WorkspaceCacheLockOwner::Active,
+                )),
                 Some(cache_key),
+                None,
             ),
+            Ok(crate::lock::TryLock::Busy) => {
+                let owner = self.stable_local_entry_lock_owner(&cache_key, owner_before.as_ref());
+                info!(
+                    run_id = %common.run_id,
+                    cache_key,
+                    owner = owner.as_str(),
+                    "workspace image cache active lease lock busy; promotion disabled"
+                );
+                active_lease(
+                    WorkspaceCacheCheckoutResult::LockBusy,
+                    None,
+                    None,
+                    Some(WorkspaceCacheLockDecision::Busy(owner)),
+                )
+            }
             Err(e) => {
                 info!(
                     run_id = %common.run_id,
                     cache_key,
                     error = %e,
-                    "workspace image cache active lease lock busy or unavailable; promotion disabled"
+                    "workspace image cache active lease lock unavailable; promotion disabled"
                 );
-                active_lease(WorkspaceCacheCheckoutResult::LockBusy, None, None)
+                active_lease(
+                    WorkspaceCacheCheckoutResult::LockBusy,
+                    None,
+                    None,
+                    Some(WorkspaceCacheLockDecision::Unavailable),
+                )
             }
         }
     }
@@ -337,7 +485,8 @@ impl WorkspaceImageCache {
                                previous_storage: Option<StorageFingerprints>,
                                entry_lock,
                                cache_key,
-                               workspace_drive_enabled| {
+                               workspace_drive_enabled,
+                               lock_decision| {
             let consumed_cache_hit =
                 result == WorkspaceCacheCheckoutResult::Hit && source_image.is_some();
             WorkspaceImageLease::from_parts(
@@ -350,6 +499,7 @@ impl WorkspaceImageCache {
                     entry_lock,
                     workspace_drive_enabled,
                     result,
+                    lock_decision,
                 },
             )
         };
@@ -367,6 +517,7 @@ impl WorkspaceImageCache {
                 None,
                 None,
                 request.workspace_drive_required,
+                None,
             );
         };
         let Some(reuse_key) = common.reuse_key else {
@@ -377,6 +528,7 @@ impl WorkspaceImageCache {
                 None,
                 None,
                 true,
+                None,
             );
         };
         let Ok(mut stats) = self.fs_stats().await else {
@@ -391,6 +543,7 @@ impl WorkspaceImageCache {
                 None,
                 None,
                 true,
+                None,
             );
         };
         let mut budget = CacheBudget::from_fs_stats(stats);
@@ -429,24 +582,29 @@ impl WorkspaceImageCache {
                 None,
                 None,
                 true,
+                None,
             );
         }
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
+        let owner_before = self.local_entry_lock_observation(&cache_key);
         let lock = match self.acquire_prepare_lock(lock_path, lock_policy).await {
             Ok(crate::lock::TryLock::Acquired(lock)) => lock,
             Ok(crate::lock::TryLock::Busy) => {
+                let owner = self.stable_local_entry_lock_owner(&cache_key, owner_before.as_ref());
                 match lock_policy {
                     WorkspaceImagePrepareLockPolicy::WaitForTransientContention => info!(
                         run_id = %common.run_id,
                         cache_key,
+                        owner = owner.as_str(),
                         wait_ms = duration_ms(WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT),
                         "workspace image cache lock remained busy; using fresh workspace image"
                     ),
                     WorkspaceImagePrepareLockPolicy::ImmediateFallback => info!(
                         run_id = %common.run_id,
                         cache_key,
+                        owner = owner.as_str(),
                         wait_ms = 0,
                         "workspace image cache lock busy without retry; using fresh workspace image"
                     ),
@@ -458,6 +616,7 @@ impl WorkspaceImageCache {
                     None,
                     None,
                     true,
+                    Some(WorkspaceCacheLockDecision::Busy(owner)),
                 );
             }
             Err(e) => {
@@ -474,9 +633,11 @@ impl WorkspaceImageCache {
                     None,
                     None,
                     true,
+                    Some(WorkspaceCacheLockDecision::Unavailable),
                 );
             }
         };
+        let lock = WorkspaceEntryLock::new(self, &cache_key, lock, WorkspaceCacheLockOwner::Active);
 
         let entry_dir = self.workspace_image_cache_entry_dir(&cache_key);
         match remove_non_directory_workspace_cache_entry(&entry_dir).await {
@@ -494,6 +655,7 @@ impl WorkspaceImageCache {
                     Some(lock),
                     Some(cache_key),
                     true,
+                    None,
                 );
             }
             Ok(false) => {}
@@ -512,6 +674,7 @@ impl WorkspaceImageCache {
                     Some(lock),
                     Some(cache_key),
                     true,
+                    None,
                 );
             }
         }
@@ -552,6 +715,7 @@ impl WorkspaceImageCache {
                             Some(lock),
                             Some(cache_key),
                             true,
+                            None,
                         );
                     }
                 }
@@ -580,6 +744,7 @@ impl WorkspaceImageCache {
                             Some(lock),
                             Some(cache_key),
                             true,
+                            None,
                         );
                     }
                     Err(remove_error) if remove_error.kind() == std::io::ErrorKind::NotFound => {
@@ -590,6 +755,7 @@ impl WorkspaceImageCache {
                             Some(lock),
                             Some(cache_key),
                             true,
+                            None,
                         );
                     }
                     Err(remove_error) => {
@@ -608,6 +774,7 @@ impl WorkspaceImageCache {
                     Some(lock),
                     Some(cache_key),
                     true,
+                    None,
                 );
             }
         };
@@ -620,6 +787,7 @@ impl WorkspaceImageCache {
                 Some(lock),
                 Some(cache_key),
                 true,
+                None,
             ),
             None => workspace_drive(
                 WorkspaceCacheCheckoutResult::Miss,
@@ -628,6 +796,7 @@ impl WorkspaceImageCache {
                 Some(lock),
                 Some(cache_key),
                 true,
+                None,
             ),
         }
     }
@@ -1259,6 +1428,11 @@ impl WorkspaceImageLease {
         self.result
     }
 
+    pub(crate) fn lock_outcome_and_reason(&self) -> Option<(&'static str, Option<&'static str>)> {
+        self.lock_decision
+            .map(|decision| (decision.outcome(), decision.reason()))
+    }
+
     pub(crate) fn is_cache_hit(&self) -> bool {
         self.result == WorkspaceCacheCheckoutResult::Hit
     }
@@ -1375,10 +1549,15 @@ impl WorkspaceImageLease {
             }
         };
 
+        let mut entry_lock = self.entry_lock.take();
+        if let Some(entry_lock) = entry_lock.as_mut() {
+            entry_lock.set_owner(WorkspaceCacheLockOwner::Finalizing);
+        }
+
         Some(WorkspaceImagePromotionContext {
             cache: self.cache.clone(),
             cache_key: target.cache_key,
-            entry_lock: self.entry_lock.take(),
+            entry_lock,
             run_id,
             sandbox_id,
             profile_name: self.profile_name.clone(),
@@ -1483,7 +1662,12 @@ impl WorkspaceImagePromotionContext {
             Some(_) => None,
             None => {
                 match crate::lock::try_acquire(self.cache.entry_lock_path(&self.cache_key)).await {
-                    Ok(lock) => Some(lock),
+                    Ok(lock) => Some(WorkspaceEntryLock::new(
+                        &self.cache,
+                        &self.cache_key,
+                        lock,
+                        WorkspaceCacheLockOwner::Finalizing,
+                    )),
                     Err(e) => {
                         info!(
                             run_id = %self.run_id,
@@ -1525,7 +1709,12 @@ impl WorkspaceImagePromotionContext {
             Some(_) => None,
             None => {
                 match crate::lock::try_acquire(self.cache.entry_lock_path(&self.cache_key)).await {
-                    Ok(lock) => Some(lock),
+                    Ok(lock) => Some(WorkspaceEntryLock::new(
+                        &self.cache,
+                        &self.cache_key,
+                        lock,
+                        WorkspaceCacheLockOwner::Finalizing,
+                    )),
                     Err(e) => {
                         info!(
                             run_id = %self.run_id,
@@ -1616,7 +1805,12 @@ impl WorkspaceImagePromotionContext {
         let _late_entry_lock_guard = match entry_lock.as_ref() {
             Some(_) => None,
             None => match crate::lock::try_acquire(cache.entry_lock_path(&cache_key)).await {
-                Ok(lock) => Some(lock),
+                Ok(lock) => Some(WorkspaceEntryLock::new(
+                    &cache,
+                    &cache_key,
+                    lock,
+                    WorkspaceCacheLockOwner::Finalizing,
+                )),
                 Err(e) => {
                     warn!(
                         run_id = %run_id,
@@ -1670,7 +1864,7 @@ impl WorkspaceImagePromotionContext {
         let Self {
             cache,
             cache_key,
-            entry_lock,
+            mut entry_lock,
             run_id: _,
             sandbox_id: _,
             profile_name,
@@ -1684,6 +1878,9 @@ impl WorkspaceImagePromotionContext {
             storage_fingerprints,
             restored_session_identity: _,
         } = self;
+        if let Some(entry_lock) = entry_lock.as_mut() {
+            entry_lock.set_owner(WorkspaceCacheLockOwner::Active);
+        }
         let base = WorkspaceImageLeaseBase {
             cache,
             profile_name,
@@ -1702,6 +1899,7 @@ impl WorkspaceImagePromotionContext {
                 entry_lock,
                 workspace_drive_enabled: workspace_drive_available,
                 result: WorkspaceCacheCheckoutResult::Miss,
+                lock_decision: None,
             },
         )
     }

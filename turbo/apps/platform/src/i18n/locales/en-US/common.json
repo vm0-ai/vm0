@@ -385,7 +385,6 @@
         "newChat": "New chat",
         "nextAgent": "Next agent",
         "nextThread": "Next thread",
-        "openAgentList": "Open agent list",
         "openFirstThread": "Open first thread",
         "previousAgent": "Previous agent",
         "previousThread": "Previous thread",
@@ -2397,6 +2396,7 @@
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",
+      "confirmRecording": "OK",
       "draft": "Voice draft",
       "draftTooLong": "This voice draft is too long to finish. Start a new recording.",
       "finishDraft": "Finish",
@@ -5078,6 +5078,14 @@
           "system": "System",
           "title": "Theme"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Let agents use a cloud browser in new chats",
+          "title": "Cloud browser"
+        },
+        "description": "Choose defaults for new chats and how messages are sent.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

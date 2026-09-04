@@ -1,4 +1,4 @@
-import type { Data, Root, RootContent } from "hast";
+import type { Data, Element, ElementContent, Root, RootContent } from "hast";
 import { marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
@@ -9,12 +9,13 @@ import rehypeRaw from "rehype-raw";
 import rehypeRewrite from "rehype-rewrite";
 import rehypeSlug from "rehype-slug";
 import { unified, type PluggableList } from "unified";
-import { visit } from "unist-util-visit";
+import { SKIP, visit } from "unist-util-visit";
 
 import {
   MARKDOWN_MERMAID_FENCE_ATTRIBUTE,
   rehypeMermaid,
 } from "../rehype-mermaid.ts";
+import { findHexRgbColors } from "./hex-rgb-color.ts";
 import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
 /**
@@ -26,6 +27,8 @@ declare module "hast" {
   interface Data {
     /** Set by `uiw-nodes`: the code a copy button copies. */
     copyCode?: string;
+    /** A six-digit HEX RGB color shown by the adjacent preview marker. */
+    colorPreview?: string;
     /** Set by `rehypeMermaid`: the diagram a placeholder stands for. */
     mermaid?: { code: string };
   }
@@ -41,7 +44,7 @@ declare module "hast" {
  *
  * The rehype plugin order is load-bearing:
  *
- *   slug → autolinkHeadings → ignore → rewrite → attrs → cards → mermaid → prism
+ *   slug → autolinkHeadings → ignore → rewrite → attrs → colors → cards → mermaid → prism
  */
 
 type MarkdownCard = NonNullable<Data["card"]>;
@@ -332,6 +335,91 @@ const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   }
 });
 
+const COLOR_PREVIEW_EXCLUDED_TAGS: ReadonlySet<string> = new Set(["a", "pre"]);
+
+function colorPreviewNode(color: string): Element {
+  return {
+    type: "element",
+    tagName: "span",
+    properties: {},
+    data: { colorPreview: color },
+    children: [],
+  };
+}
+
+function inlineCodeColor(node: Element): string | undefined {
+  if (node.children.length !== 1) {
+    return undefined;
+  }
+  const child = node.children[0];
+  if (child.type !== "text") {
+    return undefined;
+  }
+  const [color] = findHexRgbColors(child.value);
+  return color?.start === 0 && color.end === child.value.length
+    ? color.color
+    : undefined;
+}
+
+function colorPreviewChildren(value: string): readonly ElementContent[] {
+  const colors = findHexRgbColors(value);
+  if (colors.length === 0) {
+    return [{ type: "text", value }];
+  }
+
+  const children: ElementContent[] = [];
+  let offset = 0;
+  for (const { color, start, end } of colors) {
+    if (start > offset) {
+      children.push({ type: "text", value: value.slice(offset, start) });
+    }
+    children.push({ type: "text", value: color }, colorPreviewNode(color));
+    offset = end;
+  }
+  if (offset < value.length) {
+    children.push({ type: "text", value: value.slice(offset) });
+  }
+  return children;
+}
+
+function rehypeColorPreviews() {
+  return (tree: Root): void => {
+    visit(tree, (node, index, parent) => {
+      if (
+        node.type === "element" &&
+        COLOR_PREVIEW_EXCLUDED_TAGS.has(node.tagName)
+      ) {
+        return SKIP;
+      }
+      if (node.type === "element" && node.tagName === "code") {
+        const color = inlineCodeColor(node);
+        if (
+          color !== undefined &&
+          parent !== undefined &&
+          index !== undefined &&
+          (parent.type === "element" || parent.type === "root")
+        ) {
+          parent.children.splice(index + 1, 0, colorPreviewNode(color));
+          return [SKIP, index + 2];
+        }
+        return SKIP;
+      }
+      if (node.type !== "text" || parent === undefined || index === undefined) {
+        return undefined;
+      }
+      const children = colorPreviewChildren(node.value);
+      if (children.length === 1) {
+        return undefined;
+      }
+      if (parent.type === "element" || parent.type === "root") {
+        parent.children.splice(index, 1, ...children);
+        return index + children.length;
+      }
+      return undefined;
+    });
+  };
+}
+
 function rehypePlugins(options: MarkdownParseOptions): PluggableList {
   const cardPlugins: PluggableList = options.cards
     ? [[rehypeCards, { cards: options.cards }]]
@@ -343,6 +431,7 @@ function rehypePlugins(options: MarkdownParseOptions): PluggableList {
     rehypeIgnore,
     [rehypeRewrite, { rewrite: rewriteUnknownTags }],
     [rehypeAttrs, { properties: "attr" }],
+    rehypeColorPreviews,
     ...cardPlugins,
     ...mermaidPlugins,
     [rehypePrism, { ignoreMissing: true }],

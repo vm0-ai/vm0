@@ -1492,12 +1492,6 @@ export {
   type UsageRecordSource,
 } from "./usage-record";
 export {
-  teamContract,
-  teamComposeItemSchema,
-  type TeamContract,
-  type TeamComposeItem,
-} from "./team";
-export {
   integrationsSlackContract,
   slackOrgStatusSchema,
   type IntegrationsSlackContract,

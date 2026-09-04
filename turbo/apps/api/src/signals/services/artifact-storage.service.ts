@@ -10,7 +10,10 @@ import {
   buildArtifactPrefix,
   buildArtifactPrefixV2,
   buildFileUrlFromKey,
+  artifactKeyFromShortOkouUrl,
   isArtifactKeyV2,
+  OKOU_CDN_ARTIFACTS_ORIGIN,
+  OKOU_SHORT_ARTIFACTS_ORIGIN,
   publicArtifactsBaseUrlForBrand,
   sanitizeArtifactFilename,
 } from "../../lib/file-url";
@@ -77,9 +80,13 @@ function publicArtifactKeyFromUrl(value: string): string | null {
   if (!url) {
     return null;
   }
+  if (url.origin === OKOU_SHORT_ARTIFACTS_ORIGIN) {
+    return artifactKeyFromShortOkouUrl(url);
+  }
   const allowedOrigins = new Set([
     new URL(publicArtifactsBaseUrlForBrand("vm0")).origin,
     new URL(publicArtifactsBaseUrlForBrand("okou")).origin,
+    OKOU_CDN_ARTIFACTS_ORIGIN,
   ]);
   if (!allowedOrigins.has(url.origin)) {
     return null;

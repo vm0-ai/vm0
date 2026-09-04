@@ -399,7 +399,6 @@
         "newChat": "Nuova chat",
         "nextAgent": "Il prossimo agente",
         "nextThread": "Thread successivo",
-        "openAgentList": "Apri l'elenco degli agenti",
         "openFirstThread": "Apri il primo thread",
         "previousAgent": "Agente precedente",
         "previousThread": "Thread precedente",
@@ -2441,6 +2440,7 @@
     },
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
+      "confirmRecording": "OK",
       "draft": "Bozza vocale",
       "draftTooLong": "Questa bozza vocale è troppo lunga. Avvia una nuova registrazione.",
       "finishDraft": "Completa",
@@ -5143,6 +5143,14 @@
           "system": "Sistema",
           "title": "Tema"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Consenti agli agenti di usare un browser cloud nelle nuove chat",
+          "title": "Browser cloud"
+        },
+        "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

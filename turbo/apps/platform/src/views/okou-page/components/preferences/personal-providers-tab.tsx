@@ -372,7 +372,7 @@ function OAuthAccountRow({
         </Button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {plan ? (
-            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-brand-text">
               {plan}
             </span>
           ) : null}

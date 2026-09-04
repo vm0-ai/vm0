@@ -123,11 +123,6 @@ describe("GET /api/chat/search durable reader", () => {
       seqId: second.prompt.seqId,
       runId: null,
     });
-    // Previous clients can still request context during rollout, but the new
-    // backend no longer loads or returns surrounding messages.
-    expect(result.contextBefore).toStrictEqual([]);
-    expect(result.contextAfter).toStrictEqual([]);
-
     for (const excluded of [secondError, secondTerminal]) {
       const excludedSearch = await chat.searchChat(owner, excluded);
       expect(excludedSearch.results).toStrictEqual([]);
