@@ -94,12 +94,6 @@ interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
 }
 
-interface BrowserScreenOptions {
-  readonly height: number;
-  readonly pixelRatio: number;
-  readonly width: number;
-}
-
 interface CanvasRender {
   readonly background: string;
   readonly height: number;
@@ -532,9 +526,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(
           maxTouchPoints,
         );
-      },
-      screen: (options: BrowserScreenOptions): void => {
-        mockScreen(getSignal(), options);
       },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
@@ -1314,26 +1305,6 @@ function mockImageDimensions(
   });
 
   return { createdUrls, revokedUrls };
-}
-
-function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
-  const widthDescriptor = defineWindowProperty(screen, "width", options.width);
-  const heightDescriptor = defineWindowProperty(
-    screen,
-    "height",
-    options.height,
-  );
-  const pixelRatioDescriptor = defineWindowProperty(
-    window,
-    "devicePixelRatio",
-    options.pixelRatio,
-  );
-
-  restoreOnAbort(signal, () => {
-    restoreWindowProperty(screen, "width", widthDescriptor);
-    restoreWindowProperty(screen, "height", heightDescriptor);
-    restoreWindowProperty(window, "devicePixelRatio", pixelRatioDescriptor);
-  });
 }
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {

@@ -318,13 +318,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.IosPwaStartupImages]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Generate iOS PWA startup images from the inline bootstrap skeleton.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.AvatarComposerV2]: {
     maintainer: "yuma@vm0.ai",
     description:
