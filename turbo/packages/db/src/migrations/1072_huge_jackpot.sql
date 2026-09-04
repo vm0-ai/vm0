@@ -1,0 +1,1 @@
+ALTER TABLE "org_custom_connectors" DROP COLUMN "oauth_setup";
