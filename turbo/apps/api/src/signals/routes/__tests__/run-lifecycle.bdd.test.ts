@@ -6830,6 +6830,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("keeps runner heartbeat snapshots ordered", async () => {
+    expect.hasAssertions();
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
