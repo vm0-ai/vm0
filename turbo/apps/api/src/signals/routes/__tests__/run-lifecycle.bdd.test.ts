@@ -1748,6 +1748,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(gatedOnClaim.appendSystemPrompt ?? "").toContain(toolHint);
   });
 
+  it("asks chat runs for a generic progressive artifact preview only while its switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const promptHeading = "# Progressive Artifact Preview";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "make a launch deck",
+      modelProvider: "anthropic-api-key",
+    });
+    const gatedOffRun = await api.readRun(actor, gatedOff.runId);
+    expect(gatedOffRun.appendSystemPrompt ?? "").not.toContain(promptHeading);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ProgressiveArtifactPreview]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "make a launch deck",
+      modelProvider: "anthropic-api-key",
+    });
+    const gatedOnRun = await api.readRun(actor, gatedOn.runId);
+    const appendSystemPrompt = gatedOnRun.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(promptHeading);
+    expect(appendSystemPrompt).toContain("returned Alias URL");
+    expect(appendSystemPrompt).toContain("still working on it");
+    expect(appendSystemPrompt).toContain("same `--site` slug");
+    expect(appendSystemPrompt).toContain(
+      "Do not report named stages, draft/final labels, or completion percentages",
+    );
+  });
+
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -6862,6 +6896,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("keeps runner heartbeat snapshots ordered", async () => {
+    expect.hasAssertions();
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -14081,7 +14116,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
       [400],
     );
-    expectApiError(rejected.body);
+    expect(rejected.body).toStrictEqual({
+      error: {
+        message: `Invalid base URL "https://\${{ vars.JIRA_DOMAIN }}" in firewall "jira": host policy does not allow resolved host "attacker.example"`,
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("refreshes queued connector grants from the stored permission baseline", async () => {

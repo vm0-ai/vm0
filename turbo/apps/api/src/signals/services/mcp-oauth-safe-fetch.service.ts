@@ -47,6 +47,13 @@ type PinnedRequestOutcome =
   | { readonly ok: true; readonly response: Response }
   | { readonly ok: false; readonly error: unknown };
 
+export class McpOAuthUnsafeUrlError extends Error {
+  constructor() {
+    super("MCP OAuth URL is not allowed");
+    this.name = "McpOAuthUnsafeUrlError";
+  }
+}
+
 function internalHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/\.$/u, "");
   return (
@@ -80,7 +87,7 @@ function allowedUrl(input: string | URL): URL {
     url.hash ||
     internalHostname(url.hostname)
   ) {
-    throw new Error("MCP OAuth URL is not allowed");
+    throw new McpOAuthUnsafeUrlError();
   }
   return url;
 }
@@ -96,7 +103,7 @@ async function resolvePublicAddress(
   signal.throwIfAborted();
   const address = addresses[0];
   if (!address || fetchHostHasBlockedAddress(addresses)) {
-    throw new Error("MCP OAuth URL is not allowed");
+    throw new McpOAuthUnsafeUrlError();
   }
   return address;
 }

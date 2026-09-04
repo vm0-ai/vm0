@@ -2732,6 +2732,18 @@
         "continueToProvider": "Continúa con el proveedor para autorizar el acceso.",
         "continueWithAutomatic": "Continúa mientras Okou comprueba cómo se autentica este servidor MCP.",
         "description": "Tu secreto se cifra en reposo y se inyecta en las solicitudes salientes por el cortafuegos. Nunca se expone al agente como una variable de entorno.",
+        "errors": {
+          "authenticationResponseInvalid": "El servidor MCP devolvió una respuesta de autenticación no compatible. Comprueba el endpoint MCP y su configuración de autenticación, o ponte en contacto con el administrador del servidor.",
+          "authorizationUnsupported": "El proveedor de OAuth no admite los requisitos de autorización usados por la autenticación automática. Usa OAuth personalizado solo si ya tienes credenciales de cliente compatibles, o ponte en contacto con el soporte de Okou.",
+          "bindingChanged": "La autoridad OAuth de MCP o el registro del cliente ha cambiado. Vuelve a conectar la cuenta del conector e inténtalo de nuevo.",
+          "clientRegistrationConflict": "El cliente OAuth automático existente no puede solicitar los permisos necesarios mientras haya cuentas conectadas que lo usen. Desconecta esas cuentas y vuelve a conectarlas, o usa OAuth personalizado con credenciales de cliente registradas.",
+          "clientRegistrationInvalid": "El proveedor de OAuth devolvió datos de registro de cliente no válidos. Ponte en contacto con el administrador del servidor o usa OAuth personalizado si ya tienes credenciales de cliente registradas válidas.",
+          "clientRegistrationRejected": "El proveedor de OAuth rechazó el registro automático del cliente y puede restringir los clientes MCP o los metadatos de registro admitidos. Usa un cliente MCP admitido por el proveedor, OAuth personalizado solo si ya tienes credenciales de cliente registradas, o ponte en contacto con el soporte de Okou.",
+          "clientRegistrationUnavailable": "El proveedor de OAuth no ofrece un método de registro automático de clientes compatible. Usa OAuth personalizado si ya tienes credenciales de cliente registradas, o ponte en contacto con el soporte de Okou.",
+          "discoveryInvalid": "Los metadatos de descubrimiento OAuth del servidor MCP están incompletos o son incoherentes. Corrige los metadatos publicados si administras el servidor, o ponte en contacto con el administrador del servidor.",
+          "providerUnavailable": "El proveedor OAuth de MCP no está disponible temporalmente o está limitando las solicitudes. Inténtalo más tarde y comprueba la disponibilidad del proveedor.",
+          "unsafeUrl": "El servidor MCP publicó una URL de OAuth que no es un endpoint HTTPS público. Corrige las URL de OAuth publicadas por el servidor antes de volver a intentarlo."
+        },
         "save": "Guardar",
         "saving": "Guardando…",
         "title": "Conectar {{connector}}"

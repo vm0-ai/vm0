@@ -469,9 +469,7 @@ export function PinnedAgentListSection({
 
   if (layout === "horizontal") {
     const horizontalPinnedAgents =
-      displayedPinnedAgentsLoadable.state === "loading"
-        ? null
-        : displayedPinnedAgents;
+      pinnedAgentsLoadable.state === "loading" ? null : displayedPinnedAgents;
     const pinnedAgentCards =
       horizontalPinnedAgents === null
         ? Array.from({ length: 4 }, (_, index) => {

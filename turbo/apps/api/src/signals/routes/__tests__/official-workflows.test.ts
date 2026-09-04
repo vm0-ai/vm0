@@ -1826,12 +1826,13 @@ describe.sequential("Morning Brief preference", () => {
     );
     expect(detail.body.workflow.automations).toHaveLength(1);
     const automation = detail.body.workflow.automations[0];
-    if (!automation?.chatThreadId) {
-      throw new Error("Expected Morning Brief automation identities");
+    if (!automation) {
+      throw new Error("Expected Morning Brief automation identity");
     }
     expect(automation).toMatchObject({
       kind: "schedule",
       enabled: true,
+      chatThreadId: null,
       schedule: {
         type: "cron",
         cronExpression: "0 7 * * *",
@@ -2627,7 +2628,7 @@ describe.sequential("Official Workflow installations", () => {
     expect(morningBriefAutomation).toMatchObject({
       kind: "schedule",
       enabled: true,
-      chatThreadId: expect.any(String),
+      chatThreadId: null,
       schedule: {
         type: "cron",
         cronExpression: "0 7 * * *",
@@ -5167,7 +5168,7 @@ describe.sequential("Official Workflow installations", () => {
     expect(restored.body.workflow.automations).toHaveLength(1);
     expect(restored.body.workflow.automations[0]).toMatchObject({
       id: addedAutomation.id,
-      chatThreadId: addedAutomation.chatThreadId,
+      chatThreadId: historical.body.chatThreadId,
       enabled: true,
       official: {
         intendedEnabled: true,

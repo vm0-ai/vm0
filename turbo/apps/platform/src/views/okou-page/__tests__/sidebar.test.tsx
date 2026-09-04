@@ -734,6 +734,11 @@ test("Drag the sidebar scrollbar when enabled", async () => {
 
   const scrollbar = await screen.findByTestId("sidebar-scrollbar");
   const thumb = await screen.findByTestId("sidebar-scrollbar-thumb");
+  // The thumb sits against the viewport's edge rather than centred in the
+  // track. Beside the workspace card the chat list keeps only four pixels of
+  // right inset, and a centred thumb lands on the trailing menu button of the
+  // row it is scrolling past.
+  expect(scrollbar).toHaveClass("justify-end");
   scrollbar.style.paddingBlockStart = "0px";
   scrollbar.style.paddingBlockEnd = "0px";
   thumb.style.marginBlockStart = "0px";
@@ -837,6 +842,11 @@ test("Collapse and expand Manage navigation", async () => {
   }
 
   expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
+  // The track hugs the viewport's edge for the same reason the Base UI thumb
+  // does: beside the workspace card the chat list keeps only four pixels of
+  // right inset, and anything further in overlaps the row's trailing menu
+  // button.
+  expect(scrollbarTrack).toHaveClass("right-px");
   expect(scrollbarTrack).toHaveClass(
     "opacity-0",
     "transition-opacity",
@@ -1663,6 +1673,51 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
   });
 });
 
+// The new shell parks the workspace card's eight-pixel gutter, painted in the
+// sidebar colour, immediately right of this column. Keeping the full inset here
+// as well stacks the two, so the rows sit twice as far from the card's border
+// as from the rail.
+test("Spend the workspace card's gutter out of the chat list's right inset", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.NewUi]: true,
+    },
+  });
+
+  await waitFor(() => {
+    return within(sidebar()).getByText("Chats with Zero");
+  });
+
+  const pinnedContent = within(sidebar()).getByTestId(
+    "pinned-agents-horizontal",
+  ).parentElement;
+  const threadContent =
+    within(sidebar()).getByText("Chats with Zero").parentElement?.parentElement;
+  const header = sidebar().firstElementChild;
+  const footer = sidebar().lastElementChild;
+  if (
+    !(pinnedContent instanceof HTMLElement) ||
+    !(threadContent instanceof HTMLElement) ||
+    !(header instanceof HTMLElement) ||
+    !(footer instanceof HTMLElement)
+  ) {
+    throw new Error("Chat list column frame not found");
+  }
+
+  // The rail on the other side supplies no such gutter, so the left inset is
+  // unchanged and the two edges only read alike once the right one hands its
+  // eight pixels to the card.
+  for (const element of [header, pinnedContent, threadContent, footer]) {
+    expect(element).toHaveClass("pl-3", "pr-1");
+    expect(element).not.toHaveClass("px-3");
+  }
+});
+
 test("Route New chat to the current agent and Chat to the default agent", async () => {
   prepareAgents();
   mockSidebarThreadStory([
@@ -2432,6 +2487,45 @@ test("Pin and unpin agents without closing the pin manager", async () => {
   await expect(
     screen.findByText("Support Agent unpinned"),
   ).resolves.toBeInTheDocument();
+});
+
+test("Show pinned agents before unread indicators finish loading", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+  const indicatorRequestStarted = context.mocks.deferred<void>();
+  const releaseIndicators = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
+    if (!indicatorRequestStarted.settled()) {
+      indicatorRequestStarted.resolve(undefined);
+    }
+    await releaseIndicators.promise;
+    return respond(200, {
+      agents: { [SUPPORT_AGENT_ID]: "unread" },
+      threads: {},
+    });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+  await indicatorRequestStarted.promise;
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+  });
+
+  releaseIndicators.resolve(undefined);
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+    ]);
+  });
 });
 
 test("Preserve the user’s pinned-agent order", async () => {

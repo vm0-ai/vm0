@@ -407,6 +407,14 @@ assert.equal(htmlAttribute(vm0Page.html, "data-app-brand-name"), "VM0");
 assert.equal(metaContent(vm0Page.html, "name", "application-name"), "VM0");
 assert.equal(metaContent(vm0Page.html, "name", "description"), vm0Description);
 assert.equal(metaContent(vm0Page.html, "property", "og:site_name"), "VM0");
+assert.equal(
+  metaContent(vm0Page.html, "property", "og:image"),
+  "https://static.vm0.io/web/og-image.png",
+);
+assert.equal(
+  metaContent(vm0Page.html, "name", "twitter:image"),
+  "https://static.vm0.io/web/og-image.png",
+);
 assert.equal(metaContent(vm0Page.html, "name", "twitter:site"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "twitter:creator"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "robots"), "noindex, nofollow");
@@ -435,6 +443,14 @@ assert.equal(
 assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
+assert.equal(
+  metaContent(okouPage.html, "property", "og:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(
+  metaContent(okouPage.html, "name", "twitter:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
 assert.equal(
   tagAttribute(okouPage.html, "link", "rel", "canonical", "href"),
   "https://app.okou.ai/",
@@ -994,6 +1010,14 @@ assert.equal(
 assert.equal(
   metaContent(previewHtml, "property", "og:url"),
   `https://app.okou.ai/share/threads/${sharedThreadId}`,
+);
+assert.equal(
+  metaContent(previewHtml, "property", "og:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(
+  metaContent(previewHtml, "name", "twitter:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
 );
 assert.equal(
   tagAttribute(previewHtml, "link", "rel", "canonical", "href"),

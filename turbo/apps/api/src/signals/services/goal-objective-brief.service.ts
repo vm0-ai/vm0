@@ -28,6 +28,7 @@ export async function generateGoalObjectiveBrief(
         },
       ],
       80,
+      { reasoning: { effort: "low" } },
     ),
     (error) => {
       log.warn("Failed to generate goal objective brief", {

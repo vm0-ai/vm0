@@ -43,7 +43,7 @@ function buttonIn(container: ParentNode, name: string): HTMLElement {
   return button;
 }
 
-function findLinkIn(
+function findLink(
   container: ParentNode,
   name: string,
 ): HTMLElement | undefined {
@@ -56,7 +56,7 @@ function findLinkIn(
 }
 
 function linkIn(container: ParentNode, name: string): HTMLElement {
-  const link = findLinkIn(container, name);
+  const link = findLink(container, name);
   if (!link) {
     throw new Error(`Link ${name} was not available`);
   }
@@ -79,7 +79,7 @@ test("Hide the activity-log action outside debug mode", async () => {
     throw new Error("Assistant response group was not available");
   }
 
-  expect(findLinkIn(responseGroup, "View run logs")).toBeUndefined();
+  expect(findLink(responseGroup, "View run logs")).toBeUndefined();
 });
 
 test("Inspect or copy an assistant response from history", async () => {
