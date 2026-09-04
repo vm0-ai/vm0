@@ -1100,7 +1100,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "ZERO_APP_URL".into(),
+            "CUSTOM_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
         (
@@ -1122,7 +1122,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "ZERO_APP_URL".into(),
+            "CUSTOM_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
     ]);
@@ -1190,7 +1190,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "CUSTOM_USER_ENV",
         "LARGE_USER_ENV",
         "OKOU_APP_URL",
-        "ZERO_APP_URL",
+        "CUSTOM_APP_URL",
         "VM0_FUTURE_RUNNER_KEY",
         "CUSTOM_API_TOKEN",
         "BASH_ENV",
@@ -1236,7 +1236,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "https://app.runner-env.example.test/path"
     );
     assert_eq!(
-        user_env.get("ZERO_APP_URL").unwrap(),
+        user_env.get("CUSTOM_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"
     );
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");

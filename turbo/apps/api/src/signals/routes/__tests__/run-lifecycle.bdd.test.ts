@@ -14952,7 +14952,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
 
     const directEnvironment = {
-      ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
+      CUSTOM_AGENT_ID: `\${{ vars.CUSTOM_AGENT_ID }}`,
       CUSTOM_API_TOKEN: `\${{ secrets.CUSTOM_API_TOKEN }}`,
     };
     const directAgent = await api.createDirectAgent(actor, {
@@ -14974,13 +14974,13 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       agentId: directAgent.agentId,
       prompt: "consume an application-owned Zero context",
       modelProviderType: "anthropic-api-key",
-      vars: { ZERO_AGENT_ID: directAgent.agentId },
+      vars: { CUSTOM_AGENT_ID: directAgent.agentId },
       secrets: { CUSTOM_API_TOKEN: directOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
     const directClaim = await api.claimRunnerJob(direct.runId);
     expect(directClaim.environment).toMatchObject({
-      ZERO_AGENT_ID: directAgent.agentId,
+      CUSTOM_AGENT_ID: directAgent.agentId,
       CUSTOM_API_TOKEN: directOkouToken,
     });
     expect(directClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
@@ -15292,9 +15292,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       value: "***",
     });
     expect(claim.environment?.APP_URL).toBeUndefined();
-    expect(claim.environment ?? {}).not.toHaveProperty(
-      "ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED",
-    );
     expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
       kind: "builtin",
       name: "slack",
