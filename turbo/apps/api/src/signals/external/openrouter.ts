@@ -5,6 +5,15 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_ERROR_RESPONSE_MAX_BYTES = 64 * 1024;
 
+/**
+ * The model behind every internal fast-path generation: chat and shared-thread
+ * titles, recommended follow-ups, notification summaries, initial thinking
+ * copy, run summaries, goal objective briefs, and voice I/O polish. These are
+ * short, latency-sensitive calls that are not user-selectable, so they share a
+ * single model rather than one constant per service.
+ */
+export const FAST_PATH_MODEL = "google/gemini-3.1-flash-lite";
+
 export interface OpenRouterTextPart {
   readonly type: "text";
   readonly text: string;
@@ -55,8 +64,10 @@ interface OpenRouterResponse {
   readonly choices?: readonly OpenRouterChoice[];
 }
 
+type OpenRouterReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
+
 interface OpenRouterGenerateTextOptions {
-  readonly reasoning?: { readonly effort: "none" };
+  readonly reasoning?: { readonly effort: OpenRouterReasoningEffort };
   readonly temperature?: number;
 }
 

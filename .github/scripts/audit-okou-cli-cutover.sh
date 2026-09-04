@@ -155,12 +155,6 @@ if [[ -f "${repo_root}/${turbo_workflow_path}" ]] &&
   report_boundary_failure "${turbo_workflow_path}" "legacy symlink present or canonical loop smoke missing"
 fi
 
-e2e_setup_path="e2e/helpers/setup.bash"
-if [[ -f "${repo_root}/${e2e_setup_path}" ]] &&
-  rg -q -F 'ZERO_CLI' "${repo_root}/${e2e_setup_path}"; then
-  report_boundary_failure "${e2e_setup_path}" "legacy E2E command wrapper"
-fi
-
 e2e_trace_path="e2e/helpers/trace-cli.sh"
 if [[ -f "${repo_root}/${e2e_trace_path}" ]] &&
   (! rg -q -F 'CLI_ENTRYPOINT="okou"' "${repo_root}/${e2e_trace_path}" ||

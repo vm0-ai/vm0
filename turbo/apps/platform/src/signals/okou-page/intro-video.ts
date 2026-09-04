@@ -14,7 +14,6 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
-import { introVideoAgentInstructions } from "./intro-video-agent-instructions.ts";
 import { settle } from "../utils.ts";
 
 export type IntroVideoWizardStep =
@@ -661,12 +660,6 @@ function createSubmissionCommands(
       if (!(await set(uploadSourceIfNeeded$, composer, source, signal))) {
         return false;
       }
-      // A deck, a screen recording, and an unclassified upload become a video
-      // by entirely different means, so each entry sends its own workflow.
-      set(
-        composer.draft.setAgentInstructions$,
-        introVideoAgentInstructions(source.kind),
-      );
       set(
         composer.draft.setDraftInput$,
         buildIntroVideoPrompt({

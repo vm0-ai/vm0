@@ -3,7 +3,7 @@ import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v4";
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v5";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);

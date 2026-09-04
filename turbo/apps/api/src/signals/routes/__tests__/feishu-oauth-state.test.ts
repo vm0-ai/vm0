@@ -60,6 +60,7 @@ describe("Feishu OAuth state", () => {
   it.each(["vm0", "okou"] as const)(
     "passes an explicit %s public brand to installation validation",
     async (publicBrand) => {
+      expect.hasAssertions();
       await expectConnectError(
         signedState({ ...statePayload(), publicBrand }),
         "Feishu bot not found",
@@ -81,6 +82,7 @@ describe("Feishu OAuth state", () => {
       payload: { ...statePayload(), publicBrand: "zero" },
     },
   ])("rejects an $kind public brand", async ({ payload }) => {
+    expect.hasAssertions();
     await expectConnectError(
       signedState(payload),
       "Invalid or expired connect state",
@@ -88,6 +90,7 @@ describe("Feishu OAuth state", () => {
   });
 
   it("rejects an omitted redirect URI", async () => {
+    expect.hasAssertions();
     const { redirectUri: _redirectUri, ...payload } = statePayload();
     await expectConnectError(
       signedState({ ...payload, publicBrand: "vm0" }),
@@ -96,6 +99,7 @@ describe("Feishu OAuth state", () => {
   });
 
   it("preserves the 10-minute expiration boundary", async () => {
+    expect.hasAssertions();
     await expectConnectError(
       signedState({
         ...statePayload(),
@@ -115,6 +119,7 @@ describe("Feishu OAuth state", () => {
   });
 
   it("rejects a state signed with a different secret", async () => {
+    expect.hasAssertions();
     await expectConnectError(
       signedState({ ...statePayload(), publicBrand: "vm0" }, "b".repeat(64)),
       "Invalid or expired connect state",

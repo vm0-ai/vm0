@@ -230,6 +230,7 @@ function piAgentCodexStream(
     reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
     serviceTier: options?.serviceTier,
     accountId,
+    maxRetries: 0,
     transport: "sse",
   });
 }
