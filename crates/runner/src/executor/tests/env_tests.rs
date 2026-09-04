@@ -1240,6 +1240,11 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
         json!("first-turn");
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["sandboxEventSequenceStart"] = json!(4);
+    ctx.pi_model_config.as_mut().unwrap()["catalogModel"] = json!("deepseek-v4-flash");
+    ctx.pi_model_config.as_mut().unwrap()["credentialHeader"] = json!({
+        "name": "X-Api-Key",
+        "valueTemplate": "Bearer {{secret}}"
+    });
     ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
     let sandbox_id = SandboxId::new_v4().to_string();
     let payload = validate_execution_context_before_sandbox(
@@ -1265,6 +1270,12 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
     assert_eq!(model["credentialSecretName"], "DEEPSEEK_API_KEY");
+    assert_eq!(model["catalogModel"], "deepseek-v4-flash");
+    assert_eq!(model["credentialHeader"]["name"], "X-Api-Key");
+    assert_eq!(
+        model["credentialHeader"]["valueTemplate"],
+        "Bearer {{secret}}"
+    );
     assert_eq!(model["futureModelField"], "model-root");
 }
 
@@ -1424,6 +1435,121 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
 }
 
 #[test]
+fn pi_execution_context_rejects_invalid_legacy_shared_model_fields_before_sandbox() {
+    let invalid_headers = [
+        (
+            "non-object",
+            json!(null),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "missing name",
+            json!({ "valueTemplate": "Bearer {{secret}}" }),
+            "Pi legacy model config is invalid",
+        ),
+        (
+            "missing value template",
+            json!({ "name": "X-Api-Key" }),
+            "Pi legacy model config is invalid",
+        ),
+        (
+            "invalid name",
+            json!({
+                "name": "1-Api-Key",
+                "valueTemplate": "Bearer {{secret}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "oversized name",
+            json!({
+                "name": "A".repeat(129),
+                "valueTemplate": "Bearer {{secret}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "missing placeholder",
+            json!({ "name": "X-Api-Key", "valueTemplate": "Bearer token" }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "repeated placeholder",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "{{secret}} {{secret}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "other template reference",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "{{secret}} {{future}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "carriage return",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "Bearer {{secret}}\rSuffix"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "line feed",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "Bearer {{secret}}\nSuffix"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "oversized template",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": format!("{}{{{{secret}}}}", "😀".repeat(508))
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "unknown nested field",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "Bearer {{secret}}",
+                "futureField": true
+            }),
+            "Pi model config credentialHeader",
+        ),
+    ];
+
+    for (case, header, expected) in invalid_headers {
+        let mut context = pi_context_for_test();
+        context.pi_model_config.as_mut().unwrap()["credentialHeader"] = header;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains(expected),
+            "{case} produced unexpected error: {error}"
+        );
+    }
+
+    for (case, catalog_model) in [("empty", json!("")), ("null", json!(null))] {
+        let mut context = pi_context_for_test();
+        context.pi_model_config.as_mut().unwrap()["catalogModel"] = catalog_model;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains("Pi model config catalogModel is invalid"),
+            "{case} catalogModel produced unexpected error: {error}"
+        );
+    }
+}
+
+#[test]
 fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
     for dialect in ["openai-responses", "openai-codex-responses"] {
         let mut context = pi_context_for_test();
@@ -1440,6 +1566,54 @@ fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
 #[test]
 fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
     let invalid_configs = [
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["baseUrl"] = json!("not a URL");
+                config
+            },
+            "Pi model config baseUrl is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["model"] = json!("");
+                config
+            },
+            "Pi model config model is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["model"] = json!("😀".repeat(257));
+                config
+            },
+            "Pi model config model is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!("");
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!(null);
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!("😀".repeat(257));
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
         (
             {
                 let mut config = pi_model_config_v2_for_test("openai-codex-responses");
