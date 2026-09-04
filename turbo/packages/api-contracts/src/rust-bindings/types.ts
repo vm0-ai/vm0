@@ -687,6 +687,7 @@ export const rustTypeBindings = [
         rustDoc: ["Known failure reason emitted by current Rust producers."],
         variants: {
           session_history_limit: ["Session history exceeded its size limit."],
+          execution_timeout: ["The run reached its execution time limit."],
           insufficient_credits: ["The provider account lacks credits."],
           invalid_api_key: ["The configured API key is invalid."],
           invalid_credentials: ["The configured credentials are invalid."],

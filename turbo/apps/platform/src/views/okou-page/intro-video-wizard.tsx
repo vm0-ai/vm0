@@ -61,8 +61,6 @@ import {
 
 const PRESENTATION_ACCEPT =
   ".html,.pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/html";
-const PRESENTATION_INPUT_SELECTOR = '[data-intro-video-presentation-input=""]';
-const FILE_INPUT_SELECTOR = '[data-intro-video-file-input=""]';
 
 function wizardStage(step: IntroVideoWizardStep): number {
   switch (step) {
@@ -280,10 +278,6 @@ function SourceChoice({
   );
 }
 
-function clickFileInput(selector: string): void {
-  document.querySelector<HTMLInputElement>(selector)?.click();
-}
-
 function SourceOptions({
   desktopProductName,
   onRecord,
@@ -345,6 +339,14 @@ function SourcePage() {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const desktopProductName = useGet(computerUseProductName$);
+  const openFileInput = useSet(introVideoWizardSignals.openFileInput$);
+  const openPresentationInput = useSet(
+    introVideoWizardSignals.openPresentationInput$,
+  );
+  const setFileInputRef = useSet(introVideoWizardSignals.setFileInputRef$);
+  const setPresentationInputRef = useSet(
+    introVideoWizardSignals.setPresentationInputRef$,
+  );
   const setSourceFile = useSet(introVideoWizardSignals.setSourceFile$);
   const setStep = useSet(introVideoWizardSignals.setStep$);
 
@@ -400,16 +402,13 @@ function SourcePage() {
         onRecord={() => {
           setStep("desktop-record");
         }}
-        onUpload={() => {
-          clickFileInput(FILE_INPUT_SELECTOR);
-        }}
-        onUploadPresentation={() => {
-          clickFileInput(PRESENTATION_INPUT_SELECTOR);
-        }}
+        onUpload={openFileInput}
+        onUploadPresentation={openPresentationInput}
       />
       <input
         hidden
         data-intro-video-presentation-input=""
+        ref={setPresentationInputRef}
         type="file"
         accept={PRESENTATION_ACCEPT}
         onChange={handlePresentationChange}
@@ -417,6 +416,7 @@ function SourcePage() {
       <input
         hidden
         data-intro-video-file-input=""
+        ref={setFileInputRef}
         type="file"
         onChange={handleFileChange}
       />

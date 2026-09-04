@@ -231,6 +231,7 @@ function shouldSuppressKnownFailureLog(
       );
     }
     case "session_history_limit":
+    case "execution_timeout":
     case "unsupported_model": {
       return false;
     }

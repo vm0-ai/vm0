@@ -62,6 +62,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
 
     expect(response.body).toStrictEqual({
       draftUserMessage: null,
+      draftVoice: null,
       draftAttachments: null,
     });
   });
@@ -76,6 +77,11 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
       filename: "draft-file.txt",
       contentType: "text/plain",
       size: 123,
+    };
+    const draftVoice = {
+      version: 1 as const,
+      id: randomUUID(),
+      transcript: "unfinished voice draft",
     };
     const draftUserMessage: UserMessageInputDocument = {
       version: 1,
@@ -103,6 +109,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftUserMessage,
+          draftVoice,
           draftAttachments: [attachment],
         },
       }),
@@ -118,6 +125,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(saved.body).toStrictEqual({
       draftUserMessage,
+      draftVoice,
       draftAttachments: [attachment],
     });
 
@@ -131,6 +139,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftUserMessage: updatedDraftUserMessage,
+          draftVoice: null,
           draftAttachments: null,
         },
       }),
@@ -146,6 +155,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(updated.body).toStrictEqual({
       draftUserMessage: updatedDraftUserMessage,
+      draftVoice: null,
       draftAttachments: null,
     });
 
@@ -155,6 +165,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
         headers: authHeaders(),
         body: {
           draftUserMessage: null,
+          draftVoice: null,
           draftAttachments: null,
         },
       }),
@@ -170,6 +181,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(cleared.body).toStrictEqual({
       draftUserMessage: null,
+      draftVoice: null,
       draftAttachments: null,
     });
   });
@@ -211,6 +223,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(concurrentDrafts).toContainEqual(saved.body.draftUserMessage);
     expect(saved.body.draftAttachments).toBeNull();
+    expect(saved.body.draftVoice).toBeNull();
   });
 
   it("does not expose another user's draft on the same public agent", async () => {
@@ -244,6 +257,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(peerDraft.body).toStrictEqual({
       draftUserMessage: null,
+      draftVoice: null,
       draftAttachments: null,
     });
 
@@ -272,6 +286,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
     );
     expect(savedPeerDraft.body).toStrictEqual({
       draftUserMessage: peerDraftUserMessage,
+      draftVoice: null,
       draftAttachments: null,
     });
 
@@ -288,6 +303,7 @@ describe("GET/PATCH /api/agents/:id/draft", () => {
         version: 1,
         parts: [{ type: "text", text: "owner draft" }],
       },
+      draftVoice: null,
       draftAttachments: null,
     });
   });

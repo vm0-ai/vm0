@@ -238,8 +238,12 @@ export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
 export const CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE =
   "This run reached its execution time limit.";
 
+// Existing runner/sandbox and commit-addressed CLI rollout fallback:
+// pre-execution_timeout senders may wrap the canonical text with `execution: `.
+// Remove after old instances drain, their queue, two-hour execution, and
+// finalization windows close, and the rollback floor is compatible; see #31713.
 const AGENT_EXECUTION_TIMEOUT_RUN_ERROR =
-  /^Agent execution timed out after [1-9]\d* seconds$/u;
+  /^(?:execution: )?Agent execution timed out after [1-9]\d* seconds$/u;
 
 const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
   "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
@@ -681,6 +685,7 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 
 type StructuredRunErrorBehavior =
   | "credential"
+  | "execution-timeout"
   | "generic"
   | "insufficient-credits"
   | "overloaded"
@@ -693,6 +698,7 @@ const STRUCTURED_RUN_ERROR_BEHAVIOR: Record<
   StructuredRunErrorBehavior
 > = {
   session_history_limit: "generic",
+  execution_timeout: "execution-timeout",
   insufficient_credits: "insufficient-credits",
   invalid_api_key: "generic",
   invalid_credentials: "credential",
@@ -726,6 +732,9 @@ function formatStructuredRunError(params: {
   }
 
   switch (STRUCTURED_RUN_ERROR_BEHAVIOR[knownReason.data]) {
+    case "execution-timeout": {
+      return CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE;
+    }
     case "insufficient-credits": {
       return "insufficient_credits";
     }

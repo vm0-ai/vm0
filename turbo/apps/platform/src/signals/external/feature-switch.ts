@@ -12,6 +12,7 @@ import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
+import { syncShellDocumentAttributes$ } from "../theme.ts";
 import {
   featureSwitchCacheState$,
   setFeatureSwitchLocalStorage$,
@@ -169,6 +170,7 @@ const hydrateFeatureSwitch$ = command(
       result.body.effectiveSwitches,
     );
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(syncShellDocumentAttributes$);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: combined[FeatureSwitchKey.OkouDebug],

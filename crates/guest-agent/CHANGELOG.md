@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.85.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.12...guest-agent-v0.85.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+
+
+### Bug Fixes
+
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+
 ## [0.84.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.11...guest-agent-v0.84.12) (2026-09-04)
 
 

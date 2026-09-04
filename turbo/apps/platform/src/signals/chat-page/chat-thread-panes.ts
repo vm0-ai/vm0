@@ -1,6 +1,7 @@
 import { command, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
+  DraftVoice,
   PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -20,7 +21,7 @@ import {
   type RestorableAttachment,
 } from "../okou-page/chat-draft.ts";
 import {
-  messageDocumentToEditorDoc,
+  draftToEditorDoc,
   messageDocumentToPrompt,
 } from "../okou-page/user-message-document-codec.ts";
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
@@ -87,6 +88,7 @@ interface PaneSpec {
 interface RestoredDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
+  readonly draftVoice: DraftVoice | null;
   readonly attachments: RestorableAttachment[];
 }
 
@@ -122,20 +124,26 @@ function userMessageDraftState(
   threadDraft: ChatThreadDraft,
 ): RestoredDraftState | null {
   const document = threadDraft.draftUserMessage;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+  // A new App may receive a pre-#31562 API response during serving or rollback.
+  // Remove this new-App -> old-API bridge with #31612 after that window closes.
+  const draftVoice = threadDraft.draftVoice ?? null;
+  if (draftToEditorDoc(document, draftVoice) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = document ? messageDocumentToPrompt(document) : "";
   if (content === null) {
     return null;
   }
   return {
     content,
     userMessage: document,
-    attachments: userMessageDraftAttachments(
-      document,
-      threadDraft.draftAttachments ?? [],
-    ),
+    draftVoice,
+    attachments: document
+      ? userMessageDraftAttachments(
+          document,
+          threadDraft.draftAttachments ?? [],
+        )
+      : [],
   };
 }
 
@@ -160,6 +168,7 @@ const loadDraft$ = command(
     const hasDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
+      restoredDraft.draftVoice !== null ||
       restoredDraft.attachments.length > 0;
     if (isNew && hasDraft) {
       const restoredAttachments = restoredDraft.attachments.map(
@@ -170,6 +179,7 @@ const loadDraft$ = command(
         {
           content: restoredDraft.content,
           userMessage: restoredDraft.userMessage,
+          draftVoice: restoredDraft.draftVoice,
           generationTemplate: undefined,
           attachments: restoredAttachments,
         },

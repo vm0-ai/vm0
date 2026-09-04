@@ -1,4 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
@@ -12,7 +13,6 @@ import {
 import { resolveConfiguredProductionPrimaryAppDomain } from "../lib/clerk-instance-config.ts";
 import { CLERK_PRIMARY_APP_DOMAIN_PARAM } from "../lib/clerk-primary-app-domain-param.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
-import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import type {
@@ -36,6 +36,7 @@ import {
 } from "./chat-page/chat-event-signal-registry.ts";
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { reportForceUpgradeRequired } from "./force-upgrade.ts";
+import { logger } from "./log.ts";
 import {
   installSharedDatabaseBridge$,
   setBridgeConnected$,
@@ -49,6 +50,7 @@ import { createDeferredPromise, onRejection } from "./utils.ts";
 
 const SHARED_DATABASE_RELOAD_MARKER = "okou-shared-database-reload";
 const SHARED_DATABASE_RELOAD_WINDOW_MS = 60_000;
+const L = logger("SharedWorkerBridge");
 
 export interface SharedDatabaseBridgeHost {
   createBridge(
@@ -59,7 +61,9 @@ export interface SharedDatabaseBridgeHost {
   ): SharedDatabaseBridge;
 }
 
-function handleSharedDatabaseReloadRequired(): void {
+function handleSharedDatabaseReloadRequired(
+  reason: SharedDatabaseWorkerUnavailableReason,
+): void {
   const url = new URL(location.href);
   const reloadAtMs = now();
   const reloadMarker = url.searchParams.get(SHARED_DATABASE_RELOAD_MARKER);
@@ -80,6 +84,7 @@ function handleSharedDatabaseReloadRequired(): void {
   }
 
   url.searchParams.set(SHARED_DATABASE_RELOAD_MARKER, String(reloadAtMs));
+  L.debug("Reloading app", { reason });
   location.replace(url.toString());
 }
 
@@ -91,7 +96,7 @@ function handleSharedDatabaseWorkerUnavailable(
     return;
   }
 
-  handleSharedDatabaseReloadRequired();
+  handleSharedDatabaseReloadRequired(reason);
   if (reason === "indexeddb-version-changed") {
     throw new Error(
       "Shared database worker is unavailable after an IndexedDB version change",
