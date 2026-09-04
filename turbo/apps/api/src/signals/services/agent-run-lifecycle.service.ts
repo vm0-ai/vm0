@@ -11,7 +11,11 @@ import {
   type DispatchCompleteSideEffectsInput,
 } from "./agent-webhook-complete.service";
 import { piApiFirstTurnObjectKey } from "./pi-api-first-turn-config";
-import { promoteNextQueuedRun$, staleQueueOrgIds$ } from "./run-queue.service";
+import {
+  promoteNextQueuedRun$,
+  publishQueueMarkerNotification,
+  staleQueueOrgIds$,
+} from "./run-queue.service";
 
 const L = logger("RunLifecycle");
 
@@ -22,35 +26,78 @@ export const drainOrgQueue$ = command(
     args: { readonly orgId: string },
     signal: AbortSignal,
   ): Promise<number> => {
-    const activation = await set(promoteNextQueuedRun$, args, signal);
-    if (signal.aborted) {
-      L.debug("Request aborted after queued run promotion commit", {
-        runId: activation?.runnerNotification.runId,
-        orgId: args.orgId,
-      });
-    }
-    if (!activation) {
-      signal.throwIfAborted();
-      return 0;
-    }
-    const activationScheduledAt = now();
-    await tapError(
-      set(activatePendingRun$, { activation, activationScheduledAt }),
-      (error) => {
-        L.error("Failed to activate promoted queued run", {
+    let finishCommittedDrain = false;
+    const committedSignal = new AbortController().signal;
+    while (true) {
+      const promotion = finishCommittedDrain
+        ? await set(promoteNextQueuedRun$, args, committedSignal)
+        : await set(promoteNextQueuedRun$, args, signal);
+      if (signal.aborted) {
+        L.debug("Request aborted after queued run promotion commit", {
+          runId:
+            promotion?.kind === "terminal"
+              ? promotion.runId
+              : promotion?.activation.runnerNotification.runId,
+          orgId: args.orgId,
+        });
+      }
+      if (!promotion) {
+        if (!finishCommittedDrain) {
+          signal.throwIfAborted();
+        }
+        return 0;
+      }
+      if (promotion.kind === "terminal") {
+        finishCommittedDrain = true;
+        await publishQueueMarkerNotification({
+          orgId: promotion.orgId,
+          queueMarkerNotification: promotion.queueMarkerNotification,
+        });
+        if (signal.aborted) {
+          L.debug("Request aborted while publishing failed queue state", {
+            runId: promotion.runId,
+            orgId: promotion.orgId,
+          });
+        }
+        await set(
+          dispatchCompleteSideEffectsCore$,
+          {
+            kind: "terminal",
+            runId: promotion.runId,
+            orgId: promotion.orgId,
+            status: "failed",
+            error: promotion.error,
+          },
+          committedSignal,
+        );
+        if (signal.aborted) {
+          L.debug("Request aborted after failed queue side effects", {
+            runId: promotion.runId,
+            orgId: promotion.orgId,
+          });
+        }
+        continue;
+      }
+      const activation = promotion.activation;
+      const activationScheduledAt = now();
+      await tapError(
+        set(activatePendingRun$, { activation, activationScheduledAt }),
+        (error) => {
+          L.error("Failed to activate promoted queued run", {
+            runId: activation.runnerNotification.runId,
+            orgId: args.orgId,
+            error,
+          });
+        },
+      );
+      if (signal.aborted) {
+        L.debug("Request aborted after queued run activation", {
           runId: activation.runnerNotification.runId,
           orgId: args.orgId,
-          error,
         });
-      },
-    );
-    if (signal.aborted) {
-      L.debug("Request aborted after queued run activation", {
-        runId: activation.runnerNotification.runId,
-        orgId: args.orgId,
-      });
+      }
+      return 1;
     }
-    return 1;
   },
 );
 

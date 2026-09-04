@@ -84,7 +84,12 @@ import {
   lockModelProviderState,
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { resolveOrgCreditAvailability } from "./run-admission.service";
+import {
+  loadRunCreditAdmissionState,
+  resolveOrgCreditAvailability,
+  runHasActiveCreditAdmission,
+  type RunCreditAdmissionState,
+} from "./run-admission.service";
 import { resolveUsageAllowanceAvailabilityForRun } from "./usage-allowance.service";
 import {
   connectorRuntimeCredentialStatusForAccess,
@@ -381,6 +386,7 @@ function mergeExpiresAt(
 async function resolveBillableFirewallCacheExpiry(params: {
   readonly db: Db;
   readonly auth: SandboxAuth;
+  readonly run: FirewallAuthRun;
   readonly firewallBillable: boolean | undefined;
 }): Promise<
   { readonly expiresAt?: number } | ReturnType<typeof insufficientCredits>
@@ -399,6 +405,13 @@ async function resolveBillableFirewallCacheExpiry(params: {
   }
   if (availability.status !== "active") {
     return insufficientCredits();
+  }
+  if (runHasActiveCreditAdmission(params.run)) {
+    return {
+      expiresAt:
+        Math.floor(nowDate().getTime() / 1000) +
+        NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS,
+    };
   }
   const allowance =
     availability.spendableCredits > 0
@@ -4306,10 +4319,7 @@ function missingResolvedSecretsResponse(args: {
   );
 }
 
-interface FirewallAuthRun {
-  readonly orgId: string;
-  readonly status: typeof agentRuns.$inferSelect.status;
-}
+type FirewallAuthRun = RunCreditAdmissionState;
 
 function firewallAuthRunIsActive(
   status: typeof agentRuns.$inferSelect.status,
@@ -4323,18 +4333,12 @@ async function findFirewallAuthRun(
   db: Db,
   auth: SandboxAuth,
 ): Promise<FirewallAuthRun | undefined> {
-  const [run] = await db
-    .select({ orgId: agentRuns.orgId, status: agentRuns.status })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.id, auth.runId),
-        eq(agentRuns.userId, auth.userId),
-        eq(agentRuns.orgId, auth.orgId),
-      ),
-    )
-    .limit(1);
-  return run;
+  return await loadRunCreditAdmissionState({
+    db,
+    runId: auth.runId,
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
 }
 
 async function admitFirewallAuthResponse(
@@ -5697,6 +5701,7 @@ export async function resolveFirewallAuth(
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
     db,
     auth,
+    run,
     firewallBillable: body.firewallBillable,
   });
   if ("status" in billableCacheExpiry) {
