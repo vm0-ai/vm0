@@ -49,6 +49,7 @@ import {
   mockAgent,
   mockAgentConnectorAuthorizations,
   mockConnectors,
+  mockManyConnectedConnectors,
   mockOrgModelRoutes,
   mockThread,
   composerElementFrom,
@@ -329,6 +330,115 @@ describe("chat composer connector connection", () => {
         "true",
       );
     });
+  });
+
+  it("keeps searchable connector menu geometry stable while filtering", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockThread();
+    mockManyConnectedConnectors();
+    mockAgentConnectorAuthorizations(["github"]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: true,
+      },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+
+    const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
+    const popoverContent = searchInput.closest('[data-slot="popover-content"]');
+    if (!(popoverContent instanceof HTMLElement)) {
+      throw new Error("Expected the connector popover content");
+    }
+    await waitFor(() => {
+      expect(popoverContent).toHaveAttribute("data-side", "top");
+    });
+    expect(popoverContent).toHaveClass(
+      "h-[min(25rem,var(--available-height))]",
+      "pointer-events-none",
+      "relative",
+    );
+    expect(popoverContent).toHaveStyle({ boxShadow: "none" });
+    const popoverSurface = popoverContent.firstElementChild;
+    expect(popoverSurface).toHaveClass(
+      "absolute",
+      "max-h-full",
+      "pointer-events-auto",
+    );
+
+    const githubAccess = await screen.findByLabelText("Remove GitHub");
+    const connectorList =
+      githubAccess.closest("label")?.parentElement?.parentElement;
+    if (!(connectorList instanceof HTMLElement)) {
+      throw new Error("Expected the scrollable connector list");
+    }
+    expect(connectorList).toHaveClass("max-h-64", "min-h-0", "overflow-y-auto");
+    const initialSide = popoverContent.dataset.side;
+
+    await user.type(searchInput, "gmail");
+    await waitFor(() => {
+      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+      expect(screen.getByText("Gmail")).toBeInTheDocument();
+      expect(popoverContent.dataset.side).toBe(initialSide);
+      expect(popoverContent).toHaveClass(
+        "h-[min(25rem,var(--available-height))]",
+      );
+      expect(screen.getByText("Add connectors")).toBeInTheDocument();
+    });
+
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(popoverContent.dataset.side).toBe(initialSide);
+      expect(popoverContent).toHaveClass(
+        "h-[min(25rem,var(--available-height))]",
+      );
+    });
+  });
+
+  it("keeps the default connector menu layout when placement is disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockThread();
+    mockManyConnectedConnectors();
+    mockAgentConnectorAuthorizations(["github"]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+
+    const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
+    const popoverContent = searchInput.closest('[data-slot="popover-content"]');
+    if (!(popoverContent instanceof HTMLElement)) {
+      throw new Error("Expected the connector popover content");
+    }
+    expect(popoverContent).not.toHaveClass(
+      "h-[min(25rem,var(--available-height))]",
+      "pointer-events-none",
+    );
+    expect(popoverContent.firstElementChild).toHaveClass(
+      "min-h-0",
+      "overflow-hidden",
+    );
+    expect(popoverContent.firstElementChild).not.toHaveClass("absolute");
+    const githubAccess = await screen.findByLabelText("Remove GitHub");
+    const connectorList =
+      githubAccess.closest("label")?.parentElement?.parentElement;
+    if (!(connectorList instanceof HTMLElement)) {
+      throw new Error("Expected the connector list");
+    }
+    expect(connectorList).toHaveClass("max-h-64");
   });
 
   it("makes connector permissions interactive on the first click", async () => {

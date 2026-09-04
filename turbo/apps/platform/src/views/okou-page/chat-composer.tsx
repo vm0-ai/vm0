@@ -170,6 +170,7 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ImageModelBrandIcon,
   ModelProviderPicker,
@@ -223,6 +224,7 @@ import {
   codexFastModeEnabled$,
   composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
+  featureSwitch$,
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -8329,6 +8331,37 @@ function deriveComposerConnectorPopoverState(args: {
   return { visibleConnectors, permissionConnector };
 }
 
+const COMPOSER_CONNECTOR_COLLISION_AVOIDANCE = {
+  fallbackAxisSide: "none",
+} as const;
+
+function composerConnectorCollisionAvoidance(enabled: boolean) {
+  return enabled ? COMPOSER_CONNECTOR_COLLISION_AVOIDANCE : undefined;
+}
+
+function composerConnectorPopoverContentClass(enabled: boolean): string {
+  return cn(
+    "w-72 p-0",
+    enabled
+      ? "group/connector-popover pointer-events-none relative h-[min(25rem,var(--available-height))] overflow-visible border-0 bg-transparent"
+      : "max-h-[var(--available-height)] overflow-hidden rounded-lg",
+  );
+}
+
+function composerConnectorPopoverSurfaceClass(enabled: boolean): string {
+  return cn(
+    "min-h-0 overflow-hidden",
+    enabled &&
+      "pointer-events-auto absolute inset-x-0 flex max-h-full flex-col rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-lg group-data-[side=bottom]/connector-popover:top-0 group-data-[side=top]/connector-popover:bottom-0",
+  );
+}
+
+function composerConnectorPopoverContentStyle(
+  enabled: boolean,
+): CSSProperties | undefined {
+  return enabled ? { boxShadow: "none" } : undefined;
+}
+
 function ConnectorsPopoverButton({
   signals,
   agentId,
@@ -8366,6 +8399,10 @@ function ConnectorsPopoverButton({
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const connectorAccountsEnabled = useGet(signals.connector.accounts.enabled$);
+  const stablePopoverPlacementEnabled =
+    useGet(featureSwitch$)[
+      FeatureSwitchKey.ComposerConnectorPopoverPlacement
+    ] ?? false;
   const accountPreferenceLoadable = useLastLoadable(
     signals.connector.accounts.preferenceState$,
   );
@@ -8393,6 +8430,8 @@ function ConnectorsPopoverButton({
     }),
   ];
   const showSearch = connectorItems.length > 20;
+  const stableConnectorPopoverLayoutEnabled =
+    stablePopoverPlacementEnabled && showSearch;
   const accountPreference =
     accountPreferenceLoadable.state === "hasData"
       ? accountPreferenceLoadable.data
@@ -8525,9 +8564,21 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="w-72 max-h-[var(--available-height)] overflow-hidden rounded-lg p-0"
+        collisionAvoidance={composerConnectorCollisionAvoidance(
+          stableConnectorPopoverLayoutEnabled,
+        )}
+        className={composerConnectorPopoverContentClass(
+          stableConnectorPopoverLayoutEnabled,
+        )}
+        style={composerConnectorPopoverContentStyle(
+          stableConnectorPopoverLayoutEnabled,
+        )}
       >
-        <div className="min-h-0 overflow-hidden">
+        <div
+          className={composerConnectorPopoverSurfaceClass(
+            stableConnectorPopoverLayoutEnabled,
+          )}
+        >
           <div className="flex min-h-0 flex-col">
             {(connectorItems.length > 0 || connectorsLoading) && (
               <div className="flex min-h-0 flex-col py-1">

@@ -269,6 +269,24 @@ describe("getAllFeatureStates", () => {
     expect(otherStaffStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
   });
 
+  it("should enable stable connector popover placement for Bingjie only", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "BINGJIE@VM0.AI",
+      orgId: "org_nonexistent",
+    });
+    expect(
+      bingjieStates[FeatureSwitchKey.ComposerConnectorPopoverPlacement],
+    ).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(
+      otherStaffStates[FeatureSwitchKey.ComposerConnectorPopoverPlacement],
+    ).toBe(false);
+  });
+
   it("should apply overrides to enable disabled features", () => {
     const states = getAllFeatureStates({
       overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
