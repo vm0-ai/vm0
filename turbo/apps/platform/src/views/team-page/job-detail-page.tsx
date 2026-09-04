@@ -839,6 +839,7 @@ function AgentHeader({
   displayName,
   description,
   agentId,
+  avatarUrl,
   activeTab,
   onTabChange,
   showProfileAndInstructions,
@@ -847,6 +848,7 @@ function AgentHeader({
   displayName: string;
   description: string;
   agentId: string;
+  avatarUrl: string | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
@@ -874,7 +876,7 @@ function AgentHeader({
                       type="button"
                       onClick={() => {
                         onTabChange("profile");
-                        openMaker();
+                        openMaker(avatarUrl);
                       }}
                       className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
                       aria-label={t(($) => {
@@ -1180,6 +1182,7 @@ export function JobDetailPage() {
         displayName={fields.displayName}
         description={fields.description}
         agentId={fields.agentId}
+        avatarUrl={fields.avatarUrl}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}

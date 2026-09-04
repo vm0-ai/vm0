@@ -37,6 +37,21 @@ function findCreateCustomAvatarButton(): Promise<HTMLElement> {
   return screen.findByLabelText("Create custom avatar");
 }
 
+async function findAvatarRow(): Promise<HTMLElement> {
+  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+  const row = avatarLabel.parentElement?.parentElement;
+  if (!row) {
+    throw new Error("Avatar profile row not found");
+  }
+  return row;
+}
+
+// The agent header carries its own "Customize avatar" shortcut, so the profile
+// entry point has to be looked up inside the avatar row.
+async function findCustomizeAvatarButton(): Promise<HTMLElement> {
+  return within(await findAvatarRow()).findByLabelText("Customize avatar");
+}
+
 function findAgentNameInput(): Promise<HTMLElement> {
   return screen.findByDisplayValue("Research Agent");
 }
@@ -51,7 +66,7 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function prepareAgentProfile(avatarUrl = "preset:0"): {
+function prepareAgentProfile(avatarUrl: string | null = "preset:0"): {
   readonly lastSavedProfile: () => AgentResponse | null;
 } {
   let lastSavedProfile: AgentResponse | null = null;
@@ -111,13 +126,8 @@ test("Keep rendering the highest legacy avatar preset", async () => {
   await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
   await findAgentNameInput();
-  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
-  const avatarRow = avatarLabel.parentElement?.parentElement;
-  if (!avatarRow) {
-    throw new Error("Avatar profile row not found");
-  }
 
-  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+  expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toStrictEqual([
     expect.stringContaining("/head-r5-s4.svg"),
     expect.stringContaining("/face-r5-f5-m.svg"),
     expect.stringContaining("/hair-r5-h2-c2.svg"),
@@ -129,21 +139,57 @@ test("Keep rendering a legacy custom SVG avatar", async () => {
   await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
   await findAgentNameInput();
-  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
-  const avatarRow = avatarLabel.parentElement?.parentElement;
-  if (!avatarRow) {
-    throw new Error("Avatar profile row not found");
-  }
 
-  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+  expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toStrictEqual([
     expect.stringContaining("/head-r3-s2.svg"),
     expect.stringContaining("/face-r3-f5-h.svg"),
     expect.stringContaining("/hair-r3-h4-c1.svg"),
   ]);
 });
 
+test("Load the existing avatar into the maker instead of randomizing it", async () => {
+  prepareAgentProfile("svg:r3s2h4c1f5h");
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  click(await findCustomizeAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  // The stored avatar is legacy, so it keeps its own steps even with the
+  // composer switch on — otherwise it could not be fine-tuned at all.
+  expect(within(dialog).getByText("Angle")).toBeVisible();
+  expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 3)).toStrictEqual([
+    expect.stringContaining("/head-r3-s2.svg"),
+    expect.stringContaining("/face-r3-f5-h.svg"),
+    expect.stringContaining("/hair-r3-h4-c1.svg"),
+  ]);
+});
+
+test("Offer avatar creation instead of editing when the agent has no avatar", async () => {
+  prepareAgentProfile(null);
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  await findAgentNameInput();
+  expect(
+    within(await findAvatarRow()).queryByLabelText("Customize avatar"),
+  ).not.toBeInTheDocument();
+
+  click(await findCreateCustomAvatarButton());
+
+  await expect(
+    screen.findByRole("dialog", { name: "Give your agent a face" }),
+  ).resolves.toBeVisible();
+});
+
 test("Load only the visible avatar SVG layers", async () => {
-  prepareAgentProfile();
+  prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
@@ -162,7 +208,7 @@ test("Load only the visible avatar SVG layers", async () => {
 });
 
 test("Keep every composer step and its edge options usable in one dialog", async () => {
-  prepareAgentProfile();
+  prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
@@ -195,7 +241,7 @@ test("Keep every composer step and its edge options usable in one dialog", async
 });
 
 test("Keep the legacy avatar editor available when its switch is disabled", async () => {
-  prepareAgentProfile();
+  prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
@@ -216,16 +262,11 @@ test("Keep the legacy avatar editor available when its switch is disabled", asyn
   await waitFor(() => {
     expect(screen.getByText("Profile saved")).toBeInTheDocument();
   });
-  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
-  const avatarRow = avatarLabel.parentElement?.parentElement;
-  if (!avatarRow) {
-    throw new Error("Avatar profile row not found");
-  }
-  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toHaveLength(3);
+  expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toHaveLength(3);
 });
 
 test("Create and save a composer avatar from the profile page", async () => {
-  prepareAgentProfile();
+  prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
@@ -251,17 +292,21 @@ test("Create and save a composer avatar from the profile page", async () => {
     expect(screen.getByText("Profile saved")).toBeInTheDocument();
   });
 
-  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
-  const avatarRow = avatarLabel.parentElement?.parentElement;
-  if (!avatarRow) {
-    throw new Error("Avatar profile row not found");
-  }
-  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+  const savedLayerSrcs = renderedAvatarSvgLayerSrcs(await findAvatarRow());
+  expect(savedLayerSrcs).toStrictEqual([
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-rear\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-front\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/expressions\//u),
   ]);
+
+  // Reopening the maker must reload the saved avatar, not roll a new one.
+  click(await findCustomizeAvatarButton());
+
+  const editDialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  expect(renderedAvatarSvgLayerSrcs(editDialog).slice(0, 4)).toStrictEqual(
+    savedLayerSrcs,
+  );
 });
 
 test("Keep the default agent’s canonical identity read-only", async () => {
