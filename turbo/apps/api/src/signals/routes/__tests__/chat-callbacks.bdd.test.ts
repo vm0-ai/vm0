@@ -1733,6 +1733,213 @@ describe("CHAT-02: completed chat callback", () => {
     expect(marker).not.toHaveProperty("recommendedFollowups");
   });
 
+  it("pins the model, reasoning effort, and token budget of every fast-path completion", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const requestsBySite = new Map<
+      string,
+      { model: string; max_tokens?: number; reasoning?: { effort: string } }
+    >();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      const record = {
+        model: body.model,
+        ...(body.max_tokens === undefined
+          ? {}
+          : { max_tokens: body.max_tokens }),
+        ...(body.reasoning === undefined ? {} : { reasoning: body.reasoning }),
+      };
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        requestsBySite.set("title", record);
+        return "Budget Pinning";
+      }
+      if (systemContent.includes("concise follow-up prompts")) {
+        requestsBySite.set("followups", record);
+        return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
+      }
+      if (systemContent.includes("one short notification sentence")) {
+        requestsBySite.set("notification", record);
+        return "The task finished";
+      }
+      if (systemContent.includes("agent run in at most 50 words")) {
+        requestsBySite.set("runSummary", record);
+        return "Generated summary";
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Explain how token budgets interact with reasoning",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    // Reasoning tokens are drawn from the same budget as the answer, so a
+    // budget sized for a non-reasoning model starves the answer entirely.
+    expect(requestsBySite.get("title")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 512,
+      reasoning: { effort: "low" },
+    });
+    expect(requestsBySite.get("followups")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 1024,
+      reasoning: { effort: "low" },
+    });
+    expect(requestsBySite.get("notification")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 512,
+      reasoning: { effort: "low" },
+    });
+    expect(requestsBySite.get("runSummary")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 768,
+      reasoning: { effort: "low" },
+    });
+  });
+
+  it("discards a token-limited notification summary instead of pushing truncated text", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const truncatedSummary = "The task finished by writing the migration pl";
+    let notificationRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("one short notification sentence")) {
+        notificationRequests += 1;
+        return { content: truncatedSummary, finishReason: "length" };
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Truncated Notification";
+      }
+      if (systemContent.includes("concise follow-up prompts")) {
+        return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
+      }
+      return "Generated summary";
+    });
+
+    const prompt = "Summarize the migration plan";
+    const run = await startChatRun(actor, { agentId, prompt });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(notificationRequests).toBe(1);
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.some(
+          (call) => {
+            const payload = pushPayload(call) as Record<string, unknown>;
+            return (
+              payload.title === prompt.slice(0, 60) &&
+              payload.body === "Your task is complete"
+            );
+          },
+        );
+      })
+      .toBe(true);
+    expect(
+      context.mocks.webpush.sendNotification.mock.calls.some((call) => {
+        const payload = pushPayload(call) as Record<string, unknown>;
+        return payload.body === truncatedSummary;
+      }),
+    ).toBe(false);
+  });
+
+  it("leaves the thread untitled when the title completion is token-limited", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let titleRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titleRequests += 1;
+        return {
+          content: "A Truncated Title That Must Not",
+          finishReason: "length",
+        };
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Plan the token budget migration",
+    });
+    await flushWaitUntilForTest();
+
+    expect(titleRequests).toBe(1);
+    // A truncated title used to be persisted verbatim. It must now be dropped
+    // so the next round can retry rather than pinning a half-written title.
+    expect(await readThreadTitleFromEvents(actor, run.threadId)).toBeNull();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await waitForRunStatus(actor, run.runId, "cancelled");
+  });
+
+  it("suppresses token-limited recommended follow-ups instead of storing partial JSON", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let followupRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("concise follow-up prompts")) {
+        followupRequests += 1;
+        return {
+          content: JSON.stringify([
+            { prompt: "Keep going with the migration", kind: "talk" },
+          ]).slice(0, 40),
+          finishReason: "length",
+        };
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Truncated Follow-ups";
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Explain how truncated follow-ups are handled",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(followupRequests).toBe(1);
+    const after = await chat.listThreadEvents(actor, run.threadId);
+    const marker = lifecycleMarkers(after.events, run.runId, "completed")[0];
+    if (!marker) {
+      throw new Error("Expected a completed lifecycle marker");
+    }
+    expect(marker).not.toHaveProperty("recommendedFollowups");
+  });
+
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
