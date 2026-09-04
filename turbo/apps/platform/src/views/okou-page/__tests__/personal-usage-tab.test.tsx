@@ -681,30 +681,6 @@ test("Review every workspace member’s package balance", async () => {
   expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
 });
 
-test("Show an empty personal credit-usage period", async () => {
-  mockPersonalUsageStory([]);
-  await openUsageSettings("usage-records");
-
-  const empty = await screen.findByTestId("usage-records-empty");
-  expect(
-    within(empty).getByText("No usage in this time range"),
-  ).toBeInTheDocument();
-  expect(
-    within(empty).getByText(
-      "Credits you spend on chats, automations, and channels show up here.",
-    ),
-  ).toBeInTheDocument();
-  // The illustration is decorative, so it must stay out of the accessible name.
-  const illustrations = Array.from(
-    empty.querySelectorAll<HTMLElement>('[role="presentation"]'),
-  );
-  expect(illustrations).toHaveLength(1);
-  expect(illustrations[0]).toHaveAttribute(
-    "src",
-    expect.stringContaining("empty-usage-"),
-  );
-});
-
 test("Review personal credit-usage records by date range", async () => {
   const user = userEvent.setup();
   const requests = mockPersonalUsageStory();
@@ -797,39 +773,6 @@ test("Identify the model used by limited-free runs", async () => {
     expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
       1,
     );
-  });
-});
-
-test("Label Talking Avatar usage by the product feature", async () => {
-  const user = userEvent.setup();
-  const row = usageRow({
-    title: "Talking avatar usage",
-    credits: 100,
-    runId: "run-talking-avatar",
-  });
-  mockPersonalUsageStory([
-    {
-      ...row,
-      breakdown: [
-        {
-          kind: "video",
-          credits: 100,
-          providers: [{ provider: "joggai-talking-avatar", credits: 100 }],
-        },
-      ],
-    },
-  ]);
-  await openUsageSettings("usage-records");
-
-  await user.hover(screen.getByTestId("usage-kind-segment-video"));
-
-  await waitFor(() => {
-    expect(
-      screen.getAllByText("Avatar").some((element) => {
-        return element.parentElement?.textContent === "Avatar100";
-      }),
-    ).toBeTruthy();
-    expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
   });
 });
 

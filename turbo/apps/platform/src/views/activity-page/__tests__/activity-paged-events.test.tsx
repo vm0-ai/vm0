@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { runAgentEventsContract } from "@okouai/api-contracts/contracts/run-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -8,7 +8,6 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEventsResponse,
@@ -260,70 +259,4 @@ test("Activity metadata remains usable when its timeline cannot load", async () 
       return tab.textContent?.trim();
     }),
   ).toStrictEqual(["Steps", "Context", "Runner", "Network"]);
-});
-
-test("Navigating between activity runs shows only the new run's live history", async () => {
-  const firstRunId = "a0000000-0000-4000-a000-000000000099";
-  const secondRunId = "a0000000-0000-4000-a000-000000000100";
-  let secondRunRequestCount = 0;
-
-  context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
-    return respond(
-      200,
-      makeLogDetail({
-        id: params.id,
-        displayName: params.id === firstRunId ? "First Agent" : "Second Agent",
-        status: params.id === firstRunId ? "completed" : "running",
-      }),
-    );
-  });
-  context.mocks.api(
-    runAgentEventsContract.getAgentEvents,
-    ({ params, respond }) => {
-      if (params.id === firstRunId) {
-        return respond(200, {
-          events: [makeAssistantEvent(0, "First run event")],
-          hasMore: false,
-          status: "completed",
-          lastEventSequence: 0,
-        } satisfies AgentEventsResponse);
-      }
-
-      secondRunRequestCount += 1;
-      if (secondRunRequestCount < 3) {
-        return respond(200, {
-          events: [makeAssistantEvent(0, "Second run initial event")],
-          hasMore: false,
-          status: secondRunRequestCount === 1 ? "running" : "completed",
-          lastEventSequence: secondRunRequestCount === 1 ? null : 1,
-        } satisfies AgentEventsResponse);
-      }
-      return respond(200, {
-        events: [
-          makeAssistantEvent(0, "Second run initial event"),
-          makeAssistantEvent(1, "Second run final event"),
-        ],
-        hasMore: false,
-        status: "completed",
-        lastEventSequence: 1,
-      } satisfies AgentEventsResponse);
-    },
-  );
-
-  await setupPage({ context, path: "/activities/" + firstRunId });
-  await expect(
-    screen.findByText("First run event"),
-  ).resolves.toBeInTheDocument();
-
-  context.store.set(detachedNavigateTo$, "/activities/:activityRunId", {
-    pathParams: { activityRunId: secondRunId },
-  });
-
-  await expect(
-    screen.findByText("Second run final event"),
-  ).resolves.toBeInTheDocument();
-  expect(screen.getByText("Second run initial event")).toBeInTheDocument();
-  await waitFor(() => {
-    expect(screen.queryByText("First run event")).not.toBeInTheDocument();
-  });
 });

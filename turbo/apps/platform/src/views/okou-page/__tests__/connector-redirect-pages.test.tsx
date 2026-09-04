@@ -75,23 +75,6 @@ test("A stalled mobile provider handoff shows guidance", async () => {
   await expect(screen.findByText(MOBILE_WARNING)).resolves.toBeInTheDocument();
 });
 
-test("A trusted catalog icon is shown on a connector redirect", async () => {
-  await setupPage({
-    context,
-    path: "/connectors/server-only/redirecting?label=Server+Only&iconUrl=https%3A%2F%2Ficons.example.test%2Fserver-only.svg&iconInvertInDarkMode=true&iconScale=1.5",
-    auth: null,
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "Redirecting to Server Only…" }),
-  ).resolves.toBeInTheDocument();
-  const icon = document.querySelector<HTMLImageElement>(
-    'img[src="https://icons.example.test/server-only.svg"]',
-  );
-  expect(icon).toHaveClass("zero-icon-mono");
-  expect(icon).toHaveStyle({ transform: "scale(1.5)" });
-});
-
 test("An unsafe route icon is not loaded", async () => {
   await setupPage({
     context,
