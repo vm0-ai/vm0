@@ -170,9 +170,8 @@ Request streaming
 Model-provider usage
 --------------------
 - ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage for one
-  flow-level model response source. Written by streaming/JSON extractors,
-  WebSocket missing-response-id fallback extraction, or fallback extraction,
-  then read by the model usage-event reporter.
+  flow-level model response source. Written by HTTP SSE/JSON inspectors or
+  WebSocket extraction, then read by the model usage-event reporter.
 - ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
   with normalized token usage dict values. Written by WebSocket model-provider
   usage extraction and read by the model usage-event reporter.
