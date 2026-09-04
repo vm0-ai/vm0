@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.841.1](https://github.com/vm0-ai/vm0/compare/app-v0.841.0...app-v0.841.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **agent:** align avatar edits with visibility permissions ([#31731](https://github.com/vm0-ai/vm0/issues/31731)) ([8cf8b09](https://github.com/vm0-ai/vm0/commit/8cf8b094a80ea861fbb366df0cc33323e1cf9846))
+* **platform:** hide composer placeholder after a newline ([#31752](https://github.com/vm0-ai/vm0/issues/31752)) ([0ebbb7c](https://github.com/vm0-ai/vm0/commit/0ebbb7c0c163503d8888be22b0d4a13ca8acd3e9))
+* **platform:** restore clerk satellite auth navigation ([#31741](https://github.com/vm0-ai/vm0/issues/31741)) ([ed45e20](https://github.com/vm0-ai/vm0/commit/ed45e20e93af40f4ced60816506bdf79f9f9df75))
+* **platform:** stabilize pinned agent label transition ([#31736](https://github.com/vm0-ai/vm0/issues/31736)) ([c8de880](https://github.com/vm0-ai/vm0/commit/c8de880b88d153eb559f656e1daa01b16fe924fa))
+* **ui:** deduplicate slash workflow suggestions ([#31757](https://github.com/vm0-ai/vm0/issues/31757)) ([c1aafce](https://github.com/vm0-ai/vm0/commit/c1aafce488fc22601ff67249c0b5a0bbec27510c))
+* **ui:** lift new-ui track and bubble off the page and neutralise body copy ([#31640](https://github.com/vm0-ai/vm0/issues/31640)) ([024c27b](https://github.com/vm0-ai/vm0/commit/024c27b2ea5a5dce6a43747e1ee4049bc3a2bc56))
+
+
+### Refactoring
+
+* **api:** remove legacy custom connector oauth readers ([#31751](https://github.com/vm0-ai/vm0/issues/31751)) ([3a13b3a](https://github.com/vm0-ai/vm0/commit/3a13b3ad6564d96d6a721287ed2e816c5b1a60f6))
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.2
+    * @okouai/connectors bumped to 3.3.3
+    * @okouai/core bumped to 8.621.2
+    * @okouai/ui bumped to 1.5.1
+
 ## [0.841.0](https://github.com/vm0-ai/vm0/compare/app-v0.840.0...app-v0.841.0) (2026-09-04)
 
 
