@@ -5,7 +5,6 @@ const OKOU_DEBUG_FEATURE_SWITCH_KEY = "_debug";
 const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
   "computerUseDesktopPlugins";
 const INTRO_VIDEO_FEATURE_SWITCH_KEY = "introVideo";
-const DESKTOP_SCREEN_RECORDING_FEATURE_SWITCH_KEY = "desktopScreenRecording";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -33,9 +32,8 @@ interface DeveloperToolsControllerOptions {
   /** Propagates the `computerUseDesktopPlugins` switch to the plugin manager. */
   readonly setFilesystemPluginFeatureEnabled: (enabled: boolean) => void;
   /**
-   * Propagates the effective intro-video recording availability to the
-   * recorder. Turning either required switch off must release the native
-   * helper, not just hide the entry point.
+   * Propagates the `introVideo` switch to the recorder. Turning it off must
+   * release the native helper, not just hide the entry point.
    */
   readonly setScreenRecordingFeatureEnabled: (enabled: boolean) => void;
   /** Zero-arg "something changed" signal; defaults to a no-op. */
@@ -142,11 +140,7 @@ export class DeveloperToolsController {
       ),
     );
     this.setScreenRecordingFeatureEnabled(
-      featureSwitchEnabledFromBody(body, INTRO_VIDEO_FEATURE_SWITCH_KEY) &&
-        featureSwitchEnabledFromBody(
-          body,
-          DESKTOP_SCREEN_RECORDING_FEATURE_SWITCH_KEY,
-        ),
+      featureSwitchEnabledFromBody(body, INTRO_VIDEO_FEATURE_SWITCH_KEY),
     );
   }
 }

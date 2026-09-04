@@ -88,10 +88,7 @@ export function hasDesktopRecordingHandoff(params: URLSearchParams): boolean {
 export function desktopRecordingHandoffFeatureEnabled(
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {
-  return (
-    (switches[FeatureSwitchKey.IntroVideo] ?? false) &&
-    (switches[FeatureSwitchKey.DesktopScreenRecording] ?? false)
-  );
+  return switches[FeatureSwitchKey.IntroVideo] ?? false;
 }
 
 function withoutHandoffParams(params: URLSearchParams): URLSearchParams {

@@ -209,7 +209,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
@@ -245,7 +244,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(
       false,
@@ -254,13 +252,12 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
 
-  it("should enable intro video and desktop recording for staff", () => {
+  it("should enable intro video for staff", () => {
     const staffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffStates[FeatureSwitchKey.IntroVideo]).toBe(true);
-    expect(staffStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
   });
 
   it("should enable gradient color themes for Ming only", () => {
@@ -394,9 +391,6 @@ describe("getFeatureSwitchMetadata", () => {
     ).toBe("released");
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("beta");
-    expect(metadata[FeatureSwitchKey.DesktopScreenRecording].rolloutStage).toBe(
-      "beta",
-    );
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",
     );
