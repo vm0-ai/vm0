@@ -281,7 +281,7 @@ export function mockCustomConnectorOAuth2Provider(
 
 interface AutomaticMcpOAuthProviderOptions {
   readonly registration: "cimd" | "dcr" | "none";
-  readonly authentication?: "none" | "oauth";
+  readonly authentication?: "invalid" | "none" | "oauth";
   readonly issuerParameterSupported?: boolean;
   readonly dcrTokenEndpointAuthMethod?:
     | "none"
@@ -418,6 +418,9 @@ export function mockAutomaticMcpOAuthProvider(
       });
     }),
     http.post(endpoint, async ({ request }) => {
+      if (options.authentication === "invalid") {
+        return new HttpResponse(null, { status: 403 });
+      }
       if (options.authentication === "none") {
         const body = z
           .object({

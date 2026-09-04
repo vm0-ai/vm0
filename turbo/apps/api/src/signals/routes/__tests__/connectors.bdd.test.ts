@@ -3876,6 +3876,15 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
   it.each([
     {
+      boundary: "an invalid MCP authentication response",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.AUTHENTICATION_RESPONSE_INVALID,
+      providerOptions: {
+        registration: "cimd" as const,
+        authentication: "invalid" as const,
+      },
+    },
+    {
       boundary: "a mismatched protected resource",
       expectedCode:
         CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.DISCOVERY_INVALID,
