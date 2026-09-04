@@ -12,6 +12,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  npm_config_audit: "false"
+
 defaults:
   run:
     shell: bash
@@ -77,7 +80,7 @@ jobs:
           cp .github/scripts/presentation-template-release.json "$release_dir/"
           cd "$release_dir"
           npm init --yes >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund tar@7.5.22
+          npm install --ignore-scripts --no-fund tar@7.5.22
           printf 'path=%s\n' "$release_dir" >> "$GITHUB_OUTPUT"
 
       - name: Build deterministic archives
@@ -148,7 +151,7 @@ jobs:
           cp .github/scripts/presentation-template-release.json "$release_dir/"
           cd "$release_dir"
           npm init --yes >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund \
+          npm install --ignore-scripts --no-fund \
             @aws-sdk/client-s3@3.1116.0 \
             postgres@3.4.9 \
             tar@7.5.22
