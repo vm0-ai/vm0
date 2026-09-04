@@ -651,7 +651,7 @@ describe("ORG-03 onboarding status mapping", () => {
 
     const bootstrappedBilling = await runsApi.readBillingStatus(admin);
     expect(bootstrappedBilling).toMatchObject({
-      credits: 3000,
+      credits: 1000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });

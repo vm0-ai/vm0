@@ -8119,7 +8119,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const agentId = onboarding.defaultAgentId;
     await expect(api.readBillingStatus(actor)).resolves.toMatchObject({
       tier: "limited-free-1",
-      credits: 3000,
+      credits: 1000,
       onboardingPaymentPending: false,
     });
     const modelPolicies = await misc.listModelPolicies(actor);
