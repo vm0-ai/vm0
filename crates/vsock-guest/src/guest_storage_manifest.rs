@@ -1,9 +1,9 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -21,9 +21,8 @@ use crate::quiesce::OperationGuard;
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
-use crate::worker_ownership::{
-    ShutdownConnectionOnDrop, SingleActiveAdmission, SingleActivePermit,
-};
+pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as GuestStorageManifestSubmitError;
+use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
 const THREAD_WORKER: &str = "vsock-guest-storage-manifest";
@@ -55,12 +54,6 @@ impl GuestStorageManifestProgram {
     }
 }
 
-pub(crate) enum GuestStorageManifestSubmitError {
-    Busy,
-    Disconnected,
-    Start(io::Error),
-}
-
 struct GuestStorageManifestRequest {
     seq: u32,
     timeout_ms: u32,
@@ -71,19 +64,15 @@ struct GuestStorageManifestRequest {
     admission: SingleActivePermit,
 }
 
-pub(crate) struct GuestStorageManifestWorker {
-    state: Mutex<GuestStorageManifestWorkerState>,
-    writer: GuestWriter,
+#[derive(Clone)]
+struct GuestStorageManifestWorkerContext {
     program: GuestStorageManifestProgram,
-    admission: SingleActiveAdmission,
-    connection_cancel: Arc<AtomicBool>,
     process_containment_mode: ProcessContainmentMode,
     drain_deadline: Duration,
 }
 
-struct GuestStorageManifestWorkerState {
-    sender: Option<SyncSender<GuestStorageManifestRequest>>,
-    handle: Option<JoinHandle<()>>,
+pub(crate) struct GuestStorageManifestWorker {
+    inner: LazyConnectionWorker<GuestStorageManifestRequest, GuestStorageManifestWorkerContext>,
 }
 
 impl GuestStorageManifestWorker {
@@ -95,21 +84,23 @@ impl GuestStorageManifestWorker {
         drain_deadline: Duration,
     ) -> Self {
         Self {
-            state: Mutex::new(GuestStorageManifestWorkerState {
-                sender: None,
-                handle: None,
-            }),
-            writer,
-            program,
-            admission: SingleActiveAdmission::new(),
-            connection_cancel,
-            process_containment_mode,
-            drain_deadline,
+            inner: LazyConnectionWorker::new(
+                writer,
+                connection_cancel,
+                GuestStorageManifestWorkerContext {
+                    program,
+                    process_containment_mode,
+                    drain_deadline,
+                },
+                handle_worker_request,
+                THREAD_WORKER,
+                "guest storage manifest worker",
+            ),
         }
     }
 
     pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
-        self.admission.try_acquire()
+        self.inner.try_admit()
     }
 
     pub(crate) fn submit(
@@ -118,64 +109,16 @@ impl GuestStorageManifestWorker {
         operation_guard: OperationGuard,
         admission: SingleActivePermit,
     ) -> Result<(), GuestStorageManifestSubmitError> {
-        let sender = self.sender()?;
-        let request = GuestStorageManifestRequest {
-            seq: submission.seq,
-            timeout_ms: submission.timeout_ms,
-            run_id: submission.run_id.to_owned(),
-            runtime_dir: submission.runtime_dir.to_owned(),
-            manifest_json: submission.manifest_json.to_vec(),
-            operation_guard,
-            admission,
-        };
-        match sender.try_send(request) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Full(_)) => Err(GuestStorageManifestSubmitError::Busy),
-            Err(TrySendError::Disconnected(_)) => {
-                Err(GuestStorageManifestSubmitError::Disconnected)
-            }
-        }
-    }
-
-    fn sender(
-        &self,
-    ) -> Result<SyncSender<GuestStorageManifestRequest>, GuestStorageManifestSubmitError> {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(sender) = &state.sender {
-            return Ok(sender.clone());
-        }
-
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let writer = self.writer.clone();
-        let worker_cancel = Arc::clone(&self.connection_cancel);
-        let program = self.program.clone();
-        let process_containment_mode = self.process_containment_mode;
-        let drain_deadline = self.drain_deadline;
-        let handle = thread::Builder::new()
-            .name(THREAD_WORKER.to_string())
-            .spawn(move || {
-                let _shutdown_on_exit = ShutdownConnectionOnDrop::new(writer.clone());
-                while let Ok(request) = receiver.recv() {
-                    if let Err(error) = handle_request(
-                        request,
-                        &writer,
-                        &worker_cancel,
-                        &program,
-                        process_containment_mode,
-                        drain_deadline,
-                    ) {
-                        log(
-                            "ERROR",
-                            &format!("guest storage manifest worker failed: {error}"),
-                        );
-                        break;
-                    }
-                }
+        self.inner
+            .try_submit_with(move || GuestStorageManifestRequest {
+                seq: submission.seq,
+                timeout_ms: submission.timeout_ms,
+                run_id: submission.run_id.to_owned(),
+                runtime_dir: submission.runtime_dir.to_owned(),
+                manifest_json: submission.manifest_json.to_vec(),
+                operation_guard,
+                admission,
             })
-            .map_err(GuestStorageManifestSubmitError::Start)?;
-        state.sender = Some(sender.clone());
-        state.handle = Some(handle);
-        Ok(sender)
     }
 }
 
@@ -187,28 +130,28 @@ pub(crate) struct GuestStorageManifestSubmission<'a> {
     pub(crate) manifest_json: &'a [u8],
 }
 
-impl Drop for GuestStorageManifestWorker {
-    fn drop(&mut self) {
-        self.connection_cancel.store(true, Ordering::Release);
-        let state = self
-            .state
-            .get_mut()
-            .unwrap_or_else(|error| error.into_inner());
-        drop(state.sender.take());
-        if let Some(handle) = state.handle.take()
-            && handle.join().is_err()
-        {
-            log("ERROR", "guest storage manifest worker panicked");
-        }
-    }
-}
-
 struct GuestStorageManifestOutput {
     termination: ExecTermination,
     duration_ms: u32,
     stdout: BoundedDrainResult,
     stderr: BoundedDrainResult,
     diagnostic: String,
+}
+
+fn handle_worker_request(
+    request: GuestStorageManifestRequest,
+    writer: &GuestWriter,
+    connection_cancel: &AtomicBool,
+    context: &GuestStorageManifestWorkerContext,
+) -> io::Result<()> {
+    handle_request(
+        request,
+        writer,
+        connection_cancel,
+        &context.program,
+        context.process_containment_mode,
+        context.drain_deadline,
+    )
 }
 
 fn handle_request(

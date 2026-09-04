@@ -42,9 +42,20 @@ RUNNER_OWNER_ASSERT_IDLE=true \
   RUNNER_OWNER_SCOPE=closed-pr-cleanup \
   "${SCRIPT_DIR}/cancel-superseded-merge-group-runs.sh"
 
+if ! pr_state=$(gh api --method GET \
+  "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+  --jq '.state' 2>&1); then
+  echo "failed to resolve current state for PR #${PR_NUMBER}: ${pr_state}" >&2
+  exit 1
+fi
+if [ "$pr_state" != "closed" ]; then
+  echo "refusing to clean runner resources for PR #${PR_NUMBER} in state ${pr_state}" >&2
+  exit 1
+fi
+
 exec ansible-playbook \
   -i "${METAL_HOSTS}," \
-  "${REPO_ROOT}/ansible/playbooks/cleanup-turbo-runner.yml" \
+  "${REPO_ROOT}/ansible/playbooks/cleanup-pr-runner.yml" \
   -e "ansible_user=${METAL_USER}" \
   -e "job_ref=${JOB_REF}" \
   -v
