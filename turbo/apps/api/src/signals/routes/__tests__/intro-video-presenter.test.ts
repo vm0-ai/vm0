@@ -531,9 +531,15 @@ describe("Intro Video HeyGen presenter route", () => {
       }),
       http.get(HEYGEN_STATUS_URL, () => {
         statusCalls += 1;
+        if (statusCalls === 1) {
+          return HttpResponse.json(
+            { error: { message: "temporary provider outage" } },
+            { status: 503 },
+          );
+        }
         return HttpResponse.json({
           data:
-            statusCalls === 1
+            statusCalls === 2
               ? { id: HEYGEN_VIDEO_ID, status: "processing" }
               : {
                   id: HEYGEN_VIDEO_ID,
@@ -628,6 +634,18 @@ describe("Intro Video HeyGen presenter route", () => {
       { method: "POST", body: "{}" },
     );
     expect(invalidResponse.status).toBe(401);
+
+    const providerUnavailableResponse = await app.request(
+      `${callbackUrl.pathname}${callbackUrl.search}`,
+      { method: "POST", body: "{}" },
+    );
+    expect(providerUnavailableResponse.status).toBe(503);
+    const activeStatusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(activeStatusResponse.status).toBe(200);
+    expect(asRecord(await activeStatusResponse.json()).status).toBe("running");
 
     const pendingResponse = await app.request(
       `${callbackUrl.pathname}${callbackUrl.search}`,

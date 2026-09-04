@@ -242,6 +242,12 @@ function heyGenProviderError(
       "HEYGEN_UNAVAILABLE",
     );
   }
+  if (response.status >= 500) {
+    return serviceUnavailable(
+      "HeyGen is temporarily unavailable",
+      "HEYGEN_UNAVAILABLE",
+    );
+  }
   return badGateway(
     `HeyGen request failed: ${providerMessage}`,
     "HEYGEN_REQUEST_FAILED",
