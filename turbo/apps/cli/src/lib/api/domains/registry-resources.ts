@@ -3,6 +3,28 @@ import { registryResourceDownloadContract } from "@okouai/api-contracts/contract
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
+export async function getPresentationTemplateDownload(query: {
+  id: string;
+}): Promise<{
+  url: string;
+  id: string;
+  type: "tar.gz";
+  expiresInSeconds: number;
+  versionId: string;
+  fileCount: number;
+  size: number;
+}> {
+  const config = await getClientConfig();
+  const client = initClient(registryResourceDownloadContract, config);
+
+  const result = await client.downloadPresentationTemplate({ query });
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, `Presentation template "${query.id}" not found`);
+}
+
 // Keep registry resource downloads in the CLI release lifecycle.
 export async function getRegistryResourceDownload(query: {
   id: string;

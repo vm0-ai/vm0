@@ -41,6 +41,12 @@ to choose a refresh before continuing; it does not force the reload without
 user action, and an idle page does not discover the requirement until it makes
 a handled API request.
 
+The shared database Worker reports the same response to its connected tabs as
+a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
+that event through the same update dialog instead of reloading automatically.
+Other Worker-unavailable reasons continue to use the bounded automatic reload
+recovery and raise an error so the failure remains visible in Sentry.
+
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
 old controlled clients during rollout. The current service worker calls
@@ -129,6 +135,12 @@ When removing a backend response or request variant consumed by the CLI:
 3. Confirm that no queued or active pre-deployment context, and no explicitly
    supported external caller, can still use the old variant.
 4. Remove compatibility in a later backend release.
+
+Presentation runbook content is independent of the CLI release after the
+current-template download route is deployed. Current CLIs send only the
+resource id and receive the canonical storage HEAD; older CLIs keep using the
+existing digest-pinned route and its immutable archive. Publish new template
+HEADs only after the current-template route and CLI are in production.
 
 This drain is separate from runner binary drain: a current runner can execute an
 older CLI package retained by an older execution context. If the same cleanup

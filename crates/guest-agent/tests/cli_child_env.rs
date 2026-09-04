@@ -67,8 +67,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         &user_env_path,
         serde_json::to_vec(&serde_json::json!({
             "CUSTOM_USER_ENV": "visible-to-cli",
-            "VM0_FUTURE_RUNNER_KEY": "ordinary-vm0-value",
-            "VM0_PROMPT": "ordinary-user-prompt",
+            "CUSTOM_FUTURE_KEY": "ordinary-user-value",
+            "CUSTOM_PROMPT": "ordinary-user-prompt",
             "CUSTOM_API_TOKEN": "ordinary-user-token",
             "BASH_ENV": "/tmp/user-bash-env",
             "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid",
@@ -167,8 +167,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("visible-to-cli")
     );
     for (key, expected_value) in [
-        ("VM0_FUTURE_RUNNER_KEY", "ordinary-vm0-value"),
-        ("VM0_PROMPT", "ordinary-user-prompt"),
+        ("CUSTOM_FUTURE_KEY", "ordinary-user-value"),
+        ("CUSTOM_PROMPT", "ordinary-user-prompt"),
         ("CUSTOM_API_TOKEN", "ordinary-user-token"),
     ] {
         assert_eq!(cli_env.get(key).map(String::as_str), Some(expected_value));

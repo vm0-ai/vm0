@@ -157,9 +157,9 @@ sudo systemd-run \
   --property=DelegateSubgroup=control \
   "--property=AllowedCPUs=${SELECTED_CPU}" \
   --property=TimeoutStopSec=60 \
-  "--setenv=VM0_HOST_CPU_TEST_FIRECRACKER=${FIRECRACKER}" \
-  "--setenv=VM0_HOST_CPU_TEST_KERNEL=${KERNEL}" \
-  "--setenv=VM0_HOST_CPU_TEST_ROOTFS=${ROOTFS}" \
-  "--setenv=VM0_HOST_CPU_TEST_BASE_DIR=${BASE_DIR}" \
+  "--setenv=OKOU_TEST_HOST_CPU_FIRECRACKER=${FIRECRACKER}" \
+  "--setenv=OKOU_TEST_HOST_CPU_KERNEL=${KERNEL}" \
+  "--setenv=OKOU_TEST_HOST_CPU_ROOTFS=${ROOTFS}" \
+  "--setenv=OKOU_TEST_HOST_CPU_BASE_DIR=${BASE_DIR}" \
   "$TEST_BIN" --ignored --test-threads=1 --nocapture
 REMOTE_SCRIPT

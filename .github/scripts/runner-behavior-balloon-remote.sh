@@ -1,5 +1,29 @@
 #!/usr/bin/env bash
 
+# Keep these expectations aligned with balloon.rs: the controller polls every
+# 5 seconds, deflates below 192 MiB available, and inflates above 384 MiB free.
+PRESSURE_AVAILABLE_BOUNDARY_MIB=192
+PRESSURE_TARGET_AVAILABLE_MIB=128
+MAX_PRESSURE_ALLOC_MIB=512
+
+pressure_allocation_mib() {
+  local available_mib=$1
+  local allocation_mib=$(( available_mib - PRESSURE_TARGET_AVAILABLE_MIB ))
+
+  if [ "$allocation_mib" -gt "$MAX_PRESSURE_ALLOC_MIB" ]; then
+    allocation_mib=$MAX_PRESSURE_ALLOC_MIB
+  fi
+  if [ $(( available_mib - allocation_mib )) -ge "$PRESSURE_AVAILABLE_BOUNDARY_MIB" ]; then
+    return 1
+  fi
+
+  printf '%s\n' "$allocation_mib"
+}
+
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0
+fi
+
 BIN_DIR=$1; JOB_REF=$2
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-balloon"
 SVC="${JOB_REF}-balloon"
@@ -80,10 +104,6 @@ echo "Found sandbox: $SANDBOX_ID"
 
 API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
 
-# Keep these expectations aligned with balloon.rs: the controller polls every
-# 5 seconds, deflates below 192 MiB available, and inflates above 384 MiB free.
-PRESSURE_TARGET_AVAILABLE_MIB=128
-MAX_PRESSURE_ALLOC_MIB=512
 # The retired controller physically relieved at most its 256 MiB free-memory
 # deficit. A larger physical drop distinguishes full relief without requiring
 # an external poll to observe the transient target-zero interval.
@@ -221,9 +241,9 @@ if [ "$PRE_PRESSURE_AVAIL_KB" -le "$PRESSURE_TARGET_AVAILABLE_KB" ]; then
   fail "guest MemAvailable too low before pressure allocation: ${PRE_PRESSURE_AVAIL_KB}kB (need > ${PRESSURE_TARGET_AVAILABLE_KB}kB)"
 fi
 PRE_PRESSURE_AVAIL_MIB=$(( PRE_PRESSURE_AVAIL_KB / 1024 ))
-PRESSURE_ALLOC_MIB=$(( PRE_PRESSURE_AVAIL_MIB - PRESSURE_TARGET_AVAILABLE_MIB ))
-if [ "$PRESSURE_ALLOC_MIB" -gt "$MAX_PRESSURE_ALLOC_MIB" ]; then
-  fail "required pressure allocation exceeds safety cap: required=${PRESSURE_ALLOC_MIB}MiB cap=${MAX_PRESSURE_ALLOC_MIB}MiB available=${PRE_PRESSURE_AVAIL_MIB}MiB target=${PRESSURE_TARGET_AVAILABLE_MIB}MiB"
+if ! PRESSURE_ALLOC_MIB=$(pressure_allocation_mib "$PRE_PRESSURE_AVAIL_MIB"); then
+  PROJECTED_AVAILABLE_MIB=$(( PRE_PRESSURE_AVAIL_MIB - MAX_PRESSURE_ALLOC_MIB ))
+  fail "maximum pressure allocation cannot cross controller boundary: available=${PRE_PRESSURE_AVAIL_MIB}MiB cap=${MAX_PRESSURE_ALLOC_MIB}MiB projected=${PROJECTED_AVAILABLE_MIB}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB"
 fi
 [ "$PRESSURE_ALLOC_MIB" -gt 0 ] || fail "pressure allocation would be zero: ${PRE_PRESSURE_AVAIL_KB}kB available"
 echo "Pre-pressure guest MemAvailable: ${PRE_PRESSURE_AVAIL_KB}kB; allocating ${PRESSURE_ALLOC_MIB}MiB"

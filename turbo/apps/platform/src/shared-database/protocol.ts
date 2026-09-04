@@ -84,8 +84,21 @@ const reconnectMessageSchema = z
   .object({ type: z.literal("reconnect") })
   .strict();
 
-const reloadRequiredMessageSchema = z
-  .object({ type: z.literal("reload-required") })
+export const sharedDatabaseWorkerUnavailableReasonSchema = z.enum([
+  "force-upgrade-required",
+  "indexeddb-version-changed",
+  "worker-load-or-transport-failure",
+]);
+
+export type SharedDatabaseWorkerUnavailableReason = z.infer<
+  typeof sharedDatabaseWorkerUnavailableReasonSchema
+>;
+
+const workerUnavailableMessageSchema = z
+  .object({
+    type: z.literal("worker-unavailable"),
+    reason: sharedDatabaseWorkerUnavailableReasonSchema,
+  })
   .strict();
 
 const chatThreadReadCursorUpdatedMessageSchema = z
@@ -117,7 +130,7 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   errorMessageSchema,
   invalidateMessageSchema,
   reconnectMessageSchema,
-  reloadRequiredMessageSchema,
+  workerUnavailableMessageSchema,
   reloadComputedMessageSchema,
   chatThreadReadCursorUpdatedMessageSchema,
   statusMessageSchema,

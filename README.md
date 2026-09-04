@@ -111,7 +111,7 @@ Read our [Security overview](https://www.okou.ai/en/security).
 
 ## Works with the tools you already use
 
-Slack · GitHub · Gmail · Google Calendar · Google Sheets · Notion · Linear · Sentry · Axiom · HubSpot · Intercom · Figma · Vercel · Dropbox · DocuSign · Deel · Airtable · Ahrefs · Meta Ads · X · Reddit · …and [3,000+ more connectors](https://github.com/vm0-ai/vm0-skills).
+Slack · GitHub · Gmail · Google Calendar · Google Sheets · Notion · Linear · Sentry · Axiom · HubSpot · Intercom · Figma · Vercel · Dropbox · DocuSign · Deel · Airtable · Ahrefs · Meta Ads · X · Reddit · …and [3,000+ more connectors](https://www.okou.ai/en/integrations).
 
 Model providers are yours to pick — Anthropic, OpenAI, DeepSeek, Google and others, selected per run or per agent.
 

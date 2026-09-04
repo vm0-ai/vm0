@@ -12,6 +12,10 @@ const context = testContext();
 const INSTATUS_WIDGET_HOSTNAME = "api.dashboard.instatus.com";
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+const RETIRED_PINNED_AGENT_STORAGE_KEYS = [
+  "pinnedAgentGridRows",
+  "vm0:pinned-agent-preview-cache:v1",
+] as const;
 
 let googleAdsRequestedAfterApplicationStart = false;
 
@@ -90,6 +94,9 @@ describe("platform entrypoint", () => {
     context.mocks.posthog();
     context.mocks.sentry();
     setupPlatformDocument();
+    for (const key of RETIRED_PINNED_AGENT_STORAGE_KEYS) {
+      localStorage.setItem(key, "retired");
+    }
 
     const addEventListener = vi.spyOn(window, "addEventListener");
     const appendChild = document.head.appendChild.bind(document.head);
@@ -120,6 +127,12 @@ describe("platform entrypoint", () => {
 
   it("starts the application before requesting Google Ads", () => {
     expect(googleAdsRequestedAfterApplicationStart).toBeTruthy();
+  });
+
+  it("removes retired pinned-agent storage", () => {
+    for (const key of RETIRED_PINNED_AGENT_STORAGE_KEYS) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
   });
 });
 

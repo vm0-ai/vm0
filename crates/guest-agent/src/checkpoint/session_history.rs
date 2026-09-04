@@ -19,7 +19,7 @@ use bytes::Bytes;
 use guest_common::telemetry::{
     SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
 };
-use guest_common::{log_info, log_warn};
+use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::session_history_identity::SessionHistorySourceRef;
 use guest_session_prune::{
     ClaudeHistoryCandidate, ClaudeHistoryIneligibleReason, ClaudeHistorySelection,
@@ -431,17 +431,23 @@ where
         })
 }
 
+enum SessionHistoryUploadOutcome {
+    Uploaded,
+    Unavailable,
+}
+
 /// Prepare + upload one session history to S3 via a presigned URL. If
 /// the prepare endpoint reports `existing=true`, skip the upload
 /// (content-addressed dedup). Telemetry is recorded under
 /// `session_history_prepare` and `session_history_s3_upload` to match the
-/// pre-parallelization op names.
+/// pre-parallelization op names. A failed presigned upload is observable but
+/// leaves history unavailable so the remaining checkpoint can still persist.
 async fn upload_session_history(
     http: &HttpClient,
     run_id: &str,
     history_hash: &str,
     history_upload: SessionHistoryUpload,
-) -> Result<(), AgentError> {
+) -> Result<SessionHistoryUploadOutcome, AgentError> {
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
     let requested_encoding = history_upload.requested_encoding();
@@ -515,7 +521,7 @@ async fn upload_session_history(
             LOG_TAG,
             "Session history already exists in S3 (deduplicated, encoding={accepted_encoding})"
         );
-        return Ok(());
+        return Ok(SessionHistoryUploadOutcome::Uploaded);
     }
 
     let presigned_url = prep_resp.presigned_url.ok_or_else(|| {
@@ -533,15 +539,18 @@ async fn upload_session_history(
         .put_presigned(&presigned_url, upload_bytes, "application/octet-stream")
         .await
     {
+        let error = e.to_string();
         record_sandbox_op(
             "session_history_s3_upload",
             upload_start.elapsed(),
             false,
-            None,
+            Some(&error),
         );
-        return Err(AgentError::Checkpoint(format!(
-            "session history upload failed: {e}"
-        )));
+        log_error!(
+            LOG_TAG,
+            "Session history upload failed; continuing checkpoint without history: {error}"
+        );
+        return Ok(SessionHistoryUploadOutcome::Unavailable);
     }
     record_sandbox_op(
         "session_history_s3_upload",
@@ -550,7 +559,7 @@ async fn upload_session_history(
         None,
     );
     log_info!(LOG_TAG, "Session history uploaded to S3");
-    Ok(())
+    Ok(SessionHistoryUploadOutcome::Uploaded)
 }
 
 fn prepare_session_history(
@@ -1043,8 +1052,16 @@ pub(super) async fn prepare_and_upload_session_history(
         };
     match prepared {
         PreparedCheckpointSessionHistory::Upload { checkpoint, upload } => {
-            upload_session_history(http, run_id, &checkpoint.history_hash, upload).await?;
-            Ok(CheckpointSessionHistory::Uploaded(*checkpoint))
+            match upload_session_history(http, run_id, &checkpoint.history_hash, upload).await? {
+                SessionHistoryUploadOutcome::Uploaded => {
+                    Ok(CheckpointSessionHistory::Uploaded(*checkpoint))
+                }
+                SessionHistoryUploadOutcome::Unavailable => {
+                    Ok(CheckpointSessionHistory::Unavailable {
+                        cli_agent_session_id,
+                    })
+                }
+            }
         }
         PreparedCheckpointSessionHistory::DiscardedOversized {
             cli_agent_session_id,

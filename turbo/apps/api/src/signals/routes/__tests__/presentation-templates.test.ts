@@ -64,11 +64,11 @@ describe("presentation template owner routes", () => {
     const client = templateClient();
     const templateId = randomUUID();
 
-    await accept(
+    const readResponse = await accept(
       client.get({ headers: webHeaders(), params: { templateId } }),
       [404],
     );
-    await accept(
+    const updateResponse = await accept(
       client.update({
         headers: webHeaders(),
         params: { templateId },
@@ -76,9 +76,21 @@ describe("presentation template owner routes", () => {
       }),
       [404],
     );
-    await accept(
+    const deleteResponse = await accept(
       client.delete({ headers: webHeaders(), params: { templateId } }),
       [404],
     );
+
+    const notFoundBody = {
+      error: {
+        message: `Presentation template not found: ${templateId}`,
+        code: "NOT_FOUND",
+      },
+    };
+    expect([
+      readResponse.body,
+      updateResponse.body,
+      deleteResponse.body,
+    ]).toStrictEqual([notFoundBody, notFoundBody, notFoundBody]);
   });
 });

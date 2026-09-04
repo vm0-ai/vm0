@@ -303,6 +303,15 @@ function shouldRotateCanonicalSession(args: {
   }
   const providerIdChanged =
     args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId;
+  if (
+    providerIdChanged &&
+    args.previousRoute.modelProvider === "codex-oauth-token" &&
+    args.nextRoute.modelProvider === "codex-oauth-token"
+  ) {
+    // A ChatGPT account owns provider-private response/cache/tool state. Keep
+    // that state inside the exact account captured for each run admission.
+    return true;
+  }
   if (providerIdChanged && customSurfaceRouteMayBeInUse(args)) {
     // Once a custom gateway connection is deleted, the surface row can no
     // longer prove that the previous route was custom, so the provider
