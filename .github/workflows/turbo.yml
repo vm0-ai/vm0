@@ -508,6 +508,7 @@ jobs:
       # --- TEMPORARY (#31692 measurement, removed before review) ---------
       - name: TS7 measurement - api checkers sweep
         working-directory: turbo
+        shell: bash
         run: |
           set +e
           cd apps/api
@@ -525,6 +526,7 @@ jobs:
           exit 0
       - name: TS7 measurement - api TypeScript 6 reference and declaration parity
         working-directory: turbo
+        shell: bash
         run: |
           set +e
           cd apps/api
@@ -550,6 +552,7 @@ jobs:
           exit 0
       - name: TS7 measurement - seeded error parity
         working-directory: turbo
+        shell: bash
         run: |
           set +e
           cd apps/api
@@ -568,6 +571,7 @@ jobs:
           exit 0
       - name: TS7 measurement - platform sweep and TypeScript 6 reference
         working-directory: turbo
+        shell: bash
         run: |
           set +e
           cd apps/platform
