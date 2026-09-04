@@ -14863,6 +14863,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(upstreamAuthorization).toBe("Bearer title-key");
     expect(titleRequestBody).toMatchObject({
       model: "google/gemini-3.8-flash",
+      max_tokens: 512,
       reasoning: { effort: "low" },
     });
 
