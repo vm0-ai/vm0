@@ -198,8 +198,12 @@ test("A folded multi-message answer counts as one shared selection", async () =>
   });
 
   await screen.findByText("Launch answer 3");
-  expect(screen.queryByText("Launch answer 1")).not.toBeInTheDocument();
-  expect(screen.queryByText("Launch answer 2")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("Launch answer 1").closest("[data-chat-run-work-preview]"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Launch answer 2").closest("[data-chat-run-work-preview]"),
+  ).toBeInTheDocument();
   await waitFor(() => {
     expect(buttonsNamed("Share messages").length).toBeGreaterThan(0);
   });

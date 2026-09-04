@@ -36,6 +36,61 @@ function buttonsNamed(name: string): HTMLElement[] {
   });
 }
 
+function runWorkPreviews(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>("[data-chat-run-work-preview]"),
+  );
+}
+
+function workMessage(index: number): string {
+  return `Work message ${String(index + 1)}`;
+}
+
+function workMessageEvents(count: number): MockChatEventInput[] {
+  return Array.from({ length: count }, (_, index) => {
+    return assistantEvent({
+      id: `work-message-${String(index + 1)}`,
+      runId: RUN_A,
+      seqId: index + 2,
+      text: workMessage(index),
+      createdAt: createdAt(10, (index + 1) * 5),
+    });
+  });
+}
+
+function activeWorkChatEvents(messageCount: number): MockChatEventInput[] {
+  return [
+    promptEvent({
+      id: "active-work-user",
+      runId: RUN_A,
+      seqId: 1,
+      text: "Prepare the deployment review",
+      createdAt: createdAt(10),
+    }),
+    ...workMessageEvents(messageCount),
+  ];
+}
+
+function visibleWorkMessages(messageCount: number): string[] {
+  return Array.from({ length: messageCount }, (_, index) => {
+    return workMessage(index);
+  }).filter((message) => {
+    return screen.queryByText(message) !== null;
+  });
+}
+
+function fullWorkMessages(messageCount: number): string[] {
+  return Array.from({ length: messageCount }, (_, index) => {
+    return workMessage(index);
+  }).filter((message) => {
+    const element = screen.queryByText(message);
+    return (
+      element !== null &&
+      element.closest("[data-chat-run-work-preview]") === null
+    );
+  });
+}
+
 test("Browse completed work by conversation phase", async () => {
   installRunChat({
     chatEvents: [
@@ -208,7 +263,124 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one final plan")).toBeVisible();
 });
 
-test("Show elapsed work above the latest active response", async () => {
+test.each([0, 1, 2, 3, 4, 5, 8])(
+  "Summarize an active run with %i text messages",
+  async (messageCount) => {
+    const messages = workMessageEvents(messageCount);
+    installRunChat({
+      activeRunIds: [RUN_A],
+      chatEvents: activeWorkChatEvents(messageCount),
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+    });
+
+    await readyChat();
+    expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
+    const expectedPreviews = messages
+      .slice(Math.max(0, messageCount - 4), -1)
+      .map((_, index) => {
+        return workMessage(Math.max(0, messageCount - 4) + index);
+      });
+    const expectedLatestMessage =
+      messageCount === 0 ? [] : [workMessage(messageCount - 1)];
+    expect(screen.queryAllByText(/^Working for /)).toHaveLength(
+      messageCount === 0 ? 0 : 1,
+    );
+    expect(
+      runWorkPreviews().map((preview) => {
+        return preview.textContent?.replace(/\s+/gu, " ").trim();
+      }),
+    ).toStrictEqual(
+      expectedPreviews.map((message) => {
+        return `•${message}`;
+      }),
+    );
+    expect(visibleWorkMessages(messageCount)).toStrictEqual([
+      ...expectedPreviews,
+      ...expectedLatestMessage,
+    ]);
+    expect(fullWorkMessages(messageCount)).toStrictEqual(expectedLatestMessage);
+    expect(buttonsNamed("Expand work history")).toHaveLength(
+      messageCount > 1 ? 1 : 0,
+    );
+  },
+);
+
+test.each([2, 3, 4, 5, 8])(
+  "Expand an active run with %i text messages",
+  async (messageCount) => {
+    installRunChat({
+      activeRunIds: [RUN_A],
+      chatEvents: activeWorkChatEvents(messageCount),
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+    });
+
+    click(await findButton("Expand work history"));
+    await waitFor(() => {
+      expect(runWorkPreviews()).toHaveLength(0);
+    });
+    expect(fullWorkMessages(messageCount)).toStrictEqual(
+      Array.from({ length: messageCount }, (_, index) => {
+        return workMessage(index);
+      }),
+    );
+  },
+);
+
+test.each([0, 1, 2, 5])(
+  "Summarize a finished run with %i text messages",
+  async (messageCount) => {
+    const messages = workMessageEvents(messageCount);
+    installRunChat({
+      chatEvents: [
+        promptEvent({
+          id: "finished-work-user",
+          runId: RUN_A,
+          seqId: 1,
+          text: "Prepare the deployment review",
+          createdAt: createdAt(10),
+        }),
+        ...messages,
+        completedEvent({
+          id: "finished-work-complete",
+          runId: RUN_A,
+          seqId: messageCount + 2,
+          createdAt: createdAt(11),
+        }),
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+    });
+
+    await readyChat();
+    expect(screen.getByText(/^Worked for /)).toBeVisible();
+    expect(runWorkPreviews()).toHaveLength(0);
+    const expectedLatestMessage =
+      messageCount === 0 ? [] : [workMessage(messageCount - 1)];
+    expect(visibleWorkMessages(messageCount)).toStrictEqual(
+      expectedLatestMessage,
+    );
+    expect(fullWorkMessages(messageCount)).toStrictEqual(expectedLatestMessage);
+    expect(buttonsNamed("Expand work history")).toHaveLength(
+      messageCount > 1 ? 1 : 0,
+    );
+  },
+);
+
+test("Keep non-text run output fully visible and outside the message count", async () => {
   installRunChat({
     activeRunIds: [RUN_A],
     chatEvents: [
@@ -220,19 +392,36 @@ test("Show elapsed work above the latest active response", async () => {
         createdAt: createdAt(10),
       }),
       assistantEvent({
-        id: "active-work-earlier",
+        id: "active-work-text",
         runId: RUN_A,
         seqId: 2,
         text: "Checked the deployment logs",
         createdAt: createdAt(10, 20),
       }),
       assistantEvent({
-        id: "active-work-latest",
+        id: "active-work-image",
         runId: RUN_A,
         seqId: 3,
-        text: "Reviewing the final health checks",
+        text: "![Generated chart](https://example.com/generated-chart.png)",
         createdAt: createdAt(10, 40),
       }),
+      assistantEvent({
+        id: "active-work-action",
+        runId: RUN_A,
+        seqId: 4,
+        text: "[Compare plans](/?settings=billing&billingView=plans)",
+        createdAt: createdAt(10, 45),
+      }),
+      {
+        id: "active-work-error",
+        eventType: "output.error",
+        role: "assistant",
+        content: null,
+        error: "Health check failed visibly",
+        runId: RUN_A,
+        seqId: 5,
+        createdAt: createdAt(10, 50),
+      },
     ],
   });
 
@@ -243,20 +432,13 @@ test("Show elapsed work above the latest active response", async () => {
   });
 
   await readyChat();
-  expect(screen.getByText("Reviewing the final health checks")).toBeVisible();
-  expect(screen.queryByText("Checked the deployment logs")).toBeNull();
+  expect(screen.getByText("Checked the deployment logs")).toBeVisible();
+  await expect(screen.findByAltText("Generated chart")).resolves.toBeVisible();
+  await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
+  expect(screen.getByText("Health check failed visibly")).toBeVisible();
   expect(screen.getByText(/^Working for /)).toBeVisible();
-
-  click(await findButton("Expand work history"));
-
-  await expect(
-    screen.findByText("Checked the deployment logs"),
-  ).resolves.toBeVisible();
-  expectTextOrder(
-    "Prepare the deployment review",
-    "Checked the deployment logs",
-    "Reviewing the final health checks",
-  );
+  expect(runWorkPreviews()).toHaveLength(0);
+  expect(buttonsNamed("Expand work history")).toHaveLength(0);
 });
 
 test("Fold intermediate work only after a run completes", async () => {

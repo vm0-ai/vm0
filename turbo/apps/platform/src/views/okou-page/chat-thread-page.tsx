@@ -6,6 +6,7 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
+import type { Element, Root } from "hast";
 import {
   useGet,
   useLoadable,
@@ -3413,6 +3414,9 @@ function ChatThreadEventGroups({
                 runWorkSection !== null
                   ? {
                       anchorEventId: runWorkSection.anchorEventId,
+                      collapsedGroups: runWorkSection.collapsedGroups,
+                      previewEventIds: runWorkSection.previewEventIds,
+                      collapsible: runWorkSection.collapsible,
                       startTime: runWorkSection.startTime,
                       endTime: runWorkSection.endTime,
                       hiddenGroups: runWorkSection.hiddenGroups,
@@ -7468,6 +7472,10 @@ type PagedAssistantTimelineItem =
   | {
       readonly kind: "run-work";
       readonly control: RunWorkSectionControl;
+    }
+  | {
+      readonly kind: "run-work-preview";
+      readonly event: EnrichedChatEvent;
     };
 
 function assistantTimelineItems(
@@ -7481,6 +7489,7 @@ function assistantTimelineItems(
 function foldedRunWorkTimelineItems(
   groups: readonly ChatEventGroup[],
   modelChanges: ReadonlyMap<string, RunModelChange>,
+  previewEventIds?: ReadonlySet<string>,
 ): PagedAssistantTimelineItem[] {
   return groups.flatMap((group) => {
     return group.events.flatMap((event): PagedAssistantTimelineItem[] => {
@@ -7489,10 +7498,76 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "assistant", event }]
+        ? [
+            previewEventIds?.has(event.id) === true
+              ? { kind: "run-work-preview", event }
+              : { kind: "assistant", event },
+          ]
         : [];
     });
   });
+}
+
+const RUN_WORK_PREVIEW_BLOCK_TAGS: ReadonlySet<string> = new Set([
+  "address",
+  "blockquote",
+  "div",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "table",
+  "tr",
+  "ul",
+]);
+
+function runWorkPreviewText(event: EnrichedChatEvent): string {
+  const tree = event.tree;
+  if (tree === undefined) {
+    return normalizedInlineLabel(event.content ?? "");
+  }
+  const parts: string[] = [];
+  const visit = (node: Root | Element): void => {
+    const block =
+      node.type === "element" && RUN_WORK_PREVIEW_BLOCK_TAGS.has(node.tagName);
+    if (block) {
+      parts.push(" ");
+    }
+    for (const child of node.children) {
+      if (child.type === "text" || child.type === "raw") {
+        parts.push(child.value);
+      } else if (child.type === "element") {
+        visit(child);
+      }
+    }
+    if (block) {
+      parts.push(" ");
+    }
+  };
+  visit(tree);
+  return normalizedInlineLabel(parts.join(""));
+}
+
+function RunWorkMessagePreview({ event }: { event: EnrichedChatEvent }) {
+  return (
+    <div
+      data-chat-run-work-preview
+      className="flex h-5 min-w-0 max-w-full items-center gap-2 text-[13px] leading-5 text-muted-foreground/60"
+    >
+      <span aria-hidden className="shrink-0">
+        •
+      </span>
+      <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+        {runWorkPreviewText(event)}
+      </span>
+    </div>
+  );
 }
 
 function buildPagedAssistantTimeline({
@@ -7529,6 +7604,14 @@ function buildPagedAssistantTimeline({
   if (runWorkSection.expanded) {
     items.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
+    );
+  } else {
+    items.push(
+      ...foldedRunWorkTimelineItems(
+        runWorkSection.collapsedGroups,
+        modelChanges,
+        runWorkSection.previewEventIds,
+      ),
     );
   }
   items.push(...assistantTimelineItems(group.events.slice(0, anchorEndIndex)));
@@ -7569,19 +7652,19 @@ function PagedAssistantTimeline({
       );
     }
     if (item.kind === "run-work") {
-      const collapsible =
-        item.control.hiddenGroups.length > 0 ||
-        item.control.hiddenGroupsAfterAnchor.length > 0;
       return (
         <RunWorkSectionRow
           key={`run-work:control:${item.control.anchorEventId}`}
           startTime={item.control.startTime}
           endTime={item.control.endTime}
-          collapsible={collapsible}
+          collapsible={item.control.collapsible}
           expanded={item.control.expanded}
           onToggle={item.control.onToggle}
         />
       );
+    }
+    if (item.kind === "run-work-preview") {
+      return <RunWorkMessagePreview key={item.event.id} event={item.event} />;
     }
     const compactTop = renderedAssistantItemCount > 0;
     renderedAssistantItemCount += 1;

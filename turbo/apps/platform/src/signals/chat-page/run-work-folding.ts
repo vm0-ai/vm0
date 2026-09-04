@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { ChatEventUsagePayload } from "@okouai/api-contracts/contracts/chat-threads";
+import type { Element, Root } from "hast";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
@@ -12,6 +13,8 @@ import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
 import { isGoalContinuationInput, type ChatEvent } from "./chat-event-types.ts";
 import { mergeChatEventUsagePayloads } from "./chat-event-usage.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
+import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
+import { eventBodyPlan } from "./parse-body-blocks.ts";
 
 const internalRunWorkExpandedKeys$ = state<Set<string>>(new Set());
 
@@ -34,6 +37,9 @@ export const toggleRunWorkExpanded$ = command(({ set }, key: string) => {
 export interface RunWorkSection {
   readonly key: string;
   readonly anchorEventId: string;
+  readonly collapsedGroups: ChatEventGroup[];
+  readonly previewEventIds: ReadonlySet<string>;
+  readonly collapsible: boolean;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
   readonly startTime: number;
@@ -82,6 +88,68 @@ function isRunWorkAssistantOutput(event: EnrichedChatEvent): boolean {
     event.eventType !== "run.queued" &&
     !isCancelledRunEvent(event) &&
     isRenderableAssistantEvent(event)
+  );
+}
+
+const NON_TEXT_TREE_TAGS: ReadonlySet<string> = new Set([
+  "audio",
+  "canvas",
+  "iframe",
+  "img",
+  "svg",
+  "video",
+]);
+
+function elementHasNonTextContent(node: Element): boolean {
+  const href = node.tagName === "a" ? node.properties.href : undefined;
+  return (
+    node.data?.card !== undefined ||
+    node.data?.imageLoadSignals !== undefined ||
+    node.data?.mermaid !== undefined ||
+    node.data?.mermaidSignals !== undefined ||
+    NON_TEXT_TREE_TAGS.has(node.tagName) ||
+    (typeof href === "string" &&
+      isSafeMediaUrl(href) &&
+      (isImageUrl(href) || isVideoUrl(href)))
+  );
+}
+
+function treeHasNonTextContent(node: Root | Element): boolean {
+  if (node.type === "element" && elementHasNonTextContent(node)) {
+    return true;
+  }
+  return node.children.some((child) => {
+    return child.type === "element" && treeHasNonTextContent(child);
+  });
+}
+
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]\n]*\](?:\([^\n)]*\)|\[[^\]\n]*\])/u;
+const MEDIA_URL_PATTERN =
+  /https?:\/\/[^\s<>"'()[\]]+\.(?:png|jpe?g|gif|webp|svg|bmp|avif|mp4|webm|mov|ogv)(?:[?#][^\s<>"'()[\]]*)?/iu;
+const MEDIA_HTML_TAG_PATTERN = /<(?:audio|canvas|iframe|img|svg|video)\b/iu;
+const MERMAID_FENCE_PATTERN =
+  /^ {0,3}(?:`{3,}|~{3,})[ \t]*mermaid(?:[ \t]|$)/imu;
+const BROWSER_SESSION_URL_PATTERN =
+  /\/browsers\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:[/?#\s)]|$)/iu;
+
+function messageSourceHasNonTextContent(content: string): boolean {
+  const plan = eventBodyPlan(content, { previews: true });
+  return (
+    plan.descriptors.length > 0 ||
+    MARKDOWN_IMAGE_PATTERN.test(plan.treeSource) ||
+    MEDIA_URL_PATTERN.test(plan.treeSource) ||
+    MEDIA_HTML_TAG_PATTERN.test(plan.treeSource) ||
+    MERMAID_FENCE_PATTERN.test(plan.treeSource) ||
+    BROWSER_SESSION_URL_PATTERN.test(plan.treeSource)
+  );
+}
+
+function isRunWorkTextMessage(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "output.message" &&
+    Boolean(event.content) &&
+    !messageSourceHasNonTextContent(event.content) &&
+    (event.tree === undefined || !treeHasNonTextContent(event.tree))
   );
 }
 
@@ -489,14 +557,12 @@ function foldRunWorkPhase(
   hiddenUserEventIds: ReadonlySet<string>,
   foldedEventIds: ReadonlySet<string>,
 ): RunWorkPhaseFolding {
-  const latestAssistantOutput = lastEventMatching(
-    events,
-    isRunWorkAssistantOutput,
-  );
+  const textMessages = events.filter(isRunWorkTextMessage);
+  const latestTextMessage = textMessages.at(-1);
   const terminalEvent = lastEventMatching(events, (event) => {
     return isChatRunTerminalEventType(event.eventType);
   });
-  const anchorEvent = latestAssistantOutput ?? terminalEvent;
+  const anchorEvent = latestTextMessage ?? terminalEvent;
   const startTime = firstEventTime(events);
   if (anchorEvent === undefined || startTime === null) {
     return {
@@ -514,6 +580,19 @@ function foldRunWorkPhase(
       (hiddenUserEventIds.has(event.id) && foldedEventIds.has(event.id))
     );
   });
+  const previewTextMessages =
+    endTime === undefined ? textMessages.slice(-4, -1) : [];
+  const previewEventIds = new Set(
+    previewTextMessages.map((event) => {
+      return event.id;
+    }),
+  );
+  const collapsedEvents = hiddenEvents.filter((event) => {
+    return (
+      previewEventIds.has(event.id) ||
+      (isRenderableAssistantEvent(event) && !isRunWorkTextMessage(event))
+    );
+  });
   const hiddenEventsAfterAnchor = events
     .slice(anchorIndex + 1)
     .filter((event) => {
@@ -529,7 +608,7 @@ function foldRunWorkPhase(
       !hiddenEventIds.has(event.id) &&
       !hiddenUserEventIds.has(event.id) &&
       isRenderableAssistantEvent(event) &&
-      !isRunWorkAssistantOutput(event)
+      !isRunWorkTextMessage(event)
     );
   });
   const userEvents = events.filter((event) => {
@@ -541,6 +620,9 @@ function foldRunWorkPhase(
     section: {
       key: `${key}:${events[0]!.id}`,
       anchorEventId: anchorEvent.id,
+      collapsedGroups: groupEventsByRole(collapsedEvents),
+      previewEventIds,
+      collapsible: textMessages.length > 1,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
       startTime,
