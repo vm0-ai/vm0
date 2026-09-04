@@ -1,11 +1,13 @@
 use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::net::UnixStream;
 use vsock_proto::{
     ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS,
-    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot,
 };
 
 use super::support::{
@@ -19,19 +21,23 @@ use crate::{
     NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
 };
 
-#[tokio::test]
-async fn wait_for_connection_oversized_timeout_returns_invalid_input() {
+fn unique_vsock_paths(label: &str) -> (String, PathBuf) {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     let base = std::env::temp_dir().join(format!(
-        "vsock-host-timeout-overflow-{}-{unique}",
+        "vsock-host-{label}-{}-{unique}",
         std::process::id()
     ));
-    let listener =
-        std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
-    let base = base.display().to_string();
+    let listener = PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+
+    (base.display().to_string(), listener)
+}
+
+#[tokio::test]
+async fn wait_for_connection_oversized_timeout_returns_invalid_input() {
+    let (base, listener) = unique_vsock_paths("timeout-overflow");
 
     let result = VsockHost::wait_for_connection(&base, Duration::MAX).await;
     let error_kind = match result {
@@ -46,17 +52,70 @@ async fn wait_for_connection_oversized_timeout_returns_invalid_input() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn wait_for_connection_times_out_without_client_and_removes_listener_socket() {
+    let (base, listener) = unique_vsock_paths("accept-timeout");
+    let timeout = Duration::from_secs(10);
+    let started_at = tokio::time::Instant::now();
+    let handle = tokio::spawn(async move { VsockHost::wait_for_connection(&base, timeout).await });
+
+    tokio::task::yield_now().await;
+    assert!(listener.exists(), "listener socket should be bound");
+
+    let error = match handle.await.unwrap() {
+        Ok(_) => panic!("listener without a client should time out"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(started_at.elapsed(), timeout);
+    assert!(
+        !listener.exists(),
+        "timed-out listener should remove its socket path"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn wait_for_connection_shares_deadline_with_handshake() {
+    let (base, listener) = unique_vsock_paths("shared-deadline");
+    let timeout = Duration::from_secs(10);
+    let started_at = tokio::time::Instant::now();
+    let handle = tokio::spawn(async move { VsockHost::wait_for_connection(&base, timeout).await });
+
+    tokio::task::yield_now().await;
+    assert!(listener.exists(), "listener socket should be bound");
+
+    tokio::time::advance(Duration::from_secs(4)).await;
+    let guest_stream = UnixStream::connect(&listener).await.unwrap();
+    let mut guest = MockGuest::new(guest_stream);
+    guest.send_empty_response(MSG_READY, 0).await;
+    let ping = guest.expect_message(MSG_PING).await;
+    assert!(ping.payload.is_empty());
+    assert!(
+        !listener.exists(),
+        "accepted listener should remove its socket path"
+    );
+
+    let error = match handle.await.unwrap() {
+        Ok(_) => panic!("handshake without pong should time out"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(
+        started_at.elapsed(),
+        timeout,
+        "handshake should receive only the original deadline's remaining budget"
+    );
+    assert!(
+        !listener.exists(),
+        "timed-out handshake should leave no listener socket"
+    );
+}
+
 #[tokio::test]
 async fn wait_for_connection_removes_listener_socket_on_abort() {
-    let unique = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let base =
-        std::env::temp_dir().join(format!("vsock-host-abort-{}-{unique}", std::process::id()));
-    let listener =
-        std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
-    let base = base.display().to_string();
+    let (base, listener) = unique_vsock_paths("abort");
 
     let handle = tokio::spawn(async move {
         VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
