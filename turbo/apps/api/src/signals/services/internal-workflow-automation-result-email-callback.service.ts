@@ -98,18 +98,28 @@ async function resultEmailWorkflowLabel(
   provenance: AgentRunOfficialWorkflowProvenance | null,
   signal: AbortSignal,
 ): Promise<string> {
-  const definition = provenance?.definitions.find((candidate) => {
+  if (!provenance) {
+    return workflowName;
+  }
+  const definition = provenance.definitions.find((candidate) => {
     return candidate.name === workflowName;
   });
   if (!definition) {
-    return workflowName;
+    throw new Error(
+      `Official Workflow provenance does not contain ${workflowName}`,
+    );
   }
   const revision = await readAcceptedOfficialWorkflowRevision(
     db,
     { name: definition.name, revision: definition.revision },
     signal,
   );
-  return revision?.definition.workflow.displayName ?? workflowName;
+  if (!revision) {
+    throw new Error(
+      `Official Workflow revision ${definition.name}@${definition.revision} is unavailable`,
+    );
+  }
+  return revision.definition.workflow.displayName;
 }
 
 function boundedResultText(output: string | undefined): string {
