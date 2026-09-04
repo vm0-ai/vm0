@@ -81,6 +81,9 @@ verify_assets_step = find_step(
 )
 sentry_step = find_step(worker_release_job, "Upload App source maps to Sentry")
 deploy_step = find_step(worker_release_job, "Deploy App Worker production")
+retire_domains_step = find_step(
+    worker_release_job, "Retire App Worker diagnostic domains"
+)
 start_step = find_step(worker_release_job, "Start GitHub Deployment")
 finish_step = find_step(worker_release_job, "Finish GitHub Deployment")
 
@@ -128,8 +131,6 @@ deploy_source = require_fragments(
         '--message "app artifact ${ARTIFACT_SHA}"',
         '"https://app.vm0.ai|https://api.vm0.ai"',
         '"https://app.okou.ai|https://api.okou.ai"',
-        '"https://app-worker.vm0.ai|https://api.vm0.ai"',
-        '"https://app-worker.okou.ai|https://api.okou.ai"',
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -141,6 +142,26 @@ if deploy_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
+retire_domains_source = require_fragments(
+    retire_domains_step,
+    [
+        'retire_custom_domain "app-worker.okou.ai"',
+        'retire_custom_domain "app-worker.vm0.ai"',
+        "/workers/domains",
+        '--data-urlencode "hostname=${hostname}"',
+        ".service",
+        '"okou-app-production"',
+        '^[0-9a-f]{32}$',
+        "--request DELETE",
+        ".success == true",
+    ],
+)
+if retire_domains_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
+    "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
+):
+    raise RuntimeError("domain retirement must use the Worker token")
+if retire_domains_source.count("--request DELETE") != 1:
+    raise RuntimeError("domain retirement must use one guarded deletion path")
 if start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if finish_step.get("with", {}).get("status") != "${{ job.status }}":
@@ -152,6 +173,7 @@ if not (
     < steps.index(verify_assets_step)
     < steps.index(sentry_step)
     < steps.index(deploy_step)
+    < steps.index(retire_domains_step)
     < steps.index(finish_step)
 ):
     raise RuntimeError("Worker artifact verification must precede deployment reporting")
@@ -184,9 +206,6 @@ for fragment in (
     '"zone_name": "okou.ai"',
     '"pattern": "app.vm0.ai/*"',
     '"zone_name": "vm0.ai"',
-    '"pattern": "app-worker.okou.ai"',
-    '"pattern": "app-worker.vm0.ai"',
-    '"custom_domain": true',
 ):
     if fragment not in worker_config_source:
         raise RuntimeError(f"production Worker config is missing: {fragment}")
