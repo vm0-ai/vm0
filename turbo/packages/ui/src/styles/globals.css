@@ -265,6 +265,7 @@
    * instead of selected. It gets its own pair of tokens instead.
    * =================================== */
   --color-segment-selected: hsl(var(--segment-selected));
+  --color-segment-track: hsl(var(--segment-track));
   --shadow-segment-selected: var(--segment-selected-shadow);
 }
 
@@ -379,8 +380,9 @@
     --state-on-filled-hover-alpha: 10%;
     --state-on-filled-pressed-alpha: 16%;
 
-    /* Segment control (light): white lifts off the gray-100 track. */
+    /* Segment control (light): white lifts off the track. */
     --segment-selected: 0 0% 100%;
+    --segment-track: var(--muted);
     --segment-selected-shadow:
       0 1px 2px hsl(220 12% 20% / 0.06), 0 1px 3px hsl(220 12% 20% / 0.08);
 
@@ -601,13 +603,17 @@
        `gray-50` and `gray-200` sit on the canvas and keep only a trace of
        warmth; `gray-0` and Linen are chrome and keep theirs. */
     --background: 0 0% 100%; /* #FFFFFF - the canvas carries no tint */
-    --foreground: var(--gray-950); /* gray-950 */
+    /* Body copy is neutral, not Ink. Ink carries the ramp's 42.9 hue, which
+       reads as a warm cast at paragraph scale on a white canvas. The two nav
+       columns keep Ink through `--sidebar-foreground`, so chrome stays warm
+       and only content goes neutral. */
+    --foreground: 0 0% 14.1%; /* #242424 - neutral near-black */
 
     --card: var(--white); /* white */
-    --card-foreground: var(--gray-950); /* gray-950 */
+    --card-foreground: var(--foreground); /* neutral, tracks body copy */
 
     --popover: var(--white); /* white */
-    --popover-foreground: var(--gray-950); /* gray-950 */
+    --popover-foreground: var(--foreground); /* neutral, tracks body copy */
 
     --primary: var(--primary-300); /* primary-300 - brand */
     /* Amber is a light fill and cannot carry white text (1.97:1). Ink clears
@@ -615,13 +621,13 @@
     --primary-foreground: 42.9 4.3% 13.5%; /* #242321 - Ink on brand */
 
     --secondary: 42.9 41.2% 96.7%; /* gray-100 - direct value for opacity modifier support */
-    --secondary-foreground: var(--gray-950); /* gray-950 */
+    --secondary-foreground: var(--foreground); /* neutral, tracks body copy */
 
     --muted: var(--gray-100); /* gray-100 */
     --muted-foreground: var(--gray-800); /* gray-800 */
 
     --accent: var(--gray-100); /* gray-100 - matches navigation hover */
-    --accent-foreground: var(--gray-950); /* gray-950 */
+    --accent-foreground: var(--foreground); /* neutral, tracks body copy */
 
     --destructive: 16.9 100% 36.9%; /* #BC3500 - Coral 700 */
     --destructive-foreground: var(
@@ -676,8 +682,13 @@
     --state-on-filled-hover-alpha: 10%;
     --state-on-filled-pressed-alpha: 16%;
 
-    /* Segment control (light): white lifts off the gray-100 track. */
+    /* Segment control (light): white lifts off the track.
+       The track takes gray-200 rather than the `--muted` gray-100 the base
+       theme uses. Against a white canvas gray-100 clears 1.06:1, so both the
+       track and the white selection dissolve into the page and the control
+       stops reading as a control. Dark already tracks on gray-200. */
     --segment-selected: 0 0% 100%;
+    --segment-track: var(--gray-200);
     --segment-selected-shadow:
       0 1px 2px hsl(30 4.3% 13.5% / 0.06), 0 1px 3px hsl(30 4.3% 13.5% / 0.08);
 

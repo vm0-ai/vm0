@@ -811,6 +811,12 @@ body {
 :where([data-theme="dark"]) .zero-app .zero-chat-bubble-user {
   background-color: hsl(var(--gray-200));
 }
+/* Under the new palette gray-100 clears 1.06:1 against the white canvas, so
+   the bubble stops reading as a bubble and the turn boundary disappears. Take
+   the gray-200 step dark has always used here. */
+[data-new-ui] .zero-app .zero-chat-bubble-user {
+  background-color: hsl(var(--gray-200));
+}
 
 /* Chat: assistant (Zero) message bubble */
 .zero-app .zero-chat-bubble-assistant {
