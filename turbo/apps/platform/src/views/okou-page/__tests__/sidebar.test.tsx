@@ -1625,6 +1625,51 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
   });
 });
 
+// The new shell parks the workspace card's eight-pixel gutter, painted in the
+// sidebar colour, immediately right of this column. Keeping the full inset here
+// as well stacks the two, so the rows sit twice as far from the card's border
+// as from the rail.
+test("Spend the workspace card's gutter out of the chat list's right inset", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.NewUi]: true,
+    },
+  });
+
+  await waitFor(() => {
+    return within(sidebar()).getByText("Chats with Zero");
+  });
+
+  const pinnedContent = within(sidebar()).getByTestId(
+    "pinned-agents-horizontal",
+  ).parentElement;
+  const threadContent =
+    within(sidebar()).getByText("Chats with Zero").parentElement?.parentElement;
+  const header = sidebar().firstElementChild;
+  const footer = sidebar().lastElementChild;
+  if (
+    !(pinnedContent instanceof HTMLElement) ||
+    !(threadContent instanceof HTMLElement) ||
+    !(header instanceof HTMLElement) ||
+    !(footer instanceof HTMLElement)
+  ) {
+    throw new Error("Chat list column frame not found");
+  }
+
+  // The rail on the other side supplies no such gutter, so the left inset is
+  // unchanged and the two edges only read alike once the right one hands its
+  // eight pixels to the card.
+  for (const element of [header, pinnedContent, threadContent, footer]) {
+    expect(element).toHaveClass("pl-3", "pr-1");
+    expect(element).not.toHaveClass("px-3");
+  }
+});
+
 test("Route New chat to the current agent and Chat to the default agent", async () => {
   prepareAgents();
   mockSidebarThreadStory([
