@@ -33,6 +33,10 @@ import {
 
 const context = testContext();
 
+function legacyConnectorFeatureSwitches() {
+  return { [FeatureSwitchKey.ConnectorAccounts]: false };
+}
+
 function createAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
   Object.defineProperty(authWindow, "location", {
@@ -341,7 +345,11 @@ test("Keep a connector connected when an account must be chosen", async () => {
       });
     },
   );
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   const card = await waitFor(() => {
     return getConnectorCard("GitHub");
   });
@@ -735,7 +743,11 @@ test("Reconnect an expired connection", async () => {
       });
     },
   );
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   const card = await waitFor(() => {
     return getConnectorCard("Meta Ads");
   });
@@ -1050,7 +1062,11 @@ test("Review newly requested connector permissions", async () => {
       storedScopes,
     });
   });
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   const card = await waitFor(() => {
     return getConnectorCard("Google Ads");
   });

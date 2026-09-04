@@ -82,6 +82,7 @@ import {
   resolveWebChatSessionPrompt,
   type WebChatSessionPromptContext,
 } from "./web-chat-session-prompt.service";
+import { captureActiveCodexModelProviderAccount } from "./model-provider-account.service";
 
 type AgentRunCreateBody = z.infer<typeof runCreateBodySchema>;
 // Emitted as the agent_run_origin observability dimension. The values name what
@@ -419,6 +420,7 @@ function buildAgentToolsPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
@@ -434,6 +436,11 @@ function buildAgentToolsPrompt(args: {
     "- Manage recurring workflow automations: `okou workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     ...(args.presentationTemplatesEnabled
       ? [`- ${presentationTemplateSkillInstruction()}`]
+      : []),
+    ...(args.introVideoEnabled
+      ? [
+          "- Click-driven intro-video camera moves: when a screen recording includes a synchronized same-stem `.clicks.json` sidecar, run `okou video camera --help` and follow its plan/review workflow.",
+        ]
       : []),
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `okou scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
     ...(args.cloudBrowserEnabled === true
@@ -559,6 +566,7 @@ function buildAppendSystemPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
@@ -571,6 +579,7 @@ function buildAppendSystemPrompt(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
       connectorAccountsEnabled: args.connectorAccountsEnabled,
+      introVideoEnabled: args.introVideoEnabled,
       presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
@@ -752,6 +761,7 @@ function createRunBody(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }) {
@@ -764,6 +774,7 @@ function createRunBody(args: {
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
     connectorAccountsEnabled: args.connectorAccountsEnabled,
+    introVideoEnabled: args.introVideoEnabled,
     presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
@@ -968,6 +979,10 @@ function buildZeroCreateAgentRunArgs(args: {
         FeatureSwitchKey.ConnectorAccounts,
         args.featureSwitchContext,
       ),
+      introVideoEnabled: isFeatureEnabled(
+        FeatureSwitchKey.IntroVideo,
+        args.featureSwitchContext,
+      ),
       presentationScreenshotEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationScreenshot,
         args.featureSwitchContext,
@@ -1055,6 +1070,49 @@ interface AgentRunAfterPreCreate {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly command: AnyCreateAgentRunCommandArgs;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
+}
+
+async function captureCodexSubscriptionAccount(
+  db: Db,
+  input: AgentRunAfterPreCreate,
+): Promise<AgentRunAfterPreCreate> {
+  const { command } = input;
+  if (
+    (!command.piExecution &&
+      !isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        input.featureSwitchContext,
+      )) ||
+    command.agentRunModelPin?.modelProvider !== "codex-oauth-token" ||
+    command.threadSessionRoute?.modelProvider !== "codex-oauth-token"
+  ) {
+    return input;
+  }
+  const account = await captureActiveCodexModelProviderAccount({
+    db,
+    orgId: command.auth.orgId,
+    userId: command.auth.userId,
+    modelProviderId: command.agentRunModelPin.modelProviderId,
+    featureSwitchContext: input.featureSwitchContext,
+  });
+  if (!account) {
+    return input;
+  }
+  return {
+    ...input,
+    command: {
+      ...command,
+      modelProviderId: account.id,
+      agentRunModelPin: {
+        ...command.agentRunModelPin,
+        modelProviderId: account.id,
+      },
+      threadSessionRoute: {
+        ...command.threadSessionRoute,
+        modelProviderId: account.id,
+      },
+    },
+  };
 }
 
 async function resolvePausedThreadGoalPrompt(
@@ -1165,15 +1223,20 @@ const THREAD_SESSION_PREPARATION_ATTEMPTS = 3;
 const createAgentRunAfterZeroPreCreate$ = command(
   async ({ set }, input: AgentRunAfterPreCreate, signal: AbortSignal) => {
     const db = set(writeDb$);
+    const capturedInput = await captureCodexSubscriptionAccount(db, input);
+    signal.throwIfAborted();
     for (
       let attempt = 0;
       attempt < THREAD_SESSION_PREPARATION_ATTEMPTS;
       attempt += 1
     ) {
-      const attemptInput = await resolveThreadSessionForAgentRun(db, input);
+      const attemptInput = await resolveThreadSessionForAgentRun(
+        db,
+        capturedInput,
+      );
       signal.throwIfAborted();
       const baseCreateAgentRunArgs = await measureZeroPreCreate(
-        input.timing,
+        capturedInput.timing,
         "api_dispatch_pre_create_zero_build_create_run_args",
         () => {
           return buildZeroCreateAgentRunArgs(attemptInput);
@@ -1188,27 +1251,27 @@ const createAgentRunAfterZeroPreCreate$ = command(
         },
       };
       const phaseTiming = new ApiDispatchPhaseCollector(
-        input.command.apiStartTime,
+        capturedInput.command.apiStartTime,
       );
-      input.timing.recordElapsed(
+      capturedInput.timing.recordElapsed(
         "api_dispatch_pre_create_agent_run",
         "top_level",
-        input.command.apiStartTime,
+        capturedInput.command.apiStartTime,
       );
       phaseTiming.checkpoint("api_dispatch_phase_pre_create", now());
       const preparedAgentRun = await set(
         prepareAgentRun$,
         {
           args: createAgentRunArgs,
-          timing: input.timing,
+          timing: capturedInput.timing,
           phaseTiming,
           checkOrgPlanStatusBeforeContext: false,
-          preloadedFeatureSwitchContext: input.featureSwitchContext,
-          preloadedUserTimezone: input.userInfo.timezone,
-          ...(input.connectorCatalogSelection.kind === "scoped"
+          preloadedFeatureSwitchContext: capturedInput.featureSwitchContext,
+          preloadedUserTimezone: capturedInput.userInfo.timezone,
+          ...(capturedInput.connectorCatalogSelection.kind === "scoped"
             ? {
                 preloadedConnectorCatalogSnapshot:
-                  input.connectorCatalogSelection.selection,
+                  capturedInput.connectorCatalogSelection.selection,
               }
             : {}),
         },

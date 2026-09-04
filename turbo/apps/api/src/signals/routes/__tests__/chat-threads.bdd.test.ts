@@ -3048,6 +3048,7 @@ describe("CHAT-01 chat search index", () => {
           return HttpResponse.json({
             choices: [
               {
+                finish_reason: "stop",
                 message: {
                   content: body.includes("concise follow-up prompts")
                     ? JSON.stringify([

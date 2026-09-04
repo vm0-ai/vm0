@@ -24,6 +24,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects cleanup-sandboxes requests with an invalid cron secret", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepWrongAuth(
       context,
       cronCleanupSandboxesRoutes,
@@ -32,6 +33,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects cleanup-sandboxes requests without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronCleanupSandboxesRoutes,
@@ -40,6 +42,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects connector OAuth cleanup requests without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronConnectorOauthStateCleanupRoutes,
@@ -48,6 +51,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects billing reconciliation requests without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronReconcileBillingEntitlementsRoutes,
@@ -65,6 +69,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects email-outbox drain requests without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronDrainEmailOutboxRoutes,
@@ -73,6 +78,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects sync-skills requests with an invalid cron secret", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepWrongAuth(
       context,
       cronSyncSkillsRoutes,
@@ -81,6 +87,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects sync-skills requests without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronSyncSkillsRoutes,
@@ -89,6 +96,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects workflow automation sweeps without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronExecuteWorkflowAutomationsRoutes,
@@ -97,6 +105,7 @@ describe("production-global sweep route contracts", () => {
   });
 
   it("rejects Gmail watch renewal without authorization", async () => {
+    expect.hasAssertions();
     await expectGlobalSweepMissingAuth(
       context,
       cronRenewGmailWatchesRoutes,

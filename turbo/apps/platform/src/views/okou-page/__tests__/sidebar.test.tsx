@@ -2396,6 +2396,45 @@ test("Pin and unpin agents without closing the pin manager", async () => {
   ).resolves.toBeInTheDocument();
 });
 
+test("Show pinned agents before unread indicators finish loading", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+  const indicatorRequestStarted = context.mocks.deferred<void>();
+  const releaseIndicators = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
+    if (!indicatorRequestStarted.settled()) {
+      indicatorRequestStarted.resolve(undefined);
+    }
+    await releaseIndicators.promise;
+    return respond(200, {
+      agents: { [SUPPORT_AGENT_ID]: "unread" },
+      threads: {},
+    });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+  await indicatorRequestStarted.promise;
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+  });
+
+  releaseIndicators.resolve(undefined);
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Research Agent",
+      "Support Agent",
+    ]);
+  });
+});
+
 test("Preserve the user’s pinned-agent order", async () => {
   prepareAgents();
   context.mocks.data.userPreferences({

@@ -280,8 +280,8 @@ export function mockCustomConnectorOAuth2Provider(
 }
 
 interface AutomaticMcpOAuthProviderOptions {
-  readonly registration: "cimd" | "dcr";
-  readonly authentication?: "none" | "oauth";
+  readonly registration: "cimd" | "dcr" | "none";
+  readonly authentication?: "invalid" | "none" | "oauth";
   readonly issuerParameterSupported?: boolean;
   readonly dcrTokenEndpointAuthMethod?:
     | "none"
@@ -289,6 +289,10 @@ interface AutomaticMcpOAuthProviderOptions {
     | "client_secret_post";
   readonly synchronizeAuthorizationServerDiscovery?: boolean;
   readonly dcrFailureStatus?: number;
+  readonly dcrFailureDescription?: string;
+  readonly invalidDcrResponse?: boolean;
+  readonly authorizationCodeSupported?: boolean;
+  readonly pkceS256Supported?: boolean;
   readonly discovery?: "challenge" | "well-known-oidc";
   readonly resourceMetadataStatus?: number;
   readonly challengeScope?: string | null;
@@ -314,6 +318,7 @@ interface AutomaticMcpOAuthProviderRecorder {
   readonly issuer: string;
   readonly registrationBodies: readonly Record<string, unknown>[];
   advertiseAuthorizationServers(issuers: readonly string[]): void;
+  setChallengeScope(scope: string | null): void;
   authorizationServerDiscoveryCalls(): number;
   readonly tokenBodies: readonly URLSearchParams[];
   readonly tokenAuthorizationHeaders: readonly (string | null)[];
@@ -345,11 +350,16 @@ export function mockAutomaticMcpOAuthProvider(
     issuer: options.metadataIssuer ?? issuer,
     authorization_endpoint: options.authorizationEndpoint ?? authorizationUrl,
     token_endpoint: tokenUrl,
-    response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
-    code_challenge_methods_supported: ["S256"],
+    response_types_supported:
+      options.authorizationCodeSupported === false ? ["token"] : ["code"],
+    grant_types_supported:
+      options.authorizationCodeSupported === false
+        ? ["refresh_token"]
+        : ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported:
+      options.pkceS256Supported === false ? ["plain"] : ["S256"],
     token_endpoint_auth_methods_supported:
-      options.registration === "cimd" ? ["none"] : [tokenEndpointAuthMethod],
+      options.registration === "dcr" ? [tokenEndpointAuthMethod] : ["none"],
     authorization_response_iss_parameter_supported:
       options.issuerParameterSupported ?? true,
     client_id_metadata_document_supported: options.registration === "cimd",
@@ -370,6 +380,10 @@ export function mockAutomaticMcpOAuthProvider(
   const tokenAuthorizationHeaders: (string | null)[] = [];
   let authorizationServerDiscoveryCallCount = 0;
   let advertisedAuthorizationServers: readonly string[] = [issuer];
+  let challengeScope =
+    options.challengeScope === undefined
+      ? "read write"
+      : options.challengeScope;
   let refreshAttempts = 0;
   let authorizationCodeAttempts = 0;
   const authorizationServerDiscoveryBarrier =
@@ -404,6 +418,9 @@ export function mockAutomaticMcpOAuthProvider(
       });
     }),
     http.post(endpoint, async ({ request }) => {
+      if (options.authentication === "invalid") {
+        return new HttpResponse(null, { status: 403 });
+      }
       if (options.authentication === "none") {
         const body = z
           .object({
@@ -426,10 +443,6 @@ export function mockAutomaticMcpOAuthProvider(
           },
         });
       }
-      const challengeScope =
-        options.challengeScope === undefined
-          ? "read write"
-          : options.challengeScope;
       const resourceMetadataParameter =
         options.discovery === "well-known-oidc"
           ? ""
@@ -499,9 +512,15 @@ export function mockAutomaticMcpOAuthProvider(
               options.dcrFailureStatus >= 500
                 ? "temporarily_unavailable"
                 : "invalid_client_metadata",
+            ...(options.dcrFailureDescription
+              ? { error_description: options.dcrFailureDescription }
+              : {}),
           },
           { status: options.dcrFailureStatus },
         );
+      }
+      if (options.invalidDcrResponse) {
+        return HttpResponse.json({ ...body, client_id: "" });
       }
       return HttpResponse.json({
         ...body,
@@ -553,6 +572,9 @@ export function mockAutomaticMcpOAuthProvider(
     registrationBodies,
     advertiseAuthorizationServers(issuers: readonly string[]): void {
       advertisedAuthorizationServers = [...issuers];
+    },
+    setChallengeScope(scope: string | null): void {
+      challengeScope = scope;
     },
     authorizationServerDiscoveryCalls: () => {
       return authorizationServerDiscoveryCallCount;

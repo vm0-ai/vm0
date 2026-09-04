@@ -7,8 +7,10 @@ import {
   type PiApiFirstTurnManifest,
   type PiApiFirstTurnOwnershipTransferMode,
   type PiResourceSnapshot,
+  type SecretConnectorMetadata,
   type StoredExecutionContext,
 } from "@okouai/api-contracts/contracts/runners";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
@@ -20,6 +22,7 @@ import {
 import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
+  classifyPiApiProviderFailure,
   inspectPiSessionJsonl,
   PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
@@ -51,7 +54,10 @@ import {
   type DispatchCompleteSideEffectsInput,
 } from "./agent-webhook-complete.service";
 import { createPiApiFirstTurnCheckpoint$ } from "./agent-webhook-checkpoints.service";
-import { resolveModelProviderRuntimeSecretForApi } from "./agent-webhook-firewall-auth.service";
+import {
+  resolveCurrentModelProviderRuntimeSecretForApi,
+  resolveModelProviderRuntimeSecretForApi,
+} from "./agent-webhook-firewall-auth.service";
 import {
   dispatchOptionalAgentEventConsumers$,
   receiveAgentEvents$,
@@ -120,15 +126,23 @@ type PiApiFirstTurnErrorCode =
 
 class PiApiFirstTurnError extends Error {
   readonly code: PiApiFirstTurnErrorCode;
+  readonly failureReason: RunFailureReasonToken | undefined;
 
   constructor(
     code: PiApiFirstTurnErrorCode,
     message: string,
-    options?: ErrorOptions,
+    options?: {
+      readonly cause?: unknown;
+      readonly failureReason?: RunFailureReasonToken;
+    },
   ) {
-    super(`[${code}] ${message}`, options);
+    super(
+      `[${code}] ${message}`,
+      options && "cause" in options ? { cause: options.cause } : undefined,
+    );
     this.name = "PiApiFirstTurnError";
     this.code = code;
+    this.failureReason = options?.failureReason;
   }
 }
 
@@ -150,11 +164,14 @@ function piApiFirstTurnError(
   code: PiApiFirstTurnErrorCode,
   message: string,
   cause?: unknown,
+  failureReason?: RunFailureReasonToken,
 ): PiApiFirstTurnError {
   return new PiApiFirstTurnError(
     code,
     message,
-    cause === undefined ? undefined : { cause },
+    cause === undefined && failureReason === undefined
+      ? undefined
+      : { cause, failureReason },
   );
 }
 
@@ -786,17 +803,201 @@ const loadApiFirstTurnResource$ = command(
   },
 );
 
+interface CodexSubscriptionCredentialReference {
+  readonly binding: PiAgentCredentialReference;
+  readonly providerKey: "codex-oauth-token";
+  readonly metadata: SecretConnectorMetadata & {
+    readonly sourceType: "model-provider";
+    readonly sourceUserId: string;
+    readonly sourceId: string;
+    readonly metadataKey: "codex-oauth-token";
+  };
+}
+
+function sameCredentialSource(
+  left: SecretConnectorMetadata,
+  right: SecretConnectorMetadata,
+): boolean {
+  return (
+    left.sourceType === right.sourceType &&
+    left.sourceUserId === right.sourceUserId &&
+    left.sourceId === right.sourceId &&
+    left.metadataKey === right.metadataKey
+  );
+}
+
+function codexSubscriptionCredentialReferences(args: {
+  readonly activation: PiApiFirstTurnActivation;
+  readonly executionContext: ApiFirstTurnExecutionContext;
+}): {
+  readonly accessToken: CodexSubscriptionCredentialReference;
+  readonly accountId: CodexSubscriptionCredentialReference;
+} | null {
+  const config = args.executionContext.piModelConfig;
+  if (
+    !("schemaVersion" in config) ||
+    config.dialect !== "openai-codex-responses"
+  ) {
+    return null;
+  }
+  const reference = (
+    kind: PiAgentCredentialReference["kind"],
+  ): CodexSubscriptionCredentialReference => {
+    const binding = config.credentialBindings.find((candidate) => {
+      return candidate.kind === kind;
+    });
+    if (!binding) {
+      throw piApiFirstTurnError(
+        "PI_API_MODEL_CREDENTIAL_INVALID",
+        "Pi API first-turn subscription binding is missing",
+      );
+    }
+    const providerKey =
+      args.executionContext.secretConnectorMap?.[binding.secretName];
+    const metadata =
+      args.executionContext.secretConnectorMetadataMap?.[binding.secretName];
+    if (
+      providerKey !== "codex-oauth-token" ||
+      metadata?.sourceType !== "model-provider" ||
+      metadata.sourceUserId !== args.activation.userId ||
+      !metadata.sourceId ||
+      metadata.metadataKey !== "codex-oauth-token"
+    ) {
+      throw piApiFirstTurnError(
+        "PI_API_MODEL_CREDENTIAL_INVALID",
+        "Pi API first-turn subscription binding is not exact-account scoped",
+      );
+    }
+    return {
+      binding,
+      providerKey,
+      metadata: {
+        ...metadata,
+        sourceType: "model-provider",
+        sourceUserId: metadata.sourceUserId,
+        sourceId: metadata.sourceId,
+        metadataKey: "codex-oauth-token",
+      },
+    };
+  };
+  const accessToken = reference("access-token");
+  const accountId = reference("account-id");
+  if (!sameCredentialSource(accessToken.metadata, accountId.metadata)) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription bindings do not share one account",
+    );
+  }
+  return { accessToken, accountId };
+}
+
+function runtimeCredentialLookupArgs(
+  args: ApiFirstTurnContext,
+  reference: CodexSubscriptionCredentialReference,
+) {
+  return {
+    db: args.db,
+    orgId: args.activation.orgId,
+    userId: args.activation.userId,
+    key: reference.binding.secretName,
+    providerKey: reference.providerKey,
+    metadata: reference.metadata,
+    featureSwitchContext: {
+      userId: args.activation.userId,
+      orgId: args.activation.orgId,
+    },
+  };
+}
+
+async function resolveCodexSubscriptionCredentials(
+  args: ApiFirstTurnContext,
+  references: NonNullable<
+    ReturnType<typeof codexSubscriptionCredentialReferences>
+  >,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, string>> {
+  const accessTokenResolution = await settle(
+    resolveCurrentModelProviderRuntimeSecretForApi(
+      runtimeCredentialLookupArgs(args, references.accessToken),
+      signal,
+    ),
+  );
+  signal.throwIfAborted();
+  if (!accessTokenResolution.ok) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription access token refresh failed",
+      accessTokenResolution.error,
+    );
+  }
+  const accessToken = accessTokenResolution.value;
+  if (accessToken.status === "unavailable") {
+    const reconnectRequired =
+      accessToken.reconnectState === null ||
+      accessToken.reconnectState.needsReconnect;
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription access token is unavailable",
+      undefined,
+      reconnectRequired ? "reconnect_required" : undefined,
+    );
+  }
+
+  // Deliberately read only after access-token refresh, using the already
+  // validated immutable sourceId rather than resolving the active account.
+  const accountIdResolution = await settle(
+    resolveModelProviderRuntimeSecretForApi(
+      runtimeCredentialLookupArgs(args, references.accountId),
+    ),
+  );
+  signal.throwIfAborted();
+  if (!accountIdResolution.ok) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription account lookup failed",
+      accountIdResolution.error,
+    );
+  }
+  const accountId = accountIdResolution.value;
+  if (!accessToken.value.trim() || !accountId?.trim()) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription credential is unavailable",
+      undefined,
+      "reconnect_required",
+    );
+  }
+  return new Map([
+    [references.accessToken.binding.secretName, accessToken.value],
+    [references.accountId.binding.secretName, accountId],
+  ]);
+}
+
 async function apiFirstTurnModelConfig(
   args: ApiFirstTurnContext,
   executionContext: ApiFirstTurnExecutionContext,
+  signal: AbortSignal,
 ): Promise<PiAgentModelConfig> {
   const modelConfig = executionContext.piModelConfig;
-  const decrypted = await settle(
-    decryptPersistentSecretsMap(executionContext.encryptedSecrets, {
-      userId: args.activation.userId,
-      orgId: args.activation.orgId,
-    }),
-  );
+  const subscriptionReferences = codexSubscriptionCredentialReferences({
+    activation: args.activation,
+    executionContext,
+  });
+  const subscriptionCredentials = subscriptionReferences
+    ? await resolveCodexSubscriptionCredentials(
+        args,
+        subscriptionReferences,
+        signal,
+      )
+    : null;
+  const decrypted = subscriptionReferences
+    ? { ok: true as const, value: null }
+    : await settle(
+        decryptPersistentSecretsMap(executionContext.encryptedSecrets, {
+          userId: args.activation.userId,
+          orgId: args.activation.orgId,
+        }),
+      );
   if (!decrypted.ok) {
     throw piApiFirstTurnError(
       "PI_API_MODEL_CREDENTIAL_INVALID",
@@ -809,7 +1010,14 @@ async function apiFirstTurnModelConfig(
     config: modelConfig,
     target: "direct",
     async resolveCredential(binding: PiAgentCredentialReference) {
-      let value = secrets?.[binding.secretName];
+      let value = subscriptionCredentials?.get(binding.secretName);
+      if (subscriptionCredentials && !value) {
+        throw piApiFirstTurnError(
+          "PI_API_MODEL_CREDENTIAL_INVALID",
+          "Pi API first-turn subscription credential binding is invalid",
+        );
+      }
+      value ??= secrets?.[binding.secretName];
       const providerKey =
         executionContext.secretConnectorMap?.[binding.secretName];
       const metadata =
@@ -986,6 +1194,9 @@ async function executeApiModelTurn(
         ? "Pi API first-turn model deadline elapsed"
         : "Pi API first-turn model request failed",
       executed.error,
+      modelSignal.aborted || args.model.provider !== "openai-codex"
+        ? undefined
+        : classifyPiApiProviderFailure(executed.error),
     );
   }
   const turn = executed.value;
@@ -997,6 +1208,8 @@ async function executeApiModelTurn(
     throw piApiFirstTurnError(
       "PI_API_MODEL_FAILED",
       `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
+      undefined,
+      turn.assistantMessage.failureReason,
     );
   }
   return { startedAt, turn };
@@ -1259,7 +1472,7 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     signal,
   );
   signal.throwIfAborted();
-  const model = await apiFirstTurnModelConfig(args, executionContext);
+  const model = await apiFirstTurnModelConfig(args, executionContext, signal);
   signal.throwIfAborted();
   const loadedSession = await set(
     loadResumeSessionJsonl$,
@@ -1637,6 +1850,9 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
           runId: args.activation.runId,
           exitCode: 1,
           error: failure.message,
+          ...(failure.failureReason
+            ? { failureReason: failure.failureReason }
+            : {}),
         },
       },
       failureSignal,
