@@ -12,6 +12,7 @@ import {
   cliAuthDeviceContract,
   cliAuthTokenContract,
 } from "@okouai/api-contracts/contracts/cli-auth";
+import { onboardingStatusContract } from "@okouai/api-contracts/contracts/onboarding";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -23,6 +24,7 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 import { cliAuthRoutes } from "../cli-auth";
 import { agentInstructionsRoutes } from "../agent-instructions";
 import { agentsRoutes } from "../agents";
+import { onboardingStatusRoutes } from "../onboarding-status";
 import { workflowsRoutes } from "../workflows";
 
 const context = testContext();
@@ -94,6 +96,12 @@ function agentsClient() {
 
 function agentsCollectionClient() {
   return setupApp({ context, routes: agentsRoutes })(agentsMainContract);
+}
+
+function onboardingStatusClient() {
+  return setupApp({ context, routes: onboardingStatusRoutes })(
+    onboardingStatusContract,
+  );
 }
 
 function instructionsClient() {
@@ -493,6 +501,40 @@ describe("PATCH /api/agents/:id", () => {
     expect(response.body).toStrictEqual({
       error: {
         message: "Only the agent owner or org admin can update agent avatar",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns a profile-specific error for a forbidden default agent update", async () => {
+    const owner = newOrgUser();
+    mocks.clerk.session(owner.userId, owner.orgId, "org:admin");
+    context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.test/default-agent.tar.gz?signature=test",
+    );
+    const onboarding = await accept(
+      onboardingStatusClient().getStatus({ headers: authHeaders() }),
+      [200],
+    );
+    const agentId = onboarding.body.defaultAgentId;
+    if (!agentId) {
+      throw new Error("Expected onboarding to create a default agent");
+    }
+
+    mocks.clerk.session(`user_${randomUUID()}`, owner.orgId, "org:member");
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agentId },
+        headers: authHeaders(),
+        body: { description: "Nope" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only the agent owner or org admin can update agent profile",
         code: "FORBIDDEN",
       },
     });

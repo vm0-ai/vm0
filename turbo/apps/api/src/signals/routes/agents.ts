@@ -211,11 +211,14 @@ function visibilityOwnerError(
   member: AgentMember,
   requestedVisibility: AgentVisibility | undefined,
 ) {
-  if (
-    requestedVisibility === undefined ||
-    requestedVisibility === existing.visibility ||
-    existing.owner === member.userId
-  ) {
+  if (requestedVisibility === undefined || existing.owner === member.userId) {
+    return null;
+  }
+
+  // Old web/app -> new API: already-open clients can keep sending unchanged
+  // visibility for about two days. Remove after the client-version floor
+  // excludes builds before #31731; tracked by #31732.
+  if (requestedVisibility === existing.visibility) {
     return null;
   }
 
@@ -656,7 +659,7 @@ const updateAgentMetadataInner$ = command(
       const permissionError = requireAgentPermission(
         existing.owner,
         member,
-        updateBody.avatarUrl === undefined
+        body.data.avatarUrl === undefined
           ? "update agent profile"
           : "update agent avatar",
         { visibility: existing.visibility },
