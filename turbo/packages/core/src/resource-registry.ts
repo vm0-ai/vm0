@@ -3384,8 +3384,9 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
-// Archive digests for uploaded private R2 presentation runbook packages. Keep
-// these in sync with the private R2 version ids served by the API download route.
+// Immutable archive digests used to locate each canonical storage and serve
+// older digest-pinned CLIs. Current CLIs download the storage HEAD, so these
+// intentionally do not track later presentation template publishes.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   bloom: "b9003d1545000987eac1868220b4ea1379ec1cdd79e884bc08d13539c1cc5f88",
   "blueprint-academy":

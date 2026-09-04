@@ -221,6 +221,7 @@ import {
   userModelPreference$,
 } from "../../signals/external/user-model-preference.ts";
 import {
+  chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
   composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
@@ -697,6 +698,7 @@ function PendingItemsStripHeader({
 
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const runWorkFoldingEnabled = useGet(chatRunWorkFoldingEnabled$);
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
@@ -716,9 +718,10 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const events = pendingEvents.filter((event) => {
     return event.kind === "automation";
   });
-  const activeGoal = activeGoalObjective
-    ? { objective: activeGoalObjective }
-    : undefined;
+  const activeGoal =
+    !runWorkFoldingEnabled && activeGoalObjective
+      ? { objective: activeGoalObjective }
+      : undefined;
   const count = queued.length + events.length;
   const messageLabel = t(
     ($) => {
