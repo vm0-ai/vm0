@@ -528,6 +528,37 @@ describe("Usage Allowance", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
+  it("does not let built-in credit admission bypass workspace suspension", async () => {
+    const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 1 });
+    const api = createRunsApi(context);
+    const run = await createVm0Run(
+      actor,
+      agentId,
+      "admitted before suspension",
+    );
+    await seedOrgMetadata({ orgId, tier: "pro-suspend", credits: 1 });
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+
+    const denied = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [402],
+    );
+
+    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
   it("fails an unfunded built-in queue promotion and continues to BYOK", async () => {
     const { actor, agentId } = await vm0AllowanceActor({ credits: 1 });
     const api = createRunsApi(context);
