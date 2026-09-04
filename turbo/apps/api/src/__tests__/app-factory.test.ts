@@ -1096,7 +1096,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the failure-reason reader floor before route matching", async () => {
+    it("force-upgrades app clients below the Office preview reader floor before route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1105,11 +1105,11 @@ describe("createApp", () => {
         method: "DELETE",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.829.5",
+          [CLIENT_VERSION_HEADER]: "0.830.0",
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.830.0");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.831.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",
