@@ -53,14 +53,20 @@ function workflow(
     readonly agentId?: string;
     readonly displayName?: string | null;
     readonly description?: string | null;
+    readonly visibility?: WorkflowFixture["visibility"];
+    readonly shadowedBy?: WorkflowFixture["shadowedBy"];
   } = {},
 ): WorkflowFixture {
-  return workflowSummary({
-    name,
-    agentId: options.agentId ?? AGENT_ID,
-    displayName: options.displayName ?? null,
-    description: options.description ?? `${name} description`,
-  });
+  return {
+    ...workflowSummary({
+      name,
+      agentId: options.agentId ?? AGENT_ID,
+      displayName: options.displayName ?? null,
+      description: options.description ?? `${name} description`,
+    }),
+    visibility: options.visibility ?? "public",
+    shadowedBy: options.shadowedBy ?? null,
+  };
 }
 
 function slashMenu(): HTMLElement {
@@ -518,6 +524,57 @@ test("Insert an attached workflow with slash suggestions", async () => {
     expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
   });
   expect(window.visualViewport?.offsetTop).toBe(160);
+});
+
+test("Suggest only the effective workflow when a private workflow shadows a public workflow", async () => {
+  const privateWorkflow = workflow("pr-auto", {
+    displayName: "PR Auto",
+    description: "Review, repair, and merge one pull request",
+    visibility: "private",
+  });
+  const publicWorkflow = workflow("pr-auto", {
+    displayName: "PR Auto",
+    description: "Legacy goal-driven pull request automation",
+    shadowedBy: {
+      id: privateWorkflow.id,
+      name: privateWorkflow.name,
+      displayName: privateWorkflow.displayName,
+    },
+  });
+  mockAgent();
+  mockThread();
+  installWorkflows(() => {
+    return [
+      workflow("aardvark"),
+      publicWorkflow,
+      privateWorkflow,
+      workflow("pr-implement"),
+      workflow("topic"),
+    ];
+  });
+
+  await setupPage({ context, path: `/chats/${THREAD_ID}` });
+
+  const user = userEvent.setup();
+  const editor = await findComposerEditor();
+  await user.click(editor);
+  await user.keyboard("/pr");
+
+  await waitFor(() => {
+    const matchingButtons = slashMenuButtons().filter((button) => {
+      return button.textContent
+        ?.replace(/\s+/gu, " ")
+        .trim()
+        .startsWith("/pr-auto");
+    });
+    expect(matchingButtons).toHaveLength(1);
+  });
+  expect(slashButton("/pr-auto")).toHaveTextContent(
+    "Review, repair, and merge one pull request",
+  );
+  expect(
+    screen.queryByText("Legacy goal-driven pull request automation"),
+  ).toBeNull();
 });
 
 test("Send a template while the current run is active", async () => {

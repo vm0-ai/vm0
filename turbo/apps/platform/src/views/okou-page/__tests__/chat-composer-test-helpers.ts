@@ -18,6 +18,7 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import {
   agentsByIdContract,
   agentInstructionsContract,
@@ -759,7 +760,7 @@ export function workflowSummary({
   readonly displayName: string | null;
   readonly description: string | null;
   readonly agentId?: string;
-}) {
+}): WorkflowSummary {
   return {
     id: crypto.randomUUID(),
     agentId,
@@ -774,5 +775,6 @@ export function workflowSummary({
     canManage: true,
     canPublish: false,
     official: null,
+    shadowedBy: null,
   };
 }
