@@ -44,6 +44,7 @@ end
 
 violations = []
 explicit_audit_paths = []
+expected_audit_path = ".github/workflows/security.yml"
 
 workflow_paths = Dir[File.join(repo_root, ".github/workflows/*.{yml,yaml}")]
 workflow_paths.each do |path|
@@ -138,8 +139,8 @@ script_paths.each do |path|
   end
 end
 
-unless explicit_audit_paths.empty?
-  violations << "explicit dependency audits are disabled: #{explicit_audit_paths.uniq.sort.join(", ")}"
+unless explicit_audit_paths.uniq == [expected_audit_path]
+  violations << "explicit dependency audit must remain owned only by #{expected_audit_path}"
 end
 
 unless violations.empty?
