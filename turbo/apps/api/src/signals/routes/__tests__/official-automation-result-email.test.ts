@@ -371,6 +371,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     if (!item) {
       throw new Error("Expected a Morning Brief result email");
     }
+    expect(item.subject).toBe("Morning Brief");
     const manageUrl =
       "https://app.okou.ai/agents?settings=preference&focus=morning-brief";
     const accountUnsubscribeUrl = `https://app.okou.ai/email/unsubscribe?token=${unsubscribeToken(
@@ -554,7 +555,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(send).toMatchObject({
       from: "Okou <okou@okou.io>",
       to: scenario.actor.email,
-      subject: 'Official <script> & " result completed',
+      subject: 'Official <script> & " result',
       headers: {
         "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(scenario.actor.userId)}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

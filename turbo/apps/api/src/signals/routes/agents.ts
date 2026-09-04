@@ -12,8 +12,11 @@ import {
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   DEFAULT_AGENT_AVATAR_URL,
+  randomAvatarUrl,
   randomPresetAvatar,
 } from "@okouai/core/agent-avatar";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
@@ -45,6 +48,7 @@ import {
   deleteAgentInstructionsStorage$,
   writeAgentInstructionsStorage$,
 } from "../services/agent-instructions-storage.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   updateUserConnectors,
   updateUserCustomConnectors,
@@ -326,11 +330,25 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   };
 
+  let avatarUrl = body.data.avatarUrl;
+  if (avatarUrl === undefined) {
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    avatarUrl = isFeatureEnabled(
+      FeatureSwitchKey.AvatarComposerV2,
+      featureSwitchContext,
+    )
+      ? randomAvatarUrl()
+      : randomPresetAvatar();
+  }
+
   const metadata = {
     displayName: body.data.displayName ?? null,
     description: body.data.description ?? null,
     sound: body.data.sound ?? null,
-    avatarUrl: body.data.avatarUrl ?? randomPresetAvatar(),
+    avatarUrl,
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,

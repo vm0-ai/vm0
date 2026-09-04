@@ -9,6 +9,7 @@ import {
   connectorAccountsContract,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
+  CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES,
   type CreateCustomConnectorBody,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
@@ -572,7 +573,13 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
     listAgent(RESEARCH_ID, "Research"),
     listAgent(SUPPORT_ID, "Support"),
   ]);
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    },
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("tab", "Custom");
@@ -1207,6 +1214,50 @@ test("Create and connect an MCP server with automatic authentication", async () 
     expect(getConnectorCard("Discovery MCP")).toHaveTextContent("Connected");
     expect(authWindow.closed).toBeTruthy();
   });
+});
+
+test("Show localized actionable Automatic MCP OAuth failures", async () => {
+  const connector = mcpCustomConnector({
+    displayName: "Restricted Automatic MCP",
+    fields: [],
+    headerInjections: [],
+    queryInjections: [],
+    authMode: "automatic",
+    connected: false,
+    missingRequiredFields: ["automatic"],
+    configuredFieldKeys: [],
+  });
+  const authWindow = createAuthWindow();
+  context.mocks.browser.open(authWindow);
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+  context.mocks.data.agents([]);
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+    return respond(200, { connectors: [connector] });
+  });
+  context.mocks.api(customConnectorOAuth2Contract.start, ({ respond }) => {
+    return respond(400, {
+      error: {
+        code: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_REJECTED,
+        message: "API fallback must not be shown",
+      },
+    });
+  });
+
+  await setupCustomPage({ mcp: true });
+
+  click(
+    await waitFor(() => {
+      return getConnectorAction("button", "Conectar Restricted Automatic MCP");
+    }),
+  );
+
+  await expect(
+    screen.findByText(
+      "O provedor OAuth rejeitou o registro automático do cliente e pode restringir os clientes MCP ou os metadados de registro compatíveis. Use um cliente MCP compatível com o provedor, OAuth personalizado somente se você já tiver credenciais de cliente registradas ou entre em contato com o suporte da Okou.",
+    ),
+  ).resolves.toBeInTheDocument();
+  expect(screen.queryByText("API fallback must not be shown")).toBeNull();
+  expect(authWindow.closed).toBeTruthy();
 });
 
 test("Create, edit, and connect an OAuth MCP connector", async () => {

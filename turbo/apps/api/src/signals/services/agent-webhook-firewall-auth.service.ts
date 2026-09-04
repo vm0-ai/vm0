@@ -2476,7 +2476,11 @@ async function markAndReturnRefreshFailure(
   const message = error instanceof Error ? error.message : "Unknown error";
   const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
   if (shouldLogWarning) {
-    L.warn(`${args.accessSourceKey} token refresh failed: ${message}`, {
+    const logMessage =
+      args.accessSourceKey === "codex-oauth-token"
+        ? `${args.accessSourceKey} token refresh failed`
+        : `${args.accessSourceKey} token refresh failed: ${message}`;
+    L.warn(logMessage, {
       accessSourceKey: args.accessSourceKey,
       orgId: args.orgId,
       userId: args.userId,

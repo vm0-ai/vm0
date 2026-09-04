@@ -2732,6 +2732,18 @@
         "continueToProvider": "Proseguire presso il provider per autorizzare l'accesso.",
         "continueWithAutomatic": "Continua mentre Okou verifica come si autentica questo server MCP.",
         "description": "Il tuo segreto viene crittografato quando è inattivo e inserito nelle richieste in uscita dal firewall. Non viene mai esposto all'agente come variabile di ambiente.",
+        "errors": {
+          "authenticationResponseInvalid": "Il server MCP ha restituito una risposta di autenticazione non supportata. Verifica l’endpoint MCP e la relativa configurazione di autenticazione oppure contatta l’amministratore del server.",
+          "authorizationUnsupported": "Il provider OAuth non supporta i requisiti di autorizzazione usati dall’autenticazione automatica. Usa OAuth personalizzato solo se disponi già di credenziali client compatibili oppure contatta l’assistenza Okou.",
+          "bindingChanged": "L’autorità OAuth MCP o la registrazione del client è cambiata. Riconnetti l’account del connettore e riprova.",
+          "clientRegistrationConflict": "Il client OAuth automatico esistente non può richiedere le autorizzazioni necessarie mentre è ancora usato da account connessi. Disconnetti tali account e riconnettili oppure usa OAuth personalizzato con credenziali client registrate.",
+          "clientRegistrationInvalid": "Il provider OAuth ha restituito dettagli di registrazione del client non validi. Contatta l’amministratore del server oppure usa OAuth personalizzato se disponi già di credenziali client registrate valide.",
+          "clientRegistrationRejected": "Il provider OAuth ha rifiutato la registrazione automatica del client e potrebbe limitare i client MCP o i metadati di registrazione supportati. Usa un client MCP supportato dal provider, OAuth personalizzato solo con credenziali client già registrate oppure contatta l’assistenza Okou.",
+          "clientRegistrationUnavailable": "Il provider OAuth non offre un metodo supportato per la registrazione automatica del client. Usa OAuth personalizzato se disponi già di credenziali client registrate oppure contatta l’assistenza Okou.",
+          "discoveryInvalid": "I metadati di discovery OAuth del server MCP sono incompleti o incoerenti. Correggi i metadati pubblicati se gestisci il server oppure contatta l’amministratore del server.",
+          "providerUnavailable": "Il provider OAuth MCP è temporaneamente non disponibile o sta limitando le richieste. Riprova più tardi e verifica la disponibilità del provider.",
+          "unsafeUrl": "Il server MCP ha pubblicato un URL OAuth che non è un endpoint HTTPS pubblico. Correggi gli URL OAuth pubblicati dal server prima di riprovare."
+        },
         "save": "Salva",
         "saving": "Salvataggio…",
         "title": "Connetti {{connector}}"
@@ -5146,7 +5158,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Consenti agli agenti di usare un browser cloud nelle nuove chat",
+          "description": "Attiva il browser cloud per impostazione predefinita nelle nuove chat. Puoi modificarlo in qualsiasi chat.",
           "title": "Browser cloud"
         },
         "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",

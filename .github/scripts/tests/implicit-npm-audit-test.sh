@@ -44,11 +44,18 @@ end
 
 violations = []
 explicit_audit_paths = []
+expected_audit_path = ".github/workflows/security.yml"
 
 workflow_paths = Dir[File.join(repo_root, ".github/workflows/*.{yml,yaml}")]
 workflow_paths.each do |path|
   document = load_yaml(path)
   workflow_environment = document.fetch("env", {})
+  relative_path = path.delete_prefix("#{repo_root}/")
+
+  if relative_path != expected_audit_path &&
+      audit_setting(workflow_environment) != "false"
+    violations << "#{relative_path} must set top-level npm_config_audit=false"
+  end
 
   document.fetch("jobs", {}).each do |job_name, job|
     next unless job.is_a?(Hash)
@@ -133,7 +140,6 @@ script_paths.each do |path|
   end
 end
 
-expected_audit_path = ".github/workflows/security.yml"
 unless explicit_audit_paths.uniq == [expected_audit_path]
   violations << "explicit dependency audit must remain owned only by #{expected_audit_path}"
 end

@@ -227,6 +227,7 @@ describe("GET /api/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when the token has no active organization membership", async () => {
+    expect.hasAssertions();
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],
     });
@@ -252,6 +253,7 @@ describe("GET /api/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
+    expect.hasAssertions();
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({
       context,
@@ -436,6 +438,7 @@ describe("GET /api/integrations/telegram", () => {
   });
 
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -783,6 +786,7 @@ describe("GET /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -1090,6 +1094,7 @@ describe("POST /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when not authenticated", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,

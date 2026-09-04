@@ -6,6 +6,7 @@ import type { SharedDatabasePortLike } from "./bridge.ts";
 import type { ComputedKey } from "./computed-key.ts";
 import type {
   SharedDatabaseConnectionStatus,
+  SharedDatabaseWorkerUnavailableReason,
   SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 
@@ -21,8 +22,8 @@ export type WorkerBroadcastMessage = Extract<
       | "invalidate"
       | "reconnect"
       | "reload-computed"
-      | "reload-required"
-      | "status";
+      | "status"
+      | "worker-unavailable";
   }
 >;
 
@@ -146,9 +147,14 @@ export const forwardChatThreadReadCursorUpdated$ = command(
   },
 );
 
-export const reloadConnections$ = command(({ set }): void => {
-  set(broadcastSharedDatabaseWorkerMessage$, { type: "reload-required" });
-});
+export const reportWorkerUnavailableForConnections$ = command(
+  ({ set }, reason: SharedDatabaseWorkerUnavailableReason): void => {
+    set(broadcastSharedDatabaseWorkerMessage$, {
+      type: "worker-unavailable",
+      reason,
+    });
+  },
+);
 
 export const updateRealtimeStatusForConnections$ = command(
   ({ set }, status: SharedDatabaseConnectionStatus): void => {

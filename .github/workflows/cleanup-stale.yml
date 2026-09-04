@@ -11,6 +11,7 @@ on:
         default: false
 
 env:
+  npm_config_audit: "false"
   DRY_RUN: ${{ inputs.dry-run || false }}
 
 jobs:

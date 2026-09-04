@@ -131,6 +131,7 @@ import {
 } from "../../signals/external/feature-switch.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
+  captureChatWorkHistoryExpanded,
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
 } from "../../lib/posthog.ts";
@@ -1505,7 +1506,10 @@ function ChatThreadEmojiGrid({
               shortcodeNames,
             )}
             title={shortcutLabel}
-            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
+            // The focus ring is inset because the feed scrolls: an offset ring
+            // on the outer columns and on the first and last rows would be
+            // clipped by the feed's own overflow box.
+            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             onClick={() => {
               onSelect(item.emoji);
             }}
@@ -3401,6 +3405,11 @@ function ChatThreadEventGroups({
                       hiddenGroups: completedWorkFold.hiddenGroups,
                       expanded: completedWorkExpanded,
                       onToggle: () => {
+                        if (!completedWorkExpanded) {
+                          captureChatWorkHistoryExpanded({
+                            workStatus: "completed",
+                          });
+                        }
                         onToggleCompletedWork(completedWorkFold.key);
                       },
                     }
@@ -3417,6 +3426,14 @@ function ChatThreadEventGroups({
                         runWorkSection.hiddenGroupsAfterAnchor,
                       expanded: runWorkExpanded,
                       onToggle: () => {
+                        if (!runWorkExpanded) {
+                          captureChatWorkHistoryExpanded({
+                            workStatus:
+                              runWorkSection.endTime === undefined
+                                ? "active"
+                                : "completed",
+                          });
+                        }
                         onToggleRunWork(runWorkSection.key);
                       },
                     }
