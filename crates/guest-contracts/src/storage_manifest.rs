@@ -25,6 +25,7 @@
 //! Serialization always includes `cleanupPaths` and omits `instructionCleanups` when it is empty.
 //! Unknown top-level and mount fields are ignored during deserialization so future fields can be
 //! added compatibly.
+//!
 //! `storageId` is optional in canonical `storageMounts` input. For a `writeback: true` mount,
 //! omitting `storageId` defaults the value to `None` and preserves it as
 //! [`ArtifactEntry::vas_storage_id`] == `None`; deserialization does not require the field. The
