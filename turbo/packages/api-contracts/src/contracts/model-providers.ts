@@ -340,6 +340,9 @@ export const VM0_MODEL_TO_PROVIDER = {
       },
     ],
   },
+  // Permanent Built-in availability routing: prefer OpenAI, then use
+  // OpenRouter when the primary candidate has no key or is in cooldown.
+  // This is operational routing, not a cross-version compatibility bridge.
   "gpt-6-astra": {
     candidates: [
       { concreteType: "openai-api-key" },
