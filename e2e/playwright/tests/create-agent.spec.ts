@@ -85,12 +85,22 @@ test("avatar composer keeps a stable dialog and compact option rows", async ({
 
   await composer.getByRole("button", { name: "Next step" }).click();
   await expect(composer.getByText("Hair", { exact: true })).toBeVisible();
-  const firstRow = await visibleBox(
-    composer.getByRole("button", { name: "High bun" }),
-  );
-  const secondRow = await visibleBox(
-    composer.getByRole("button", { name: "Triple bun" }),
-  );
+  const firstRowOption = composer.getByRole("button", { name: "High bun" });
+  const secondRowOption = composer.getByRole("button", {
+    name: "Triple bun",
+  });
+  // The staggered entrance animation temporarily transforms the option boxes.
+  // Measure the product layout only after the later row has settled.
+  await expect(secondRowOption).toBeVisible();
+  await secondRowOption.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
+  });
+  const firstRow = await visibleBox(firstRowOption);
+  const secondRow = await visibleBox(secondRowOption);
   const rowGap = secondRow.y - firstRow.y - firstRow.height;
   expect(rowGap).toBeGreaterThanOrEqual(0);
   expect(rowGap).toBeLessThanOrEqual(16);
