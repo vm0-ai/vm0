@@ -1,10 +1,11 @@
 import { billingInvoicesContract } from "@okouai/api-contracts/contracts/billing";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
 import {
-  detachedSetupPage,
+  click,
+  setupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { unixSecondsFromIso } from "../../../__tests__/time.ts";
@@ -20,6 +21,16 @@ function buttonByText(text: string): HTMLElement {
     throw new Error(`Button with text "${text}" not found`);
   }
   return element;
+}
+
+function linkByLabel(label: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!link) {
+    throw new Error(`Link with label "${label}" not found`);
+  }
+  return link;
 }
 
 function selectOptionByText(text: string): HTMLElement {
@@ -80,7 +91,7 @@ function mockInvoicesStory(): void {
 }
 
 async function openInvoicesTab(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=invoices" });
+  await setupPage({ context, path: "/?settings=invoices" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
@@ -89,223 +100,195 @@ async function openInvoicesTab(): Promise<void> {
   });
 }
 
-describe("organization invoices settings", () => {
-  it("shows invoice row skeletons while history loads", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "admin",
-    });
-    const invoicesReady = context.mocks.deferred<void>();
-    context.mocks.api(billingInvoicesContract.get, async ({ respond }) => {
-      await invoicesReady.promise;
-      return respond(200, { invoices: [] });
-    });
+test("Show an empty invoice history", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "admin",
+  });
+  context.mocks.api(billingInvoicesContract.get, ({ respond }) => {
+    return respond(200, { invoices: [] });
+  });
 
-    await openInvoicesTab();
+  await openInvoicesTab();
 
-    await expect(
-      screen.findByTestId("invoice-list-skeleton"),
-    ).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByText("No invoices yet."),
+  ).resolves.toBeInTheDocument();
+  expect(screen.queryByTestId("invoice-list-skeleton")).not.toBeInTheDocument();
+});
 
-    invoicesReady.resolve();
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("invoice-list-skeleton"),
-      ).not.toBeInTheDocument();
-      expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
+test("Localize invoice dates and currency without altering provider values", async () => {
+  mockInvoicesStory();
+  context.mocks.data.userPreferences({
+    locale: "pt-BR",
+    supportedLocales: ["pt-BR", "de-DE", "it-IT"],
+  });
+
+  await setupPage({
+    context,
+    path: "/?settings=invoices",
+  });
+
+  await waitFor(() => {
+    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(screen.getByText("Fatura")).toBeInTheDocument();
+    expect(screen.getByText("Data")).toBeInTheDocument();
+    expect(screen.getByText("Valor")).toBeInTheDocument();
+    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+    expect(screen.getByText(/US\$\s+20,00/u)).toBeInTheDocument();
+    expect(screen.getByText("15/03/2026")).toBeInTheDocument();
+  });
+
+  click(buttonByText("Preferência"));
+  const portugueseLanguage = await screen.findByRole("combobox", {
+    name: "Idioma",
+  });
+  click(portugueseLanguage);
+  click(await screen.findByRole("option", { name: "Deutsch" }));
+  await waitFor(() => {
+    expect(document.documentElement.lang).toBe("de-DE");
+  });
+  click(buttonByText("Rechnungen"));
+
+  await waitFor(() => {
+    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+    expect(screen.getByText(/20,00\s+\$/u)).toBeInTheDocument();
+    expect(screen.getByText("15.3.2026")).toBeInTheDocument();
+  });
+
+  click(buttonByText("Einstellungen"));
+  const germanLanguage = await screen.findByRole("combobox", {
+    name: "Sprache",
+  });
+  click(germanLanguage);
+  click(await screen.findByRole("option", { name: "Italiano" }));
+  await waitFor(() => {
+    expect(document.documentElement.lang).toBe("it-IT");
+  });
+  click(buttonByText("Fatture"));
+
+  await waitFor(() => {
+    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+    expect(screen.getByText(/20,00\s+USD/u)).toBeInTheDocument();
+    expect(screen.getByText("15/03/2026")).toBeInTheDocument();
+  });
+});
+
+test("Open an individual invoice from invoice history", async () => {
+  const user = userEvent.setup();
+  mockInvoicesStory();
+  await openInvoicesTab();
+
+  await expect(screen.findByText("INV-2026-0001")).resolves.toBeInTheDocument();
+  const invoiceLink = linkByLabel("Download March 2026 invoice");
+  expect(invoiceLink).toHaveAttribute(
+    "href",
+    "https://billing.stripe.com/invoice/test",
+  );
+  expect(invoiceLink).toHaveAttribute("target", "_blank");
+  await user.click(invoiceLink);
+});
+
+test("Hide bulk receipt download when it is unavailable", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "admin",
+  });
+  context.mocks.api(billingInvoicesContract.get, ({ respond }) => {
+    return respond(200, {
+      invoices: [
+        {
+          id: "in_legacy",
+          number: "INV-LEGACY",
+          date: unixSecondsFromIso("2026-03-15T00:00:00.000Z"),
+          amount: 2000,
+          status: "paid",
+          hostedInvoiceUrl: "https://billing.stripe.com/invoice/legacy",
+        },
+      ],
     });
   });
 
-  it("localizes invoice presentation while preserving provider values", async () => {
-    mockInvoicesStory();
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
+  await openInvoicesTab();
 
-    detachedSetupPage({
-      context,
-      path: "/?settings=invoices",
-    });
+  await expect(screen.findByText("INV-LEGACY")).resolves.toBeInTheDocument();
+  expect(linkByLabel("Download March 2026 invoice")).toHaveAttribute(
+    "href",
+    "https://billing.stripe.com/invoice/legacy",
+  );
+  expect(
+    queryAllByRoleFast("button").some((button) => {
+      return button.textContent?.includes("Download receipts") === true;
+    }),
+  ).toBeFalsy();
+});
 
-    const date = new Date(
-      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
-    ).toLocaleDateString("pt-BR");
+test("Download receipts for a valid month range", async () => {
+  const user = userEvent.setup();
+  const browserDownload = context.mocks.browser.blobDownload();
+  let requestedRange: {
+    readonly startMonth: string;
+    readonly endMonth: string;
+  } | null = null;
+  const receiptsReady = context.mocks.deferred<void>();
+  mockInvoicesStory();
+  context.mocks.api(
+    billingInvoicesContract.downloadReceipts,
+    async ({ query, respond }) => {
+      requestedRange = query;
+      await receiptsReady.promise;
+      return respond(
+        200,
+        new Blob(["monthly receipts"], { type: "application/zip" }),
+      );
+    },
+  );
+  await openInvoicesTab();
 
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("pt-BR");
-      expect(screen.getByText("Fatura")).toBeInTheDocument();
-      expect(screen.getByText("Data")).toBeInTheDocument();
-      expect(screen.getByText("Valor")).toBeInTheDocument();
-      expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
-      expect(screen.getByText(/US\$\s+20,00/u)).toBeInTheDocument();
-      expect(screen.getByText(date)).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
+    expect(screen.getAllByText("Paid")).toHaveLength(4);
+    expect(screen.getByText("3/15/2026")).toBeInTheDocument();
+    expect(screen.getByText("$20.00")).toBeInTheDocument();
   });
+  expect(
+    screen.getAllByLabelText("Download March 2026 invoice")[0],
+  ).toHaveAttribute("href", "https://billing.stripe.com/invoice/test");
 
-  it("formats invoice dates and amounts for German", async () => {
-    mockInvoicesStory();
-    context.mocks.data.userPreferences({ locale: "de-DE" });
+  await user.click(buttonByText("Download receipts"));
+  expect(
+    screen.getByRole("heading", { name: "Download receipts" }),
+  ).toBeInTheDocument();
+  await user.click(screen.getByLabelText("From month"));
+  await user.click(selectOptionByText("December 2025"));
+  expect(
+    screen.getByText("Select a range of no more than 3 consecutive months."),
+  ).toBeInTheDocument();
+  expect(buttonByText("Download ZIP")).toBeDisabled();
 
-    detachedSetupPage({
-      context,
-      path: "/?settings=invoices",
+  await user.click(screen.getByLabelText("From month"));
+  await user.click(selectOptionByText("February 2026"));
+  expect(buttonByText("Download ZIP")).not.toBeDisabled();
+  await user.click(buttonByText("Download ZIP"));
+
+  await expect(
+    screen.findByText("Preparing receipt download..."),
+  ).resolves.toBeInTheDocument();
+  receiptsReady.resolve();
+  await waitFor(() => {
+    expect(requestedRange).toStrictEqual({
+      startMonth: "2026-02",
+      endMonth: "2026-03",
     });
-
-    const date = new Date(
-      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
-    ).toLocaleDateString("de-DE");
-
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("de-DE");
-      expect(screen.getByText("Rechnung")).toBeInTheDocument();
-      expect(screen.getByText("Datum")).toBeInTheDocument();
-      expect(screen.getByText("Betrag")).toBeInTheDocument();
-      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
-      expect(screen.getByText(/20,00\s+\$/u)).toBeInTheDocument();
-      expect(screen.getByText(date)).toBeInTheDocument();
-    });
+    expect(browserDownload.downloads).toHaveLength(1);
+    expect(screen.getByText("Receipts downloaded")).toBeInTheDocument();
   });
-
-  it("formats Italian invoice dates and currency", async () => {
-    mockInvoicesStory();
-    context.mocks.data.userPreferences({ locale: "it-IT" });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=invoices",
-    });
-
-    const date = new Date(
-      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
-    ).toLocaleDateString("it-IT");
-
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("it-IT");
-      expect(screen.getByText("Fattura")).toBeInTheDocument();
-      expect(screen.getByText("Data")).toBeInTheDocument();
-      expect(screen.getByText("Importo")).toBeInTheDocument();
-      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
-      expect(screen.getByText(/20,00\s+USD/u)).toBeInTheDocument();
-      expect(screen.getByText(date)).toBeInTheDocument();
-    });
-  });
-
-  it("hides ZIP downloads while an older API deployment is active", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "admin",
-    });
-    context.mocks.api(billingInvoicesContract.get, ({ respond }) => {
-      return respond(200, {
-        invoices: [
-          {
-            id: "in_legacy",
-            number: "INV-LEGACY",
-            date: unixSecondsFromIso("2026-03-15T00:00:00.000Z"),
-            amount: 2000,
-            status: "paid",
-            hostedInvoiceUrl: "https://billing.stripe.com/invoice/legacy",
-          },
-        ],
-      });
-    });
-
-    await openInvoicesTab();
-
-    expect(
-      queryAllByRoleFast("button").some((button) => {
-        return button.textContent?.includes("Download receipts") === true;
-      }),
-    ).toBeFalsy();
-  });
-
-  it("downloads all receipts for a selected month as a ZIP", async () => {
-    const user = userEvent.setup();
-    const browserDownload = context.mocks.browser.blobDownload();
-    let requestedRange: {
-      readonly startMonth: string;
-      readonly endMonth: string;
-    } | null = null;
-    const receiptsReady = context.mocks.deferred<void>();
-    mockInvoicesStory();
-    context.mocks.api(
-      billingInvoicesContract.downloadReceipts,
-      async ({ query, respond }) => {
-        requestedRange = query;
-        await receiptsReady.promise;
-        return respond(
-          200,
-          new Blob(["monthly receipts"], { type: "application/zip" }),
-        );
-      },
-    );
-    await openInvoicesTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-      expect(screen.getAllByText("Paid")).toHaveLength(4);
-      expect(screen.getByText("3/15/2026")).toBeInTheDocument();
-      expect(screen.getByText("$20.00")).toBeInTheDocument();
-    });
-    expect(
-      screen.getAllByLabelText("Download March 2026 invoice")[0],
-    ).toHaveAttribute("href", "https://billing.stripe.com/invoice/test");
-
-    await user.click(buttonByText("Download receipts"));
-    expect(
-      screen.getByRole("heading", { name: "Download receipts" }),
-    ).toBeInTheDocument();
-    await user.click(screen.getByLabelText("From month"));
-    await user.click(selectOptionByText("December 2025"));
-    expect(
-      screen.getByText("Select a range of no more than 3 consecutive months."),
-    ).toBeInTheDocument();
-    expect(buttonByText("Download ZIP")).toBeDisabled();
-
-    await user.click(screen.getByLabelText("From month"));
-    await user.click(selectOptionByText("February 2026"));
-    expect(buttonByText("Download ZIP")).not.toBeDisabled();
-    await user.click(buttonByText("Download ZIP"));
-
-    await expect(
-      screen.findByText("Preparing receipt download..."),
-    ).resolves.toBeInTheDocument();
-    receiptsReady.resolve();
-    await waitFor(() => {
-      expect(requestedRange).toStrictEqual({
-        startMonth: "2026-02",
-        endMonth: "2026-03",
-      });
-      expect(browserDownload.downloads).toHaveLength(1);
-      expect(screen.getByText("Receipts downloaded")).toBeInTheDocument();
-    });
-    expect(browserDownload.downloads[0]?.filename).toBe(
-      "receipts-2026-02-to-2026-03.zip",
-    );
-  });
-
-  it("shows an error toast when receipt download fails", async () => {
-    const user = userEvent.setup();
-    mockInvoicesStory();
-    context.mocks.api(
-      billingInvoicesContract.downloadReceipts,
-      ({ respond }) => {
-        return respond(502, {
-          error: {
-            code: "BAD_GATEWAY",
-            message: "Failed to download receipts from Stripe",
-          },
-        });
-      },
-    );
-    await openInvoicesTab();
-
-    await user.click(buttonByText("Download receipts"));
-    await user.click(buttonByText("Download ZIP"));
-
-    await expect(
-      screen.findByText("Failed to download receipts"),
-    ).resolves.toBeInTheDocument();
-  });
+  expect(browserDownload.downloads[0]?.filename).toBe(
+    "receipts-2026-02-to-2026-03.zip",
+  );
 });

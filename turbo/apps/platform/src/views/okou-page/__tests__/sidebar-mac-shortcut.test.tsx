@@ -1,12 +1,12 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, expect, test } from "vitest";
 
 import {
   chatThreadByIdContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -94,92 +94,90 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
   });
 }
 
-describe("zero sidebar mac shortcuts", () => {
-  it("toggles the chat list with cmd+b while the chat composer is focused", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
+test("The Mac shortcut toggles the chat list while composing", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    const list = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(within(list).getByLabelText("Hide chat list")).toBeInTheDocument();
-    });
-
-    composer.focus();
-    expect(composer).toHaveFocus();
-    fireEvent.keyDown(composer, {
-      key: "b",
-      code: "KeyB",
-      keyCode: 66,
-      metaKey: true,
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-      expect(
-        within(screen.getByTestId("labeled-nav-rail")).getByLabelText(
-          "Show chat list",
-        ),
-      ).toBeInTheDocument();
-    });
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
   });
 
-  it("copies the current URL with cmd+l in standalone PWA mode", async () => {
-    context.mocks.browser.standaloneDisplayMode(true);
-    const clipboard = context.mocks.browser.clipboardWriteText();
-    prepareDefaultAgent();
-    mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    composer.focus();
-    const event = new KeyboardEvent("keydown", {
-      key: "l",
-      code: "KeyL",
-      metaKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    composer.dispatchEvent(event);
-    expect(event.defaultPrevented).toBeTruthy();
-
-    await waitFor(() => {
-      expect(clipboard.writes).toStrictEqual([window.location.href]);
-    });
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  const list = await screen.findByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(within(list).getByLabelText("Hide chat list")).toBeInTheDocument();
   });
 
-  it("leaves cmd+l to the browser outside standalone PWA mode", async () => {
-    context.mocks.browser.standaloneDisplayMode(false);
-    const clipboard = context.mocks.browser.clipboardWriteText();
-    prepareDefaultAgent();
-    mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    composer.focus();
-    const event = new KeyboardEvent("keydown", {
-      key: "l",
-      code: "KeyL",
-      metaKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    composer.dispatchEvent(event);
-    expect(event.defaultPrevented).toBeFalsy();
-
-    expect(clipboard.writes).toStrictEqual([]);
+  composer.focus();
+  expect(composer).toHaveFocus();
+  fireEvent.keyDown(composer, {
+    key: "b",
+    code: "KeyB",
+    keyCode: 66,
+    metaKey: true,
   });
+
+  await waitFor(() => {
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("labeled-nav-rail")).getByLabelText(
+        "Show chat list",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+test("The standalone Mac app copies the current URL with Command-L", async () => {
+  context.mocks.browser.standaloneDisplayMode(true);
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+  });
+
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  composer.focus();
+  const event = new KeyboardEvent("keydown", {
+    key: "l",
+    code: "KeyL",
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(event);
+  expect(event.defaultPrevented).toBeTruthy();
+
+  await waitFor(() => {
+    expect(clipboard.writes).toStrictEqual([window.location.href]);
+  });
+});
+
+test("The browser keeps Command-L outside standalone mode", async () => {
+  context.mocks.browser.standaloneDisplayMode(false);
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+  });
+
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  composer.focus();
+  const event = new KeyboardEvent("keydown", {
+    key: "l",
+    code: "KeyL",
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(event);
+  expect(event.defaultPrevented).toBeFalsy();
+
+  expect(clipboard.writes).toStrictEqual([]);
 });

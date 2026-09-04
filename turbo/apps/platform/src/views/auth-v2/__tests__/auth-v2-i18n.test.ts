@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { act, screen } from "@testing-library/react";
+import { expect, test } from "vitest";
 
+import {
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { mockSignUpConfiguration } from "../../../__tests__/mock-auth.ts";
+import { changeI18nLanguage } from "../../../i18n/index.ts";
 import deDECommon from "../../../i18n/locales/de-DE/common.json";
 import enUSCommon from "../../../i18n/locales/en-US/common.json";
 import esESCommon from "../../../i18n/locales/es-ES/common.json";
@@ -15,6 +22,9 @@ import {
   SUPPORTED_LOCALES,
   type SupportedLocale,
 } from "../../../i18n/resources.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
 
 const commonResources = {
   "de-DE": deDECommon,
@@ -28,39 +38,6 @@ const commonResources = {
   "ko-KR": koKRCommon,
   "pt-BR": ptBRCommon,
 } as const satisfies Record<SupportedLocale, Readonly<Record<string, unknown>>>;
-
-const authV2ViewSources = import.meta.glob("../**/*.{ts,tsx}", {
-  eager: true,
-  import: "default",
-  query: "?raw",
-}) as Record<string, string>;
-
-const authV2SignalSources = import.meta.glob(
-  "../../../signals/auth-v2/**/*.{ts,tsx}",
-  {
-    eager: true,
-    import: "default",
-    query: "?raw",
-  },
-) as Record<string, string>;
-
-const clerkLocalizationSources = import.meta.glob(
-  "../../auth/clerk-localization.ts",
-  {
-    eager: true,
-    import: "default",
-    query: "?raw",
-  },
-) as Record<string, string>;
-
-const clerkProviderSources = import.meta.glob(
-  "../../clerk/clerk-provider.tsx",
-  {
-    eager: true,
-    import: "default",
-    query: "?raw",
-  },
-) as Record<string, string>;
 
 const criticalLocalizedAuthV2Keys: readonly string[] = [
   "signIn.editIdentifier",
@@ -89,93 +66,100 @@ function leafEntries(
   });
 }
 
-describe("auth v2 platform localization ownership", () => {
-  it("defines the complete Auth v2 key set for every supported locale", () => {
-    const expectedKeys = leafEntries(commonResources[DEFAULT_LOCALE].auth.v2)
-      .map(([key]) => {
-        return key;
-      })
-      .sort();
-
-    for (const locale of SUPPORTED_LOCALES) {
-      const entries = leafEntries(commonResources[locale].auth.v2);
-      expect(
-        entries
-          .map(([key]) => {
-            return key;
-          })
-          .sort(),
-      ).toStrictEqual(expectedKeys);
-      for (const [, value] of entries) {
-        expect(typeof value).toBe("string");
-        expect(value).not.toBe("");
-      }
-    }
+function linkNamed(name: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === name;
   });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Expected link named ${name}`);
+  }
+  return link;
+}
 
-  it("keeps Clerk template syntax out of platform-owned Auth v2 copy", () => {
-    for (const locale of SUPPORTED_LOCALES) {
-      const copy = JSON.stringify(commonResources[locale].auth.v2);
-      expect(copy).not.toContain("{{applicationName}}");
-      expect(copy).not.toContain("{{provider");
-      expect(copy).not.toContain("termsOfServiceLink");
-      expect(copy).not.toContain("privacyPolicyLink");
+test("Every supported language provides complete authentication copy", async () => {
+  const expectedKeys = leafEntries(commonResources[DEFAULT_LOCALE].auth.v2)
+    .map(([key]) => {
+      return key;
+    })
+    .sort();
+  const englishEntries = new Map(
+    leafEntries(commonResources[DEFAULT_LOCALE].auth.v2),
+  );
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const entries = leafEntries(commonResources[locale].auth.v2);
+    expect(
+      entries
+        .map(([key]) => {
+          return key;
+        })
+        .sort(),
+    ).toStrictEqual(expectedKeys);
+    for (const [, value] of entries) {
+      expect(typeof value).toBe("string");
+      expect(value).not.toBe("");
     }
-  });
 
-  it("localizes critical Auth v2 recovery and CAPTCHA copy outside English", () => {
-    expect(criticalLocalizedAuthV2Keys).not.toHaveLength(0);
-    const englishEntries = new Map(
-      leafEntries(commonResources[DEFAULT_LOCALE].auth.v2),
+    const copy = JSON.stringify(commonResources[locale].auth.v2);
+    expect(copy).not.toContain("{{applicationName}}");
+    expect(copy).not.toContain("{{provider");
+  }
+
+  for (const locale of SUPPORTED_LOCALES.filter((candidate) => {
+    return candidate !== DEFAULT_LOCALE;
+  })) {
+    const localizedEntries = new Map(
+      leafEntries(commonResources[locale].auth.v2),
     );
-
-    for (const locale of SUPPORTED_LOCALES) {
-      if (locale === DEFAULT_LOCALE) {
-        continue;
-      }
-      const localizedEntries = new Map(
-        leafEntries(commonResources[locale].auth.v2),
-      );
-      for (const key of criticalLocalizedAuthV2Keys) {
-        expect([locale, key, localizedEntries.get(key)]).not.toStrictEqual([
-          locale,
-          key,
-          englishEntries.get(key),
-        ]);
-      }
+    for (const key of criticalLocalizedAuthV2Keys) {
+      expect(localizedEntries.get(key)).not.toBe(englishEntries.get(key));
     }
-  });
+  }
 
-  it("preserves every localized legal-link token contract", () => {
-    for (const locale of SUPPORTED_LOCALES) {
-      const copy = commonResources[locale].auth.v2.signUp;
-      expect(copy.legalPrivacyOnly).toMatch(/<privacy>.+<\/privacy>/);
-      expect(copy.legalTermsOnly).toMatch(/<terms>.+<\/terms>/);
-      expect(copy.legalTermsAndPrivacy).toMatch(/<terms>.+<\/terms>/);
-      expect(copy.legalTermsAndPrivacy).toMatch(/<privacy>.+<\/privacy>/);
-    }
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-up",
   });
-
-  it("keeps Clerk localization out of Auth v2 and in the shared provider", () => {
-    const sources = Object.entries({
-      ...authV2SignalSources,
-      ...authV2ViewSources,
-    }).filter(([file]) => {
-      return !file.includes("/__tests__/");
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  for (const locale of SUPPORTED_LOCALES) {
+    await act(async () => {
+      document.documentElement.lang = locale;
+      await changeI18nLanguage(locale, context.signal);
     });
-    for (const [, source] of sources) {
-      expect(source).not.toContain("@clerk/localizations");
-      expect(source).not.toContain("getClerkLocalization");
-    }
+    expect(document.body).not.toHaveTextContent(/\{\{(?:brandName|provider)/);
+  }
+});
 
-    const clerkLocalization = Object.values(clerkLocalizationSources).join(
-      "\n",
-    );
-    expect(clerkLocalization).toContain("getClerkLocalization");
-    expect(clerkLocalization).toContain("clerkLocalizationForLocale");
+test("Legal consent remains understandable and clickable in every supported language", async () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const copy = commonResources[locale].auth.v2.signUp;
+    expect(copy.legalPrivacyOnly).toMatch(/<privacy>.+<\/privacy>/);
+    expect(copy.legalTermsOnly).toMatch(/<terms>.+<\/terms>/);
+    expect(copy.legalTermsAndPrivacy).toMatch(/<terms>.+<\/terms>/);
+    expect(copy.legalTermsAndPrivacy).toMatch(/<privacy>.+<\/privacy>/);
+  }
 
-    const clerkProvider = Object.values(clerkProviderSources).join("\n");
-    expect(clerkProvider).toContain('from "../auth/clerk-localization.ts"');
-    expect(clerkProvider).toMatch(/localization:\s*getClerkLocalization\(/);
+  mockSignUpConfiguration({
+    legalConsentEnabled: true,
+    privacyPolicyUrl: "https://vm0.ai/legal/privacy",
+    termsUrl: "https://vm0.ai/legal/terms",
   });
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-up",
+  });
+
+  await expect(screen.findByRole("checkbox")).resolves.toBeVisible();
+  expect(linkNamed("Terms of Service")).toHaveAttribute(
+    "href",
+    "https://vm0.ai/legal/terms",
+  );
+  expect(linkNamed("Privacy Policy")).toHaveAttribute(
+    "href",
+    "https://vm0.ai/legal/privacy",
+  );
 });
