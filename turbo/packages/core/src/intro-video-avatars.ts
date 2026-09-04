@@ -18,7 +18,7 @@ export interface HeyGenIntroVideoAvatar {
   readonly groupId: string;
   readonly defaultVoiceId: string;
   readonly preferredOrientation: "landscape";
-  readonly renderEngine: "avatar_iv";
+  readonly renderEngine: "avatar_iii";
   readonly supportedApiEngines: typeof HEYGEN_SUPPORTED_API_ENGINES;
   readonly transparentBackgroundValidated: false;
 }
@@ -840,7 +840,7 @@ export const HEYGEN_INTRO_VIDEO_AVATARS = [
     previewWidth: 16,
     previewHeight: 9,
     preferredOrientation: "landscape",
-    renderEngine: "avatar_iv",
+    renderEngine: "avatar_iii",
     supportedApiEngines: HEYGEN_SUPPORTED_API_ENGINES,
     transparentBackgroundValidated: false,
   };

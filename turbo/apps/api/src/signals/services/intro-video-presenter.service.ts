@@ -25,7 +25,7 @@ import {
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 
-const HEYGEN_INTRO_VIDEO_PRESENTER_MODEL = "heygen-avatar-iv";
+const HEYGEN_INTRO_VIDEO_PRESENTER_MODEL = "heygen-avatar-iii";
 const HEYGEN_INTRO_VIDEO_PRESENTER_PRICING_CATEGORY = "output_video_seconds";
 
 type ErrorStatus = 400 | 402 | 502 | 503;

@@ -239,6 +239,7 @@ export async function submitHeyGenAvatarVideo(
       url: HEYGEN_VIDEOS_URL,
       body: JSON.stringify({
         type: "avatar",
+        engine: { type: "avatar_iii" },
         avatar_id: options.avatarId,
         audio_url: options.audioUrl,
         aspect_ratio: heyGenAspectRatio(options.aspectRatio),

@@ -32,7 +32,7 @@ describe("intro video avatars", () => {
   it("records the reviewed v3 capabilities without validating alpha", () => {
     for (const avatar of HEYGEN_INTRO_VIDEO_AVATARS) {
       expect(avatar.preferredOrientation).toBe("landscape");
-      expect(avatar.renderEngine).toBe("avatar_iv");
+      expect(avatar.renderEngine).toBe("avatar_iii");
       expect(avatar.supportedApiEngines).toEqual([
         "avatar_v",
         "avatar_iv",

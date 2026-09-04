@@ -41,9 +41,9 @@ const VIDEO_BYTES = Buffer.from("generated intro video presenter");
 const PRICING_ROWS = [
   {
     kind: "video",
-    provider: "heygen-avatar-iv",
+    provider: "heygen-avatar-iii",
     category: "output_video_seconds",
-    unitPrice: 5000,
+    unitPrice: 1250,
     unitSize: 60,
   },
 ] as const satisfies readonly UsagePricingRow[];
@@ -324,6 +324,7 @@ describe("Intro Video HeyGen presenter route", () => {
     const createBody = observedCreateRequests[1]?.body;
     expect(createBody).toMatchObject({
       type: "avatar",
+      engine: { type: "avatar_iii" },
       avatar_id: "Abigail_standing_office_front",
       audio_url: expect.stringMatching(/^https:\/\/r2\.example\.com\//u),
       aspect_ratio: "16:9",
@@ -334,7 +335,6 @@ describe("Intro Video HeyGen presenter route", () => {
         `/api/webhooks/built-in-generations/heygen/${generationId}?token=`,
       ),
     });
-    expect(createBody).not.toHaveProperty("engine");
     expect(createBody).not.toHaveProperty("voice_id");
     expect(createBody).not.toHaveProperty("script");
     expect(createBody).not.toHaveProperty("background");
@@ -375,7 +375,7 @@ describe("Intro Video HeyGen presenter route", () => {
       size: VIDEO_BYTES.byteLength,
       url: expect.any(String),
       durationSeconds: 61,
-      creditsCharged: 5084,
+      creditsCharged: 1271,
       avatarId: "Abigail_standing_office_front",
     });
     expect(videoDownloads).toBe(1);
@@ -408,6 +408,6 @@ describe("Intro Video HeyGen presenter route", () => {
     expect(duplicateResponse.status).toBe(200);
     await flushWaitUntilForTest();
     expect(videoDownloads).toBe(1);
-    await expect(orgCredits(fixture)).resolves.toBe(4916);
+    await expect(orgCredits(fixture)).resolves.toBe(8729);
   });
 });
