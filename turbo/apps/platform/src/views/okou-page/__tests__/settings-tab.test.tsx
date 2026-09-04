@@ -10,6 +10,7 @@ import {
   AVATAR_PRESET_COUNT,
   DEFAULT_AGENT_AVATAR_URL,
 } from "@okouai/core/agent-avatar";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
@@ -28,8 +29,12 @@ function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
   return Array.from(root.querySelectorAll<HTMLImageElement>("img"), (img) => {
     return img.src;
   }).filter((src) => {
-    return src.includes("/platform/views/zero-page/assets/avatar-svg/");
+    return src.includes("/platform/views/zero-page/assets/avatar-svg");
   });
+}
+
+function findCreateCustomAvatarButton(): Promise<HTMLElement> {
+  return screen.findByLabelText("Create custom avatar");
 }
 
 function findAgentNameInput(): Promise<HTMLElement> {
@@ -101,7 +106,7 @@ function prepareAgentProfile(avatarUrl = "preset:0"): {
   };
 }
 
-test("Show an agent’s saved avatar preset", async () => {
+test("Keep rendering the highest legacy avatar preset", async () => {
   prepareAgentProfile(`preset:${AVATAR_PRESET_COUNT - 1}`);
   await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
@@ -116,6 +121,146 @@ test("Show an agent’s saved avatar preset", async () => {
     expect.stringContaining("/head-r5-s4.svg"),
     expect.stringContaining("/face-r5-f5-m.svg"),
     expect.stringContaining("/hair-r5-h2-c2.svg"),
+  ]);
+});
+
+test("Keep rendering a legacy custom SVG avatar", async () => {
+  prepareAgentProfile("svg:r3s2h4c1f5h");
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+  await findAgentNameInput();
+  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+  const avatarRow = avatarLabel.parentElement?.parentElement;
+  if (!avatarRow) {
+    throw new Error("Avatar profile row not found");
+  }
+
+  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+    expect.stringContaining("/head-r3-s2.svg"),
+    expect.stringContaining("/face-r3-f5-h.svg"),
+    expect.stringContaining("/hair-r3-h4-c1.svg"),
+  ]);
+});
+
+test("Load only the visible avatar SVG layers", async () => {
+  prepareAgentProfile();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  click(await findCreateCustomAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
+
+  expect(layerSrcs).toHaveLength(28);
+  expect(new Set(layerSrcs).size).toBe(24);
+});
+
+test("Keep every composer step and its edge options usable in one dialog", async () => {
+  prepareAgentProfile();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  click(await findCreateCustomAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  const steps = [
+    { label: "Face", first: "Round", last: "Oval" },
+    { label: "Hair", first: "High bun", last: "Ribbon updo" },
+    { label: "Mood", first: "Neutral smile", last: "Stubble smile" },
+    { label: "Skin", first: "Gold", last: "Brown" },
+    { label: "Color", first: "Blue", last: "Brown" },
+  ] as const;
+
+  for (const [index, step] of steps.entries()) {
+    expect(dialog).toBeVisible();
+    expect(within(dialog).getByText(step.label)).toBeVisible();
+    expect(within(dialog).getByLabelText(step.first)).toBeVisible();
+    expect(within(dialog).getByLabelText(step.last)).toBeVisible();
+    expect(within(dialog).getByText("Use this avatar")).toBeVisible();
+    if (index + 1 < steps.length) {
+      click(within(dialog).getByLabelText("Next step"));
+    }
+  }
+});
+
+test("Keep the legacy avatar editor available when its switch is disabled", async () => {
+  prepareAgentProfile();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: false },
+  });
+
+  click(await findCreateCustomAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  expect(within(dialog).getByText("Angle")).toBeVisible();
+  expect(within(dialog).getByLabelText("Angle 1")).toBeVisible();
+  expect(within(dialog).queryByLabelText("Round")).not.toBeInTheDocument();
+  click(within(dialog).getByLabelText("Randomize avatar"));
+  click(within(dialog).getByText("Use this avatar"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Profile saved")).toBeInTheDocument();
+  });
+  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+  const avatarRow = avatarLabel.parentElement?.parentElement;
+  if (!avatarRow) {
+    throw new Error("Avatar profile row not found");
+  }
+  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toHaveLength(3);
+});
+
+test("Create and save a composer avatar from the profile page", async () => {
+  prepareAgentProfile();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  click(await findCreateCustomAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  expect(within(dialog).getByText("Face")).toBeVisible();
+  click(within(dialog).getByLabelText("Randomize avatar"));
+  for (const step of ["Hair", "Mood", "Skin", "Color"]) {
+    click(within(dialog).getByLabelText("Next step"));
+    await expect(within(dialog).findByText(step)).resolves.toBeVisible();
+  }
+  click(within(dialog).getByLabelText("Blue"));
+  click(within(dialog).getByText("Use this avatar"));
+
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+    expect(screen.getByText("Profile saved")).toBeInTheDocument();
+  });
+
+  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+  const avatarRow = avatarLabel.parentElement?.parentElement;
+  if (!avatarRow) {
+    throw new Error("Avatar profile row not found");
+  }
+  expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-rear\.svg$/u),
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\//u),
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-front\.svg$/u),
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/expressions\//u),
   ]);
 });
 
