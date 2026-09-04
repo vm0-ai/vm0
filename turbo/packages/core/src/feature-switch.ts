@@ -318,13 +318,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.DesktopScreenRecording]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.IosPwaStartupImages]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -1,4 +1,5 @@
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -170,6 +171,36 @@ test("Follow the lifecycle of the active chat goal", async () => {
       screen.queryByRole("listitem", { name: "Active goal" }),
     ).not.toBeInTheDocument();
   });
+});
+
+test("Hide the active chat goal while run work folding is enabled", async () => {
+  installRunChat({
+    chatEvents: [
+      ...queuedGoalEvents(),
+      goalMarker({
+        id: "goal-folding-open",
+        eventType: "goal.open",
+        objective: "Keep the folded launch work moving",
+        seqId: 6,
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  await expect(
+    screen.findByRole("listitem", {
+      name: "Pending automation event",
+    }),
+  ).resolves.toBeVisible();
+  expect(
+    screen.queryByRole("listitem", { name: "Active goal" }),
+  ).not.toBeInTheDocument();
 });
 
 test("Inspect and pause an active goal", async () => {

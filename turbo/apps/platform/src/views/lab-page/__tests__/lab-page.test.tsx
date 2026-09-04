@@ -90,9 +90,6 @@ test("Lab groups every feature by rollout stage with a switch", async () => {
   expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
   expect(within(beta).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
   expect(
-    within(beta).getByText(FeatureSwitchKey.DesktopScreenRecording),
-  ).toBeVisible();
-  expect(
     within(alpha).getByText(FeatureSwitchKey.AhrefsConnector),
   ).toBeVisible();
   expect(

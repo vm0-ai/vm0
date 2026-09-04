@@ -1,13 +1,6 @@
-"""Anthropic Messages API usage parsing primitives.
-
-Pure parsers shared by both the SSE streaming path and the non-streaming
-JSON fallback.
-"""
+"""Anthropic Messages API usage parsing primitives."""
 
 from collections.abc import Callable
-
-import body_decoding
-from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
 from .model_http import (
@@ -279,43 +272,6 @@ class _AnthropicMessagesSseUsageHandler:
             self._failure_observer.observe(ModelHttpFailureEvidence(event_name=event_name))
 
 
-class AnthropicMessagesJsonUsageExtractor:
-    """Incrementally extract usage from non-SSE Anthropic Messages JSON chunks.
-
-    Callers feed decoded response chunks with ``feed()`` and call ``finish()``
-    once. ``finish()`` returns ``(usage, None)`` when the complete JSON contains
-    at least one valid usage quantity (including zero) or a non-empty ``model``.
-    A non-empty ``message_id`` is included only with an otherwise reportable
-    result; an ID alone is not reportable. It returns ``(None, error)`` when
-    parsing fails or an extractor bound is exceeded, and ``(None, None)`` when
-    the complete JSON contains no reportable usage or model metadata.
-    """
-
-    def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(
-            scalar_fields=_MODEL_JSON_SCALAR_FIELDS,
-            max_work_units=_ANTHROPIC_MESSAGES_MAX_WORK_UNITS,
-        )
-
-    def feed(self, chunk: bytes) -> None:
-        self._extractor.feed(chunk)
-
-    def accepts_more_input(self) -> bool:
-        """Return whether the document parser can still consume input."""
-
-        return self._extractor.accepts_more_input()
-
-    def finish(self) -> tuple[dict | None, str | None]:
-        result = self._extractor.finish()
-        return model_json_usage_from_result(result)
-
-
-def create_anthropic_messages_json_usage_extractor() -> AnthropicMessagesJsonUsageExtractor:
-    """Create an incremental parser for non-SSE Anthropic Messages JSON chunks."""
-
-    return AnthropicMessagesJsonUsageExtractor()
-
-
 def model_json_scalar_fields() -> dict:
     """Return Anthropic JSON fields selected for usage inspection."""
 
@@ -340,33 +296,3 @@ def model_json_usage_from_result(
     if isinstance(message_id, str) and message_id:
         usage["message_id"] = message_id
     return usage, None
-
-
-def _extract_anthropic_messages_usage_from_decoded_json_body(
-    body: bytes,
-) -> tuple[dict | None, str | None]:
-    if not body:
-        return None, None
-    extractor = create_anthropic_messages_json_usage_extractor()
-    extractor.feed(body)
-    return extractor.finish()
-
-
-def extract_anthropic_messages_usage_with_error_from_json(
-    body: bytes, headers
-) -> tuple[dict | None, str | None]:
-    """Extract usage from a non-streaming Anthropic API JSON response.
-
-    This is the diagnostic API: it returns ``(None, error)`` when decoding or
-    parsing fails, and ``(None, None)`` when the decoded body is empty or the
-    complete JSON contains no valid usage quantity or non-empty ``model``.
-    A non-empty response ``id`` is returned as ``message_id`` only with an
-    otherwise reportable result; an ID alone is not reportable.
-    """
-    if headers:
-        body, decompress_error = body_decoding.decompress_json_usage_body(
-            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
-        )
-        if decompress_error:
-            return None, decompress_error
-    return _extract_anthropic_messages_usage_from_decoded_json_body(body)

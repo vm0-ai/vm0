@@ -1,18 +1,29 @@
 """Tests for OpenAI Responses non-SSE JSON usage extraction."""
 
-import gzip
 import json
 
 import pytest
 
-from usage import (
-    create_openai_responses_json_usage_extractor,
-    extract_openai_responses_usage_with_error_from_json,
-)
+from usage import create_model_json_response_inspector
 
 
-class TestExtractOpenAIResponsesUsageWithErrorFromJson:
-    """Tests for diagnostic OpenAI Responses JSON usage extraction."""
+def _openai_responses_json_inspector():
+    return create_model_json_response_inspector(
+        "openai_responses",
+        include_usage=True,
+        include_failure=False,
+    )
+
+
+def _inspect_openai_responses_json(body: bytes) -> tuple[dict | None, str | None]:
+    inspector = _openai_responses_json_inspector()
+    inspector.feed(body)
+    inspection = inspector.finish()
+    return inspection.usage, inspection.usage_error
+
+
+class TestOpenAIResponsesModelJsonResponseInspector:
+    """Tests for OpenAI Responses usage through the shared JSON inspector."""
 
     def test_extracts_model_tokens_and_cache_details(self):
         body = json.dumps(
@@ -31,7 +42,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
                 },
             }
         ).encode()
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result is not None
         assert result == {
@@ -47,7 +58,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
 
     def test_missing_cached_input_details_does_not_emit_cache_read(self):
         body = b'{"model":"gpt-5.5","usage":{"input_tokens":10,"output_tokens":5}}'
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result is not None
         assert result == {
@@ -71,7 +82,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
                 },
             }
         ).encode()
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert result is None
         assert error is None
 
@@ -80,7 +91,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             b'{"model":"gpt-5.5","usage":{"input_tokens":10,'
             b'"input_tokens_details":{"cached_tokens":"bad"}}}'
         )
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result is not None
         assert result == {
@@ -95,7 +106,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             b'"usage":{"input_tokens":10,'
             b'"input_tokens_details":{"cache_write_tokens":10}}}'
         )
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result == {
             "message_id": "resp_cache_write",
@@ -118,7 +129,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
                 },
             }
         ).encode()
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result == {
             "model": "gpt-5.6-sol",
@@ -131,7 +142,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             b'{"model":"gpt-5.6-sol","usage":{"input_tokens":10,'
             b'"input_tokens_details":{"cached_tokens":8,"cache_write_tokens":5}}}'
         )
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result == {
             "model": "gpt-5.6-sol",
@@ -140,39 +151,12 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             "tokens.cache_creation": 2,
         }
 
-    def test_gzip_compressed(self, headers):
-        original = (
-            b'{"model":"gpt-5.3-codex","usage":{"input_tokens":42,'
-            b'"input_tokens_details":{"cached_tokens":7}}}'
-        )
-        compressed = gzip.compress(original)
-        headers = headers(("Content-Encoding", "gzip"))
-        result, error = extract_openai_responses_usage_with_error_from_json(compressed, headers)
-        assert error is None
-        assert result == {
-            "model": "gpt-5.3-codex",
-            "tokens.input": 35,
-            "tokens.cache_read": 7,
-        }
-
-    def test_truncated_gzip_returns_error(self, headers):
-        original = (
-            b'{"model":"gpt-5.3-codex","usage":{"input_tokens":42,'
-            b'"input_tokens_details":{"cached_tokens":7}}}'
-        )
-        truncated = gzip.compress(original)[:10]
-        headers = headers(("Content-Encoding", "gzip"))
-
-        usage, error = extract_openai_responses_usage_with_error_from_json(truncated, headers)
-        assert usage is None
-        assert error == "incomplete compressed body"
-
     def test_cached_input_tokens_are_clamped_to_total_input(self):
         body = (
             b'{"model":"gpt-5.5","usage":{"input_tokens":5,'
             b'"input_tokens_details":{"cached_tokens":7}}}'
         )
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result == {
             "model": "gpt-5.5",
@@ -202,7 +186,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
                 },
             }
         ).encode()
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
         assert error is None
         assert result == {
             "message_id": "resp_large",
@@ -222,7 +206,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             + b'],"usage":{"input_tokens":20,"output_tokens":9}}'
         )
 
-        result, error = extract_openai_responses_usage_with_error_from_json(body, None)
+        result, error = _inspect_openai_responses_json(body)
 
         assert error is None
         assert result == {
@@ -233,31 +217,32 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
         }
 
     def test_work_limit_discards_partial_document_and_next_extractor_recovers(self):
-        extractor = create_openai_responses_json_usage_extractor()
+        inspector = _openai_responses_json_inspector()
         dense_array = b",".join([b"0"] * 40_000)
-        extractor.feed(
+        inspector.feed(
             b'{"id":"resp_partial","model":"gpt-5.6-sol",'
             b'"usage":{"input_tokens":20,"output_tokens":9},"padding":['
         )
         midpoint = len(dense_array) // 2
-        extractor.feed(dense_array[:midpoint])
-        extractor.feed(dense_array[midpoint:])
-        extractor.feed(b"]}")
+        inspector.feed(dense_array[:midpoint])
+        inspector.feed(dense_array[midpoint:])
+        inspector.feed(b"]}")
 
-        assert extractor.finish() == (None, "work limit exceeded")
+        inspection = inspector.finish()
+        assert inspection.usage is None
+        assert inspection.usage_error == "work limit exceeded"
 
-        next_extractor = create_openai_responses_json_usage_extractor()
-        next_extractor.feed(
+        next_inspector = _openai_responses_json_inspector()
+        next_inspector.feed(
             b'{"id":"resp_recovered","model":"gpt-5.6-sol",'
             b'"usage":{"input_tokens":8,"output_tokens":3}}'
         )
 
-        assert next_extractor.finish() == (
-            {
-                "message_id": "resp_recovered",
-                "model": "gpt-5.6-sol",
-                "tokens.input": 8,
-                "tokens.output": 3,
-            },
-            None,
-        )
+        next_inspection = next_inspector.finish()
+        assert next_inspection.usage == {
+            "message_id": "resp_recovered",
+            "model": "gpt-5.6-sol",
+            "tokens.input": 8,
+            "tokens.output": 3,
+        }
+        assert next_inspection.usage_error is None

@@ -334,10 +334,7 @@ const downloadPresentationTemplateInner$ = computed(async (get) => {
 
   const [version] = await db
     .select({
-      versionId: storageVersions.id,
       s3Key: storageVersions.s3Key,
-      fileCount: storageVersions.fileCount,
-      size: storageVersions.size,
     })
     .from(storageVersions)
     .where(
@@ -371,12 +368,6 @@ const downloadPresentationTemplateInner$ = computed(async (get) => {
     status: 200 as const,
     body: {
       url,
-      id: entry.id,
-      type: entry.source.archive.type,
-      expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
-      versionId: version.versionId,
-      fileCount: version.fileCount,
-      size: Number(version.size),
     },
   };
 });

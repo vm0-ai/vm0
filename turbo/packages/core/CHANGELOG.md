@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.621.0](https://github.com/vm0-ai/vm0/compare/core-v8.620.0...core-v8.621.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.0
+
 ## [8.620.0](https://github.com/vm0-ai/vm0/compare/core-v8.619.1...core-v8.620.0) (2026-09-04)
 
 

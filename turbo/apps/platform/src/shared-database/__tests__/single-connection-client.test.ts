@@ -21,6 +21,28 @@ import {
 } from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 
+const axiomTelemetry = vi.hoisted(() => {
+  return {
+    ingest:
+      vi.fn<
+        (dataset: string, events: readonly Record<string, unknown>[]) => void
+      >(),
+  };
+});
+
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: class {
+      ingest(
+        dataset: string,
+        events: readonly Record<string, unknown>[],
+      ): void {
+        axiomTelemetry.ingest(dataset, events);
+      }
+    },
+  };
+});
+
 class FakeBridge implements SharedDatabaseBridge {
   readonly registrationSignals: AbortSignal[] = [];
   readonly querySignals: AbortSignal[] = [];
@@ -96,6 +118,38 @@ function query() {
   };
 }
 
+function configureClientTelemetry(url: string, token: string): void {
+  vi.stubEnv("VITE_AXIOM_CLIENT_TELEMETRY_TOKEN", token);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      vi.unstubAllEnvs();
+    },
+    { once: true },
+  );
+  context.mocks.browser.url(url);
+  axiomTelemetry.ingest.mockClear();
+}
+
+async function createRegisteredBridge(): Promise<{
+  readonly bridge: SingleConnectionSharedDatabaseBridge;
+  readonly bridges: readonly FakeBridge[];
+  readonly owner: AbortController;
+}> {
+  const bridges: FakeBridge[] = [];
+  const bridge = new SingleConnectionSharedDatabaseBridge({
+    createBridge: () => {
+      const created = new FakeBridge();
+      bridges.push(created);
+      return created;
+    },
+    events: createEvents(),
+  });
+  const owner = createChildAbortController(context.signal);
+  await bridge.registerTab(owner.signal);
+  return { bridge, bridges, owner };
+}
+
 test("Reload a page whose shared-data request stops responding", async () => {
   vi.useFakeTimers();
   context.signal.addEventListener("abort", () => {
@@ -158,4 +212,69 @@ test("Reload a tab whose shared-data registration has expired", async () => {
   expect(bridges[0]!.queryCalls).toBe(1);
   owner.abort(new DOMException("App unloaded", "AbortError"));
   await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
+});
+
+test("Reports production shared worker queries without entity identifiers", async () => {
+  configureClientTelemetry("https://app.okou.ai/", "xaat-test-ingest-token");
+  const { bridge, bridges, owner } = await createRegisteredBridge();
+  const sensitiveThreadId = `private-thread-${crypto.randomUUID()}`;
+
+  await expect(
+    bridge.query(
+      {
+        dataKey: { kind: "chat-event", threadId: sensitiveThreadId },
+        afterSeqId: 42,
+        consistency: "cache-only",
+      },
+      owner.signal,
+    ),
+  ).resolves.toStrictEqual([]);
+
+  expect(bridges[0]?.queryCalls).toBe(1);
+  await vi.waitFor(() => {
+    expect(axiomTelemetry.ingest).toHaveBeenCalledOnce();
+  });
+  const [dataset, events] = axiomTelemetry.ingest.mock.calls[0]!;
+  expect(dataset).toBe("vm0-client-telemetry-prod");
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({
+    "attributes.custom": {
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "window",
+    },
+    kind: "client",
+    name: "chat-event.cache-only",
+    "resource.deployment.environment.name": "production",
+    "scope.name": "okou-app/shared-worker-query",
+    "service.name": "Okou-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
+  });
+  expect(events[0]?.duration).toStrictEqual(expect.any(Number));
+  expect(JSON.stringify(events[0])).not.toContain(sensitiveThreadId);
+  expect(events[0]).not.toHaveProperty("after_seq_id");
+  expect(events[0]).not.toHaveProperty("resource.custom");
+});
+
+test("Does not report preview shared worker queries", async () => {
+  configureClientTelemetry(
+    "https://pr-123-app.omby.ai/",
+    "xaat-test-ingest-token",
+  );
+  const { bridge, bridges, owner } = await createRegisteredBridge();
+
+  await expect(bridge.query(query(), owner.signal)).resolves.toStrictEqual([]);
+
+  expect(bridges[0]?.queryCalls).toBe(1);
+  expect(axiomTelemetry.ingest).not.toHaveBeenCalled();
+});
+
+test("Does not report shared worker queries without a token", async () => {
+  configureClientTelemetry("https://app.okou.ai/", "");
+  const { bridge, bridges, owner } = await createRegisteredBridge();
+
+  await expect(bridge.query(query(), owner.signal)).resolves.toStrictEqual([]);
+
+  expect(bridges[0]?.queryCalls).toBe(1);
+  expect(axiomTelemetry.ingest).not.toHaveBeenCalled();
 });

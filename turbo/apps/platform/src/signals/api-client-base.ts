@@ -9,8 +9,15 @@ import {
 } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { IN_VITEST } from "../env.ts";
+import {
+  clientTelemetryOutcomeForError,
+  type ClientTelemetryOperation,
+  recordClientTelemetry,
+  startClientTelemetryMeasurement,
+} from "../lib/client-telemetry.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
+import { onRejection } from "./utils.ts";
 
 interface AuthedClientOptions {
   readonly baseUrl: string;
@@ -117,7 +124,34 @@ export function createAuthedContractClient<T extends AppRouter>(
       );
       const response =
         bootstrapResponse ??
-        (await requestWithToken(await options.getToken(signal), signal));
+        (await (async () => {
+          const token = await options.getToken(signal);
+          const measurement = startClientTelemetryMeasurement();
+          const requestTelemetry = {
+            event_name: "http.request",
+            method: args.route.method,
+            route: args.route.path,
+          } satisfies ClientTelemetryOperation;
+          const networkResponse = await onRejection(
+            requestWithToken(token, signal),
+            (error) => {
+              recordClientTelemetry(
+                measurement,
+                requestTelemetry,
+                clientTelemetryOutcomeForError(error),
+              );
+            },
+          );
+          recordClientTelemetry(
+            measurement,
+            {
+              ...requestTelemetry,
+              response_status_code: networkResponse.status,
+            },
+            networkResponse.status >= 500 ? "error" : "success",
+          );
+          return networkResponse;
+        })());
 
       if (reportForceUpgradeResponse(response, options.onForceUpgrade)) {
         return response;

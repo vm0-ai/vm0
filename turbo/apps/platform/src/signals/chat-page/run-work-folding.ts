@@ -36,6 +36,7 @@ export const toggleRunWorkExpanded$ = command(({ set }, key: string) => {
 
 export interface RunWorkSection {
   readonly key: string;
+  readonly goalRunGroupId: string | undefined;
   readonly anchorEventId: string;
   readonly collapsedGroups: ChatEventGroup[];
   readonly previewEventIds: ReadonlySet<string>;
@@ -550,8 +551,13 @@ interface RunWorkPhaseFolding {
   readonly section: RunWorkSection | null;
 }
 
+interface RunWorkPhaseIdentity {
+  readonly key: string;
+  readonly goalRunGroupId: string | undefined;
+}
+
 function foldRunWorkPhase(
-  key: string,
+  identity: RunWorkPhaseIdentity,
   events: readonly EnrichedChatEvent[],
   endTime: number | undefined,
   hiddenUserEventIds: ReadonlySet<string>,
@@ -618,7 +624,8 @@ function foldRunWorkPhase(
   return {
     visibleEvents: [...userEvents, anchorEvent, ...trailingStatusEvents],
     section: {
-      key: `${key}:${events[0]!.id}`,
+      key: `${identity.key}:${events[0]!.id}`,
+      goalRunGroupId: identity.goalRunGroupId,
       anchorEventId: anchorEvent.id,
       collapsedGroups: groupEventsByRole(collapsedEvents),
       previewEventIds,
@@ -713,7 +720,10 @@ export function buildRunWorkFolding(
     const firstSectionIndex = sections.length;
     for (const [phaseIndex, phase] of phases.entries()) {
       const phaseFolding = foldRunWorkPhase(
-        unit.key,
+        {
+          key: unit.key,
+          goalRunGroupId: unit.isGoal ? unit.runGroupId : undefined,
+        },
         phase,
         phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
         unit.hiddenUserEventIds,
