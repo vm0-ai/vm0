@@ -15,22 +15,17 @@ import type { RouteEntry } from "../route-entry";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   avatarVideoInsufficientCredits,
+  avatarVideoPricing$,
   avatarVideoRequiresPaidPlan,
   avatarVideoServiceUnavailable,
   checkAvatarVideoCredits$,
-  heyGenAvatarVideoPricing$,
   isAvatarVideoErrorResponse,
-  joggAiAvatarVideoPricing$,
   listJoggAiPublicAvatars,
   listJoggAiPublicVoices,
   parseAvatarVideoOptions,
   submitJoggAiAvatarVideo,
   type AvatarVideoOptions,
 } from "../services/avatar-video.service";
-import {
-  isHeyGenErrorResponse,
-  submitHeyGenAvatarVideo,
-} from "../services/heygen.service";
 import {
   builtInGenerationRequestWithInternal,
   createBuiltInGenerationJob$,
@@ -44,7 +39,6 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
-import { heyGenBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 
 const generateBody$ = bodyResultOf(avatarVideoContract.generate);
 const avatarsQuery$ = queryOf(avatarVideoContract.avatars);
@@ -54,11 +48,8 @@ function avatarVideoRequestRecord(
   options: AvatarVideoOptions,
 ): Record<string, unknown> {
   return {
-    ...(options.provider === "heygen"
-      ? { avatarProvider: options.provider }
-      : {}),
     avatarId: options.avatarId,
-    ...(options.provider === "joggai" ? { voiceId: options.voiceId } : {}),
+    voiceId: options.voiceId,
     ...(options.script ? { script: options.script } : {}),
     ...(options.audioUrl ? { audioUrl: options.audioUrl } : {}),
     aspectRatio: options.aspectRatio,
@@ -95,15 +86,10 @@ const submitAvatarVideoJob$ = command(
     signal: AbortSignal,
   ) => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
-    const apiKey =
-      args.options.provider === "heygen"
-        ? env("HEYGEN_API_KEY")
-        : env("JOGGAI_API_KEY");
+    const apiKey = env("JOGGAI_API_KEY");
     if (!apiKey) {
       const response = avatarVideoServiceUnavailable(
-        args.options.provider === "heygen"
-          ? "HeyGen avatar video generation is not configured"
-          : "JoggAI avatar video generation is not configured",
+        "JoggAI avatar video generation is not configured",
       );
       await set(
         failBuiltInGenerationJob$,
@@ -113,38 +99,29 @@ const submitAvatarVideoJob$ = command(
       return response;
     }
 
-    let providerOptions = args.options;
-    if (args.options.audioUrl) {
-      const [audioUrl] = await set(
-        resolveProviderReferenceUrls$,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          urls: [args.options.audioUrl],
-        },
-        signal,
-      );
-      if (!audioUrl) {
-        throw new Error("Expected one resolved avatar audio URL");
-      }
-      providerOptions = { ...args.options, audioUrl };
-    }
-    const handle =
-      providerOptions.provider === "heygen"
-        ? await submitHeyGenAvatarVideo(
-            providerOptions,
-            {
-              generationId: args.generationId,
-              callbackUrl: heyGenBuiltInGenerationWebhookUrl({
-                generationId: args.generationId,
-              }),
-            },
-            apiKey,
-            signal,
-          )
-        : await submitJoggAiAvatarVideo(providerOptions, apiKey, signal);
+    const providerOptions = args.options.audioUrl
+      ? {
+          ...args.options,
+          audioUrl: (
+            await set(
+              resolveProviderReferenceUrls$,
+              {
+                orgId: args.orgId,
+                userId: args.userId,
+                urls: [args.options.audioUrl],
+              },
+              signal,
+            )
+          )[0],
+        }
+      : args.options;
+    const handle = await submitJoggAiAvatarVideo(
+      providerOptions,
+      apiKey,
+      signal,
+    );
     signal.throwIfAborted();
-    if (isAvatarVideoErrorResponse(handle) || isHeyGenErrorResponse(handle)) {
+    if (isAvatarVideoErrorResponse(handle)) {
       await set(
         failBuiltInGenerationJob$,
         { generationId: args.generationId, error: handle.body.error },
@@ -157,7 +134,7 @@ const submitAvatarVideoJob$ = command(
       {
         generationId: args.generationId,
         internal: {
-          provider: providerOptions.provider,
+          provider: "joggai",
           providerJobId: handle.videoId,
           providerTask: "avatar-video",
         },
@@ -197,28 +174,16 @@ const postGenerateInner$ = command(
       return avatarVideoInsufficientCredits();
     }
 
-    const pricing = await get(
-      options.provider === "heygen"
-        ? heyGenAvatarVideoPricing$
-        : joggAiAvatarVideoPricing$,
-    );
+    const pricing = await get(avatarVideoPricing$);
     signal.throwIfAborted();
     if (!pricing) {
       return avatarVideoServiceUnavailable(
-        options.provider === "heygen"
-          ? "HeyGen avatar video pricing is not configured"
-          : "JoggAI avatar video pricing is not configured",
+        "JoggAI avatar video pricing is not configured",
       );
     }
-    const providerApiKey =
-      options.provider === "heygen"
-        ? env("HEYGEN_API_KEY")
-        : env("JOGGAI_API_KEY");
-    if (!providerApiKey) {
+    if (!env("JOGGAI_API_KEY")) {
       return avatarVideoServiceUnavailable(
-        options.provider === "heygen"
-          ? "HeyGen avatar video generation is not configured"
-          : "JoggAI avatar video generation is not configured",
+        "JoggAI avatar video generation is not configured",
       );
     }
 

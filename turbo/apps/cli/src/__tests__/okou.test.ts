@@ -96,7 +96,9 @@ describe("Okou CLI program", () => {
 
   it("should keep internal commands out of the public surface", () => {
     expect(commandNames).toContain("__agent-loop");
+    expect(commandNames).toContain("__intro-video-presenter");
     expect(publicCommandNames).not.toContain("__agent-loop");
+    expect(publicCommandNames).not.toContain("__intro-video-presenter");
   });
 
   it("should have exactly 40 public commands", () => {

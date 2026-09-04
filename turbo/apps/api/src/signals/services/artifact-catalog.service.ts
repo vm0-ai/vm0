@@ -59,7 +59,8 @@ const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
 const OFFICIAL_IMAGE_MARKER = "zero-official-image";
 const OFFICIAL_VIDEO_MARKER = "zero-official-video";
 const AVATAR_VIDEO_MARKER = "zero-joggai-avatar-video";
-const INTERNAL_AVATAR_VIDEO_MARKER = "zero-internal-avatar-video";
+const INTERNAL_INTRO_VIDEO_PRESENTER_MARKER =
+  "zero-internal-intro-video-presenter";
 
 const artifactCursorSchema = z.object({
   createdAt: z.string(),
@@ -163,7 +164,7 @@ function artifactCatalogKindFilter(kind: ArtifactCatalogKind): SQL | undefined {
           )
         : undefined,
       sql`${generatedBy} IS DISTINCT FROM ${AVATAR_VIDEO_MARKER}`,
-      sql`${generatedBy} IS DISTINCT FROM ${INTERNAL_AVATAR_VIDEO_MARKER}`,
+      sql`${generatedBy} IS DISTINCT FROM ${INTERNAL_INTRO_VIDEO_PRESENTER_MARKER}`,
     );
   }
   return eq(artifacts.kind, kind);

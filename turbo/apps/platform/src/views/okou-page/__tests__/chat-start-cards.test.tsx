@@ -405,7 +405,7 @@ describe("chat start cards", () => {
         "create a duration-matched silent audio input only to drive the provider request",
       );
       expect(sentPrompt).toContain(
-        "--avatar-provider heygen --avatar-id Abigail_standing_office_front --audio-url <resolved-audio-url>",
+        "okou __intro-video-presenter --avatar-id Abigail_standing_office_front --audio-url <resolved-audio-url>",
       );
       expect(sentPrompt).toContain(
         "require a non-empty decodable video with a real alpha channel",

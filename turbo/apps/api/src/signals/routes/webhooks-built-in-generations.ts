@@ -59,15 +59,12 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { redactPresignedUrls } from "../../lib/presigned-url-redaction";
 import {
+  avatarVideoPricing$,
   downloadJoggAiAvatarVideo,
-  heyGenAvatarVideoPricing$,
   isAvatarVideoErrorResponse,
-  joggAiAvatarVideoPricing$,
   parseAvatarVideoOptions,
-  parsedHeyGenAvatarVideoGeneration,
   parseJoggAiWebhookPayload,
   recordGeneratedAvatarVideo$,
-  type HeyGenAvatarVideoOptions,
 } from "../services/avatar-video.service";
 import {
   downloadHeyGenAvatarVideo,
@@ -75,6 +72,13 @@ import {
   isHeyGenErrorResponse,
   type HeyGenAvatarVideoStatus,
 } from "../services/heygen.service";
+import {
+  introVideoPresenterPricing$,
+  isIntroVideoPresenterErrorResponse,
+  parseIntroVideoPresenterOptions,
+  parsedIntroVideoPresenterGeneration,
+  recordGeneratedIntroVideoPresenter$,
+} from "../services/intro-video-presenter.service";
 
 const L = logger("BuiltInGenerationWebhooks");
 
@@ -192,6 +196,14 @@ function parseJobVideoOptions(job: BuiltInGenerationWebhookJob) {
 function parseJobAvatarVideoOptions(job: BuiltInGenerationWebhookJob) {
   const options = parseAvatarVideoOptions(job.request);
   if (isAvatarVideoErrorResponse(options)) {
+    throw new Error(options.body.error.message);
+  }
+  return options;
+}
+
+function parseJobIntroVideoPresenterOptions(job: BuiltInGenerationWebhookJob) {
+  const options = parseIntroVideoPresenterOptions(job.request);
+  if (isIntroVideoPresenterErrorResponse(options)) {
     throw new Error(options.body.error.message);
   }
   return options;
@@ -813,10 +825,7 @@ const handleJoggAiAvatarVideoCompletion$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const options = parseJobAvatarVideoOptions(args.job);
-    if (options.provider !== "joggai") {
-      throw new Error("Expected a JoggAI avatar video job");
-    }
-    const pricing = await get(joggAiAvatarVideoPricing$);
+    const pricing = await get(avatarVideoPricing$);
     signal.throwIfAborted();
     if (!pricing) {
       await set(
@@ -887,7 +896,7 @@ const handleJoggAiAvatarVideoCompletion$ = command(
   },
 );
 
-const handleHeyGenAvatarVideoCompletion$ = command(
+const handleHeyGenIntroVideoPresenterCompletion$ = command(
   async (
     { get, set },
     args: {
@@ -899,12 +908,11 @@ const handleHeyGenAvatarVideoCompletion$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const parsedOptions = parseJobAvatarVideoOptions(args.job);
-    if (parsedOptions.provider !== "heygen") {
-      throw new Error("Expected a HeyGen avatar video job");
+    const options = parseJobIntroVideoPresenterOptions(args.job);
+    if (!args.job.runId) {
+      throw new Error("Expected a run-bound Intro Video presenter job");
     }
-    const options: HeyGenAvatarVideoOptions = parsedOptions;
-    const pricing = await get(heyGenAvatarVideoPricing$);
+    const pricing = await get(introVideoPresenterPricing$);
     signal.throwIfAborted();
     if (!pricing) {
       await set(
@@ -912,7 +920,7 @@ const handleHeyGenAvatarVideoCompletion$ = command(
         {
           generationId: args.job.id,
           error: failError(
-            "HeyGen avatar video pricing is not configured",
+            "HeyGen Intro Video presenter pricing is not configured",
             "NOT_CONFIGURED",
           ),
         },
@@ -940,20 +948,20 @@ const handleHeyGenAvatarVideoCompletion$ = command(
       return;
     }
     const result = await set(
-      recordGeneratedAvatarVideo$,
+      recordGeneratedIntroVideoPresenter$,
       {
         orgId: args.job.orgId,
         userId: args.job.userId,
-        runId: args.job.runId ?? undefined,
+        runId: args.job.runId,
         publicBrand: builtInGenerationPublicBrand(args.job.request),
         pricing,
-        generation: parsedHeyGenAvatarVideoGeneration({
+        generation: parsedIntroVideoPresenterGeneration({
           ...downloaded,
           options,
         }),
         usageIdempotency: {
           generationId: args.job.id,
-          scope: "avatar-video",
+          scope: "intro-video-presenter",
         },
       },
       signal,
@@ -1443,7 +1451,11 @@ const postHeyGenBuiltInGenerationWebhook$ = command(
       return okResponse();
     }
     const internal = readBuiltInGenerationRequestInternal(job.request);
-    if (internal.provider !== "heygen" || !internal.providerJobId) {
+    if (
+      internal.provider !== "heygen" ||
+      internal.providerTask !== "intro-video-presenter" ||
+      !internal.providerJobId
+    ) {
       L.warn("HeyGen built-in generation webhook found an invalid job", {
         generationId: job.id,
       });
@@ -1490,7 +1502,7 @@ const postHeyGenBuiltInGenerationWebhook$ = command(
         {
           generationId: job.id,
           error: failError(
-            "HeyGen avatar video generation failed",
+            "HeyGen Intro Video presenter generation failed",
             "HEYGEN_GENERATION_FAILED",
           ),
         },
@@ -1503,7 +1515,11 @@ const postHeyGenBuiltInGenerationWebhook$ = command(
 
     waitUntil(
       tapError(
-        set(handleHeyGenAvatarVideoCompletion$, { job, status }, signal),
+        set(
+          handleHeyGenIntroVideoPresenterCompletion$,
+          { job, status },
+          signal,
+        ),
         (error) => {
           L.error("HeyGen built-in generation webhook processing failed", {
             generationId: job.id,

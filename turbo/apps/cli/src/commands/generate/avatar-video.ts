@@ -1,4 +1,4 @@
-import { Command, InvalidArgumentError, Option } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 
 import { ApiRequestError } from "../../lib/api/core/client-factory";
@@ -16,7 +16,6 @@ import {
 import { dispatchGenerate } from "./lib/dispatch";
 
 type AspectRatio = "portrait" | "landscape" | "square";
-type AvatarProvider = "joggai" | "heygen";
 type Gender = "female" | "male";
 type AvatarStyle = "professional" | "social";
 type AvatarAge = "adult" | "senior" | "young_adult";
@@ -41,8 +40,7 @@ type VoiceAge = "young" | "middle_aged" | "old";
 interface AvatarVideoCommandOptions {
   readonly script?: string;
   readonly audioUrl?: string;
-  readonly avatarProvider?: AvatarProvider;
-  readonly avatarId?: string;
+  readonly avatarId?: number;
   readonly voiceId?: string;
   readonly aspectRatio?: AspectRatio;
   readonly screenStyle: 1 | 2 | 3;
@@ -74,12 +72,8 @@ function parsePositiveInteger(value: string, name: string): number {
   return parsed;
 }
 
-function parseAvatarId(value: string): string {
-  const parsed = value.trim();
-  if (!/^[A-Za-z0-9._:-]+$/.test(parsed)) {
-    throw new InvalidArgumentError("avatar id contains unsupported characters");
-  }
-  return parsed;
+function parseAvatarId(value: string): number {
+  return parsePositiveInteger(value, "avatar id");
 }
 
 function parsePage(value: string): number {
@@ -124,10 +118,6 @@ function parseAspectRatio(value: string): AspectRatio {
     ["portrait", "landscape", "square"],
     "aspect ratio",
   );
-}
-
-function parseAvatarProvider(value: string): AvatarProvider {
-  return parseChoice(value, ["joggai", "heygen"], "avatar provider");
 }
 
 function parseGender(value: string): Gender {
@@ -303,9 +293,6 @@ function validateCommandModes(options: AvatarVideoCommandOptions): void {
   }
 
   const listingResources = options.listAvatars || options.listVoices;
-  if (listingResources && options.avatarProvider) {
-    throw new Error("--avatar-provider is only available for generation");
-  }
   if (listingResources && hasGenerationInput(options)) {
     throw new Error(
       "Resource listing flags cannot be combined with generation options",
@@ -378,9 +365,7 @@ function printAvatarVideoResult(
   console.log(chalk.dim(`  Duration: ${result.durationSeconds}s`));
   console.log(chalk.dim(`  Aspect ratio: ${result.aspectRatio}`));
   console.log(chalk.dim(`  Avatar: ${result.avatarId}`));
-  if (result.provider === "joggai") {
-    console.log(chalk.dim(`  Voice: ${result.voiceId}`));
-  }
+  console.log(chalk.dim(`  Voice: ${result.voiceId}`));
   console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
 }
 
@@ -396,46 +381,24 @@ async function generateAvatarVideo(
       "--avatar-id is required; use --list-avatars to discover IDs",
     );
   }
-  const avatarProvider = options.avatarProvider ?? "joggai";
   const voiceId = options.voiceId?.trim();
+  if (!voiceId) {
+    throw new Error(
+      "--voice-id is required; use --list-voices to discover IDs",
+    );
+  }
 
   await ensureVideoPlan();
-  let result: Awaited<ReturnType<typeof generateWebAvatarVideo>>;
-  if (avatarProvider === "heygen") {
-    if (!options.audioUrl || script) {
-      throw new Error("HeyGen avatar rendering requires --audio-url");
-    }
-    if (options.voiceId) {
-      throw new Error(
-        "HeyGen avatar rendering is audio-driven; omit --voice-id",
-      );
-    }
-    result = await generateWebAvatarVideo({
-      avatarProvider: "heygen",
-      avatarId: options.avatarId,
-      audioUrl: options.audioUrl,
-      aspectRatio: options.aspectRatio ?? "landscape",
-      screenStyle: 3,
-      caption: false,
-      ...(options.videoName ? { videoName: options.videoName } : {}),
-    });
-  } else {
-    if (!voiceId) {
-      throw new Error(
-        "--voice-id is required; use --list-voices to discover IDs",
-      );
-    }
-    result = await generateWebAvatarVideo({
-      avatarId: parsePositiveInteger(options.avatarId, "avatar id"),
-      voiceId,
-      ...(script ? { script } : {}),
-      ...(options.audioUrl ? { audioUrl: options.audioUrl } : {}),
-      aspectRatio: options.aspectRatio ?? "portrait",
-      screenStyle: options.screenStyle,
-      caption: options.caption,
-      ...(options.videoName ? { videoName: options.videoName } : {}),
-    });
-  }
+  const result = await generateWebAvatarVideo({
+    avatarId: options.avatarId,
+    voiceId,
+    ...(script ? { script } : {}),
+    ...(options.audioUrl ? { audioUrl: options.audioUrl } : {}),
+    aspectRatio: options.aspectRatio ?? "portrait",
+    screenStyle: options.screenStyle,
+    caption: options.caption,
+    ...(options.videoName ? { videoName: options.videoName } : {}),
+  });
   printAvatarVideoResult(result, options.json === true);
 }
 
@@ -455,18 +418,10 @@ async function runAvatarVideoCommand(
 
 export const avatarVideoCommand = new Command()
   .name("avatar-video")
-  .description("Generate a billed talking-avatar video")
+  .description("Generate a billed JoggAI talking-avatar video")
   .option("--script <text>", "Speech script; can also be piped via stdin")
   .option("--audio-url <url>", "Public audio URL to drive the avatar")
-  .addOption(
-    new Option(
-      "--avatar-provider <provider>",
-      "Internal Intro Video render engine",
-    )
-      .argParser(parseAvatarProvider)
-      .hideHelp(),
-  )
-  .option("--avatar-id <id>", "Avatar ID", parseAvatarId)
+  .option("--avatar-id <id>", "Public JoggAI avatar ID", parseAvatarId)
   .option("--voice-id <id>", "JoggAI voice ID")
   .option(
     "--aspect-ratio <ratio>",

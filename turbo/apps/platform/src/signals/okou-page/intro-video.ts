@@ -211,8 +211,8 @@ function buildIntroVideoPrompt(args: {
   const heyGenPlan =
     args.avatar?.provider === "heygen"
       ? [
-          `- HeyGen render command: okou generate avatar-video --provider built-in --avatar-provider heygen --avatar-id ${args.avatar.avatarId} --audio-url <resolved-audio-url> --aspect-ratio landscape --screen-style 3 --no-caption --json`,
-          "- HeyGen render contract: the built-in renderer uses POST /v3/videos and GET /v3/videos/{video_id}, Avatar IV, an idempotency key, Retry-After handling, and output_format webm",
+          `- HeyGen presenter command: okou __intro-video-presenter --avatar-id ${args.avatar.avatarId} --audio-url <resolved-audio-url> --json`,
+          "- HeyGen render contract: this Intro Video-only internal renderer uses POST /v3/videos and GET /v3/videos/{video_id}, Avatar IV, an idempotency key, Retry-After handling, and output_format webm",
           "- Presenter validation: download the WebM immediately, require a non-empty decodable video with a real alpha channel, and stop with an actionable error if transparency is absent",
           "- Intermediate privacy: use the audio and transparent WebM only for composition; never attach them or expose provider job IDs, status payloads, or temporary URLs",
         ]

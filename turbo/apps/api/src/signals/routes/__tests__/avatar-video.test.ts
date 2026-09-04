@@ -38,10 +38,6 @@ const TEST_BUCKET = "test-user-artifacts";
 const JOGGAI_CREATE_URL = "https://api.jogg.ai/v2/create_video_from_avatar";
 const JOGGAI_AVATARS_URL = "https://api.jogg.ai/v2/avatars/public";
 const JOGGAI_VOICES_URL = "https://api.jogg.ai/v2/voices";
-const HEYGEN_CREATE_URL = "https://api.heygen.com/v3/videos";
-const HEYGEN_VIDEO_ID = "heygen-video-123";
-const HEYGEN_STATUS_URL = `${HEYGEN_CREATE_URL}/${HEYGEN_VIDEO_ID}`;
-const HEYGEN_VIDEO_URL = "https://files.heygen.test/avatar-video.webm";
 const JOGGAI_WEBHOOK_SECRET = randomUUID();
 const GENERATED_VIDEO_URL = "https://res.jogg.ai/avatar-video.mp4";
 const VIDEO_BYTES = Buffer.from("generated avatar video");
@@ -52,13 +48,6 @@ const AVATAR_VIDEO_PRICING_ROWS = [
     category: "output_video_joggai_credits",
     unitPrice: 623,
     unitSize: 1,
-  },
-  {
-    kind: "video",
-    provider: "heygen-avatar-iv",
-    category: "output_video_seconds",
-    unitPrice: 5000,
-    unitSize: 60,
   },
 ] as const satisfies readonly UsagePricingRow[];
 
@@ -177,7 +166,6 @@ describe("JoggAI built-in avatar video routes", () => {
     mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
     mockEnv("JOGGAI_API_KEY", "test-joggai-key");
     mockEnv("JOGGAI_WEBHOOK_SECRET", JOGGAI_WEBHOOK_SECRET);
-    mockEnv("HEYGEN_API_KEY", "test-heygen-key");
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -698,198 +686,5 @@ describe("JoggAI built-in avatar video routes", () => {
       screen_style: 3,
       caption: false,
     });
-  });
-
-  it("renders a HeyGen Intro Video presenter through v3 idempotently", async () => {
-    const fixture = await seedAvatarVideoFixture();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
-    const audioKey = buildArtifactKey(
-      fixture.userId,
-      randomUUID(),
-      "narration.mp3",
-    );
-    const audioUrl = buildFileUrlFromKey(audioKey, "okou");
-    const token = okouToken({ ...fixture, runId, publicBrand: "okou" });
-    const observedCreateRequests: {
-      readonly body: Record<string, unknown>;
-      readonly idempotencyKey: string | null;
-    }[] = [];
-    let statusCalls = 0;
-    let videoDownloads = 0;
-    server.use(
-      http.post(HEYGEN_CREATE_URL, async ({ request }) => {
-        observedCreateRequests.push({
-          body: asRecord(await request.json()),
-          idempotencyKey: request.headers.get("idempotency-key"),
-        });
-        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
-        if (observedCreateRequests.length === 1) {
-          return HttpResponse.json(
-            { error: { message: "slow down" } },
-            { status: 429, headers: { "retry-after": "0" } },
-          );
-        }
-        return HttpResponse.json({
-          data: {
-            video_id: HEYGEN_VIDEO_ID,
-            status: "pending",
-            output_format: "webm",
-          },
-        });
-      }),
-      http.get(HEYGEN_STATUS_URL, () => {
-        statusCalls += 1;
-        return HttpResponse.json({
-          data:
-            statusCalls === 1
-              ? { id: HEYGEN_VIDEO_ID, status: "processing" }
-              : {
-                  id: HEYGEN_VIDEO_ID,
-                  status: "completed",
-                  video_url: HEYGEN_VIDEO_URL,
-                  duration: 61,
-                },
-        });
-      }),
-      http.get(HEYGEN_VIDEO_URL, () => {
-        videoDownloads += 1;
-        return new HttpResponse(VIDEO_BYTES, {
-          headers: { "content-type": "video/webm" },
-        });
-      }),
-    );
-    const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
-    const response = await app.request("/api/avatar-video/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        avatarProvider: "heygen",
-        avatarId: "Abigail_standing_office_front",
-        audioUrl,
-        aspectRatio: "landscape",
-        screenStyle: 3,
-        caption: false,
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    const generationId = readGenerationId(
-      await response.json(),
-      fixture.userId,
-    );
-    expect(observedCreateRequests).toHaveLength(2);
-    expect(observedCreateRequests[0]?.idempotencyKey).toBe(generationId);
-    expect(observedCreateRequests[1]?.idempotencyKey).toBe(generationId);
-    expect(observedCreateRequests[0]?.body).toStrictEqual(
-      observedCreateRequests[1]?.body,
-    );
-    const createBody = observedCreateRequests[1]?.body;
-    expect(createBody).toMatchObject({
-      type: "avatar",
-      avatar_id: "Abigail_standing_office_front",
-      audio_url: expect.stringMatching(/^https:\/\/r2\.example\.com\//u),
-      aspect_ratio: "16:9",
-      resolution: "1080p",
-      output_format: "webm",
-      callback_id: generationId,
-      callback_url: expect.stringContaining(
-        `/api/webhooks/built-in-generations/heygen/${generationId}?token=`,
-      ),
-    });
-    expect(createBody).not.toHaveProperty("engine");
-    expect(createBody).not.toHaveProperty("voice_id");
-    expect(createBody).not.toHaveProperty("script");
-    expect(createBody).not.toHaveProperty("background");
-    const callbackUrl = new URL(String(createBody?.callback_url));
-
-    const invalidCallback = new URL(callbackUrl);
-    invalidCallback.searchParams.set("token", "invalid");
-    const invalidResponse = await app.request(
-      `${invalidCallback.pathname}${invalidCallback.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(invalidResponse.status).toBe(401);
-
-    const pendingResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(pendingResponse.status).toBe(503);
-
-    const completedResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(completedResponse.status).toBe(200);
-    await flushWaitUntilForTest();
-
-    const status = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(status.status).toBe(200);
-    expect(asRecord(await status.json())).toMatchObject({
-      status: "completed",
-      result: {
-        contentType: "video/webm",
-        size: VIDEO_BYTES.byteLength,
-        durationSeconds: 61,
-        creditsCharged: 5084,
-        provider: "heygen",
-        model: "heygen-avatar-iv",
-        providerVideoId: HEYGEN_VIDEO_ID,
-        avatarId: "Abigail_standing_office_front",
-        inputType: "audio",
-        aspectRatio: "landscape",
-        screenStyle: 3,
-        caption: false,
-        sourceUrl: HEYGEN_VIDEO_URL,
-      },
-    });
-    expect(videoDownloads).toBe(1);
-    expect(
-      context.mocks.s3.send.mock.calls.some(([command]) => {
-        return (
-          command instanceof PutObjectCommand &&
-          command.input.ContentType === "video/webm" &&
-          command.input.Metadata?.["public-brand"] === "okou"
-        );
-      }),
-    ).toBeTruthy();
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    for (const kind of ["avatar", "file", "video"] as const) {
-      const catalogResponse = await app.request(
-        `/api/artifacts/catalog?kind=${kind}`,
-        { headers: authHeaders() },
-      );
-      expect(catalogResponse.status).toBe(200);
-      expect(asRecord(await catalogResponse.json()).artifacts).toStrictEqual(
-        [],
-      );
-    }
-
-    const duplicateResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(duplicateResponse.status).toBe(200);
-    await flushWaitUntilForTest();
-    expect(videoDownloads).toBe(1);
-    await expect(orgCredits(fixture)).resolves.toBe(4916);
   });
 });
