@@ -1,6 +1,7 @@
 {
   "extends": "@okouai/typescript-config/base",
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "lib": ["ES2022"],
     "types": ["node"],
     "moduleResolution": "bundler",
