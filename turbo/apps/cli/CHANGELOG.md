@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.310.2](https://github.com/vm0-ai/vm0/compare/cli-v9.310.1...cli-v9.310.2) (2026-09-04)
+
+
+### Refactoring
+
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+    * @okouai/pi-agent-runtime bumped to 1.16.2
+
 ## [9.310.1](https://github.com/vm0-ai/vm0/compare/cli-v9.310.0...cli-v9.310.1) (2026-09-04)
 
 

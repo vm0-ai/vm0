@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.46.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.8...desktop-v0.46.9) (2026-09-04)
+
+
+### Refactoring
+
+* consolidate desktop recording under intro video switch ([#31730](https://github.com/vm0-ai/vm0/issues/31730)) ([262f6db](https://github.com/vm0-ai/vm0/commit/262f6db498a4d2951d538b9af723bb199a21f311))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+
 ## [0.46.8](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.7...desktop-v0.46.8) (2026-09-04)
 
 
