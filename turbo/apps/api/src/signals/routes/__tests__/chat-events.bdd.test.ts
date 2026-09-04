@@ -75,6 +75,8 @@ import { server } from "../../../mocks/server";
 import {
   readSessionHistoryBlobRefCountFixture,
   readRunModelRuntimeRouteFixture,
+  setRunPiMemoryAdmissionInputsFixture,
+  setRunLaunchSnapshotFixture,
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
 import {
@@ -1144,7 +1146,7 @@ async function completeChatRunOk(
   sandboxHeaders: { readonly authorization: string },
   options: {
     readonly activeInputDeliveryIds?: readonly string[];
-    readonly cliAgentType?: "claude-code" | "codex";
+    readonly cliAgentType?: "claude-code" | "codex" | "pi";
     readonly lastEventSequence?: number;
     readonly usagePricingResolution?: UsagePricingFixture["resolution"];
   } = {},
@@ -6297,6 +6299,134 @@ describe("CHAT-02: model-first provider policies", () => {
       baselineBinding.agent_session_id,
     );
     await cancelChatRun(actor, disabled.runId, disabledClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("decodes persisted launch snapshots at webhook completion before Stage 1 admission", async () => {
+    const snapshots = [
+      ["historical null", null, false],
+      [
+        "V1 Pi",
+        { schemaVersion: 1, framework: "pi", runnerProfile: DEFAULT_PROFILE },
+        false,
+      ],
+      [
+        "V2 Pi disabled with PiLoop enabled",
+        {
+          schemaVersion: 2,
+          framework: "pi",
+          runnerProfile: DEFAULT_PROFILE,
+          piMemoryGenerationEnabled: false,
+        },
+        false,
+      ],
+      [
+        "V2 Pi enabled",
+        {
+          schemaVersion: 2,
+          framework: "pi",
+          runnerProfile: DEFAULT_PROFILE,
+          piMemoryGenerationEnabled: true,
+        },
+        true,
+      ],
+      ...(["codex", "claude-code"] as const).flatMap((framework) => {
+        return [true, false].map((piMemoryGenerationEnabled) => {
+          return [
+            `V2 ${framework} ${piMemoryGenerationEnabled ? "enabled" : "disabled"}`,
+            {
+              schemaVersion: 2 as const,
+              framework,
+              runnerProfile: DEFAULT_PROFILE,
+              piMemoryGenerationEnabled,
+            },
+            false,
+          ] as const;
+        });
+      }),
+      [
+        "V3 Pi",
+        { schemaVersion: 3, framework: "pi", runnerProfile: DEFAULT_PROFILE },
+        true,
+      ],
+      ...(["codex", "claude-code"] as const).map((framework) => {
+        return [
+          `V3 ${framework}`,
+          {
+            schemaVersion: 3 as const,
+            framework,
+            runnerProfile: DEFAULT_PROFILE,
+          },
+          false,
+        ] as const;
+      }),
+    ] as const;
+
+    for (const [name, snapshot, admitted] of snapshots) {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: `decode ${name} through the completion webhook`,
+      });
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      await setRunLaunchSnapshotFixture(run.runId, snapshot);
+      await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
+        cliAgentType: "pi",
+      });
+      await flushWaitUntilForTest();
+      const candidate = await readPiMemoryStage1CandidateFixture({
+        orgId,
+        userId: actor.userId,
+      });
+      expect(candidate, name).toEqual(
+        admitted ? expect.objectContaining({ sourceRunId: run.runId }) : null,
+      );
+    }
+  }, 90_000);
+
+  it("keeps webhook completion admission prerequisites and recursion exclusions", async () => {
+    const cases = [
+      ["failed status", {}, true],
+      ["agent Stage 1 recursion", { triggerSource: "agent" as const }, false],
+      ["agent Phase 2 recursion", { triggerSource: "agent" as const }, false],
+      ["missing chat identity", { chatThreadId: null }, false],
+    ] as const;
+    for (const [name, inputs, fails] of cases) {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: `preserve ${name} completion exclusion`,
+      });
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      await setRunLaunchSnapshotFixture(run.runId, {
+        schemaVersion: 3,
+        framework: "pi",
+        runnerProfile: DEFAULT_PROFILE,
+      });
+      await setRunPiMemoryAdmissionInputsFixture(run.runId, inputs);
+      if (fails) {
+        await failChatRun(
+          run.runId,
+          claimed.sandboxHeaders,
+          "expected failure",
+        );
+      } else {
+        await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
+          cliAgentType: "pi",
+        });
+      }
+      await flushWaitUntilForTest();
+      await expect(
+        readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+        name,
+      ).resolves.toBeNull();
+    }
   }, 90_000);
 
   it("admits exact Pi web histories with immutable launch policy and stale-lease fencing", async () => {

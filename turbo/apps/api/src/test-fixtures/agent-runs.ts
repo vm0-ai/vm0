@@ -12,6 +12,7 @@ import { createStore, state } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -64,6 +65,49 @@ export async function clearRunLaunchSnapshotFixture(
     .returning({ id: agentRuns.id });
   if (rows.length !== 1) {
     throw new Error("Expected one Run launch snapshot to clear");
+  }
+}
+
+/**
+ * Test-only historical-row fixture.  Completion reads this persisted value
+ * after the runner has claimed the run, which lets API tests exercise the
+ * compatibility decoder without changing a production writer.
+ */
+export async function setRunLaunchSnapshotFixture(
+  runId: string,
+  launchSnapshot: AgentRunLaunchSnapshot | null,
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({ launchSnapshot })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Run launch snapshot to update");
+  }
+}
+
+export async function setRunPiMemoryAdmissionInputsFixture(
+  runId: string,
+  inputs: {
+    readonly triggerSource?: "agent" | "web";
+    readonly chatThreadId?: string | null;
+  },
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({
+      ...(inputs.triggerSource === undefined
+        ? {}
+        : { triggerSource: inputs.triggerSource }),
+      ...(inputs.chatThreadId === undefined
+        ? {}
+        : { chatThreadId: inputs.chatThreadId }),
+    })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Run admission input to update");
   }
 }
 
