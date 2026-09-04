@@ -143,3 +143,15 @@ unless violations.empty?
   exit 1
 end
 RUBY
+
+test_script='npx --yes --package=https://example.invalid/package.tgz okou --help'
+expected_prompt=$'@shell@\nexport npm_config_audit=false\nnpx --yes --package=https://example.invalid/package.tgz okou --help\n@end-shell@'
+actual_prompt=$(bash -c '
+source "$1"
+runner_e2e_shell_prompt "$2"
+' _ "$repo_root/e2e/helpers/runner-api.bash" "$test_script")
+
+if [[ "$actual_prompt" != "$expected_prompt" ]]; then
+  echo "runner E2E shell prompts must disable npm audit before caller code" >&2
+  exit 1
+fi
