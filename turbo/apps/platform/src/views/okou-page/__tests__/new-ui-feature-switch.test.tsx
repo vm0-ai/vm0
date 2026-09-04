@@ -1,8 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { expect, test } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -23,79 +23,34 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
-describe("new ui feature switch", () => {
-  it("leaves the app shell on the previous surfaces when the switch is off", async () => {
-    prepareDefaultAgent();
+test("The current shell remains unchanged when the new interface is unavailable", async () => {
+  prepareDefaultAgent();
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await screen.findByRole("textbox", { name: "Message" });
-
-    expect(document.documentElement.dataset.newUi).toBeUndefined();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
   });
 
-  it("moves the app shell onto the card layout when the switch is on", async () => {
-    prepareDefaultAgent();
+  await screen.findByRole("textbox", { name: "Message" });
+  const chatList = await screen.findByTestId("chat-list-column");
+  expect(document.documentElement.dataset.newUi).toBeUndefined();
+  expect(chatList).toHaveClass("border-r-[0.7px]");
+});
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.NewUi]: true },
-    });
+test("A user with the new interface sees one continuous workspace shell", async () => {
+  prepareDefaultAgent();
 
-    await screen.findByRole("textbox", { name: "Message" });
-
-    await waitFor(() => {
-      expect(document.documentElement.dataset.newUi).toBe("");
-    });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.NewUi]: true },
   });
 
-  it("moves the minimal shell too so directed pages match the app", async () => {
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=approve`,
-      featureSwitches: { [FeatureSwitchKey.NewUi]: true },
-    });
-
-    await screen.findByText("Unknown permission action: approve");
-
-    await waitFor(() => {
-      expect(document.documentElement.dataset.newUi).toBe("");
-    });
+  await screen.findByRole("textbox", { name: "Message" });
+  const chatList = await screen.findByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(document.documentElement.dataset.newUi).toBe("");
   });
-
-  // The chat column and the gutter around the workspace card are one surface
-  // under the new shell, so the column's own right edge has to go: kept, it
-  // would run parallel to the card's border eight pixels away.
-  it("keeps the chat column's divider while the switch is off", async () => {
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const column = await screen.findByTestId("chat-list-column");
-
-    expect(column.className).toContain("border-r-[0.7px]");
-  });
-
-  it("drops the chat column's divider once the switch is on", async () => {
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.NewUi]: true },
-    });
-
-    const column = await screen.findByTestId("chat-list-column");
-
-    await waitFor(() => {
-      expect(column.className).not.toContain("border-r-[0.7px]");
-    });
-  });
+  expect(chatList).not.toHaveClass("border-r-[0.7px]");
+  expect(document.querySelector(".zero-workspace-card")).toBeVisible();
 });

@@ -18,6 +18,10 @@ permissions:
   packages: write
   checks: write
 
+# Dependency vulnerability scanning is owned by security.yml.
+env:
+  npm_config_audit: "false"
+
 jobs:
   # A push to main can carry several merge-queue entries at once, so look at every
   # commit subject in the push rather than only the head commit. Without this the
@@ -1474,8 +1478,8 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # The Worker owns the live App routes and direct canary domains. App releases
-  # must wait for the canonical build artifact and API production lifecycle.
+  # The Worker owns the live App routes. App releases must wait for the
+  # canonical build artifact and API production lifecycle.
   promote-app-worker-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
@@ -1660,9 +1664,7 @@ jobs:
 
           for mapping in \
             "https://app.vm0.ai|https://api.vm0.ai" \
-            "https://app.okou.ai|https://api.okou.ai" \
-            "https://app-worker.vm0.ai|https://api.vm0.ai" \
-            "https://app-worker.okou.ai|https://api.okou.ai"; do
+            "https://app.okou.ai|https://api.okou.ai"; do
             IFS='|' read -r app_origin api_origin <<< "$mapping"
             cors_result="$(
               curl -fsS \
@@ -1687,6 +1689,66 @@ jobs:
             fi
           done
 
+      - name: Retire App Worker diagnostic domains
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+
+          retire_custom_domain() {
+            local hostname="$1"
+            local domain_id
+            local domain_record
+            local domain_response
+
+            domain_response="$(
+              curl -fsS --get \
+                --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                --data-urlencode "hostname=${hostname}" \
+                "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"
+            )"
+            domain_record="$(
+              jq -cr --arg hostname "$hostname" '
+                if .success != true then
+                  error("Cloudflare domain lookup failed")
+                else
+                  [.result[] | select(.hostname == $hostname)]
+                  | if length == 0 then null
+                    elif length == 1 then .[0]
+                    else error("Cloudflare returned duplicate Worker domains")
+                    end
+                end
+              ' <<<"$domain_response"
+            )"
+            if [[ "$domain_record" == "null" ]]; then
+              echo "Worker custom domain is already retired: ${hostname}"
+              return
+            fi
+            if [[ "$(jq -r '.service' <<<"$domain_record")" != "okou-app-production" ]]; then
+              echo "Refusing to detach ${hostname} from another Worker" >&2
+              exit 1
+            fi
+            domain_id="$(jq -er '.id | select(type == "string")' <<<"$domain_record")"
+            if [[ ! "$domain_id" =~ ^[0-9a-f]{32}$ ]]; then
+              echo "Invalid Worker custom domain ID for ${hostname}" >&2
+              exit 1
+            fi
+
+            curl -fsS \
+              --request DELETE \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}" \
+              | jq -e '.success == true' >/dev/null
+            echo "Retired Worker custom domain: ${hostname}"
+          }
+
+          retire_custom_domain "app-worker.okou.ai"
+          retire_custom_domain "app-worker.vm0.ai"
+
       - name: Finish GitHub Deployment
         if: always()
         uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
@@ -1707,10 +1769,6 @@ jobs:
             echo "### Live"
             echo "- https://app.okou.ai"
             echo "- https://app.vm0.ai"
-            echo
-            echo "### Direct canaries"
-            echo "- https://app-worker.okou.ai"
-            echo "- https://app-worker.vm0.ai"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Calculate duration

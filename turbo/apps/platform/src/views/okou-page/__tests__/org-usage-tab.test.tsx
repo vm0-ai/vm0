@@ -7,11 +7,11 @@ import { orgMembersContract } from "@okouai/api-contracts/contracts/org-member-r
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, expect, test } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
+  setupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
@@ -175,7 +175,7 @@ function mockUsageStory(): void {
 }
 
 async function openCreditBalance(): Promise<void> {
-  detachedSetupPage({
+  await setupPage({
     context,
     path: "/?settings=usage",
   });
@@ -186,7 +186,7 @@ async function openCreditBalance(): Promise<void> {
 }
 
 async function openCreditUsage(): Promise<void> {
-  detachedSetupPage({
+  await setupPage({
     context,
     path: "/?settings=usage-records",
   });
@@ -196,218 +196,212 @@ async function openCreditUsage(): Promise<void> {
   });
 }
 
-describe("organization usage settings", () => {
-  beforeEach(() => {
-    mockNow(context.signal, new Date(MOCK_NOW));
+beforeEach(() => {
+  mockNow(new Date(MOCK_NOW), context.signal);
+});
+
+test("Review workspace credit balance, allowances, and additions", async () => {
+  mockUsageStory();
+  await openCreditBalance();
+
+  await waitFor(() => {
+    expect(screen.getByText("12,000")).toBeInTheDocument();
   });
+  const allowance = screen.getByTestId("usage-allowance-section");
+  expect(allowance).toBeInTheDocument();
+  expect(screen.getByText("Usage allowance")).toBeInTheDocument();
+  expect(screen.getByText("5h")).toBeInTheDocument();
+  expect(screen.getByText("1w")).toBeInTheDocument();
+  expect(screen.getByText("3,750 left")).toBeInTheDocument();
+  expect(screen.getByText("40,000 left")).toBeInTheDocument();
+  expect(
+    screen.getByText(expectedAllowanceResetText(SHORT_ALLOWANCE_RESET)),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(expectedAllowanceResetText(WEEKLY_ALLOWANCE_RESET)),
+  ).toBeInTheDocument();
+  expect(within(allowance).getAllByRole("progressbar")).toHaveLength(2);
 
-  it("shows the credit balance, allowance, and credit additions", async () => {
-    mockUsageStory();
-    await openCreditBalance();
+  // The compact additions table keeps only the three values needed for
+  // scanning; source and expiry details are available from each row tooltip.
+  const grants = screen.getByTestId("credit-grants-section");
+  expect(within(grants).getByText("Date")).toBeInTheDocument();
+  expect(within(grants).getByText("Credits")).toBeInTheDocument();
+  expect(within(grants).getByText("Left")).toBeInTheDocument();
+  expect(within(grants).getByText("Mar 1, 2026")).toBeInTheDocument();
+  expect(within(grants).getByText("+10,000")).toBeInTheDocument();
+  expect(within(grants).getByText("8,000")).toBeInTheDocument();
+  expect(within(grants).queryByText("March Pro credits")).toBeNull();
+  expect(screen.queryByTestId("credit-grants-toggle")).toBeNull();
+  expect(screen.queryByText("Pro credits")).toBeNull();
+  expect(screen.queryByText("Purchased credits")).toBeNull();
 
-    await waitFor(() => {
-      expect(screen.getByText("12,000")).toBeInTheDocument();
-    });
-    const allowance = screen.getByTestId("usage-allowance-section");
-    expect(allowance).toBeInTheDocument();
-    expect(screen.getByText("Usage allowance")).toBeInTheDocument();
-    expect(screen.getByText("5h")).toBeInTheDocument();
-    expect(screen.getByText("1w")).toBeInTheDocument();
-    expect(screen.getByText("3,750 left")).toBeInTheDocument();
-    expect(screen.getByText("40,000 left")).toBeInTheDocument();
+  // Usage records moved to their own section.
+  expect(screen.queryByText("Team usage")).toBeNull();
+});
+
+test("Move from workspace credit balance to usage records", async () => {
+  mockUsageStory();
+  await openCreditBalance();
+
+  await waitFor(() => {
+    expect(screen.getByTestId("credit-balance-see-usage")).toBeInTheDocument();
+  });
+  click(screen.getByTestId("credit-balance-see-usage"));
+
+  await waitFor(() => {
     expect(
-      screen.getByText(expectedAllowanceResetText(SHORT_ALLOWANCE_RESET)),
+      screen.getByRole("heading", { name: "Credit usage" }),
+    ).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("usage-records-see-balance")).toBeNull();
+});
+
+test("Buy credits from the workspace balance", async () => {
+  mockUsageStory();
+  await openCreditBalance();
+
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("credit-balance-buy-credits"),
+    ).toBeInTheDocument();
+  });
+  click(screen.getByTestId("credit-balance-buy-credits"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Billing" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(expectedAllowanceResetText(WEEKLY_ALLOWANCE_RESET)),
+      screen.getByRole("heading", { name: "Buy credits" }),
     ).toBeInTheDocument();
-    expect(within(allowance).getAllByRole("progressbar")).toHaveLength(2);
+  });
+});
 
-    // The compact additions table keeps only the three values needed for
-    // scanning; source and expiry details are available from each row tooltip.
-    const grants = screen.getByTestId("credit-grants-section");
-    expect(within(grants).getByText("Date")).toBeInTheDocument();
-    expect(within(grants).getByText("Credits")).toBeInTheDocument();
-    expect(within(grants).getByText("Left")).toBeInTheDocument();
-    expect(within(grants).getByText("Mar 1, 2026")).toBeInTheDocument();
-    expect(within(grants).getByText("+10,000")).toBeInTheDocument();
-    expect(within(grants).getByText("8,000")).toBeInTheDocument();
-    expect(within(grants).queryByText("March Pro credits")).toBeNull();
-    expect(screen.queryByTestId("credit-grants-toggle")).toBeNull();
-    expect(screen.queryByText("Pro credits")).toBeNull();
-    expect(screen.queryByText("Purchased credits")).toBeNull();
+test("Hide Buy credits from an ineligible workspace", async () => {
+  mockUsageStory();
+  mockBillingStatus({ canBuyCredits: false });
+  await openCreditBalance();
 
-    // Usage records moved to their own section.
-    expect(screen.queryByText("Team usage")).toBeNull();
+  await waitFor(() => {
+    expect(screen.getByTestId("credit-grants-section")).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
+});
+
+test("Explain the composition of a workspace credit balance", async () => {
+  const user = userEvent.setup();
+  mockUsageStory();
+  mockBillingStatus({
+    creditBreakdown: [
+      {
+        category: "payAsYouGo",
+        label: "Purchased credits",
+        credits: 12_000,
+      },
+    ],
+  });
+  await openCreditBalance();
+
+  const segment = await screen.findByTestId(
+    "credit-balance-segment-payAsYouGo",
+  );
+  await user.hover(segment);
+  await expect(
+    screen.findByText("Purchased credits — 12,000"),
+  ).resolves.toBeInTheDocument();
+});
+
+test("Label workspace credits that do not expire", async () => {
+  const user = userEvent.setup();
+  mockUsageStory();
+  mockBillingStatus({
+    creditGrants: [
+      {
+        id: "grant-custom",
+        source: "atom_custom_credits",
+        label: "Custom credits",
+        amount: 12_000,
+        remaining: 12_000,
+        createdAt: "2026-03-01T00:00:00Z",
+        expiresAt: "2999-12-31T23:59:59Z",
+      },
+    ],
+  });
+  await openCreditBalance();
+
+  const grant = await screen.findByTestId("credit-grants-grant-custom");
+  expect(screen.queryByText("Never expires")).toBeNull();
+  await user.hover(grant);
+  await expect(screen.findByText("Never expires")).resolves.toBeInTheDocument();
+  expect(screen.queryByText("Dec 31, 2999")).toBeNull();
+});
+
+test("Review credit usage by workspace member", async () => {
+  mockUsageStory();
+  await openCreditUsage();
+
+  const teamUsageTab = queryAllByRoleFast("tab").find((element) => {
+    return element.textContent === "Team usage";
+  });
+  if (!teamUsageTab) {
+    throw new Error("Team usage tab not found");
+  }
+  click(teamUsageTab);
+  await waitFor(() => {
+    expect(screen.getByText("Alice Admin")).toBeInTheDocument();
+    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+  });
+  expect(screen.getByText("7,500")).toBeInTheDocument();
+  expect(screen.getByText("2,100")).toBeInTheDocument();
+});
+
+test("Localize workspace balance and team usage in Portuguese", async () => {
+  mockUsageStory();
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
+
+  await setupPage({
+    context,
+    path: "/?settings=usage",
   });
 
-  it("moves from the balance to the usage records through the section link", async () => {
-    mockUsageStory();
-    await openCreditBalance();
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("credit-balance-see-usage"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByTestId("credit-balance-see-usage"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Credit usage" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("usage-records-see-balance")).toBeNull();
+  await waitFor(() => {
+    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(screen.getByText("12.000")).toBeInTheDocument();
+    expect(screen.getByText("Franquia de uso")).toBeInTheDocument();
+    expect(screen.getByText("3.750 restantes")).toBeInTheDocument();
   });
 
-  it("sends the buy credits action to the billing section", async () => {
-    mockUsageStory();
-    await openCreditBalance();
+  const grants = screen.getByTestId("credit-grants-section");
+  expect(within(grants).getByText("Data")).toBeInTheDocument();
+  expect(within(grants).getByText("Créditos")).toBeInTheDocument();
+  expect(within(grants).getByText("Restante")).toBeInTheDocument();
+  expect(within(grants).getByText("+10.000")).toBeInTheDocument();
+  expect(within(grants).getByText("8.000")).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("credit-balance-buy-credits"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByTestId("credit-balance-buy-credits"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Billing" }),
-      ).toBeInTheDocument();
-    });
+  click(screen.getByTestId("credit-balance-see-usage"));
+  await waitFor(() => {
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Uso da equipe";
+      }),
+    ).toBeTruthy();
   });
-
-  it("hides the buy credits action when the plan cannot buy credits", async () => {
-    mockUsageStory();
-    mockBillingStatus({ canBuyCredits: false });
-    await openCreditBalance();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("credit-grants-section")).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
+  const teamUsageTab = queryAllByRoleFast("tab").find((tab) => {
+    return tab.textContent?.trim() === "Uso da equipe";
   });
+  if (!teamUsageTab) {
+    throw new Error("Portuguese Team usage tab not found");
+  }
+  click(teamUsageTab);
 
-  it("draws the composition bar even when one category holds the balance", async () => {
-    const user = userEvent.setup();
-    mockUsageStory();
-    mockBillingStatus({
-      creditBreakdown: [
-        {
-          category: "payAsYouGo",
-          label: "Purchased credits",
-          credits: 12_000,
-        },
-      ],
-    });
-    await openCreditBalance();
-
-    const segment = await screen.findByTestId(
-      "credit-balance-segment-payAsYouGo",
-    );
-    await user.hover(segment);
-    await expect(
-      screen.findByText("Purchased credits — 12,000"),
-    ).resolves.toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByText("Alice Admin")).toBeInTheDocument();
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+    expect(screen.getByText("7.500")).toBeInTheDocument();
+    expect(screen.getByText("2.100")).toBeInTheDocument();
   });
-
-  it("labels far-future credit grant expiries as never expiring", async () => {
-    const user = userEvent.setup();
-    mockUsageStory();
-    mockBillingStatus({
-      creditGrants: [
-        {
-          id: "grant-custom",
-          source: "atom_custom_credits",
-          label: "Custom credits",
-          amount: 12_000,
-          remaining: 12_000,
-          createdAt: "2026-03-01T00:00:00Z",
-          expiresAt: "2999-12-31T23:59:59Z",
-        },
-      ],
-    });
-    await openCreditBalance();
-
-    const grant = await screen.findByTestId("credit-grants-grant-custom");
-    expect(screen.queryByText("Never expires")).toBeNull();
-    await user.hover(grant);
-    await expect(
-      screen.findByText("Never expires"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("Dec 31, 2999")).toBeNull();
-  });
-
-  it("shows workspace member usage in the credit usage section", async () => {
-    mockUsageStory();
-    await openCreditUsage();
-
-    const teamUsageTab = queryAllByRoleFast("tab").find((element) => {
-      return element.textContent === "Team usage";
-    });
-    if (!teamUsageTab) {
-      throw new Error("Team usage tab not found");
-    }
-    click(teamUsageTab);
-    await waitFor(() => {
-      expect(screen.getByText("Alice Admin")).toBeInTheDocument();
-      expect(screen.getByText("bob@example.com")).toBeInTheDocument();
-    });
-    expect(screen.getByText("7,500")).toBeInTheDocument();
-    expect(screen.getByText("2,100")).toBeInTheDocument();
-  });
-
-  it("localizes the credit balance and credit additions in Portuguese", async () => {
-    mockUsageStory();
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=usage",
-    });
-
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("pt-BR");
-      expect(screen.getByText("12.000")).toBeInTheDocument();
-      expect(screen.getByText("Franquia de uso")).toBeInTheDocument();
-      expect(screen.getByText("3.750 restantes")).toBeInTheDocument();
-    });
-
-    const grants = screen.getByTestId("credit-grants-section");
-    expect(within(grants).getByText("Data")).toBeInTheDocument();
-    expect(within(grants).getByText("Créditos")).toBeInTheDocument();
-    expect(within(grants).getByText("Restante")).toBeInTheDocument();
-    expect(within(grants).getByText("+10.000")).toBeInTheDocument();
-    expect(within(grants).getByText("8.000")).toBeInTheDocument();
-  });
-
-  it("localizes team usage in Portuguese", async () => {
-    mockUsageStory();
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=usage-records",
-    });
-
-    await waitFor(() => {
-      expect(document.documentElement.lang).toBe("pt-BR");
-    });
-
-    const teamUsageTab = await waitFor(() => {
-      const tab = queryAllByRoleFast("tab").find((element) => {
-        return element.textContent === "Uso da equipe";
-      });
-      if (!tab) {
-        throw new Error("Portuguese team usage tab not found");
-      }
-      return tab;
-    });
-    click(teamUsageTab);
-    await waitFor(() => {
-      expect(screen.getByText("Alice Admin")).toBeInTheDocument();
-      expect(screen.getByText("7.500")).toBeInTheDocument();
-    });
-  });
+  expect(screen.getByText("Membro")).toBeInTheDocument();
+  expect(screen.getByText("Usado")).toBeInTheDocument();
 });
