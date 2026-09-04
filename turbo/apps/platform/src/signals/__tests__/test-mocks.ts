@@ -835,6 +835,7 @@ function mockAudioContext(signal: AbortSignal): void {
 interface VoiceInputMockOptions {
   readonly audioContextReady?: Promise<void>;
   readonly getUserMediaReady?: Promise<void>;
+  readonly onAudioContextClose?: () => void;
   readonly onRecorderStart?: () => void;
   readonly onRecorderStop?: () => void;
   readonly rms?: number | readonly number[] | (() => number);
@@ -906,6 +907,7 @@ function mockVoiceInput(
     }
 
     close(): Promise<void> {
+      options.onAudioContextClose?.();
       return Promise.resolve();
     }
 
