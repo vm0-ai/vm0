@@ -597,9 +597,6 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@clerk/clerk-js':
-        specifier: 6.25.8
-        version: 6.25.8(@types/react@19.2.14)(@typescript/typescript6@6.0.2)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))(zod@4.3.6)
       '@clerk/localizations':
         specifier: ^4.13.8
         version: 4.13.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

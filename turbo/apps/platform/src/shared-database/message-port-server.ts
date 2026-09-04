@@ -4,11 +4,20 @@ import { captureSentryLogError } from "../lib/sentry-config.ts";
 import { logger } from "../signals/log.ts";
 import {
   createChildAbortController,
+  createDeferredPromise,
+  detach,
   onDomEventFn,
+  Reason,
   settle,
 } from "../signals/utils.ts";
-import type { SharedDatabasePortLike } from "./bridge.ts";
+import type {
+  SharedDatabasePortLike,
+  SharedDatabaseTokenProvider,
+} from "./bridge.ts";
 import {
+  deserializeSharedDatabaseError,
+  redactSharedDatabaseClientMessageForLog,
+  serializeSharedDatabaseError,
   sharedDatabaseClientMessageSchema,
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseClientMessage,
@@ -18,26 +27,26 @@ import { registerConnection$ } from "./worker-context.ts";
 import {
   getComputedStoreMessage$,
   queryStoreMessage$,
+  startSharedDatabaseWorkerDaemons$,
 } from "./worker-signals.ts";
 
 type RequestMessage = Extract<
   SharedDatabaseClientMessage,
-  { readonly requestId: string }
->;
-type RoutedMessage = Extract<
-  SharedDatabaseClientMessage,
   { readonly type: "get-computed" | "query" }
 >;
+type RoutedMessage = RequestMessage;
+type TokenResponseMessage = Extract<
+  SharedDatabaseClientMessage,
+  { readonly type: "token-error" | "token-result" }
+>;
+
+interface PendingTokenRequest {
+  readonly reject: (reason: unknown) => void;
+  readonly resolve: (token: string | null) => void;
+}
 
 const L = logger("SharedDatabaseWorker");
 const BridgeL = logger("SharedWorkerBridge");
-
-function serializedError(error: unknown): { name: string; message: string } {
-  if (error instanceof Error || error instanceof DOMException) {
-    return { name: error.name, message: error.message };
-  }
-  return { name: Error.name, message: String(error) };
-}
 
 class SharedDatabaseClientNotConnectedError extends Error {
   constructor() {
@@ -50,6 +59,10 @@ export class SharedDatabaseMessagePortServer {
   private readonly connectionId = crypto.randomUUID();
   private readonly connectionController: AbortController;
   private readonly connectionSignal: AbortSignal;
+  private readonly pendingTokenRequests = new Map<
+    string,
+    PendingTokenRequest
+  >();
   private registeredSignal: AbortSignal | null = null;
   private disconnected = false;
 
@@ -117,7 +130,7 @@ export class SharedDatabaseMessagePortServer {
       });
       return;
     }
-    const error = serializedError(result.error);
+    const error = serializeSharedDatabaseError(result.error);
     L.debug("request.error", {
       connectionId: this.connectionId,
       error,
@@ -166,13 +179,61 @@ export class SharedDatabaseMessagePortServer {
       registerConnection$,
       this.connectionId,
       this.connectionController,
-      this.port,
+      { getToken: this.requestToken, port: this.port },
       this.connectionSignal,
     );
     this.registeredSignal = signal;
     signal.addEventListener("abort", this.handleRegisteredConnectionAbort, {
       once: true,
     });
+    const daemon = this.store.set(startSharedDatabaseWorkerDaemons$);
+    if (daemon) {
+      detach(daemon, Reason.Daemon, "shared database Worker daemons");
+    }
+  }
+
+  private readonly requestToken: SharedDatabaseTokenProvider = (
+    callerSignal,
+  ) => {
+    const registeredSignal = this.registeredSignal;
+    if (!registeredSignal) {
+      throw new SharedDatabaseClientNotConnectedError();
+    }
+    const signal = AbortSignal.any([callerSignal, registeredSignal]);
+    signal.throwIfAborted();
+    const deferred = createDeferredPromise<string | null>(signal);
+    const requestId = crypto.randomUUID();
+    const abort = () => {
+      this.pendingTokenRequests.delete(requestId);
+    };
+    const finish = <T>(callback: (value: T) => void) => {
+      return (value: T) => {
+        signal.removeEventListener("abort", abort);
+        if (!deferred.settled()) {
+          callback(value);
+        }
+      };
+    };
+    this.pendingTokenRequests.set(requestId, {
+      reject: finish(deferred.reject),
+      resolve: finish(deferred.resolve),
+    });
+    signal.addEventListener("abort", abort, { once: true });
+    this.emit({ type: "get-token", requestId });
+    return deferred.promise;
+  };
+
+  private finishTokenRequest(message: TokenResponseMessage): void {
+    const pending = this.pendingTokenRequests.get(message.requestId);
+    if (!pending) {
+      return;
+    }
+    this.pendingTokenRequests.delete(message.requestId);
+    if (message.type === "token-error") {
+      pending.reject(deserializeSharedDatabaseError(message.error));
+      return;
+    }
+    pending.resolve(message.token);
   }
 
   private disconnect(reason: string): void {
@@ -218,7 +279,15 @@ export class SharedDatabaseMessagePortServer {
         return;
       }
       const message = parsed.data;
-      BridgeL.debug("got message from app", this.connectionId, message);
+      BridgeL.debug(
+        "got message from app",
+        this.connectionId,
+        redactSharedDatabaseClientMessageForLog(message),
+      );
+      if (message.type === "token-error" || message.type === "token-result") {
+        this.finishTokenRequest(message);
+        return;
+      }
       if (message.type === "disconnect") {
         this.disconnect("client-request");
         return;

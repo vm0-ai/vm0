@@ -6,18 +6,13 @@ import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
 import { i18n } from "../i18n/index.ts";
 import { now } from "../lib/time.ts";
-import {
-  CLERK_DEV_BROWSER_NAME,
-  readClerkDevBrowserJwt,
-} from "../lib/clerk-dev-browser.ts";
-import { resolveConfiguredProductionPrimaryAppDomain } from "../lib/clerk-instance-config.ts";
-import { CLERK_PRIMARY_APP_DOMAIN_PARAM } from "../lib/clerk-primary-app-domain-param.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
+  SharedDatabaseTokenProvider,
 } from "../shared-database/bridge.ts";
 import type {
   SharedDatabaseDataKey,
@@ -28,7 +23,7 @@ import type { SharedDatabaseWorkerUnavailableReason } from "../shared-database/p
 import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-connection-client.ts";
 import { clerk$ } from "./auth.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
-import { waitForClerkSession } from "./clerk-token.ts";
+import { readClerkToken, waitForClerkSession } from "./clerk-token.ts";
 import { applyChatThreadReadCursorUpdated$ } from "./chat-thread-list-reload.ts";
 import {
   syncActiveChatEvents$,
@@ -55,6 +50,7 @@ const L = logger("SharedWorkerBridge");
 export interface SharedDatabaseBridgeHost {
   createBridge(
     identity: SharedDatabaseIdentity,
+    getToken: SharedDatabaseTokenProvider,
     events: SharedDatabaseBridgeEvents,
     signal: AbortSignal,
     diagnosticsEnabled: boolean,
@@ -109,6 +105,7 @@ function handleSharedDatabaseWorkerUnavailable(
 
 function createBrowserSharedDatabaseBridge(
   identity: SharedDatabaseIdentity,
+  getToken: SharedDatabaseTokenProvider,
   events: SharedDatabaseBridgeEvents,
   signal: AbortSignal,
   diagnosticsEnabled: boolean,
@@ -117,12 +114,6 @@ function createBrowserSharedDatabaseBridge(
   workerUrl.search = "";
   workerUrl.searchParams.set("userId", identity.userId);
   workerUrl.searchParams.set("orgId", identity.orgId);
-  // The Worker bundle has no copy of the deployment's primary app domain (it
-  // is substituted into index.html after the build), so the tab forwards it.
-  workerUrl.searchParams.set(
-    CLERK_PRIMARY_APP_DOMAIN_PARAM,
-    resolveConfiguredProductionPrimaryAppDomain(),
-  );
   const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
   const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
   if (vercelProtectionBypass) {
@@ -130,10 +121,6 @@ function createBrowserSharedDatabaseBridge(
       VERCEL_PROTECTION_BYPASS_NAME,
       vercelProtectionBypass,
     );
-  }
-  const devBrowserJwt = readClerkDevBrowserJwt(document.cookie);
-  if (devBrowserJwt) {
-    workerUrl.searchParams.set(CLERK_DEV_BROWSER_NAME, devBrowserJwt);
   }
   if (diagnosticsEnabled) {
     workerUrl.searchParams.set(CONNECTION_DIAGNOSTICS_PARAM, "1");
@@ -149,6 +136,7 @@ function createBrowserSharedDatabaseBridge(
     worker.port,
     events,
     signal,
+    getToken,
   );
   let failureHandled = false;
   worker.addEventListener(
@@ -232,10 +220,14 @@ export const prepareSharedDatabaseBridge$ = command(
     const diagnosticsEnabled =
       get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false;
     const bridgeHost = get(sharedDatabaseBridgeHostState$);
+    const getToken: SharedDatabaseTokenProvider = (requestSignal) => {
+      return readClerkToken(clerk, requestSignal);
+    };
     const bridge = new SingleConnectionSharedDatabaseBridge({
       createBridge: (events, connectionSignal) => {
         return bridgeHost.createBridge(
           identity,
+          getToken,
           events,
           connectionSignal,
           diagnosticsEnabled,

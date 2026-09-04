@@ -4,7 +4,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
-import { mockedClerk, type mockOrganization, type mockUser } from "./mock-auth";
+import type { mockOrganization, mockUser } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
@@ -266,7 +266,6 @@ async function setupPageAsync(
     setupSharedWorkerTestBootstrap$,
     {
       appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
-      clerk: Promise.resolve(mockedClerk),
       workerStore: options.context.workerStore,
       identity:
         auth.user && activeOrgId
