@@ -25,9 +25,23 @@ interface ClientTelemetryMeasurement {
   readonly startedAtMonotonic: number;
 }
 
+type IndexedDbDatabase = "chat" | "intro_video_drafts";
+
+interface IndexedDbOpenTelemetry {
+  readonly event_name: "indexeddb.open";
+  readonly database: IndexedDbDatabase;
+}
+
+interface IndexedDbTransactionCreateTelemetry {
+  readonly event_name: "indexeddb.transaction.create";
+  readonly database: IndexedDbDatabase;
+  readonly template: string;
+  readonly transaction_mode: IDBTransactionMode;
+}
+
 interface IndexedDbTransactionTelemetry {
   readonly event_name: "indexeddb.transaction";
-  readonly database: "chat" | "intro_video_drafts";
+  readonly database: IndexedDbDatabase;
   readonly template: string;
   readonly transaction_mode: IDBTransactionMode;
   readonly request_count: number;
@@ -46,6 +60,8 @@ interface HttpRequestTelemetry {
 }
 
 export type ClientTelemetryOperation =
+  | IndexedDbOpenTelemetry
+  | IndexedDbTransactionCreateTelemetry
   | IndexedDbTransactionTelemetry
   | SharedDatabaseQueryTelemetry
   | HttpRequestTelemetry;
@@ -55,7 +71,11 @@ function runtimeName(): "shared_worker" | "window" {
 }
 
 function scopeName(operation: ClientTelemetryOperation): string {
-  if (operation.event_name === "indexeddb.transaction") {
+  if (
+    operation.event_name === "indexeddb.open" ||
+    operation.event_name === "indexeddb.transaction.create" ||
+    operation.event_name === "indexeddb.transaction"
+  ) {
     return "okou-app/indexeddb";
   }
   return operation.event_name === "shared_database.query"
@@ -80,14 +100,34 @@ function statusCode(
 }
 
 function operationName(operation: ClientTelemetryOperation): string {
-  return operation.event_name === "http.request"
-    ? `${operation.method} ${operation.route}`
-    : operation.template;
+  if (operation.event_name === "http.request") {
+    return `${operation.method} ${operation.route}`;
+  }
+  if (operation.event_name === "indexeddb.open") {
+    return `${operation.database}.open`;
+  }
+  if (operation.event_name === "indexeddb.transaction.create") {
+    return `${operation.template}.transaction.create`;
+  }
+  return operation.template;
 }
 
 function operationAttributes(
   operation: ClientTelemetryOperation,
 ): ClientTelemetryAttributes {
+  if (operation.event_name === "indexeddb.open") {
+    return {
+      "db.namespace": operation.database,
+      "db.system": "indexeddb",
+    };
+  }
+  if (operation.event_name === "indexeddb.transaction.create") {
+    return {
+      "db.namespace": operation.database,
+      "db.system": "indexeddb",
+      "okou.db.transaction.mode": operation.transaction_mode,
+    };
+  }
   if (operation.event_name !== "indexeddb.transaction") {
     return {};
   }
@@ -210,7 +250,7 @@ export async function observeClientOperation<TResult>(
   execute: () => Promise<TResult>,
 ): Promise<TResult> {
   const measurement = startClientTelemetryMeasurement();
-  const result = await onRejection(execute(), (error) => {
+  const result = await onRejection(execute, (error) => {
     recordClientTelemetry(measurement, operation, outcomeForError(error));
   });
   recordClientTelemetry(measurement, operation, "success");
