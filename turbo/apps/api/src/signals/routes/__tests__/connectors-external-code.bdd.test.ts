@@ -7,7 +7,6 @@
 import { Buffer } from "node:buffer";
 
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -495,9 +494,7 @@ describe("CONN-02: external-code session lifecycle", () => {
   it("replays the exact non-default account added by an external-code session", async () => {
     const provider = mockAwsExternalCodeProvider();
     const actor = awsActor();
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectorsApi.updateFeatureSwitches(actor, {});
 
     const defaultSession = await connectorsApi.startExternalCode(
       actor,

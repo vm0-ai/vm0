@@ -9293,13 +9293,7 @@ async function resolvePreparedThreadConnectorSelections(
   signal: AbortSignal,
 ): Promise<ThreadConnectorSelectionIds | CreateRunErrorResult | undefined> {
   const chatThreadId = args.createArgs.chatThreadId;
-  if (
-    chatThreadId === undefined ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.ConnectorAccounts,
-      args.featureSwitchContext,
-    )
-  ) {
+  if (chatThreadId === undefined) {
     return undefined;
   }
   const resolved = await resolveChatThreadConnectorSelections(args.db, {

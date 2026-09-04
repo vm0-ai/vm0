@@ -122,7 +122,6 @@ async function enableNotionWorkflowAutomations(
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-    [FeatureSwitchKey.ConnectorAccounts]: true,
   });
 }
 

@@ -69,7 +69,6 @@ import {
   replaceConnectorConnection,
   resolveConnectorConnectionMutation,
 } from "./connector-connection-write.service";
-import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
 import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
@@ -672,7 +671,7 @@ async function prepareAutomaticOAuthStart(
       userId: args.userId,
       target: { kind: "custom", customConnectorId: connector.id },
       mutation: args.account,
-      allowSiblings: connectorAccountSiblingWritesEnabled(featureContext),
+      allowSiblings: true,
     });
   });
   signal.throwIfAborted();
@@ -756,12 +755,11 @@ async function persistCustomConnectorOAuthStart(
     readonly db: Db;
     readonly connector: CustomConnectorRow;
     readonly args: StartCustomConnectorOAuth2Args;
-    readonly featureContext: FeatureSwitchContext;
     readonly prepared: PreparedOAuthStart;
   },
   signal: AbortSignal,
 ) {
-  const { db, connector, args, featureContext, prepared } = context;
+  const { db, connector, args, prepared } = context;
   const expiresAt = connectorOAuthStateExpiresAt();
   const result = await db.transaction(async (tx) => {
     await lockCustomConnectorOAuth2CredentialContract({
@@ -776,9 +774,7 @@ async function persistCustomConnectorOAuthStart(
       userId: args.userId,
       target: { kind: "custom", customConnectorId: connector.id },
       mutation: args.account,
-      allowSiblings:
-        !isIntegrationManagedCustomConnector(connector) &&
-        connectorAccountSiblingWritesEnabled(featureContext),
+      allowSiblings: !isIntegrationManagedCustomConnector(connector),
     });
     if (resolution.kind !== "ready") {
       return { resolution, connectionId: null, expiresAt };
@@ -854,11 +850,10 @@ async function persistAutomaticNoAuthConnection(
       readonly oauthConfig: null;
     };
     readonly args: StartCustomConnectorOAuth2Args;
-    readonly featureContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
 ) {
-  const { db, connector, args, featureContext } = context;
+  const { db, connector, args } = context;
   const transaction = db.transaction(async (tx) => {
     await lockCustomConnectorOAuth2CredentialContract({
       db: tx,
@@ -872,7 +867,7 @@ async function persistAutomaticNoAuthConnection(
       userId: args.userId,
       target: { kind: "custom", customConnectorId: connector.id },
       mutation: args.account,
-      allowSiblings: connectorAccountSiblingWritesEnabled(featureContext),
+      allowSiblings: true,
     });
     if (resolution.kind !== "ready") {
       return { resolution, connection: null };
@@ -1019,7 +1014,6 @@ export const startCustomConnectorOAuth2$ = command(
             db: set(writeDb$),
             connector,
             args,
-            featureContext,
           },
           signal,
         );
@@ -1033,7 +1027,6 @@ export const startCustomConnectorOAuth2$ = command(
         db: set(writeDb$),
         connector,
         args,
-        featureContext,
         prepared,
       },
       signal,
@@ -1206,7 +1199,6 @@ export const startCustomConnectorAutomaticOAuthReauthorization$ = command(
             connectionId: args.connectionId,
           },
         },
-        featureContext,
         prepared: {
           authMode: "automatic",
           redirectUri,
@@ -1483,10 +1475,9 @@ export async function storeCustomConnectorOAuth2Connection(
       userId: args.userId,
       target: { kind: "custom", customConnectorId: args.connectorId },
       mutation: args.account,
-      allowSiblings:
-        !isIntegrationManagedCustomConnectorProviderAdapter(
-          contract.providerAdapter,
-        ) && connectorAccountSiblingWritesEnabled(args.featureContext),
+      allowSiblings: !isIntegrationManagedCustomConnectorProviderAdapter(
+        contract.providerAdapter,
+      ),
     });
     signal.throwIfAborted();
     if (resolution.kind !== "ready") {

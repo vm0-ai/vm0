@@ -1457,12 +1457,6 @@ async function selectedThreadConnectorFixture(
   title: string,
 ): Promise<SelectedThreadConnectorFixture> {
   const entitled = await entitledChatActor();
-  const orgId = requireOrgId(entitled.actor);
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: entitled.actor.userId, orgId },
-    { [FeatureSwitchKey.ConnectorAccounts]: true },
-  );
   await installApiTestConnectorCatalog({
     catalogVersion: `api-test-thread-runtime-overlap-${randomUUID()}`,
     runtimeProjection: true,
@@ -1670,11 +1664,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!actor.orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId: actor.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const connection = await connectors.connectManualGrant(
       actor,
       "openai",
@@ -1766,11 +1755,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const connection = await connectors.connectManualGrant(
       actor,
       "openai",
@@ -1874,7 +1858,6 @@ describe("CHAT-02: thread connector account selection", () => {
       context,
       { userId: actor.userId, orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.CustomConnectorMcp]: true,
       },
     );
@@ -1979,11 +1962,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const customConnector = await connectors.createCustomConnector(
       actor,
       manualHttpCustomConnectorCreateBody({
@@ -2071,11 +2049,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const connection = await connectors.connectManualGrant(
       actor,
       "openai",

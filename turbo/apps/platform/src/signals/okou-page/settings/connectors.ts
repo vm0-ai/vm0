@@ -14,12 +14,8 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  connectorAccountsContract,
-  type ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
-import {
-  connectorScopeDiffContract,
   connectorExternalCodeSessionContract,
   connectorOauthDeviceAuthSessionContract,
   connectorOpenIdStartContract,
@@ -41,7 +37,6 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectors$,
-  deleteConnector$,
   relatedConnectorCatalog,
   reloadConnectors$,
 } from "../../external/connectors.ts";
@@ -63,15 +58,16 @@ import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { subagents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
+import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
-import {
-  singleAccountConnectorMutation,
-  type PlatformConnector,
-  type PlatformConnectorCatalogStatusItem,
+import type {
+  PlatformConnector,
+  PlatformConnectorAccountMutationIntent,
+  PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
 import {
   connectorAccountConnectionExists,
@@ -88,7 +84,7 @@ type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly useDefaultConnectorProjection?: boolean;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
@@ -100,11 +96,13 @@ export interface ConnectorConnectionResult {
 }
 
 function shouldAuthorizeAgent(options: PostConnectOptions): boolean {
-  return (
-    options.account === undefined ||
-    Boolean(options.authorizeVisibleAgents || options.agentId)
-  );
+  return Boolean(options.authorizeVisibleAgents || options.agentId);
 }
+
+const reloadConnectorConnectionState$ = command(({ set }) => {
+  set(reloadConnectors$);
+  set(reloadConnectorAccountSummaries$);
+});
 // ---------------------------------------------------------------------------
 // Derived state
 // ---------------------------------------------------------------------------
@@ -746,17 +744,11 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
-export type ConnectorScopeReviewSelection =
-  | {
-      readonly kind: "default";
-      readonly connectorSlug: ConnectorSlug;
-    }
-  | {
-      readonly kind: "account";
-      readonly connectorSlug: ConnectorSlug;
-      readonly connectionId: string;
-      readonly authMethod: ConnectorAuthMethodId;
-    };
+export interface ConnectorScopeReviewSelection {
+  readonly connectorSlug: ConnectorSlug;
+  readonly connectionId: string;
+  readonly authMethod: ConnectorAuthMethodId;
+}
 
 const internalScopeReviewSelection$ =
   state<ConnectorScopeReviewSelection | null>(null);
@@ -770,21 +762,11 @@ export const scopeDiff$ = computed(async (get) => {
     return null;
   }
   const createClient = get(apiClient$);
-  if (selection.kind === "account") {
-    const client = createClient(connectorAccountsContract);
-    const result = await accept(
-      client.scopeDiff({
-        params: { connectionId: selection.connectionId },
-        query: { connectorSlug: selection.connectorSlug },
-      }),
-      [200],
-    );
-    return result.body;
-  }
-  const client = createClient(connectorScopeDiffContract);
+  const client = createClient(connectorAccountsContract);
   const result = await accept(
-    client.getScopeDiff({
-      params: { connectorSlug: selection.connectorSlug },
+    client.scopeDiff({
+      params: { connectionId: selection.connectionId },
+      query: { connectorSlug: selection.connectorSlug },
     }),
     [200],
   );
@@ -966,7 +948,7 @@ export const submitManualGrant$ = command(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
-              account: options.account ?? singleAccountConnectorMutation,
+              account: options.account,
               authMethod,
               ...(shouldAuthorizeAgent(options)
                 ? { authorizeAgent: true as const }
@@ -997,7 +979,7 @@ export const submitManualGrant$ = command(
           return current?.id === flow.id ? null : current;
         });
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -1042,7 +1024,7 @@ export const connectConnectorNoAuth$ = command(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
-              account: options.account ?? singleAccountConnectorMutation,
+              account: options.account,
               authMethod,
               ...(shouldAuthorizeAgent(options)
                 ? { authorizeAgent: true as const }
@@ -1072,7 +1054,7 @@ export const connectConnectorNoAuth$ = command(
           return current?.id === flow.id ? null : current;
         });
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -1156,45 +1138,6 @@ export const justConnectedSlugs$ = computed((get) => {
   return get(internalJustConnectedSlugs$);
 });
 
-/**
- * Disconnect a connector and clear its optimistic "just connected" flag.
- *
- * Without this cleanup, a connector that was connected earlier in the session
- * stays in the Connected section of /connectors after disconnect because the
- * optimistic override in relatedCatalogItems$ wins over the fresh
- * `connected = false` from the API (regression #10272).
- */
-export const disconnectConnector$ = command(
-  async (
-    { set },
-    connectorSlug: ConnectorSlug,
-    connectorLabel: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await set(deleteConnector$, connectorSlug, signal);
-    signal.throwIfAborted();
-    set(internalJustConnectedSlugs$, (prev) => {
-      if (!prev.has(connectorSlug)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.delete(connectorSlug);
-      return next;
-    });
-    toast.success(
-      i18n.t(
-        ($) => {
-          return $.connectors.toasts.disconnected;
-        },
-        { connector: connectorLabel },
-      ),
-      {
-        id: `connector-disconnected-${connectorSlug}`,
-      },
-    );
-  },
-);
-
 function createConnectorConnectFlowState(
   connectorSlug: ConnectorSlug,
 ): ConnectorConnectFlowState {
@@ -1234,7 +1177,7 @@ function connectorOAuthDeviceAuthStartBody(
 ) {
   const optionEntries = Object.entries(args.startOptions ?? {});
   return {
-    account: args.options.account ?? singleAccountConnectorMutation,
+    account: args.options.account,
     authMethod: args.authMethod,
     ...(shouldAuthorizeAgent(args.options)
       ? { authorizeAgent: true as const }
@@ -1487,7 +1430,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
       })(),
       () => {
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -1723,7 +1666,7 @@ type ConnectConnectorExternalCodeParams = {
   readonly connectorSlug: ConnectorSlug;
   readonly authMethod: ConnectorAuthMethodId;
   readonly agentId?: string;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly authorizeVisibleAgents?: boolean;
 };
 
@@ -1862,7 +1805,7 @@ export const connectConnectorExternalCode$ = command(
             client.create({
               params: { connectorSlug },
               body: {
-                account: args.account ?? singleAccountConnectorMutation,
+                account: args.account,
                 authMethod,
                 ...(shouldAuthorizeAgent(args)
                   ? { authorizeAgent: true as const }
@@ -2039,7 +1982,7 @@ const completeConnectorExternalCode$ = command(
       })(),
       () => {
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -2130,7 +2073,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
   agentId: string | undefined,
-  account: ConnectorAccountMutationIntent,
+  account: PlatformConnectorAccountMutationIntent,
   useDefaultConnectorProjection: boolean,
 ) {
   // Snapshot taken on the first body invocation: `null` marks "no connector
@@ -2141,7 +2084,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
 
   return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
-    if (!useDefaultConnectorProjection && account.intent !== "single-account") {
+    if (!useDefaultConnectorProjection) {
       const currentVersion = await readConnectorAccountMutationVersion(
         get(apiClient$),
         { kind: "builtin", connectorSlug },
@@ -2222,7 +2165,7 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
 );
 
 function getDefaultConnectorProjectionConnectionId(
-  account: ConnectorAccountMutationIntent,
+  account: PlatformConnectorAccountMutationIntent,
   expectedConnectionId: string | null,
   useDefaultConnectorProjection: boolean,
 ): string | null {
@@ -2268,7 +2211,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       readonly connectorLabel: string;
       readonly connectorIcon: PublicConnectorCatalogIcon;
       readonly agentId: string | undefined;
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly authorizeAgent: boolean;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
     },
@@ -2399,7 +2342,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       readonly connectorSlug: ConnectorSlug;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
       readonly options: BrowserAuthPostConnectOptions;
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly onConnectorChanged$: ReturnType<
         typeof createConnectorOAuthAuthCodeChangedCommand
       >;
@@ -2487,10 +2430,9 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
         account.intent === "reconnect" ? account.connectionId : null;
     }
 
-    set(reloadConnectors$);
+    set(reloadConnectorConnectionState$);
     const isConnected =
-      (!options.useDefaultConnectorProjection &&
-        account.intent !== "single-account") ||
+      !options.useDefaultConnectorProjection ||
       (await set(
         defaultConnectorProjectionMatchesAuthMethod$,
         connectorSlug,
@@ -2540,7 +2482,7 @@ export const connectConnectorOAuthAuthCode$ = command(
     }
 
     const flow = createConnectorConnectFlowState(connectorSlug);
-    const account = options.account ?? singleAccountConnectorMutation;
+    const account = options.account;
     set(internalConnectFlowState$, flow);
     set(internalPollingOAuthAuthCodeConnectorSlug$, connectorSlug);
 

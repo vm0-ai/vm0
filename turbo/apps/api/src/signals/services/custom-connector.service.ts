@@ -93,10 +93,7 @@ import {
   type ReadyConnectorConnectionMutation,
   writeConnectorConnectionMetadata,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2895,9 +2892,7 @@ async function prepareCustomConnectorValueWrite(args: {
       customConnectorId: args.request.connectorId,
     },
     mutation: normalizeConnectorAccountMutation(args.request.account),
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
   });
   if (resolution.kind !== "ready") {
     return resolution.kind === "missing"

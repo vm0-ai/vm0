@@ -943,7 +943,6 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       const { actor, headers } = await firewallRun();
       await connectors.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.CustomConnectorMcp]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
       });
       const mcp = await connectors.createCustomConnector(actor, {
         kind: "mcp",

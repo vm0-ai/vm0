@@ -61,12 +61,8 @@ import {
   connectorAgentAuthorizationRequested,
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  storedConnectorAccountMutationSelection,
-} from "./connector-account-mutation.service";
+import { storedConnectorAccountMutationSelection } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
-import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -1039,7 +1035,6 @@ async function createDeviceAuthSession(
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly account: ConnectorAccountMutationIntent;
-    readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
     readonly oauthRequestedScopes: readonly string[];
@@ -1065,7 +1060,7 @@ async function createDeviceAuthSession(
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
       mutation: args.account,
-      allowSiblings: args.allowSiblings,
+      allowSiblings: true,
     });
     signal.throwIfAborted();
     if (mutationResolution.kind !== "ready") {
@@ -1188,10 +1183,6 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     );
     signal.throwIfAborted();
 
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
     const sessionResult = await createDeviceAuthSession(
       set(writeDb$),
       {
@@ -1202,8 +1193,6 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         agentId: args.agentId,
         authorizeAgent: args.authorizeAgent,
         account: args.account,
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
         sessionToken,
         encryptedProviderState,
         oauthRequestedScopes: connectorGrantScopes(resolvedMethod.method.grant),

@@ -275,9 +275,35 @@ function publicOAuthConfig(
 export function mockCustomConnectorStory(context: TestContext): void {
   context.mocks.data.org({ id: "org_1", name: "Test Org", role: "admin" });
   let connectors: CustomConnectorHttpResponse[] = [];
+  const accounts = new Map<string, ConnectorAccountConnection>();
   context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors });
   });
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [...accounts.values()].map((account) => {
+        return {
+          target: account.target,
+          accountCount: 1,
+          attentionCount: 0,
+          defaultConnection: account,
+        };
+      }),
+    });
+  });
+  context.mocks.api(
+    connectorAccountsContract.connection,
+    ({ params, respond }) => {
+      const account = [...accounts.values()].find((candidate) => {
+        return candidate.id === params.connectionId;
+      });
+      return account
+        ? respond(200, account)
+        : respond(404, {
+            error: { message: "Account not found", code: "NOT_FOUND" },
+          });
+    },
+  );
   context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
     if (body.kind === "mcp" || body.authMode === "automatic") {
       throw new Error("Expected an HTTP custom connector");
@@ -314,27 +340,31 @@ export function mockCustomConnectorStory(context: TestContext): void {
       if (!updated) {
         throw new Error(`Expected custom connector ${params.id}`);
       }
-      return respond(200, updated);
-    },
-  );
-  context.mocks.api(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ body, respond }) => {
-      if (body.target.kind !== "custom") {
-        throw new Error("Expected custom connector disconnect target");
-      }
-      const customConnectorId = body.target.customConnectorId;
-      connectors = connectors.map((connector) => {
-        return connector.id === customConnectorId
-          ? {
-              ...connector,
-              connected: false,
-              missingRequiredFields: ["secret"],
-              configuredFieldKeys: [],
-            }
-          : connector;
+      const connectionId = crypto.randomUUID();
+      accounts.set(params.id, {
+        id: connectionId,
+        target: { kind: "custom", customConnectorId: params.id },
+        authMethod: "manual",
+        displayName: null,
+        isDefault: true,
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        connectionStatus: "connected",
+        reconnectReason: null,
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
       });
-      return respond(204);
+      const connected = customConnectorHttpResponseSchema.parse({
+        ...updated,
+        connectedAccountId: connectionId,
+      });
+      connectors = connectors.map((connector) => {
+        return connector.id === params.id ? connected : connector;
+      });
+      return respond(200, connected);
     },
   );
   context.mocks.api(
@@ -377,6 +407,7 @@ export function mockCustomConnectorStory(context: TestContext): void {
   context.mocks.api(
     customConnectorByIdContract.delete,
     ({ params, respond }) => {
+      accounts.delete(params.id);
       connectors = connectors.filter((connector) => {
         return connector.id !== params.id;
       });

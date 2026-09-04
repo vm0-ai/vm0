@@ -2760,12 +2760,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "추가 옵션",
-      "statusConnected": "연결됨",
       "toasts": {
         "connected": "연결됨",
         "created": "\"{{connector}}\" 생성됨",
         "deleted": "커스텀 커넥터가 삭제되었습니다",
-        "disconnected": "연결 해제됨",
         "updated": "\"{{connector}}\" 업데이트됨"
       },
       "updateConfirm": {
@@ -3270,8 +3268,7 @@
       "redirectTitle": "{{connector}}로 리디렉션 중…"
     },
     "toasts": {
-      "connected": "{{connector}} 연결됨",
-      "disconnected": "{{connector}} 연결 해제됨"
+      "connected": "{{connector}} 연결됨"
     }
   },
   "global": {

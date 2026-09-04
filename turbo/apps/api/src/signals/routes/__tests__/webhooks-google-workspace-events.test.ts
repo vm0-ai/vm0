@@ -11,7 +11,6 @@ import {
   workflowAutomationsContract,
   workflowsDetailContract,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -27,7 +26,6 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   clearWorkflowAutomationEventConnectorAsPreviousApi,
   holdOrgAdmissionLock,
@@ -465,11 +463,6 @@ async function setupFixture(
     agentId: agent.agentId,
     name: `google-meet-transcript-${randomUUID()}`,
   });
-  await updateFeatureSwitchesForUser(
-    context,
-    { orgId: orgActor.orgId, userId: orgActor.userId },
-    { [FeatureSwitchKey.ConnectorAccounts]: true },
-  );
   const connectorId = await connectGoogleMeet(orgActor, provider);
   context.mocks.s3.send.mockResolvedValue({});
   return {
