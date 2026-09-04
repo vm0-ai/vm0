@@ -5146,7 +5146,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Permita que os agentes usem um navegador na nuvem em novos chats",
+          "description": "Ative o navegador na nuvem por padrão em novos chats. Você pode alterar isso em qualquer chat.",
           "title": "Navegador na nuvem"
         },
         "description": "Escolha os padrões para novos chats e como as mensagens são enviadas.",

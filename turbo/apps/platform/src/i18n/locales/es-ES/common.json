@@ -5146,7 +5146,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Permite que los agentes usen un navegador en la nube en chats nuevos",
+          "description": "Activa el navegador en la nube de forma predeterminada en los chats nuevos. Puedes cambiarlo en cualquier chat.",
           "title": "Navegador en la nube"
         },
         "description": "Elige los valores predeterminados para los chats nuevos y cómo se envían los mensajes.",
