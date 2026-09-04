@@ -10,6 +10,12 @@ export const VOICE_IO_POLISH_MAX_TEXT_CHARS = 262_144;
 export const voiceIoPolishRequestSchema = z
   .object({
     text: z.string().trim().min(1).max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
+    lastAssistantMessage: z
+      .string()
+      .trim()
+      .min(1)
+      .max(VOICE_IO_POLISH_MAX_TEXT_CHARS)
+      .optional(),
   })
   .strict();
 

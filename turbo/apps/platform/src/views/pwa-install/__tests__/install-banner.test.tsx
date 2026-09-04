@@ -1,91 +1,106 @@
-import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
+import { expect, test } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const IOS_SAFARI_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
 
-function mockIOSSafariUA(isIOS: boolean): void {
-  const ua = isIOS
-    ? "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-    : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-  context.mocks.browser.userAgent(ua);
+function mockIOSSafari(standalone: boolean): void {
+  context.mocks.browser.userAgent(IOS_SAFARI_USER_AGENT);
+  context.mocks.browser.standaloneDisplayMode(standalone);
 }
 
-function usePortugueseLocale(): void {
-  document.documentElement.lang = "pt-BR";
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      document.documentElement.lang = "en-US";
-    },
-    { once: true },
-  );
+function getButton({
+  label,
+  text,
+  container = document.body,
+}: {
+  readonly label?: string;
+  readonly text?: string;
+  readonly container?: ParentNode;
+}): HTMLButtonElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return label
+      ? candidate.getAttribute("aria-label") === label
+      : candidate.textContent?.trim() === text;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${label ?? text ?? "unnamed"}`);
+  }
+  return button;
 }
 
-describe("install banner", () => {
-  it("renders the iOS install flow in Brazilian Portuguese", async () => {
-    usePortugueseLocale();
-    context.mocks.browser.standaloneDisplayMode(false);
-    mockIOSSafariUA(true);
-    detachedSetupPage({ context, path: "/" });
+test("iOS Safari shows localized app-install instructions", async () => {
+  mockIOSSafari(false);
 
-    const installButton = await screen.findByLabelText("Instalar aplicativo");
-    expect(
-      screen.getByText("Instale o Zero para uma experiência melhor"),
-    ).toBeVisible();
-    click(installButton);
-
-    await expect(
-      screen.findByRole("heading", { name: "Instalar Zero" }),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText("No Safari, toque no botão Compartilhar."),
-    ).toBeVisible();
-    expect(screen.getByText("Escolha Adicionar à Tela Inicial.")).toBeVisible();
+  await setupPage({
+    context,
+    path: "/",
+    host: "app.vm0.ai",
+    locale: "pt-BR",
   });
 
-  it("lets an iOS Safari user open or dismiss the install prompt", async () => {
-    context.mocks.browser.standaloneDisplayMode(false);
-    mockIOSSafariUA(true);
-    detachedSetupPage({ context, path: "/" });
+  await expect(
+    screen.findByText("Instale o Zero para uma experiência melhor"),
+  ).resolves.toBeVisible();
+  click(getButton({ label: "Instalar aplicativo" }));
 
-    const installButton = await waitFor(() => {
-      expect(
-        screen.getByLabelText("Dismiss install banner"),
-      ).toBeInTheDocument();
-      return screen.getByLabelText("Install app");
-    });
+  const dialog = await screen.findByRole("dialog", { name: "Instalar Zero" });
+  expect(
+    within(dialog).getByText("No Safari, toque no botão Compartilhar."),
+  ).toBeVisible();
+  expect(
+    within(dialog).getByText("Escolha Adicionar à Tela Inicial."),
+  ).toBeVisible();
+});
 
-    click(installButton);
+test("An iOS user can open or dismiss the install prompt", async () => {
+  mockIOSSafari(false);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Install Zero" }),
-      ).toBeInTheDocument();
-    });
+  await setupPage({ context, path: "/", host: "app.vm0.ai" });
 
-    click(screen.getByLabelText("Dismiss install banner"));
+  await expect(
+    screen.findByText("Install Zero for a better experience"),
+  ).resolves.toBeVisible();
+  expect(getButton({ label: "Dismiss install banner" })).toBeEnabled();
+  click(getButton({ label: "Install app" }));
 
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Dismiss install banner"),
-      ).not.toBeInTheDocument();
-    });
+  const dialog = await screen.findByRole("dialog", { name: "Install Zero" });
+  expect(
+    within(dialog).getByText("In Safari, tap the Share button."),
+  ).toBeVisible();
+  expect(within(dialog).getByText("Choose Add to Home Screen.")).toBeVisible();
+  click(getButton({ text: "Got it", container: dialog }));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Install Zero" })).toBeNull();
   });
 
-  it("hides the banner for a standalone app", async () => {
-    context.mocks.browser.standaloneDisplayMode(true);
-    mockIOSSafariUA(true);
-    detachedSetupPage({ context, path: "/" });
+  click(getButton({ label: "Dismiss install banner" }));
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
-    });
+  await waitFor(() => {
     expect(
-      screen.queryByLabelText("Dismiss install banner"),
-    ).not.toBeInTheDocument();
+      screen.queryByText("Install Zero for a better experience"),
+    ).toBeNull();
   });
+});
+
+test("The standalone app hides the install banner", async () => {
+  mockIOSSafari(true);
+
+  await setupPage({ context, path: "/", host: "app.vm0.ai" });
+
+  await waitFor(() => {
+    const agentsLink = queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.trim() === "Agents";
+    });
+    expect(agentsLink).toHaveAttribute("href", "/agents");
+  });
+  expect(screen.queryByText("Install Zero for a better experience")).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import {
@@ -9,11 +9,7 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
 } from "../bridge.ts";
-import {
-  parseComputedValue,
-  type ComputedKey,
-  type ComputedValue,
-} from "../computed-key.ts";
+import type { ComputedKey, ComputedValue } from "../computed-key.ts";
 import type {
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
@@ -27,9 +23,10 @@ import { SingleConnectionSharedDatabaseBridge } from "../single-connection-clien
 
 class FakeBridge implements SharedDatabaseBridge {
   readonly registrationSignals: AbortSignal[] = [];
+  readonly querySignals: AbortSignal[] = [];
   queryCalls = 0;
   queryError: Error | null = null;
-  pendingQuery = false;
+  queryPending = false;
 
   registerTab(signal: AbortSignal): Promise<void> {
     this.registrationSignals.push(signal);
@@ -37,13 +34,9 @@ class FakeBridge implements SharedDatabaseBridge {
   }
 
   getComputed<TKey extends ComputedKey>(
-    computedKey: TKey,
+    _computedKey: TKey,
   ): Promise<ComputedValue<TKey>> {
-    const value =
-      computedKey === "chat-thread-indicators"
-        ? { agents: {}, threads: {} }
-        : [];
-    return Promise.resolve(parseComputedValue(computedKey, value));
+    return Promise.reject(new Error("Computed data is not configured"));
   }
 
   query<TKey extends SharedDatabaseDataKey>(
@@ -51,12 +44,13 @@ class FakeBridge implements SharedDatabaseBridge {
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
     this.queryCalls += 1;
+    this.querySignals.push(signal);
     if (this.queryError) {
       const error = this.queryError;
       this.queryError = null;
       return Promise.reject(error);
     }
-    if (this.pendingQuery) {
+    if (this.queryPending) {
       return createDeferredPromise<SharedDatabaseQueryResult<TKey>>(signal)
         .promise;
     }
@@ -67,7 +61,10 @@ class FakeBridge implements SharedDatabaseBridge {
 const context = testContext();
 
 function dataKey(): SharedDatabaseDataKey {
-  return { kind: "chat-event", threadId: "single-connection-thread" };
+  return {
+    kind: "chat-event",
+    threadId: "single-connection-thread",
+  };
 }
 
 function clientNotConnectedError(): Error {
@@ -80,10 +77,10 @@ function createEvents(
   statuses: SharedDatabaseConnectionStatus[] = [],
 ): SharedDatabaseBridgeEvents {
   return {
+    chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
+    computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
-    chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
     workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: (status) => {
       statuses.push(status);
@@ -99,104 +96,66 @@ function query() {
   };
 }
 
-describe("single-connection shared database bridge", () => {
-  it("prepares one transport and registers the tab once", async () => {
-    const bridges: FakeBridge[] = [];
-    const statuses: SharedDatabaseConnectionStatus[] = [];
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        const created = new FakeBridge();
-        bridges.push(created);
-        return created;
-      },
-      events: createEvents(statuses),
-    });
-    const owner = createChildAbortController(context.signal);
+test("Reload a page whose shared-data request stops responding", async () => {
+  vi.useFakeTimers();
+  context.signal.addEventListener("abort", () => {
+    vi.useRealTimers();
+  });
+  const bridges: FakeBridge[] = [];
+  const statuses: SharedDatabaseConnectionStatus[] = [];
+  const events = createEvents(statuses);
+  const bridge = new SingleConnectionSharedDatabaseBridge({
+    controlRequestTimeoutMs: 10,
+    createBridge: () => {
+      const created = new FakeBridge();
+      bridges.push(created);
+      return created;
+    },
+    events,
+  });
+  const owner = createChildAbortController(context.signal);
+  await bridge.registerTab(owner.signal);
+  const firstBridge = bridges[0]!;
+  firstBridge.queryPending = true;
 
-    await bridge.prepare(owner.signal);
+  const pendingQuery = bridge.query(query(), owner.signal);
+  await vi.advanceTimersByTimeAsync(10);
 
-    expect(bridges).toHaveLength(1);
-    expect(bridges[0]!.registrationSignals).toStrictEqual([]);
-    expect(statuses).toStrictEqual(["connecting"]);
+  expect(events.workerUnavailable).toHaveBeenCalledWith(
+    "worker-load-or-transport-failure",
+  );
+  expect(bridges).toHaveLength(1);
+  expect(firstBridge.registrationSignals).toHaveLength(1);
+  expect(statuses).toStrictEqual(["connecting"]);
 
-    await bridge.registerTab(owner.signal);
+  owner.abort(new DOMException("App unloaded", "AbortError"));
+  await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
+});
 
-    expect(bridges).toHaveLength(1);
-    expect(bridges[0]!.registrationSignals).toHaveLength(1);
-    owner.abort();
+test("Reload a tab whose shared-data registration has expired", async () => {
+  const bridges: FakeBridge[] = [];
+  const events = createEvents();
+  const bridge = new SingleConnectionSharedDatabaseBridge({
+    createBridge: () => {
+      const created = new FakeBridge();
+      bridges.push(created);
+      return created;
+    },
+    events,
+  });
+  const owner = createChildAbortController(context.signal);
+  await bridge.registerTab(owner.signal);
+  bridges[0]!.queryError = clientNotConnectedError();
+
+  const pendingQuery = bridge.query(query(), owner.signal);
+  await vi.waitFor(() => {
+    expect(events.workerUnavailable).toHaveBeenCalledWith(
+      "worker-load-or-transport-failure",
+    );
   });
 
-  it("requests a reload when transport construction fails", async () => {
-    const statuses: SharedDatabaseConnectionStatus[] = [];
-    const events = createEvents(statuses);
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        throw new Error("SharedWorker construction failed");
-      },
-      events,
-    });
-    const owner = createChildAbortController(context.signal);
-
-    const registration = bridge.registerTab(owner.signal);
-    await vi.waitFor(() => {
-      expect(events.workerUnavailable).toHaveBeenCalledWith(
-        "worker-load-or-transport-failure",
-      );
-    });
-
-    expect(statuses).toStrictEqual(["connecting"]);
-    owner.abort(new DOMException("App unloaded", "AbortError"));
-    await expect(registration).rejects.toMatchObject({ name: "AbortError" });
-  });
-
-  it("requests a reload after the registered port expires", async () => {
-    const bridges: FakeBridge[] = [];
-    const events = createEvents();
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        const created = new FakeBridge();
-        bridges.push(created);
-        return created;
-      },
-      events,
-    });
-    const owner = createChildAbortController(context.signal);
-    await bridge.registerTab(owner.signal);
-    bridges[0]!.queryError = clientNotConnectedError();
-
-    const pendingQuery = bridge.query(query(), owner.signal);
-    await vi.waitFor(() => {
-      expect(events.workerUnavailable).toHaveBeenCalledWith(
-        "worker-load-or-transport-failure",
-      );
-    });
-
-    expect(bridges[0]!.queryCalls).toBe(1);
-    owner.abort(new DOMException("App unloaded", "AbortError"));
-    await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
-  });
-
-  it("does not reload when a query caller aborts", async () => {
-    const bridges: FakeBridge[] = [];
-    const events = createEvents();
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        const created = new FakeBridge();
-        bridges.push(created);
-        return created;
-      },
-      events,
-    });
-    const owner = createChildAbortController(context.signal);
-    const caller = createChildAbortController(context.signal);
-    await bridge.registerTab(owner.signal);
-    bridges[0]!.pendingQuery = true;
-
-    const pendingQuery = bridge.query(query(), caller.signal);
-    caller.abort(new DOMException("Query cancelled", "AbortError"));
-
-    await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
-    expect(events.workerUnavailable).not.toHaveBeenCalled();
-    owner.abort();
-  });
+  expect(bridges).toHaveLength(1);
+  expect(bridges[0]!.queryCalls).toBe(1);
+  owner.abort(new DOMException("App unloaded", "AbortError"));
+  await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
 });

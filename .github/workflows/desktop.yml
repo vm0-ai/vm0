@@ -40,6 +40,10 @@ concurrency:
 permissions:
   contents: read
 
+# Dependency vulnerability scanning is owned by security.yml.
+env:
+  npm_config_audit: "false"
+
 jobs:
   detect-desktop-version:
     runs-on: ubuntu-latest

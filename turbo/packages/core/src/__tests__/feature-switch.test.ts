@@ -199,6 +199,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -230,6 +233,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);

@@ -55,7 +55,11 @@ describe("POST /api/voice-io/polish", () => {
     const response = await accept(
       client().post({
         headers: { authorization: "Bearer clerk-session" },
-        body: { text: "um ship the release Friday no Monday" },
+        body: {
+          text: "um ship the nebula release Friday no Monday",
+          lastAssistantMessage:
+            "The Project Nebula release is scheduled for Friday.",
+        },
       }),
       [200],
     );
@@ -71,12 +75,16 @@ describe("POST /api/voice-io/polish", () => {
       messages: [
         {
           role: "system",
-          content: expect.stringContaining("not a summarizer"),
+          content: expect.stringContaining(
+            "provides conversational context for resolving vocabulary",
+          ),
         },
         {
           role: "user",
           content: JSON.stringify({
-            text: "um ship the release Friday no Monday",
+            text: "um ship the nebula release Friday no Monday",
+            lastAssistantMessage:
+              "The Project Nebula release is scheduled for Friday.",
           }),
         },
       ],

@@ -25,11 +25,11 @@ export interface AttachmentUrls {
    */
   readonly resourceUrl: string;
   /**
-   * URL that still works for whoever receives it, or null when the attachment
-   * has no such address. Never the canonical API URL: that one answers only to
-   * the owner's credentials, so a recipient gets a 401 instead of the file.
+   * URL that still works for whoever receives it. Never the canonical API URL:
+   * that one answers only to the owner's credentials, so a recipient gets a 401
+   * instead of the file.
    */
-  readonly shareUrl: string | null;
+  readonly shareUrl: string;
 }
 
 /**
@@ -64,12 +64,7 @@ function createAttachmentResourceUrl$(
     );
     return {
       resourceUrl: response.body.url,
-      // Rollout fallback, surface new web/app -> old API: a newly promoted app
-      // can reach an API deployed before `publicUrl` existed. Report no share
-      // URL rather than a presigned one that expires under the recipient.
-      // Remove once that API is no longer serving and is no longer retained as
-      // a rollback target; follow-up #30847.
-      shareUrl: response.body.publicUrl ?? null,
+      shareUrl: response.body.publicUrl,
     };
   });
 }

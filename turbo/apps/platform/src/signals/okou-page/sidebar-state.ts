@@ -3,7 +3,7 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
-// Chat list dialog search query
+// Chat navigation search query
 // ---------------------------------------------------------------------------
 const internalChatListQuery$ = state("");
 export const chatListQuery$ = computed((get) => {
@@ -147,22 +147,6 @@ export const setManageSectionCollapsed$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Chat list dialog state (TalkToSection)
-// ---------------------------------------------------------------------------
-const internalChatListOpen$ = state(false);
-export const chatListOpen$ = computed((get) => {
-  return get(internalChatListOpen$);
-});
-export const setChatListOpen$ = command(({ set }, open: boolean) => {
-  set(internalChatListOpen$, open);
-});
-
-export const openAgentListDialog$ = command(({ set }) => {
-  set(internalChatListQuery$, "");
-  set(internalChatListOpen$, true);
-});
-
-// ---------------------------------------------------------------------------
 // Three-column search dialog state
 // ---------------------------------------------------------------------------
 export type ThreeColumnSearchFilter =
@@ -250,7 +234,7 @@ export const endPinnedAgentDrag$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Agent card / pinned section collapse state (TalkToSection) — persisted in localStorage
+// Agent card / pinned section collapse state — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
   get$: agentCardCollapsedRaw$,

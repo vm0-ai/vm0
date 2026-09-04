@@ -1,6 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
+import { composerVoiceInputShortcutEnabled$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   chatShortcutHelpOpen$,
@@ -8,6 +9,7 @@ import {
 } from "../../signals/chat-page/chat-shortcut-help.ts";
 import { i18n } from "../../i18n/index.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
+import { COMPOSER_VOICE_INPUT_SHORTCUT } from "../../lib/composer-voice-input-shortcut.ts";
 
 type ShortcutLabelId =
   | "blurComposer"
@@ -16,17 +18,18 @@ type ShortcutLabelId =
   | "newChat"
   | "nextAgent"
   | "nextThread"
-  | "openAgentList"
   | "openFirstThread"
   | "previousAgent"
   | "previousThread"
   | "renameChat"
   | "scrollBottom"
   | "scrollTop"
+  | "searchWorkspace"
   | "sendMessage"
   | "setIcon"
   | "showShortcuts"
-  | "toggleSidebar";
+  | "toggleSidebar"
+  | "voiceInput";
 
 interface ShortcutDefinition {
   readonly key: string;
@@ -47,7 +50,7 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
       { key: "shift+/", labelId: "showShortcuts" },
       { key: "mod+b", labelId: "toggleSidebar" },
       { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+a", labelId: "openAgentList" },
+      { key: "mod+shift+f", labelId: "searchWorkspace" },
       { key: "ctrl+shift+[", labelId: "previousAgent" },
       { key: "ctrl+shift+]", labelId: "nextAgent" },
       { key: "f2", labelId: "renameChat" },
@@ -69,6 +72,7 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
     titleId: "composer",
     shortcuts: [
       { key: "enter", labelId: "sendMessage" },
+      { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
       { key: "escape", labelId: "blurComposer" },
     ],
   },
@@ -81,7 +85,7 @@ const AGENT_CHAT_SHORTCUT_SECTIONS = [
       { key: "shift+/", labelId: "showShortcuts" },
       { key: "mod+b", labelId: "toggleSidebar" },
       { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+a", labelId: "openAgentList" },
+      { key: "mod+shift+f", labelId: "searchWorkspace" },
       { key: "ctrl+shift+[", labelId: "previousAgent" },
       { key: "ctrl+shift+]", labelId: "nextAgent" },
       { key: "mod+shift+arrowdown", labelId: "openFirstThread" },
@@ -91,6 +95,7 @@ const AGENT_CHAT_SHORTCUT_SECTIONS = [
     titleId: "composer",
     shortcuts: [
       { key: "enter", labelId: "sendMessage" },
+      { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
       { key: "escape", labelId: "blurComposer" },
     ],
   },
@@ -103,7 +108,7 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
       { key: "shift+/", labelId: "showShortcuts" },
       { key: "mod+b", labelId: "toggleSidebar" },
       { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+a", labelId: "openAgentList" },
+      { key: "mod+shift+f", labelId: "searchWorkspace" },
       { key: "ctrl+shift+[", labelId: "previousAgent" },
       { key: "ctrl+shift+]", labelId: "nextAgent" },
     ],
@@ -112,12 +117,31 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
 
 function shortcutSectionsForRoute(
   route: RouteKey | null,
+  voiceInputShortcutEnabled: boolean,
 ): readonly ShortcutSectionDefinition[] {
+  const removeVoiceInputShortcut = (
+    sections: readonly ShortcutSectionDefinition[],
+  ): readonly ShortcutSectionDefinition[] => {
+    if (voiceInputShortcutEnabled) {
+      return sections;
+    }
+    return sections.map((section) => {
+      if (section.titleId !== "composer") {
+        return section;
+      }
+      return {
+        ...section,
+        shortcuts: section.shortcuts.filter((shortcut) => {
+          return shortcut.labelId !== "voiceInput";
+        }),
+      };
+    });
+  };
   if (route === "chat") {
-    return CHAT_THREAD_SHORTCUT_SECTIONS;
+    return removeVoiceInputShortcut(CHAT_THREAD_SHORTCUT_SECTIONS);
   }
   if (route === "agentChat" || route === "home") {
-    return AGENT_CHAT_SHORTCUT_SECTIONS;
+    return removeVoiceInputShortcut(AGENT_CHAT_SHORTCUT_SECTIONS);
   }
   return SIDEBAR_SHORTCUT_SECTIONS;
 }
@@ -158,9 +182,6 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     nextThread: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.nextThread;
     }),
-    openAgentList: i18n.t(($) => {
-      return $.appShell.shortcutHelp.shortcuts.openAgentList;
-    }),
     openFirstThread: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.openFirstThread;
     }),
@@ -179,6 +200,9 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     scrollTop: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.scrollTop;
     }),
+    searchWorkspace: i18n.t(($) => {
+      return $.appShell.sidebar.searchWorkspace;
+    }),
     sendMessage: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.sendMessage;
     }),
@@ -190,6 +214,9 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     }),
     toggleSidebar: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.toggleSidebar;
+    }),
+    voiceInput: i18n.t(($) => {
+      return $.chat.voice.input;
     }),
   };
 }
@@ -217,8 +244,9 @@ export function ChatShortcutHelpDialog() {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
   const activeRoute = useGet(activeRoute$);
+  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const shortcutSections = localizeShortcutSections(
-    shortcutSectionsForRoute(activeRoute),
+    shortcutSectionsForRoute(activeRoute, voiceInputShortcutEnabled),
   );
 
   return (
