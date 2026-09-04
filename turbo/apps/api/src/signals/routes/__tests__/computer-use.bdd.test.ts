@@ -862,7 +862,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       "Multiple active computer-use hosts are online",
     );
 
-    // Zero-token auth resolves the org role through membershipsByUserId.
+    // Zero-token auth resolves the organization role through Clerk membership lookup.
     mockClerkMembership(context, actor, "org:admin");
 
     const missingCapability = await api.requestCreateComputerUseReadCommand(

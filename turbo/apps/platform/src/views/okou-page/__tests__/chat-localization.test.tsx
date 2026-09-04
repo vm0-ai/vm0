@@ -1,209 +1,485 @@
-import { act, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { pathname } from "../../../signals/location.ts";
-import { setLocale$ } from "../../../signals/locale.ts";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
-  AGENT_ID,
-  THREAD_ID,
-  context,
-  findComposerEditor,
-  mockAgent,
-  mockOrgModelRoutes,
-  mockThread,
+  chatEventsContract,
+  chatThreadDraftContract,
+  chatThreadEventsContract,
+  chatThreadsContract,
+  type ChatEventSendBody,
+  type ChatThreadSnapshotProjection,
+  type UserMessageInputDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { screen, waitFor } from "@testing-library/react";
+import { expect, test } from "vitest";
+
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { pathname, search } from "../../../signals/location.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import type { SupportedLocale } from "../../../i18n/resources.ts";
+import {
+  buildModelPolicy,
+  buildProvider,
+  OPENROUTER_PROVIDER_ID,
 } from "./chat-composer-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
-const localeCases = [
-  {
-    locale: "en-US",
-    placeholder: "Ask me to automate workflows, manage tasks...",
-    attach: "Attach",
-    send: "Send",
-  },
-  {
+const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const THREAD_ID = "b0000000-0000-4000-a000-000000000081";
+const RUN_ID = "a0000000-0000-4000-a000-000000000081";
+const EVENT_ID = "e0000000-0000-4000-a000-000000000081";
+const CREATED_AT = "2026-08-01T10:00:00.000Z";
+
+const context = testContext();
+
+interface ComposerCopy {
+  readonly attach: string;
+  readonly close: string;
+  readonly language: string;
+  readonly locale: SupportedLocale;
+  readonly message: string;
+  readonly option: string;
+  readonly placeholder: string;
+  readonly send: string;
+  readonly settings: string;
+}
+
+function actionName(element: HTMLElement): string {
+  return (
+    element.getAttribute("aria-label") ?? element.textContent?.trim() ?? ""
+  );
+}
+
+function getAction(
+  role: "button" | "combobox" | "link" | "menuitem" | "option",
+  name: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const element = queryAllByRoleFast(role, container).find((candidate) => {
+    return actionName(candidate) === name;
+  });
+  if (!element) {
+    throw new Error(`Could not find ${role} named ${name}`);
+  }
+  return element;
+}
+
+function findAction(
+  role: "button" | "combobox" | "link" | "menuitem" | "option",
+  name: string,
+  container: ParentNode = document.body,
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    return getAction(role, name, container);
+  });
+}
+
+function userMessage(text: string): UserMessageInputDocument {
+  return {
+    version: 1,
+    parts: [{ type: "text", text }],
+  };
+}
+
+function chatThread(title: string): ChatThreadSnapshotProjection {
+  return {
+    id: THREAD_ID,
+    agentId: AGENT_ID,
+    title,
+    sortAt: CREATED_AT,
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+    pinnedAt: null,
+    renamedAt: null,
+    selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
+    computerUseHostId: null,
+    cloudBrowserEnabled: false,
+    selectedVideoModel: null,
+    selectedImageModel: null,
+  };
+}
+
+function configureModelRoute(): void {
+  context.mocks.data.orgModelProviders([
+    buildProvider({
+      id: OPENROUTER_PROVIDER_ID,
+      type: "openrouter-api-key",
+      secretName: "OPENROUTER_API_KEY",
+    }),
+  ]);
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000081",
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: true,
+      defaultProviderType: "openrouter-api-key",
+      credentialScope: "org",
+      modelProviderId: OPENROUTER_PROVIDER_ID,
+    }),
+  ]);
+}
+
+function configureNoBrowserSession(): void {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+}
+
+function configureExistingChat(args: {
+  readonly draft: UserMessageInputDocument | null;
+  readonly rows?: readonly ChatEventRow[];
+  readonly title: string;
+}): void {
+  configureNoBrowserSession();
+  context.mocks.data.agents([{ agentId: AGENT_ID }]);
+  context.mocks.data.userModelPreference({
+    selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
+    selectedVideoModel: null,
+    selectedImageModel: null,
+    updatedAt: null,
+  });
+  configureModelRoute();
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [chatThread(args.title)],
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftUserMessage: args.draft,
+      draftAttachments: null,
+    });
+  });
+  context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+    const rows = [...(args.rows ?? [])];
+    const lastRow = rows.at(-1);
+    return respond(200, {
+      rows,
+      cursor: lastRow
+        ? { lastEventId: lastRow.id, lastSeqId: lastRow.seqId }
+        : { lastEventId: null, lastSeqId: 0 },
+      hasMore: false,
+    });
+  });
+}
+
+async function changeLanguage(
+  current: ComposerCopy,
+  next: ComposerCopy,
+): Promise<void> {
+  click(await findAction("button", "Test User"));
+  const menu = await screen.findByRole("menu");
+  click(await findAction("menuitem", current.settings, menu));
+
+  const dialog = await screen.findByRole("dialog", {
+    name: current.settings,
+  });
+  click(await findAction("combobox", current.language, dialog));
+  click(await findAction("option", next.option));
+
+  await waitFor(() => {
+    expect(document.documentElement).toHaveAttribute("lang", next.locale);
+  });
+  const translatedDialog = await screen.findByRole("dialog", {
+    name: next.settings,
+  });
+  click(await findAction("button", next.close, translatedDialog));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: next.settings }),
+    ).not.toBeInTheDocument();
+  });
+}
+
+async function expectLocalizedComposerAttributes(
+  copy: ComposerCopy,
+  sendEnabled = false,
+): Promise<HTMLElement> {
+  const composer = await waitFor(() => {
+    const editor = document.querySelector<HTMLElement>(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!editor) {
+      throw new Error("Composer editor not found");
+    }
+    expect(editor).toHaveAttribute("aria-label", copy.message);
+    expect(editor).toHaveAttribute("placeholder", copy.placeholder);
+    const root = editor.closest<HTMLElement>(".zero-composer");
+    if (!root) {
+      throw new Error("Composer root not found");
+    }
+    const buttons = Array.from(
+      root.querySelectorAll<HTMLButtonElement>("button"),
+    );
+    const attach = buttons.find((button) => {
+      return button.getAttribute("aria-label") === copy.attach;
+    });
+    const send = buttons.find((button) => {
+      return button.getAttribute("aria-label") === copy.send;
+    });
+    expect(attach).toBeEnabled();
+    expect(send?.disabled).toStrictEqual(!sendEnabled);
+    return editor;
+  });
+  expect(document.documentElement).toHaveAttribute("lang", copy.locale);
+  return composer;
+}
+
+async function expectLocalizedEmptyComposer(
+  copy: ComposerCopy,
+): Promise<HTMLElement> {
+  return await expectLocalizedComposerAttributes(copy);
+}
+
+test("A cancelled run keeps its meaning when the language changes", async () => {
+  const activeRun: ChatEventRow = {
+    id: EVENT_ID,
+    chatThreadId: THREAD_ID,
+    runId: RUN_ID,
+    revokesEventId: null,
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId: 1,
+    createdAt: CREATED_AT,
+    eventType: "input.prompt",
+    payload: {
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Continue the active workflow" }],
+      },
+    },
+  };
+  const portuguese: ComposerCopy = {
     locale: "pt-BR",
+    message: "Mensagem",
     placeholder:
       "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
     attach: "Anexar",
     send: "Enviar",
-  },
-  {
-    locale: "ko-KR",
-    placeholder: "워크플로 자동화, 작업 관리 등을 요청하세요...",
-    attach: "첨부",
-    send: "전송",
-  },
-  {
-    locale: "id-ID",
-    placeholder: "Minta saya mengotomatiskan alur kerja, mengelola tugas...",
-    attach: "Lampirkan",
-    send: "Kirim",
-  },
-  {
-    locale: "de-DE",
-    placeholder:
-      "Bitten Sie mich, Workflows zu automatisieren und Aufgaben zu verwalten...",
-    attach: "Anhängen",
-    send: "Senden",
-  },
-  {
-    locale: "fr-FR",
-    placeholder:
-      "Demandez-moi d’automatiser des workflows, de gérer des tâches...",
-    attach: "Joindre",
-    send: "Envoyer",
-  },
-  {
-    locale: "hi-IN",
-    placeholder:
-      "मुझसे वर्कफ़्लो ऑटोमेट करने और टास्क मैनेज करने के लिए कहें...",
-    attach: "अटैच करें",
-    send: "भेजें",
-  },
-] as const;
+    settings: "Configurações",
+    language: "Idioma",
+    close: "Fechar",
+    option: "Português (Brasil)",
+  };
+  const english: ComposerCopy = {
+    locale: "en-US",
+    message: "Message",
+    placeholder: "Ask me to automate workflows, manage tasks...",
+    attach: "Attach",
+    send: "Send",
+    settings: "Settings",
+    language: "Language",
+    close: "Close",
+    option: "English",
+  };
+  let stoppedRequest: ChatEventSendBody | undefined;
 
-beforeEach(() => {
-  context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  configureExistingChat({
+    draft: null,
+    rows: [activeRun],
+    title: "Fluxo em andamento",
+  });
+  context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
+    stoppedRequest = body;
+    return respond(201, {
+      runId: RUN_ID,
+      threadId: THREAD_ID,
+      status: "pending",
+      createdAt: CREATED_AT,
+    });
+  });
+
+  await setupPage({
+    context,
+    locale: "pt-BR",
+    path: `/chats/${THREAD_ID}`,
+  });
+
+  const stop = await findAction("button", "Parar");
+  click(stop);
+
+  const portugueseCancellation = await screen.findByText(
+    "Pausado no meio do raciocínio — retome quando quiser.",
+  );
+  expect(portugueseCancellation).toBeVisible();
+  await waitFor(() => {
+    expect(stoppedRequest).toMatchObject({
+      agentId: AGENT_ID,
+      threadId: THREAD_ID,
+      interruptsRunId: RUN_ID,
+    });
+  });
+
+  await changeLanguage(portuguese, english);
+
+  const englishCancellation = await screen.findByText(
+    "Paused mid-thought — pick it back up whenever.",
+  );
+  expect(englishCancellation).toBeVisible();
+  expect(
+    screen.queryByText("Pausado no meio do raciocínio — retome quando quiser."),
+  ).not.toBeInTheDocument();
+  expect(pathname()).toBe(`/chats/${THREAD_ID}`);
 });
 
-describe("chat localization", () => {
-  it.each(localeCases)(
-    "renders and sends a representative chat lifecycle in $locale",
-    async ({ locale, placeholder, attach, send }) => {
-      const user = userEvent.setup({ delay: null });
-      const sentPrompts: string[] = [];
-      const authoredMessage = `Keep this authored message in ${locale}`;
-      context.mocks.data.userPreferences({ locale });
-      mockOrgModelRoutes("claude-fable-5");
-      mockAgent();
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          if (body.prompt) {
-            sentPrompts.push(body.prompt);
-          }
-        },
-      });
+test("The chat composer works in each supported language", async () => {
+  const copy: ComposerCopy = {
+    locale: "pt-BR",
+    message: "Mensagem",
+    placeholder:
+      "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
+    attach: "Anexar",
+    send: "Enviar",
+    settings: "Configurações",
+    language: "Idioma",
+    close: "Fechar",
+    option: "Português (Brasil)",
+  };
+  const authoredText = "Organize the launch notes exactly as written.";
+  let sentRequest:
+    | {
+        readonly prompt: string;
+        readonly userMessage: ChatEventSendBody["userMessage"];
+      }
+    | undefined;
 
-      detachedSetupPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-      });
-
-      await expect(screen.findByText(placeholder)).resolves.toBeInTheDocument();
-      expect(screen.getByLabelText(attach)).toBeInTheDocument();
-      expect(screen.getByLabelText(send)).toBeDisabled();
-
-      const editor = await findComposerEditor();
-      await user.click(editor);
-      await user.keyboard(authoredMessage);
-      await waitFor(() => {
-        expect(screen.getByLabelText(send)).toBeEnabled();
-      });
-      await user.click(screen.getByLabelText(send));
-
-      await waitFor(() => {
-        expect(sentPrompts).toContain(authoredMessage);
-      });
-      await expect(
-        screen.findByText(authoredMessage),
-      ).resolves.toBeInTheDocument();
-      expect(document.documentElement.lang).toBe(locale);
+  context.mocks.data.agents([{ agentId: AGENT_ID }]);
+  configureNoBrowserSession();
+  context.mocks.data.userModelPreference({
+    selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
+    selectedVideoModel: null,
+    selectedImageModel: null,
+    updatedAt: null,
+  });
+  configureModelRoute();
+  mockChatLifecycle(context, {
+    onSendRequest(body) {
+      sentRequest = {
+        prompt: body.prompt,
+        userMessage: body.userMessage,
+      };
     },
+  });
+
+  await setupPage({
+    context,
+    locale: copy.locale,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const composer = await expectLocalizedEmptyComposer(copy);
+  await fill(composer, authoredText);
+  const send = await waitFor(() => {
+    const current = getAction("button", copy.send);
+    expect(current).toBeEnabled();
+    return current;
+  });
+  click(send);
+
+  await waitFor(() => {
+    expect(sentRequest).toBeDefined();
+  });
+  if (sentRequest?.userMessage === undefined) {
+    throw new Error("Expected a normal chat send request");
+  }
+  expect(sentRequest.prompt).toBe(authoredText);
+  expect(sentRequest.userMessage.parts).toContainEqual({
+    type: "text",
+    text: authoredText,
+  });
+  await waitFor(() => {
+    const visibleMessage = screen.getAllByText(authoredText).find((element) => {
+      return element.closest('[contenteditable="true"]') === null;
+    });
+    expect(visibleMessage).toBeVisible();
+  });
+});
+
+test("Changing language preserves the open conversation and draft", async () => {
+  const title = "Planejamento semanal";
+  const draft = "Rascunho ainda não enviado";
+  const portuguese: ComposerCopy = {
+    locale: "pt-BR",
+    message: "Mensagem",
+    placeholder:
+      "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
+    attach: "Anexar",
+    send: "Enviar",
+    settings: "Configurações",
+    language: "Idioma",
+    close: "Fechar",
+    option: "Português (Brasil)",
+  };
+  const english: ComposerCopy = {
+    locale: "en-US",
+    message: "Message",
+    placeholder: "Ask me to automate workflows, manage tasks...",
+    attach: "Attach",
+    send: "Send",
+    settings: "Settings",
+    language: "Language",
+    close: "Close",
+    option: "English",
+  };
+
+  configureExistingChat({
+    draft: userMessage(draft),
+    title,
+  });
+
+  await setupPage({
+    context,
+    locale: "pt-BR",
+    path: `/chats/${THREAD_ID}`,
+  });
+
+  const titleCopies = await screen.findAllByText(title);
+  const visibleTitle = titleCopies.find((element) => {
+    return element.closest("header") !== null;
+  });
+  expect(visibleTitle).toBeVisible();
+  const originalComposer = await screen.findByRole("textbox", {
+    name: "Mensagem",
+  });
+  expect(originalComposer).toHaveTextContent(draft);
+  const originalUrl = `${pathname()}${search()}`;
+
+  await changeLanguage(portuguese, english);
+
+  const translatedComposer = await expectLocalizedComposerAttributes(
+    english,
+    true,
   );
-
-  it("switches locale without replacing the open thread or its draft", async () => {
-    const user = userEvent.setup({ delay: null });
-    const authoredDraft = "Keep this draft while the language changes";
-    context.mocks.data.userPreferences({ locale: "en-US" });
-    mockOrgModelRoutes("claude-fable-5");
-    mockAgent();
-    mockThread();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await expect(
-      screen.findByText("Ask me to automate workflows, manage tasks..."),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText("Send a message to start the conversation"),
-    ).resolves.toBeInTheDocument();
-    const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard(authoredDraft);
-    await waitFor(() => {
-      expect(screen.getByLabelText("Send")).toBeEnabled();
-    });
-    const pathBeforeSwitch = pathname();
-
-    await act(async () => {
-      await context.store.set(setLocale$, "id-ID", context.signal);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Lampirkan")).toBeInTheDocument();
-      expect(screen.getByLabelText("Kirim")).toBeEnabled();
-    });
-    await expect(findComposerEditor()).resolves.toBe(editor);
-    expect(editor).toHaveAccessibleName("Pesan");
-    expect(editor).toHaveTextContent(authoredDraft);
-    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
-      "My thread",
-    );
-    expect(pathname()).toBe(pathBeforeSwitch);
-    expect(document.documentElement.lang).toBe("id-ID");
+  expect(translatedComposer).toHaveAttribute(
+    "placeholder",
+    english.placeholder,
+  );
+  const attach = await findAction("button", "Attach");
+  const send = await findAction("button", "Send");
+  expect(attach).toBeEnabled();
+  expect(send).toBeEnabled();
+  expect(`${pathname()}${search()}`).toBe(originalUrl);
+  expect(translatedComposer).toHaveTextContent(draft);
+  const translatedTitleCopies = screen.getAllByText(title);
+  const translatedVisibleTitle = translatedTitleCopies.find((element) => {
+    return element.closest("header") !== null;
   });
-
-  it("keeps cancellation state semantic while its presentation follows the locale", async () => {
-    const user = userEvent.setup({ delay: null });
-    const runId = "run-localized-cancellation";
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-    mockOrgModelRoutes("claude-fable-5");
-    mockAgent();
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      activeRunIds: [runId],
-      chatEvents: [
-        {
-          id: "msg-localized-cancellation-user",
-          role: "user",
-          content: "Interrompa esta execução",
-          runId,
-          createdAt: "2026-07-30T00:00:00Z",
-        },
-        {
-          id: "msg-localized-cancellation-assistant",
-          role: "assistant",
-          content: null,
-          runId,
-          createdAt: "2026-07-30T00:00:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await user.click(await screen.findByLabelText("Parar"));
-
-    await expect(
-      screen.findByText(
-        "Pausado no meio do raciocínio — retome quando quiser.",
-      ),
-    ).resolves.toBeInTheDocument();
-
-    await act(async () => {
-      await context.store.set(setLocale$, "en-US", context.signal);
-    });
-
-    await expect(
-      screen.findByText("Paused mid-thought — pick it back up whenever."),
-    ).resolves.toBeInTheDocument();
-  });
+  expect(translatedVisibleTitle).toBeVisible();
 });

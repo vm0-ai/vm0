@@ -18,6 +18,45 @@ pub(crate) enum WorkspaceCacheCheckoutResult {
     DiskPressure,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkspaceCacheLockOwner {
+    Active,
+    Finalizing,
+    Unknown,
+}
+
+impl WorkspaceCacheLockOwner {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Finalizing => "finalizing",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkspaceCacheLockDecision {
+    Busy(WorkspaceCacheLockOwner),
+    Unavailable,
+}
+
+impl WorkspaceCacheLockDecision {
+    pub(crate) const fn outcome(self) -> &'static str {
+        match self {
+            Self::Busy(_) => "busy",
+            Self::Unavailable => "unavailable",
+        }
+    }
+
+    pub(crate) const fn reason(self) -> Option<&'static str> {
+        match self {
+            Self::Busy(owner) => Some(owner.as_str()),
+            Self::Unavailable => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum WorkspaceCacheTerminalStatus {

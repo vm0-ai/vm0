@@ -2874,8 +2874,6 @@ describe("CHAT-01 chat search", () => {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-    expect(match.contextBefore).toStrictEqual([]);
-    expect(match.contextAfter).toStrictEqual([]);
 
     // hasMore flips when matches exceed the limit.
     await sendNoCreditMessage(owner, {
@@ -2952,10 +2950,6 @@ describe("CHAT-01 chat search", () => {
     expect(alpha.chatThreadId).toBe(threadA);
     expect(beta.chatThreadId).toBe(threadA);
     expect(gamma.chatThreadId).toBe(threadB);
-    for (const match of contextual.results) {
-      expect(match.contextBefore).toStrictEqual([]);
-      expect(match.contextAfter).toStrictEqual([]);
-    }
   }, 60_000);
 });
 

@@ -385,7 +385,6 @@
         "newChat": "New chat",
         "nextAgent": "Next agent",
         "nextThread": "Next thread",
-        "openAgentList": "Open agent list",
         "openFirstThread": "Open first thread",
         "previousAgent": "Previous agent",
         "previousThread": "Previous thread",
@@ -5079,6 +5078,14 @@
           "system": "System",
           "title": "Theme"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Enable Cloud browser by default in new chats. You can still change it in any chat.",
+          "title": "Cloud browser"
+        },
+        "description": "Choose defaults for new chats and how messages are sent.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

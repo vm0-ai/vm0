@@ -385,7 +385,6 @@
         "newChat": "새 채팅",
         "nextAgent": "다음 에이전트",
         "nextThread": "다음 스레드",
-        "openAgentList": "에이전트 목록 열기",
         "openFirstThread": "첫 번째 스레드 열기",
         "previousAgent": "이전 에이전트",
         "previousThread": "이전 스레드",
@@ -5078,6 +5077,14 @@
           "system": "시스템",
           "title": "테마"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "새 채팅에서 클라우드 브라우저를 기본으로 켭니다. 채팅마다 변경할 수 있습니다.",
+          "title": "클라우드 브라우저"
+        },
+        "description": "새 채팅의 기본값과 메시지 전송 방식을 선택하세요.",
+        "sectionTitle": "채팅"
       },
       "debug": {
         "builtInModelCooldown": {

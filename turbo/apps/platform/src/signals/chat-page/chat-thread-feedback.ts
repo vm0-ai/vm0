@@ -6,7 +6,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { delay } from "signal-timers";
+import { animationFrame, delay } from "signal-timers";
 import { isEditableTarget, matchShortcut } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { ChatTranslationLanguage } from "@okouai/api-contracts/contracts/user-preferences";
@@ -41,6 +41,7 @@ const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 const RUN_GROUP_SELECTOR = "[data-chat-run-id]";
 const SELECTION_INTERACTION_SELECTOR = "[data-chat-selection-interaction]";
+const SELECTION_SCROLL_DISMISS_DISTANCE_PX = 8;
 
 export interface ChatThreadFeedbackSelection {
   readonly rect: {
@@ -65,6 +66,7 @@ export interface ChatThreadTranslationResult {
 interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
+  readonly scrollReferenceRect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
   readonly runId: string | null;
   readonly eventId?: string;
@@ -302,9 +304,11 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
   }
   const source = resolveFeedbackSource(sourceElement);
   const location = resolveFeedbackLocation(range);
+  const rect = rectFromRange(range);
   return {
     text,
-    rect: rectFromRange(range),
+    rect,
+    scrollReferenceRect: rect,
     threadId: resolveSelectionThreadId(sourceElement),
     runId: resolveSelectionRunId(sourceElement),
     ...location,
@@ -378,9 +382,41 @@ function createSelectionState(threadId: string) {
     set(internalTranslationResult$, null);
     set(internalSelection$, selection);
   });
-  const dismissOnScroll$ = command(({ get, set }) => {
-    if (get(internalSelection$) !== null) {
+  const reconcileAfterScroll$ = command(({ get, set }) => {
+    const currentSelection = get(internalSelection$);
+    if (!currentSelection) {
+      return;
+    }
+    const selection = readFeedbackSelection();
+    if (
+      !selection ||
+      selection.threadId !== threadId ||
+      !isSameFeedbackSelection(currentSelection, selection)
+    ) {
       set(close$);
+      return;
+    }
+    const horizontalDisplacement =
+      selection.rect.left - currentSelection.scrollReferenceRect.left;
+    const verticalDisplacement =
+      selection.rect.top - currentSelection.scrollReferenceRect.top;
+    if (
+      Math.hypot(horizontalDisplacement, verticalDisplacement) >
+      SELECTION_SCROLL_DISMISS_DISTANCE_PX
+    ) {
+      set(close$);
+      return;
+    }
+    if (
+      selection.rect.top !== currentSelection.rect.top ||
+      selection.rect.left !== currentSelection.rect.left ||
+      selection.rect.width !== currentSelection.rect.width ||
+      selection.rect.height !== currentSelection.rect.height
+    ) {
+      set(internalSelection$, {
+        ...currentSelection,
+        rect: selection.rect,
+      });
     }
   });
   const copy$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -409,7 +445,7 @@ function createSelectionState(threadId: string) {
     selection$,
     close$,
     capture$,
-    dismissOnScroll$,
+    reconcileAfterScroll$,
     copy$,
   };
 }
@@ -665,13 +701,13 @@ function createListenersRef({
   selection$,
   close$,
   capture$,
-  dismissOnScroll$,
+  reconcileAfterScroll$,
   isProgrammaticScrollEvent$,
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
   capture$: Command<void, []>;
-  dismissOnScroll$: Command<void, []>;
+  reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
   const deferredCaptureSignal$ = resetSignal();
@@ -680,6 +716,7 @@ function createListenersRef({
       const doc = el.ownerDocument;
       let mouseSelectionInProgress = false;
       let selectionInteractionInProgress = false;
+      let scrollReconciliationScheduled = false;
       const captureDeferred = async () => {
         await delay(0, { signal: set(deferredCaptureSignal$, signal) });
         set(capture$);
@@ -759,12 +796,25 @@ function createListenersRef({
         "scroll",
         (event) => {
           if (
+            get(selection$) === null ||
             isSelectionInteractionTarget(event.target) ||
             set(isProgrammaticScrollEvent$, event.target)
           ) {
             return;
           }
-          set(dismissOnScroll$);
+          if (scrollReconciliationScheduled) {
+            return;
+          }
+          scrollReconciliationScheduled = true;
+          // Browser scroll events can precede the ResizeObserver pass that
+          // restores the selected text's viewport position.
+          animationFrame(
+            () => {
+              scrollReconciliationScheduled = false;
+              set(reconcileAfterScroll$);
+            },
+            { signal },
+          );
         },
         { capture: true, passive: true, signal },
       );
@@ -806,7 +856,7 @@ export function createChatThreadFeedbackSignals(
     selection$: selection.internalSelection$,
     close$: selection.close$,
     capture$: selection.capture$,
-    dismissOnScroll$: selection.dismissOnScroll$,
+    reconcileAfterScroll$: selection.reconcileAfterScroll$,
     isProgrammaticScrollEvent$,
   });
   return {

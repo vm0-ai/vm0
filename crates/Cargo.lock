@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.27.3"
+version = "0.27.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -489,9 +489,9 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-runtime-api"
-version = "1.15.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "954c563ce84507722d2679f07a35d21b9c6466b3872d513020d0281fc8112ac9"
+checksum = "9c054752dd9e4dc73d0b75748c99ac2d0feafbf2f25c7b0516f03a3534161223"
 dependencies = [
  "aws-smithy-async",
  "aws-smithy-runtime-api-macros",
@@ -529,9 +529,9 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-types"
-version = "1.6.2"
+version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fce83ce9abbb198d25bc7131e468d0f9fe1257125e58c39f3f9fc9f5098c9647"
+checksum = "8f94d16e797ec62cd999fc9d5942b48fa7050c3093ddadff48e4d7528d16fcb9"
 dependencies = [
  "base64-simd",
  "bytes",
@@ -1255,7 +1255,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "guest-agent"
-version = "0.84.10"
+version = "0.84.11"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.3.53"
+version = "0.3.54"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1306,7 +1306,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.12.28"
+version = "0.12.29"
 dependencies = [
  "api-contracts",
  "base64 0.23.1",
@@ -1321,7 +1321,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.23.57"
+version = "0.23.58"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1337,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.228"
+version = "0.16.229"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1348,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.124"
+version = "0.21.125"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.10.14"
+version = "0.10.15"
 dependencies = [
  "chrono",
  "clap",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "guest-session-prune"
-version = "0.3.67"
+version = "0.3.68"
 dependencies = [
  "guest-contracts",
  "proptest",
@@ -1392,7 +1392,7 @@ dependencies = [
 
 [[package]]
 name = "guest-tool-exec"
-version = "0.1.40"
+version = "0.1.41"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.128"
+version = "0.1.129"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2609,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.184.12"
+version = "0.184.15"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2815,7 +2815,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.38.8"
+version = "0.38.10"
 dependencies = [
  "async-trait",
  "clap",
@@ -2847,7 +2847,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.10.8"
+version = "0.10.9"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3388,9 +3388,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.12.0"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
+checksum = "4cf0ded5c4e56918d8f8a339e1bb67d038d3bc6d144ac407904015ba2e4cde9b"
 dependencies = [
  "tinyvec_macros",
 ]
@@ -3828,7 +3828,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.147"
+version = "0.19.148"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3841,7 +3841,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.133"
+version = "0.17.134"
 dependencies = [
  "guest-contracts",
  "nix",
@@ -3865,7 +3865,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.279"
+version = "0.9.280"
 dependencies = [
  "guest-write-file",
  "libc",

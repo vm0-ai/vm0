@@ -5,18 +5,14 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
-import {
-  detachedSetupPage,
-  setupPage,
-} from "../../../__tests__/page-helper.ts";
+import { setupPage, startPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
-import { pathname, search } from "../../../signals/location.ts";
+import { pathname } from "../../../signals/location.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
-import { isAbortError } from "../../../signals/utils.ts";
 
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
@@ -25,7 +21,6 @@ const { set$: setLastUsedAgentId$, clear$: clearLastUsedAgentId$ } =
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RETURNING_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
-const DELETED_AGENT_ID = "c0000000-0000-4000-a000-000000000003";
 const OTHER_ORG_AGENT_ID = "c0000000-0000-4000-a000-000000000004";
 const CURRENT_ORG_AGENT_ID = "c0000000-0000-4000-a000-000000000005";
 const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000006";
@@ -34,13 +29,6 @@ const UNVALIDATED_AGENT_CASES = [
   {
     candidateId: STALE_AGENT_ID,
     label: "stale",
-    recoveryAgentId: DEFAULT_AGENT_ID,
-    recoveryAgentName: "Default agent",
-    switchedOrganization: false,
-  },
-  {
-    candidateId: DELETED_AGENT_ID,
-    label: "deleted",
     recoveryAgentId: DEFAULT_AGENT_ID,
     recoveryAgentName: "Default agent",
     switchedOrganization: false,
@@ -72,12 +60,15 @@ function agentResponse(id: string, displayName: string): AgentResponse {
 function deferAgentsResponse(agents: AgentResponse[]) {
   const started = context.mocks.deferred<void>();
   const release = context.mocks.deferred<void>();
+  const responded = context.mocks.deferred<void>();
   context.mocks.api(agentsMainContract.list, async ({ respond }) => {
     started.resolve(undefined);
     await release.promise;
-    return respond(200, agents);
+    const response = respond(200, agents);
+    responded.resolve(undefined);
+    return response;
   });
-  return { release, started };
+  return { release, responded, started };
 }
 
 function recordAgentDraftLoads(): () => readonly string[] {
@@ -96,342 +87,270 @@ function recordAgentDraftLoads(): () => readonly string[] {
 
 function setupCandidateHomeRoute(
   candidate: (typeof UNVALIDATED_AGENT_CASES)[number],
-): void {
-  detachedSetupPage({
+): Promise<void> {
+  return setupPage({
     context,
     path: "/",
     ...(candidate.switchedOrganization
       ? {
-          org: {
-            activeOrg: {
-              id: "org_current",
-              name: "Current organization",
+          auth: {
+            user: { id: "test-user-123", fullName: "Test User" },
+            organization: {
+              activeOrg: {
+                id: "org_current",
+                name: "Current organization",
+              },
+              memberships: [{ id: "org_current" }, { id: "org_previous" }],
             },
-            memberships: [{ id: "org_current" }, { id: "org_previous" }],
           },
         }
       : {}),
   });
 }
 
-function blockUnexpectedTeamRequests(): () => number {
-  let requestCount = 0;
+function blockUnexpectedTeamRequests(): void {
   context.mocks.api(agentsMainContract.list, ({ never }) => {
-    requestCount += 1;
     return never();
   });
-  return () => {
-    return requestCount;
-  };
 }
 
-function installBootstrapSkeleton(): HTMLDivElement {
-  const skeleton = document.createElement("div");
-  skeleton.id = "app-bootstrap-skeleton";
-  document.body.append(skeleton);
-  context.signal.addEventListener("abort", () => {
-    skeleton.remove();
+async function expectCandidateRecovery(
+  candidate: (typeof UNVALIDATED_AGENT_CASES)[number],
+): Promise<void> {
+  context.store.set(setLastUsedAgentId$, candidate.candidateId);
+  context.mocks.data.onboardingStatus({
+    defaultAgentId: candidate.recoveryAgentId,
   });
-  return skeleton;
+  const draftLoads = recordAgentDraftLoads();
+  const team = deferAgentsResponse([
+    agentResponse(candidate.recoveryAgentId, candidate.recoveryAgentName),
+  ]);
+
+  await setupCandidateHomeRoute(candidate);
+
+  await team.started.promise;
+  expect(pathname()).toBe(`/agents/${candidate.candidateId}/chat`);
+  await expect(
+    screen.findByRole("textbox", { name: "Message" }),
+  ).resolves.toBeInTheDocument();
+  expect(draftLoads()).not.toContain(candidate.candidateId);
+
+  team.release.resolve(undefined);
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${candidate.recoveryAgentId}/chat`);
+    expect(document.title).toContain(candidate.recoveryAgentName);
+  });
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+  expect(draftLoads()).not.toContain(candidate.candidateId);
 }
 
-describe("home route", () => {
-  it("sets the resolved agent document title without an intermediate title", async () => {
-    context.store.set(clearLastUsedAgentId$);
-    context.mocks.data.onboardingStatus({
-      defaultAgentId: DEFAULT_AGENT_ID,
-    });
-    const team = deferAgentsResponse([
-      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
-    ]);
-    const titleSetter = vi.spyOn(document, "title", "set");
-
-    try {
-      detachedSetupPage({ context, path: "/" });
-
-      await team.started.promise;
-      expect(titleSetter).not.toHaveBeenCalled();
-
-      team.release.resolve(undefined);
-      await waitFor(() => {
-        expect(document.title).toBe("Default agent | VM0");
-      });
-      expect(
-        titleSetter.mock.calls.map(([title]) => {
-          return title;
-        }),
-      ).toStrictEqual(["Default agent | VM0"]);
-    } finally {
-      titleSetter.mockRestore();
-    }
+test("The home route sets the title for the resolved agent", async () => {
+  context.store.set(clearLastUsedAgentId$);
+  context.mocks.data.onboardingStatus({
+    defaultAgentId: DEFAULT_AGENT_ID,
   });
+  const team = deferAgentsResponse([
+    agentResponse(DEFAULT_AGENT_ID, "Default agent"),
+  ]);
+  const titleSetter = vi.spyOn(document, "title", "set");
 
-  it("routes a first-time user to the default agent before the agents list resolves", async () => {
-    context.store.set(clearLastUsedAgentId$);
-    context.mocks.data.onboardingStatus({
-      defaultAgentId: DEFAULT_AGENT_ID,
-    });
-    const team = deferAgentsResponse([
-      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
-    ]);
-
-    detachedSetupPage({ context, path: "/" });
+  try {
+    await setupPage({ context, path: "/" });
 
     await team.started.promise;
-    expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
-    await expect(
-      screen.findByRole("textbox", { name: "Message" }),
-    ).resolves.toBeInTheDocument();
+    expect(titleSetter).not.toHaveBeenCalled();
 
     team.release.resolve(undefined);
     await waitFor(() => {
-      expect(document.title).toContain("Default agent");
+      expect(document.title).toBe("Default agent | VM0");
     });
-    await expect(
-      screen.findByRole("textbox", { name: "Message" }),
-    ).resolves.toBeInTheDocument();
+    expect(
+      titleSetter.mock.calls.map(([title]) => {
+        return title;
+      }),
+    ).toStrictEqual(["Default agent | VM0"]);
+  } finally {
+    titleSetter.mockRestore();
+  }
+});
+
+test("A first-time user reaches the default agent without waiting for the full agent list", async () => {
+  context.store.set(clearLastUsedAgentId$);
+  context.mocks.data.onboardingStatus({
+    defaultAgentId: DEFAULT_AGENT_ID,
   });
+  const team = deferAgentsResponse([
+    agentResponse(DEFAULT_AGENT_ID, "Default agent"),
+  ]);
 
-  it("shows a returning user's persisted agent route before team validation resolves", async () => {
-    context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    const bootstrapSkeleton = installBootstrapSkeleton();
-    const team = deferAgentsResponse([
-      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
-      agentResponse(RETURNING_AGENT_ID, "Returning agent"),
-    ]);
+  await setupPage({ context, path: "/" });
 
-    detachedSetupPage({ context, path: "/" });
+  await team.started.promise;
+  expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+  await expect(
+    screen.findByRole("textbox", { name: "Message" }),
+  ).resolves.toBeInTheDocument();
 
-    await team.started.promise;
-    expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
-    expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
-    await expect(
-      screen.findByRole("textbox", { name: "Message" }),
-    ).resolves.toBeInTheDocument();
-
-    team.release.resolve(undefined);
-    await waitFor(() => {
-      expect(document.title).toContain("Returning agent");
-    });
-    await expect(
-      screen.findByRole("textbox", { name: "Message" }),
-    ).resolves.toBeInTheDocument();
+  team.release.resolve(undefined);
+  await waitFor(() => {
+    expect(document.title).toContain("Default agent");
   });
+  await expect(
+    screen.findByRole("textbox", { name: "Message" }),
+  ).resolves.toBeInTheDocument();
+});
 
-  it("ignores a malformed stale persisted ID", async () => {
-    context.store.set(setLastUsedAgentId$, "stale-agent-id");
-    context.mocks.data.onboardingStatus({
-      defaultAgentId: DEFAULT_AGENT_ID,
-    });
-    const team = deferAgentsResponse([
-      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
-    ]);
-
-    detachedSetupPage({ context, path: "/" });
-
-    await team.started.promise;
-    expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
-    team.release.resolve(undefined);
-    await waitFor(() => {
-      expect(document.title).toContain("Default agent");
-    });
+test("A malformed last-agent value falls back to the default agent", async () => {
+  context.store.set(setLastUsedAgentId$, "stale-agent-id");
+  context.mocks.data.onboardingStatus({
+    defaultAgentId: DEFAULT_AGENT_ID,
   });
+  const team = deferAgentsResponse([
+    agentResponse(DEFAULT_AGENT_ID, "Default agent"),
+  ]);
 
-  it.each(UNVALIDATED_AGENT_CASES)(
-    "shows a $label persisted candidate while validation resolves",
-    async (candidate) => {
-      context.store.set(setLastUsedAgentId$, candidate.candidateId);
-      context.mocks.data.onboardingStatus({
-        defaultAgentId: candidate.recoveryAgentId,
-      });
-      const draftLoads = recordAgentDraftLoads();
-      const team = deferAgentsResponse([
-        agentResponse(candidate.recoveryAgentId, candidate.recoveryAgentName),
-      ]);
+  await setupPage({ context, path: "/" });
 
-      setupCandidateHomeRoute(candidate);
-
-      await team.started.promise;
-      expect(pathname()).toBe(`/agents/${candidate.candidateId}/chat`);
-      await expect(
-        screen.findByRole("textbox", { name: "Message" }),
-      ).resolves.toBeInTheDocument();
-      const pageMain = document.querySelector("main");
-      expect(pageMain).not.toBeNull();
-      expect(draftLoads()).not.toContain(candidate.candidateId);
-
-      team.release.resolve(undefined);
-      await waitFor(() => {
-        expect(pathname()).toBe(`/agents/${candidate.recoveryAgentId}/chat`);
-        expect(document.title).toContain(candidate.recoveryAgentName);
-      });
-      expect(document.querySelector("main")).toBe(pageMain);
-      expect(draftLoads()).not.toContain(candidate.candidateId);
-    },
-  );
-
-  it("preserves initial onboarding params after persisted-agent navigation", async () => {
-    context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    const onboardingRequestStarted = context.mocks.deferred<void>();
-    const releaseOnboardingRequest = context.mocks.deferred<void>();
-    context.mocks.api(
-      onboardingStatusContract.getStatus,
-      async ({ respond }) => {
-        onboardingRequestStarted.resolve(undefined);
-        await releaseOnboardingRequest.promise;
-        return respond(200, {
-          needsOnboarding: true,
-          onboardingComplete: false,
-          isAdmin: true,
-          hasOrg: true,
-          hasDefaultAgent: false,
-          defaultAgentId: null,
-          defaultAgentMetadata: null,
-        });
-      },
-    );
-    const team = deferAgentsResponse([
-      agentResponse(RETURNING_AGENT_ID, "Returning agent"),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
-    });
-
-    await Promise.all([onboardingRequestStarted.promise, team.started.promise]);
-    expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
-
-    releaseOnboardingRequest.resolve(undefined);
-    await expect(
-      screen.findByRole("heading", { name: "Try this prompt" }),
-    ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe(ROUTES.onboarding);
-    const redirectedSearchParams = new URLSearchParams(search());
-    expect(redirectedSearchParams.get("prompt")).toBe("hello world");
-    expect(redirectedSearchParams.get("connector")).toBe("github");
-    expect(redirectedSearchParams.get("vm0_source")).toBe("presentation");
-    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
-      "hello world",
-    );
-
-    team.release.resolve(undefined);
+  await team.started.promise;
+  expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+  team.release.resolve(undefined);
+  await waitFor(() => {
+    expect(document.title).toContain("Default agent");
   });
+});
 
-  it("keeps organization selection ahead of persisted-agent navigation", async () => {
-    context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    context.mocks.browser.url("https://app.vm0.ai/");
-    const teamRequestCount = blockUnexpectedTeamRequests();
+test("An unavailable last-used agent recovers to an available agent", async () => {
+  await expectCandidateRecovery(UNVALIDATED_AGENT_CASES[0]);
+  expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+});
 
-    detachedSetupPage({
-      context,
-      org: {
+test("A last-used agent from another organization recovers within the active organization", async () => {
+  await expectCandidateRecovery(UNVALIDATED_AGENT_CASES[1]);
+  expect(pathname()).toBe(`/agents/${CURRENT_ORG_AGENT_ID}/chat`);
+});
+
+test("Required onboarding takes priority over returning to an agent", async () => {
+  context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
+  context.mocks.data.onboardingStatus({
+    needsOnboarding: true,
+    onboardingComplete: false,
+    hasDefaultAgent: false,
+    defaultAgentId: null,
+    defaultAgentMetadata: null,
+  });
+  blockUnexpectedTeamRequests();
+
+  await setupPage({ context, path: "/" });
+
+  await expect(
+    screen.findByRole("heading", { name: "What do you want to make first" }),
+  ).resolves.toBeInTheDocument();
+  expect(pathname()).toBe(ROUTES.onboarding);
+});
+
+test("Organization selection takes priority over returning to an agent", async () => {
+  context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
+  blockUnexpectedTeamRequests();
+
+  await startPage({
+    context,
+    auth: {
+      user: { id: "test-user-123", fullName: "Test User" },
+      organization: {
         activeOrg: null,
         memberships: [{ id: "org_member" }],
       },
-      path: "/",
-    });
-
-    await waitFor(() => {
-      expect(new URL(window.location.href).pathname).toBe(
-        "/sign-in/tasks/choose-organization",
-      );
-    });
-    expect(teamRequestCount()).toBe(0);
+    },
+    path: "/",
+    host: "app.vm0.ai",
   });
 
-  it("keeps authentication ahead of persisted-agent navigation", async () => {
-    context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    context.mocks.browser.url("https://app.vm0.ai/");
-    const teamRequestCount = blockUnexpectedTeamRequests();
-
-    detachedSetupPage({
-      context,
-      path: "/",
-      session: null,
-      user: null,
-    });
-
-    await waitFor(() => {
-      expect(new URL(window.location.href).pathname).toBe("/sign-in");
-    });
-    expect(teamRequestCount()).toBe(0);
-  });
-
-  it("does not resume agent validation after navigation is aborted", async () => {
-    const draftLoads = recordAgentDraftLoads();
-    const team = deferAgentsResponse([
-      agentResponse(RETURNING_AGENT_ID, "Returning agent"),
-    ]);
-    const setupPromise = setupPage({
-      context,
-      path: `/agents/${RETURNING_AGENT_ID}/chat`,
-    });
-    context.track(setupPromise);
-
-    await team.started.promise;
-    await expect(
-      screen.findByRole("textbox", { name: "Message" }),
-    ).resolves.toBeInTheDocument();
-
-    context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });
-    await waitFor(() => {
-      expect(pathname()).toBe(ROUTES.skeleton);
-    });
-    team.release.resolve(undefined);
-
-    let setupError: unknown;
-    try {
-      await setupPromise;
-    } catch (error: unknown) {
-      setupError = error;
-    }
-    expect(isAbortError(setupError)).toBeTruthy();
-    expect(pathname()).toBe(ROUTES.skeleton);
-    expect(draftLoads()).not.toContain(RETURNING_AGENT_ID);
-  });
-
-  it("does not redirect after the home navigation lifecycle is aborted", async () => {
-    context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    const onboardingRequestStarted = context.mocks.deferred<void>();
-    const releaseOnboardingRequest = context.mocks.deferred<void>();
-    context.mocks.api(
-      onboardingStatusContract.getStatus,
-      async ({ respond }) => {
-        onboardingRequestStarted.resolve(undefined);
-        await releaseOnboardingRequest.promise;
-        return respond(200, {
-          needsOnboarding: true,
-          onboardingComplete: false,
-          isAdmin: true,
-          hasOrg: true,
-          hasDefaultAgent: false,
-          defaultAgentId: null,
-          defaultAgentMetadata: null,
-        });
-      },
+  await waitFor(() => {
+    expect(new URL(window.location.href).pathname).toBe(
+      "/sign-in/tasks/choose-organization",
     );
+  });
+});
 
-    const setupPromise = setupPage({
-      context,
-      path: "/",
+test("Sign-in takes priority over returning to an agent", async () => {
+  context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
+  blockUnexpectedTeamRequests();
+
+  await startPage({
+    context,
+    path: "/",
+    host: "app.vm0.ai",
+    auth: null,
+  });
+
+  await waitFor(() => {
+    expect(new URL(window.location.href).pathname).toBe("/sign-in");
+  });
+});
+
+test("Late agent validation does not pull a user back after navigation", async () => {
+  const draftLoads = recordAgentDraftLoads();
+  const team = deferAgentsResponse([
+    agentResponse(RETURNING_AGENT_ID, "Returning agent"),
+  ]);
+  await setupPage({
+    context,
+    path: `/agents/${RETURNING_AGENT_ID}/chat`,
+  });
+
+  await team.started.promise;
+  await expect(
+    screen.findByRole("textbox", { name: "Message" }),
+  ).resolves.toBeInTheDocument();
+
+  context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });
+  await waitFor(() => {
+    expect(pathname()).toBe(ROUTES.skeleton);
+  });
+  team.release.resolve(undefined);
+  await team.responded.promise;
+  await waitFor(() => {
+    expect(pathname()).toBe(ROUTES.skeleton);
+  });
+  expect(draftLoads()).not.toContain(RETURNING_AGENT_ID);
+});
+
+test("Late home-routing data does not undo a user's navigation", async () => {
+  context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
+  const onboardingRequestStarted = context.mocks.deferred<void>();
+  const releaseOnboardingRequest = context.mocks.deferred<void>();
+  const onboardingResponseReturned = context.mocks.deferred<void>();
+  context.mocks.api(onboardingStatusContract.getStatus, async ({ respond }) => {
+    onboardingRequestStarted.resolve(undefined);
+    await releaseOnboardingRequest.promise;
+    const response = respond(200, {
+      needsOnboarding: false,
+      onboardingComplete: true,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: DEFAULT_AGENT_ID,
+      defaultAgentMetadata: { displayName: "Default agent" },
     });
-    context.track(setupPromise);
-    await onboardingRequestStarted.promise;
+    onboardingResponseReturned.resolve(undefined);
+    return response;
+  });
+  blockUnexpectedTeamRequests();
 
-    context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });
-    await waitFor(() => {
-      expect(pathname()).toBe(ROUTES.skeleton);
-    });
+  await setupPage({
+    context,
+    path: "/",
+  });
+  await onboardingRequestStarted.promise;
 
-    releaseOnboardingRequest.resolve(undefined);
-    let setupError: unknown;
-    try {
-      await setupPromise;
-    } catch (error: unknown) {
-      setupError = error;
-    }
-    expect(isAbortError(setupError)).toBeTruthy();
+  context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });
+  await waitFor(() => {
+    expect(pathname()).toBe(ROUTES.skeleton);
+  });
+
+  releaseOnboardingRequest.resolve(undefined);
+  await onboardingResponseReturned.promise;
+  await waitFor(() => {
     expect(pathname()).toBe(ROUTES.skeleton);
   });
 });

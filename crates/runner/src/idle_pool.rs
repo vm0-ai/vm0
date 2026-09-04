@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::time::Instant;
 
 use sandbox::{DeviceRateLimits, SandboxId};
@@ -63,6 +63,29 @@ pub struct IdlePool {
     /// Shared lifecycle gate. The signal/main-loop lifecycle controller updates
     /// this before publishing externally visible mode transitions.
     parking_gate: ParkingGate,
+}
+
+/// Why an exact idle reservation could not use the entry observed for its reuse key.
+///
+/// The classification is produced while the pool lock is held, so it describes the same
+/// observation that made the reservation decision without a racy follow-up lookup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ExactIdleReservationMiss {
+    Absent,
+    ProfileMismatch,
+    DeviceLimitMismatch,
+    HistoryGenerationMismatch,
+}
+
+impl ExactIdleReservationMiss {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Absent => "absent",
+            Self::ProfileMismatch => "profile_mismatch",
+            Self::DeviceLimitMismatch => "device_limit_mismatch",
+            Self::HistoryGenerationMismatch => "history_generation_mismatch",
+        }
+    }
 }
 
 impl IdlePool {
@@ -164,18 +187,40 @@ impl IdlePool {
         device_rate_limits: &Option<DeviceRateLimits>,
         history_generation_run_id: RunId,
     ) -> Option<ReservedIdleSandbox> {
-        if !self.has_reusable(reuse_key, profile_name, device_rate_limits)
-            || self
-                .entries
-                .get(reuse_key)
-                .and_then(|entry| entry.metadata.history_generation_run_id)
-                != Some(history_generation_run_id)
-        {
-            return None;
-        }
-        let entry = self.entries.remove(reuse_key)?;
+        self.reserve_reusable_generation_with_reason(
+            reuse_key,
+            profile_name,
+            device_rate_limits,
+            history_generation_run_id,
+        )
+        .ok()
+    }
+
+    pub(crate) fn reserve_reusable_generation_with_reason(
+        &mut self,
+        reuse_key: &str,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+        history_generation_run_id: RunId,
+    ) -> Result<ReservedIdleSandbox, ExactIdleReservationMiss> {
+        let entry = match self.entries.entry(reuse_key.to_owned()) {
+            Entry::Vacant(_) => return Err(ExactIdleReservationMiss::Absent),
+            Entry::Occupied(entry) => {
+                if entry.get().profile_name() != profile_name {
+                    return Err(ExactIdleReservationMiss::ProfileMismatch);
+                }
+                if entry.get().device_rate_limits() != device_rate_limits {
+                    return Err(ExactIdleReservationMiss::DeviceLimitMismatch);
+                }
+                if entry.get().metadata.history_generation_run_id != Some(history_generation_run_id)
+                {
+                    return Err(ExactIdleReservationMiss::HistoryGenerationMismatch);
+                }
+                entry.remove()
+            }
+        };
         self.bump_revision();
-        Some(ReservedIdleSandbox { entry })
+        Ok(ReservedIdleSandbox { entry })
     }
 
     /// Reserve a matching idle entry before pressure eviction begins.

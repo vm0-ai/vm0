@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.38.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.9...sandbox-fc-v0.38.10) (2026-09-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** preserve supported guest capacity ([#31594](https://github.com/vm0-ai/vm0/issues/31594)) ([920d77b](https://github.com/vm0-ai/vm0/commit/920d77b8d15682d69e4e9d9a89395ec8a45d4bbd))
+
+## [0.38.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.8...sandbox-fc-v0.38.9) (2026-09-03)
+
 ## [0.38.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.7...sandbox-fc-v0.38.8) (2026-09-03)
 
 ## [0.38.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.6...sandbox-fc-v0.38.7) (2026-09-03)

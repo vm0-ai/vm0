@@ -33,6 +33,8 @@ export interface ArtifactSummary {
   kind: ArtifactCatalogKind;
   title: string;
   thumbnail: ArtifactThumbnail | null;
+  /** Original video used when the catalog card cannot show a static poster. */
+  videoSourceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -208,6 +210,7 @@ const artifactSummarySchema = z.object({
   kind: artifactKindSchema,
   title: z.string(),
   thumbnail: artifactThumbnailSchema.nullable(),
+  videoSourceUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

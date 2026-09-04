@@ -51,7 +51,6 @@ delete the workflow, probe, focused validator, and this entry together.
 | #29910                            | Built-in provider writer/backfill and rollback bridge       | #28368          |
 | #30162                            | Built-in model restriction entitlement expand/mirror bridge | #28368          |
 | #30379                            | Acquisition first-party source expand/mirror bridge         | #28368 Phase D4 |
-| #30453                            | Chat-search old-API delete compatibility bridge             | #30468          |
 
 <!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
 <!-- vm0-transition-validator:#27896|legacy-execution-plan-preflight-classifier|removal-owner:#26938-stage-8 -->

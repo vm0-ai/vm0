@@ -399,7 +399,6 @@
         "newChat": "Nuova chat",
         "nextAgent": "Il prossimo agente",
         "nextThread": "Thread successivo",
-        "openAgentList": "Apri l'elenco degli agenti",
         "openFirstThread": "Apri il primo thread",
         "previousAgent": "Agente precedente",
         "previousThread": "Thread precedente",
@@ -5144,6 +5143,14 @@
           "system": "Sistema",
           "title": "Tema"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Attiva il browser cloud per impostazione predefinita nelle nuove chat. Puoi modificarlo in qualsiasi chat.",
+          "title": "Browser cloud"
+        },
+        "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

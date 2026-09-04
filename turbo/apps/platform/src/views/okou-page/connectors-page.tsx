@@ -49,8 +49,8 @@ import {
   pollingOAuthDeviceAuthConnectorSlug$,
   justConnectedSlugs$,
   relatedCatalogItems$,
-  scopeReviewConnectorSlug$,
-  setScopeReviewConnectorSlug$,
+  scopeReviewSelection$,
+  setScopeReviewSelection$,
   getAvailableStatusAuthCodeAuthMethod,
   getConnectorStatusAuthMethod,
   type ConnectorsConnectionFilter,
@@ -1053,8 +1053,8 @@ export function ConnectorsPage() {
   const signal = useGet(pageSignal$);
   const selectedConnectorSlug = useGet(selectedConnectorSlug$);
   const setSelected = useSet(setSelectedConnectorSlug$);
-  const scopeReviewConnectorSlug = useGet(scopeReviewConnectorSlug$);
-  const setScopeReviewConnectorSlug = useSet(setScopeReviewConnectorSlug$);
+  const scopeReviewSelection = useGet(scopeReviewSelection$);
+  const setScopeReviewSelection = useSet(setScopeReviewSelection$);
   const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
   const optimisticConnected = useGet(justConnectedSlugs$);
   const activeTab = useGet(connectorsPageTab$);
@@ -1240,7 +1240,10 @@ export function ConnectorsPage() {
           return setManagedConnectorSlug(c.slug);
         }}
         onReviewScopes={() => {
-          return setScopeReviewConnectorSlug(c.slug);
+          return setScopeReviewSelection({
+            kind: "default",
+            connectorSlug: c.slug,
+          });
         }}
       />
     );
@@ -1394,23 +1397,42 @@ export function ConnectorsPage() {
               authMethod: account.authMethod,
             });
           }}
+          onReviewScopes={(account) => {
+            closeAccountManager();
+            setScopeReviewSelection({
+              kind: "account",
+              connectorSlug: managedAccountConnector.slug,
+              connectionId: account.id,
+              authMethod: account.authMethod,
+            });
+          }}
         />
       )}
 
-      {scopeReviewConnectorSlug && (
+      {scopeReviewSelection && (
         <ScopeReviewModal
-          connectorSlug={scopeReviewConnectorSlug}
+          selection={scopeReviewSelection}
           onClose={() => {
-            return setScopeReviewConnectorSlug(null);
+            return setScopeReviewSelection(null);
           }}
-          onReconnect={(connectorSlug) => {
-            setScopeReviewConnectorSlug(null);
+          onReconnect={(selection) => {
+            setScopeReviewSelection(null);
             const connector = allConnectors.find((connector) => {
-              return connector.slug === connectorSlug;
+              return connector.slug === selection.connectorSlug;
             });
+            if (selection.kind === "account") {
+              if (connector) {
+                openAccountConnect(connector, {
+                  kind: "reconnect",
+                  connectionId: selection.connectionId,
+                  authMethod: selection.authMethod,
+                });
+              }
+              return;
+            }
             const connection = connector?.connection ?? null;
             if (!connector || !connection) {
-              setSelected(connectorSlug);
+              setSelected(selection.connectorSlug);
               return;
             }
             const authMethodId = getAvailableStatusAuthCodeAuthMethod(
@@ -1421,12 +1443,12 @@ export function ConnectorsPage() {
               ? getConnectorStatusAuthMethod(connector, authMethodId)
               : null;
             if (!authMethod) {
-              setSelected(connectorSlug);
+              setSelected(selection.connectorSlug);
               return;
             }
             detach(
               connect(
-                connectorSlug,
+                selection.connectorSlug,
                 authMethod,
                 {
                   authorizeVisibleAgents: true,

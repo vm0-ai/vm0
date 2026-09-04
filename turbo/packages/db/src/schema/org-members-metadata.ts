@@ -35,6 +35,9 @@ export const orgMembersMetadata = pgTable(
       .$type<OrgMembersPinnedAgentIds>()
       .default([]),
     sendMode: text("send_mode").notNull().default("enter"),
+    cloudBrowserEnabledByDefault: boolean("cloud_browser_enabled_by_default")
+      .notNull()
+      .default(true),
     theme: text("theme").$type<ThemePreference>(),
     colorTheme: text("color_theme").$type<ColorTheme>(),
     selectedModel: varchar("selected_model", { length: 255 }),

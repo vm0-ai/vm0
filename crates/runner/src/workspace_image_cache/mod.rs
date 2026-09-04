@@ -61,10 +61,11 @@
 //! - GC refreshes a candidate and compares the current image identity before
 //!   deleting, so concurrent replacement by another runner is preserved.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -93,8 +94,8 @@ pub(crate) use lifecycle::{
     cap_held_workspace_states,
 };
 pub(crate) use types::{
-    CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
-    WorkspaceImageActiveLeaseRequest, WorkspaceImageCacheInspection,
+    CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheLockOwner,
+    WorkspaceCacheTerminalStatus, WorkspaceImageActiveLeaseRequest, WorkspaceImageCacheInspection,
     WorkspaceImageCacheInspectionEntry, WorkspaceImageCacheInspectionStatus,
     WorkspaceImageCacheInspectionSummary, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareLockPolicy, WorkspaceImagePrepareRequest,
@@ -154,6 +155,7 @@ struct WorkspaceImageCacheInner {
     cache_dir: PathBuf,
     lock_dir: PathBuf,
     cache_scope: String,
+    entry_lock_owners: Mutex<HashMap<String, WorkspaceCacheLockRegistration>>,
     #[cfg(test)]
     fs_stats_override: FsStats,
     #[cfg(test)]
@@ -164,6 +166,12 @@ struct WorkspaceImageCacheInner {
     held_state_root_scan_notify: tokio::sync::Notify,
     #[cfg(test)]
     fail_next_session_history_sidecar_metadata_commit: AtomicBool,
+}
+
+#[derive(Clone)]
+struct WorkspaceCacheLockRegistration {
+    identity: Arc<()>,
+    owner: WorkspaceCacheLockOwner,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -224,6 +232,7 @@ impl WorkspaceImageCache {
                     cache_dir,
                     lock_dir,
                     cache_scope: cache_scope.to_owned(),
+                    entry_lock_owners: Mutex::new(HashMap::new()),
                 }),
                 session_history_sidecar_export_permits: Arc::new(Semaphore::new(
                     MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY,
@@ -246,6 +255,7 @@ impl WorkspaceImageCache {
                 cache_dir,
                 lock_dir,
                 cache_scope: cache_scope.to_owned(),
+                entry_lock_owners: Mutex::new(HashMap::new()),
                 fs_stats_override: fs_stats,
                 gc_root_scan_count: AtomicUsize::new(0),
                 held_state_root_scan_count: AtomicUsize::new(0),

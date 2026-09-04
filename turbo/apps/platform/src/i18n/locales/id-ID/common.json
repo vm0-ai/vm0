@@ -385,7 +385,6 @@
         "newChat": "Chat baru",
         "nextAgent": "Agen berikutnya",
         "nextThread": "Thread berikutnya",
-        "openAgentList": "Buka daftar agen",
         "openFirstThread": "Buka thread pertama",
         "previousAgent": "Agen sebelumnya",
         "previousThread": "Thread sebelumnya",
@@ -5078,6 +5077,14 @@
           "system": "Sistem",
           "title": "Tema"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Aktifkan browser cloud secara default di chat baru. Anda tetap bisa mengubahnya di chat mana pun.",
+          "title": "Browser cloud"
+        },
+        "description": "Pilih default untuk chat baru dan cara pesan dikirim.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

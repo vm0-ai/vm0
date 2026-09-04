@@ -12,6 +12,7 @@ use guest_contracts::epoch_milliseconds::{
 use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
+use crate::idle_pool::ExactIdleReservationMiss;
 use crate::provider::ApiClaimTiming;
 use crate::resource_budget::ResourceBudget;
 use crate::telemetry::{
@@ -19,7 +20,7 @@ use crate::telemetry::{
     RunnerResourceBudgetOccupancy, RunnerStartupPath,
 };
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
-use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
+use crate::workspace_image_cache::{WorkspaceCacheCheckoutResult, WorkspaceImageLease};
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
@@ -104,6 +105,61 @@ pub(crate) enum FinalizingHandoffOutcome {
     Cancelled,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum FinalizingHandoffReason {
+    PreFinalizationDeadline,
+    HandoffAcceptanceDeadline,
+    PublishedExactUnavailable,
+    PredecessorReleasedWithoutExact,
+    PredecessorNoExact,
+    ExactHandoffUnavailable,
+    HandoffRequestUnavailable,
+    ExactHandoffClosed,
+    SuccessorCancelled,
+    ActivationCancelled,
+    HandoffIdentityMismatch,
+    ExactActivationFallback,
+    ExactActivationFailed,
+}
+
+impl FinalizingHandoffReason {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::PreFinalizationDeadline => "pre_finalization_deadline",
+            Self::HandoffAcceptanceDeadline => "handoff_acceptance_deadline",
+            Self::PublishedExactUnavailable => "published_exact_unavailable",
+            Self::PredecessorReleasedWithoutExact => "predecessor_released_without_exact",
+            Self::PredecessorNoExact => "predecessor_no_exact",
+            Self::ExactHandoffUnavailable => "exact_handoff_unavailable",
+            Self::HandoffRequestUnavailable => "handoff_request_unavailable",
+            Self::ExactHandoffClosed => "exact_handoff_closed",
+            Self::SuccessorCancelled => "successor_cancelled",
+            Self::ActivationCancelled => "activation_cancelled",
+            Self::HandoffIdentityMismatch => "handoff_identity_mismatch",
+            Self::ExactActivationFallback => "exact_activation_fallback",
+            Self::ExactActivationFailed => "exact_activation_failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FinalizingHandoffTelemetry {
+    outcome: FinalizingHandoffOutcome,
+    reason: Option<FinalizingHandoffReason>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum FinalizingExactIdleLookup {
+    Hit,
+    Miss(ExactIdleReservationMiss),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FinalizingDiagnostics {
+    handoff: Option<FinalizingHandoffTelemetry>,
+    exact_idle_lookup: Option<FinalizingExactIdleLookup>,
+}
+
 impl FinalizingHandoffOutcome {
     const fn as_str(self) -> &'static str {
         match self {
@@ -120,15 +176,43 @@ impl FinalizingHandoffOutcome {
     const fn succeeded(self) -> bool {
         matches!(self, Self::Accepted | Self::PublishedExact)
     }
+}
 
+impl FinalizingHandoffTelemetry {
     pub(crate) fn record(self, telemetry: &mut JobTelemetry) {
-        telemetry.record_with_outcome(
+        telemetry.record_bounded_outcome_with_error(
             "runner_claim_finalizing_handoff",
-            Duration::ZERO,
-            self.succeeded(),
-            (!self.succeeded()).then_some(self.as_str()),
-            Some(self.as_str()),
+            self.outcome.succeeded(),
+            (!self.outcome.succeeded()).then_some(self.outcome.as_str()),
+            self.outcome.as_str(),
+            self.reason.map(FinalizingHandoffReason::as_str),
         );
+    }
+}
+
+impl FinalizingExactIdleLookup {
+    fn record(self, telemetry: &mut JobTelemetry) {
+        let (outcome, reason) = match self {
+            Self::Hit => ("hit", None),
+            Self::Miss(reason) => ("miss", Some(reason.as_str())),
+        };
+        telemetry.record_bounded_outcome(
+            "runner_claim_finalizing_exact_idle_lookup",
+            true,
+            outcome,
+            reason,
+        );
+    }
+}
+
+impl FinalizingDiagnostics {
+    pub(crate) fn record(self, telemetry: &mut JobTelemetry) {
+        if let Some(handoff) = self.handoff {
+            handoff.record(telemetry);
+        }
+        if let Some(exact_idle_lookup) = self.exact_idle_lookup {
+            exact_idle_lookup.record(telemetry);
+        }
     }
 }
 
@@ -227,7 +311,8 @@ pub(crate) struct RunnerPreSpawnTiming {
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
-    finalizing_handoff_outcome: Option<FinalizingHandoffOutcome>,
+    finalizing_handoff: Option<FinalizingHandoffTelemetry>,
+    finalizing_exact_idle_lookup: Option<FinalizingExactIdleLookup>,
 }
 
 #[derive(Clone, Copy)]
@@ -269,7 +354,8 @@ impl RunnerPreSpawnTiming {
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
-            finalizing_handoff_outcome: None,
+            finalizing_handoff: None,
+            finalizing_exact_idle_lookup: None,
         }
     }
 
@@ -278,11 +364,32 @@ impl RunnerPreSpawnTiming {
     }
 
     pub(crate) fn record_finalizing_handoff_outcome(&mut self, outcome: FinalizingHandoffOutcome) {
-        self.finalizing_handoff_outcome = Some(outcome);
+        self.record_finalizing_handoff(outcome, None);
     }
 
-    pub(crate) fn finalizing_handoff_outcome(&self) -> Option<FinalizingHandoffOutcome> {
-        self.finalizing_handoff_outcome
+    pub(crate) fn record_finalizing_handoff(
+        &mut self,
+        outcome: FinalizingHandoffOutcome,
+        reason: Option<FinalizingHandoffReason>,
+    ) {
+        self.finalizing_handoff = Some(FinalizingHandoffTelemetry { outcome, reason });
+    }
+
+    pub(crate) fn finalizing_diagnostics(&self) -> Option<FinalizingDiagnostics> {
+        (self.finalizing_handoff.is_some() || self.finalizing_exact_idle_lookup.is_some())
+            .then_some(FinalizingDiagnostics {
+                handoff: self.finalizing_handoff,
+                exact_idle_lookup: self.finalizing_exact_idle_lookup,
+            })
+    }
+
+    pub(crate) fn record_finalizing_exact_idle_lookup(
+        &mut self,
+        lookup: FinalizingExactIdleLookup,
+    ) {
+        // Capacity waits can probe more than once. Retaining only the latest atomic observation
+        // emits one terminal decision for the successor instead of one row per retry.
+        self.finalizing_exact_idle_lookup = Some(lookup);
     }
 
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
@@ -353,8 +460,11 @@ impl RunnerPreSpawnTiming {
                 None,
             );
         }
-        if let Some(outcome) = self.finalizing_handoff_outcome {
-            outcome.record(telemetry);
+        if let Some(handoff) = self.finalizing_handoff {
+            handoff.record(telemetry);
+        }
+        if let Some(exact_lookup) = self.finalizing_exact_idle_lookup {
+            exact_lookup.record(telemetry);
         }
         if let Some(timing) = self.exact_reuse_speculation.as_ref() {
             telemetry.record(
@@ -485,8 +595,9 @@ pub(super) fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxR
 
 pub(super) fn record_workspace_cache_result(
     telemetry: &mut JobTelemetry,
-    result: WorkspaceCacheCheckoutResult,
+    lease: &WorkspaceImageLease,
 ) {
+    let result = lease.result();
     let action_type = match result {
         WorkspaceCacheCheckoutResult::Hit => "workspace_image_cache_hit",
         WorkspaceCacheCheckoutResult::Miss => "workspace_image_cache_miss",
@@ -498,7 +609,15 @@ pub(super) fn record_workspace_cache_result(
         WorkspaceCacheCheckoutResult::InvalidMetadata => "workspace_image_cache_invalid_metadata",
         WorkspaceCacheCheckoutResult::DiskPressure => "workspace_image_cache_disk_pressure",
     };
-    telemetry.record(action_type, Duration::ZERO, true, None);
+    if result == WorkspaceCacheCheckoutResult::LockBusy {
+        if let Some((outcome, reason)) = lease.lock_outcome_and_reason() {
+            telemetry.record_bounded_outcome(action_type, true, outcome, reason);
+        } else {
+            telemetry.record(action_type, Duration::ZERO, true, None);
+        }
+    } else {
+        telemetry.record(action_type, Duration::ZERO, true, None);
+    }
 }
 
 pub(super) fn record_api_latency(

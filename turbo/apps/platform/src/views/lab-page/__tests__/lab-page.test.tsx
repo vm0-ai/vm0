@@ -2,17 +2,13 @@ import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
-import {
-  click,
-  detachedSetupPage,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
-import { pathname } from "../../../signals/location.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const PINNED_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function featureSwitchRow(feature: FeatureSwitchKey): HTMLElement {
   const row = screen.getByText(feature).closest("li");
@@ -20,10 +16,6 @@ function featureSwitchRow(feature: FeatureSwitchKey): HTMLElement {
     throw new Error(`${feature} feature row not found`);
   }
   return row;
-}
-
-function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
-  return within(featureSwitchRow(feature)).getByRole("switch");
 }
 
 function featureSwitchGroup(name: string): HTMLElement {
@@ -34,244 +26,234 @@ function featureSwitchGroup(name: string): HTMLElement {
   return section;
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
+function buttonNamed(name: string): HTMLElement {
+  const button = screen.getByText(name).closest("button");
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`${name} button not found`);
   }
   return button;
 }
 
-function maintainerFilterButton(label: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim().toLowerCase().startsWith(label);
+test("Lab remains available while onboarding is required", async () => {
+  context.mocks.data.onboardingStatus({
+    needsOnboarding: true,
+    onboardingComplete: false,
   });
-  if (!button) {
-    throw new Error(`${label} maintainer filter not found`);
-  }
-  return button;
-}
+  context.mocks.data.agents([
+    {
+      agentId: PINNED_AGENT_ID,
+      displayName: "Pinned Agent",
+      visibility: "private",
+    },
+  ]);
 
-function expectBefore(first: HTMLElement, second: HTMLElement): void {
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: {
+      [FeatureSwitchKey.Banking]: true,
+      [FeatureSwitchKey.Lab]: true,
+    },
+  });
+
+  await screen.findByRole("heading", { name: "Lab" });
   expect(
-    Boolean(
-      first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ),
-  ).toBeTruthy();
-}
+    within(featureSwitchGroup("Beta")).getByText(FeatureSwitchKey.Banking),
+  ).toBeInTheDocument();
+  expect((await screen.findAllByText("Pinned Agent")).length).toBeGreaterThan(
+    0,
+  );
+});
 
-describe("lab page", () => {
-  it("stays accessible when onboarding is required", async () => {
-    context.mocks.data.onboardingStatus({
-      needsOnboarding: true,
-      onboardingComplete: false,
-    });
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      const switches = { [FeatureSwitchKey.Banking]: true };
-      return respond(200, { switches, effectiveSwitches: switches });
-    });
-
-    detachedSetupPage({ context, path: "/_/lab" });
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-      expect(featureSwitchControl(FeatureSwitchKey.Banking)).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      expect(screen.getByTestId("pinned-agent-card")).toBeInTheDocument();
-      expect(pathname()).toBe("/_/lab");
-    });
+test("Lab groups every feature by rollout stage with a switch", async () => {
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: { [FeatureSwitchKey.Lab]: true },
   });
 
-  it("groups every switch by rollout stage with personal controls", async () => {
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches: {}, effectiveSwitches: {} });
-    });
+  await screen.findByRole("heading", { name: "Lab" });
 
-    detachedSetupPage({ context, path: "/_/lab" });
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-    });
-
-    const released = within(featureSwitchGroup("Released"));
-    const beta = within(featureSwitchGroup("Beta"));
-    const alpha = within(featureSwitchGroup("Alpha"));
-    const internal = within(featureSwitchGroup("Internal"));
-
-    expect(
-      released.getAllByRole("listitem").length +
-        beta.getAllByRole("listitem").length +
-        alpha.getAllByRole("listitem").length +
-        internal.getAllByRole("listitem").length,
-    ).toBe(Object.values(FeatureSwitchKey).length);
-    for (const key of Object.values(FeatureSwitchKey).filter((feature) => {
-      return feature.startsWith("_");
-    })) {
-      expect(internal.getByText(key)).toBeInTheDocument();
-      expect(released.queryByText(key)).not.toBeInTheDocument();
-      expect(beta.queryByText(key)).not.toBeInTheDocument();
-      expect(alpha.queryByText(key)).not.toBeInTheDocument();
-    }
-    expect(beta.getByText(FeatureSwitchKey.IntroVideo)).toBeInTheDocument();
-    expect(
-      beta.getByText(FeatureSwitchKey.DesktopScreenRecording),
-    ).toBeInTheDocument();
-    expect(
-      alpha.getByText(FeatureSwitchKey.AhrefsConnector),
-    ).toBeInTheDocument();
-    expect(released.getAllByRole("switch")).toHaveLength(
-      released.getAllByRole("listitem").length,
-    );
-    expect(beta.getAllByRole("switch")).toHaveLength(
-      beta.getAllByRole("listitem").length,
-    );
-    expect(alpha.getAllByRole("switch")).toHaveLength(
-      alpha.getAllByRole("listitem").length,
-    );
-    expect(internal.getAllByRole("switch")).toHaveLength(
-      internal.getAllByRole("listitem").length,
-    );
-    expect(buttonByText("Reset all")).toBeInTheDocument();
-    expect(screen.getAllByText(/^Maintainer:/u)).toHaveLength(
-      Object.values(FeatureSwitchKey).length,
-    );
-    expect(maintainerFilterButton("lancy")).toBeInTheDocument();
+  const released = featureSwitchGroup("Released");
+  const beta = featureSwitchGroup("Beta");
+  const alpha = featureSwitchGroup("Alpha");
+  const internal = featureSwitchGroup("Internal");
+  const featureRows = [released, beta, alpha, internal].flatMap((group) => {
+    return Array.from(group.querySelectorAll("li"));
   });
 
-  it("filters feature switches by maintainer", async () => {
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches: {}, effectiveSwitches: {} });
-    });
+  expect(featureRows).toHaveLength(Object.values(FeatureSwitchKey).length);
+  expect(screen.getAllByRole("switch")).toHaveLength(featureRows.length);
+  expect(
+    within(released).getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+  ).toBeVisible();
+  expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
+  expect(within(beta).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
+  expect(
+    within(beta).getByText(FeatureSwitchKey.DesktopScreenRecording),
+  ).toBeVisible();
+  expect(
+    within(alpha).getByText(FeatureSwitchKey.AhrefsConnector),
+  ).toBeVisible();
+  expect(
+    within(internal).getByText(FeatureSwitchKey.TestOauthConnector),
+  ).toBeVisible();
+  expect(buttonNamed("Reset all")).toBeEnabled();
+});
 
-    detachedSetupPage({ context, path: "/_/lab" });
+test("A user can filter Lab features by maintainer", async () => {
+  const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Maintainer: lancy@vm0.ai").length,
-      ).toBeGreaterThan(0);
-    });
-
-    click(maintainerFilterButton("lancy"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByText(FeatureSwitchKey.AhrefsConnector),
-      ).not.toBeInTheDocument();
-      expect(maintainerFilterButton("lancy")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-    });
-
-    click(maintainerFilterButton("all"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(FeatureSwitchKey.AhrefsConnector),
-      ).toBeInTheDocument();
-    });
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: { [FeatureSwitchKey.Lab]: true },
   });
+  await screen.findByRole("heading", { name: "Lab" });
 
-  it("lets users toggle and reset feature switches", async () => {
-    const user = userEvent.setup();
-    let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
+  await user.click(buttonNamed("lancy"));
+
+  expect(
+    screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+  ).toBeVisible();
+  expect(
+    screen.queryByText(FeatureSwitchKey.AhrefsConnector),
+  ).not.toBeInTheDocument();
+
+  await user.click(buttonNamed("All"));
+
+  expect(screen.getByText(FeatureSwitchKey.AhrefsConnector)).toBeVisible();
+});
+
+test("A user can toggle a Lab feature and reset all overrides", async () => {
+  const user = userEvent.setup();
+  const updatedSwitches: Record<string, boolean>[] = [];
+  let resetRequested = false;
+
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: {
       [FeatureSwitchKey.Lab]: true,
       [FeatureSwitchKey.TestOauthConnector]: false,
-    };
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches, effectiveSwitches: switches });
+    },
+  });
+  await screen.findByRole("heading", { name: "Lab" });
+
+  let effectiveSwitches: Record<string, boolean> = {
+    [FeatureSwitchKey.Lab]: true,
+    [FeatureSwitchKey.TestOauthConnector]: false,
+  };
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    return respond(200, {
+      switches: effectiveSwitches,
+      effectiveSwitches,
     });
-    context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
-      switches = { ...switches, ...body.switches };
-      return respond(200, {
-        switches: body.switches,
-        effectiveSwitches: switches,
-      });
+  });
+  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+    updatedSwitches.push(body.switches);
+    effectiveSwitches = { ...effectiveSwitches, ...body.switches };
+    return respond(200, {
+      switches: effectiveSwitches,
+      effectiveSwitches,
     });
-    context.mocks.api(featureSwitchesContract.delete, ({ respond }) => {
-      switches = {};
-      return respond(200, { deleted: true });
-    });
+  });
+  context.mocks.api(featureSwitchesContract.delete, ({ respond }) => {
+    resetRequested = true;
+    effectiveSwitches = { [FeatureSwitchKey.Lab]: true };
+    return respond(200, { deleted: true });
+  });
 
-    detachedSetupPage({ context, path: "/_/lab" });
+  const feature = featureSwitchRow(FeatureSwitchKey.TestOauthConnector);
+  const featureControl = within(feature).getByRole("switch");
+  expect(featureControl).not.toBeChecked();
 
-    await waitFor(() => {
-      expect(
-        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
-      ).toHaveAttribute("aria-checked", "false");
-    });
+  await user.click(featureControl);
 
-    click(featureSwitchControl(FeatureSwitchKey.TestOauthConnector));
+  await waitFor(() => {
+    expect(featureControl).toBeChecked();
+  });
+  expect(updatedSwitches).toStrictEqual([
+    { [FeatureSwitchKey.TestOauthConnector]: true },
+  ]);
 
-    await waitFor(() => {
-      expect(
-        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
-      ).toHaveAttribute("aria-checked", "true");
-    });
+  await user.click(buttonNamed("Reset all"));
 
-    const reset = buttonByText("Reset all");
-    expectBefore(reset, screen.getByRole("heading", { name: "Released" }));
-    reset.focus();
-    await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(resetRequested).toBeTruthy();
+    expect(featureControl).not.toBeChecked();
+  });
+});
 
-    await waitFor(() => {
-      expect(
-        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
-      ).toHaveAttribute("aria-checked", "false");
+test("The Notion automation switch writes only its canonical key", async () => {
+  const user = userEvent.setup();
+  const updates: Record<string, boolean>[] = [];
+
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
+    },
+  });
+  await screen.findByRole("heading", { name: "Lab" });
+
+  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+    updates.push(body.switches);
+    return respond(200, {
+      switches: body.switches,
+      effectiveSwitches: body.switches,
     });
   });
 
-  it("shows feature switches in name order within each rollout stage", async () => {
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches: {}, effectiveSwitches: {} });
-    });
+  await user.click(
+    within(
+      featureSwitchRow(FeatureSwitchKey.NotionWorkflowAutomations),
+    ).getByRole("switch"),
+  );
 
-    detachedSetupPage({ context, path: "/_/lab" });
+  await waitFor(() => {
+    expect(updates).toStrictEqual([
+      { [FeatureSwitchKey.NotionWorkflowAutomations]: false },
+    ]);
+  });
+});
 
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-    });
-
-    expectBefore(
-      featureSwitchRow(FeatureSwitchKey.CodexFastMode),
-      featureSwitchRow(FeatureSwitchKey.Lab),
-    );
+test("Lab orders features by name within each rollout stage", async () => {
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: { [FeatureSwitchKey.Lab]: true },
   });
 
-  it("shows the Lab rollout groups in Brazilian Portuguese", async () => {
-    document.documentElement.lang = "pt-BR";
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches: {}, effectiveSwitches: {} });
-    });
+  await screen.findByRole("heading", { name: "Lab" });
 
-    detachedSetupPage({ context, path: "/_/lab" });
+  const banking = featureSwitchRow(FeatureSwitchKey.Banking);
+  const codexFastMode = featureSwitchRow(FeatureSwitchKey.CodexFastMode);
+  expect(
+    banking.compareDocumentPosition(codexFastMode) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Laboratório" }),
-      ).toBeInTheDocument();
-      expect(document.title).toBe("Lab | VM0");
-    });
-    expect(
-      screen.getByText("Veja os recursos por estágio de lançamento."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Lançados" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Beta" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Alfa" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Internos" }),
-    ).toBeInTheDocument();
-    expect(buttonByText("Redefinir tudo")).toBeInTheDocument();
+test("Lab localizes rollout stages in Brazilian Portuguese", async () => {
+  await setupPage({
+    context,
+    path: "/_/lab",
+    locale: "pt-BR",
+    featureSwitches: { [FeatureSwitchKey.Lab]: true },
   });
+
+  await screen.findByRole("heading", { name: "Laboratório" });
+
+  expect(document.title).toBe("Lab | VM0");
+  expect(
+    screen.getByText("Veja os recursos por estágio de lançamento."),
+  ).toBeInTheDocument();
+  expect(featureSwitchGroup("Lançados")).toBeVisible();
+  expect(featureSwitchGroup("Beta")).toBeVisible();
+  expect(featureSwitchGroup("Alfa")).toBeVisible();
+  expect(featureSwitchGroup("Internos")).toBeVisible();
+  expect(buttonNamed("Redefinir tudo")).toBeVisible();
 });

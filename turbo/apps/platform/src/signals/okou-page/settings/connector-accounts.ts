@@ -86,7 +86,9 @@ export function connectorAccountMutationCompleted(
     : true;
 }
 
-export const settingsConnectorAccounts = createConnectorAccountListSignals();
+export const settingsConnectorAccounts = createConnectorAccountListSignals({
+  includeBuiltinScopeMismatch: true,
+});
 
 const invalidateConnectorAccounts$ = command(({ set }, signal: AbortSignal) => {
   set(reloadConnectorAccountSummaries$);

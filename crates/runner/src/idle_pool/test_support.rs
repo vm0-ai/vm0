@@ -82,6 +82,11 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
+    pub(crate) fn with_device_rate_limits(mut self, device_rate_limits: DeviceRateLimits) -> Self {
+        self.device_rate_limits = Some(device_rate_limits);
+        self
+    }
+
     pub(crate) fn with_source_ip(mut self, source_ip: impl Into<String>) -> Self {
         self.source_ip = source_ip.into();
         self

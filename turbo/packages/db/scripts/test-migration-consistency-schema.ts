@@ -43,11 +43,6 @@ import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import { validateClaudeFable51Migration } from "./test-claude-fable-5-1-migration";
 import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
-import {
-  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
-  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
-  validateChatSearchDeleteCompatibility,
-} from "./test-chat-search-delete-compatibility";
 import { validateAgentRunMetadataStage2Index } from "./test-agent-run-metadata-stage-2-index";
 import {
   validateAgentRunMetadataStage2Final,
@@ -2365,9 +2360,6 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
-  // Temporary #30453 old-API/new-DB delete bridge. Remove with #30468 after
-  // the pre-#30453 API artifact is no longer eligible for rollback.
-  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -2513,8 +2505,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
-  // Same temporary #30453 bridge and #30468 removal gate as its trigger.
-  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -11350,7 +11340,6 @@ async function main(): Promise<void> {
     await validatePiMemoryPhase2JobMigration();
     await validatePiMemoryPublicationMigration();
     await validateAgentDraftsCompatibilityRelation();
-    await validateChatSearchDeleteCompatibility(dbUrl.toString());
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
     await validateBuiltInProviderDiscriminatorContract(dbUrl.toString());

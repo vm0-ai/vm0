@@ -359,7 +359,18 @@ impl JobTelemetry {
         outcome: &'static str,
         reason: Option<&'static str>,
     ) {
-        let mut op = sandbox_op(action_type, Duration::ZERO, success, None, None, None);
+        self.record_bounded_outcome_with_error(action_type, success, None, outcome, reason);
+    }
+
+    pub(crate) fn record_bounded_outcome_with_error(
+        &mut self,
+        action_type: &'static str,
+        success: bool,
+        error: Option<&'static str>,
+        outcome: &'static str,
+        reason: Option<&'static str>,
+    ) {
+        let mut op = sandbox_op(action_type, Duration::ZERO, success, error, None, None);
         op.outcome = Some(outcome.to_string());
         op.reason = reason.map(str::to_string);
         self.push_operation(op);

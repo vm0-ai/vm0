@@ -92,28 +92,65 @@ fn reusable_reservation_is_exclusive_and_restorable() {
 }
 
 #[test]
-fn reusable_generation_reservation_requires_exact_generation() {
+fn reusable_generation_reservation_classifies_exact_misses() {
     let mut pool = IdlePool::new(pool_config(0));
     let held_generation_run_id = RunId::new_v4();
     let requested_generation_run_id = RunId::new_v4();
+    let device_rate_limits = sandbox::DeviceRateLimits {
+        block: sandbox::BlockRateLimits {
+            bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+            ops_per_sec: 10_000,
+        },
+        network: sandbox::NetworkRateLimits {
+            rx_bytes_per_sec: 50 * 1024 * 1024,
+            tx_bytes_per_sec: 25 * 1024 * 1024,
+        },
+    };
     let candidate =
         ParkedIdleCandidateBuilder::new("session-generation", make_budget_lease(2, 2048))
+            .with_device_rate_limits(device_rate_limits.clone())
             .with_history_generation_run_id(held_generation_run_id)
             .with_last_completed_at("2026-07-15T00:00:00.000Z")
             .build();
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
     let parked_revision = pool.status_snapshot().revision;
 
-    assert!(
-        pool.reserve_reusable_generation(
+    assert!(matches!(
+        pool.reserve_reusable_generation_with_reason(
+            "missing-session",
+            "vm0/default",
+            &Some(device_rate_limits.clone()),
+            held_generation_run_id,
+        ),
+        Err(ExactIdleReservationMiss::Absent)
+    ));
+    assert!(matches!(
+        pool.reserve_reusable_generation_with_reason(
+            "session-generation",
+            "vm0/large",
+            &Some(device_rate_limits.clone()),
+            held_generation_run_id,
+        ),
+        Err(ExactIdleReservationMiss::ProfileMismatch)
+    ));
+    assert!(matches!(
+        pool.reserve_reusable_generation_with_reason(
             "session-generation",
             "vm0/default",
             &None,
+            held_generation_run_id,
+        ),
+        Err(ExactIdleReservationMiss::DeviceLimitMismatch)
+    ));
+    assert!(matches!(
+        pool.reserve_reusable_generation_with_reason(
+            "session-generation",
+            "vm0/default",
+            &Some(device_rate_limits.clone()),
             requested_generation_run_id,
-        )
-        .is_none(),
-        "a different generation must remain parked"
-    );
+        ),
+        Err(ExactIdleReservationMiss::HistoryGenerationMismatch)
+    ));
     assert_eq!(pool.len(), 1);
     assert_eq!(pool.status_snapshot().revision, parked_revision);
 
@@ -121,7 +158,7 @@ fn reusable_generation_reservation_requires_exact_generation() {
         .reserve_reusable_generation(
             "session-generation",
             "vm0/default",
-            &None,
+            &Some(device_rate_limits),
             held_generation_run_id,
         )
         .expect("the exact generation should reserve");

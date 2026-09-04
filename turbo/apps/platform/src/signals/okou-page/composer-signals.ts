@@ -4,11 +4,12 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
+import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { onRef, withCleanup } from "../utils.ts";
+import { onDomEventFn, onRef, withCleanup } from "../utils.ts";
 import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
@@ -16,7 +17,18 @@ import {
 import {
   featureSwitch$,
   imageRecognitionAvailable$,
+  voiceDraftEnabled$,
 } from "../external/feature-switch.ts";
+import {
+  audioInputAvailable$,
+  audioInputQuota$,
+  openAudioInputQuotaRecovery$,
+  sttRecording$,
+  sttStarting$,
+  sttTranscribing$,
+  startRecording$,
+  stopAndTranscribe$,
+} from "../voice-io/voice-io-stt.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ChatAttachment } from "./chat-draft.ts";
 import { createComposerFeedbackModel } from "./chat-feedback.ts";
@@ -199,7 +211,7 @@ export interface ComposerImageModelSignals {
 
 interface ComposerComputerSignals {
   readonly computerUseHostId$: Computed<string | null>;
-  readonly cloudBrowserEnabled$: Computed<boolean>;
+  readonly cloudBrowserEnabled$: Computed<boolean | Promise<boolean>>;
   readonly setComputerUseHostId$: Command<
     Promise<void>,
     [string | null, AbortSignal]
@@ -250,9 +262,14 @@ interface ComposerTemplateSignals
   >;
 }
 
+interface ComposerVoiceInputSignals {
+  readonly toggle$: Command<Promise<void>, [AbortSignal]>;
+}
+
 export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
+  readonly voice: ComposerVoiceInputSignals;
   readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
@@ -484,6 +501,97 @@ function createRemoveQueuedMessage(
   );
 }
 
+function createComposerVoiceInputSignals(
+  workflowComposer: WorkflowComposerSignals,
+  draft: Pick<ComposerDraftSignals, "save$">,
+): ComposerVoiceInputSignals {
+  return {
+    toggle$: command(async ({ get, set }, signal: AbortSignal) => {
+      if (
+        !get(audioInputAvailable$) ||
+        get(sttStarting$) ||
+        get(sttTranscribing$)
+      ) {
+        return;
+      }
+      if (get(sttRecording$)) {
+        await set(stopAndTranscribe$, signal);
+        return;
+      }
+
+      const quota = await get(audioInputQuota$);
+      signal.throwIfAborted();
+      if (!quota.allowed) {
+        await set(openAudioInputQuotaRecovery$, signal);
+        return;
+      }
+
+      if (get(voiceDraftEnabled$)) {
+        let voiceDraftId: string | null = null;
+        await set(
+          startRecording$,
+          onDomEventFn(async (text: string) => {
+            if (voiceDraftId === null) {
+              return;
+            }
+            set(
+              workflowComposer.voiceDraft.appendTranscript$,
+              voiceDraftId,
+              text,
+            );
+            await set(draft.save$, signal);
+          }),
+          {
+            autoSegment: quota.limit === null,
+            autoStopOnSilence: false,
+          },
+          {
+            started: () => {
+              voiceDraftId = set(workflowComposer.voiceDraft.start$);
+            },
+            finish: async () => {
+              if (voiceDraftId === null) {
+                return;
+              }
+              await set(
+                workflowComposer.voiceDraft.finish$,
+                voiceDraftId,
+                "automatic",
+                signal,
+              );
+              signal.throwIfAborted();
+              await set(draft.save$, signal);
+            },
+            fail: async () => {
+              if (voiceDraftId === null) {
+                return;
+              }
+              set(workflowComposer.voiceDraft.markFailed$, voiceDraftId);
+              await set(draft.save$, signal);
+            },
+          },
+          signal,
+        );
+        return;
+      }
+
+      await set(
+        startRecording$,
+        onDomEventFn(async (text: string) => {
+          set(workflowComposer.appendText$, text);
+          await set(draft.save$, signal);
+        }),
+        {
+          autoSegment: quota.limit === null,
+          autoStopOnSilence: true,
+        },
+        undefined,
+        signal,
+      );
+    }),
+  };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -507,6 +615,7 @@ export function createComposerSignals(
     {
       autoFocus: true,
       singleLineOnMobile: options.singleLineOnMobile,
+      lastAssistantMessage$: eventSignals.lastAssistantMessage$,
     },
     feedback,
   );
@@ -553,6 +662,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
+    voice: createComposerVoiceInputSignals(workflowComposer, options.draft),
     voiceDraft: workflowComposer.voiceDraft,
     feedback: workflowComposer.feedback,
     workflow: {
@@ -645,6 +755,20 @@ function pendingAutomationEventText(
 }
 
 function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
+  const lastAssistantMessage$ = computed((get): string | undefined => {
+    const events = get(chatEvents$);
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event?.eventType !== "output.message") {
+        continue;
+      }
+      const content = event.content.trim();
+      if (content.length > 0) {
+        return content.slice(-VOICE_IO_POLISH_MAX_TEXT_CHARS);
+      }
+    }
+    return undefined;
+  });
   const semanticEvents$ = computed((get) => {
     return semanticChatEventsFromChatEvents(get(chatEvents$));
   });
@@ -704,6 +828,7 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     return Promise.resolve(foldActiveChatGoalObjective(get(chatEvents$)));
   });
   return {
+    lastAssistantMessage$,
     actionsLoading$,
     sending$,
     runningModelSelection$,

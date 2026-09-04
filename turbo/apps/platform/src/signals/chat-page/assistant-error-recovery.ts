@@ -8,11 +8,18 @@ import {
 } from "@okouai/api-contracts/contracts/errors";
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
+  getFrameworkForType,
+  getVm0ConcreteProviderType,
   isSupportedRunModel,
+  type OrgModelPolicy,
   type ModelProviderResponse,
   type OrgModelPoliciesResponse,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
+import {
+  knownRunFailureReasonSchema,
+  type KnownRunFailureReason,
+} from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { personalModelProviders$ } from "../external/personal-model-providers.ts";
@@ -109,7 +116,21 @@ function isClaudeUsageLimit(error: string): boolean {
   );
 }
 
-function classifyAssistantError(
+function isCodexModelCapacity(error: string): boolean {
+  return /selected model is at capacity\.? please try a different model/iu.test(
+    error,
+  );
+}
+
+function isClaudeModelCapacity(error: string): boolean {
+  return (
+    /\bclaude\b.*\b(?:is overloaded|overloaded|at capacity)\b/iu.test(error) ||
+    /\b529\b.*\boverload/iu.test(error) ||
+    /\boverloaded_error\b/iu.test(error)
+  );
+}
+
+function classifyAssistantErrorFromText(
   event: EnrichedChatEvent,
   error: string,
 ): ClassifiedAssistantError | null {
@@ -145,11 +166,7 @@ function classifyAssistantError(
     };
   }
 
-  if (
-    /selected model is at capacity\.? please try a different model/iu.test(
-      normalized,
-    )
-  ) {
+  if (isCodexModelCapacity(normalized)) {
     return {
       sourceEventId: event.id,
       providerMessage: error,
@@ -162,13 +179,7 @@ function classifyAssistantError(
     };
   }
 
-  if (
-    /\bclaude\b.*\b(?:is overloaded|overloaded|at capacity)\b/iu.test(
-      normalized,
-    ) ||
-    /\b529\b.*\boverload/iu.test(normalized) ||
-    /\boverloaded_error\b/iu.test(normalized)
-  ) {
+  if (isClaudeModelCapacity(normalized)) {
     return {
       sourceEventId: event.id,
       providerMessage: error,
@@ -212,6 +223,129 @@ function classifyAssistantError(
   return null;
 }
 
+const STRUCTURED_PROVIDER_RECOVERY_KIND = Object.freeze({
+  session_history_limit: null,
+  insufficient_credits: null,
+  invalid_api_key: null,
+  invalid_credentials: null,
+  terms_acceptance_required: null,
+  context_window_exceeded: null,
+  input_too_large: null,
+  output_token_limit: null,
+  provider_rate_limited: null,
+  provider_overloaded: "model-capacity",
+  provider_stream_timeout: null,
+  provider_server_error: null,
+  response_connection_lost: null,
+  safety_policy_refusal: null,
+  reconnect_required: null,
+  unsupported_model: "model-unavailable",
+  usage_limit: "usage-limit",
+} satisfies Record<
+  KnownRunFailureReason,
+  ProviderAssistantErrorRecoveryKind | null
+>);
+
+function structuredProviderRecoveryKind(
+  event: EnrichedChatEvent,
+): ProviderAssistantErrorRecoveryKind | null | undefined {
+  if (event.eventType !== "run.failed" || event.failureReason === undefined) {
+    return undefined;
+  }
+
+  const knownReason = knownRunFailureReasonSchema.safeParse(
+    event.failureReason,
+  );
+  if (!knownReason.success) {
+    return null;
+  }
+  return STRUCTURED_PROVIDER_RECOVERY_KIND[knownReason.data];
+}
+
+function structuredRecoveryFrameworkFromMessage(
+  kind: ProviderAssistantErrorRecoveryKind,
+  error: string,
+): ModelProviderFramework | null {
+  const normalized = normalizedProviderMessage(error);
+  switch (kind) {
+    case "model-capacity": {
+      if (isCodexModelCapacity(normalized)) {
+        return getFrameworkForType("openai-api-key");
+      }
+      if (isClaudeModelCapacity(normalized)) {
+        return getFrameworkForType("anthropic-api-key");
+      }
+      return null;
+    }
+    case "model-unavailable": {
+      return getCodexChatGptAccountUnsupportedModel(error) === undefined
+        ? null
+        : getFrameworkForType("openai-api-key");
+    }
+    case "usage-limit": {
+      if (/you(?:'|’)ve hit your usage limit\b/iu.test(normalized)) {
+        return getFrameworkForType("openai-api-key");
+      }
+      if (isClaudeUsageLimit(normalized)) {
+        return getFrameworkForType("anthropic-api-key");
+      }
+      return null;
+    }
+  }
+}
+
+function classifyStructuredAssistantError(
+  event: EnrichedChatEvent,
+  error: string,
+  kind: ProviderAssistantErrorRecoveryKind,
+  framework: ModelProviderFramework,
+): ClassifiedAssistantError {
+  const normalized = normalizedProviderMessage(error);
+  const unsupportedModel = getCodexChatGptAccountUnsupportedModel(error);
+  const hasCodexUsageDetails =
+    kind === "usage-limit" &&
+    /you(?:'|’)ve hit your usage limit\b/iu.test(normalized);
+  const hasClaudeUsageDetails =
+    kind === "usage-limit" && isClaudeUsageLimit(normalized);
+  const codexModelScoped =
+    framework === "codex" &&
+    hasCodexUsageDetails &&
+    /\busage limit for\b/iu.test(normalized);
+  const limitWindow =
+    kind === "usage-limit"
+      ? framework === "claude-code" && hasClaudeUsageDetails
+        ? (claudeLimitWindow(normalized) ?? "unknown")
+        : codexModelScoped
+          ? "model"
+          : "unknown"
+      : null;
+
+  return {
+    sourceEventId: event.id,
+    providerMessage: error,
+    kind,
+    framework,
+    scope:
+      kind === "model-unavailable" ||
+      kind === "model-capacity" ||
+      codexModelScoped ||
+      limitWindow === "model"
+        ? "model"
+        : "framework",
+    limitWindow,
+    retryLabel:
+      hasCodexUsageDetails || hasClaudeUsageDetails
+        ? resetLabelFromProviderMessage(normalized)
+        : null,
+    failedModel:
+      kind === "model-unavailable" &&
+      unsupportedModel !== undefined &&
+      isSupportedRunModel(unsupportedModel)
+        ? unsupportedModel
+        : null,
+  };
+}
+
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
@@ -223,9 +357,10 @@ function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   );
 }
 
-function latestAssistantRecoveryCandidate(
-  groups: readonly ChatEventGroup[],
-): ClassifiedAssistantError | null {
+function latestAssistantErrorCandidate(groups: readonly ChatEventGroup[]): {
+  readonly event: EnrichedChatEvent;
+  readonly error: string;
+} | null {
   const group = groups.at(-1);
   if (group?.role !== "assistant") {
     return null;
@@ -246,7 +381,7 @@ function latestAssistantRecoveryCandidate(
   ) {
     return null;
   }
-  return classifyAssistantError(event, event.error);
+  return { event, error: event.error };
 }
 
 function exhaustedUsageWindow(provider: ModelProviderResponse): {
@@ -304,7 +439,7 @@ function providerSubscriptionReset(
 function selectedModelPolicy(
   policies: OrgModelPoliciesResponse,
   selectedModel: string | null,
-) {
+): OrgModelPolicy | undefined {
   const model =
     selectedModel ??
     policies.policies.find((policy) => {
@@ -314,6 +449,19 @@ function selectedModelPolicy(
   return policies.policies.find((policy) => {
     return policy.model === model;
   });
+}
+
+function modelPolicyFramework(
+  policy: OrgModelPolicy | undefined,
+): ModelProviderFramework | null {
+  if (policy === undefined) {
+    return null;
+  }
+  const providerType =
+    policy.defaultProviderType === "built-in"
+      ? getVm0ConcreteProviderType(policy.model)
+      : policy.defaultProviderType;
+  return getFrameworkForType(providerType);
 }
 
 function usesPersonalSubscription(
@@ -328,15 +476,76 @@ function usesPersonalSubscription(
   );
 }
 
+function createClassifiedAssistantErrorComputed(
+  visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>,
+  selectedModel$: Computed<string | null>,
+): Computed<Promise<ClassifiedAssistantError | null>> {
+  return computed(async (get): Promise<ClassifiedAssistantError | null> => {
+    const candidate = latestAssistantErrorCandidate(
+      await get(visibleRenderedChatGroups$),
+    );
+    if (candidate === null) {
+      return null;
+    }
+
+    const structuredKind = structuredProviderRecoveryKind(candidate.event);
+    if (structuredKind === null) {
+      return null;
+    }
+
+    let classified: ClassifiedAssistantError | null;
+    if (structuredKind === undefined) {
+      classified = classifyAssistantErrorFromText(
+        candidate.event,
+        candidate.error,
+      );
+    } else {
+      if (
+        structuredKind !== "model-unavailable" &&
+        !get(featureSwitch$)[FeatureSwitchKey.ChatErrorRecovery]
+      ) {
+        return null;
+      }
+      const frameworkFromMessage = structuredRecoveryFrameworkFromMessage(
+        structuredKind,
+        candidate.error,
+      );
+      const framework =
+        frameworkFromMessage ??
+        modelPolicyFramework(
+          selectedModelPolicy(
+            await get(orgModelPolicies$),
+            get(selectedModel$),
+          ),
+        );
+      if (framework === null) {
+        return null;
+      }
+      classified = classifyStructuredAssistantError(
+        candidate.event,
+        candidate.error,
+        structuredKind,
+        framework,
+      );
+    }
+    if (classified === null) {
+      return null;
+    }
+    return classified;
+  });
+}
+
 function createAssistantErrorRecoveryComputed(
   visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>,
   selectedModel$: Computed<string | null>,
 ) {
+  const classifiedAssistantError$ = createClassifiedAssistantErrorComputed(
+    visibleRenderedChatGroups$,
+    selectedModel$,
+  );
   return computed(async (get): Promise<AssistantErrorRecovery | null> => {
-    const classified = latestAssistantRecoveryCandidate(
-      await get(visibleRenderedChatGroups$),
-    );
-    if (!classified) {
+    const classified = await get(classifiedAssistantError$);
+    if (classified === null) {
       return null;
     }
     if (

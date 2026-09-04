@@ -1594,6 +1594,7 @@ function replaceVoiceDraftWithText(
 function createVoiceDraftSignals(
   editor: Editor,
   statusState$: State<VoiceDraftStatus | null>,
+  lastAssistantMessage$: Computed<string | undefined> | undefined,
 ): WorkflowComposerVoiceDraftSignals {
   const hasDraft$ = computed((get): boolean => {
     return get(statusState$) !== null;
@@ -1638,17 +1639,20 @@ function createVoiceDraftSignals(
         removeVoiceDraft(editor, id, false);
         return true;
       }
+      const lastAssistantMessage = lastAssistantMessage$
+        ? get(lastAssistantMessage$)
+        : undefined;
       setVoiceDraftAttributes(editor, id, {
         status: "processing",
         visible: mode === "retry",
       });
       const client = get(apiClient$)(voiceIoPolishContract);
+      const body =
+        lastAssistantMessage === undefined
+          ? { text }
+          : { text, lastAssistantMessage };
       const result = await settle(
-        accept(
-          client.post({ body: { text }, fetchOptions: { signal } }),
-          [200],
-          signal,
-        ),
+        accept(client.post({ body, fetchOptions: { signal } }), [200], signal),
         signal,
       );
       signal.throwIfAborted();
@@ -2403,9 +2407,10 @@ interface MountEditorOptions {
   singleLineOnMobile: boolean;
 }
 
-interface WorkflowComposerMountOptions {
+interface WorkflowComposerOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
+  readonly lastAssistantMessage$?: Computed<string | undefined>;
 }
 
 function focusMountedEditorAtEnd(editor: Editor): void {
@@ -3056,7 +3061,7 @@ export function createWorkflowComposerSignals<
   draft: DraftSignals,
   openDialog$: OpenTemplatePickerDialogCommand,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
-  mountOptions: WorkflowComposerMountOptions = {},
+  options: WorkflowComposerOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
@@ -3070,7 +3075,11 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
-  const voiceDraft = createVoiceDraftSignals(editor, voiceDraftStatusState$);
+  const voiceDraft = createVoiceDraftSignals(
+    editor,
+    voiceDraftStatusState$,
+    options.lastAssistantMessage$,
+  );
   connectComposerFeedback(feedback, editor);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
@@ -3127,8 +3136,8 @@ export function createWorkflowComposerSignals<
     compositionGate,
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
-    autoFocus: mountOptions.autoFocus ?? false,
-    singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
+    autoFocus: options.autoFocus ?? false,
+    singleLineOnMobile: options.singleLineOnMobile ?? false,
   });
   const suggestionInsertionCommands = createSuggestionInsertionCommands(
     editor,

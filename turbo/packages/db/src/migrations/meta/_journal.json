@@ -1828,6 +1828,20 @@
       "when": 1788434594793,
       "tag": "1068_piloop_launch_snapshot_v3",
       "breakpoints": true
+    },
+    {
+      "idx": 1069,
+      "version": "7",
+      "when": 1788439811845,
+      "tag": "1069_eager_black_tom",
+      "breakpoints": true
+    },
+    {
+      "idx": 1070,
+      "version": "7",
+      "when": 1788442864067,
+      "tag": "1070_remove_chat_search_delete_compatibility",
+      "breakpoints": true
     }
   ]
 }

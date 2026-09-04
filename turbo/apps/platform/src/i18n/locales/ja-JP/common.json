@@ -385,7 +385,6 @@
         "newChat": "新しいチャット",
         "nextAgent": "次のエージェント",
         "nextThread": "次のスレッド",
-        "openAgentList": "エージェントリストを開く",
         "openFirstThread": "最初のスレッドを開く",
         "previousAgent": "前のエージェント",
         "previousThread": "前のスレッド",
@@ -5078,6 +5077,14 @@
           "system": "システム",
           "title": "テーマ"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "新しいチャットでクラウドブラウザを既定でオンにします。各チャットで変更できます。",
+          "title": "クラウドブラウザ"
+        },
+        "description": "新しいチャットの初期設定とメッセージの送信方法を選択します。",
+        "sectionTitle": "チャット"
       },
       "debug": {
         "builtInModelCooldown": {

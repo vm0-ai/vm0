@@ -24,6 +24,9 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
     expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
+    expect(FeatureSwitchKey.MarkdownHexColorPreview).toBe(
+      "markdownHexColorPreview",
+    );
   });
 });
 
@@ -182,6 +185,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -195,9 +199,13 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
 
@@ -209,6 +217,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
@@ -222,9 +233,15 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
@@ -292,12 +309,14 @@ describe("feature switch override filtering", () => {
     expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
   });
 
-  it("ignores persisted overrides for removed switches", () => {
+  it("ignores removed Pi memory overrides while retaining the PiLoop control", () => {
     expect(
       filterFeatureSwitchOverrides({
-        zeroPeopleSearch: false,
+        piMemoryRecall: false,
+        piMemoryGeneration: false,
+        [FeatureSwitchKey.PiLoop]: true,
       }),
-    ).toStrictEqual({});
+    ).toStrictEqual({ [FeatureSwitchKey.PiLoop]: true });
   });
 });
 

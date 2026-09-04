@@ -399,7 +399,6 @@
         "newChat": "Nouvelle discussion",
         "nextAgent": "Agent suivant",
         "nextThread": "Fil suivant",
-        "openAgentList": "Ouvrir la liste des agents",
         "openFirstThread": "Ouvrir le premier fil",
         "previousAgent": "Agent précédent",
         "previousThread": "Fil précédent",
@@ -5144,6 +5143,14 @@
           "system": "Système",
           "title": "Thème"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Activez le navigateur cloud par défaut dans les nouvelles discussions. Vous pouvez le modifier dans chaque discussion.",
+          "title": "Navigateur cloud"
+        },
+        "description": "Choisissez les paramètres par défaut des nouvelles discussions et le mode d’envoi des messages.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

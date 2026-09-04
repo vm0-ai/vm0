@@ -79,7 +79,9 @@ function rewritePairedTag(html, tagName, handler) {
       ? /<html([^>]*)>([\s\S]*?)<\/html>/iu
       : tagName === "head"
         ? /<head([^>]*)>([\s\S]*?)<\/head>/iu
-        : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
+        : tagName === "body"
+          ? /<body([^>]*)>([\s\S]*?)<\/body>/iu
+          : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
   return html.replace(pattern, (_tag, attributeSource, innerContent) => {
     const state = applyHandler({
       attributes: parseAttributes(attributeSource),
@@ -114,7 +116,12 @@ function rewriteVoidTag(html, tagName, selector, handler) {
 }
 
 function rewriteHtml(html, selector, handler) {
-  if (selector === "html" || selector === "head" || selector === "title") {
+  if (
+    selector === "html" ||
+    selector === "head" ||
+    selector === "body" ||
+    selector === "title"
+  ) {
     return rewritePairedTag(html, selector, handler);
   }
   if (selector.startsWith("meta[")) {
@@ -197,7 +204,7 @@ const embeddedIndexTemplate = builtIndexTemplate
     "</body>",
     '<script type="module" src="https://static.okou.io/okou-app/assets/index-Test1234.js"></script>\n</body>',
   );
-const embeddedWorker = workerModule.createWorker({
+const embeddedShell = {
   icon192: new TextEncoder().encode("icon-192").buffer,
   icon512: new TextEncoder().encode("icon-512").buffer,
   icon512Maskable: new TextEncoder().encode("icon-maskable").buffer,
@@ -205,7 +212,8 @@ const embeddedWorker = workerModule.createWorker({
   manifest: manifestTemplate,
   robots: "User-agent: *\nAllow: /\n",
   serviceWorker: 'self.addEventListener("install", () => {});',
-});
+};
+const embeddedWorker = workerModule.createWorker(embeddedShell);
 const worker = embeddedWorker;
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
@@ -290,6 +298,51 @@ function documentTitle(html) {
 function htmlAttribute(html, attributeName) {
   const tag = /<html\b[^>]*>/iu.exec(html)?.[0];
   return tag ? (parseAttributes(tag).get(attributeName) ?? null) : null;
+}
+
+function clerkEdgeSessionJson(html) {
+  const matches = [
+    ...html.matchAll(
+      /<script type="application\/json" id="vm0-clerk-edge-session">([\s\S]*?)<\/script>/giu,
+    ),
+  ];
+  assert.equal(matches.length, 1);
+  return JSON.parse(matches[0][1]);
+}
+
+async function responseSnapshot(targetWorker, url, env) {
+  const response = await targetWorker.fetch(
+    new Request(url, {
+      headers: {
+        Cookie:
+          "__session=jwt-cookie-must-not-render; __clerk_db_jwt=dev-browser-jwt-must-not-render",
+      },
+    }),
+    env,
+  );
+  return {
+    body: await response.text(),
+    headers: [...response.headers.entries()],
+    status: response.status,
+    statusText: response.statusText,
+  };
+}
+
+function assertNoClerkSecrets(snapshot) {
+  for (const sensitiveValue of [
+    "jwt-cookie-must-not-render",
+    "dev-browser-jwt-must-not-render",
+    "sk_test_secret-must-not-render",
+    "sk_live_secret-must-not-render",
+    "session-token-must-not-render",
+    "sess_must-not-render",
+    "claim-must-not-render",
+    "handshake-cookie-must-not-render",
+    "refreshed-cookie-must-not-render",
+    "token=must-not-render",
+  ]) {
+    assert.doesNotMatch(snapshot.body, new RegExp(sensitiveValue, "u"));
+  }
 }
 
 function clerkBootstrap(html) {
@@ -405,19 +458,6 @@ assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
-for (const [origin, brandName] of [
-  ["https://app-worker.vm0.ai", "VM0"],
-  ["https://app-worker.okou.ai", "Okou"],
-]) {
-  const canaryPage = await requestAppPage(origin);
-  assert.equal(canaryPage.response.status, 200);
-  assert.equal(
-    htmlAttribute(canaryPage.html, "data-app-brand-name"),
-    brandName,
-  );
-  assert.equal(clerkBootstrap(canaryPage.html), expectedClerkBootstrap);
-}
-
 const okouPreview = await requestAppPage(
   "https://pr-25304-app-okou-app-preview.vm0.workers.dev",
   "okou",
@@ -481,6 +521,321 @@ assert.doesNotMatch(
   embeddedProductionHtml,
   /https:\/\/app\.okou\.ai\/okou-app\/assets\/index-Test1234\.js/u,
 );
+
+const edgeDebugOrigin = "https://pr-25304-app-okou-app-preview.vm0.workers.dev";
+const edgeDebugUrl = `${edgeDebugOrigin}/settings/profile`;
+const edgeDebugEnvironment = {
+  CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: edgeDebugOrigin,
+  CLERK_PUBLISHABLE_KEY: previewClerkPublishableKey,
+  CLERK_SECRET_KEY: "sk_test_secret-must-not-render",
+  PUBLIC_BRAND: "okou",
+};
+let unexpectedClerkClientFactoryCalls = 0;
+const unexpectedClerkClientFactory = () => {
+  unexpectedClerkClientFactoryCalls += 1;
+  throw new Error("Clerk must not run for this request");
+};
+const guardedEdgeWorker = workerModule.createWorker(
+  embeddedShell,
+  unexpectedClerkClientFactory,
+);
+const edgeDebugBaseline = await responseSnapshot(
+  guardedEdgeWorker,
+  edgeDebugUrl,
+  edgeDebugEnvironment,
+);
+assert.doesNotMatch(edgeDebugBaseline.body, /vm0-clerk-edge-session/u);
+assertNoClerkSecrets(edgeDebugBaseline);
+
+const duplicateFlag = await responseSnapshot(
+  guardedEdgeWorker,
+  `${edgeDebugUrl}?__clerk_edge_debug=1&__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+assert.deepEqual(duplicateFlag, edgeDebugBaseline);
+
+for (const ineligibleOrigin of [
+  "http://app.okou.ai",
+  "https://app.okou.ai.evil.example",
+  "https://pr-25304-app.omby.ai",
+  "https://staging-app-okou-app-preview.vm0.workers.dev",
+]) {
+  const ineligibleUrl = `${ineligibleOrigin}/settings/profile`;
+  const ineligibleEnvironment = {
+    ...edgeDebugEnvironment,
+    CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: ineligibleOrigin,
+  };
+  const baseline = await responseSnapshot(
+    guardedEdgeWorker,
+    ineligibleUrl,
+    ineligibleEnvironment,
+  );
+  const flagged = await responseSnapshot(
+    guardedEdgeWorker,
+    `${ineligibleUrl}?__clerk_edge_debug=1`,
+    ineligibleEnvironment,
+  );
+  assert.deepEqual(flagged, baseline);
+  assertNoClerkSecrets(flagged);
+}
+
+const missingConfig = await responseSnapshot(
+  guardedEdgeWorker,
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  {
+    CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: edgeDebugOrigin,
+    PUBLIC_BRAND: "okou",
+  },
+);
+assert.deepEqual(missingConfig, edgeDebugBaseline);
+assert.equal(unexpectedClerkClientFactoryCalls, 0);
+
+function clerkClientReturning(requestState) {
+  return () => ({
+    authenticateRequest() {
+      return Promise.resolve(requestState);
+    },
+  });
+}
+
+const anonymous = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers(),
+      isAuthenticated: false,
+    }),
+  ),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+
+const handshake = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers({
+        Location: "https://clerk.example/handshake?token=must-not-render",
+        "Set-Cookie": "__session=handshake-cookie-must-not-render",
+      }),
+      isAuthenticated: false,
+    }),
+  ),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+
+const refresh = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers({
+        "Set-Cookie": "__session=refreshed-cookie-must-not-render",
+      }),
+      isAuthenticated: true,
+      toAuth() {
+        throw new Error("Refresh state must not be consumed");
+      },
+    }),
+  ),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+
+const thrown = await responseSnapshot(
+  workerModule.createWorker(embeddedShell, () => ({
+    authenticateRequest() {
+      return Promise.reject(new Error("Clerk network failure"));
+    },
+  })),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+
+const constructorThrown = await responseSnapshot(
+  workerModule.createWorker(embeddedShell, () => {
+    throw new Error("Clerk SDK failure");
+  }),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+
+const timedOut = await responseSnapshot(
+  workerModule.createWorker(embeddedShell, () => ({
+    authenticateRequest() {
+      return new Promise(() => {});
+    },
+  })),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+
+for (const unchanged of [
+  anonymous,
+  handshake,
+  refresh,
+  thrown,
+  constructorThrown,
+  timedOut,
+]) {
+  assert.deepEqual(unchanged, edgeDebugBaseline);
+  assertNoClerkSecrets(unchanged);
+  assert.equal(new Headers(unchanged.headers).get("Location"), null);
+  assert.equal(new Headers(unchanged.headers).get("Set-Cookie"), null);
+}
+
+const currentUserId = "user_current</script><script>alert(1)</script>";
+const currentOrgId = "org_current";
+const authenticatedWorker = workerModule.createWorker(
+  embeddedShell,
+  ({ publishableKey, secretKey, telemetry }) => {
+    if (
+      publishableKey !== previewClerkPublishableKey ||
+      secretKey !== "sk_test_secret-must-not-render" ||
+      telemetry?.disabled !== true
+    ) {
+      throw new Error("Unexpected Clerk client configuration");
+    }
+    return {
+      authenticateRequest(request, options) {
+        if (
+          request.url !== `${edgeDebugUrl}?__clerk_edge_debug=1` ||
+          options.acceptsToken !== "session_token" ||
+          options.authorizedParties.length !== 1 ||
+          options.authorizedParties[0] !== edgeDebugOrigin
+        ) {
+          return Promise.reject(new Error("Unexpected Clerk request options"));
+        }
+        return Promise.resolve({
+          headers: new Headers(),
+          isAuthenticated: true,
+          token: "session-token-must-not-render",
+          toAuth() {
+            return {
+              orgId: currentOrgId,
+              sessionClaims: { private: "claim-must-not-render" },
+              sessionId: "sess_must-not-render",
+              userId: currentUserId,
+            };
+          },
+        });
+      },
+    };
+  },
+);
+const authenticated = await responseSnapshot(
+  authenticatedWorker,
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+assert.equal(authenticated.status, 200);
+assert.equal(
+  new Headers(authenticated.headers).get("Cache-Control"),
+  "private, no-store",
+);
+assert.equal(new Headers(authenticated.headers).get("Location"), null);
+assert.equal(new Headers(authenticated.headers).get("Set-Cookie"), null);
+assert.match(authenticated.body, /id="app-bootstrap-skeleton"/u);
+assert.match(authenticated.body, /\\u003c\/script>/u);
+assert.doesNotMatch(authenticated.body, /<script>alert\(1\)<\/script>/u);
+assert.deepEqual(clerkEdgeSessionJson(authenticated.body), {
+  userId: currentUserId,
+  orgId: currentOrgId,
+});
+assert.deepEqual(Object.keys(clerkEdgeSessionJson(authenticated.body)).sort(), [
+  "orgId",
+  "userId",
+]);
+assertNoClerkSecrets(authenticated);
+
+for (const [productionOrigin, publicBrand] of [
+  ["https://app.okou.ai", "okou"],
+  ["https://app.vm0.ai", "vm0"],
+]) {
+  const productionEdgeUrl = `${productionOrigin}/settings/profile`;
+  const productionEdgeEnvironment = {
+    CLERK_PUBLISHABLE_KEY: productionClerkPublishableKey,
+    CLERK_SECRET_KEY: "sk_live_secret-must-not-render",
+    PUBLIC_BRAND: publicBrand,
+  };
+  let clerkClientFactoryCalls = 0;
+  const productionEdgeWorker = workerModule.createWorker(
+    embeddedShell,
+    ({ publishableKey, secretKey, telemetry }) => {
+      clerkClientFactoryCalls += 1;
+      assert.equal(publishableKey, productionClerkPublishableKey);
+      assert.equal(secretKey, "sk_live_secret-must-not-render");
+      assert.equal(telemetry?.disabled, true);
+      return {
+        authenticateRequest(request, options) {
+          assert.equal(
+            request.url,
+            `${productionEdgeUrl}?__clerk_edge_debug=1`,
+          );
+          assert.equal(options.acceptsToken, "session_token");
+          assert.deepEqual(options.authorizedParties, [productionOrigin]);
+          return Promise.resolve({
+            headers: new Headers(),
+            isAuthenticated: true,
+            toAuth() {
+              return {
+                orgId: "org_production",
+                userId: "user_production",
+              };
+            },
+          });
+        },
+      };
+    },
+  );
+  const productionBaseline = await responseSnapshot(
+    productionEdgeWorker,
+    productionEdgeUrl,
+    productionEdgeEnvironment,
+  );
+  assert.equal(clerkClientFactoryCalls, 0);
+  assert.doesNotMatch(productionBaseline.body, /vm0-clerk-edge-session/u);
+
+  const productionAuthenticated = await responseSnapshot(
+    productionEdgeWorker,
+    `${productionEdgeUrl}?__clerk_edge_debug=1`,
+    productionEdgeEnvironment,
+  );
+  assert.equal(clerkClientFactoryCalls, 1);
+  assert.deepEqual(clerkEdgeSessionJson(productionAuthenticated.body), {
+    userId: "user_production",
+    orgId: "org_production",
+  });
+  assert.equal(
+    new Headers(productionAuthenticated.headers).get("Cache-Control"),
+    "private, no-store",
+  );
+  assertNoClerkSecrets(productionAuthenticated);
+}
+
+const authenticatedWithoutOrganization = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers(),
+      isAuthenticated: true,
+      toAuth() {
+        return { userId: "user_without_organization", orgId: null };
+      },
+    }),
+  ),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+assert.deepEqual(clerkEdgeSessionJson(authenticatedWithoutOrganization.body), {
+  userId: "user_without_organization",
+  orgId: null,
+});
+assert.equal(
+  new Headers(authenticatedWithoutOrganization.headers).get("Cache-Control"),
+  "private, no-store",
+);
+assertNoClerkSecrets(authenticatedWithoutOrganization);
 
 const embeddedServiceWorker = await embeddedWorker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
@@ -665,21 +1020,6 @@ assert.equal(
   null,
 );
 const productionHtml = await production.response.text();
-
-const canaryProduction = await requestSharedPage({
-  appOrigin: "https://app-worker.okou.ai",
-  metaResponse() {
-    return Response.json({
-      title: "Canary production conversation",
-      publicBrand: "okou",
-    });
-  },
-});
-assert.equal(canaryProduction.response.status, 200);
-assert.equal(
-  canaryProduction.observedUrl,
-  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
-);
 
 const vm0SharedOnOkouHost = await requestSharedPage({
   appOrigin: "https://app.okou.ai",

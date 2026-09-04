@@ -28,6 +28,8 @@ import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
 
 type ServiceDb = Pick<Db, "select">;
 
+const RUN_CONTEXT_QUERY_PADDING_MS = 60 * 60 * 1000;
+
 async function verifyRunOwnership(
   db: ServiceDb,
   runId: string,
@@ -84,6 +86,7 @@ export function runContext(
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         vars: agentRuns.vars,
         secretNames: agentRuns.secretNames,
+        createdAt: agentRuns.createdAt,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId))
@@ -103,7 +106,20 @@ export function runContext(
 | where runId == "${sanitizedRunId}"
 | limit 1`;
 
-    const results = (await get(queryAxiom(apl))) as Record<string, unknown>[];
+    // The snapshot timestamp is captured immediately before the run row is
+    // inserted. Pad both sides to tolerate timing skew while keeping the scan
+    // bounded around this run.
+    const createdAtMs = run.createdAt.getTime();
+    const results = (await get(
+      queryAxiom(apl, {
+        startTime: new Date(
+          createdAtMs - RUN_CONTEXT_QUERY_PADDING_MS,
+        ).toISOString(),
+        endTime: new Date(
+          createdAtMs + RUN_CONTEXT_QUERY_PADDING_MS,
+        ).toISOString(),
+      }),
+    )) as Record<string, unknown>[];
     const snapshot = results[0];
 
     if (!snapshot) {
