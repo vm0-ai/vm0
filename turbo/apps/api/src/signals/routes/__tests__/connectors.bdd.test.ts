@@ -3018,6 +3018,35 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     });
 
+    const legacyCustomState = `legacy-custom-oauth-${randomUUID()}`;
+    await seedCustomConnectorOAuthStateContext(context, {
+      state: legacyCustomState,
+      orgId: requiredOrgId(owner),
+      userId: owner.userId,
+      customConnectorId: connector.id,
+      storageVersion: 1,
+      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      oauthContext: {
+        oauthSetup: "custom",
+        connectorId: connector.id,
+        storageVersion: 1,
+      },
+    });
+    await expect(
+      readCustomConnectorOAuthStorageState(context, legacyCustomState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: { context_valid: false },
+    });
+    const legacyCustomCallback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "legacy-custom-oauth-code",
+        state: legacyCustomState,
+      });
+    expect(legacyCustomCallback.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+
     const customAuthorizationUrl =
       await connectorsApi.startCustomConnectorOAuth2(owner, connector.id);
     const customState = stateFromAuthorizationUrl(customAuthorizationUrl);
@@ -4192,9 +4221,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       readAutomaticOAuthBindingState(context, connectorAccountId),
     ).resolves.toMatchObject({ exists: true, valid: true });
 
-    const validState = `automatic-oauth-${randomUUID()}`;
+    const legacyState = `legacy-automatic-oauth-${randomUUID()}`;
     await seedCustomConnectorOAuthStateContext(context, {
-      state: validState,
+      state: legacyState,
       orgId: requiredOrgId(admin),
       userId: admin.userId,
       customConnectorId,
@@ -4219,23 +4248,21 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     });
     await expect(
-      readCustomConnectorOAuthStorageState(context, validState),
+      readCustomConnectorOAuthStorageState(context, legacyState),
     ).resolves.toMatchObject({
       custom_oauth_state: {
-        context_valid: true,
-        auth_mode: "automatic",
-        context_format: "legacy",
+        context_valid: false,
       },
     });
-    const callback =
+    const legacyCallback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
-        code: "automatic-oauth-code",
-        state: validState,
+        code: "legacy-automatic-oauth-code",
+        state: legacyState,
         iss: "https://issuer.example.test",
       });
-    expect(callback.body).toStrictEqual({
+    expect(legacyCallback.body).toStrictEqual({
       status: "error",
-      message: "OAuth token exchange failed - please try again",
+      message: "Invalid OAuth state - please try again",
     });
 
     const canonicalState = `canonical-automatic-oauth-${randomUUID()}`;
@@ -4270,7 +4297,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       custom_oauth_state: {
         context_valid: true,
         auth_mode: "automatic",
-        context_format: "canonical",
       },
     });
     const canonicalCallback =

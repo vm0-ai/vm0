@@ -213,7 +213,7 @@ const customConnectorNoAuthResponseSchema = z
 const customConnectorCustomOAuthResponseSchema = z
   .object({
     authMode: z.literal("oauth"),
-    oauthSetup: z.literal("custom").optional(),
+    oauthSetup: z.never().optional(),
     oauthConfig: customConnectorOAuthConfigSchema,
   })
   .transform((value) => {
