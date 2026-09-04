@@ -211,7 +211,7 @@ function buildIntroVideoPrompt(args: {
     args.avatar?.provider === "heygen"
       ? [
           `- HeyGen presenter command: okou __intro-video-presenter --avatar-id ${args.avatar.avatarId} --audio-url <resolved-audio-url> --json`,
-          "- HeyGen render contract: this Intro Video-only internal renderer uses POST /v3/videos and GET /v3/videos/{video_id}, Avatar IV, an idempotency key, Retry-After handling, and output_format webm",
+          "- HeyGen render contract: this Intro Video-only internal renderer uses POST /v3/videos and GET /v3/videos/{video_id}, Avatar III, an idempotency key, Retry-After handling, and output_format webm",
           "- Presenter validation: download the WebM immediately, require a non-empty decodable video with a real alpha channel, and stop with an actionable error if transparency is absent",
           "- Intermediate privacy: use the audio and transparent WebM only for composition; never attach them or expose provider job IDs, status payloads, or temporary URLs",
         ]
@@ -233,7 +233,7 @@ function buildIntroVideoPrompt(args: {
     ...(args.avatar
       ? [
           args.avatar.provider === "heygen"
-            ? "- Avatar background: transparent WebM generated with HeyGen POST /v3/videos using output_format webm and Avatar IV; keep this intermediate private"
+            ? "- Avatar background: transparent WebM generated with HeyGen POST /v3/videos using output_format webm and Avatar III; keep this intermediate private"
             : "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
           ...(args.source.kind === "presentation"
             ? [
