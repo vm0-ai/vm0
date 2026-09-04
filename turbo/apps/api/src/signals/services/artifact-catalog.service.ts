@@ -61,6 +61,7 @@ const OFFICIAL_VIDEO_MARKER = "zero-official-video";
 const AVATAR_VIDEO_MARKER = "zero-joggai-avatar-video";
 const INTERNAL_INTRO_VIDEO_PRESENTER_MARKER =
   "zero-internal-intro-video-presenter";
+const INTERNAL_INTRO_VIDEO_VOICE_MARKER = "zero-internal-intro-video-voice";
 
 const artifactCursorSchema = z.object({
   createdAt: z.string(),
@@ -164,10 +165,14 @@ function artifactCatalogKindFilter(kind: ArtifactCatalogKind): SQL | undefined {
           )
         : undefined,
       sql`${generatedBy} IS DISTINCT FROM ${AVATAR_VIDEO_MARKER}`,
-      sql`${generatedBy} IS DISTINCT FROM ${INTERNAL_INTRO_VIDEO_PRESENTER_MARKER}`,
     );
   }
   return eq(artifacts.kind, kind);
+}
+
+function internalIntroVideoArtifactFilter(): SQL {
+  const generatedBy = sql`${runUploadedFiles.metadata} ->> 'generatedBy'`;
+  return sql`${generatedBy} IS DISTINCT FROM ${INTERNAL_INTRO_VIDEO_PRESENTER_MARKER} AND ${generatedBy} IS DISTINCT FROM ${INTERNAL_INTRO_VIDEO_VOICE_MARKER}`;
 }
 
 function hostedArtifactKind(
@@ -893,6 +898,7 @@ export const listArtifactCatalog$ = command(
         and(
           eq(artifacts.orgId, args.orgId),
           artifactCatalogOwnerFilter(args.userId),
+          internalIntroVideoArtifactFilter(),
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)

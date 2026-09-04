@@ -109,6 +109,7 @@ export const introVideoPresenterContract = c.router({
     query: introVideoVoicesQuerySchema,
     responses: {
       200: introVideoVoicesResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       502: apiErrorSchema,
@@ -146,6 +147,7 @@ export const introVideoPresenterContract = c.router({
       401: apiErrorSchema,
       402: apiErrorSchema,
       403: apiErrorSchema,
+      429: apiErrorSchema,
       500: apiErrorSchema,
       502: apiErrorSchema,
       503: apiErrorSchema,
