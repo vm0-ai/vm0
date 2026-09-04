@@ -77,7 +77,9 @@ export default [
       "ccstate/signal-check-await": "error",
       "ccstate/tsx-in-views": "error",
       "ccstate/test-context-in-hooks": "error",
-      "ccstate/setup-page-render": "error",
+      // setupPage now always renders the complete Router, including from
+      // signal-oriented integration tests.
+      "ccstate/setup-page-render": "off",
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",

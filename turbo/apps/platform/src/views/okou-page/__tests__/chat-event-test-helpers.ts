@@ -79,13 +79,14 @@ function inferredEventType(
 
 function baseEvent(
   message: MockChatEventInput,
+  threadId: string,
   id: string,
   content: string | null,
   fallbackSeqId: number,
 ) {
   return {
     id,
-    threadId: message.threadId ?? "00000000-0000-4000-8000-000000000001",
+    threadId,
     content,
     runId: message.runId,
     runGroupId: message.runGroupId,
@@ -258,13 +259,14 @@ const mockChatEventOverrides = {
 
 function normalizeMockChatEvent(
   message: MockChatEventInput,
+  threadId: string,
   fallbackId: string,
   fallbackSeqId = 1,
 ): ChatEvent {
   const id = message.id ?? fallbackId;
   const eventType = inferredEventType(message);
   return chatEventSchema.parse({
-    ...baseEvent(message, id, message.content, fallbackSeqId),
+    ...baseEvent(message, threadId, id, message.content, fallbackSeqId),
     eventType,
     ...mockChatEventOverrides[eventType](message, id),
   });
@@ -272,6 +274,7 @@ function normalizeMockChatEvent(
 
 export function normalizeMockChatEvents(
   messages: readonly MockChatEventInput[],
+  threadId: string,
 ): ChatEvent[] {
   let nextSeqId = 1;
   return messages.flatMap((message, index) => {
@@ -286,6 +289,7 @@ export function normalizeMockChatEvents(
           runLifecycleEvent: undefined,
           followups: undefined,
         },
+        threadId,
         fallbackId,
         seqId,
       );
@@ -298,6 +302,7 @@ export function normalizeMockChatEvents(
           runLifecycleEvent: "completed",
           followups: undefined,
         },
+        threadId,
         `${fallbackId}:completed`,
         seqId + 1,
       );
@@ -315,6 +320,7 @@ export function normalizeMockChatEvents(
           runLifecycleEvent: undefined,
           eventType: "output.followups",
         },
+        threadId,
         `${fallbackId}:followups`,
         seqId + 2,
       );
@@ -327,6 +333,7 @@ export function normalizeMockChatEvents(
     ) {
       const terminal = normalizeMockChatEvent(
         { ...message, followups: undefined },
+        threadId,
         fallbackId,
         seqId,
       );
@@ -340,13 +347,14 @@ export function normalizeMockChatEvents(
           runLifecycleEvent: undefined,
           eventType: "output.followups",
         },
+        threadId,
         `${fallbackId}:followups`,
         nextSeqId,
       );
       nextSeqId += 1;
       return [terminal, followups];
     }
-    return [normalizeMockChatEvent(message, fallbackId, seqId)];
+    return [normalizeMockChatEvent(message, threadId, fallbackId, seqId)];
   });
 }
 
