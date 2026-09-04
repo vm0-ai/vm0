@@ -53,6 +53,7 @@ import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metada
 import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
+  validateAgentRunLaunchSnapshotV3Migration,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
 import {
@@ -11327,6 +11328,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateAgentRunLaunchSnapshotV3Migration();
     await validateOfficialAutomationResultEmailMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();

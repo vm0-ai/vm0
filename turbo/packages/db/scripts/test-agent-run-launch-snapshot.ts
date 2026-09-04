@@ -12,8 +12,108 @@ const repositoryDirectory = path.resolve(packageDirectory, "../../..");
 const migrationsDirectory = path.join(packageDirectory, "src/migrations");
 const previousMigration = "0932_lovely_red_wolf";
 const launchSnapshotMigration = "0933_agent_run_launch_snapshot";
+const previousV3Migration = "1067_migrate_claude_fable_5_to_5_1";
+const launchSnapshotV3Migration = "1068_piloop_launch_snapshot_v3";
 const constraintName = "agent_runs_launch_snapshot_check";
+const v3ConstraintName = "agent_runs_launch_snapshot_v3_check";
 const upgradeDatabase = "migration_agent_run_launch_snapshot";
+const v3UpgradeDatabase = "migration_agent_run_launch_snapshot_v3";
+
+const historicalLaunchSnapshotRows = [
+  {
+    runId: "00000000-0000-4000-8000-000000106811",
+    launchSnapshot: {
+      schemaVersion: 1,
+      framework: "claude-code",
+      runnerProfile: "vm0/v1-claude-code",
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106812",
+    launchSnapshot: {
+      schemaVersion: 1,
+      framework: "codex",
+      runnerProfile: "vm0/v1-codex",
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106813",
+    launchSnapshot: {
+      schemaVersion: 1,
+      framework: "pi",
+      runnerProfile: "vm0/v1-pi",
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106814",
+    launchSnapshot: {
+      schemaVersion: 2,
+      framework: "claude-code",
+      runnerProfile: "vm0/v2-false-claude-code",
+      piMemoryGenerationEnabled: false,
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106815",
+    launchSnapshot: {
+      schemaVersion: 2,
+      framework: "claude-code",
+      runnerProfile: "vm0/v2-true-claude-code",
+      piMemoryGenerationEnabled: true,
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106816",
+    launchSnapshot: {
+      schemaVersion: 2,
+      framework: "codex",
+      runnerProfile: "vm0/v2-false-codex",
+      piMemoryGenerationEnabled: false,
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106817",
+    launchSnapshot: {
+      schemaVersion: 2,
+      framework: "codex",
+      runnerProfile: "vm0/v2-true-codex",
+      piMemoryGenerationEnabled: true,
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106818",
+    launchSnapshot: {
+      schemaVersion: 2,
+      framework: "pi",
+      runnerProfile: "vm0/v2-false-pi",
+      piMemoryGenerationEnabled: false,
+    },
+  },
+  {
+    runId: "00000000-0000-4000-8000-000000106819",
+    launchSnapshot: {
+      schemaVersion: 2,
+      framework: "pi",
+      runnerProfile: "vm0/v2-true-pi",
+      piMemoryGenerationEnabled: true,
+    },
+  },
+] as const;
+
+interface LaunchSnapshotConstraintCatalogRow {
+  readonly definition: string;
+  readonly name: string;
+  readonly validated: boolean;
+}
+
+interface HistoricalLaunchSnapshotStorageRow {
+  readonly binaryHex: string;
+  readonly ctid: string;
+  readonly launchSnapshot: unknown;
+  readonly launchSnapshotText: string;
+  readonly runId: string;
+  readonly xmin: string;
+}
 
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
@@ -38,6 +138,15 @@ function migrationStatements(migrationSql: string): readonly string[] {
     .filter((statement) => {
       return statement.length > 0;
     });
+}
+
+function migrationStatementAt(
+  statements: readonly string[],
+  index: number,
+): string {
+  const statement = statements[index];
+  assert.ok(statement, `migration statement ${index + 1} is required`);
+  return statement;
 }
 
 async function executeStatements(
@@ -200,6 +309,85 @@ async function seedCanonicalAgentRun(
   );
 }
 
+async function seedHistoricalLaunchSnapshotMatrix(
+  client: Client,
+): Promise<void> {
+  const fixture = {
+    agentId: "00000000-0000-4000-8000-000000106801",
+    sessionId: "00000000-0000-4000-8000-000000106802",
+    suffix: "v3-upgrade",
+  } as const;
+  await client.query(
+    `
+      INSERT INTO "agents" ("id", "org_id", "owner", "name")
+      VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.agentId,
+      `launch-snapshot-${fixture.suffix}-org`,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch snapshot ${fixture.suffix}`,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "org_id", "agent_id"
+      ) VALUES ($1, $2, $3, $4)
+    `,
+    [
+      fixture.sessionId,
+      `launch-snapshot-${fixture.suffix}-user`,
+      `launch-snapshot-${fixture.suffix}-org`,
+      fixture.agentId,
+    ],
+  );
+  for (const row of historicalLaunchSnapshotRows) {
+    await client.query(
+      `
+        INSERT INTO "agent_runs" (
+          "id", "user_id", "org_id", "session_id", "status", "prompt",
+          "launch_snapshot"
+        ) VALUES ($1, $2, $3, $4, 'pending', $5, $6::jsonb)
+      `,
+      [
+        row.runId,
+        `launch-snapshot-${fixture.suffix}-user`,
+        `launch-snapshot-${fixture.suffix}-org`,
+        fixture.sessionId,
+        `launch snapshot ${row.runId}`,
+        JSON.stringify(row.launchSnapshot),
+      ],
+    );
+  }
+}
+
+async function readHistoricalLaunchSnapshotRows(
+  client: Client,
+): Promise<HistoricalLaunchSnapshotStorageRow[]> {
+  const result = await client.query<HistoricalLaunchSnapshotStorageRow>(
+    `
+      SELECT
+        "id"::text AS "runId",
+        "launch_snapshot" AS "launchSnapshot",
+        "launch_snapshot"::text AS "launchSnapshotText",
+        encode(pg_catalog.jsonb_send("launch_snapshot"), 'hex') AS "binaryHex",
+        "ctid"::text AS "ctid",
+        "xmin"::text AS "xmin"
+      FROM "agent_runs"
+      WHERE "id" = ANY ($1::uuid[])
+      ORDER BY "id"
+    `,
+    [
+      historicalLaunchSnapshotRows.map(({ runId }) => {
+        return runId;
+      }),
+    ],
+  );
+  assert.equal(result.rows.length, historicalLaunchSnapshotRows.length);
+  return result.rows;
+}
+
 async function readAgentRunsRelationFileNode(client: Client): Promise<string> {
   const result = await client.query<{ fileNode: string }>(`
     SELECT "relfilenode"::text AS "fileNode"
@@ -260,6 +448,41 @@ async function readConstraintCatalog(client: Client): Promise<{
   );
   assert.equal(result.rows.length, 1);
   return result.rows[0]!;
+}
+
+async function readLaunchSnapshotConstraintCatalog(
+  client: Client,
+): Promise<LaunchSnapshotConstraintCatalogRow[]> {
+  const result = await client.query<LaunchSnapshotConstraintCatalogRow>(
+    `
+      SELECT
+        "conname" AS "name",
+        pg_get_constraintdef("oid", true) AS "definition",
+        "convalidated" AS "validated"
+      FROM "pg_constraint"
+      WHERE "conrelid" = 'public.agent_runs'::regclass
+        AND "conname" = ANY ($1::text[])
+      ORDER BY "conname"
+    `,
+    [[constraintName, v3ConstraintName]],
+  );
+  return result.rows;
+}
+
+async function readTrackedMigrationCount(
+  client: Client,
+  migration: string,
+): Promise<number> {
+  const result = await client.query<{ count: number }>(
+    `
+      SELECT count(*)::int AS "count"
+      FROM "drizzle"."__drizzle_migrations"
+      WHERE "hash" = $1
+    `,
+    [migration],
+  );
+  assert.equal(result.rows.length, 1);
+  return result.rows[0]!.count;
 }
 
 async function validateConstraintValues(
@@ -505,6 +728,45 @@ function validateMigrationSql(migrationSql: string): void {
   assert.doesNotMatch(executableSql, /\bDELETE\s+FROM\s+"agent_runs"\b/iu);
 }
 
+function validateV3MigrationSql(migrationSql: string): readonly string[] {
+  const statements = migrationStatements(migrationSql);
+  const executableSql = migrationSql.replace(/^--.*$/gmu, "");
+  assert.ok(migrationSql.startsWith("-- vm0:non-transactional\n"));
+  assert.equal(statements.length, 8);
+  assert.match(
+    migrationStatementAt(statements, 0),
+    new RegExp(`DROP CONSTRAINT IF EXISTS "${v3ConstraintName}"`, "u"),
+  );
+  assert.match(
+    migrationStatementAt(statements, 1),
+    new RegExp(`ADD CONSTRAINT "${v3ConstraintName}"`, "u"),
+  );
+  assert.match(migrationStatementAt(statements, 1), /NOT VALID;$/u);
+  assert.equal(migrationStatementAt(statements, 2), "COMMIT;");
+  assert.match(
+    migrationStatementAt(statements, 3),
+    new RegExp(`VALIDATE CONSTRAINT "${v3ConstraintName}"`, "u"),
+  );
+  assert.equal(migrationStatementAt(statements, 4), "COMMIT;");
+  assert.match(
+    migrationStatementAt(statements, 5),
+    new RegExp(`DROP CONSTRAINT "${constraintName}"`, "u"),
+  );
+  assert.equal(
+    migrationStatementAt(statements, 6),
+    `ALTER TABLE "agent_runs" RENAME CONSTRAINT "${v3ConstraintName}" TO "${constraintName}";`,
+  );
+  assert.equal(migrationStatementAt(statements, 7), "COMMIT;");
+  assert.equal(
+    [...executableSql.matchAll(/SET LOCAL lock_timeout = '1s'/gu)].length,
+    3,
+  );
+  assert.doesNotMatch(executableSql, /\bUPDATE\s+"agent_runs"\b/iu);
+  assert.doesNotMatch(executableSql, /\bINSERT\s+INTO\s+"agent_runs"\b/iu);
+  assert.doesNotMatch(executableSql, /\bDELETE\s+FROM\s+"agent_runs"\b/iu);
+  return statements;
+}
+
 export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
   console.log("=== Validate Agent Run launch-snapshot migration ===\n");
   const databaseUrl = process.env.DATABASE_URL;
@@ -722,6 +984,166 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
   }
 }
 
+export async function validateAgentRunLaunchSnapshotV3Migration(): Promise<void> {
+  console.log("=== Validate Agent Run launch-snapshot V3 upgrade ===\n");
+  const databaseUrl = process.env.DATABASE_URL;
+  assert.ok(databaseUrl, "DATABASE_URL is required");
+  const adminUrl = new URL(databaseUrl);
+  adminUrl.pathname = "/postgres";
+  const upgradeUrl = new URL(databaseUrl);
+  upgradeUrl.pathname = `/${v3UpgradeDatabase}`;
+  const migrationSql = await fs.readFile(
+    path.join(migrationsDirectory, `${launchSnapshotV3Migration}.sql`),
+    "utf8",
+  );
+  const statements = validateV3MigrationSql(migrationSql);
+
+  const admin = new Client({ connectionString: adminUrl.toString() });
+  await admin.connect();
+  await admin.query(
+    `DROP DATABASE IF EXISTS "${v3UpgradeDatabase}" WITH (FORCE)`,
+  );
+  await admin.query(`CREATE DATABASE "${v3UpgradeDatabase}"`);
+
+  const setup = new Client({ connectionString: upgradeUrl.toString() });
+  const blocker = new Client({ connectionString: upgradeUrl.toString() });
+  const migrator = new Client({ connectionString: upgradeUrl.toString() });
+  await setup.connect();
+  await blocker.connect();
+  await migrator.connect();
+
+  try {
+    await applyMigrationsFromDirectoryUpToTag(
+      setup,
+      migrationsDirectory,
+      previousV3Migration,
+    );
+    await seedHistoricalLaunchSnapshotMatrix(setup);
+    const historicalBefore = await readHistoricalLaunchSnapshotRows(setup);
+    assert.deepEqual(
+      historicalBefore.map(({ launchSnapshot, runId }) => {
+        return { runId, launchSnapshot };
+      }),
+      historicalLaunchSnapshotRows,
+    );
+    const catalogBefore = await readLaunchSnapshotConstraintCatalog(setup);
+    assert.equal(catalogBefore.length, 1);
+    const preV3Constraint = catalogBefore[0];
+    assert.ok(preV3Constraint);
+    assert.equal(preV3Constraint.name, constraintName);
+    assert.equal(preV3Constraint.validated, true);
+    assert.match(preV3Constraint.definition, /'2'::jsonb/u);
+    assert.doesNotMatch(preV3Constraint.definition, /'3'::jsonb/u);
+    assert.equal(
+      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+      0,
+    );
+
+    await blocker.query("BEGIN");
+    await blocker.query(`LOCK TABLE "agent_runs" IN ACCESS SHARE MODE`);
+    const lockStartedAt = Date.now();
+    await assert.rejects(
+      applyMigrationsFromDirectoryUpToTag(
+        migrator,
+        migrationsDirectory,
+        launchSnapshotV3Migration,
+      ),
+      (error: unknown) => {
+        return databaseErrorCode(error) === "55P03";
+      },
+    );
+    const lockWaitMilliseconds = Date.now() - lockStartedAt;
+    assert.ok(lockWaitMilliseconds >= 750);
+    assert.ok(lockWaitMilliseconds < 2_500);
+    await migrator.query("ROLLBACK");
+    await blocker.query("COMMIT");
+
+    assert.equal(
+      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+      0,
+    );
+    assert.deepEqual(
+      await readLaunchSnapshotConstraintCatalog(setup),
+      catalogBefore,
+    );
+    assert.deepEqual(
+      await readHistoricalLaunchSnapshotRows(setup),
+      historicalBefore,
+    );
+
+    await applyMigrationsFromDirectoryUpToTag(
+      migrator,
+      migrationsDirectory,
+      launchSnapshotV3Migration,
+    );
+    assert.equal(
+      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+      1,
+    );
+    assert.deepEqual(
+      await readHistoricalLaunchSnapshotRows(setup),
+      historicalBefore,
+    );
+    const catalogAfter = await readLaunchSnapshotConstraintCatalog(setup);
+    assert.equal(catalogAfter.length, 1);
+    const v3Constraint = catalogAfter[0];
+    assert.ok(v3Constraint);
+    assert.equal(v3Constraint.name, constraintName);
+    assert.equal(v3Constraint.validated, true);
+    assert.match(v3Constraint.definition, /'1'::jsonb/u);
+    assert.match(v3Constraint.definition, /'2'::jsonb/u);
+    assert.match(v3Constraint.definition, /'3'::jsonb/u);
+
+    const validationFixture = {
+      agentId: "00000000-0000-4000-8000-000000106821",
+      sessionId: "00000000-0000-4000-8000-000000106822",
+      runId: "00000000-0000-4000-8000-000000106823",
+      suffix: "v3-values",
+    } as const;
+    await seedCanonicalAgentRun(setup, validationFixture);
+    await validateConstraintValues(setup, validationFixture.runId, true, true);
+
+    await executeStatements(setup, statements);
+    assert.equal(
+      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+      1,
+    );
+    assert.deepEqual(
+      await readHistoricalLaunchSnapshotRows(setup),
+      historicalBefore,
+    );
+    assert.deepEqual(
+      await readLaunchSnapshotConstraintCatalog(setup),
+      catalogAfter,
+    );
+
+    console.log(
+      "   ✅ pre-1068 V1 and V2 true/false rows cover every framework",
+    );
+    console.log(
+      "   ✅ the tracked V3 migration preserves exact JSONB bytes and row versions",
+    );
+    console.log(
+      "   ✅ a bounded lock timeout leaves catalog and historical rows unchanged",
+    );
+    console.log(
+      "   ✅ the canonical validated constraint accepts strict V1/V2/V3 values",
+    );
+    console.log("   ✅ successful exact migration reruns are idempotent\n");
+  } finally {
+    await blocker.query("ROLLBACK");
+    await migrator.query("ROLLBACK");
+    await setup.query("ROLLBACK");
+    await migrator.end();
+    await blocker.end();
+    await setup.end();
+    await admin.query(
+      `DROP DATABASE IF EXISTS "${v3UpgradeDatabase}" WITH (FORCE)`,
+    );
+    await admin.end();
+  }
+}
+
 export async function validateAgentRunLaunchSnapshotSchema(
   databaseUrl: string,
 ): Promise<void> {
@@ -752,8 +1174,13 @@ export async function validateAgentRunLaunchSnapshotSchema(
   }
 }
 
+async function main(): Promise<void> {
+  await validateAgentRunLaunchSnapshotMigration();
+  await validateAgentRunLaunchSnapshotV3Migration();
+}
+
 if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] ?? "")) {
-  validateAgentRunLaunchSnapshotMigration().catch((error: unknown) => {
+  main().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });
