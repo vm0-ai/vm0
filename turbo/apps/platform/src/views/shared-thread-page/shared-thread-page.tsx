@@ -285,7 +285,7 @@ function SharedThreadHandoff({
       data-shared-thread-handoff=""
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
-        paddingBottom: "max(0.5rem - var(--sab), 0px)",
+        paddingBottom: "max(0.5rem, var(--sab))",
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />

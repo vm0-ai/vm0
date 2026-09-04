@@ -44,8 +44,7 @@
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
-  --sab-raw: env(safe-area-inset-bottom, 0px);
-  --sab: var(--sab-raw);
+  --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
   --zero-desktop-titlebar-height: 48px;
@@ -59,8 +58,12 @@
   }
 }
 
-:root[data-keyboard-open="true"] {
-  --sab: 0px;
+[data-chat-composer] {
+  --zero-composer-safe-bottom: var(--sab);
+}
+
+:root[data-keyboard-open="true"] [data-chat-composer] {
+  --zero-composer-safe-bottom: 0px;
 }
 
 html,
@@ -99,9 +102,10 @@ body {
   top: 0;
   right: 0;
   left: 0;
-  /* Keep the root-owned safe-area padding opaque behind translucent iOS chrome. */
+  /* Top and horizontal insets are shared by every route. Bottom ownership is
+     delegated to the active viewport shell or its bottom interaction. */
   background-color: hsl(var(--background));
-  padding: var(--sat) var(--sar) var(--sab-raw) var(--sal);
+  padding: var(--sat) var(--sar) 0 var(--sal);
 }
 
 @media (display-mode: standalone) {
@@ -127,10 +131,18 @@ body {
 }
 
 .zero-viewport-shell {
+  box-sizing: border-box;
   height: 100%;
   min-height: 100%;
   max-height: 100%;
   overflow: hidden;
+  padding-bottom: var(--sab);
+}
+
+/* Chat scrollports reach the physical viewport edge. Their scroll content,
+   composer, and other bottom interactions own the safe inset instead. */
+.zero-managed-bottom-safe-area {
+  padding-bottom: 0;
 }
 
 .zero-fixed-viewport-shell {
@@ -149,11 +161,31 @@ body {
 }
 
 @media (max-width: 767px) {
-  /* Fixed mobile surfaces escape the padded page shell, so they own the same
-     content boundary while their background still covers the viewport. */
+  /* Fixed mobile surfaces escape the page shell, so their interactive content
+     owns an immutable safe-area boundary. */
   .zero-mobile-fixed-safe-area {
     box-sizing: border-box;
     padding: var(--sat) var(--sar) var(--sab) var(--sal);
+  }
+}
+
+.zero-mobile-sidebar {
+  isolation: isolate;
+}
+
+.zero-mobile-sidebar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-color: hsl(var(--sidebar));
+  content: "";
+  pointer-events: none;
+}
+
+@media (display-mode: standalone) {
+  /* Paint may extend below the viewport without moving drawer content. */
+  .zero-mobile-sidebar::before {
+    bottom: calc(-1 * var(--sab));
   }
 }
 

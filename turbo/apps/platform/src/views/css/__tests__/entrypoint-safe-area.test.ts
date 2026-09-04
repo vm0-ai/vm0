@@ -31,13 +31,17 @@ test("Fullscreen content uses iOS safe areas", () => {
   const globalCss = readGlobalCss();
   expect(globalCss).toMatch(/--sat:\s*env\(safe-area-inset-top,\s*0px\);/);
   expect(globalCss).toMatch(/--sar:\s*env\(safe-area-inset-right,\s*0px\);/);
-  expect(globalCss).toMatch(
-    /--sab-raw:\s*env\(safe-area-inset-bottom,\s*0px\);/,
-  );
-  expect(globalCss).toMatch(/--sab:\s*var\(--sab-raw\);/);
+  expect(globalCss).toMatch(/--sab:\s*env\(safe-area-inset-bottom,\s*0px\);/);
+  expect(globalCss).not.toContain("--sab-raw");
   expect(globalCss).toMatch(/--sal:\s*env\(safe-area-inset-left,\s*0px\);/);
   expect(globalCss).toMatch(
-    /:root\[data-keyboard-open="true"\]\s*{\s*--sab:\s*0px;\s*}/,
+    /\[data-chat-composer\]\s*{\s*--zero-composer-safe-bottom:\s*var\(--sab\);\s*}/,
+  );
+  expect(globalCss).toMatch(
+    /:root\[data-keyboard-open="true"\]\s+\[data-chat-composer\]\s*{\s*--zero-composer-safe-bottom:\s*0px;\s*}/,
+  );
+  expect(globalCss).not.toMatch(
+    /:root\[data-keyboard-open="true"\]\s*{\s*--sab:/,
   );
   expect(globalCss).toMatch(/bottom:\s*calc\(-1\s*\*\s*var\(--sab\)\);/);
 });
@@ -77,7 +81,7 @@ test("The standalone mobile app shell remains stable", () => {
     /#root\s*{[\s\S]*isolation:\s*isolate;[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
   );
   expect(globalCss).toMatch(
-    /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab-raw\)\s+var\(--sal\);/,
+    /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+0\s+var\(--sal\);/,
   );
   expect(globalCss).toMatch(
     /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*hidden;\s*}/,
@@ -86,13 +90,19 @@ test("The standalone mobile app shell remains stable", () => {
     globalCss.indexOf("position: fixed;"),
   );
   expect(globalCss).toMatch(
-    /\.zero-viewport-shell\s*{[\s\S]*height:\s*100%;[\s\S]*max-height:\s*100%;[\s\S]*overflow:\s*hidden;/,
+    /\.zero-viewport-shell\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*height:\s*100%;[\s\S]*max-height:\s*100%;[\s\S]*overflow:\s*hidden;[\s\S]*padding-bottom:\s*var\(--sab\);/,
+  );
+  expect(globalCss).toMatch(
+    /\.zero-managed-bottom-safe-area\s*{\s*padding-bottom:\s*0;\s*}/,
   );
   expect(globalCss).toMatch(
     /\.zero-fixed-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
   );
   expect(globalCss).toMatch(
     /\.zero-mobile-fixed-safe-area\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
+  );
+  expect(globalCss).toMatch(
+    /\.zero-mobile-sidebar::before\s*{[\s\S]*position:\s*absolute;[\s\S]*z-index:\s*-1;[\s\S]*inset:\s*0;[\s\S]*pointer-events:\s*none;/,
   );
   expect(globalCss).toMatch(
     /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*\[data-chat-composer\]\s+\.zero-composer\s*{\s*scroll-margin-block-end:\s*16px;\s*}/,

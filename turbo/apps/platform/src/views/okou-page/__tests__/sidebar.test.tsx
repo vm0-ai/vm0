@@ -373,7 +373,7 @@ function sidebar(): HTMLElement {
 }
 
 function queryMobileSidebar(): HTMLElement | null {
-  const drawer = document.querySelector("aside.zero-pwa-fixed-cover");
+  const drawer = document.querySelector("aside.zero-mobile-sidebar");
   return drawer instanceof HTMLElement ? drawer : null;
 }
 
@@ -1511,6 +1511,11 @@ test("Mount only the sidebar for the current viewport", async () => {
   await waitFor(() => {
     expect(mobileSidebar()).toBeInTheDocument();
   });
+  expect(mobileSidebar()).toHaveClass("zero-mobile-fixed-safe-area");
+  expect(mobileSidebar()).not.toHaveClass("zero-pwa-fixed-cover");
+  expect(
+    mobileSidebar().closest(".zero-managed-bottom-safe-area"),
+  ).not.toBeNull();
   expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
   expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
   expect(screen.getByLabelText("Open menu")).toBeInTheDocument();

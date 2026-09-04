@@ -227,7 +227,7 @@ function ExpandedSidebar() {
         return $.appShell.sidebar.ariaLabel;
       })}
       className={cn(
-        "zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
+        "zero-nav zero-mobile-sidebar zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
         "hidden data-[sidebar-expanded]:max-md:flex md:hidden",
       )}
     >
