@@ -292,7 +292,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
     const host: SharedDatabaseBridgeHost = {
-      createBridge: (_identity, events, _connectionSignal) => {
+      createBridge: (_identity, events, connectionSignal) => {
         let bridge: SharedDatabaseBridge;
         if (options.transport === "message-port") {
           const channel = new MessageChannel();
@@ -301,7 +301,11 @@ export const setupSharedWorkerTestBootstrap$ = command(
             channel.port1,
             signal,
           );
-          bridge = new MessagePortSharedDatabaseBridge(channel.port2, events);
+          bridge = new MessagePortSharedDatabaseBridge(
+            channel.port2,
+            events,
+            connectionSignal,
+          );
         } else {
           if (!directRealtimeForwardingInstalled) {
             subscribeChatDatabaseEvents((message) => {

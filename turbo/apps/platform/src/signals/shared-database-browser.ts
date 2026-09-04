@@ -122,7 +122,11 @@ function createBrowserSharedDatabaseBridge(
     name: `okou_${identity.userId}_${identity.orgId}${diagnosticsEnabled ? "_diagnostics" : ""}`,
     type: "module",
   });
-  const portBridge = new MessagePortSharedDatabaseBridge(worker.port, events);
+  const portBridge = new MessagePortSharedDatabaseBridge(
+    worker.port,
+    events,
+    signal,
+  );
   let failureHandled = false;
   worker.addEventListener(
     "error",
