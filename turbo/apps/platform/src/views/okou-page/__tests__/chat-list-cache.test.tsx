@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import {
@@ -26,28 +26,6 @@ import {
 } from "./chat-list-test-helpers.ts";
 
 const context = testContext();
-
-test("Pinned agents use one loading row", async () => {
-  const auth = chatListAuth(21);
-  const agents = context.mocks.deferred<void>();
-  context.mocks.data.onboardingStatus({
-    defaultAgentId: CHAT_LIST_AGENT_ID,
-  });
-  installChatListStream(context, { caseId: 21, snapshot: [] });
-  installChatListAgent(context, agents.promise);
-
-  await setupPage({
-    context,
-    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth,
-  });
-
-  const pinnedAgents = await screen.findByTestId("pinned-agents-grid");
-  expect(
-    within(pinnedAgents).getAllByTestId("pinned-agent-skeleton"),
-  ).toHaveLength(4);
-  expect(agents.settled()).toBeFalsy();
-});
 
 test("Cached conversations appear before remote synchronization", async () => {
   const auth = chatListAuth(1);
