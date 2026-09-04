@@ -194,10 +194,10 @@ export function mockPrivateUrlSequence(
     }
     const call = calls.get(query.file_id) ?? 0;
     calls.set(query.file_id, call + 1);
-    const publicUrl = publicUrlsByFileId[query.file_id];
     return respond(200, {
       url: urls[Math.min(call, urls.length - 1)]!,
-      ...(publicUrl ? { publicUrl } : {}),
+      publicUrl:
+        publicUrlsByFileId[query.file_id] ?? publicArtifactUrl(query.file_id),
     });
   });
 }

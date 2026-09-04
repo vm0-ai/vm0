@@ -331,6 +331,7 @@ export async function installContinuityWorkspace(
     }
     return respond(200, {
       url: `https://download.vm7.io/chat-continuity/${query.file_id}`,
+      publicUrl: `https://cdn.vm7.io/artifacts/tests/chat-continuity/${query.file_id}`,
     });
   });
 

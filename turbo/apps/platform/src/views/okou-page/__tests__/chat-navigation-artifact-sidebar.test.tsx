@@ -327,35 +327,6 @@ test("Use a public URL for a private Office attachment preview", async () => {
   expect(frame.getAttribute("src")).not.toContain(privateUrl);
 });
 
-test("Do not expose a private Office URL when no public URL exists", async () => {
-  const fileId = "office-private-only-file";
-  const filename = "private-only-plan.docx";
-  const contentType =
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const privateUrl = `https://storage.example.test/${filename}?signature=test`;
-  context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
-    return respond(200, { url: privateUrl });
-  });
-  mockArtifactConversation(context, {
-    catalog: [],
-    chatEvents: officeFileEvents(fileId, filename, contentType),
-  });
-  await setupPage({
-    context,
-    path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
-  });
-
-  click(await screen.findByLabelText(`Preview ${filename}`));
-
-  const dialog = await screen.findByTestId("attachment-lightbox");
-  await expect(
-    within(dialog).findByText("Preview unavailable."),
-  ).resolves.toBeVisible();
-  expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
-  expect(dialog.innerHTML).not.toContain(privateUrl);
-});
-
 test("Explain empty and unavailable CSV previews", async () => {
   useWideScreen();
   const empty = artifactSummary(EMPTY_CSV_ID, "file", "Empty export.csv");

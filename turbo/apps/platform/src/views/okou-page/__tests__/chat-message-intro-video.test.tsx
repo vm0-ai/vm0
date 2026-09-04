@@ -1,9 +1,9 @@
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
 import {
@@ -141,10 +141,10 @@ async function reviewSourceWithoutAvatar(
 }
 
 function resolveDesktopRecordingFiles(): void {
-  context.mocks.http.get("/api/web/file-url", ({ request }) => {
-    const id = new URL(request.url).searchParams.get("file_id");
-    return HttpResponse.json({
-      url: `https://resolved.example/${id ?? "missing"}`,
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    return respond(200, {
+      url: `https://resolved.example/${query.file_id}`,
+      publicUrl: `https://cdn.vm7.io/artifacts/tests/intro-video/${query.file_id}`,
     });
   });
 }
