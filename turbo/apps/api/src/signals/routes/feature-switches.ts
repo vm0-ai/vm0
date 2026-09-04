@@ -1,5 +1,8 @@
 import { command, computed } from "ccstate";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import {
+  featureSwitchesContract,
+  type FeatureSwitchesResponse,
+} from "@okouai/api-contracts/contracts/feature-switches";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -42,20 +45,27 @@ function featureSwitchResponseBody(params: {
   };
 }
 
-const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
-  const auth = get(organizationAuthContext$);
-  const switches = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return {
-    status: 200 as const,
-    body: featureSwitchResponseBody({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      switches,
-    }),
-  };
-});
+export const featureSwitchesResponse$ = computed(
+  async (
+    get,
+  ): Promise<{
+    readonly status: 200;
+    readonly body: FeatureSwitchesResponse;
+  }> => {
+    const auth = get(organizationAuthContext$);
+    const switches = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    return {
+      status: 200 as const,
+      body: featureSwitchResponseBody({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        switches,
+      }),
+    };
+  },
+);
 
 const updateFeatureSwitchesBody$ = bodyResultOf(featureSwitchesContract.update);
 
@@ -104,7 +114,7 @@ const deleteFeatureSwitchesInner$ = command(
 export const featureSwitchesRoutes: readonly RouteEntry[] = [
   {
     route: featureSwitchesContract.get,
-    handler: authRoute(featureSwitchesAuthOptions, getFeatureSwitchesInner$),
+    handler: authRoute(featureSwitchesAuthOptions, featureSwitchesResponse$),
   },
   {
     route: featureSwitchesContract.update,

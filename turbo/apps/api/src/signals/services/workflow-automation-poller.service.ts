@@ -380,12 +380,17 @@ async function executeDueWorkflowAutomations(
       continue;
     }
 
-    const chatThreadId = await ensureDueWorkflowAutomationChatThread(
-      args.db,
-      row,
-      currentTime,
+    const chatThreadId = await tapError(
+      ensureDueWorkflowAutomationChatThread(args.db, row, currentTime),
+      async (error) => {
+        await recordPreRunFailure(args.db, claimed, error, signal);
+        skipped++;
+      },
     );
     signal.throwIfAborted();
+    if (!chatThreadId) {
+      continue;
+    }
 
     const due: DueWorkflowAutomation = {
       automation: claimed,

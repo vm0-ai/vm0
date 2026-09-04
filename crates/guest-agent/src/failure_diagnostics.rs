@@ -14,9 +14,9 @@ use crate::session_history;
 use crate::session_metadata::CapturedSessionMetadata;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
-    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
-    FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata,
-    SessionHistoryStatus,
+    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
+    EventDeliveryDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
+    PromptMetadata, SessionHistoryStatus,
 };
 use serde_json::Value;
 
@@ -214,10 +214,13 @@ pub fn write_guest_failure_diagnostic(
 }
 
 fn with_cli_termination(
-    diagnostic: FailureDiagnostic,
+    mut diagnostic: FailureDiagnostic,
     cli_termination: Option<CliTerminationDiagnostic>,
 ) -> FailureDiagnostic {
     if let Some(cli_termination) = cli_termination {
+        if cli_termination.reason == CliTerminationReason::ExecutionTimeout {
+            diagnostic = diagnostic.with_failure_reason(FailureReason::ExecutionTimeout);
+        }
         diagnostic.with_cli_termination(cli_termination)
     } else {
         diagnostic

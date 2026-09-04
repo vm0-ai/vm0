@@ -14,7 +14,7 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
-import { settle } from "../utils.ts";
+import { onRef, settle } from "../utils.ts";
 
 export type IntroVideoWizardStep =
   | "avatar"
@@ -250,6 +250,29 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     voice$: state<IntroVideoVoiceSelection | null>(null),
   };
 }
+
+function createFileInputTargetSignals(inputName: "file" | "presentation") {
+  const input$ = state<HTMLInputElement | null>(null);
+  const setInputRef$ = onRef(
+    command(({ set }, input: HTMLInputElement, signal: AbortSignal): void => {
+      signal.addEventListener("abort", () => {
+        set(input$, null);
+      });
+      set(input$, input);
+    }),
+  );
+  const openInput$ = command(({ get }): void => {
+    const input = get(input$);
+    if (!input) {
+      throw new Error(`Intro video ${inputName} input is not mounted`);
+    }
+    input.click();
+  });
+  return { openInput$, setInputRef$ };
+}
+
+const fileInputTarget = createFileInputTargetSignals("file");
+const presentationInputTarget = createFileInputTargetSignals("presentation");
 
 function exposeState<T>(signal: State<T>) {
   return computed((get) => {
@@ -709,6 +732,10 @@ function createIntroVideoWizardSignals() {
     ...selectionCommands,
     ...submissionCommands,
     downloadSource$,
+    openFileInput$: fileInputTarget.openInput$,
+    openPresentationInput$: presentationInputTarget.openInput$,
+    setFileInputRef$: fileInputTarget.setInputRef$,
+    setPresentationInputRef$: presentationInputTarget.setInputRef$,
   };
 }
 

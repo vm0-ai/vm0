@@ -186,7 +186,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
     fs::write(
         agent_path.as_str(),
         r#"#!/bin/sh
-printf '%s' "$$" > "$VM0_TEST_AGENT_PID_PATH"
+printf '%s' "$$" > "$OKOU_TEST_AGENT_PID_PATH"
 if [ "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-workload-endpoint ]; then exit 43; fi
 if [ "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-tool-endpoint ]; then exit 43; fi
 printf '%s' "$OKOU_PROCESS_CONTROL_ENDPOINT"
@@ -213,7 +213,7 @@ sleep 60
             timeout: ExecTimeoutPolicy::None,
             command: "",
             env: &[
-                ("VM0_TEST_AGENT_PID_PATH", pid_path.as_str()),
+                ("OKOU_TEST_AGENT_PID_PATH", pid_path.as_str()),
                 (
                     process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                     "stale-canonical-endpoint",

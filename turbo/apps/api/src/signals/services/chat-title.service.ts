@@ -201,12 +201,13 @@ function chatCompletionContextMessage(
 
 async function generateFastPathText(
   messages: readonly ChatMessageForGeneration[],
-  maxTokens = 30,
+  maxTokens = 512,
   options?: {
     readonly stripMarkdown?: boolean;
   },
 ): Promise<string | null> {
   const content = await generateText(FAST_PATH_MODEL, messages, maxTokens, {
+    reasoning: { effort: "low" },
     temperature: 0.3,
   });
   if (content === null) {
@@ -437,7 +438,7 @@ export function generateChatNotificationSummary(
         content: `User request:\n${prompt.slice(0, TITLE_CONTEXT_CHAR_CAP)}\n\nAssistant reply:\n${resultText.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
       },
     ],
-    35,
+    512,
   );
 }
 
@@ -508,7 +509,7 @@ async function generateRecommendedFollowups(
         content: `Recent conversation:\n${context}`,
       },
     ],
-    260,
+    1024,
     { stripMarkdown: false },
   );
 

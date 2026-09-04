@@ -2036,8 +2036,6 @@ async function insertScheduleAutomation(
   args: {
     readonly input: CreateScheduleAutomationInput;
     readonly workflowId: string;
-    readonly agentId: string;
-    readonly workflowTitle: string;
     readonly automationId?: string;
     readonly columns: ScheduleColumns;
     readonly nextRunAt: Date | null;
@@ -2045,14 +2043,21 @@ async function insertScheduleAutomation(
   },
 ): Promise<WorkflowAutomationSummary> {
   return await db.transaction(async (tx) => {
-    const chatThreadId = await ensureWorkflowUserAutomationThread(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      workflowId: args.workflowId,
-      agentId: args.agentId,
-      workflowTitle: args.workflowTitle,
-      currentTime: args.currentTime,
-    });
+    // Preserve and lock an existing workflow-user binding without materializing
+    // an empty thread. The first scheduled or manual run creates one if absent.
+    const [binding] = await tx
+      .select({ chatThreadId: workflowUserAutomationThreads.chatThreadId })
+      .from(workflowUserAutomationThreads)
+      .where(
+        and(
+          eq(workflowUserAutomationThreads.orgId, args.input.orgId),
+          eq(workflowUserAutomationThreads.userId, args.input.member.userId),
+          eq(workflowUserAutomationThreads.workflowId, args.workflowId),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    const chatThreadId = binding?.chatThreadId ?? null;
 
     const row = await insertWorkflowAutomation(tx, {
       id: args.automationId,
@@ -3335,8 +3340,6 @@ export const createWorkflowAutomation$ = command(
     const summary = await insertScheduleAutomation(writeDb, {
       input: args,
       workflowId: workflow.id,
-      agentId: agent.id,
-      workflowTitle,
       automationId: args.officialInstallation?.automationId,
       columns: cols,
       nextRunAt,

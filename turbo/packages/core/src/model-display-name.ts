@@ -33,6 +33,8 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Minimax via OpenRouter
   "minimax/minimax-m2.7": "MiniMax M2.7",
   // OpenAI / Codex
+  "gpt-6-astra": "GPT 6 Astra",
+  "openai/gpt-6-astra": "GPT 6 Astra",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",

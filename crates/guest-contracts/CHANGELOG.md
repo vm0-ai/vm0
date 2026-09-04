@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.30](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.29...guest-contracts-v0.12.30) (2026-09-04)
+
+
+### Documentation
+
+* **rust:** clarify optional storage id on writeback manifest entries ([#31583](https://github.com/vm0-ai/vm0/issues/31583)) ([0ec28e6](https://github.com/vm0-ai/vm0/commit/0ec28e6947bdb647d1ad80f734b99cf2e5ed14a6))
+
 ## [0.12.29](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.28...guest-contracts-v0.12.29) (2026-09-03)
 
 ## [0.12.28](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.27...guest-contracts-v0.12.28) (2026-09-03)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.11...guest-agent-v0.84.12) (2026-09-04)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve success when history upload fails ([#31605](https://github.com/vm0-ai/vm0/issues/31605)) ([46a02eb](https://github.com/vm0-ai/vm0/commit/46a02ebc4385662eb3c5426abba1f9bfae1680ca))
+
 ## [0.84.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.10...guest-agent-v0.84.11) (2026-09-03)
 
 

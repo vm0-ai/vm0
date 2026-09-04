@@ -13,6 +13,7 @@ import { agents } from "./agent";
 import type {
   AgentDraftAttachments,
   AgentDraftUserMessage,
+  AgentDraftVoice,
 } from "@okouai/db/jsonb-contracts/agent-draft";
 
 export const agentDrafts = pgTable(
@@ -24,6 +25,8 @@ export const agentDrafts = pgTable(
     /** Canonical rich document for the agent composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<AgentDraftUserMessage>(),
+    /** Unsent voice input kept outside the canonical user message document. */
+    draftVoice: jsonb("draft_voice").$type<AgentDraftVoice>(),
     draftAttachments: jsonb("draft_attachments").$type<AgentDraftAttachments>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

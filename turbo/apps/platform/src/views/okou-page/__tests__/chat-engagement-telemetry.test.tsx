@@ -98,13 +98,21 @@ describe("chat engagement telemetry", () => {
       return buttonByLabel("Expand work history");
     });
     expect(expandWork).toHaveTextContent(/^Working for /);
-    expect(screen.queryByText("Checking the launch brief.")).toBeNull();
+    expect(
+      screen
+        .getByText("Checking the launch brief.")
+        .closest("[data-chat-run-work-preview]"),
+    ).toBeInTheDocument();
 
     click(expandWork);
 
-    await expect(
-      screen.findByText("Checking the launch brief."),
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen
+          .getByText("Checking the launch brief.")
+          .closest("[data-chat-run-work-preview]"),
+      ).toBeNull();
+    });
     expect(capturedEvents("chat_work_history_expanded")).toStrictEqual([
       ["chat_work_history_expanded", { work_status: "active" }],
     ]);
@@ -112,7 +120,11 @@ describe("chat engagement telemetry", () => {
     click(buttonByLabel("Collapse work history"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Checking the launch brief.")).toBeNull();
+      expect(
+        screen
+          .getByText("Checking the launch brief.")
+          .closest("[data-chat-run-work-preview]"),
+      ).toBeInTheDocument();
     });
     expect(capturedEvents("chat_work_history_expanded")).toHaveLength(1);
   });

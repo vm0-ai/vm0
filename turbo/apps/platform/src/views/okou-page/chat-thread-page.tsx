@@ -6,6 +6,7 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
+import type { Element, Root } from "hast";
 import {
   useGet,
   useLoadable,
@@ -49,7 +50,6 @@ import {
   Loader2,
   Play,
   MessageCircle,
-  Mic,
   SmilePlus,
   Package,
   Route,
@@ -3315,6 +3315,30 @@ function groupHasUserBubble(group: ChatEventGroup): boolean {
   return group.events.some(rendersUserBubble);
 }
 
+function createRunWorkSectionControl(
+  section: RunWorkSection | null,
+  expandedKeys: ReadonlySet<string>,
+  onToggle: (key: string) => void,
+): RunWorkSectionControl | undefined {
+  if (section === null) {
+    return undefined;
+  }
+  const { key, ...control } = section;
+  const expanded = expandedKeys.has(key);
+  return {
+    ...control,
+    expanded,
+    onToggle: () => {
+      if (!expanded) {
+        captureChatWorkHistoryExpanded({
+          workStatus: section.endTime === undefined ? "active" : "completed",
+        });
+      }
+      onToggle(key);
+    },
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -3379,9 +3403,6 @@ function ChatThreadEventGroups({
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
-        const runWorkExpanded =
-          runWorkSection !== null &&
-          runWorkExpandedKeys.has(runWorkSection.key);
         return (
           <div key={group.beginEventId} className="contents">
             {runGroupFolds.map((runGroupFold) => {
@@ -3415,30 +3436,11 @@ function ChatThreadEventGroups({
                     }
                   : undefined
               }
-              runWorkSection={
-                runWorkSection !== null
-                  ? {
-                      anchorEventId: runWorkSection.anchorEventId,
-                      startTime: runWorkSection.startTime,
-                      endTime: runWorkSection.endTime,
-                      hiddenGroups: runWorkSection.hiddenGroups,
-                      hiddenGroupsAfterAnchor:
-                        runWorkSection.hiddenGroupsAfterAnchor,
-                      expanded: runWorkExpanded,
-                      onToggle: () => {
-                        if (!runWorkExpanded) {
-                          captureChatWorkHistoryExpanded({
-                            workStatus:
-                              runWorkSection.endTime === undefined
-                                ? "active"
-                                : "completed",
-                          });
-                        }
-                        onToggleRunWork(runWorkSection.key);
-                      },
-                    }
-                  : undefined
-              }
+              runWorkSection={createRunWorkSectionControl(
+                runWorkSection,
+                runWorkExpandedKeys,
+                onToggleRunWork,
+              )}
             />
           </div>
         );
@@ -4739,38 +4741,23 @@ function ShimmerText({
   children,
   className,
   setRef,
-  visualChildren = children,
 }: {
   readonly ariaLabel?: string;
   readonly children: ReactNode;
   readonly className?: string;
   readonly setRef?: ServerThinkingLabel["setRef"];
-  readonly visualChildren?: ReactNode;
 }) {
   return (
-    <div
+    <p
+      ref={setRef}
       className={cn(
-        "zero-shimmer-text-shell h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
+        "zero-shimmer-text h-5 min-w-0 flex-1 truncate text-[0.8125rem] leading-5",
         className,
       )}
+      aria-label={ariaLabel}
     >
-      <p
-        ref={setRef}
-        className="zero-shimmer-text h-5 w-full truncate"
-        aria-label={ariaLabel}
-      >
-        {children}
-      </p>
-      <span className="zero-shimmer-window" aria-hidden>
-        <span className="zero-shimmer-highlight">{visualChildren}</span>
-      </span>
-      <span
-        className="zero-shimmer-window zero-shimmer-window-secondary"
-        aria-hidden
-      >
-        <span className="zero-shimmer-highlight">{visualChildren}</span>
-      </span>
-    </div>
+      {children}
+    </p>
   );
 }
 
@@ -4794,16 +4781,7 @@ function ThinkingLabel({
       return $.chat.run.queueEllipsis;
     });
     return (
-      <ShimmerText
-        visualChildren={
-          <>
-            {waitingIn}{" "}
-            <span className="underline underline-offset-2">
-              {queueEllipsis}
-            </span>
-          </>
-        }
-      >
+      <ShimmerText>
         {waitingIn}{" "}
         <button
           type="button"
@@ -7030,9 +7008,6 @@ function UserMessagePartView({
       />
     );
   }
-  if (renderPart.type === "voice") {
-    return <UserMessageVoiceDraft part={renderPart.part} />;
-  }
   if (renderPart.type === "template") {
     return <UserMessageTemplateReference part={renderPart.part} />;
   }
@@ -7046,32 +7021,6 @@ function UserMessagePartView({
   }
   void (renderPart satisfies never);
   return null;
-}
-
-function UserMessageVoiceDraft({
-  part,
-}: {
-  part: Extract<UserMessagePart, { type: "voice" }>;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-sent-voice-draft=""
-      className="my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 text-left text-muted-foreground"
-    >
-      <div className="flex items-center gap-2 text-xs font-semibold">
-        <Mic size={15} aria-hidden="true" />
-        {t(($) => {
-          return $.chat.voice.draft;
-        })}
-      </div>
-      {part.transcript ? (
-        <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-5 text-foreground/70">
-          {part.transcript}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function UserMessageView({
@@ -7482,6 +7431,10 @@ type PagedAssistantTimelineItem =
   | {
       readonly kind: "run-work";
       readonly control: RunWorkSectionControl;
+    }
+  | {
+      readonly kind: "run-work-preview";
+      readonly event: EnrichedChatEvent;
     };
 
 function assistantTimelineItems(
@@ -7495,6 +7448,7 @@ function assistantTimelineItems(
 function foldedRunWorkTimelineItems(
   groups: readonly ChatEventGroup[],
   modelChanges: ReadonlyMap<string, RunModelChange>,
+  previewEventIds?: ReadonlySet<string>,
 ): PagedAssistantTimelineItem[] {
   return groups.flatMap((group) => {
     return group.events.flatMap((event): PagedAssistantTimelineItem[] => {
@@ -7503,10 +7457,76 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "assistant", event }]
+        ? [
+            previewEventIds?.has(event.id) === true
+              ? { kind: "run-work-preview", event }
+              : { kind: "assistant", event },
+          ]
         : [];
     });
   });
+}
+
+const RUN_WORK_PREVIEW_BLOCK_TAGS: ReadonlySet<string> = new Set([
+  "address",
+  "blockquote",
+  "div",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "table",
+  "tr",
+  "ul",
+]);
+
+function runWorkPreviewText(event: EnrichedChatEvent): string {
+  const tree = event.tree;
+  if (tree === undefined) {
+    return normalizedInlineLabel(event.content ?? "");
+  }
+  const parts: string[] = [];
+  const visit = (node: Root | Element): void => {
+    const block =
+      node.type === "element" && RUN_WORK_PREVIEW_BLOCK_TAGS.has(node.tagName);
+    if (block) {
+      parts.push(" ");
+    }
+    for (const child of node.children) {
+      if (child.type === "text" || child.type === "raw") {
+        parts.push(child.value);
+      } else if (child.type === "element") {
+        visit(child);
+      }
+    }
+    if (block) {
+      parts.push(" ");
+    }
+  };
+  visit(tree);
+  return normalizedInlineLabel(parts.join(""));
+}
+
+function RunWorkMessagePreview({ event }: { event: EnrichedChatEvent }) {
+  return (
+    <div
+      data-chat-run-work-preview
+      className="flex h-5 min-w-0 max-w-full items-center gap-2 text-[13px] leading-5 text-muted-foreground/60"
+    >
+      <span aria-hidden className="shrink-0">
+        •
+      </span>
+      <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+        {runWorkPreviewText(event)}
+      </span>
+    </div>
+  );
 }
 
 function buildPagedAssistantTimeline({
@@ -7543,6 +7563,14 @@ function buildPagedAssistantTimeline({
   if (runWorkSection.expanded) {
     items.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
+    );
+  } else {
+    items.push(
+      ...foldedRunWorkTimelineItems(
+        runWorkSection.collapsedGroups,
+        modelChanges,
+        runWorkSection.previewEventIds,
+      ),
     );
   }
   items.push(...assistantTimelineItems(group.events.slice(0, anchorEndIndex)));
@@ -7583,19 +7611,19 @@ function PagedAssistantTimeline({
       );
     }
     if (item.kind === "run-work") {
-      const collapsible =
-        item.control.hiddenGroups.length > 0 ||
-        item.control.hiddenGroupsAfterAnchor.length > 0;
       return (
         <RunWorkSectionRow
           key={`run-work:control:${item.control.anchorEventId}`}
           startTime={item.control.startTime}
           endTime={item.control.endTime}
-          collapsible={collapsible}
+          collapsible={item.control.collapsible}
           expanded={item.control.expanded}
           onToggle={item.control.onToggle}
         />
       );
+    }
+    if (item.kind === "run-work-preview") {
+      return <RunWorkMessagePreview key={item.event.id} event={item.event} />;
     }
     const compactTop = renderedAssistantItemCount > 0;
     renderedAssistantItemCount += 1;
@@ -7895,9 +7923,10 @@ function PagedGroupPrimaryActions({
   onCopy: () => void;
 }) {
   const { t } = useTranslation();
+  const showActivityLogs = useGet(featureSwitch$)[FeatureSwitchKey.OkouDebug];
   return (
     <div className="flex items-center gap-1" data-testid="chat-event-actions">
-      {firstRunId && (
+      {showActivityLogs && firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>

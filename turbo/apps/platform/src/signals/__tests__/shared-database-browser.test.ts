@@ -6,6 +6,7 @@ import { expect, vi } from "vitest";
 import { setupPage } from "../../__tests__/page-helper.ts";
 import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
+import { logger } from "../log.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { detach, Reason } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
@@ -186,6 +187,7 @@ test("Open the force-upgrade dialog when the worker requires an upgrade", async 
 
 test("Reload after an IndexedDB version change makes the worker unavailable", async () => {
   const replace = vi.fn<(url: string) => void>();
+  const debug = vi.spyOn(logger("SharedWorkerBridge"), "debug");
   const { workers } = installSharedWorkerMock();
   setupBridge();
   await vi.waitFor(() => {
@@ -207,11 +209,21 @@ test("Reload after an IndexedDB version change makes the worker unavailable", as
   await vi.waitFor(() => {
     expect(replace).toHaveBeenCalledOnce();
   });
+  expect(debug).toHaveBeenLastCalledWith("Reloading app", {
+    reason: "indexeddb-version-changed",
+  });
+  const debugCallOrder = debug.mock.invocationCallOrder.at(-1);
+  const replaceCallOrder = replace.mock.invocationCallOrder[0];
+  if (debugCallOrder === undefined || replaceCallOrder === undefined) {
+    throw new Error("Expected debug log before app reload");
+  }
+  expect(debugCallOrder).toBeLessThan(replaceCallOrder);
 });
 
 test("Reload once after the shared-data service fails to load", async () => {
   mockNow(RELOAD_AT_MS, context.signal);
   const replace = vi.fn<(url: string) => void>();
+  const debug = vi.spyOn(logger("SharedWorkerBridge"), "debug");
   const { constructorCalls, workers } = installSharedWorkerMock();
   setupBridge();
   await vi.waitFor(() => {
@@ -234,6 +246,15 @@ test("Reload once after the shared-data service fails to load", async () => {
   );
 
   expect(replace).toHaveBeenCalledOnce();
+  expect(debug).toHaveBeenLastCalledWith("Reloading app", {
+    reason: "worker-load-or-transport-failure",
+  });
+  const debugCallOrder = debug.mock.invocationCallOrder.at(-1);
+  const replaceCallOrder = replace.mock.invocationCallOrder[0];
+  if (debugCallOrder === undefined || replaceCallOrder === undefined) {
+    throw new Error("Expected debug log before app reload");
+  }
+  expect(debugCallOrder).toBeLessThan(replaceCallOrder);
   const recoveryUrl = new URL(replace.mock.calls[0]![0]);
   expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
     String(RELOAD_AT_MS),
@@ -246,6 +267,7 @@ test("Reload once after the shared-data service fails to load", async () => {
 test("Stop reloading when the shared-data service repeatedly fails", async () => {
   mockNow(RELOAD_AT_MS, context.signal);
   const replace = vi.fn<(url: string) => void>();
+  const debug = vi.spyOn(logger("SharedWorkerBridge"), "debug");
   const replaceState = vi
     .spyOn(history, "replaceState")
     .mockImplementation(() => {});
@@ -272,6 +294,9 @@ test("Stop reloading when the shared-data service repeatedly fails", async () =>
   );
 
   expect(toastError).toHaveBeenCalledOnce();
+  expect(debug).not.toHaveBeenCalledWith("Reloading app", {
+    reason: "worker-load-or-transport-failure",
+  });
   expect(replace).not.toHaveBeenCalled();
   expect(replaceState).toHaveBeenCalledOnce();
   const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));

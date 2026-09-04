@@ -50,10 +50,8 @@ import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subsc
 import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
 import {
-  applyColorThemeDocumentAttributes,
-  applyNewUiDocumentAttribute,
-  applyTypefaceDocumentAttribute,
   colorTheme$,
+  shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
 import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
 
@@ -373,23 +371,12 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
     features[FeatureSwitchKey.GradientColorThemes] ?? false;
-  const geistTypefaceEnabled =
-    features[FeatureSwitchKey.GeistTypeface] ?? false;
-  const newUiEnabled = features[FeatureSwitchKey.NewUi] ?? false;
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
+  const shellDocumentAttributesRef = useSet(shellDocumentAttributesRef$);
 
   return (
     <div
-      ref={(element) => {
-        applyColorThemeDocumentAttributes(
-          element !== null && gradientColorThemesEnabled,
-          colorTheme,
-        );
-        applyTypefaceDocumentAttribute(
-          element !== null && geistTypefaceEnabled,
-        );
-        applyNewUiDocumentAttribute(element !== null && newUiEnabled);
-      }}
+      ref={shellDocumentAttributesRef}
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}

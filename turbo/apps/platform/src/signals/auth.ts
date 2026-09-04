@@ -1,5 +1,10 @@
 import { command, computed, state } from "ccstate";
 import {
+  derivePlatformServiceOrigin,
+  isOkouProductionHostname,
+  type PlatformService,
+} from "@okouai/core/platform-service-origin";
+import {
   resolveClerkInstanceConfig,
   resolveClerkSatelliteConfig,
   resolveConfiguredProductionPrimaryAppDomain,
@@ -12,12 +17,7 @@ import {
   setPostHogUser,
 } from "../lib/posthog.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
-import {
-  derivePlatformServiceOrigin,
-  isOkouProductionHostname,
-  type PlatformService,
-  resolvePlatformEnvironment,
-} from "../lib/platform-host.ts";
+import { resolvePlatformEnvironment } from "../lib/platform-host.ts";
 import {
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
