@@ -28,6 +28,8 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -43,9 +45,19 @@ interface AuthHeaders {
 }
 
 interface RawScrapeRequestOptions {
+  readonly authHeaders?: AuthHeaders;
   readonly instanceSignal?: AbortSignal;
   readonly requestSignal?: AbortSignal;
   readonly usagePricingResolution?: UsagePricingFixture["resolution"];
+}
+
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+  readonly code = "api_response_error";
+
+  constructor(readonly status: number) {
+    super("Clerk request failed for user_sensitive and org_sensitive");
+  }
 }
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -89,7 +101,7 @@ async function rawScrapeRequest(
   const request = new Request("http://api.test/api/scrape", {
     method: "POST",
     headers: {
-      ...authenticate(actor),
+      ...(options.authHeaders ?? authenticate(actor)),
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
@@ -212,6 +224,213 @@ describe("okou scrape route", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: scrape:read",
     );
+  });
+
+  it("retries a transient Clerk membership failure before scraping with a CLI PAT", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    let firecrawlRequests = 0;
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    await fundActor(actor);
+    mockClerkMembership(context, actor, "org:admin");
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValueOnce(
+      new ClerkApiResponseTestError(521),
+    );
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: { sourceURL: "https://example.com/page" },
+          },
+        });
+      }),
+    );
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      {
+        authHeaders: { authorization: `Bearer ${token}` },
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledOnce();
+    expect(firecrawlRequests).toBe(1);
+  });
+
+  it("returns a sanitized 503 when Clerk membership reads remain unavailable", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    let firecrawlRequests = 0;
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(521),
+    );
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      {
+        authHeaders: { authorization: `Bearer ${token}` },
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+    const afterCredits = await credits(actor);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Authentication provider is temporarily unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    expect(firecrawlRequests).toBe(0);
+    expect(afterCredits).toBe(beforeCredits);
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledOnce();
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Clerk read unavailable during scrape authentication",
+      expect.objectContaining({
+        type: "provider_unavailable",
+        provider: "clerk",
+        provider_status: 521,
+        failure_class: "transient_read_exhausted",
+        method: "POST",
+        route: "/api/scrape",
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.error.mock.calls),
+    ).not.toContain("sensitive");
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("stops Clerk membership retries when the API instance is aborted", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    const controller = new AbortController();
+    const retryStarted = createDeferredPromise<void>(context.signal);
+    const abortError = new Error("client disconnected during Clerk retry");
+    abortError.name = "AbortError";
+    await fundActor(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(521),
+    );
+    context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
+      retryStarted.resolve(undefined);
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected Clerk retry delay to receive a signal");
+      }
+      return createDeferredPromise<void>(signal).promise;
+    });
+
+    const responsePromise = rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      {
+        authHeaders: { authorization: `Bearer ${token}` },
+        instanceSignal: controller.signal,
+      },
+    );
+    await retryStarted.promise;
+    controller.abort(abortError);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(500);
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledOnce();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps successful Clerk membership misses on the unauthorized path", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { authHeaders: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(401);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("does not classify direct Clerk session failures as exhausted reads", async () => {
+    context.mocks.clerk.authenticateRequest.mockRejectedValue(
+      new ClerkApiResponseTestError(521),
+    );
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { authHeaders: { authorization: "Bearer clerk-session" } },
+    );
+
+    expect(response.status).toBe(500);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledOnce();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalledWith(
+      "Clerk read unavailable during scrape authentication",
+      expect.anything(),
+    );
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledOnce();
   });
 
   it("rejects scrape requests when the provider is not configured", async () => {
