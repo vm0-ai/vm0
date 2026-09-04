@@ -41,6 +41,7 @@ import {
   InstallBanner,
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
+import { RebrandBanner } from "../rebrand-banner/rebrand-banner.tsx";
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -403,6 +404,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
+        <RebrandBanner />
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}

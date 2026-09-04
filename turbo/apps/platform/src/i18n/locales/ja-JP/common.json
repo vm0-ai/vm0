@@ -3308,6 +3308,10 @@
       "stepTwo": "「ホーム画面に追加」を選択します。",
       "title": "{{assistantName}} をインストールする"
     },
+    "rebrandBanner": {
+      "dismiss": "名称変更バナーを閉じる",
+      "message": "VM0 は Okou になりました。同じチーム、同じプロダクト、新しい名前です。"
+    },
     "redeemCampaign": {
       "actions": {
         "back": "{{brandName}} に戻る",

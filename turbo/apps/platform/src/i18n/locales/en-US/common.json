@@ -3308,6 +3308,10 @@
       "stepTwo": "Choose Add to Home Screen.",
       "title": "Install {{assistantName}}"
     },
+    "rebrandBanner": {
+      "dismiss": "Dismiss rename banner",
+      "message": "VM0 is now Okou. Same team, same product, new name."
+    },
     "redeemCampaign": {
       "actions": {
         "back": "Back to {{brandName}}",

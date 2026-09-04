@@ -3316,6 +3316,10 @@
       "stepTwo": "होम स्क्रीन में जोड़ें चुनें.",
       "title": "{{assistantName}} स्थापित करें"
     },
+    "rebrandBanner": {
+      "dismiss": "नाम बदलने का बैनर बंद करें",
+      "message": "VM0 अब Okou है। वही टीम, वही प्रोडक्ट, नया नाम।"
+    },
     "redeemCampaign": {
       "actions": {
         "back": "{{brandName}} पर वापस जाएँ",

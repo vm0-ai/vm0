@@ -504,6 +504,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Ming only while the shell settles; widen once the layout is signed off.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
+  [FeatureSwitchKey.RebrandBanner]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show a dismissible top banner on Okou-branded hosts announcing that VM0 is now Okou.",
+    enabled: false,
+    // Staff review the copy first; flip to `enabled: true` at rebrand launch.
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

@@ -3316,6 +3316,10 @@
       "stepTwo": "Wählen Sie „Zum Startbildschirm hinzufügen“.",
       "title": "Installieren Sie {{assistantName}}"
     },
+    "rebrandBanner": {
+      "dismiss": "Banner zur Namensänderung schließen",
+      "message": "VM0 heißt jetzt Okou. Gleiches Team, gleiches Produkt, neuer Name."
+    },
     "redeemCampaign": {
       "actions": {
         "back": "Zurück zu {{brandName}}",

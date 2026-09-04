@@ -3308,6 +3308,10 @@
       "stepTwo": "Pilih Tambahkan ke Layar Utama.",
       "title": "Instal {{assistantName}}"
     },
+    "rebrandBanner": {
+      "dismiss": "Tutup banner perubahan nama",
+      "message": "VM0 kini menjadi Okou. Tim yang sama, produk yang sama, nama baru."
+    },
     "redeemCampaign": {
       "actions": {
         "back": "Kembali ke {{brandName}}",

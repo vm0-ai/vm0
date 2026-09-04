@@ -3367,6 +3367,10 @@
       "stepTwo": "Choisissez Ajouter à l’écran d’accueil.",
       "title": "Installer {{assistantName}}"
     },
+    "rebrandBanner": {
+      "dismiss": "Fermer la bannière de changement de nom",
+      "message": "VM0 devient Okou. La même équipe, le même produit, un nouveau nom."
+    },
     "redeemCampaign": {
       "actions": {
         "back": "Retour à {{brandName}}",

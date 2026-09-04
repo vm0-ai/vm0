@@ -79,4 +79,5 @@ export enum FeatureSwitchKey {
   GeistTypeface = "geistTypeface",
   SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
   NewUi = "newUi",
+  RebrandBanner = "rebrandBanner",
 }
