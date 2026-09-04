@@ -2,6 +2,7 @@ import {
   clientTelemetryOutcomeForError,
   recordClientTelemetry,
   startClientTelemetryMeasurement,
+  type ClientTelemetryOperation,
 } from "../../lib/client-telemetry.ts";
 import { onRejection } from "../utils.ts";
 
@@ -14,6 +15,7 @@ interface IndexedDbTransactionDetails {
   readonly database: "chat" | "intro_video_drafts";
   /** Stable operation shape only. Never include keys, ranges, or values. */
   readonly template: string;
+  readonly transaction_mode: IDBTransactionMode;
 }
 
 export type TrackIndexedDbRequest = <TResult>(
@@ -37,8 +39,22 @@ export async function runIndexedDbTransaction<
     trackRequest: TrackIndexedDbRequest,
   ) => Promise<TResult>,
 ): Promise<TResult> {
+  const creationMeasurement = startClientTelemetryMeasurement();
+  const creationOperation = {
+    event_name: "indexeddb.transaction.create",
+    database: details.database,
+    template: details.template,
+    transaction_mode: details.transaction_mode,
+  } satisfies ClientTelemetryOperation;
+  const transaction = await onRejection(createTransaction, (error) => {
+    recordClientTelemetry(
+      creationMeasurement,
+      creationOperation,
+      clientTelemetryOutcomeForError(error),
+    );
+  });
   const measurement = startClientTelemetryMeasurement();
-  const transaction = createTransaction();
+  recordClientTelemetry(creationMeasurement, creationOperation, "success");
   let requestCount = 0;
   const trackRequest: TrackIndexedDbRequest = (request) => {
     requestCount += 1;

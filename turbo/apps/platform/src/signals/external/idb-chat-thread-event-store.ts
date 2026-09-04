@@ -104,6 +104,7 @@ async function readEventBoundary(
     {
       database: "chat",
       template: TRANSACTION_TEMPLATES.readEventBoundary,
+      transaction_mode: "readonly",
     },
     () => {
       return db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
@@ -138,6 +139,7 @@ async function readEventPage(
     {
       database: "chat",
       template: TRANSACTION_TEMPLATES.readEventPage,
+      transaction_mode: "readonly",
     },
     () => {
       return db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
@@ -165,6 +167,7 @@ function createStrictReadStore(getDb: GetDb) {
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.readSnapshot,
+          transaction_mode: "readonly",
         },
         () => {
           return db.transaction(CHAT_THREAD_SNAPSHOT_STORE, "readonly");
@@ -224,6 +227,7 @@ function createStrictWriteStore(getDb: GetDb) {
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.replaceFromSnapshot,
+          transaction_mode: "readwrite",
         },
         () => {
           return db.transaction(
@@ -266,6 +270,7 @@ function createStrictWriteStore(getDb: GetDb) {
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.upsertEvents,
+          transaction_mode: "readwrite",
         },
         () => {
           return db.transaction(CHAT_THREAD_EVENTS_STORE, "readwrite");
@@ -288,6 +293,7 @@ function createStrictWriteStore(getDb: GetDb) {
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.clear,
+          transaction_mode: "readwrite",
         },
         () => {
           return db.transaction(

@@ -11,6 +11,7 @@ import {
   testContext,
 } from "../../__tests__/test-helpers.ts";
 import { createAuthedContractClient } from "../../api-client-base.ts";
+import { createChatIdbOpener } from "../chat-idb-opener.ts";
 import {
   deleteIntroVideoDraft,
   readIntroVideoDraft,
@@ -47,6 +48,8 @@ interface TelemetryTestDatabase extends DBSchema {
   };
 }
 
+// Client telemetry has no page-visible surface, so these integration tests use
+// real IndexedDB behavior and observe the external Axiom payload boundary.
 const context = testContext();
 
 beforeEach(() => {
@@ -69,17 +72,91 @@ async function openTelemetryTestDatabase() {
   });
 }
 
-async function capturedEvent(): Promise<Record<string, unknown>> {
+async function capturedEvents(
+  expectedCount: number,
+): Promise<readonly Record<string, unknown>[]> {
   await vi.waitFor(() => {
-    expect(axiomTelemetry.ingest).toHaveBeenCalledOnce();
+    expect(axiomTelemetry.ingest).toHaveBeenCalledTimes(expectedCount);
   });
-  const [dataset, events] = axiomTelemetry.ingest.mock.calls[0]!;
-  expect(dataset).toBe("vm0-client-telemetry-prod");
-  expect(events).toHaveLength(1);
+  return axiomTelemetry.ingest.mock.calls.map(([dataset, events]) => {
+    expect(dataset).toBe("vm0-client-telemetry-prod");
+    expect(events).toHaveLength(1);
+    return events[0]!;
+  });
+}
+
+async function capturedEvent(): Promise<Record<string, unknown>> {
+  const events = await capturedEvents(1);
   return events[0]!;
 }
 
-test("Reports one parameter-free event for a physical IndexedDB transaction", async () => {
+test("Reports a physical chat database open without credential identifiers", async () => {
+  const sensitiveUserId = `private-user-${crypto.randomUUID()}`;
+  const sensitiveOrgId = `private-org-${crypto.randomUUID()}`;
+  const database = await createChatIdbOpener({
+    reload: vi.fn<() => void>(),
+  }).openChatIdb(sensitiveUserId, sensitiveOrgId);
+  database.close();
+
+  const event = await capturedEvent();
+  expect(event).toMatchObject({
+    "attributes.custom": {
+      "db.namespace": "chat",
+      "db.system": "indexeddb",
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "window",
+    },
+    kind: "client",
+    name: "chat.open",
+    "resource.deployment.environment.name": "production",
+    "scope.name": "okou-app/indexeddb",
+    "service.name": "Okou-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
+  });
+  expect(event.duration).toStrictEqual(expect.any(Number));
+  expect(event).not.toHaveProperty("attributes.custom.okou.db.request.count");
+  expect(event).not.toHaveProperty(
+    "attributes.custom.okou.db.transaction.mode",
+  );
+  expect(JSON.stringify(event)).not.toContain(sensitiveUserId);
+  expect(JSON.stringify(event)).not.toContain(sensitiveOrgId);
+});
+
+test("Reports a failed chat database open without hiding its error", async () => {
+  const openError = new DOMException(
+    "private open failure",
+    "InvalidStateError",
+  );
+  const opener = createChatIdbOpener({
+    openDatabase: () => {
+      return Promise.reject(openError);
+    },
+    reload: vi.fn<() => void>(),
+  });
+
+  await expect(opener.openChatIdb("private-user", "private-org")).rejects.toBe(
+    openError,
+  );
+
+  const event = await capturedEvent();
+  expect(event).toMatchObject({
+    "attributes.custom": {
+      "db.namespace": "chat",
+      "db.system": "indexeddb",
+      "okou.client.outcome": "error",
+    },
+    name: "chat.open",
+    "scope.name": "okou-app/indexeddb",
+    "status.code": "ERROR",
+  });
+  expect(event.duration).toStrictEqual(expect.any(Number));
+  expect(JSON.stringify(event)).not.toContain(openError.message);
+  expect(JSON.stringify(event)).not.toContain("private-user");
+  expect(JSON.stringify(event)).not.toContain("private-org");
+});
+
+test("Reports separate creation and execution events for an IndexedDB transaction", async () => {
   const database = await openTelemetryTestDatabase();
   const sensitiveKey = `private-key-${crypto.randomUUID()}`;
   const sensitiveValue = `private-value-${crypto.randomUUID()}`;
@@ -91,6 +168,7 @@ test("Reports one parameter-free event for a physical IndexedDB transaction", as
         {
           database: "chat",
           template: "records.put+get",
+          transaction_mode: "readwrite",
         },
         () => {
           return database.transaction("records", "readwrite");
@@ -107,7 +185,29 @@ test("Reports one parameter-free event for a physical IndexedDB transaction", as
     database.close();
   }
 
-  const event = await capturedEvent();
+  const events = await capturedEvents(2);
+  const creationEvent = events[0]!;
+  const event = events[1]!;
+  expect(creationEvent).toMatchObject({
+    "attributes.custom": {
+      "db.namespace": "chat",
+      "db.system": "indexeddb",
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "shared_worker",
+      "okou.db.transaction.mode": "readwrite",
+    },
+    kind: "client",
+    name: "records.put+get.transaction.create",
+    "resource.deployment.environment.name": "production",
+    "scope.name": "okou-app/indexeddb",
+    "service.name": "Okou-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
+  });
+  expect(creationEvent.duration).toStrictEqual(expect.any(Number));
+  expect(creationEvent).not.toHaveProperty(
+    "attributes.custom.okou.db.request.count",
+  );
   expect(event).toMatchObject({
     "attributes.custom": {
       "db.namespace": "chat",
@@ -143,6 +243,7 @@ test("Reports an aborted IndexedDB transaction without hiding its error", async 
         {
           database: "intro_video_drafts",
           template: "records.put",
+          transaction_mode: "readwrite",
         },
         () => {
           return database.transaction("records", "readwrite");
@@ -160,7 +261,18 @@ test("Reports an aborted IndexedDB transaction without hiding its error", async 
     database.close();
   }
 
-  const event = await capturedEvent();
+  const events = await capturedEvents(2);
+  const creationEvent = events[0]!;
+  const event = events[1]!;
+  expect(creationEvent).toMatchObject({
+    "attributes.custom": {
+      "db.namespace": "intro_video_drafts",
+      "okou.client.outcome": "success",
+      "okou.db.transaction.mode": "readwrite",
+    },
+    name: "records.put.transaction.create",
+    "status.code": "OK",
+  });
   expect(event).toMatchObject({
     "attributes.custom": {
       "db.namespace": "intro_video_drafts",
@@ -173,7 +285,48 @@ test("Reports an aborted IndexedDB transaction without hiding its error", async 
   expect(event).not.toHaveProperty("status.code");
 });
 
-test("Routes every intro video draft operation through one transaction event", async () => {
+test("Reports a synchronous IndexedDB transaction creation failure", async () => {
+  const creationError = new DOMException(
+    "private creation failure",
+    "InvalidStateError",
+  );
+
+  await expect(
+    runIndexedDbTransaction(
+      {
+        database: "chat",
+        template: "records.get",
+        transaction_mode: "readonly",
+      },
+      () => {
+        throw creationError;
+      },
+      () => {
+        return Promise.reject(
+          new Error("Transaction execution must not start"),
+        );
+      },
+    ),
+  ).rejects.toBe(creationError);
+
+  const event = await capturedEvent();
+  expect(event).toMatchObject({
+    "attributes.custom": {
+      "db.namespace": "chat",
+      "db.system": "indexeddb",
+      "okou.client.outcome": "error",
+      "okou.db.transaction.mode": "readonly",
+    },
+    name: "records.get.transaction.create",
+    "scope.name": "okou-app/indexeddb",
+    "status.code": "ERROR",
+  });
+  expect(event.duration).toStrictEqual(expect.any(Number));
+  expect(event).not.toHaveProperty("attributes.custom.okou.db.request.count");
+  expect(JSON.stringify(event)).not.toContain(creationError.message);
+});
+
+test("Reports all intro video draft IndexedDB lifecycle events", async () => {
   const draft = {
     blob: new Blob(["private draft"]),
     contentType: "video/mp4",
@@ -196,43 +349,64 @@ test("Routes every intro video draft operation through one transaction event", a
   await deleteIntroVideoDraft();
   await expect(readIntroVideoDraft()).resolves.toBeNull();
 
-  await vi.waitFor(() => {
-    expect(axiomTelemetry.ingest).toHaveBeenCalledTimes(4);
-  });
+  const events = await capturedEvents(12);
+  const operations = [
+    { mode: "readwrite", template: "intro_video_drafts.put" },
+    { mode: "readonly", template: "intro_video_drafts.get" },
+    { mode: "readwrite", template: "intro_video_drafts.delete" },
+    { mode: "readonly", template: "intro_video_drafts.get" },
+  ] as const;
   expect(
-    axiomTelemetry.ingest.mock.calls.map(([, events]) => {
-      return events[0];
+    events.map((event) => {
+      return event.name;
     }),
-  ).toMatchObject([
-    {
+  ).toStrictEqual(
+    operations.flatMap(({ template }) => {
+      return [
+        "intro_video_drafts.open",
+        `${template}.transaction.create`,
+        template,
+      ];
+    }),
+  );
+  for (const [index, operation] of operations.entries()) {
+    const openEvent = events[index * 3]!;
+    const creationEvent = events[index * 3 + 1]!;
+    const transactionEvent = events[index * 3 + 2]!;
+    expect(openEvent).toMatchObject({
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
-        "okou.db.request.count": 1,
+        "okou.client.outcome": "success",
       },
-      name: "intro_video_drafts.put",
-    },
-    {
+      "status.code": "OK",
+    });
+    expect(openEvent).not.toHaveProperty(
+      "attributes.custom.okou.db.request.count",
+    );
+    expect(openEvent).not.toHaveProperty(
+      "attributes.custom.okou.db.transaction.mode",
+    );
+    expect(creationEvent).toMatchObject({
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
-        "okou.db.request.count": 1,
+        "okou.client.outcome": "success",
+        "okou.db.transaction.mode": operation.mode,
       },
-      name: "intro_video_drafts.get",
-    },
-    {
+      "status.code": "OK",
+    });
+    expect(creationEvent).not.toHaveProperty(
+      "attributes.custom.okou.db.request.count",
+    );
+    expect(transactionEvent).toMatchObject({
       "attributes.custom": {
         "db.namespace": "intro_video_drafts",
+        "okou.client.outcome": "success",
         "okou.db.request.count": 1,
+        "okou.db.transaction.mode": operation.mode,
       },
-      name: "intro_video_drafts.delete",
-    },
-    {
-      "attributes.custom": {
-        "db.namespace": "intro_video_drafts",
-        "okou.db.request.count": 1,
-      },
-      name: "intro_video_drafts.get",
-    },
-  ]);
+      "status.code": "OK",
+    });
+  }
 });
 
 test("Reports typed API requests with route templates and no parameters", async () => {
