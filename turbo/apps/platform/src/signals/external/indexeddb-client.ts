@@ -1,0 +1,83 @@
+import {
+  clientTelemetryOutcomeForError,
+  recordClientTelemetry,
+  startClientTelemetryMeasurement,
+} from "../../lib/client-telemetry.ts";
+import { onRejection } from "../utils.ts";
+
+interface IndexedDbTransactionLike {
+  readonly done: Promise<unknown>;
+  readonly mode: IDBTransactionMode;
+}
+
+interface IndexedDbTransactionDetails {
+  readonly database: "chat" | "intro_video_drafts";
+  /** Stable operation shape only. Never include keys, ranges, or values. */
+  readonly template: string;
+}
+
+export type TrackIndexedDbRequest = <TResult>(
+  request: Promise<TResult>,
+) => Promise<TResult>;
+
+async function observeTransactionCompletion(
+  transaction: IndexedDbTransactionLike,
+): Promise<void> {
+  await Promise.allSettled([transaction.done]);
+}
+
+export async function runIndexedDbTransaction<
+  TTransaction extends IndexedDbTransactionLike,
+  TResult,
+>(
+  details: IndexedDbTransactionDetails,
+  createTransaction: () => TTransaction,
+  execute: (
+    transaction: TTransaction,
+    trackRequest: TrackIndexedDbRequest,
+  ) => Promise<TResult>,
+): Promise<TResult> {
+  const measurement = startClientTelemetryMeasurement();
+  const transaction = createTransaction();
+  let requestCount = 0;
+  const trackRequest: TrackIndexedDbRequest = (request) => {
+    requestCount += 1;
+    return request;
+  };
+
+  const result = await onRejection(
+    (async () => {
+      const result = await execute(transaction, trackRequest);
+      await transaction.done;
+      return result;
+    })(),
+    async (error) => {
+      // Observe the physical transaction through completion without replacing
+      // the operation's original failure.
+      await observeTransactionCompletion(transaction);
+      recordClientTelemetry(
+        measurement,
+        {
+          event_name: "indexeddb.transaction",
+          database: details.database,
+          template: details.template,
+          transaction_mode: transaction.mode,
+          request_count: requestCount,
+        },
+        clientTelemetryOutcomeForError(error),
+      );
+    },
+  );
+  recordClientTelemetry(
+    measurement,
+    {
+      event_name: "indexeddb.transaction",
+      database: details.database,
+      template: details.template,
+      transaction_mode: transaction.mode,
+      request_count: requestCount,
+    },
+    "success",
+  );
+  return result;
+}

@@ -1842,6 +1842,20 @@
       "when": 1788442864067,
       "tag": "1070_remove_chat_search_delete_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 1071,
+      "version": "7",
+      "when": 1788482123509,
+      "tag": "1071_amazing_famine",
+      "breakpoints": true
+    },
+    {
+      "idx": 1072,
+      "version": "7",
+      "when": 1788522137500,
+      "tag": "1072_huge_jackpot",
+      "breakpoints": true
     }
   ]
 }

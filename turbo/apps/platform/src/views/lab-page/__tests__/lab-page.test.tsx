@@ -90,9 +90,6 @@ test("Lab groups every feature by rollout stage with a switch", async () => {
   expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
   expect(within(beta).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
   expect(
-    within(beta).getByText(FeatureSwitchKey.DesktopScreenRecording),
-  ).toBeVisible();
-  expect(
     within(alpha).getByText(FeatureSwitchKey.AhrefsConnector),
   ).toBeVisible();
   expect(
@@ -182,6 +179,51 @@ test("A user can toggle a Lab feature and reset all overrides", async () => {
   await waitFor(() => {
     expect(resetRequested).toBeTruthy();
     expect(featureControl).not.toBeChecked();
+  });
+});
+
+test("A feature switch update resynchronizes shell document attributes", async () => {
+  const user = userEvent.setup();
+
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.NewUi]: false,
+    },
+  });
+  await screen.findByRole("heading", { name: "Lab" });
+
+  let effectiveSwitches: Record<string, boolean> = {
+    [FeatureSwitchKey.Lab]: true,
+    [FeatureSwitchKey.NewUi]: false,
+  };
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    return respond(200, {
+      switches: effectiveSwitches,
+      effectiveSwitches,
+    });
+  });
+  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+    effectiveSwitches = { ...effectiveSwitches, ...body.switches };
+    return respond(200, {
+      switches: body.switches,
+      effectiveSwitches,
+    });
+  });
+
+  const featureControl = within(
+    featureSwitchRow(FeatureSwitchKey.NewUi),
+  ).getByRole("switch");
+  expect(featureControl).not.toBeChecked();
+  expect(document.documentElement.dataset.newUi).toBeUndefined();
+
+  await user.click(featureControl);
+
+  await waitFor(() => {
+    expect(featureControl).toBeChecked();
+    expect(document.documentElement.dataset.newUi).toBe("");
   });
 });
 

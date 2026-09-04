@@ -29,6 +29,10 @@ _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_AUTH_BASE_SCHEME = "https"
 
+# Bound the complete resolved value before synchronous URL processing on the
+# mitmproxy event loop. This matches the connector-check URL ceiling while
+# retaining ample room for ordinary connector URLs.
+MAX_RESOLVED_AUTH_BASE_CHARACTERS = 8 * 1024
 # This matches the runner's existing managed-query work scale while retaining
 # ample room for ordinary connector URLs. Count every segment that auth.base
 # materializes, including empty segments separated by either ``&`` or ``;``.
@@ -186,6 +190,10 @@ def _raw_rewrite_base_host(netloc: str) -> str | None:
 
 
 def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
+    if len(resolved_base) > MAX_RESOLVED_AUTH_BASE_CHARACTERS:
+        raise ValueError(
+            f"Invalid auth.base URL: must not exceed {MAX_RESOLVED_AUTH_BASE_CHARACTERS} characters"
+        )
     if "\\" in resolved_base:
         raise ValueError("Invalid auth.base URL: must not contain backslash")
     if has_raw_whitespace(resolved_base):
@@ -250,14 +258,16 @@ def build_rewrite_url(
     incoming request (no leading ``?``). Query key precedence is
     ``resolved_query`` > resolved base query > original request query.
 
-    ``resolved_base`` must be an absolute HTTPS URL with a valid authority and
-    safe path; userinfo and fragments are not allowed. Backslashes, whitespace
-    or unsafe code points, invalid ports, unsafe path syntax, malformed Unicode,
-    and unsafe or invalid percent-encoded host syntax are rejected. Accepted
-    hosts are normalized for forwarding: Unicode and safely percent-encoded
-    Unicode names use canonical IDNA form, IPv4 literals must be canonical dotted
-    quads after safe percent-decoding, IPv6 literals are compressed and bracketed,
-    and explicit valid ports are preserved.
+    ``resolved_base`` must contain at most
+    ``MAX_RESOLVED_AUTH_BASE_CHARACTERS`` characters and be an absolute HTTPS
+    URL with a valid authority and safe path; userinfo and fragments are not
+    allowed. Backslashes, whitespace or unsafe code points, invalid ports,
+    unsafe path syntax, malformed Unicode, and unsafe or invalid percent-encoded
+    host syntax are rejected. Accepted hosts are normalized for forwarding:
+    Unicode and safely percent-encoded Unicode names use canonical IDNA form,
+    IPv4 literals must be canonical dotted quads after safe percent-decoding,
+    IPv6 literals are compressed and bracketed, and explicit valid ports are
+    preserved.
 
     Unsafe path syntax in ``rel_path`` is rejected as an invariant; firewall
     matching should already have blocked it before auth is applied.

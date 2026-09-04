@@ -318,28 +318,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.DesktopScreenRecording]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.IosPwaStartupImages]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Generate iOS PWA startup images from the inline bootstrap skeleton.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SocialDownloadDetectedMediaType]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "File a social download by the media kind detected from its leading file structure instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
-    enabled: false,
-    // Staff first: this decides the stored filename and content type, and the
-    // extension is baked into the public artifact URL, so widen only after real
-    // downloads confirm the detection agrees with the requested format.
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AvatarComposerV2]: {

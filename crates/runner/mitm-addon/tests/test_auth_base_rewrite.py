@@ -13,6 +13,11 @@ class _FailOnIterationQuery(str):
         raise AssertionError("original query must not be tokenized without trusted query sources")
 
 
+class _FailOnContentScanBase(str):
+    def __contains__(self, key: str) -> bool:
+        raise AssertionError("oversized resolved base must be rejected before content scanning")
+
+
 class TestBuildRewriteUrl:
     """Tests for build_rewrite_url pure URL construction."""
 
@@ -63,6 +68,23 @@ class TestBuildRewriteUrl:
             "",
         )
         assert url == "https://example.com/hook?token=secret"
+
+    def test_resolved_base_accepts_exact_character_limit(self):
+        prefix = "https://example.com/"
+        base = prefix + "x" * (auth_base_rewrite.MAX_RESOLVED_AUTH_BASE_CHARACTERS - len(prefix))
+
+        url = auth_base_rewrite.build_rewrite_url(base, "/", "")
+
+        assert len(base) == auth_base_rewrite.MAX_RESOLVED_AUTH_BASE_CHARACTERS
+        assert url == base
+
+    def test_oversized_resolved_base_rejected_before_content_scan(self):
+        base = _FailOnContentScanBase(
+            "x" * (auth_base_rewrite.MAX_RESOLVED_AUTH_BASE_CHARACTERS + 1)
+        )
+
+        with pytest.raises(ValueError, match="must not exceed 8192 characters"):
+            auth_base_rewrite.build_rewrite_url(base, "/", "")
 
     def test_resolved_base_does_not_enter_global_parse_cache(self):
         urllib.parse.urlsplit.cache_clear()

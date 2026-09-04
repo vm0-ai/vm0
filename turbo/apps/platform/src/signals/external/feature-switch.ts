@@ -12,6 +12,7 @@ import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
+import { syncShellDocumentAttributes$ } from "../theme.ts";
 import {
   featureSwitchCacheState$,
   setFeatureSwitchLocalStorage$,
@@ -119,6 +120,10 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
+export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+});
+
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
@@ -169,6 +174,7 @@ const hydrateFeatureSwitch$ = command(
       result.body.effectiveSwitches,
     );
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(syncShellDocumentAttributes$);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: combined[FeatureSwitchKey.OkouDebug],

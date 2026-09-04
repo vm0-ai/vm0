@@ -638,13 +638,11 @@ function VirtualizedChatThreads({
   const window = useLastResolved(scrollSignals.window$, {
     equalityFn: equalSidebarChatThreadWindows,
   });
-  const setVirtualListElement = useSet(scrollSignals.setVirtualListElement$);
   const startIndex = window?.startIndex ?? 0;
   const visibleItems = window?.items ?? [];
 
   return (
     <div
-      ref={setVirtualListElement}
       className="relative w-full"
       data-testid="sidebar-chat-threads-virtual-list"
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}

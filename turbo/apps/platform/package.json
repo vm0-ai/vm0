@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.838.0",
+  "version": "0.841.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tsconfig.build-config.json --noEmit"
   },
   "dependencies": {
+    "@axiomhq/js": "^1.5.0",
     "@base-ui/react": "^1.7.0",
     "@clerk/clerk-js": "6.25.8",
     "@clerk/localizations": "^4.13.8",

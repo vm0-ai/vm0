@@ -28,8 +28,7 @@ const DESKTOP_HANDOFF_PARAMS = {
   "intro-video-user": "test-user-123",
 } as const;
 
-const DESKTOP_HANDOFF_SWITCHES = {
-  [FeatureSwitchKey.DesktopScreenRecording]: true,
+const INTRO_VIDEO_SWITCHES = {
   [FeatureSwitchKey.IntroVideo]: true,
 } as const;
 
@@ -326,7 +325,7 @@ test("Screen recording hands the user off to the desktop app", async () => {
   await setupPage({
     context,
     path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: DESKTOP_HANDOFF_SWITCHES,
+    featureSwitches: INTRO_VIDEO_SWITCHES,
   });
 
   const dialog = await openIntroVideoDialog();
@@ -362,7 +361,7 @@ test("A desktop recording video request does not invent an opening or ending", a
   await setupPage({
     context,
     path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
-    featureSwitches: DESKTOP_HANDOFF_SWITCHES,
+    featureSwitches: INTRO_VIDEO_SWITCHES,
   });
 
   const dialog = await screen.findByRole("dialog", {
@@ -407,7 +406,7 @@ test("A desktop recording survives leaving the presenter step", async () => {
   await setupPage({
     context,
     path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
-    featureSwitches: DESKTOP_HANDOFF_SWITCHES,
+    featureSwitches: INTRO_VIDEO_SWITCHES,
   });
 
   const dialog = await screen.findByRole("dialog", {

@@ -130,6 +130,22 @@ function isClaudeModelCapacity(error: string): boolean {
   );
 }
 
+function classifyExecutionTimeout(
+  event: EnrichedChatEvent,
+  error: string,
+): ClassifiedAssistantError {
+  return {
+    sourceEventId: event.id,
+    providerMessage: error,
+    kind: "execution-timeout",
+    framework: null,
+    scope: "framework",
+    limitWindow: null,
+    retryLabel: null,
+    failedModel: null,
+  };
+}
+
 function classifyAssistantErrorFromText(
   event: EnrichedChatEvent,
   error: string,
@@ -139,16 +155,7 @@ function classifyAssistantErrorFromText(
   const unsupportedModel = getCodexChatGptAccountUnsupportedModel(error);
 
   if (isAgentExecutionTimeoutRunError(normalized)) {
-    return {
-      sourceEventId: event.id,
-      providerMessage: error,
-      kind: "execution-timeout",
-      framework: null,
-      scope: "framework",
-      limitWindow: null,
-      retryLabel: null,
-      failedModel: null,
-    };
+    return classifyExecutionTimeout(event, error);
   }
 
   if (unsupportedModel !== undefined) {
@@ -223,8 +230,9 @@ function classifyAssistantErrorFromText(
   return null;
 }
 
-const STRUCTURED_PROVIDER_RECOVERY_KIND = Object.freeze({
+const STRUCTURED_RECOVERY_KIND = Object.freeze({
   session_history_limit: null,
+  execution_timeout: "execution-timeout",
   insufficient_credits: null,
   invalid_api_key: null,
   invalid_credentials: null,
@@ -241,14 +249,11 @@ const STRUCTURED_PROVIDER_RECOVERY_KIND = Object.freeze({
   reconnect_required: null,
   unsupported_model: "model-unavailable",
   usage_limit: "usage-limit",
-} satisfies Record<
-  KnownRunFailureReason,
-  ProviderAssistantErrorRecoveryKind | null
->);
+} satisfies Record<KnownRunFailureReason, AssistantErrorRecoveryKind | null>);
 
-function structuredProviderRecoveryKind(
+function structuredRecoveryKind(
   event: EnrichedChatEvent,
-): ProviderAssistantErrorRecoveryKind | null | undefined {
+): AssistantErrorRecoveryKind | null | undefined {
   if (event.eventType !== "run.failed" || event.failureReason === undefined) {
     return undefined;
   }
@@ -259,7 +264,7 @@ function structuredProviderRecoveryKind(
   if (!knownReason.success) {
     return null;
   }
-  return STRUCTURED_PROVIDER_RECOVERY_KIND[knownReason.data];
+  return STRUCTURED_RECOVERY_KIND[knownReason.data];
 }
 
 function structuredRecoveryFrameworkFromMessage(
@@ -488,7 +493,7 @@ function createClassifiedAssistantErrorComputed(
       return null;
     }
 
-    const structuredKind = structuredProviderRecoveryKind(candidate.event);
+    const structuredKind = structuredRecoveryKind(candidate.event);
     if (structuredKind === null) {
       return null;
     }
@@ -499,6 +504,8 @@ function createClassifiedAssistantErrorComputed(
         candidate.event,
         candidate.error,
       );
+    } else if (structuredKind === "execution-timeout") {
+      classified = classifyExecutionTimeout(candidate.event, candidate.error);
     } else {
       if (
         structuredKind !== "model-unavailable" &&

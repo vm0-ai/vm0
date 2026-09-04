@@ -1,5 +1,96 @@
 # Changelog
 
+## [0.841.0](https://github.com/vm0-ai/vm0/compare/app-v0.840.0...app-v0.841.0) (2026-09-04)
+
+
+### Features
+
+* **platform:** add client red telemetry ([#31656](https://github.com/vm0-ai/vm0/issues/31656)) ([7abbd22](https://github.com/vm0-ai/vm0/commit/7abbd22abd2ea690664569fc616236dc913a06ab))
+
+
+### Bug Fixes
+
+* **platform:** align goal ui with work folding ([#31659](https://github.com/vm0-ai/vm0/issues/31659)) ([2c31b59](https://github.com/vm0-ai/vm0/commit/2c31b591d8349ab5de267ea88bb6ab7081a4aeaf))
+
+
+### Refactoring
+
+* consolidate desktop recording under intro video switch ([#31730](https://github.com/vm0-ai/vm0/issues/31730)) ([262f6db](https://github.com/vm0-ai/vm0/commit/262f6db498a4d2951d538b9af723bb199a21f311))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+
+## [0.840.0](https://github.com/vm0-ai/vm0/compare/app-v0.839.0...app-v0.840.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+* **platform:** preview recent run messages when collapsed ([#31687](https://github.com/vm0-ai/vm0/issues/31687)) ([7ba50ee](https://github.com/vm0-ai/vm0/commit/7ba50eebe75cc1d9cf6785e143aa408854405757))
+* **ui:** move the new ui primary to cobalt ([#31680](https://github.com/vm0-ai/vm0/issues/31680)) ([f4393f0](https://github.com/vm0-ai/vm0/commit/f4393f057b98c5d9a3aca3e92c2eb7c8dc9c0fae))
+
+
+### Bug Fixes
+
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+* **chat:** skip empty event tails in batch catch-up ([#31718](https://github.com/vm0-ai/vm0/issues/31718)) ([289d858](https://github.com/vm0-ai/vm0/commit/289d858a4b2a3b5f43e906b7efe961e785b71aed))
+
+
+### Refactoring
+
+* **platform:** consolidate app lifecycle and sidebar cleanup ([#31585](https://github.com/vm0-ai/vm0/issues/31585)) ([8a58754](https://github.com/vm0-ai/vm0/commit/8a58754c07930b35ddabf326d8fd91f31a19bc03))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.0
+    * @okouai/core bumped to 8.621.0
+    * @okouai/ui bumped to 1.5.0
+
+## [0.839.0](https://github.com/vm0-ai/vm0/compare/app-v0.838.0...app-v0.839.0) (2026-09-04)
+
+
+### Features
+
+* add avatar composer v2 ([#31526](https://github.com/vm0-ai/vm0/issues/31526)) ([0812c8b](https://github.com/vm0-ai/vm0/commit/0812c8bfb4c4d8a8e416717573a3d5a6609347f8))
+* **app:** track chat work history expansion ([#31588](https://github.com/vm0-ai/vm0/issues/31588)) ([20393d9](https://github.com/vm0-ai/vm0/commit/20393d9c404f6e4f3596319cf60aac5b64fb7aba))
+* **core:** roll out connector accounts to all users ([#31608](https://github.com/vm0-ai/vm0/issues/31608)) ([aca7cf7](https://github.com/vm0-ai/vm0/commit/aca7cf7ea9e6a36a37cfedbfcd987394f977add5))
+
+
+### Bug Fixes
+
+* **app:** hide activity log link outside debug mode ([#31592](https://github.com/vm0-ai/vm0/issues/31592)) ([0949da3](https://github.com/vm0-ai/vm0/commit/0949da33461d293773b09bddc3efd6d14d5303e6))
+* **app:** hide cancel while deleting agents ([#31581](https://github.com/vm0-ai/vm0/issues/31581)) ([1eaeaeb](https://github.com/vm0-ai/vm0/commit/1eaeaebe825a34cab9480c3f5f050834f704e597))
+* **app:** match the chat list's right inset to the workspace card gutter ([#31623](https://github.com/vm0-ai/vm0/issues/31623)) ([7b59b54](https://github.com/vm0-ai/vm0/commit/7b59b543c3e622a4647125832b161ab4398fb612))
+* keep intro video guidance out of user prompts ([#31673](https://github.com/vm0-ai/vm0/issues/31673)) ([40a2a9d](https://github.com/vm0-ai/vm0/commit/40a2a9d5a99d27eef49fcab8547af52bd43055e0))
+* localize automatic mcp oauth errors ([#31626](https://github.com/vm0-ai/vm0/issues/31626)) ([4420f93](https://github.com/vm0-ai/vm0/commit/4420f93d5ba7aba8c54ab46e0d5305674fb2588a))
+* **platform:** align pinned loading with shared worker lifecycle ([#31685](https://github.com/vm0-ai/vm0/issues/31685)) ([f503f4f](https://github.com/vm0-ai/vm0/commit/f503f4fed9d1ba6083ae8fbcfe766b74cdb03e30))
+* **platform:** buffer selection toolbar scroll dismissal ([#31639](https://github.com/vm0-ai/vm0/issues/31639)) ([2531bce](https://github.com/vm0-ai/vm0/commit/2531bceb336a28ce764d2b6a69a93ff60a7ba90c))
+* **platform:** clarify cloud browser setting is a new-chat default ([#31657](https://github.com/vm0-ai/vm0/issues/31657)) ([19c2fd1](https://github.com/vm0-ai/vm0/commit/19c2fd156c88deb76b3630be21af3f1e19a7b56a))
+* **platform:** distinguish shared worker unavailable reasons ([#31543](https://github.com/vm0-ai/vm0/issues/31543)) ([2d11c4d](https://github.com/vm0-ai/vm0/commit/2d11c4d315865e621e973b9e4f7c25cd940918eb))
+* **platform:** stabilize connector popover placement ([#31474](https://github.com/vm0-ai/vm0/issues/31474)) ([6e4b8a5](https://github.com/vm0-ai/vm0/commit/6e4b8a534911d1f74e6c10dc8c92454fc3c3df91))
+* **platform:** stop the thinking shimmer shifting the status text ([#31649](https://github.com/vm0-ai/vm0/issues/31649)) ([a371d46](https://github.com/vm0-ai/vm0/commit/a371d4693dd150ccd986d272c084904d03e85a6d)), closes [#31625](https://github.com/vm0-ai/vm0/issues/31625)
+* **ui:** give the pause button its own coral fill ([#31644](https://github.com/vm0-ai/vm0/issues/31644)) ([ef3fbba](https://github.com/vm0-ai/vm0/commit/ef3fbba190faccf939b0ae731397b5be53402181))
+* **ui:** rebuild new-ui neutral gray palette ([#31537](https://github.com/vm0-ai/vm0/issues/31537)) ([3acbaf5](https://github.com/vm0-ai/vm0/commit/3acbaf566cb2360a7db7aa7f9f52c0672aa3adea))
+* use the standard inset focus ring on emoji picker emoji ([#31643](https://github.com/vm0-ai/vm0/issues/31643)) ([bcf20d4](https://github.com/vm0-ai/vm0/commit/bcf20d43d2e5c63686bce282511002a0fb8a7e10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.401.0
+    * @okouai/core bumped to 8.620.0
+    * @okouai/ui bumped to 1.4.1
+
 ## [0.838.0](https://github.com/vm0-ai/vm0/compare/app-v0.837.0...app-v0.838.0) (2026-09-04)
 
 

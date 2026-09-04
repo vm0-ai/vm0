@@ -18915,6 +18915,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       }),
       await completeFailure({}),
       await completeFailure({ failureReason: "session_history_limit" }),
+      await completeFailure({ failureReason: "execution_timeout" }),
       await completeFailure({ failureReason: "unsupported_model" }),
     ];
     for (const control of visibleControls) {

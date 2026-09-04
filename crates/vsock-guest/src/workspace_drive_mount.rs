@@ -1,9 +1,9 @@
 use std::io;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -12,16 +12,14 @@ use vsock_proto::{ExecCapturedOutput, ExecTermination, WORKSPACE_DRIVE_MOUNT_OUT
 
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
-use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{EnvScriptGuard, PreparedShellCommand, build_shell_command_with_env};
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
-use crate::worker_ownership::{
-    ShutdownConnectionOnDrop, SingleActiveAdmission, SingleActivePermit,
-};
+pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as WorkspaceDriveMountSubmitError;
+use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
 const WORKSPACE_DIR: &str = "/home/user/workspace";
@@ -88,30 +86,20 @@ struct SpawnedWorkspaceMountCommand {
     env_script: Option<EnvScriptGuard>,
 }
 
-pub(crate) enum WorkspaceDriveMountSubmitError {
-    Busy,
-    Disconnected,
-    Start(io::Error),
-}
-
 struct WorkspaceDriveMountRequest {
     seq: u32,
     operation_guard: OperationGuard,
     admission: SingleActivePermit,
 }
 
-pub(crate) struct WorkspaceDriveMountWorker {
-    state: Mutex<WorkspaceDriveMountWorkerState>,
-    writer: GuestWriter,
+#[derive(Clone)]
+struct WorkspaceDriveMountWorkerContext {
     program: WorkspaceDriveMountProgram,
-    admission: SingleActiveAdmission,
-    connection_cancel: Arc<AtomicBool>,
     drain_deadline: Duration,
 }
 
-struct WorkspaceDriveMountWorkerState {
-    sender: Option<SyncSender<WorkspaceDriveMountRequest>>,
-    handle: Option<JoinHandle<()>>,
+pub(crate) struct WorkspaceDriveMountWorker {
+    inner: LazyConnectionWorker<WorkspaceDriveMountRequest, WorkspaceDriveMountWorkerContext>,
 }
 
 impl WorkspaceDriveMountWorker {
@@ -122,20 +110,22 @@ impl WorkspaceDriveMountWorker {
         drain_deadline: Duration,
     ) -> Self {
         Self {
-            state: Mutex::new(WorkspaceDriveMountWorkerState {
-                sender: None,
-                handle: None,
-            }),
-            writer,
-            program,
-            admission: SingleActiveAdmission::new(),
-            connection_cancel,
-            drain_deadline,
+            inner: LazyConnectionWorker::new(
+                writer,
+                connection_cancel,
+                WorkspaceDriveMountWorkerContext {
+                    program,
+                    drain_deadline,
+                },
+                handle_worker_request,
+                THREAD_WORKER,
+                "workspace drive mount worker",
+            ),
         }
     }
 
     pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
-        self.admission.try_acquire()
+        self.inner.try_admit()
     }
 
     pub(crate) fn submit(
@@ -144,68 +134,12 @@ impl WorkspaceDriveMountWorker {
         operation_guard: OperationGuard,
         admission: SingleActivePermit,
     ) -> Result<(), WorkspaceDriveMountSubmitError> {
-        let sender = self.sender()?;
-        let request = WorkspaceDriveMountRequest {
-            seq,
-            operation_guard,
-            admission,
-        };
-        match sender.try_send(request) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Full(_)) => Err(WorkspaceDriveMountSubmitError::Busy),
-            Err(TrySendError::Disconnected(_)) => Err(WorkspaceDriveMountSubmitError::Disconnected),
-        }
-    }
-
-    fn sender(
-        &self,
-    ) -> Result<SyncSender<WorkspaceDriveMountRequest>, WorkspaceDriveMountSubmitError> {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(sender) = &state.sender {
-            return Ok(sender.clone());
-        }
-
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let writer = self.writer.clone();
-        let worker_cancel = Arc::clone(&self.connection_cancel);
-        let program = self.program.clone();
-        let drain_deadline = self.drain_deadline;
-        let handle = thread::Builder::new()
-            .name(THREAD_WORKER.to_string())
-            .spawn(move || {
-                let _shutdown_on_exit = ShutdownConnectionOnDrop::new(writer.clone());
-                while let Ok(request) = receiver.recv() {
-                    if let Err(error) =
-                        handle_request(request, &writer, &worker_cancel, &program, drain_deadline)
-                    {
-                        log(
-                            "ERROR",
-                            &format!("workspace drive mount worker failed: {error}"),
-                        );
-                        break;
-                    }
-                }
+        self.inner
+            .try_submit_with(move || WorkspaceDriveMountRequest {
+                seq,
+                operation_guard,
+                admission,
             })
-            .map_err(WorkspaceDriveMountSubmitError::Start)?;
-        state.sender = Some(sender.clone());
-        state.handle = Some(handle);
-        Ok(sender)
-    }
-}
-
-impl Drop for WorkspaceDriveMountWorker {
-    fn drop(&mut self) {
-        self.connection_cancel.store(true, Ordering::Release);
-        let state = self
-            .state
-            .get_mut()
-            .unwrap_or_else(|error| error.into_inner());
-        drop(state.sender.take());
-        if let Some(handle) = state.handle.take()
-            && handle.join().is_err()
-        {
-            log("ERROR", "workspace drive mount worker panicked");
-        }
     }
 }
 
@@ -215,6 +149,21 @@ struct WorkspaceDriveMountOutput {
     stdout: BoundedDrainResult,
     stderr: BoundedDrainResult,
     diagnostic: String,
+}
+
+fn handle_worker_request(
+    request: WorkspaceDriveMountRequest,
+    writer: &GuestWriter,
+    connection_cancel: &AtomicBool,
+    context: &WorkspaceDriveMountWorkerContext,
+) -> io::Result<()> {
+    handle_request(
+        request,
+        writer,
+        connection_cancel,
+        &context.program,
+        context.drain_deadline,
+    )
 }
 
 fn handle_request(

@@ -1,5 +1,8 @@
 import { command, computed } from "ccstate";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import {
+  featureSwitchesContract,
+  type FeatureSwitchesResponse,
+} from "@okouai/api-contracts/contracts/feature-switches";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -17,8 +20,6 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
-const OFFICE_DOCUMENT_PREVIEW_COMPATIBILITY_KEY = "officeDocumentPreview";
-
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -31,31 +32,31 @@ function featureSwitchResponseBody(params: {
   });
   return {
     switches: params.switches,
-    effectiveSwitches: {
-      ...registeredEffectiveSwitches,
-      // The API deploys before the App, whose old builds can remain active for
-      // about two days and treat a missing value as false. Remove this bridge
-      // after the client-version floor excludes every build that reads the
-      // switch; tracked by vm0-ai/vm0#31431.
-      [OFFICE_DOCUMENT_PREVIEW_COMPATIBILITY_KEY]: true,
-    },
+    effectiveSwitches: registeredEffectiveSwitches,
   };
 }
 
-const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
-  const auth = get(organizationAuthContext$);
-  const switches = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return {
-    status: 200 as const,
-    body: featureSwitchResponseBody({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      switches,
-    }),
-  };
-});
+export const featureSwitchesResponse$ = computed(
+  async (
+    get,
+  ): Promise<{
+    readonly status: 200;
+    readonly body: FeatureSwitchesResponse;
+  }> => {
+    const auth = get(organizationAuthContext$);
+    const switches = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    return {
+      status: 200 as const,
+      body: featureSwitchResponseBody({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        switches,
+      }),
+    };
+  },
+);
 
 const updateFeatureSwitchesBody$ = bodyResultOf(featureSwitchesContract.update);
 
@@ -104,7 +105,7 @@ const deleteFeatureSwitchesInner$ = command(
 export const featureSwitchesRoutes: readonly RouteEntry[] = [
   {
     route: featureSwitchesContract.get,
-    handler: authRoute(featureSwitchesAuthOptions, getFeatureSwitchesInner$),
+    handler: authRoute(featureSwitchesAuthOptions, featureSwitchesResponse$),
   },
   {
     route: featureSwitchesContract.update,

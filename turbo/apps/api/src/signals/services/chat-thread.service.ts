@@ -4,6 +4,7 @@ import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type CodexServiceTier,
+  type DraftVoice,
   type PersistedAttachment,
   type UserMessageInputDocument,
   type Indicator,
@@ -79,6 +80,7 @@ type ChatThreadRow = {
   readonly title: string | null;
   readonly agentId: string;
   readonly draftUserMessage: UserMessageInputDocument | null;
+  readonly draftVoice: DraftVoice | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -162,6 +164,7 @@ function ownedChatThread(
         title: chatThreads.title,
         agentId: agents.id,
         draftUserMessage: chatThreads.draftUserMessage,
+        draftVoice: chatThreads.draftVoice,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
         cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
@@ -191,6 +194,7 @@ function ownedChatThread(
       title: thread.title,
       agentId: thread.agentId,
       draftUserMessage: thread.draftUserMessage ?? null,
+      draftVoice: thread.draftVoice ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
         .nullable()
@@ -229,6 +233,7 @@ export function chatThreadDraft(args: {
 
     return {
       draftUserMessage: thread.draftUserMessage,
+      draftVoice: thread.draftVoice,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
@@ -464,7 +469,7 @@ export function chatIndicators(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (a canonical user message with optional `draftAttachments`).
+ * (a canonical user message, voice draft, or optional `draftAttachments`).
  */
 export function chatThreadDraftIds(args: {
   readonly userId: string;
@@ -477,7 +482,10 @@ export function chatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          isNotNull(chatThreads.draftUserMessage),
+          or(
+            isNotNull(chatThreads.draftUserMessage),
+            isNotNull(chatThreads.draftVoice),
+          ),
         ),
       );
     return rows.map((row) => {
@@ -946,6 +954,7 @@ export const updateChatThreadDraft$ = command(
       readonly threadId: string;
       readonly userId: string;
       readonly draftUserMessage: UserMessageInputDocument | null;
+      readonly draftVoice: DraftVoice | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
@@ -955,6 +964,7 @@ export const updateChatThreadDraft$ = command(
       .update(chatThreads)
       .set({
         draftUserMessage: args.draftUserMessage,
+        draftVoice: args.draftVoice,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

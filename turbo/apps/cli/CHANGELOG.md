@@ -1,5 +1,53 @@
 # Changelog
 
+## [9.310.2](https://github.com/vm0-ai/vm0/compare/cli-v9.310.1...cli-v9.310.2) (2026-09-04)
+
+
+### Refactoring
+
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+    * @okouai/pi-agent-runtime bumped to 1.16.2
+
+## [9.310.1](https://github.com/vm0-ai/vm0/compare/cli-v9.310.0...cli-v9.310.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **api:** classify Fal image generation failures ([#31690](https://github.com/vm0-ai/vm0/issues/31690)) ([0faf86b](https://github.com/vm0-ai/vm0/commit/0faf86b5bbd09d2b3480261936e8b3712d443181))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.402.0
+    * @okouai/core bumped to 8.621.0
+    * @okouai/pi-agent-runtime bumped to 1.16.1
+
+## [9.310.0](https://github.com/vm0-ai/vm0/compare/cli-v9.309.6...cli-v9.310.0) (2026-09-04)
+
+
+### Features
+
+* **registry:** pull current presentation templates ([#31614](https://github.com/vm0-ai/vm0/issues/31614)) ([0d9edac](https://github.com/vm0-ai/vm0/commit/0d9edacec1340f700362a7353564bab015c40cf6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.401.0
+    * @okouai/core bumped to 8.620.0
+    * @okouai/pi-agent-runtime bumped to 1.16.0
+
 ## [9.309.6](https://github.com/vm0-ai/vm0/compare/cli-v9.309.5...cli-v9.309.6) (2026-09-04)
 
 

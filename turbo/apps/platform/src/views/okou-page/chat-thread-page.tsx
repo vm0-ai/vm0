@@ -6,6 +6,7 @@ import type {
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
+import type { Element, Root } from "hast";
 import {
   useGet,
   useLoadable,
@@ -49,7 +50,6 @@ import {
   Loader2,
   Play,
   MessageCircle,
-  Mic,
   SmilePlus,
   Package,
   Route,
@@ -3059,6 +3059,42 @@ function ChatThreadScrollCommitMarker({
   );
 }
 
+type WaitingThinkingIndicatorMode = "waiting" | "waiting-queued";
+
+function isWaitingThinkingIndicatorMode(
+  mode: ThinkingIndicatorMode,
+): mode is WaitingThinkingIndicatorMode {
+  return mode === "waiting" || mode === "waiting-queued";
+}
+
+function assistantGroupIdForWaitingRunWorkIndicator(
+  groups: readonly ChatEventGroup[],
+  runWorkFolding: RunWorkFolding | null,
+  mode: ThinkingIndicatorMode,
+  currentRunGroupId: string | undefined,
+): string | null {
+  if (
+    runWorkFolding === null ||
+    currentRunGroupId === undefined ||
+    !isWaitingThinkingIndicatorMode(mode)
+  ) {
+    return null;
+  }
+
+  for (let index = groups.length - 1; index >= 0; index--) {
+    const group = groups[index]!;
+    const section = runWorkSectionForGroup(runWorkFolding, group);
+    if (
+      group.role === "assistant" &&
+      section?.goalRunGroupId === currentRunGroupId &&
+      section.endTime === undefined
+    ) {
+      return group.beginEventId;
+    }
+  }
+  return null;
+}
+
 function ChatThreadRenderedEventGroups({
   thread,
 }: {
@@ -3112,13 +3148,23 @@ function ChatThreadRenderedEventGroups({
     : (completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups);
   const thinkingIndicatorMode =
     useLastResolved(thread.thinkingIndicatorMode$) ?? null;
+  const currentRunGroupId = renderedActiveGroups
+    .at(-1)
+    ?.events.at(-1)?.runGroupId;
+  const waitingIndicatorAssistantGroupId =
+    assistantGroupIdForWaitingRunWorkIndicator(
+      visibleGroups,
+      runWorkFolding,
+      thinkingIndicatorMode,
+      currentRunGroupId,
+    );
   const runGroupFoldPlacements = resolveRunGroupFoldPlacements({
     groups: visibleGroups,
     runGroupFolding,
     onToggleRunGroup: toggleRunGroupExpanded,
-    thinkingIndicatorCanHostFold:
-      thinkingIndicatorMode === "waiting" ||
-      thinkingIndicatorMode === "waiting-queued",
+    thinkingIndicatorCanHostFold: isWaitingThinkingIndicatorMode(
+      thinkingIndicatorMode,
+    ),
   });
 
   return (
@@ -3135,6 +3181,8 @@ function ChatThreadRenderedEventGroups({
         runWorkFolding={runWorkFolding}
         runWorkExpandedKeys={effectiveRunWorkExpandedKeys}
         onToggleRunWork={toggleRunWorkExpanded}
+        thinkingIndicatorMode={thinkingIndicatorMode}
+        waitingIndicatorAssistantGroupId={waitingIndicatorAssistantGroupId}
       />
       <ChatThreadScrollCommitMarker
         thread={thread}
@@ -3142,7 +3190,11 @@ function ChatThreadRenderedEventGroups({
       />
       <ChatThreadThinkingIndicator
         thread={thread}
-        mode={thinkingIndicatorMode}
+        mode={
+          waitingIndicatorAssistantGroupId === null
+            ? thinkingIndicatorMode
+            : null
+        }
         runGroupFolds={runGroupFoldPlacements.thinkingIndicatorRunGroupFolds}
       />
     </>
@@ -3315,6 +3367,30 @@ function groupHasUserBubble(group: ChatEventGroup): boolean {
   return group.events.some(rendersUserBubble);
 }
 
+function createRunWorkSectionControl(
+  section: RunWorkSection | null,
+  expandedKeys: ReadonlySet<string>,
+  onToggle: (key: string) => void,
+): RunWorkSectionControl | undefined {
+  if (section === null) {
+    return undefined;
+  }
+  const { key, ...control } = section;
+  const expanded = expandedKeys.has(key);
+  return {
+    ...control,
+    expanded,
+    onToggle: () => {
+      if (!expanded) {
+        captureChatWorkHistoryExpanded({
+          workStatus: section.endTime === undefined ? "active" : "completed",
+        });
+      }
+      onToggle(key);
+    },
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -3327,6 +3403,8 @@ function ChatThreadEventGroups({
   runWorkFolding,
   runWorkExpandedKeys,
   onToggleRunWork,
+  thinkingIndicatorMode,
+  waitingIndicatorAssistantGroupId,
 }: {
   thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
@@ -3339,6 +3417,8 @@ function ChatThreadEventGroups({
   runWorkFolding: RunWorkFolding | null;
   runWorkExpandedKeys: ReadonlySet<string>;
   onToggleRunWork: (key: string) => void;
+  thinkingIndicatorMode: ThinkingIndicatorMode;
+  waitingIndicatorAssistantGroupId: string | null;
 }) {
   const { embeddedRunGroupFolds, externalRunGroupFolds } =
     runGroupFoldPlacements;
@@ -3379,9 +3459,11 @@ function ChatThreadEventGroups({
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
-        const runWorkExpanded =
-          runWorkSection !== null &&
-          runWorkExpandedKeys.has(runWorkSection.key);
+        const waitingIndicatorMode =
+          group.beginEventId === waitingIndicatorAssistantGroupId &&
+          isWaitingThinkingIndicatorMode(thinkingIndicatorMode)
+            ? thinkingIndicatorMode
+            : undefined;
         return (
           <div key={group.beginEventId} className="contents">
             {runGroupFolds.map((runGroupFold) => {
@@ -3415,30 +3497,12 @@ function ChatThreadEventGroups({
                     }
                   : undefined
               }
-              runWorkSection={
-                runWorkSection !== null
-                  ? {
-                      anchorEventId: runWorkSection.anchorEventId,
-                      startTime: runWorkSection.startTime,
-                      endTime: runWorkSection.endTime,
-                      hiddenGroups: runWorkSection.hiddenGroups,
-                      hiddenGroupsAfterAnchor:
-                        runWorkSection.hiddenGroupsAfterAnchor,
-                      expanded: runWorkExpanded,
-                      onToggle: () => {
-                        if (!runWorkExpanded) {
-                          captureChatWorkHistoryExpanded({
-                            workStatus:
-                              runWorkSection.endTime === undefined
-                                ? "active"
-                                : "completed",
-                          });
-                        }
-                        onToggleRunWork(runWorkSection.key);
-                      },
-                    }
-                  : undefined
-              }
+              runWorkSection={createRunWorkSectionControl(
+                runWorkSection,
+                runWorkExpandedKeys,
+                onToggleRunWork,
+              )}
+              waitingIndicatorMode={waitingIndicatorMode}
             />
           </div>
         );
@@ -4927,6 +4991,7 @@ function WaitingForAssistantResponse({
   thinkingLabel,
   serverThinkingLabel,
   runGroupFolds,
+  inAssistantGroup,
 }: {
   thread: ChatPanelSignals;
   blockStyle: CSSProperties;
@@ -4935,10 +5000,29 @@ function WaitingForAssistantResponse({
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
   runGroupFolds: readonly RunGroupFoldControl[];
+  inAssistantGroup: boolean;
 }) {
   const thinkingIndicatorProps = isQueued
     ? {}
     : { "data-thinking-indicator": true };
+
+  if (inAssistantGroup) {
+    return (
+      <div
+        {...thinkingIndicatorProps}
+        data-role="assistant-thinking"
+        className="zero-thinking-enter min-w-0"
+      >
+        <InlineThinkingRow
+          blockStyle={blockStyle}
+          isQueued={isQueued}
+          spinnerEnabled={spinnerEnabled}
+          thinkingLabel={thinkingLabel}
+          serverThinkingLabel={serverThinkingLabel}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -5055,10 +5139,12 @@ function ThinkingIndicator({
   thread,
   mode,
   runGroupFolds,
+  inAssistantGroup = false,
 }: {
   thread: ChatPanelSignals;
   mode: ThinkingIndicatorMode;
   runGroupFolds: readonly RunGroupFoldControl[];
+  inAssistantGroup?: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
   const runWorkFoldingEnabled =
@@ -5133,6 +5219,7 @@ function ThinkingIndicator({
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
       runGroupFolds={runGroupFolds}
+      inAssistantGroup={inAssistantGroup}
     />
   );
 }
@@ -5901,6 +5988,7 @@ function PagedGroupRow({
   runGroupFolds,
   completedWorkFold,
   runWorkSection,
+  waitingIndicatorMode,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
@@ -5909,6 +5997,7 @@ function PagedGroupRow({
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: CompletedWorkFoldControl;
   runWorkSection?: RunWorkSectionControl;
+  waitingIndicatorMode?: WaitingThinkingIndicatorMode;
 }) {
   if (group.role === "user") {
     return (
@@ -5929,6 +6018,7 @@ function PagedGroupRow({
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
       runWorkSection={runWorkSection}
+      waitingIndicatorMode={waitingIndicatorMode}
     />
   );
 }
@@ -5982,6 +6072,7 @@ function SelectablePagedGroupRow({
   runGroupFolds,
   completedWorkFold,
   runWorkSection,
+  waitingIndicatorMode,
 }: Parameters<typeof PagedGroupRow>[0]) {
   const { t } = useTranslation();
   const phase = useGet(thread.sharing.phase$);
@@ -6007,6 +6098,7 @@ function SelectablePagedGroupRow({
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
         runWorkSection={runWorkSection}
+        waitingIndicatorMode={waitingIndicatorMode}
       />
     );
   }
@@ -6052,6 +6144,7 @@ function SelectablePagedGroupRow({
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
         runWorkSection={runWorkSection}
+        waitingIndicatorMode={waitingIndicatorMode}
       />
       <Checkbox
         checked={checked}
@@ -7006,9 +7099,6 @@ function UserMessagePartView({
       />
     );
   }
-  if (renderPart.type === "voice") {
-    return <UserMessageVoiceDraft part={renderPart.part} />;
-  }
   if (renderPart.type === "template") {
     return <UserMessageTemplateReference part={renderPart.part} />;
   }
@@ -7022,32 +7112,6 @@ function UserMessagePartView({
   }
   void (renderPart satisfies never);
   return null;
-}
-
-function UserMessageVoiceDraft({
-  part,
-}: {
-  part: Extract<UserMessagePart, { type: "voice" }>;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-sent-voice-draft=""
-      className="my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 text-left text-muted-foreground"
-    >
-      <div className="flex items-center gap-2 text-xs font-semibold">
-        <Mic size={15} aria-hidden="true" />
-        {t(($) => {
-          return $.chat.voice.draft;
-        })}
-      </div>
-      {part.transcript ? (
-        <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-5 text-foreground/70">
-          {part.transcript}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function UserMessageView({
@@ -7427,7 +7491,7 @@ type CompletedWorkFoldControl = {
   readonly onToggle: () => void;
 };
 
-type RunWorkSectionControl = Omit<RunWorkSection, "key"> & {
+type RunWorkSectionControl = Omit<RunWorkSection, "key" | "goalRunGroupId"> & {
   readonly expanded: boolean;
   readonly onToggle: () => void;
 };
@@ -7439,6 +7503,7 @@ type PagedAssistantGroupProps = {
   readonly runGroupFolds?: readonly RunGroupFoldControl[];
   readonly completedWorkFold?: CompletedWorkFoldControl;
   readonly runWorkSection?: RunWorkSectionControl;
+  readonly waitingIndicatorMode?: WaitingThinkingIndicatorMode;
 };
 
 type PagedAssistantTimelineItem =
@@ -7458,6 +7523,10 @@ type PagedAssistantTimelineItem =
   | {
       readonly kind: "run-work";
       readonly control: RunWorkSectionControl;
+    }
+  | {
+      readonly kind: "run-work-preview";
+      readonly event: EnrichedChatEvent;
     };
 
 function assistantTimelineItems(
@@ -7471,6 +7540,7 @@ function assistantTimelineItems(
 function foldedRunWorkTimelineItems(
   groups: readonly ChatEventGroup[],
   modelChanges: ReadonlyMap<string, RunModelChange>,
+  previewEventIds?: ReadonlySet<string>,
 ): PagedAssistantTimelineItem[] {
   return groups.flatMap((group) => {
     return group.events.flatMap((event): PagedAssistantTimelineItem[] => {
@@ -7479,10 +7549,76 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "assistant", event }]
+        ? [
+            previewEventIds?.has(event.id) === true
+              ? { kind: "run-work-preview", event }
+              : { kind: "assistant", event },
+          ]
         : [];
     });
   });
+}
+
+const RUN_WORK_PREVIEW_BLOCK_TAGS: ReadonlySet<string> = new Set([
+  "address",
+  "blockquote",
+  "div",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "table",
+  "tr",
+  "ul",
+]);
+
+function runWorkPreviewText(event: EnrichedChatEvent): string {
+  const tree = event.tree;
+  if (tree === undefined) {
+    return normalizedInlineLabel(event.content ?? "");
+  }
+  const parts: string[] = [];
+  const visit = (node: Root | Element): void => {
+    const block =
+      node.type === "element" && RUN_WORK_PREVIEW_BLOCK_TAGS.has(node.tagName);
+    if (block) {
+      parts.push(" ");
+    }
+    for (const child of node.children) {
+      if (child.type === "text" || child.type === "raw") {
+        parts.push(child.value);
+      } else if (child.type === "element") {
+        visit(child);
+      }
+    }
+    if (block) {
+      parts.push(" ");
+    }
+  };
+  visit(tree);
+  return normalizedInlineLabel(parts.join(""));
+}
+
+function RunWorkMessagePreview({ event }: { event: EnrichedChatEvent }) {
+  return (
+    <div
+      data-chat-run-work-preview
+      className="flex h-5 min-w-0 max-w-full items-center gap-2 text-[13px] leading-5 text-muted-foreground/60"
+    >
+      <span aria-hidden className="shrink-0">
+        •
+      </span>
+      <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+        {runWorkPreviewText(event)}
+      </span>
+    </div>
+  );
 }
 
 function buildPagedAssistantTimeline({
@@ -7519,6 +7655,14 @@ function buildPagedAssistantTimeline({
   if (runWorkSection.expanded) {
     items.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
+    );
+  } else {
+    items.push(
+      ...foldedRunWorkTimelineItems(
+        runWorkSection.collapsedGroups,
+        modelChanges,
+        runWorkSection.previewEventIds,
+      ),
     );
   }
   items.push(...assistantTimelineItems(group.events.slice(0, anchorEndIndex)));
@@ -7559,19 +7703,19 @@ function PagedAssistantTimeline({
       );
     }
     if (item.kind === "run-work") {
-      const collapsible =
-        item.control.hiddenGroups.length > 0 ||
-        item.control.hiddenGroupsAfterAnchor.length > 0;
       return (
         <RunWorkSectionRow
           key={`run-work:control:${item.control.anchorEventId}`}
           startTime={item.control.startTime}
           endTime={item.control.endTime}
-          collapsible={collapsible}
+          collapsible={item.control.collapsible}
           expanded={item.control.expanded}
           onToggle={item.control.onToggle}
         />
       );
+    }
+    if (item.kind === "run-work-preview") {
+      return <RunWorkMessagePreview key={item.event.id} event={item.event} />;
     }
     const compactTop = renderedAssistantItemCount > 0;
     renderedAssistantItemCount += 1;
@@ -7593,6 +7737,7 @@ function PagedAssistantGroup({
   runGroupFolds,
   completedWorkFold,
   runWorkSection,
+  waitingIndicatorMode,
 }: PagedAssistantGroupProps) {
   const hasRenderableEvent = group.events.some((event) => {
     return isRenderableAssistantEvent(event);
@@ -7643,6 +7788,14 @@ function PagedAssistantGroup({
             );
           })}
           <PagedAssistantTimeline items={timelineItems} thread={thread} />
+          {waitingIndicatorMode === undefined ? null : (
+            <ThinkingIndicator
+              thread={thread}
+              mode={waitingIndicatorMode}
+              runGroupFolds={[]}
+              inAssistantGroup
+            />
+          )}
         </div>
       </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />

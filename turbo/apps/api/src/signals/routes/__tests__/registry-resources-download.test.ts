@@ -72,12 +72,6 @@ describe("registry resource download", () => {
 
     expect(response.body).toStrictEqual({
       url: "https://r2.example.com/registry/schoolhouse-runbook-latest.tar.gz",
-      id,
-      type: "tar.gz",
-      expiresInSeconds: 900,
-      versionId: headVersionId,
-      fileCount: 13,
-      size: 5432,
     });
     const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
     expect(signedCommand).toMatchObject({

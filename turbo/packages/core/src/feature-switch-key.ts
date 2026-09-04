@@ -76,10 +76,8 @@ export enum FeatureSwitchKey {
   ComposerVoiceInputShortcut = "composerVoiceInputShortcut",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
-  DesktopScreenRecording = "desktopScreenRecording",
   IosPwaStartupImages = "iosPwaStartupImages",
   GeistTypeface = "geistTypeface",
-  SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
   AvatarComposerV2 = "avatarComposerV2",
   NewUi = "newUi",
 }

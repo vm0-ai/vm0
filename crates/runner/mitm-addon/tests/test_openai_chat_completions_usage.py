@@ -17,7 +17,6 @@ import usage.openai_chat_completions as openai_chat_completions
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_flow
-from tests.stream_buffer_helpers import set_response_stream_buffer
 from usage.model_http import ModelHttpFailureEvidence
 from usage.quantities import MAX_USAGE_QUANTITY
 
@@ -811,26 +810,6 @@ class TestOpenAIChatCompletionsUsage:
         assert response_stream(flow)(compressed[:midpoint]) == compressed[:midpoint]
         assert response_stream(flow)(compressed[midpoint:]) == compressed[midpoint:]
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
-
-        webhook = _run_response(flow, self._usage_webhook_api)
-
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input": 30,
-            "tokens.output": 5,
-        }
-
-    def test_buffered_json_fallback_uses_chat_completions_parser(
-        self,
-        tmp_path,
-        real_flow,
-    ):
-        flow = _chat_completions_flow(
-            tmp_path,
-            real_flow,
-            content_type="application/json",
-        )
-        body = _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
-        set_response_stream_buffer(flow, body)
 
         webhook = _run_response(flow, self._usage_webhook_api)
 

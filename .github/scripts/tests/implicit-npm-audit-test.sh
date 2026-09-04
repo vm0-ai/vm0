@@ -52,8 +52,7 @@ workflow_paths.each do |path|
   workflow_environment = document.fetch("env", {})
   relative_path = path.delete_prefix("#{repo_root}/")
 
-  if relative_path != expected_audit_path &&
-      audit_setting(workflow_environment) != "false"
+  if audit_setting(workflow_environment) != "false"
     violations << "#{relative_path} must set top-level npm_config_audit=false"
   end
 

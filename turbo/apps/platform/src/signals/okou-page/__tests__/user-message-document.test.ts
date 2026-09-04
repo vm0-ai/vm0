@@ -9,6 +9,8 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test } from "vitest";
 import {
+  createEditorDocumentSnapshot,
+  draftToEditorDoc,
   editorDocToMessageDocument,
   messageDocumentToDisplayText,
   messageDocumentToEditorDoc,
@@ -59,6 +61,16 @@ function createEditorSchema(): Schema {
         attrs: {
           templateType: { default: null },
           title: { default: null },
+        },
+        group: "block",
+      },
+      voiceDraft: {
+        atom: true,
+        attrs: {
+          id: { default: null },
+          transcript: { default: "" },
+          status: { default: "failed" },
+          visible: { default: true },
         },
         group: "block",
       },
@@ -219,6 +231,65 @@ test("Complex composer content survives saving and restoring", () => {
     "Release Scout",
     "closing notes.",
   ]);
+});
+
+test("An unfinished voice draft stays outside the user message", () => {
+  const editorDocument = createEditorSchema().nodeFromJSON({
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "Keep this message" }],
+      },
+      {
+        type: "voiceDraft",
+        attrs: {
+          id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+          transcript: "um ship Friday no Monday",
+          status: "failed",
+          visible: true,
+        },
+      },
+    ],
+  });
+  const draft = createEditorDocumentSnapshot(editorDocument).toDraft();
+
+  expect(draft).toStrictEqual({
+    userMessage: {
+      version: 1,
+      parts: [{ type: "text", text: "Keep this message" }],
+    },
+    draftVoice: {
+      version: 1,
+      id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+      transcript: "um ship Friday no Monday",
+    },
+  });
+  expect(messageDocumentToPrompt(draft?.userMessage)).toBe("Keep this message");
+  expect(messageDocumentToDisplayText(draft?.userMessage)).toBe(
+    "Keep this message",
+  );
+  expect(draftToEditorDoc(draft?.userMessage, draft?.draftVoice)).toStrictEqual(
+    {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Keep this message" }],
+        },
+        {
+          type: "voiceDraft",
+          attrs: {
+            id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+            transcript: "um ship Friday no Monday",
+            status: "failed",
+            visible: true,
+          },
+        },
+        { type: "paragraph" },
+      ],
+    },
+  );
 });
 
 test("Email feedback keeps its source status", () => {

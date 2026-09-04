@@ -3,11 +3,12 @@
 ## Voice draft
 
 A composer-owned, durable block containing raw speech transcription that is
-not yet ready to send. The block remains hidden while a composer-owned footer
-shows recording and automatic cleanup progress, becomes visible if cleanup
-fails, and turns into selected ordinary composer text at the last editor
-selection only after cleanup succeeds. A composer containing a voice draft
-cannot be sent.
+not yet ready to send. It is stored as draft state outside user-message
+documents and therefore never becomes part of a formal user event. The block
+remains hidden while a composer-owned footer shows recording and automatic
+cleanup progress, becomes visible if cleanup fails, and turns into selected
+ordinary composer text at the last editor selection only after cleanup
+succeeds. A composer containing a voice draft cannot be sent.
 
 _Avoid_: Voice loading state, live transcript
 
@@ -56,6 +57,23 @@ self-harm. It excludes non-graphic news, medical, educational, historical,
 safety, moderation, and ordinary fictional discussion.
 
 _Avoid_: 18+ content, adult content
+
+# Built-in Generation Failure Context
+
+This context distinguishes provider failures by the stage at which a built-in
+generation request is rejected or fails.
+
+## Language
+
+**Output safety block**:
+A terminal generation outcome where generated media is withheld because an
+output safety check rejected it.
+_Avoid_: Input safety rejection, generic generation failure
+
+**Input safety rejection**:
+A generation request rejected because its prompt or reference media fails an
+input safety check before an acceptable output is available.
+_Avoid_: Output safety block, provider outage
 
 # Pi Model Routing Context
 

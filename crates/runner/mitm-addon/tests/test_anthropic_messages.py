@@ -1,14 +1,12 @@
 """Tests for Anthropic Messages usage extraction."""
 
-import gzip
 import json
 
 import pytest
 
 from usage import (
-    create_anthropic_messages_json_usage_extractor,
     create_anthropic_messages_sse_usage_extractor,
-    extract_anthropic_messages_usage_with_error_from_json,
+    create_model_json_response_inspector,
 )
 
 
@@ -20,6 +18,21 @@ def _create_parser_with_parse_errors():
 
     parse, usage = create_anthropic_messages_sse_usage_extractor(on_parse_error=record_parse_error)
     return parse, usage, parse_errors
+
+
+def _anthropic_json_inspector():
+    return create_model_json_response_inspector(
+        "anthropic_messages",
+        include_usage=True,
+        include_failure=False,
+    )
+
+
+def _inspect_anthropic_json(body: bytes) -> tuple[dict | None, str | None]:
+    inspector = _anthropic_json_inspector()
+    inspector.feed(body)
+    inspection = inspector.finish()
+    return inspection.usage, inspection.usage_error
 
 
 def _create_parser_with_lifecycle_events():
@@ -675,12 +688,12 @@ class TestAnthropicSseUsageExtractor:
         assert usage["tokens.input"] == 100  # unchanged (not in delta)
 
 
-class TestExtractAnthropicUsageWithErrorFromJson:
-    """Tests for diagnostic Anthropic Messages JSON usage extraction."""
+class TestAnthropicModelJsonResponseInspector:
+    """Tests for Anthropic Messages usage through the shared JSON inspector."""
 
     def test_extracts_model_and_tokens(self):
         body = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":500}}'
-        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        result, error = _inspect_anthropic_json(body)
         assert error is None
         assert result == {
             "model": "claude-sonnet-4-6",
@@ -694,25 +707,27 @@ class TestExtractAnthropicUsageWithErrorFromJson:
             b'{"input_tokens":10,"output_tokens":5,'
             b'"cache_read_input_tokens":50,"cache_creation_input_tokens":0}}'
         )
-        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        result, error = _inspect_anthropic_json(body)
         assert error is None
         assert result is not None
         assert result["tokens.cache_read"] == 50
         assert result["tokens.cache_creation"] == 0
 
     def test_work_limit_accumulates_across_chunks_without_partial_usage(self):
-        extractor = create_anthropic_messages_json_usage_extractor()
+        inspector = _anthropic_json_inspector()
         dense_array = b",".join([b"0"] * 40_000)
-        extractor.feed(
+        inspector.feed(
             b'{"id":"msg_partial","model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":50,"output_tokens":100},"padding":['
         )
         midpoint = len(dense_array) // 2
-        extractor.feed(dense_array[:midpoint])
-        extractor.feed(dense_array[midpoint:])
-        extractor.feed(b"]}")
+        inspector.feed(dense_array[:midpoint])
+        inspector.feed(dense_array[midpoint:])
+        inspector.feed(b"]}")
 
-        assert extractor.finish() == (None, "work limit exceeded")
+        inspection = inspector.finish()
+        assert inspection.usage is None
+        assert inspection.usage_error == "work limit exceeded"
 
     def test_large_discarded_ascii_content_stays_within_work_limit(self):
         body = (
@@ -722,7 +737,7 @@ class TestExtractAnthropicUsageWithErrorFromJson:
             + b'"}],"usage":{"input_tokens":50,"output_tokens":100}}'
         )
 
-        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        result, error = _inspect_anthropic_json(body)
 
         assert error is None
         assert result == {
@@ -732,39 +747,18 @@ class TestExtractAnthropicUsageWithErrorFromJson:
             "tokens.output": 100,
         }
 
-    def test_gzip_compressed(self, headers):
-        original = b'{"model":"test","usage":{"input_tokens":42}}'
-        compressed = gzip.compress(original)
-        headers = headers(("Content-Encoding", "gzip"))
-        result, error = extract_anthropic_messages_usage_with_error_from_json(compressed, headers)
-        assert error is None
-        assert result is not None
-        assert result["model"] == "test"
-        assert result["tokens.input"] == 42
-
-    def test_truncated_gzip_returns_error(self, headers):
-        original = b'{"model":"test","usage":{"input_tokens":42}}'
-        truncated = gzip.compress(original)[:10]
-        headers = headers(("Content-Encoding", "gzip"))
-
-        usage, error = extract_anthropic_messages_usage_with_error_from_json(truncated, headers)
-        assert usage is None
-        assert error == "incomplete compressed body"
-
     def test_invalid_json_returns_error(self):
-        usage, error = extract_anthropic_messages_usage_with_error_from_json(b"not json", None)
+        usage, error = _inspect_anthropic_json(b"not json")
         assert usage is None
         assert error == "invalid literal"
 
     def test_no_usage_field_returns_none(self):
-        usage, error = extract_anthropic_messages_usage_with_error_from_json(
-            b'{"id":"msg_1"}', None
-        )
+        usage, error = _inspect_anthropic_json(b'{"id":"msg_1"}')
         assert usage is None
         assert error is None
 
     def test_non_dict_returns_none(self):
-        usage, error = extract_anthropic_messages_usage_with_error_from_json(b"[1,2,3]", None)
+        usage, error = _inspect_anthropic_json(b"[1,2,3]")
         assert usage is None
         assert error is None
 
@@ -774,7 +768,7 @@ class TestExtractAnthropicUsageWithErrorFromJson:
             b'{"input_tokens":10,"output_tokens":5,'
             b'"server_tool_use":{"web_search_requests":2}}}'
         )
-        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        result, error = _inspect_anthropic_json(body)
         assert error is None
         assert result is not None
         assert "web_search_requests" not in result
@@ -787,21 +781,14 @@ class TestExtractAnthropicUsageWithErrorFromJson:
             b'"cache_read_input_tokens":"50",'
             b'"cache_creation_input_tokens":true}}'
         )
-        result, error = extract_anthropic_messages_usage_with_error_from_json(body, None)
+        result, error = _inspect_anthropic_json(body)
         assert error is None
         assert result == {
             "model": "claude-sonnet-4-6",
             "tokens.output": 5,
         }
 
-    def test_handles_large_gzipped_body(self, headers):
-        """Body that decompresses past the legacy 64 KB cap should still parse.
-
-        Regression test for the legacy 64 KB decompression default, which used
-        to truncate large model-provider non-SSE responses and lose usage.
-        """
-        # Raw body > 64 KB (legacy STREAM_BUFFER_LIMIT) so the bug, if reintroduced,
-        # would truncate decompression output before the selective parser finds usage.
+    def test_handles_large_unselected_body(self):
         big_text = "x" * (100 * 1024)
         payload = json.dumps(
             {
@@ -811,9 +798,7 @@ class TestExtractAnthropicUsageWithErrorFromJson:
                 "usage": {"input_tokens": 50, "output_tokens": 100},
             }
         ).encode()
-        compressed = gzip.compress(payload)
-        headers = headers(("Content-Encoding", "gzip"))
-        result, error = extract_anthropic_messages_usage_with_error_from_json(compressed, headers)
+        result, error = _inspect_anthropic_json(payload)
         assert error is None
         assert result is not None
         assert result["tokens.input"] == 50

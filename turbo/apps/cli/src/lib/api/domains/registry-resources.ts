@@ -7,12 +7,6 @@ export async function getPresentationTemplateDownload(query: {
   id: string;
 }): Promise<{
   url: string;
-  id: string;
-  type: "tar.gz";
-  expiresInSeconds: number;
-  versionId: string;
-  fileCount: number;
-  size: number;
 }> {
   const config = await getClientConfig();
   const client = initClient(registryResourceDownloadContract, config);
