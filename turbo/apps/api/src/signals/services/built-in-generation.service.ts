@@ -41,7 +41,13 @@ interface CreateBuiltInGenerationJobArgs {
 interface BuiltInGenerationRequestInternal {
   readonly admissionId?: string;
   readonly publicBrand?: PublicBrand;
-  readonly provider?: "openai" | "fal" | "byteplus" | "minimax" | "joggai";
+  readonly provider?:
+    | "openai"
+    | "fal"
+    | "byteplus"
+    | "minimax"
+    | "joggai"
+    | "heygen";
   readonly providerJobId?: string;
   readonly providerStatusUrl?: string;
   readonly providerResponseUrl?: string;
@@ -140,7 +146,8 @@ export function readBuiltInGenerationRequestInternal(
       value.provider === "fal" ||
       value.provider === "byteplus" ||
       value.provider === "minimax" ||
-      value.provider === "joggai"
+      value.provider === "joggai" ||
+      value.provider === "heygen"
         ? value.provider
         : undefined,
     providerJobId:
