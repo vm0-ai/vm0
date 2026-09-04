@@ -946,10 +946,10 @@ export type CustomConnectorAutomaticOAuthStateContext = {
     }
 );
 
-export type LegacyCustomConnectorAutomaticOAuthStateContext =
+export type CustomConnectorCanonicalAutomaticOAuthStateContext =
   CustomConnectorAutomaticOAuthStateContext & {
-    readonly version: 1;
-    readonly oauthSetup: "automatic";
+    readonly version: 2;
+    readonly authMode: "automatic";
   };
 
 interface CustomConnectorAutomaticOAuthAuthorization {
@@ -957,7 +957,7 @@ interface CustomConnectorAutomaticOAuthAuthorization {
   readonly authorizationUrl: string;
   readonly codeVerifier: string;
   readonly requestedScope: string | null;
-  readonly context: LegacyCustomConnectorAutomaticOAuthStateContext;
+  readonly context: CustomConnectorCanonicalAutomaticOAuthStateContext;
 }
 
 async function discoverBoundAutomaticOAuthAuthority(
@@ -1056,8 +1056,8 @@ export async function prepareCustomConnectorAutomaticOAuthReauthorization(
     },
   );
   const contextBase = {
-    version: 1,
-    oauthSetup: "automatic",
+    version: 2,
+    authMode: "automatic",
     connectorId: args.binding.customConnectorId,
     storageVersion: args.storageVersion,
     issuer: args.binding.issuer,
@@ -1070,7 +1070,7 @@ export async function prepareCustomConnectorAutomaticOAuthReauthorization(
     clientId: args.binding.clientId,
     tokenEndpointAuthMethod: args.binding.tokenEndpointAuthMethod,
   } as const;
-  const context: LegacyCustomConnectorAutomaticOAuthStateContext =
+  const context: CustomConnectorCanonicalAutomaticOAuthStateContext =
     args.binding.registrationMethod === "dcr"
       ? {
           ...contextBase,
@@ -1173,8 +1173,8 @@ export async function prepareCustomConnectorAutomaticOAuthAuthorization(
     },
   );
   const contextBase = {
-    version: 1,
-    oauthSetup: "automatic",
+    version: 2,
+    authMode: "automatic",
     connectorId: args.customConnectorId,
     storageVersion: args.storageVersion,
     issuer: authority.issuer,
@@ -1187,7 +1187,7 @@ export async function prepareCustomConnectorAutomaticOAuthAuthorization(
     clientId: client.clientId,
     tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
   } as const;
-  const context: LegacyCustomConnectorAutomaticOAuthStateContext =
+  const context: CustomConnectorCanonicalAutomaticOAuthStateContext =
     client.registrationMethod === "dcr"
       ? {
           ...contextBase,

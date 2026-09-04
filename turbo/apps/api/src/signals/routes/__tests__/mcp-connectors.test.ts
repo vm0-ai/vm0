@@ -550,7 +550,7 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "automatic",
-          context_format: "legacy",
+          context_format: "canonical",
           context_valid: true,
         },
       });
@@ -629,7 +629,7 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "automatic",
-          context_format: "legacy",
+          context_format: "canonical",
           context_valid: true,
         },
       });
