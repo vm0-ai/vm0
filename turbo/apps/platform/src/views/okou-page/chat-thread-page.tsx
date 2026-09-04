@@ -1505,7 +1505,10 @@ function ChatThreadEmojiGrid({
               shortcodeNames,
             )}
             title={shortcutLabel}
-            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
+            // The focus ring is inset because the feed scrolls: an offset ring
+            // on the outer columns and on the first and last rows would be
+            // clipped by the feed's own overflow box.
+            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             onClick={() => {
               onSelect(item.emoji);
             }}
