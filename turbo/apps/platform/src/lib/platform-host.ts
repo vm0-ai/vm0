@@ -30,6 +30,11 @@ interface PlatformRuntimeConfig {
   readonly vapidPublicKey: string | null;
 }
 
+export interface PlatformClientTelemetryConfig {
+  readonly environment: PlatformEnvironment;
+  readonly token: string | null;
+}
+
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
 const OKOU_ROOT_DOMAINS = [
@@ -115,8 +120,20 @@ function requiredBuildValue(value: unknown, name: string): string {
   return normalized;
 }
 
-export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
+export function resolvePlatformClientTelemetryConfig(): PlatformClientTelemetryConfig {
   const environment = resolvePlatformEnvironment();
+  return {
+    environment,
+    token:
+      environment === "production"
+        ? optionalBuildValue(import.meta.env.VITE_AXIOM_CLIENT_TELEMETRY_TOKEN)
+        : null,
+  };
+}
+
+export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
+  const clientTelemetryConfig = resolvePlatformClientTelemetryConfig();
+  const { environment } = clientTelemetryConfig;
   const publicBrand = resolvePlatformPublicBrand(browserHostname());
   const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
     "https://static.vm0.io",

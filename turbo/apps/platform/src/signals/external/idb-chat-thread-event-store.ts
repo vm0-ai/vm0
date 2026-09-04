@@ -11,9 +11,21 @@ import {
   CHAT_THREAD_EVENTS_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "./chat-idb-schema.ts";
+import { runIndexedDbTransaction } from "./indexeddb-client.ts";
 
 const SINGLETON_ID = "current";
 const EVENT_READ_PAGE_SIZE = 300;
+
+const TRANSACTION_TEMPLATES = {
+  clear:
+    "chat_thread_snapshot.clear+chat_thread_events.clear+chat_thread_event_sync.clear",
+  readEventBoundary: "chat_thread_events.open_key_cursor_by_seq",
+  readEventPage: "chat_thread_events.get_all_by_seq",
+  readSnapshot: "chat_thread_snapshot.get",
+  replaceFromSnapshot:
+    "chat_thread_events.clear+put_many+chat_thread_snapshot.put",
+  upsertEvents: "chat_thread_events.put_many",
+} as const;
 
 interface ChatThreadSnapshotRecord {
   readonly chatThreads: readonly ChatThreadSnapshotProjection[];
@@ -88,18 +100,30 @@ async function readEventBoundary(
 ): Promise<ChatThreadEventReadBoundary | null> {
   const db = await getDb();
   signal?.throwIfAborted();
-  const latestCursor = await db
-    .transaction(CHAT_THREAD_EVENTS_STORE, "readonly")
-    .store.index(CHAT_THREAD_EVENTS_ORDER_INDEX)
-    .openKeyCursor(undefined, "prev");
-  signal?.throwIfAborted();
-  if (!latestCursor) {
-    return null;
-  }
-  return {
-    latestEventId: validateEventId(latestCursor.primaryKey),
-    latestSeqId: validateSeqId(latestCursor.key),
-  };
+  return await runIndexedDbTransaction(
+    {
+      database: "chat",
+      template: TRANSACTION_TEMPLATES.readEventBoundary,
+    },
+    () => {
+      return db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
+    },
+    async (tx, trackRequest) => {
+      const latestCursor = await trackRequest(
+        tx.store
+          .index(CHAT_THREAD_EVENTS_ORDER_INDEX)
+          .openKeyCursor(undefined, "prev"),
+      );
+      signal?.throwIfAborted();
+      if (!latestCursor) {
+        return null;
+      }
+      return {
+        latestEventId: validateEventId(latestCursor.primaryKey),
+        latestSeqId: validateSeqId(latestCursor.key),
+      };
+    },
+  );
 }
 
 async function readEventPage(
@@ -110,14 +134,26 @@ async function readEventPage(
 ): Promise<readonly ChatThreadEvent[] | null> {
   const db = await getDb();
   signal?.throwIfAborted();
-  const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
-  const index = tx.store.index(CHAT_THREAD_EVENTS_ORDER_INDEX);
-  const range = after
-    ? IDBKeyRange.bound(after, through, true)
-    : IDBKeyRange.upperBound(through);
-  const storedEvents = await index.getAll(range, EVENT_READ_PAGE_SIZE);
-  signal?.throwIfAborted();
-  return storedEvents.map(validateEvent);
+  return await runIndexedDbTransaction(
+    {
+      database: "chat",
+      template: TRANSACTION_TEMPLATES.readEventPage,
+    },
+    () => {
+      return db.transaction(CHAT_THREAD_EVENTS_STORE, "readonly");
+    },
+    async (tx, trackRequest) => {
+      const index = tx.store.index(CHAT_THREAD_EVENTS_ORDER_INDEX);
+      const range = after
+        ? IDBKeyRange.bound(after, through, true)
+        : IDBKeyRange.upperBound(through);
+      const storedEvents = await trackRequest(
+        index.getAll(range, EVENT_READ_PAGE_SIZE),
+      );
+      signal?.throwIfAborted();
+      return storedEvents.map(validateEvent);
+    },
+  );
 }
 
 function createStrictReadStore(getDb: GetDb) {
@@ -125,10 +161,19 @@ function createStrictReadStore(getDb: GetDb) {
     async readSnapshot(signal?: AbortSignal) {
       const db = await getDb();
       signal?.throwIfAborted();
-      const raw = await db
-        .transaction(CHAT_THREAD_SNAPSHOT_STORE, "readonly")
-        .store.get(SINGLETON_ID);
-      return validateSnapshot(raw);
+      return await runIndexedDbTransaction(
+        {
+          database: "chat",
+          template: TRANSACTION_TEMPLATES.readSnapshot,
+        },
+        () => {
+          return db.transaction(CHAT_THREAD_SNAPSHOT_STORE, "readonly");
+        },
+        async (tx, trackRequest) => {
+          const raw = await trackRequest(tx.store.get(SINGLETON_ID));
+          return validateSnapshot(raw);
+        },
+      );
     },
 
     async readEventLog(signal?: AbortSignal) {
@@ -175,26 +220,37 @@ function createStrictWriteStore(getDb: GetDb) {
     ) {
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(
-        [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
-        "readwrite",
+      await runIndexedDbTransaction(
+        {
+          database: "chat",
+          template: TRANSACTION_TEMPLATES.replaceFromSnapshot,
+        },
+        () => {
+          return db.transaction(
+            [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
+            "readwrite",
+          );
+        },
+        async (tx, trackRequest) => {
+          await trackRequest(tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear());
+          const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
+          const requests = events.map((event) => {
+            signal?.throwIfAborted();
+            return trackRequest(eventStore.put(event));
+          });
+          await Promise.all([
+            trackRequest(
+              tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
+                id: SINGLETON_ID,
+                chatThreads: [...snapshot.chatThreads],
+                latestEventId: snapshot.latestEventId,
+                latestSeqId: snapshot.latestSeqId,
+              } satisfies StoredChatThreadSnapshot),
+            ),
+            ...requests,
+          ]);
+        },
       );
-      await tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear();
-      const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
-      const requests = events.map((event) => {
-        signal?.throwIfAborted();
-        return eventStore.put(event);
-      });
-      await Promise.all([
-        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
-          id: SINGLETON_ID,
-          chatThreads: [...snapshot.chatThreads],
-          latestEventId: snapshot.latestEventId,
-          latestSeqId: snapshot.latestSeqId,
-        } satisfies StoredChatThreadSnapshot),
-        ...requests,
-        tx.done,
-      ]);
     },
 
     async upsertEvents(
@@ -206,32 +262,51 @@ function createStrictWriteStore(getDb: GetDb) {
       }
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readwrite");
-      const eventStore = tx.store;
-      const requests = events.map((event) => {
-        signal?.throwIfAborted();
-        return eventStore.put(event);
-      });
-      await Promise.all([...requests, tx.done]);
+      await runIndexedDbTransaction(
+        {
+          database: "chat",
+          template: TRANSACTION_TEMPLATES.upsertEvents,
+        },
+        () => {
+          return db.transaction(CHAT_THREAD_EVENTS_STORE, "readwrite");
+        },
+        async (tx, trackRequest) => {
+          const eventStore = tx.store;
+          const requests = events.map((event) => {
+            signal?.throwIfAborted();
+            return trackRequest(eventStore.put(event));
+          });
+          await Promise.all(requests);
+        },
+      );
     },
 
     async clear(signal?: AbortSignal) {
       const db = await getDb();
       signal?.throwIfAborted();
-      const tx = db.transaction(
-        [
-          CHAT_THREAD_SNAPSHOT_STORE,
-          CHAT_THREAD_EVENTS_STORE,
-          CHAT_THREAD_EVENT_SYNC_STORE,
-        ],
-        "readwrite",
+      await runIndexedDbTransaction(
+        {
+          database: "chat",
+          template: TRANSACTION_TEMPLATES.clear,
+        },
+        () => {
+          return db.transaction(
+            [
+              CHAT_THREAD_SNAPSHOT_STORE,
+              CHAT_THREAD_EVENTS_STORE,
+              CHAT_THREAD_EVENT_SYNC_STORE,
+            ],
+            "readwrite",
+          );
+        },
+        async (tx, trackRequest) => {
+          await Promise.all([
+            trackRequest(tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).clear()),
+            trackRequest(tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear()),
+            trackRequest(tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE).clear()),
+          ]);
+        },
       );
-      await Promise.all([
-        tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).clear(),
-        tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear(),
-        tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE).clear(),
-      ]);
-      await tx.done;
     },
   };
 }

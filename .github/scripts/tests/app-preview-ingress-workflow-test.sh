@@ -44,6 +44,12 @@ unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
   raise "deploy-app artifact identity must derive from the checked-out commit"
 end
 
+build_step = find_step.call("Build canonical app artifact")
+expected_axiom_token = "${{ github.event_name != 'pull_request' && vars.AXIOM_CLIENT_TELEMETRY_TOKEN || '' }}"
+unless build_step.dig("env", "VITE_AXIOM_CLIENT_TELEMETRY_TOKEN") == expected_axiom_token
+  raise "pull request preview builds must not receive the Axiom client telemetry token"
+end
+
 expected_deployment_url = "${{ steps.worker-deploy.outputs.url }}"
 if deploy_app.fetch("outputs").key?("deployment-url")
   raise "deploy-app must not expose a second provider deployment URL"
