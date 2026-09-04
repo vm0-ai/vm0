@@ -31,6 +31,10 @@ import {
 
 const context = testContext();
 
+function legacyConnectorFeatureSwitches() {
+  return { [FeatureSwitchKey.ConnectorAccounts]: false };
+}
+
 function oauthMethod() {
   return {
     id: "oauth",
@@ -503,7 +507,11 @@ test("Use the connectors experience in Portuguese", async () => {
   context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
     return respond(200, []);
   });
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
 
   await expect(
     screen.findByRole("heading", { name: "Conectores" }),

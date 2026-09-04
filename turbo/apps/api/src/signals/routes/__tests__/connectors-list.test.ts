@@ -9,7 +9,7 @@ import {
 import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   invalidateApiTestConnectorCatalogCompatibility,

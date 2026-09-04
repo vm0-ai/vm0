@@ -802,12 +802,14 @@ describe("GET /api/integrations/slack/download-file", () => {
   }
 
   it("returns 401 when the request is unauthenticated", async () => {
+    expect.hasAssertions();
     const response = await requestDownloadFile("?file_id=F1");
 
     await expectErrorResponse(response, 401, "UNAUTHORIZED");
   });
 
   it("rejects an agent token without slack:write capability", async () => {
+    expect.hasAssertions();
     const token = okouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
@@ -823,6 +825,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 400 when file_id query param is missing", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
 
     const response = await requestDownloadFile("", `Bearer ${token}`);
@@ -831,6 +834,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 404 when no Slack installation exists for org", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext({ withInstallation: false });
 
     const response = await requestDownloadFile(
@@ -842,6 +846,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 404 when Slack reports file not found", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     mockSlackFilesInfo({ ok: false, error: "file_not_found" });
 
@@ -854,6 +859,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 404 when the Slack file has no downloadable URL", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     const file = defaultSlackFile();
     mockSlackFilesInfo({
@@ -875,6 +881,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 400 for disallowed download hostnames", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     mockSlackFilesInfo({
       ok: true,
@@ -895,6 +902,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 413 when file metadata exceeds the 100MB limit", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     mockSlackFilesInfo({
       ok: true,
@@ -910,6 +918,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 502 when Slack file download fails", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     mockSlackFilesInfo({ ok: true, file: defaultSlackFile() });
     context.mocks.slack.fetchFile.mockRejectedValue(
@@ -929,6 +938,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 502 when Slack returns an HTML response", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     mockSlackFilesInfo({ ok: true, file: defaultSlackFile() });
     context.mocks.slack.fetchFile.mockResolvedValue(
@@ -947,6 +957,7 @@ describe("GET /api/integrations/slack/download-file", () => {
   });
 
   it("returns 400 when Slack files.info returns a platform error", async () => {
+    expect.hasAssertions();
     const { token } = await seedDownloadContext();
     mockSlackFilesInfo({ ok: false, error: "invalid_auth" });
 

@@ -150,12 +150,12 @@ async fn submit_serializes_env_and_secret_env() {
         "URL=https://example.test/path?a=1&b=2".into(),
         "EMPTY=".into(),
         "MULTILINE=line1\nline2".into(),
-        "VM0_FUTURE_RUNNER_KEY=ordinary-vm0-value".into(),
+        "CUSTOM_RUNNER_KEY=ordinary-user-value".into(),
     ];
     args.secret_env = vec![
         "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
         "PRIVATE_KEY=-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----".into(),
-        "VM0_TEST_VALUE=ordinary-vm0-secret".into(),
+        "CUSTOM_SECRET=ordinary-user-secret".into(),
     ];
 
     let (code, request) = run_submit_and_write_success(args, home).await.unwrap();
@@ -174,8 +174,8 @@ async fn submit_serializes_env_and_secret_env() {
         Some("line1\nline2")
     );
     assert_eq!(
-        environment.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
-        Some("ordinary-vm0-value")
+        environment.get("CUSTOM_RUNNER_KEY").map(String::as_str),
+        Some("ordinary-user-value")
     );
     assert_eq!(
         secret_environment
@@ -188,8 +188,8 @@ async fn submit_serializes_env_and_secret_env() {
         Some("-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----")
     );
     assert_eq!(
-        secret_environment.get("VM0_TEST_VALUE").map(String::as_str),
-        Some("ordinary-vm0-secret")
+        secret_environment.get("CUSTOM_SECRET").map(String::as_str),
+        Some("ordinary-user-secret")
     );
 }
 

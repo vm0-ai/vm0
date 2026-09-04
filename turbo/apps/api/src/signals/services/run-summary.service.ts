@@ -3,75 +3,17 @@ import { eq } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 
 import { logger } from "../../lib/log";
-import { optionalEnv } from "../../lib/env";
+import { stripMarkdown } from "../../lib/strip-markdown";
 import { writeDb$, type Db } from "../external/db";
+import {
+  FAST_PATH_MODEL,
+  generateText,
+  isLlmConfigured,
+} from "../external/openrouter";
 import { tapError } from "../utils";
 import { writeRunMetadata } from "./agent-run-metadata-write.service";
 
 const log = logger("run-summary");
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_MODEL = "google/gemini-3.1-flash-lite-preview";
-
-interface ChatMessage {
-  readonly role: "system" | "user" | "assistant";
-  readonly content: string;
-}
-
-interface OpenRouterResponse {
-  readonly choices: readonly {
-    readonly message: {
-      readonly content: string;
-    };
-  }[];
-}
-
-async function generateText(
-  messages: readonly ChatMessage[],
-  maxTokens: number,
-): Promise<string | null> {
-  const apiKey = optionalEnv("OPENROUTER_API_KEY");
-  if (!apiKey) {
-    log.warn("OPENROUTER_API_KEY not configured, skipping text generation");
-    return null;
-  }
-
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!response.ok) {
-    const text = (await tapError(response.text())) ?? "unknown error";
-    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
-  }
-
-  const data = (await response.json()) as OpenRouterResponse;
-  const content = data.choices[0]?.message.content.trim();
-  if (!content) {
-    throw new Error("OpenRouter returned empty content");
-  }
-  return stripMarkdown(content);
-}
-
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^[-*_]{3,}\s*$/gm, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^["'](.+)["']$/, "$1")
-    .trim();
-}
 
 function truncateSnippet(
   text: string,
@@ -89,15 +31,21 @@ function truncateSnippet(
     .join("\n");
 }
 
-function generateRunSummary(
+async function generateRunSummary(
   triggerSource: string,
   prompt: string,
   resultText: string,
 ): Promise<string | null> {
+  if (!isLlmConfigured()) {
+    log.warn("OPENROUTER_API_KEY not configured, skipping text generation");
+    return null;
+  }
+
   const promptSnippet = truncateSnippet(prompt);
   const resultSnippet = truncateSnippet(resultText);
 
-  return generateText(
+  const content = await generateText(
+    FAST_PATH_MODEL,
     [
       {
         role: "system",
@@ -109,7 +57,9 @@ function generateRunSummary(
       },
     ],
     80,
+    { reasoning: { effort: "low" }, temperature: 0.3 },
   );
+  return content === null ? null : stripMarkdown(content);
 }
 
 export async function saveRunSummary(

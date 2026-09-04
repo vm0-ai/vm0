@@ -356,37 +356,70 @@ describe("PUT /api/billing/auto-recharge", () => {
   it("returns 400 when enabling without threshold and amount", async () => {
     const { admin } = await createProActor();
 
-    await billingApi.updateAutoRecharge(admin, { enabled: true }, [400]);
+    const response = await billingApi.updateAutoRecharge(
+      admin,
+      { enabled: true },
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "threshold and amount are required when enabling auto-recharge",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("returns 400 when amount is below minimum", async () => {
     const { admin } = await createProActor();
 
-    await billingApi.updateAutoRecharge(
+    const response = await billingApi.updateAutoRecharge(
       admin,
       { enabled: true, threshold: 1000, amount: 500 },
       [400],
     );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "amount: Too small: expected number to be >=1000",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("returns 400 when amount exceeds the maximum", async () => {
     const { admin } = await createProActor();
 
-    await billingApi.updateAutoRecharge(
+    const response = await billingApi.updateAutoRecharge(
       admin,
       { enabled: true, threshold: 1000, amount: 10_000_001 },
       [400],
     );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "amount: Too big: expected number to be <=10000000",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("returns 400 when threshold exceeds the maximum", async () => {
     const { admin } = await createProActor();
 
-    await billingApi.updateAutoRecharge(
+    const response = await billingApi.updateAutoRecharge(
       admin,
-      { enabled: true, threshold: 10_000_001, amount: 20_000_000 },
+      { enabled: true, threshold: 10_000_001, amount: 10_000_000 },
       [400],
     );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "threshold: Too big: expected number to be <=10000000",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("returns 400 when threshold equals amount", async () => {

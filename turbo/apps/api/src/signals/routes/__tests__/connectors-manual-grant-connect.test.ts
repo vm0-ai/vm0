@@ -410,6 +410,9 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
 
   it("accepts CLI add and reconnect while preserving account errors", async () => {
     const fixture = await seedFixture();
+    await updateFeatureSwitches(fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    });
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
     );
@@ -510,7 +513,10 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
   });
 
   it("serializes concurrent first-account adds", async () => {
-    await seedFixture();
+    const fixture = await seedFixture();
+    await updateFeatureSwitches(fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    });
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
     );

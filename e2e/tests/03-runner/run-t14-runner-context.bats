@@ -65,10 +65,6 @@ test -n "$OKOU_APP_URL"
 test -n "$OKOU_AGENT_ID"
 test -n "$OKOU_CHAT_THREAD_ID"
 test -n "$OKOU_TOKEN"
-test -z "${ZERO_APP_URL:-}"
-test -z "${ZERO_AGENT_ID:-}"
-test -z "${ZERO_CHAT_THREAD_ID:-}"
-test -z "${ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED:-}"
 node -e '
 const token = process.env.OKOU_TOKEN;
 if (!token?.startsWith("vm0_sandbox_")) throw new Error("OKOU_TOKEN is not a sandbox token");

@@ -958,14 +958,20 @@ async function copyWorkflowUserAutomations(
     });
   }
 
-  await ensureWorkflowUserAutomationThread(tx, {
-    orgId: args.orgId,
-    userId: args.userId,
-    workflowId: args.targetWorkflowId,
-    agentId: args.targetAgentId,
-    workflowTitle: args.workflowTitle,
-    currentTime: args.currentTime,
-  });
+  if (
+    rows.some((automation) => {
+      return automation.kind === "event";
+    })
+  ) {
+    await ensureWorkflowUserAutomationThread(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      workflowId: args.targetWorkflowId,
+      agentId: args.targetAgentId,
+      workflowTitle: args.workflowTitle,
+      currentTime: args.currentTime,
+    });
+  }
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }

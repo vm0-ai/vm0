@@ -104,7 +104,7 @@ function createEvents(
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    reloadRequired: vi.fn<() => void>(),
+    workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: (status) => {
       statuses.push(status);
     },
@@ -176,7 +176,9 @@ test("Reload a page whose shared-data request stops responding", async () => {
   const pendingQuery = bridge.query(query(), owner.signal);
   await vi.advanceTimersByTimeAsync(10);
 
-  expect(events.reloadRequired).toHaveBeenCalledOnce();
+  expect(events.workerUnavailable).toHaveBeenCalledWith(
+    "worker-load-or-transport-failure",
+  );
   expect(bridges).toHaveLength(1);
   expect(firstBridge.registrationSignals).toHaveLength(1);
   expect(statuses).toStrictEqual(["connecting"]);
@@ -202,7 +204,9 @@ test("Reload a tab whose shared-data registration has expired", async () => {
 
   const pendingQuery = bridge.query(query(), owner.signal);
   await vi.waitFor(() => {
-    expect(events.reloadRequired).toHaveBeenCalledOnce();
+    expect(events.workerUnavailable).toHaveBeenCalledWith(
+      "worker-load-or-transport-failure",
+    );
   });
 
   expect(bridges).toHaveLength(1);
