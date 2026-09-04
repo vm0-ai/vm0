@@ -1,7 +1,7 @@
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
@@ -53,6 +53,34 @@ interface MutableConversation {
   readonly publish: (events: readonly MockChatEventInput[]) => void;
 }
 
+interface AnimationFrameController {
+  readonly flush: () => void;
+}
+
+function installQueuedAnimationFrames(): AnimationFrameController {
+  let nextFrameId = 0;
+  let callbacks = new Map<number, FrameRequestCallback>();
+
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    nextFrameId += 1;
+    callbacks.set(nextFrameId, callback);
+    return nextFrameId;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((frameId) => {
+    callbacks.delete(frameId);
+  });
+
+  return {
+    flush: () => {
+      const scheduledCallbacks = Array.from(callbacks.values());
+      callbacks = new Map<number, FrameRequestCallback>();
+      for (const callback of scheduledCallbacks) {
+        callback(performance.now());
+      }
+    },
+  };
+}
+
 function mockPointerDevice(pointer: "desktop" | "touch"): void {
   context.mocks.browser.maxTouchPoints(pointer === "touch" ? 5 : 0);
   context.mocks.browser.matchMedia((query) => {
@@ -60,18 +88,18 @@ function mockPointerDevice(pointer: "desktop" | "touch"): void {
   });
 }
 
-function rect(top: number, height: number, width = 800): DOMRect {
+function rect(top: number, height: number, width = 800, left = 0): DOMRect {
   return {
     bottom: top + height,
     height,
-    left: 0,
-    right: width,
+    left,
+    right: left + width,
     toJSON: () => {
       return {};
     },
     top,
     width,
-    x: 0,
+    x: left,
     y: top,
   } as DOMRect;
 }
@@ -355,7 +383,7 @@ test("Preserve the visible message when earlier content grows", async () => {
   });
 });
 
-test("Keep passage actions during automatic scroll until the reader scrolls", async () => {
+test("Keep passage actions until the selection moves beyond the scroll buffer", async () => {
   const resize = mockResizeObserver();
   mockMutableConversation(
     THREAD_IDS.selectedPassage,
@@ -372,10 +400,39 @@ test("Keep passage actions during automatic scroll until the reader scrolls", as
   const readingAnchorId = anchorId(readingAnchor);
   const readingTop = readingAnchor.getBoundingClientRect().top;
   await selectPassage("History answer 8");
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    throw new Error("Selected passage range not found");
+  }
+  const selectedRange = selection.getRangeAt(0);
+  const selectedAtScrollTop = container.scrollTop;
+  let heightBeforeSelection = 0;
+  const selectionRect = (): DOMRect => {
+    return rect(
+      24 + heightBeforeSelection - (container.scrollTop - selectedAtScrollTop),
+      24,
+      200,
+      24,
+    );
+  };
+  Object.defineProperty(selectedRange, "getClientRects", {
+    configurable: true,
+    value: () => {
+      return [selectionRect()];
+    },
+  });
+  Object.defineProperty(selectedRange, "getBoundingClientRect", {
+    configurable: true,
+    value: selectionRect,
+  });
 
   expect(queryPassageAction("Quote")).toBeVisible();
+  const animationFrames = installQueuedAnimationFrames();
 
   geometry.growBeforeMessages(75);
+  heightBeforeSelection += 75;
+  container.scrollTop += 75;
+  fireEvent.scroll(container);
   act(() => {
     resize.automationAll();
   });
@@ -384,11 +441,28 @@ test("Keep passage actions during automatic scroll until the reader scrolls", as
       anchorById(container, readingAnchorId).getBoundingClientRect().top,
     ).toBe(readingTop);
   });
-  fireEvent.scroll(container);
+  act(() => {
+    animationFrames.flush();
+  });
 
   expect(queryPassageAction("Quote")).toBeVisible();
 
-  scrollFromUser(container, container.scrollTop - 20);
+  scrollFromUser(container, container.scrollTop - 4);
+  act(() => {
+    animationFrames.flush();
+  });
+  expect(queryPassageAction("Quote")).toBeVisible();
+
+  scrollFromUser(container, container.scrollTop - 4);
+  act(() => {
+    animationFrames.flush();
+  });
+  expect(queryPassageAction("Quote")).toBeVisible();
+
+  scrollFromUser(container, container.scrollTop - 1);
+  act(() => {
+    animationFrames.flush();
+  });
 
   await waitFor(() => {
     expect(queryPassageAction("Quote")).not.toBeInTheDocument();

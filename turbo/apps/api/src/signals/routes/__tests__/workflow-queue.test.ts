@@ -5,7 +5,7 @@ import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/con
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { onTestFinished, test as vitestTest } from "vitest";
+import { aroundEach, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -76,15 +76,9 @@ const WORKFLOW_NAME = "workflow-queue-workflow";
 const BUILT_IN_MODEL_ROUTES_UNAVAILABLE_MESSAGE =
   "Every built-in model route for this model is temporarily unavailable";
 
-function it(name: string, test: () => Promise<void>, timeout?: number): void {
-  vitestTest(
-    name,
-    async () => {
-      await withNowScopeForTest(test);
-    },
-    timeout,
-  );
-}
+aroundEach(async (runTest) => {
+  await withNowScopeForTest(runTest);
+});
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
