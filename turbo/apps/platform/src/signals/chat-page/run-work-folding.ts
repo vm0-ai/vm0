@@ -145,12 +145,12 @@ function messageSourceHasNonTextContent(content: string): boolean {
 }
 
 function isRunWorkTextMessage(event: EnrichedChatEvent): boolean {
-  return (
-    event.eventType === "output.message" &&
-    Boolean(event.content) &&
-    !messageSourceHasNonTextContent(event.content) &&
-    (event.tree === undefined || !treeHasNonTextContent(event.tree))
-  );
+  if (event.eventType !== "output.message" || !event.content) {
+    return false;
+  }
+  return event.tree === undefined
+    ? !messageSourceHasNonTextContent(event.content)
+    : !treeHasNonTextContent(event.tree);
 }
 
 export function runWorkSectionForGroup(

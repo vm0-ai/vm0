@@ -336,6 +336,53 @@ test.each([2, 3, 4, 5, 8])(
   },
 );
 
+test("Treat media-looking literals inside code as text work messages", async () => {
+  const mediaUrl = "https://example.com/example.png";
+  installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: [
+      promptEvent({
+        id: "code-literal-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Review this media URL",
+        createdAt: createdAt(10),
+      }),
+      assistantEvent({
+        id: "code-literal-work",
+        runId: RUN_A,
+        seqId: 2,
+        text: ["```text", mediaUrl, "```"].join("\n"),
+        createdAt: createdAt(10, 20),
+      }),
+      assistantEvent({
+        id: "code-literal-latest",
+        runId: RUN_A,
+        seqId: 3,
+        text: "The URL remains plain text",
+        createdAt: createdAt(10, 40),
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  expect(runWorkPreviews()).toHaveLength(1);
+  expect(runWorkPreviews()[0]).toHaveTextContent(mediaUrl);
+  expect(screen.getByText("The URL remains plain text")).toBeVisible();
+
+  click(await findButton("Expand work history"));
+  await waitFor(() => {
+    expect(runWorkPreviews()).toHaveLength(0);
+  });
+  expect(screen.getByText(mediaUrl).closest("pre")).toBeInTheDocument();
+});
+
 test.each([0, 1, 2, 5])(
   "Summarize a finished run with %i text messages",
   async (messageCount) => {
