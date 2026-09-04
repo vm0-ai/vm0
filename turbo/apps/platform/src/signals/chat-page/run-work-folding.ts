@@ -13,8 +13,7 @@ import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
 import { isGoalContinuationInput, type ChatEvent } from "./chat-event-types.ts";
 import { mergeChatEventUsagePayloads } from "./chat-event-usage.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
-import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
-import { eventBodyPlan } from "./parse-body-blocks.ts";
+import type { MarkdownCardRef } from "./markdown-card-ref.ts";
 
 const internalRunWorkExpandedKeys$ = state<Set<string>>(new Set());
 
@@ -36,16 +35,21 @@ export const toggleRunWorkExpanded$ = command(({ set }, key: string) => {
 
 export interface RunWorkSection {
   readonly key: string;
-  readonly goalRunGroupId: string | undefined;
+  readonly runGroupId: string | undefined;
+  readonly runIds: readonly string[];
   readonly anchorEventId: string;
-  readonly collapsedGroups: ChatEventGroup[];
-  readonly previewEventIds: ReadonlySet<string>;
   readonly collapsible: boolean;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
+  readonly remainingArtifactCards: readonly RunWorkArtifactCard[];
   readonly startTime: number;
   readonly endTime?: number;
 }
+
+type RunWorkArtifactCard = Extract<
+  MarkdownCardRef,
+  { readonly kind: "artifact" }
+>;
 
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
@@ -92,66 +96,54 @@ function isRunWorkAssistantOutput(event: EnrichedChatEvent): boolean {
   );
 }
 
-const NON_TEXT_TREE_TAGS: ReadonlySet<string> = new Set([
-  "audio",
-  "canvas",
-  "iframe",
-  "img",
-  "svg",
-  "video",
-]);
-
-function elementHasNonTextContent(node: Element): boolean {
-  const href = node.tagName === "a" ? node.properties.href : undefined;
-  return (
-    node.data?.card !== undefined ||
-    node.data?.imageLoadSignals !== undefined ||
-    node.data?.mermaid !== undefined ||
-    node.data?.mermaidSignals !== undefined ||
-    NON_TEXT_TREE_TAGS.has(node.tagName) ||
-    (typeof href === "string" &&
-      isSafeMediaUrl(href) &&
-      (isImageUrl(href) || isVideoUrl(href)))
-  );
+function isRunWorkMessage(event: EnrichedChatEvent): boolean {
+  return event.eventType === "output.message";
 }
 
-function treeHasNonTextContent(node: Root | Element): boolean {
-  if (node.type === "element" && elementHasNonTextContent(node)) {
-    return true;
+function artifactCardsInTree(
+  tree: Root | undefined,
+): readonly RunWorkArtifactCard[] {
+  if (tree === undefined) {
+    return [];
   }
-  return node.children.some((child) => {
-    return child.type === "element" && treeHasNonTextContent(child);
-  });
+  const cards: RunWorkArtifactCard[] = [];
+  const visit = (node: Root | Element): void => {
+    if (node.type === "element" && node.data?.card?.kind === "artifact") {
+      cards.push(node.data.card);
+    }
+    for (const child of node.children) {
+      if (child.type === "element") {
+        visit(child);
+      }
+    }
+  };
+  visit(tree);
+  return cards;
 }
 
-const MARKDOWN_IMAGE_PATTERN = /!\[[^\]\n]*\](?:\([^\n)]*\)|\[[^\]\n]*\])/u;
-const MEDIA_URL_PATTERN =
-  /https?:\/\/[^\s<>"'()[\]]+\.(?:png|jpe?g|gif|webp|svg|bmp|avif|mp4|webm|mov|ogv)(?:[?#][^\s<>"'()[\]]*)?/iu;
-const MEDIA_HTML_TAG_PATTERN = /<(?:audio|canvas|iframe|img|svg|video)\b/iu;
-const MERMAID_FENCE_PATTERN =
-  /^ {0,3}(?:`{3,}|~{3,})[ \t]*mermaid(?:[ \t]|$)/imu;
-const BROWSER_SESSION_URL_PATTERN =
-  /\/browsers\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:[/?#\s)]|$)/iu;
-
-function messageSourceHasNonTextContent(content: string): boolean {
-  const plan = eventBodyPlan(content, { previews: true });
-  return (
-    plan.descriptors.length > 0 ||
-    MARKDOWN_IMAGE_PATTERN.test(plan.treeSource) ||
-    MEDIA_URL_PATTERN.test(plan.treeSource) ||
-    MEDIA_HTML_TAG_PATTERN.test(plan.treeSource) ||
-    MERMAID_FENCE_PATTERN.test(plan.treeSource) ||
-    BROWSER_SESSION_URL_PATTERN.test(plan.treeSource)
+function remainingArtifactCards(
+  outputMessages: readonly EnrichedChatEvent[],
+): readonly RunWorkArtifactCard[] {
+  const finalUrls = new Set(
+    artifactCardsInTree(outputMessages.at(-1)?.tree).map((card) => {
+      return card.signals.url;
+    }),
   );
-}
-
-function isRunWorkTextMessage(event: EnrichedChatEvent): boolean {
-  if (event.eventType !== "output.message" || !event.content) {
-    return false;
+  const seenUrls = new Set<string>();
+  const remaining: RunWorkArtifactCard[] = [];
+  for (const message of outputMessages) {
+    for (const card of artifactCardsInTree(message.tree)) {
+      const { url } = card.signals;
+      if (seenUrls.has(url)) {
+        continue;
+      }
+      seenUrls.add(url);
+      if (!finalUrls.has(url)) {
+        remaining.push(card);
+      }
+    }
   }
-  return event.tree === undefined
-    ? !messageSourceHasNonTextContent(event.content)
-    : !treeHasNonTextContent(event.tree);
+  return remaining;
 }
 
 export function runWorkSectionForGroup(
@@ -228,18 +220,8 @@ function groupEventsForRunWorkDisplay(
     const role = chatEventCompatibilityRole(event.eventType);
     const forceStandalone = workAnchorEventIds.has(event.id);
     const last = groups[groups.length - 1];
-    const lastHasWorkAnchor =
-      last?.events.some((candidate) => {
-        return workAnchorEventIds.has(candidate.id);
-      }) ?? false;
-    const joinsWorkAnchor = lastHasWorkAnchor && isCancelledRunEvent(event);
 
-    if (
-      !forceStandalone &&
-      last &&
-      last.role === role &&
-      (!lastHasWorkAnchor || joinsWorkAnchor)
-    ) {
+    if (!forceStandalone && last && last.role === role) {
       last.events.push(event);
       continue;
     }
@@ -408,6 +390,12 @@ function standaloneRunWorkUnit(segment: RunWorkEventSegment): RunWorkUnit {
   };
 }
 
+function isRunGroupInternalInput(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "input.automation" || isGoalContinuationInput(event)
+  );
+}
+
 function canAnchorGoalRun(unit: RunWorkUnit | undefined): boolean {
   return unit !== undefined && !unit.isGoal && unit.runGroupId === undefined;
 }
@@ -434,7 +422,21 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
       return item.events.filter(isGoalContinuationInput);
     });
     if (goalInputEvents.length === 0) {
-      units.push(...streak.map(standaloneRunWorkUnit));
+      const events = streak.flatMap((item) => {
+        return item.events;
+      });
+      units.push({
+        key: `group:${segment.runGroupId}`,
+        runGroupId: segment.runGroupId,
+        events,
+        runIds: uniqueRunIds(streak),
+        hiddenUserEventIds: new Set(
+          events.filter(isRunGroupInternalInput).map((event) => {
+            return event.id;
+          }),
+        ),
+        isGoal: false,
+      });
       index = endIndex;
       continue;
     }
@@ -444,8 +446,11 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
     // naturally starts a new visual work section after an interruption.
     const previousUnit = units[units.length - 1];
     const anchorUnit = canAnchorGoalRun(previousUnit) ? units.pop() : undefined;
+    const groupedEvents = streak.flatMap((item) => {
+      return item.events;
+    });
     const hiddenUserEventIds = new Set(
-      goalInputEvents.map((event) => {
+      groupedEvents.filter(isRunGroupInternalInput).map((event) => {
         return event.id;
       }),
     );
@@ -458,12 +463,7 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
     units.push({
       key: `goal:${segment.runGroupId}`,
       runGroupId: segment.runGroupId,
-      events: [
-        ...(anchorUnit?.events ?? []),
-        ...streak.flatMap((item) => {
-          return item.events;
-        }),
-      ],
+      events: [...(anchorUnit?.events ?? []), ...groupedEvents],
       runIds: [...(anchorUnit?.runIds ?? []), ...goalRunIds],
       hiddenUserEventIds,
       isGoal: true,
@@ -553,7 +553,8 @@ interface RunWorkPhaseFolding {
 
 interface RunWorkPhaseIdentity {
   readonly key: string;
-  readonly goalRunGroupId: string | undefined;
+  readonly runGroupId: string | undefined;
+  readonly runIds: readonly string[];
 }
 
 function foldRunWorkPhase(
@@ -563,12 +564,8 @@ function foldRunWorkPhase(
   hiddenUserEventIds: ReadonlySet<string>,
   foldedEventIds: ReadonlySet<string>,
 ): RunWorkPhaseFolding {
-  const textMessages = events.filter(isRunWorkTextMessage);
-  const latestTextMessage = textMessages.at(-1);
-  const terminalEvent = lastEventMatching(events, (event) => {
-    return isChatRunTerminalEventType(event.eventType);
-  });
-  const anchorEvent = latestTextMessage ?? terminalEvent;
+  const outputMessages = events.filter(isRunWorkMessage);
+  const anchorEvent = outputMessages.at(-1);
   const startTime = firstEventTime(events);
   if (anchorEvent === undefined || startTime === null) {
     return {
@@ -586,19 +583,6 @@ function foldRunWorkPhase(
       (hiddenUserEventIds.has(event.id) && foldedEventIds.has(event.id))
     );
   });
-  const previewTextMessages =
-    endTime === undefined ? textMessages.slice(-4, -1) : [];
-  const previewEventIds = new Set(
-    previewTextMessages.map((event) => {
-      return event.id;
-    }),
-  );
-  const collapsedEvents = hiddenEvents.filter((event) => {
-    return (
-      previewEventIds.has(event.id) ||
-      (isRenderableAssistantEvent(event) && !isRunWorkTextMessage(event))
-    );
-  });
   const hiddenEventsAfterAnchor = events
     .slice(anchorIndex + 1)
     .filter((event) => {
@@ -614,7 +598,7 @@ function foldRunWorkPhase(
       !hiddenEventIds.has(event.id) &&
       !hiddenUserEventIds.has(event.id) &&
       isRenderableAssistantEvent(event) &&
-      !isRunWorkTextMessage(event)
+      !isRunWorkMessage(event)
     );
   });
   const userEvents = events.filter((event) => {
@@ -625,13 +609,13 @@ function foldRunWorkPhase(
     visibleEvents: [...userEvents, anchorEvent, ...trailingStatusEvents],
     section: {
       key: `${identity.key}:${events[0]!.id}`,
-      goalRunGroupId: identity.goalRunGroupId,
+      runGroupId: identity.runGroupId,
+      runIds: identity.runIds,
       anchorEventId: anchorEvent.id,
-      collapsedGroups: groupEventsByRole(collapsedEvents),
-      previewEventIds,
-      collapsible: textMessages.length > 1,
+      collapsible: outputMessages.length > 1,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
+      remainingArtifactCards: remainingArtifactCards(outputMessages),
       startTime,
       ...(endTime === undefined ? {} : { endTime }),
     },
@@ -722,7 +706,8 @@ export function buildRunWorkFolding(
       const phaseFolding = foldRunWorkPhase(
         {
           key: unit.key,
-          goalRunGroupId: unit.isGoal ? unit.runGroupId : undefined,
+          runGroupId: unit.runGroupId,
+          runIds: unit.runIds,
         },
         phase,
         phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
@@ -734,7 +719,7 @@ export function buildRunWorkFolding(
         sections.push(phaseFolding.section);
       }
     }
-    if (unit.isGoal && sections.length > firstSectionIndex) {
+    if (unit.runGroupId !== undefined && sections.length > firstSectionIndex) {
       const mergedUsage = mergedUsageForRunIds(unit.runIds, usageByRunId);
       const finalSection = sections[sections.length - 1];
       if (mergedUsage !== undefined && finalSection !== undefined) {
