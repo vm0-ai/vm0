@@ -739,3 +739,13 @@ export function captureRecommendedFollowupSelected(args: {
     });
   });
 }
+
+export function captureChatWorkHistoryExpanded(args: {
+  readonly workStatus: "active" | "completed";
+}): void {
+  runPostHog(() => {
+    posthog.capture("chat_work_history_expanded", {
+      work_status: args.workStatus,
+    });
+  });
+}
