@@ -29,15 +29,10 @@ describe("intro video avatars", () => {
     ).toBe(true);
   });
 
-  it("records the reviewed v3 capabilities without validating alpha", () => {
+  it("records the fixed v3 render contract without validating alpha", () => {
     for (const avatar of HEYGEN_INTRO_VIDEO_AVATARS) {
       expect(avatar.preferredOrientation).toBe("landscape");
       expect(avatar.renderEngine).toBe("avatar_iii");
-      expect(avatar.supportedApiEngines).toEqual([
-        "avatar_v",
-        "avatar_iv",
-        "avatar_iii",
-      ]);
       expect(avatar.transparentBackgroundValidated).toBe(false);
       expect(avatar.defaultVoiceId).not.toBe("");
     }

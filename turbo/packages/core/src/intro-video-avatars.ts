@@ -1,11 +1,5 @@
 import type { AvatarVideoAvatar } from "@okouai/api-contracts/contracts/avatar-video";
 
-const HEYGEN_SUPPORTED_API_ENGINES = [
-  "avatar_v",
-  "avatar_iv",
-  "avatar_iii",
-] as const;
-
 export interface HeyGenIntroVideoAvatar {
   readonly key: string;
   readonly name: string;
@@ -19,7 +13,6 @@ export interface HeyGenIntroVideoAvatar {
   readonly defaultVoiceId: string;
   readonly preferredOrientation: "landscape";
   readonly renderEngine: "avatar_iii";
-  readonly supportedApiEngines: typeof HEYGEN_SUPPORTED_API_ENGINES;
   readonly transparentBackgroundValidated: false;
 }
 
@@ -841,7 +834,6 @@ export const HEYGEN_INTRO_VIDEO_AVATARS = [
     previewHeight: 9,
     preferredOrientation: "landscape",
     renderEngine: "avatar_iii",
-    supportedApiEngines: HEYGEN_SUPPORTED_API_ENGINES,
     transparentBackgroundValidated: false,
   };
 });
