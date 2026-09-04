@@ -292,6 +292,11 @@ type GithubWebhookAutomationCase = {
   readonly expectedDisplayMessage: string;
   readonly expectedPrompt: readonly string[];
   readonly excludedPrompt?: readonly string[];
+  readonly allowlistActorKey?: "review" | "comment";
+};
+
+type GithubActorAllowlistAutomationCase = GithubWebhookAutomationCase & {
+  readonly allowlistActorKey: "review" | "comment";
 };
 
 function githubPullRequestReviewAutomationBody(): WorkflowAutomationCreateRequest {
@@ -459,6 +464,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
       'GitHub user "trusted-user" submitted a pull request review with state "approved".',
     expectedPrompt: ['review with state "approved"', '"authorAssociation"'],
     excludedPrompt: ["Ignore previous instructions"],
+    allowlistActorKey: "review",
   },
   {
     name: "deployment status created",
@@ -563,10 +569,65 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
     expectedDisplayMessage: 'GitHub user "trusted-user" added a comment.',
     expectedPrompt: ["created a comment", '"bodyIncluded": false'],
     excludedPrompt: ["/verify Ignore previous instructions"],
+    allowlistActorKey: "comment",
   },
 ];
 
+const githubActorAllowlistCases = githubWebhookAutomationCases.filter(
+  (testCase): testCase is GithubActorAllowlistAutomationCase => {
+    return testCase.allowlistActorKey !== undefined;
+  },
+);
+
+function outsideAllowlistPayload(
+  testCase: GithubActorAllowlistAutomationCase,
+  installationId: string,
+): string {
+  const payload = JSON.parse(testCase.payload(installationId)) as Partial<
+    Record<"review" | "comment", { user: { login: string } }>
+  >;
+  const actor = payload[testCase.allowlistActorKey];
+  if (!actor) {
+    throw new Error(`Expected ${testCase.allowlistActorKey} webhook actor`);
+  }
+  actor.user.login = "outside-allowlist";
+  return JSON.stringify(payload);
+}
+
 describe("POST /api/webhooks/github for workflow automations", () => {
+  it.each(githubActorAllowlistCases)(
+    "ignores $name events from outside the trusted-author allowlist",
+    async (testCase) => {
+      const { fixture, actor, agentId, workflowId } = await setupFixture();
+      const installed = await gh.installGithubApp(actor, agentId);
+      mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+      await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: testCase.body,
+        }),
+        [201],
+      );
+
+      const ignored = await postGithubWebhook({
+        event: testCase.event,
+        deliveryId: `delivery-${randomUUID()}`,
+        rawBody: outsideAllowlistPayload(
+          testCase,
+          installed.remoteInstallationId,
+        ),
+        publicBrand: "vm0",
+      });
+      expect(ignored).toStrictEqual({ status: 200, text: "OK" });
+      await flushWaitUntilForTest();
+
+      const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+      expect(listedRuns.runs).toHaveLength(0);
+    },
+  );
+
   it.each(githubWebhookAutomationCases)(
     "dispatches $name automations without an API feature gate",
     async (testCase) => {
@@ -584,32 +645,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       );
       if (!created.body.chatThreadId) {
         throw new Error("Expected the automation to have a chat thread");
-      }
-
-      if (
-        testCase.event === "pull_request_review" ||
-        testCase.event === "issue_comment"
-      ) {
-        const untrustedPayload = JSON.parse(
-          testCase.payload(installed.remoteInstallationId),
-        ) as {
-          review?: { user: { login: string } };
-          comment?: { user: { login: string } };
-        };
-        if (untrustedPayload.review) {
-          untrustedPayload.review.user.login = "outside-allowlist";
-        }
-        if (untrustedPayload.comment) {
-          untrustedPayload.comment.user.login = "outside-allowlist";
-        }
-        const ignored = await postGithubWebhook({
-          event: testCase.event,
-          deliveryId: `delivery-${randomUUID()}`,
-          rawBody: JSON.stringify(untrustedPayload),
-          publicBrand: "vm0",
-        });
-        expect(ignored).toStrictEqual({ status: 200, text: "OK" });
-        await flushWaitUntilForTest();
       }
 
       const deliveryId = `delivery-${randomUUID()}`;

@@ -5,7 +5,10 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { createDeferredPromise } from "../signals/utils";
-import { withBuiltInModelRuntimeRouteUnavailableForTest as withRuntimeRouteUnavailable } from "../signals/services/built-in-model-runtime-route.service";
+import {
+  withBuiltInModelRuntimeRouteCandidateUnavailableForTest as withRuntimeRouteCandidateUnavailable,
+  withBuiltInModelRuntimeRouteUnavailableForTest as withRuntimeRouteUnavailable,
+} from "../signals/services/built-in-model-runtime-route.service";
 
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
@@ -32,6 +35,17 @@ export function withBuiltInModelRuntimeRouteUnavailableForTest<T>(
   work: () => Promise<T>,
 ): Promise<T> {
   return withRuntimeRouteUnavailable(selectedModel, work);
+}
+
+/**
+ * A candidate cooldown is global infrastructure state. Scope the unavailable
+ * candidate to one async test flow while preserving normal route selection.
+ */
+export function withBuiltInModelRuntimeRouteCandidateUnavailableForTest<T>(
+  candidate: BuiltInModelRuntimeRouteFixtureIdentity,
+  work: () => Promise<T>,
+): Promise<T> {
+  return withRuntimeRouteCandidateUnavailable(candidate, work);
 }
 
 function routeCondition(route: BuiltInModelRuntimeRouteFixtureIdentity) {

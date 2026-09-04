@@ -106,6 +106,96 @@ pub const SETTINGS_RUN_PAYLOAD_FIELD: &str = "OKOU_SETTINGS";
 /// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 
+/// Canonical CLI framework selected by [`CLI_AGENT_TYPE_ENV`].
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum CliFramework {
+    /// Anthropic Claude Code.
+    ClaudeCode,
+    /// OpenAI Codex CLI.
+    Codex,
+    /// Pi native agent loop.
+    Pi,
+}
+
+impl CliFramework {
+    /// Return the stable selector spelling used by [`CLI_AGENT_TYPE_ENV`].
+    #[must_use]
+    pub const fn as_cli_agent_type(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "claude-code",
+            Self::Codex => "codex",
+            Self::Pi => "pi",
+        }
+    }
+}
+
+/// Parsed [`CLI_AGENT_TYPE_ENV`] selection shared by runner and guest-agent.
+///
+/// Unknown non-empty values remain available through
+/// [`Self::normalized_cli_agent_type`] while selecting Claude Code effectively.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CliAgentTypeSelection<'a> {
+    framework: CliFramework,
+    normalized_cli_agent_type: &'a str,
+    unknown: bool,
+}
+
+impl<'a> CliAgentTypeSelection<'a> {
+    /// Parse a raw CLI framework selector.
+    ///
+    /// Empty input selects and normalizes to Claude Code without being marked
+    /// unknown. Unknown non-empty input remains unchanged for transport, is
+    /// marked unknown, and also selects Claude Code effectively.
+    #[must_use]
+    pub fn parse(value: &'a str) -> Self {
+        match value {
+            "" => Self {
+                framework: CliFramework::ClaudeCode,
+                normalized_cli_agent_type: CliFramework::ClaudeCode.as_cli_agent_type(),
+                unknown: false,
+            },
+            "claude-code" => Self {
+                framework: CliFramework::ClaudeCode,
+                normalized_cli_agent_type: value,
+                unknown: false,
+            },
+            "codex" => Self {
+                framework: CliFramework::Codex,
+                normalized_cli_agent_type: value,
+                unknown: false,
+            },
+            "pi" => Self {
+                framework: CliFramework::Pi,
+                normalized_cli_agent_type: value,
+                unknown: false,
+            },
+            _ => Self {
+                framework: CliFramework::ClaudeCode,
+                normalized_cli_agent_type: value,
+                unknown: true,
+            },
+        }
+    }
+
+    /// Return the effective framework after applying fallback semantics.
+    #[must_use]
+    pub const fn framework(self) -> CliFramework {
+        self.framework
+    }
+
+    /// Return the selector spelling transported to downstream consumers.
+    #[must_use]
+    pub const fn normalized_cli_agent_type(self) -> &'a str {
+        self.normalized_cli_agent_type
+    }
+
+    /// Return whether the raw non-empty selector was unknown.
+    #[must_use]
+    pub const fn is_unknown(self) -> bool {
+        self.unknown
+    }
+}
+
 /// Canonical private user-environment file pointer written by the runner.
 ///
 /// The guest-agent validates that the path points at its per-run private
@@ -503,6 +593,32 @@ pub fn sanitize_env_key_for_diagnostic(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_agent_type_selection_covers_known_empty_and_unknown_values() {
+        for (value, framework) in [
+            ("claude-code", CliFramework::ClaudeCode),
+            ("codex", CliFramework::Codex),
+            ("pi", CliFramework::Pi),
+        ] {
+            let selection = CliAgentTypeSelection::parse(value);
+
+            assert_eq!(selection.framework(), framework);
+            assert_eq!(selection.normalized_cli_agent_type(), value);
+            assert!(!selection.is_unknown());
+            assert_eq!(framework.as_cli_agent_type(), value);
+        }
+
+        let empty = CliAgentTypeSelection::parse("");
+        assert_eq!(empty.framework(), CliFramework::ClaudeCode);
+        assert_eq!(empty.normalized_cli_agent_type(), "claude-code");
+        assert!(!empty.is_unknown());
+
+        let unknown = CliAgentTypeSelection::parse("custom-agent");
+        assert_eq!(unknown.framework(), CliFramework::ClaudeCode);
+        assert_eq!(unknown.normalized_cli_agent_type(), "custom-agent");
+        assert!(unknown.is_unknown());
+    }
 
     #[test]
     fn run_artifacts_round_trip_with_and_without_missing_root_policy() {

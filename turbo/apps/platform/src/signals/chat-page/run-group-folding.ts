@@ -39,7 +39,7 @@ export interface RunGroupFolding {
   readonly foldsByNextGroupId: ReadonlyMap<string, readonly RunGroupFold[]>;
 }
 
-export interface RunGroupFoldingOptions {
+interface RunGroupFoldingOptions {
   readonly preserveGoalRunsForWorkFolding?: boolean;
 }
 

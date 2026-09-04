@@ -1,4 +1,4 @@
-export const OKOU_CLERK_PRIMARY_APP_ORIGIN = "https://app.okou.ai";
+const OKOU_CLERK_PRIMARY_APP_ORIGIN = "https://app.okou.ai";
 export const VM0_CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 
 export const CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN = "app.vm0.ai";
@@ -22,7 +22,7 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
 
-export function normalizeClerkProductionPrimaryAppDomain(
+function normalizeClerkProductionPrimaryAppDomain(
   value: unknown,
 ): ClerkProductionPrimaryAppDomain {
   // Web/app rollout fallback: production clients and retained rollback builds

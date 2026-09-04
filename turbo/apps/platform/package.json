@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.840.0",
+  "version": "0.841.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -23,7 +23,6 @@
   "dependencies": {
     "@axiomhq/js": "^1.5.0",
     "@base-ui/react": "^1.7.0",
-    "@clerk/clerk-js": "6.25.8",
     "@clerk/localizations": "^4.13.8",
     "@clerk/react": "^6.12.8",
     "@clerk/shared": "4.25.8",
@@ -106,7 +105,8 @@
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",
     "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "^8.67.0",
     "unicode-emoji-json": "^0.9.0",
     "vite": "^8.0.16",

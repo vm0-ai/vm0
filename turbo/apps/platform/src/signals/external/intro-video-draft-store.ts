@@ -1,5 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 
+import { observeClientOperation } from "../../lib/client-telemetry.ts";
 import { withCleanup } from "../utils.ts";
 import { runIndexedDbTransaction } from "./indexeddb-client.ts";
 
@@ -56,13 +57,14 @@ const TRANSACTION_TEMPLATES = {
 } as const;
 
 async function openIntroVideoDraftDatabase() {
-  return await openDB<IntroVideoDraftDatabase>(
-    DATABASE_NAME,
-    DATABASE_VERSION,
-    {
-      upgrade(database) {
-        database.createObjectStore("drafts");
-      },
+  return await observeClientOperation(
+    { event_name: "indexeddb.open", database: "intro_video_drafts" },
+    () => {
+      return openDB<IntroVideoDraftDatabase>(DATABASE_NAME, DATABASE_VERSION, {
+        upgrade(database) {
+          database.createObjectStore("drafts");
+        },
+      });
     },
   );
 }
@@ -74,6 +76,7 @@ export async function readIntroVideoDraft(): Promise<IntroVideoDraftRecord | nul
       {
         database: "intro_video_drafts",
         template: TRANSACTION_TEMPLATES.read,
+        transaction_mode: "readonly",
       },
       () => {
         return database.transaction("drafts", "readonly");
@@ -101,6 +104,7 @@ export async function saveIntroVideoDraft(
       {
         database: "intro_video_drafts",
         template: TRANSACTION_TEMPLATES.save,
+        transaction_mode: "readwrite",
       },
       () => {
         return database.transaction("drafts", "readwrite");
@@ -122,6 +126,7 @@ export async function deleteIntroVideoDraft(): Promise<void> {
       {
         database: "intro_video_drafts",
         template: TRANSACTION_TEMPLATES.delete,
+        transaction_mode: "readwrite",
       },
       () => {
         return database.transaction("drafts", "readwrite");

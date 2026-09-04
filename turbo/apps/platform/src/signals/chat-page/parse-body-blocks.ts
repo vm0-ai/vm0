@@ -1058,7 +1058,7 @@ function markdownTableRowIndexes(lines: string[]): Set<number> {
 // Block parsing
 // ---------------------------------------------------------------------------
 
-export function parseBodyBlocks(
+function parseBodyBlocks(
   content: string,
   options: ParseBodyBlocksOptions = {},
 ): {

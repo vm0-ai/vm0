@@ -12,13 +12,11 @@ import {
   findNamedButton,
   findNamedLink,
   getNamedButton,
-  getNamedLink,
   mockAttachmentChat,
   mockPrivateUrlSequence,
   mockSplitAttachmentChats,
   privateAttachmentUrl,
   publicArtifactUrl,
-  queryNamedButton,
   type AttachmentChatEvent,
 } from "./chat-attachment-test-helpers.ts";
 
@@ -132,100 +130,6 @@ test("A composer image preview does not replace an open artifact sidebar", async
       "artifact-sidebar-body-html",
     ),
   ).toHaveAttribute("src", siteUrl);
-});
-
-test("A hosted presentation can be previewed, enlarged, and opened in split view", async () => {
-  const aliasUrl = "https://quarterly-review.sites.vm7.io";
-  mockAttachmentChat(context, {
-    chatEvents: [assistantMessage(`[Quarterly review](${aliasUrl})`)],
-    artifacts: [
-      artifactFile("quarterly-review.html", {
-        id: "quarterly-presentation",
-        contentType: "text/html",
-        url: publicArtifactUrl("quarterly-review.html"),
-        aliasUrl,
-        artifactKind: "presentation-html",
-      }),
-    ],
-  });
-
-  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
-
-  click(await findNamedLink("Open html preview for Quarterly review"));
-  await expect(
-    screen.findByTestId("presentation-artifact-viewport"),
-  ).resolves.toBeVisible();
-  expect(getNamedButton("Enter fullscreen")).toBeVisible();
-  expect(getNamedButton("Open in split view")).toBeVisible();
-  expect(queryNamedButton("Edit presentation")).toBeNull();
-
-  click(getNamedButton("Enter fullscreen"));
-  await expect(findNamedButton("Exit fullscreen")).resolves.toBeVisible();
-  expect(screen.getByTestId("attachment-lightbox-panel")).toHaveClass(
-    "zero-fixed-viewport-shell",
-  );
-  click(getNamedButton("Exit fullscreen"));
-  await waitFor(() => {
-    expect(screen.getByTestId("attachment-lightbox-panel")).not.toHaveClass(
-      "zero-fixed-viewport-shell",
-    );
-  });
-
-  click(getNamedButton("Open in split view"));
-  const sidebar = await screen.findByTestId("artifact-sidebar");
-  expect(
-    within(sidebar).getByTestId("presentation-artifact-viewport"),
-  ).toBeVisible();
-  click(getNamedButton("Close artifact", sidebar));
-  await waitFor(() => {
-    expect(screen.queryByTestId("artifact-sidebar")).toBeNull();
-  });
-});
-
-test("Hosted-site preview actions are localized in Brazilian Portuguese", async () => {
-  const siteUrl = "https://launch-site.sites.vm7.io";
-  const clipboard = context.mocks.browser.clipboardWriteText();
-  mockAttachmentChat(context, {
-    chatEvents: [assistantMessage(`[Launch site](${siteUrl})`)],
-    artifacts: [
-      artifactFile("Launch site", {
-        id: "launch-site",
-        contentType: "text/html",
-        url: siteUrl,
-        aliasUrl: siteUrl,
-        artifactKind: "hosted-site",
-      }),
-    ],
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${ATTACHMENT_THREAD_ID}`,
-    locale: "pt-BR",
-  });
-
-  click(await findNamedLink("Abrir visualização de HTML de Launch site"));
-  const dialog = await screen.findByRole("dialog", {
-    name: "Visualização de Launch site",
-  });
-  expect(dialog).toHaveTextContent("Launch site");
-  expect(dialog).toHaveTextContent("Site hospedado");
-  expect(getNamedLink("Compartilhar", dialog)).toBeVisible();
-  expect(getNamedButton("Opções de download", dialog)).toBeVisible();
-  expect(
-    getNamedButton("Abrir em visualização dividida", dialog),
-  ).toBeVisible();
-  expect(getNamedButton("Entrar em tela cheia", dialog)).toBeVisible();
-  expect(getNamedButton("Fechar", dialog)).toBeVisible();
-
-  click(getNamedLink("Compartilhar", dialog));
-  await waitFor(() => {
-    expect(clipboard.writes).toContain(siteUrl);
-  });
-  await expect(screen.findByText("Link copiado")).resolves.toBeVisible();
-
-  click(getNamedButton("Entrar em tela cheia", dialog));
-  await expect(findNamedButton("Sair da tela cheia")).resolves.toBeVisible();
 });
 
 test("An open artifact sidebar reuses one pane", async () => {

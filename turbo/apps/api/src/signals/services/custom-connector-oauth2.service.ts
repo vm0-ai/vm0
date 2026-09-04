@@ -111,48 +111,19 @@ const customConnectorCustomOAuthProviderContextSchema = z
   })
   .strict();
 
-const customConnectorLegacyCustomOAuthStateContextSchema = z
-  .object({
-    version: z.never().optional(),
-    authMode: z.never().optional(),
-    oauthSetup: z.literal("custom").optional(),
-    connectorId: z.string().uuid(),
-    storageVersion: z.number().int().positive(),
-    providerContext: customConnectorCustomOAuthProviderContextSchema.optional(),
-  })
-  .strict();
-
-const customConnectorCanonicalCustomOAuthStateContextSchema = z
+const customConnectorCustomOAuthStateContextSchema = z
   .object({
     version: z.literal(2),
     authMode: z.literal("oauth"),
-    oauthSetup: z.never().optional(),
     connectorId: z.string().uuid(),
     storageVersion: z.number().int().positive(),
     providerContext: customConnectorCustomOAuthProviderContextSchema.optional(),
   })
   .strict();
 
-type CustomConnectorCanonicalCustomOAuthStateContext = z.infer<
-  typeof customConnectorCanonicalCustomOAuthStateContextSchema
+export type CustomConnectorCustomOAuthStateContext = z.infer<
+  typeof customConnectorCustomOAuthStateContextSchema
 >;
-
-const customConnectorCustomOAuthStateContextSchema = z.union([
-  customConnectorCanonicalCustomOAuthStateContextSchema,
-  customConnectorLegacyCustomOAuthStateContextSchema.transform(
-    (value): CustomConnectorCanonicalCustomOAuthStateContext => {
-      return {
-        version: 2,
-        authMode: "oauth",
-        connectorId: value.connectorId,
-        storageVersion: value.storageVersion,
-        ...(value.providerContext
-          ? { providerContext: value.providerContext }
-          : {}),
-      };
-    },
-  ),
-]);
 
 const customConnectorAutomaticOAuthStateContextCoreSchema = z.object({
   connectorId: z.string().uuid(),
@@ -172,86 +143,25 @@ const customConnectorAutomaticOAuthStateContextCoreSchema = z.object({
   providerContext: z.never().optional(),
 });
 
-const customConnectorLegacyAutomaticOAuthStateContextBaseSchema =
-  customConnectorAutomaticOAuthStateContextCoreSchema.extend({
-    version: z.literal(1),
-    authMode: z.never().optional(),
-    oauthSetup: z.literal("automatic"),
-  });
-
-const customConnectorLegacyAutomaticOAuthStateContextSchema = z.union([
-  customConnectorLegacyAutomaticOAuthStateContextBaseSchema
-    .extend({
-      registrationMethod: z.literal("cimd"),
-      dcrRegistrationId: z.never().optional(),
-    })
-    .strict(),
-  customConnectorLegacyAutomaticOAuthStateContextBaseSchema
-    .extend({
-      registrationMethod: z.literal("dcr"),
-      dcrRegistrationId: z.string().uuid(),
-    })
-    .strict(),
-]);
-
-const customConnectorCanonicalAutomaticOAuthStateContextBaseSchema =
+const customConnectorAutomaticOAuthStateContextBaseSchema =
   customConnectorAutomaticOAuthStateContextCoreSchema.extend({
     version: z.literal(2),
     authMode: z.literal("automatic"),
-    oauthSetup: z.never().optional(),
   });
 
-const customConnectorCanonicalAutomaticOAuthStateContextSchema = z.union([
-  customConnectorCanonicalAutomaticOAuthStateContextBaseSchema
+const customConnectorAutomaticOAuthStateContextSchema = z.union([
+  customConnectorAutomaticOAuthStateContextBaseSchema
     .extend({
       registrationMethod: z.literal("cimd"),
       dcrRegistrationId: z.never().optional(),
     })
     .strict(),
-  customConnectorCanonicalAutomaticOAuthStateContextBaseSchema
+  customConnectorAutomaticOAuthStateContextBaseSchema
     .extend({
       registrationMethod: z.literal("dcr"),
       dcrRegistrationId: z.string().uuid(),
     })
     .strict(),
-]);
-
-type CustomConnectorCanonicalAutomaticOAuthStateContext = z.infer<
-  typeof customConnectorCanonicalAutomaticOAuthStateContextSchema
->;
-
-function normalizeLegacyAutomaticOAuthStateContext(
-  value: z.infer<typeof customConnectorLegacyAutomaticOAuthStateContextSchema>,
-): CustomConnectorCanonicalAutomaticOAuthStateContext {
-  const common = {
-    version: 2 as const,
-    authMode: "automatic" as const,
-    connectorId: value.connectorId,
-    storageVersion: value.storageVersion,
-    issuer: value.issuer,
-    resource: value.resource,
-    resourceMetadataUrl: value.resourceMetadataUrl,
-    authorizationEndpoint: value.authorizationEndpoint,
-    tokenEndpoint: value.tokenEndpoint,
-    authorizationResponseIssParameterSupported:
-      value.authorizationResponseIssParameterSupported,
-    clientId: value.clientId,
-    tokenEndpointAuthMethod: value.tokenEndpointAuthMethod,
-  };
-  return value.registrationMethod === "cimd"
-    ? { ...common, registrationMethod: "cimd" }
-    : {
-        ...common,
-        registrationMethod: "dcr",
-        dcrRegistrationId: value.dcrRegistrationId,
-      };
-}
-
-const customConnectorAutomaticOAuthStateContextSchema = z.union([
-  customConnectorCanonicalAutomaticOAuthStateContextSchema,
-  customConnectorLegacyAutomaticOAuthStateContextSchema.transform(
-    normalizeLegacyAutomaticOAuthStateContext,
-  ),
 ]);
 
 const customConnectorOAuthStateContextSchema = z.union([
@@ -261,10 +171,6 @@ const customConnectorOAuthStateContextSchema = z.union([
 
 type CustomConnectorOAuthStateContext = z.infer<
   typeof customConnectorOAuthStateContextSchema
->;
-
-export type CustomConnectorCustomOAuthStateContext = z.infer<
-  typeof customConnectorCustomOAuthStateContextSchema
 >;
 
 type CustomConnectorAutomaticOAuthStateContext = z.infer<
@@ -669,7 +575,7 @@ type PreparedOAuthStart = {
 } & (
   | {
       readonly authMode: "oauth";
-      readonly context: CustomConnectorCanonicalCustomOAuthStateContext;
+      readonly context: CustomConnectorCustomOAuthStateContext;
     }
   | {
       readonly authMode: "automatic";

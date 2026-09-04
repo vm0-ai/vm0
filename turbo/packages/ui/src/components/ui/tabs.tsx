@@ -31,7 +31,7 @@ const TabsList = React.forwardRef<HTMLDivElement, TabsPrimitive.List.Props>(
           // Geometry is shared with SegmentControl: the two patterns differ in
           // semantics (navigating panels vs picking a value), not in looks, and
           // letting them drift is what left the product with two skins.
-          "inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-0.5 text-muted-foreground",
+          "inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-segment-track p-0.5 text-muted-foreground",
           className,
         )}
         {...props}

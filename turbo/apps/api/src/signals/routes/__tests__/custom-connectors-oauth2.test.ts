@@ -125,7 +125,6 @@ describe("Custom connector OAuth public-brand callbacks", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "oauth",
-          context_format: "canonical",
           context_valid: true,
         },
       });
@@ -212,7 +211,7 @@ describe("Custom connector OAuth public-brand callbacks", () => {
     await connectors.deleteCustomConnector(actor, connector.id);
   });
 
-  it("replays a legacy Okou state callback and uses Okou on reconnect", async () => {
+  it("replays a pre-brand-fix Okou callback and uses Okou on reconnect", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialScope: "read",
@@ -234,6 +233,8 @@ describe("Custom connector OAuth public-brand callbacks", () => {
       storageVersion: connector.storageVersion,
       redirectUri: legacyRedirectUri,
       oauthContext: {
+        version: 2,
+        authMode: "oauth",
         connectorId: connector.id,
         storageVersion: connector.storageVersion,
       },

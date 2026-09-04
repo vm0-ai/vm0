@@ -839,6 +839,7 @@ function AgentHeader({
   displayName,
   description,
   agentId,
+  avatarUrl,
   activeTab,
   onTabChange,
   showProfileAndInstructions,
@@ -847,6 +848,7 @@ function AgentHeader({
   displayName: string;
   description: string;
   agentId: string;
+  avatarUrl: string | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
@@ -874,7 +876,7 @@ function AgentHeader({
                       type="button"
                       onClick={() => {
                         onTabChange("profile");
-                        openMaker();
+                        openMaker(avatarUrl);
                       }}
                       className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
                       aria-label={t(($) => {
@@ -1117,7 +1119,11 @@ function useAgentFields() {
   };
 }
 
-function useTabVisibility(agentId: string, ownerId: string) {
+function useTabVisibility(
+  agentId: string,
+  ownerId: string,
+  visibility: "public" | "private",
+) {
   const statusLoadable = useLastLoadable(onboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
@@ -1130,10 +1136,11 @@ function useTabVisibility(agentId: string, ownerId: string) {
   const currentUserId =
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isOwner = currentUserId === ownerId;
+  const canEditProfile = isOwner || (isAdmin && visibility === "public");
 
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
-  const hideProfileAndInstructions = !isAdmin && !isOwner;
+  const hideProfileAndInstructions = !canEditProfile;
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   return {
@@ -1163,7 +1170,7 @@ export function JobDetailPage() {
     isOwner,
     activeTab,
     setActiveTab,
-  } = useTabVisibility(fields.agentId, fields.ownerId);
+  } = useTabVisibility(fields.agentId, fields.ownerId, fields.visibility);
 
   if (!fields.detail && !error) {
     return <DetailSkeleton />;
@@ -1180,6 +1187,7 @@ export function JobDetailPage() {
         displayName={fields.displayName}
         description={fields.description}
         agentId={fields.agentId}
+        avatarUrl={fields.avatarUrl}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}

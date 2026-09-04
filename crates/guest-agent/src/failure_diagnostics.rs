@@ -18,6 +18,7 @@ use guest_contracts::diagnostics::{
     EventDeliveryDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
     PromptMetadata, SessionHistoryStatus,
 };
+use guest_contracts::env::CliFramework;
 use serde_json::Value;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -44,11 +45,7 @@ pub fn base_failure_diagnostic_for_config(
     config: &env::GuestConfig,
     failure_class: FailureClass,
 ) -> FailureDiagnostic {
-    let framework = match config.framework {
-        env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
-        env::Framework::Codex => AgentFramework::Codex,
-        env::Framework::Pi => AgentFramework::Pi,
-    };
+    let framework = AgentFramework::from(CliFramework::from(config.framework));
     FailureDiagnostic::new(
         failure_class,
         framework,

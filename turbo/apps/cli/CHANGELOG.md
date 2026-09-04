@@ -1,5 +1,38 @@
 # Changelog
 
+## [9.310.3](https://github.com/vm0-ai/vm0/compare/cli-v9.310.2...cli-v9.310.3) (2026-09-04)
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.402.2
+    * @okouai/connectors bumped to 3.3.3
+    * @okouai/core bumped to 8.621.2
+    * @okouai/pi-agent-runtime bumped to 1.16.3
+
+## [9.310.2](https://github.com/vm0-ai/vm0/compare/cli-v9.310.1...cli-v9.310.2) (2026-09-04)
+
+
+### Refactoring
+
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+    * @okouai/pi-agent-runtime bumped to 1.16.2
+
 ## [9.310.1](https://github.com/vm0-ai/vm0/compare/cli-v9.310.0...cli-v9.310.1) (2026-09-04)
 
 

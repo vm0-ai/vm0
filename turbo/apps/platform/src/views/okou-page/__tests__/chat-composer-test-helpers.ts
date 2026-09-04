@@ -1,14 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type {
-  ConnectorAuthMethodId,
-  ConnectorSlug,
-} from "@okouai/api-contracts/contracts/connector-identity";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  type PresentationTemplateItem,
-} from "@okouai/core";
+import type { PresentationTemplateItem } from "@okouai/core";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -18,11 +10,11 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
+import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import {
   agentsByIdContract,
   agentInstructionsContract,
 } from "@okouai/api-contracts/contracts/agents";
-import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   billingStatusContract,
   type BillingStatusResponse,
@@ -33,7 +25,6 @@ import {
   chatEventRowsResponse,
 } from "../../../signals/__tests__/test-helpers.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
   mockChatEventRows,
@@ -45,39 +36,15 @@ export const context = testContext();
 
 export const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 
-export const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
+const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
 
 export const THREAD_ID = "b1000000-0000-4000-a000-000000000101";
-
-export const SUGGESTED_THREAD_ID = "b1000000-0000-4000-a000-000000000102";
-
-export const UNTITLED_THREAD_ID = "b1000000-0000-4000-a000-000000000103";
-
-export const OTHER_AGENT_THREAD_ID = "b1000000-0000-4000-a000-000000000104";
 
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 
 export const OPENROUTER_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 
 const VERCEL_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
-
-export function applyUserConnectorUpdate(
-  current: readonly string[],
-  body: {
-    readonly enabledConnectorSlugs: readonly string[];
-    readonly operation?: "replace" | "add" | "remove";
-  },
-): string[] {
-  if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
-  }
-  if (body.operation === "remove") {
-    return current.filter((connectorSlug) => {
-      return !body.enabledConnectorSlugs.includes(connectorSlug);
-    });
-  }
-  return [...body.enabledConnectorSlugs];
-}
 
 const NOW = "2026-05-08T00:00:00.000Z";
 
@@ -126,16 +93,6 @@ export function buttonContainingText(
     throw new Error(`${text} button not found`);
   }
   return button;
-}
-
-export function presentationTemplateGridScrollContainer(): HTMLElement {
-  const scrollContainer = screen
-    .getByRole("dialog")
-    .querySelector<HTMLElement>("[data-presentation-template-grid-scroll]");
-  if (!scrollContainer) {
-    throw new Error("Presentation template grid scroll container not found");
-  }
-  return scrollContainer;
 }
 
 export function buildProvider(
@@ -234,7 +191,7 @@ export function mockOrgModelRoutes(defaultSelectedModel: string): void {
   ]);
 }
 
-export function billingStatus(
+function billingStatus(
   tier: string,
   modelCapabilities?: {
     readonly supportByok?: boolean;
@@ -441,60 +398,6 @@ export function mockActiveTemplateThread(): void {
   });
 }
 
-export function mockConnectors(
-  connectors: {
-    connectorSlug: ConnectorSlug;
-    authMethod?: ConnectorAuthMethodId;
-    externalUsername?: string;
-    oauthScopes?: string[];
-  }[],
-): void {
-  context.mocks.data.connectors(
-    connectors.map((connector): ConnectorResponse => {
-      return {
-        id: crypto.randomUUID(),
-        slug: connector.connectorSlug,
-        authMethod: connector.authMethod ?? "oauth",
-        externalId: null,
-        externalUsername: connector.externalUsername ?? null,
-        externalEmail: null,
-        oauthScopes: connector.oauthScopes ?? null,
-        connectionStatus: "connected",
-        reconnectReason: null,
-        tokenExpiresAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      };
-    }),
-  );
-}
-
-export function mockManyConnectedConnectors(): void {
-  mockConnectors([
-    { connectorSlug: "github", externalUsername: "octocat" },
-    { connectorSlug: "slack", externalUsername: "launch-team" },
-    ...composerOverflowConnectorSlugs.map((connectorSlug) => {
-      return { connectorSlug };
-    }),
-  ]);
-}
-
-export function mockAgentConnectorAuthorizations(
-  initialConnectorSlugs: readonly string[],
-): void {
-  let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
-  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
-  });
-  context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
-    enabledConnectorSlugs = applyUserConnectorUpdate(
-      enabledConnectorSlugs,
-      body,
-    );
-    return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
-  });
-}
-
 export function trackTemplatePreviewImagePreloads(): {
   readonly srcs: readonly string[];
 } {
@@ -524,21 +427,6 @@ export function trackTemplatePreviewImagePreloads(): {
   vi.stubGlobal("Image", imageConstructor);
 
   return { srcs };
-}
-
-export function mockImmediateIdleCallback(): void {
-  vi.stubGlobal(
-    "requestIdleCallback",
-    (callback: IdleRequestCallback): number => {
-      callback({
-        didTimeout: false,
-        timeRemaining: () => {
-          return 50;
-        },
-      });
-      return 1;
-    },
-  );
 }
 
 export function mockUrlObjectMethods(
@@ -594,7 +482,7 @@ export function mockUrlObjectMethods(
   return { createObjectURL, revokeObjectURL };
 }
 
-export async function findComposerModel(label: string): Promise<HTMLElement> {
+async function findComposerModel(label: string): Promise<HTMLElement> {
   return await waitFor(() => {
     const combobox = screen.getByRole("combobox", { name: label });
     expect(combobox).toBeInTheDocument();
@@ -604,21 +492,6 @@ export async function findComposerModel(label: string): Promise<HTMLElement> {
 
 export async function expectComposerModel(label: string): Promise<void> {
   await expect(findComposerModel(label)).resolves.toBeInTheDocument();
-}
-
-// `fill` clears the composer with select-all before pasting, which would also
-// delete inline template nodes. Appending at the caret keeps templates that
-// were already inserted into the composer document.
-export async function appendAndSend(
-  user: ReturnType<typeof userEvent.setup>,
-  text: string,
-  editor?: HTMLElement,
-): Promise<void> {
-  if (editor) {
-    await user.click(editor);
-  }
-  await user.keyboard(text);
-  await user.keyboard("{Enter}");
 }
 
 export function composerInlineTemplates(): HTMLElement[] {
@@ -664,51 +537,6 @@ export async function selectTemplate(
   await expectInlineTemplateInComposer(template.title);
 }
 
-export async function selectIllustrationTemplate(
-  user: ReturnType<typeof userEvent.setup>,
-  template: (typeof ILLUSTRATION_TEMPLATE_ITEMS)[number],
-): Promise<void> {
-  click(
-    await waitFor(() => {
-      return screen.getByLabelText("Template");
-    }),
-  );
-  await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-
-  await user.click(tabByText("Illustration"));
-  await user.click(screen.getByLabelText(`Select template ${template.title}`));
-
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-  await expectInlineTemplateInComposer(template.title);
-}
-
-export function chatClipboardHtml(payload: {
-  text: string;
-  attachments: {
-    id: string | null;
-    url: string;
-    filename: string;
-    contentType: string;
-    size: number;
-  }[];
-}): string {
-  return `<div data-vm0-chat-message="${encodeURIComponent(
-    JSON.stringify(payload),
-  )}"></div>`;
-}
-
-export function composerElementFrom(textarea: HTMLElement): HTMLElement {
-  const composer = textarea.closest(".zero-composer");
-  if (!(composer instanceof HTMLElement)) {
-    throw new Error("Composer element not found");
-  }
-  return composer;
-}
-
 // The slash-workflow composer renders a TipTap contenteditable instead of a
 // textarea, so locate it directly rather than by placeholder.
 export async function findComposerEditor(): Promise<HTMLElement> {
@@ -723,32 +551,6 @@ export async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
-export function placeCaretAfterText(root: HTMLElement, text: string): void {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    const content = node.textContent ?? "";
-    const index = content.indexOf(text);
-    if (index === -1) {
-      continue;
-    }
-
-    const range = document.createRange();
-    range.setStart(node, index + text.length);
-    range.collapse(true);
-    root.focus();
-    const selection = window.getSelection();
-    if (!selection) {
-      throw new Error("Selection API is not available");
-    }
-    selection.removeAllRanges();
-    selection.addRange(range);
-    document.dispatchEvent(new Event("selectionchange"));
-    return;
-  }
-  throw new Error(`${text} text node not found`);
-}
-
 export function workflowSummary({
   name,
   displayName,
@@ -759,7 +561,7 @@ export function workflowSummary({
   readonly displayName: string | null;
   readonly description: string | null;
   readonly agentId?: string;
-}) {
+}): WorkflowSummary {
   return {
     id: crypto.randomUUID(),
     agentId,
@@ -774,5 +576,6 @@ export function workflowSummary({
     canManage: true,
     canPublish: false,
     official: null,
+    shadowedBy: null,
   };
 }

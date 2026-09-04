@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.545.2](https://github.com/vm0-ai/vm0/compare/api-v1.545.1...api-v1.545.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **agent:** align avatar edits with visibility permissions ([#31731](https://github.com/vm0-ai/vm0/issues/31731)) ([8cf8b09](https://github.com/vm0-ai/vm0/commit/8cf8b094a80ea861fbb366df0cc33323e1cf9846))
+* **api:** preserve admitted run credit access ([#31726](https://github.com/vm0-ai/vm0/issues/31726)) ([c5f4085](https://github.com/vm0-ai/vm0/commit/c5f4085b83007baa097682f58fb47dfc647b923f))
+
+
+### Refactoring
+
+* **api:** remove legacy custom connector oauth readers ([#31751](https://github.com/vm0-ai/vm0/issues/31751)) ([3a13b3a](https://github.com/vm0-ai/vm0/commit/3a13b3ad6564d96d6a721287ed2e816c5b1a60f6))
+* remove office preview response compatibility ([#31727](https://github.com/vm0-ai/vm0/issues/31727)) ([c598a28](https://github.com/vm0-ai/vm0/commit/c598a28d589959e971383a380691f80911c130e2))
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.2
+    * @okouai/connectors bumped to 3.3.3
+    * @okouai/core bumped to 8.621.2
+    * @okouai/db bumped to 1.240.7
+    * @okouai/pi-agent-runtime bumped to 1.16.3
+
+## [1.545.1](https://github.com/vm0-ai/vm0/compare/api-v1.545.0...api-v1.545.1) (2026-09-04)
+
+
+### Refactoring
+
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+    * @okouai/db bumped to 1.240.6
+    * @okouai/pi-agent-runtime bumped to 1.16.2
+
 ## [1.545.0](https://github.com/vm0-ai/vm0/compare/api-v1.544.0...api-v1.545.0) (2026-09-04)
 
 

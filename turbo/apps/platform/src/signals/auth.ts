@@ -85,7 +85,7 @@ const MAX_URL_PORT = 65_535;
 // port: https://app.vm7.ai:8443 + "www" -> https://www.vm7.ai:8443. No
 // environment fallback — a wrong-environment URL is silent and sticks, while
 // an error here surfaces the actual bug.
-export function deriveServiceOrigin(
+function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
   primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain(),
@@ -99,15 +99,6 @@ export function deriveServiceOrigin(
     return currentUrl.origin;
   }
   return derivePlatformServiceOrigin(currentOrigin, service);
-}
-
-// The WWW origin sibling of the current host.
-export function resolveWebOrigin(): string {
-  const origin = location.origin;
-  if (!origin || origin === "null") {
-    throw new Error("Cannot resolve the www origin without a browser origin");
-  }
-  return deriveServiceOrigin(origin, "www");
 }
 
 function resolveAppOrigin(): string {
@@ -158,24 +149,8 @@ function parseUrl(value: string): URL | null {
   return new URL(trimmed);
 }
 
-export function resolveAppUrl(): string {
+function resolveAppUrl(): string {
   return resolveAppOrigin();
-}
-
-export function resolveWebAuthUrl(
-  path: `/sign-${string}`,
-  options: { redirectUrl?: string } = {},
-): string {
-  const webOrigin = resolveWebOrigin();
-  if (!webOrigin) {
-    return path;
-  }
-  const url = new URL(path, webOrigin);
-  if (options.redirectUrl) {
-    url.searchParams.set("redirect_url", options.redirectUrl);
-  }
-  appendCapturedPreviewBypassToUrl(url);
-  return url.toString();
 }
 
 export function resolveAppAuthUrl(
@@ -193,16 +168,49 @@ export function resolveAppAuthUrl(
   return url.toString();
 }
 
-export function resolveSatelliteAuthRouteRedirectUrl(
+interface SatelliteAuthRouteNavigation {
+  readonly completionRedirectUrl: string;
+  readonly preservesRouteState: boolean;
+}
+
+function mergeClerkAuthHash(clerkHash: string, routeHash: string): string {
+  if (!routeHash) {
+    return clerkHash;
+  }
+
+  const clerkHashQueryIndex = clerkHash.indexOf("?");
+  if (clerkHashQueryIndex === -1) {
+    return routeHash;
+  }
+
+  const clerkHashParams = new URLSearchParams(
+    clerkHash.slice(clerkHashQueryIndex + 1),
+  );
+  const routeHashQueryIndex = routeHash.indexOf("?");
+  const routeHashPath =
+    routeHashQueryIndex === -1
+      ? routeHash
+      : routeHash.slice(0, routeHashQueryIndex);
+  const routeHashParams = new URLSearchParams(
+    routeHashQueryIndex === -1 ? "" : routeHash.slice(routeHashQueryIndex + 1),
+  );
+  for (const [key, value] of clerkHashParams) {
+    routeHashParams.set(key, value);
+  }
+
+  const routeHashSearch = routeHashParams.toString();
+  return routeHashSearch
+    ? `${routeHashPath}?${routeHashSearch}`
+    : routeHashPath;
+}
+
+function resolveSatelliteAuthRouteNavigation(
   mode: "sign-in" | "sign-up",
-): string | null {
+): SatelliteAuthRouteNavigation | null {
   if (!resolveClerkSatelliteConfig()) {
     return null;
   }
 
-  // Clerk authentication must run on the configured primary app. Keep the
-  // satellite destination explicit so the primary flow can safely return to
-  // the originating brand after it completes.
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
   const completionRedirectUrl =
     mode === "sign-in"
@@ -216,18 +224,23 @@ export function resolveSatelliteAuthRouteRedirectUrl(
           allowedRedirectOrigins,
           location.hash,
         );
-  const redirectUrl = new URL(resolveAppAuthUrl("/sign-in"));
-  redirectUrl.pathname = location.pathname;
-  redirectUrl.search = location.search;
-  redirectUrl.hash = location.hash;
-  redirectUrl.searchParams.set("redirect_url", completionRedirectUrl);
-  return redirectUrl.toString();
+  const authRoute = mode === "sign-in" ? "/sign-in" : "/sign-up";
+  const routeState = new URLSearchParams(location.search);
+  routeState.delete("redirect_url");
+
+  return {
+    completionRedirectUrl,
+    preservesRouteState:
+      location.pathname !== authRoute ||
+      routeState.size > 0 ||
+      location.hash !== "",
+  };
 }
 
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
 // and api siblings. Production also includes the satellite domain family and
 // primary app so Clerk can safely return between app.vm0.ai and *.okou.ai.
-export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
+function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   const self = resolveAppOrigin();
   if (!self) {
     return [];
@@ -424,6 +437,63 @@ export const clerk$ = computed(async () => {
 
   return runtime.clerk;
 });
+
+/**
+ * Moves satellite authentication to Clerk's primary app without bypassing
+ * Clerk's session-sync lifecycle. Stateful routes keep their path, query, and
+ * hash on top of the URL constructed by Clerk.
+ */
+export const navigateSatelliteAuthRoute$ = command(
+  async (
+    { get },
+    mode: "sign-in" | "sign-up",
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const navigation = resolveSatelliteAuthRouteNavigation(mode);
+    if (!navigation) {
+      return false;
+    }
+
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    if (!navigation.preservesRouteState) {
+      if (mode === "sign-in") {
+        await clerk.redirectToSignIn({
+          redirectUrl: navigation.completionRedirectUrl,
+        });
+      } else {
+        await clerk.redirectToSignUp({
+          redirectUrl: navigation.completionRedirectUrl,
+        });
+      }
+      signal.throwIfAborted();
+      return true;
+    }
+
+    const authUrl = new URL(
+      mode === "sign-in"
+        ? clerk.buildSignInUrl({
+            redirectUrl: navigation.completionRedirectUrl,
+          })
+        : clerk.buildSignUpUrl({
+            redirectUrl: navigation.completionRedirectUrl,
+          }),
+      location.href,
+    );
+    authUrl.pathname = location.pathname;
+    const routeState = new URLSearchParams(location.search);
+    routeState.delete("redirect_url");
+    for (const [key, value] of routeState) {
+      authUrl.searchParams.append(key, value);
+    }
+    authUrl.hash = mergeClerkAuthHash(authUrl.hash, location.hash);
+
+    await clerk.navigate(authUrl.toString());
+    signal.throwIfAborted();
+    return true;
+  },
+);
 
 /**
  * Command to setup Clerk authentication listeners.

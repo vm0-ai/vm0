@@ -19,10 +19,9 @@ import {
 } from "../lib/okou-theme-cookie.ts";
 import { onRef } from "./utils.ts";
 
-export { COLOR_THEMES };
 export type { ColorTheme, ThemePreference };
 
-export const DEFAULT_COLOR_THEME: ColorTheme = "blue-horizon";
+const DEFAULT_COLOR_THEME: ColorTheme = "blue-horizon";
 
 function isThemePreference(v: string | null): v is ThemePreference {
   return v === "light" || v === "dark" || v === "system";
@@ -109,7 +108,7 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
 /**
  * Set and persist the palette-derived workspace color theme.
  */
-export const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
+const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
   set(internalColorTheme$, colorTheme);
   set(syncShellDocumentAttributes$);
   if (isOkouHostname(location.hostname)) {

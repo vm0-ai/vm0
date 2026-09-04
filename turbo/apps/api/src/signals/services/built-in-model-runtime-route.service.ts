@@ -27,8 +27,19 @@ export interface ModelRuntimeSessionRoute {
   readonly modelRuntimeModel: string | null;
 }
 
-const unavailableRuntimeRouteModelsForTest = singleton(() => {
-  return new AsyncLocalStorage<ReadonlySet<string>>();
+interface BuiltInModelRuntimeRouteIdentity {
+  readonly selectedModel: string;
+  readonly providerType: string;
+  readonly upstreamModel: string;
+}
+
+interface UnavailableRuntimeRoutesForTest {
+  readonly selectedModels: ReadonlySet<string>;
+  readonly candidates: readonly BuiltInModelRuntimeRouteIdentity[];
+}
+
+const unavailableRuntimeRoutesForTest = singleton(() => {
+  return new AsyncLocalStorage<UnavailableRuntimeRoutesForTest>();
 });
 
 /**
@@ -41,19 +52,48 @@ export async function withBuiltInModelRuntimeRouteUnavailableForTest<T>(
   selectedModel: string,
   work: () => Promise<T>,
 ): Promise<T> {
-  const inherited = unavailableRuntimeRouteModelsForTest.peek()?.getStore();
-  return await unavailableRuntimeRouteModelsForTest().run(
-    new Set([...(inherited ?? []), selectedModel]),
+  const inherited = unavailableRuntimeRoutesForTest.peek()?.getStore();
+  return await unavailableRuntimeRoutesForTest().run(
+    {
+      selectedModels: new Set([
+        ...(inherited?.selectedModels ?? []),
+        selectedModel,
+      ]),
+      candidates: inherited?.candidates ?? [],
+    },
     work,
   );
 }
 
-function runtimeRouteUnavailableForTest(selectedModel: string): boolean {
+export async function withBuiltInModelRuntimeRouteCandidateUnavailableForTest<
+  T,
+>(
+  candidate: BuiltInModelRuntimeRouteIdentity,
+  work: () => Promise<T>,
+): Promise<T> {
+  const inherited = unavailableRuntimeRoutesForTest.peek()?.getStore();
+  return await unavailableRuntimeRoutesForTest().run(
+    {
+      selectedModels: inherited?.selectedModels ?? new Set(),
+      candidates: [...(inherited?.candidates ?? []), candidate],
+    },
+    work,
+  );
+}
+
+function runtimeRouteUnavailableForTest(
+  target: BuiltInModelRouteTarget,
+): boolean {
+  const unavailable = unavailableRuntimeRoutesForTest.peek()?.getStore();
   return (
-    unavailableRuntimeRouteModelsForTest
-      .peek()
-      ?.getStore()
-      ?.has(selectedModel) === true
+    unavailable?.selectedModels.has(target.selectedModel) === true ||
+    unavailable?.candidates.some((candidate) => {
+      return (
+        candidate.selectedModel === target.selectedModel &&
+        candidate.providerType === target.providerType &&
+        candidate.upstreamModel === target.upstreamModel
+      );
+    }) === true
   );
 }
 
@@ -83,12 +123,11 @@ export async function resolveBuiltInModelRuntimeRoute(
   db: Db,
   selectedModel: string,
 ): Promise<BuiltInModelRuntimeRoute | null> {
-  if (runtimeRouteUnavailableForTest(selectedModel)) {
-    return null;
-  }
-
   const timestamp = nowDate();
   for (const target of getVm0BuiltInModelRouteCandidates(selectedModel)) {
+    if (runtimeRouteUnavailableForTest(target)) {
+      continue;
+    }
     const [key] = await db
       .select({ id: builtInModelKeys.id })
       .from(builtInModelKeys)

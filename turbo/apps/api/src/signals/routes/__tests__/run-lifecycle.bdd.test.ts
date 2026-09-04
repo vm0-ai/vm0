@@ -98,6 +98,7 @@ import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
+  type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { seedUserSecret, seedUserVariable } from "./helpers/user-config-state";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
@@ -879,15 +880,9 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly publicBrand?: PublicBrand;
-  readonly chatThreadId?: string;
 }): void {
   expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
   expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
-  if (args.chatThreadId) {
-    expect(args.platformEnvironment.OKOU_CHAT_THREAD_ID).toBe(
-      args.chatThreadId,
-    );
-  }
   expect(
     Object.keys(args.environment ?? {}).filter((key) => {
       return key.startsWith("ZERO_");
@@ -1101,17 +1096,33 @@ function expectClaimRouteResponseTimingActions(args: {
 }): void {
   const events = claimRouteTimingEventsForRun(args.runId);
   const expectedActionTypes = new Set(args.expectedActionTypes);
-  for (const actionType of CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES) {
-    const matchingEvents = events.filter((event) => {
-      return event.op_type === actionType;
-    });
-    if (!expectedActionTypes.has(actionType)) {
-      expect(matchingEvents).toHaveLength(0);
-      continue;
-    }
+  const actionCounts = CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES.map(
+    (actionType) => {
+      return {
+        actionType,
+        count: events.filter((event) => {
+          return event.op_type === actionType;
+        }).length,
+      };
+    },
+  );
+  const expectedActionCounts = CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES.map(
+    (actionType) => {
+      return {
+        actionType,
+        count: expectedActionTypes.has(actionType) ? 1 : 0,
+      };
+    },
+  );
+  expect(actionCounts).toStrictEqual(expectedActionCounts);
 
-    expect(matchingEvents).toHaveLength(1);
-    const event = matchingEvents[0];
+  for (const actionType of args.expectedActionTypes) {
+    const event = events.find((candidate) => {
+      return candidate.op_type === actionType;
+    });
+    if (!event) {
+      throw new Error(`Expected claim response timing for ${actionType}`);
+    }
     expect(event).toStrictEqual(
       expect.objectContaining({
         source: "api",
@@ -1431,7 +1442,7 @@ function codexAuthJson(): string {
   });
 }
 
-async function entitledRunActor(): Promise<{
+async function entitledRunActor(userOptions: ApiTestUserOptions = {}): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
@@ -1442,7 +1453,7 @@ async function entitledRunActor(): Promise<{
 }> {
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
-  const actor = bdd.user();
+  const actor = bdd.user(userOptions);
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -1687,35 +1698,46 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
+    const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId, runnerGroup } = await entitledRunActor({
+      email: "BINGJIE@VM0.AI",
+    });
     const toolHint = "Click-driven intro-video camera moves:";
+    await bdd.readMe(actor);
 
-    const gatedOff = await api.createRun(actor, {
+    const enabledByEmail = await api.createRun(actor, {
       agentId,
       prompt: "Create a polished video from the attached source.",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
+    const enabledByEmailClaim = await api.claimRunnerJob(enabledByEmail.runId);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(toolHint);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(
+      "okou video camera --help",
+    );
 
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.IntroVideo]: true,
+      [FeatureSwitchKey.IntroVideo]: false,
     });
 
-    const gatedOn = await api.createRun(actor, {
+    const disabledByOverride = await api.createRun(actor, {
       agentId,
       prompt: "Create a polished video from the attached source.",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain(toolHint);
-    expect(appendSystemPrompt).toContain("okou video camera --help");
+    const disabledByOverrideClaim = await api.claimRunnerJob(
+      disabledByOverride.runId,
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").toContain(
+      "# Agent Tools",
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").not.toContain(
+      toolHint,
+    );
   });
 
   it("advertises presentation screenshots only while their rollout switch is on", async () => {
@@ -6988,24 +7010,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         throw new Error("Expected ordered-heartbeat poll to return 200");
       }
       expect(poll.body.job?.runId).toBe(followUp.runId);
-      if (expectedResource) {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
-          kind: "preference",
-          runnerIdentity: {
-            runnerId,
-            heartbeatGeneration: 1,
-          },
-          tier:
-            expectedResource === "reusableSandbox"
-              ? "reusableSandbox"
-              : "workspaceCache",
-          expiresAt: expect.any(String),
-        });
-      } else {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
-          kind: "noPreference",
-        });
-      }
+      const preference = runnerPreference(poll.body.job);
+      const preferenceProjection =
+        preference?.kind === "preference"
+          ? {
+              kind: preference.kind,
+              runnerIdentity: preference.runnerIdentity,
+              tier: preference.tier,
+              expiresAtType: typeof preference.expiresAt,
+            }
+          : { kind: preference?.kind };
+      const expectedPreferenceProjection =
+        expectedResource === undefined
+          ? { kind: "noPreference" }
+          : {
+              kind: "preference",
+              runnerIdentity: {
+                runnerId,
+                heartbeatGeneration: 1,
+              },
+              tier: expectedResource,
+              expiresAtType: "string",
+            };
+      expect(preferenceProjection).toStrictEqual(expectedPreferenceProjection);
       await api.requestCancelRun(actor, followUp.runId, [200]);
       await flushWaitUntilForTest();
     }

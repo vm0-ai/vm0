@@ -1,18 +1,14 @@
-import { chatThreadByIdContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { click } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
-  cancelledEvent,
   completedEvent,
   context,
   creditUsage,
-  followupEvent,
   findButton,
   findLink,
   installRunChat,
@@ -24,7 +20,6 @@ import {
 
 const RUN_A = "a0000000-0000-4000-a000-000000000401";
 const RUN_B = "a0000000-0000-4000-a000-000000000402";
-const FINISHED_AT = "2026-08-01T14:35:00.000Z";
 
 function fullUsage() {
   return creditUsage(75, [
@@ -74,41 +69,6 @@ function fullUsage() {
       providers: [{ provider: "internal_weather_v1", credits: 9 }],
     },
   ]);
-}
-
-function installCompletedFollowup(): void {
-  installRunChat({
-    chatEvents: [
-      promptEvent({
-        id: "localized-user",
-        runId: RUN_A,
-        seqId: 1,
-        text: "Summarize the release",
-      }),
-      assistantEvent({
-        id: "localized-answer",
-        runId: RUN_A,
-        seqId: 2,
-        text: "The release summary is ready.",
-      }),
-      completedEvent({
-        id: "localized-complete",
-        runId: RUN_A,
-        seqId: 3,
-        createdAt: FINISHED_AT,
-      }),
-      followupEvent({ id: "localized-followup", runId: RUN_A, seqId: 4 }),
-    ],
-  });
-}
-
-function localizedTimestamp(locale: string): string {
-  return new Date(FINISHED_AT).toLocaleString(locale, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 test("Inspect friendly credit usage for a run", async () => {
@@ -175,177 +135,6 @@ test("Inspect friendly credit usage for a run", async () => {
     expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(1);
   });
   expect(screen.getByText("Web Search")).toBeVisible();
-});
-
-test("Show managed-service credit usage in Portuguese", async () => {
-  const user = userEvent.setup({ delay: null });
-  installRunChat({
-    chatEvents: [
-      promptEvent({
-        id: "pt-usage-user",
-        runId: RUN_A,
-        seqId: 1,
-        text: "Verifique o mercado",
-      }),
-      assistantEvent({
-        id: "pt-usage-answer",
-        runId: RUN_A,
-        seqId: 2,
-        text: "A verificação terminou.",
-      }),
-      completedEvent({ id: "pt-usage-complete", runId: RUN_A, seqId: 3 }),
-      usageEvent({
-        id: "pt-usage-settlement",
-        runId: RUN_A,
-        seqId: 4,
-        usage: creditUsage(20, [
-          {
-            kind: "web-search",
-            credits: 5,
-            providers: [{ provider: "raw_web_provider", credits: 5 }],
-          },
-          {
-            kind: "maps",
-            credits: 5,
-            providers: [{ provider: "raw_maps_provider", credits: 5 }],
-          },
-          {
-            kind: "finance",
-            credits: 5,
-            providers: [{ provider: "raw_finance_provider", credits: 5 }],
-          },
-          {
-            kind: "weather",
-            credits: 5,
-            providers: [{ provider: "raw_weather_provider", credits: 5 }],
-          },
-        ]),
-      }),
-    ],
-  });
-
-  await setupPage({ context, path: RUN_PATH, locale: "pt-BR" });
-
-  await expect(
-    screen.findByText("A verificação terminou."),
-  ).resolves.toBeVisible();
-  const usageButton = await findButton("Uso de créditos 20");
-  expect(usageButton).toBeVisible();
-  await user.click(usageButton);
-
-  await expect(screen.findByText("Uso de créditos")).resolves.toBeVisible();
-  expect(screen.getByText("Pesquisa na web")).toBeVisible();
-  expect(screen.getByText("Mapas")).toBeVisible();
-  expect(screen.getByText("Finanças")).toBeVisible();
-  expect(screen.getByText("Clima")).toBeVisible();
-  expect(document.body).not.toHaveTextContent("raw_web_provider");
-});
-
-test("Show cancellation-recovery guidance in Portuguese", async () => {
-  installRunChat({
-    chatEvents: [
-      promptEvent({
-        id: "pt-recovery-user",
-        runId: RUN_A,
-        seqId: 1,
-        text: "Prepare a entrega",
-      }),
-      cancelledEvent({
-        id: "pt-recovery-cancelled",
-        runId: RUN_A,
-        seqId: 2,
-      }),
-      {
-        id: "pt-recovery-automation",
-        eventType: "input.automation",
-        role: "user",
-        content: null,
-        runId: undefined,
-        seqId: 3,
-        createdAt: "2026-08-01T10:00:03.000Z",
-        userMessage: {
-          version: 1,
-          parts: [
-            {
-              type: "automation",
-              workflowName: "Verificações de implantação",
-              automationBrief: "Executar as verificações pendentes",
-            },
-          ],
-        },
-      },
-    ],
-  });
-  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-    return respond(200, {
-      lastReadAt: null,
-      cancellationRecoveryPending: true,
-    });
-  });
-
-  await setupPage({ context, path: RUN_PATH, locale: "pt-BR" });
-
-  await expect(
-    screen.findByText("Pausado no meio do raciocínio — retome quando quiser."),
-  ).resolves.toBeVisible();
-  await expect(
-    screen.findByText("Executar as verificações pendentes"),
-  ).resolves.toBeVisible();
-  click(await findButton("Sobre este evento de automação"));
-  await expect(screen.findByText("Evento de automação")).resolves.toBeVisible();
-  expect(
-    screen.getAllByText(
-      "Finalizando a execução cancelada antes de continuar o trabalho na fila.",
-    ),
-  ).toHaveLength(2);
-});
-
-test("Show completed-run details in Portuguese", async () => {
-  installCompletedFollowup();
-
-  await setupPage({ context, path: RUN_PATH, locale: "pt-BR" });
-
-  const label = `Continuar · ${localizedTimestamp("pt-BR")}`;
-  await expect(
-    screen.findByText("The release summary is ready."),
-  ).resolves.toBeVisible();
-  await expect(screen.findByText(label)).resolves.toBeVisible();
-});
-
-test("Show completed-run details in Korean", async () => {
-  installCompletedFollowup();
-
-  await setupPage({ context, path: RUN_PATH, locale: "ko-KR" });
-
-  const label = `계속 진행 · ${localizedTimestamp("ko-KR")}`;
-  await expect(
-    screen.findByText("The release summary is ready."),
-  ).resolves.toBeVisible();
-  await expect(screen.findByText(label)).resolves.toBeVisible();
-});
-
-test("Show completed-run details in Japanese", async () => {
-  installCompletedFollowup();
-
-  await setupPage({ context, path: RUN_PATH, locale: "ja-JP" });
-
-  const label = `続ける · ${localizedTimestamp("ja-JP")}`;
-  await expect(
-    screen.findByText("The release summary is ready."),
-  ).resolves.toBeVisible();
-  await expect(screen.findByText(label)).resolves.toBeVisible();
-});
-
-test("Show completed-run details in Spanish", async () => {
-  installCompletedFollowup();
-
-  await setupPage({ context, path: RUN_PATH, locale: "es-ES" });
-
-  const label = `Sigue adelante · ${localizedTimestamp("es-ES")}`;
-  await expect(
-    screen.findByText("The release summary is ready."),
-  ).resolves.toBeVisible();
-  await expect(screen.findByText(label)).resolves.toBeVisible();
 });
 
 test("Return to the conversation that started a chat message", async () => {

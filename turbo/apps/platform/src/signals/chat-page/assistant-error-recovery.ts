@@ -30,7 +30,7 @@ import type { ChatEventSignals } from "./chat-event-signals.ts";
 import { threadMeta } from "./chat-thread-event-sourcing.ts";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 
-export type AssistantErrorRecoveryKind =
+type AssistantErrorRecoveryKind =
   | "usage-limit"
   | "model-capacity"
   | "model-unavailable"
@@ -39,8 +39,8 @@ type ProviderAssistantErrorRecoveryKind = Exclude<
   AssistantErrorRecoveryKind,
   "execution-timeout"
 >;
-export type AssistantErrorRecoveryScope = "framework" | "model";
-export type AssistantErrorRecoveryWindow =
+type AssistantErrorRecoveryScope = "framework" | "model";
+type AssistantErrorRecoveryWindow =
   | "five-hour"
   | "weekly"
   | "model"

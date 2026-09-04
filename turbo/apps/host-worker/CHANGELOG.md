@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/vm0-ai/vm0/compare/host-worker-v1.2.0...host-worker-v1.2.1) (2026-09-04)
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
 ## [1.2.0](https://github.com/vm0-ai/vm0/compare/host-worker-v1.1.2...host-worker-v1.2.0) (2026-08-20)
 
 

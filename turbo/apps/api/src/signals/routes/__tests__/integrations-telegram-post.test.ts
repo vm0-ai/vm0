@@ -86,12 +86,13 @@ function newTelegramBotId(): string {
   return String(Math.floor(Math.random() * 9_000_000_000) + 1_000_000_000);
 }
 
-function telegramOauthHead(contentLength: string, expectedOrigin?: string) {
+function telegramOauthHead(
+  contentLength: string,
+  observedOrigins: (string | null)[] = [],
+) {
   return http.head("https://oauth.telegram.org/auth", ({ request }) => {
     const url = new URL(request.url);
-    if (expectedOrigin) {
-      expect(url.searchParams.get("origin")).toBe(expectedOrigin);
-    }
+    observedOrigins.push(url.searchParams.get("origin"));
     return new HttpResponse(null, {
       headers: { "content-length": contentLength },
     });
@@ -785,7 +786,8 @@ describe("POST /api/telegram/setup-status", () => {
       privacyDisabled: true,
     });
     mockEnv("APP_URL", "https://app.vm0.ai");
-    server.use(telegramOauthHead("2048", "https://app.okou.ai"));
+    const observedOrigins: (string | null)[] = [];
+    server.use(telegramOauthHead("2048", observedOrigins));
 
     const response = await createApp({
       signal: context.signal,
@@ -809,6 +811,7 @@ describe("POST /api/telegram/setup-status", () => {
       domainConfigured: true,
       privacyDisabled: true,
     });
+    expect(observedOrigins).toStrictEqual(["https://app.okou.ai"]);
   });
 
   it("rejects an already installed bot", async () => {
@@ -882,7 +885,8 @@ describe("POST /api/telegram/register", () => {
     mockTelegramGetMe({ botId: telegramBotId, username: "registered_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
     context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
-    server.use(telegramOauthHead("1001", "https://app.example.test"));
+    const observedOrigins: (string | null)[] = [];
+    server.use(telegramOauthHead("1001", observedOrigins));
 
     const response = await accept(
       telegramClient().register({
@@ -904,6 +908,7 @@ describe("POST /api/telegram/register", () => {
       isOwner: true,
       isConnected: false,
     });
+    expect(observedOrigins).toStrictEqual(["https://app.example.test"]);
     expect(context.mocks.telegram.setWebhook).toHaveBeenCalledWith(
       TEST_BOT_TOKEN,
       `https://www.example.test/api/telegram/webhook/${telegramBotId}`,
@@ -931,7 +936,8 @@ describe("POST /api/telegram/register", () => {
     mockTelegramGetMe({ botId: telegramBotId, username: "owner_named_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
     context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
-    server.use(telegramOauthHead(telegramBotId, "https://app.okou.ai"));
+    const observedOrigins: (string | null)[] = [];
+    server.use(telegramOauthHead(telegramBotId, observedOrigins));
 
     const response = await postRegisterRaw(
       {
@@ -947,6 +953,7 @@ describe("POST /api/telegram/register", () => {
       username: "owner_named_bot",
       domainConfigured: true,
     });
+    expect(observedOrigins).toStrictEqual(["https://app.okou.ai"]);
     expect(context.mocks.telegram.setWebhook).toHaveBeenCalledWith(
       TEST_BOT_TOKEN,
       `https://api.okou.ai/api/telegram/webhook/${telegramBotId}`,

@@ -2,7 +2,6 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test, vi } from "vitest";
 
-import { mockedClerk } from "../../__tests__/mock-auth.ts";
 import {
   chatEventRowsResponse,
   testContext,
@@ -11,6 +10,7 @@ import { createChildAbortController } from "../../signals/utils.ts";
 import type {
   SharedDatabaseBridgeEvents,
   SharedDatabasePortLike,
+  SharedDatabaseTokenProvider,
 } from "../bridge.ts";
 import type { ComputedKey } from "../computed-key.ts";
 import type {
@@ -21,6 +21,7 @@ import type {
 import { MessagePortSharedDatabaseBridge } from "../message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "../message-port-server.ts";
 import type { SharedDatabaseConnectionStatus } from "../protocol.ts";
+import { requestTokenFromFirstConnection$ } from "../worker-context.ts";
 import { initializeSharedDatabaseWorker$ } from "../worker-signals.ts";
 
 const context = testContext();
@@ -129,26 +130,18 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
 
 function initializeWorker(): void {
   const workerIdentity = identity();
-  const clerk = context.mocks.clerk();
-  clerk.user(
-    {
-      id: workerIdentity.userId,
-      fullName: "Message Port User",
-      email: "message-port@example.com",
-    },
-    { token: "message-port-token" },
-  );
-  clerk.organization({
-    activeOrg: { id: workerIdentity.orgId, name: "Message Port Org" },
-    memberships: [{ id: workerIdentity.orgId }],
-  });
   context.workerStore.set(
     initializeSharedDatabaseWorker$,
     {
       appVersion: WORKER_APP_VERSION,
       identity: workerIdentity,
       apiBaseUrl: location.origin,
-      clerk: Promise.resolve(mockedClerk),
+      getToken: (signal) => {
+        return context.workerStore.set(
+          requestTokenFromFirstConnection$,
+          signal,
+        );
+      },
       oauthApiBaseUrl: location.origin,
       onForceUpgrade: vi.fn<() => void>(),
     },
@@ -158,6 +151,9 @@ function initializeWorker(): void {
 
 function connectProtocolTransport(
   bridgeSignal: AbortSignal,
+  getToken: SharedDatabaseTokenProvider = () => {
+    return Promise.resolve("message-port-token");
+  },
   events: SharedDatabaseBridgeEvents = bridgeEvents(),
 ): {
   readonly bridge: MessagePortSharedDatabaseBridge;
@@ -175,6 +171,7 @@ function connectProtocolTransport(
       platformPort,
       events,
       bridgeSignal,
+      getToken,
     ),
     platformPort,
     workerPort,
@@ -237,6 +234,46 @@ test("Keep concurrent shared chat loads independent", async () => {
   await expect(second).resolves.toStrictEqual([secondRow]);
   firstGate.resolve(undefined);
   await expect(first).resolves.toStrictEqual([firstRow]);
+});
+
+test("Authenticate worker requests through the first registered tab", async () => {
+  initializeWorker();
+  const firstOwner = createChildAbortController(context.signal);
+  const secondOwner = createChildAbortController(context.signal);
+  const first = connectProtocolTransport(firstOwner.signal, () => {
+    return Promise.resolve("first-tab-token");
+  });
+  const second = connectProtocolTransport(secondOwner.signal, () => {
+    return Promise.resolve("second-tab-token");
+  });
+  await first.bridge.registerTab(firstOwner.signal);
+  await second.bridge.registerTab(secondOwner.signal);
+  const key = dataKey(crypto.randomUUID());
+
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+        message: "Chat event snapshot not found",
+      },
+    });
+  });
+  context.mocks.api(
+    chatThreadEventsContract.rows,
+    ({ query, request, respond }) => {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer first-tab-token",
+      );
+      return respond(200, chatEventRowsResponse([], query));
+    },
+  );
+
+  await expect(
+    second.bridge.query(
+      { dataKey: key, afterSeqId: null, consistency: "catch-up" },
+      secondOwner.signal,
+    ),
+  ).resolves.toStrictEqual([]);
 });
 
 test("Cancel one shared chat load without cancelling worker progress", async () => {
@@ -342,6 +379,9 @@ test("Validate shared chat results received from the worker", async () => {
     platformPort,
     bridgeEvents(),
     owner.signal,
+    () => {
+      return Promise.resolve("test-token");
+    },
   );
   workerPort.addEventListener("message", (event) => {
     const message = event.data;
@@ -382,6 +422,9 @@ test("Stop pending requests when the bridge lifecycle ends", async () => {
     platformPort,
     bridgeEvents(),
     owner.signal,
+    () => {
+      return Promise.resolve("test-token");
+    },
   );
   const requestsStarted = context.mocks.deferred<void>();
   const requestIds = new Map<"get-computed" | "query", string>();

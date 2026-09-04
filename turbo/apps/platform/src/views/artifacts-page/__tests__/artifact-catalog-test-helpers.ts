@@ -1,6 +1,6 @@
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 
 import {
   queryAllByRoleFast,
@@ -60,15 +60,6 @@ export function getButtonByName(
     throw new Error(`Expected button named "${name}"`);
   }
   return button;
-}
-
-export async function findButtonByName(
-  name: string,
-  container: ParentNode = document.body,
-): Promise<HTMLElement> {
-  return await waitFor(() => {
-    return getButtonByName(name, container);
-  });
 }
 
 export async function findArtifactAction(title: string): Promise<HTMLElement> {

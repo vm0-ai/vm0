@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.545.0",
+  "version": "1.545.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,15 +11,15 @@
     "db:dev-bench-seed": "dotenv -e .env.local -- tsx src/scripts/dev-bench-seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint && GOMAXPROCS=1 oxlint src --type-aware -c ../../.oxlintrc.typeaware.json --ignore-pattern '**/__tests__/**' && GOMAXPROCS=1 oxlint $(find src -type d -name __tests__) --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "lint": "oxlint --deny-warnings && GOMAXPROCS=1 oxlint src --type-aware -c ../../.oxlintrc.typeaware.json --ignore-pattern '**/__tests__/**' --deny-warnings && GOMAXPROCS=1 oxlint $(find src -type d -name __tests__) --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0",
     "check-types": "pnpm run check-types:deps && pnpm run check-types:boundaries && pnpm run check-types:gateways && pnpm run check-types:core && pnpm run check-types:bootstrap && pnpm run check-types:tests && pnpm run check-types:bootstrap-wiring",
     "check-types:deps": "pnpm --filter @okouai/pi-agent-runtime run build",
     "check-types:boundaries": "node scripts/check-typecheck-boundaries.mjs",
-    "check-types:gateways": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.gateways.json",
-    "check-types:core": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.core.json",
-    "check-types:bootstrap": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.bootstrap.json",
-    "check-types:tests": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.tests.json --noEmit",
-    "check-types:bootstrap-wiring": "NODE_OPTIONS=--max-old-space-size=3072 tsc -p tsconfig.bootstrap-wiring.json --noEmit"
+    "check-types:gateways": "tsc -p tsconfig.gateways.json",
+    "check-types:core": "tsc -p tsconfig.core.json --checkers $(node ../../scripts/tsc-checkers.mjs)",
+    "check-types:bootstrap": "tsc -p tsconfig.bootstrap.json",
+    "check-types:tests": "tsc -p tsconfig.tests.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs)",
+    "check-types:bootstrap-wiring": "tsc -p tsconfig.bootstrap-wiring.json --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1116.0",
@@ -87,7 +87,8 @@
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",
     "tsx": "^4.19.0",
-    "typescript": "6.0.3",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "^8.0.16",
     "vitest": "^4.1.10"
   }

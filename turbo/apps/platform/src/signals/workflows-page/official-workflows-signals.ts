@@ -43,7 +43,7 @@ export const officialWorkflowCatalog$ = computed(
   },
 );
 
-export const currentOfficialWorkflowDefinitionName$ = computed((get) => {
+const currentOfficialWorkflowDefinitionName$ = computed((get) => {
   if (get(activeRoute$) !== "officialWorkflowDetail") {
     return null;
   }

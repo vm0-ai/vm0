@@ -7,9 +7,9 @@ const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
 const POSTHOG_HOST = RUNTIME_CONFIG.postHogHost;
 const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
 
-export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
+const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
 const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
-export const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
+const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
 const APP_FIRST_SKELETON_PAINT_DISTINCT_ID = "app-bootstrap";
 
 export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
@@ -470,9 +470,9 @@ export function capturePageView(): void {
   });
 }
 
-export const BOOTSTRAP_PHASE_TIMING_EVENT = "app_bootstrap_phase_timing";
+const BOOTSTRAP_PHASE_TIMING_EVENT = "app_bootstrap_phase_timing";
 
-export type BootstrapThreadMetadataSource =
+type BootstrapThreadMetadataSource =
   | "local"
   | "memory"
   | "not_found"
