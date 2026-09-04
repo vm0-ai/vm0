@@ -3316,6 +3316,30 @@ function groupHasUserBubble(group: ChatEventGroup): boolean {
   return group.events.some(rendersUserBubble);
 }
 
+function createRunWorkSectionControl(
+  section: RunWorkSection | null,
+  expandedKeys: ReadonlySet<string>,
+  onToggle: (key: string) => void,
+): RunWorkSectionControl | undefined {
+  if (section === null) {
+    return undefined;
+  }
+  const { key, ...control } = section;
+  const expanded = expandedKeys.has(key);
+  return {
+    ...control,
+    expanded,
+    onToggle: () => {
+      if (!expanded) {
+        captureChatWorkHistoryExpanded({
+          workStatus: section.endTime === undefined ? "active" : "completed",
+        });
+      }
+      onToggle(key);
+    },
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -3380,9 +3404,6 @@ function ChatThreadEventGroups({
         const completedWorkExpanded =
           completedWorkFold !== null &&
           completedWorkExpandedKeys.has(completedWorkFold.key);
-        const runWorkExpanded =
-          runWorkSection !== null &&
-          runWorkExpandedKeys.has(runWorkSection.key);
         return (
           <div key={group.beginEventId} className="contents">
             {runGroupFolds.map((runGroupFold) => {
@@ -3416,33 +3437,11 @@ function ChatThreadEventGroups({
                     }
                   : undefined
               }
-              runWorkSection={
-                runWorkSection !== null
-                  ? {
-                      anchorEventId: runWorkSection.anchorEventId,
-                      collapsedGroups: runWorkSection.collapsedGroups,
-                      previewEventIds: runWorkSection.previewEventIds,
-                      collapsible: runWorkSection.collapsible,
-                      startTime: runWorkSection.startTime,
-                      endTime: runWorkSection.endTime,
-                      hiddenGroups: runWorkSection.hiddenGroups,
-                      hiddenGroupsAfterAnchor:
-                        runWorkSection.hiddenGroupsAfterAnchor,
-                      expanded: runWorkExpanded,
-                      onToggle: () => {
-                        if (!runWorkExpanded) {
-                          captureChatWorkHistoryExpanded({
-                            workStatus:
-                              runWorkSection.endTime === undefined
-                                ? "active"
-                                : "completed",
-                          });
-                        }
-                        onToggleRunWork(runWorkSection.key);
-                      },
-                    }
-                  : undefined
-              }
+              runWorkSection={createRunWorkSectionControl(
+                runWorkSection,
+                runWorkExpandedKeys,
+                onToggleRunWork,
+              )}
             />
           </div>
         );
