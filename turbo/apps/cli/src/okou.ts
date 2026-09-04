@@ -93,6 +93,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
+    name: "__intro-video-presenter",
+    description: "Internal Intro Video presenter renderer",
+    load: async () => {
+      return (await import("./commands/__intro-video-presenter"))
+        .introVideoPresenterCommand;
+    },
+  },
+  {
     name: "model",
     description: "List available models and model-switching guidance",
     load: async () => {

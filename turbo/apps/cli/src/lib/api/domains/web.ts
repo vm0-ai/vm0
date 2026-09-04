@@ -20,6 +20,10 @@ import {
   avatarVideoAvatarsResponseSchema,
   avatarVideoVoicesResponseSchema,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import type {
+  IntroVideoPresenterGenerateRequest,
+  IntroVideoPresenterGenerateResponse,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -1002,6 +1006,45 @@ export async function generateWebAvatarVideo(
     baseUrl,
     token,
     fallback: "Failed to generate avatar video",
+  });
+}
+
+/**
+ * Generate the private transparent presenter take used by Intro Video.
+ * This endpoint accepts run credentials only and is intentionally not exposed
+ * through the public `okou generate` surface.
+ */
+export async function generateWebIntroVideoPresenter(
+  options: IntroVideoPresenterGenerateRequest,
+): Promise<IntroVideoPresenterGenerateResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/presenter/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate Intro Video presenter",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return readBuiltInGenerationResponse<IntroVideoPresenterGenerateResponse>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate Intro Video presenter",
   });
 }
 

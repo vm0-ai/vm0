@@ -720,12 +720,14 @@ function placementPreview(placement: IntroVideoPlacement): {
 
 function PlacementOption({
   cutoutUrl,
+  showAvatarPlaceholder,
   label,
   placement,
   selected,
   onSelect,
 }: {
   readonly cutoutUrl: string | undefined;
+  readonly showAvatarPlaceholder: boolean;
   readonly label: string;
   readonly placement: IntroVideoPlacement;
   readonly selected: boolean;
@@ -760,6 +762,12 @@ function PlacementOption({
             className="absolute"
             style={preview.avatar}
           />
+        ) : showAvatarPlaceholder ? (
+          <span
+            aria-hidden="true"
+            className="absolute aspect-[3/5] rounded-t-full bg-muted-foreground/35"
+            style={preview.avatar}
+          />
         ) : null}
       </div>
       <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
@@ -781,8 +789,10 @@ function PlacementOption({
 
 function PlacementSelector({
   cutoutUrl,
+  showAvatarPlaceholder,
 }: {
   readonly cutoutUrl: string | undefined;
+  readonly showAvatarPlaceholder: boolean;
 }) {
   const { t } = useTranslation();
   const placement = useGet(introVideoWizardSignals.placement$);
@@ -823,6 +833,7 @@ function PlacementSelector({
             <PlacementOption
               key={option.value}
               cutoutUrl={cutoutUrl}
+              showAvatarPlaceholder={showAvatarPlaceholder}
               label={option.label}
               placement={option.value}
               selected={placement === option.value}
@@ -863,13 +874,26 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
         </p>
       </div>
       {avatar && source?.kind === "presentation" ? (
-        <PlacementSelector cutoutUrl={avatar.coverUrl} />
+        <PlacementSelector
+          cutoutUrl={
+            avatar.provider === "joggai" ? avatar.cutoutUrl : undefined
+          }
+          showAvatarPlaceholder={avatar.provider === "heygen"}
+        />
       ) : null}
       <AvatarLibraryContent
-        selectedAvatarId={avatar?.id}
+        selectedAvatarKey={avatar?.key}
         onSelect={(nextAvatar) => {
           setAvatar(nextAvatar);
-          selectAvatarForVoice(nextAvatar);
+          if (nextAvatar.provider === "joggai") {
+            selectAvatarForVoice({
+              id: nextAvatar.avatarId,
+              name: nextAvatar.name,
+              gender: nextAvatar.gender,
+            });
+          } else {
+            clearAvatarForVoice();
+          }
         }}
         onClear={() => {
           setAvatar(null);

@@ -1,11 +1,23 @@
 import type { AvatarVideoAvatar } from "@okouai/api-contracts/contracts/avatar-video";
 
-export interface HeyGenIntroVideoAvatar {
+interface IntroVideoAvatarBase {
   readonly key: string;
   readonly name: string;
   readonly gender?: string;
   readonly previewWidth: number;
   readonly previewHeight: number;
+}
+
+export interface JoggAiIntroVideoAvatar extends IntroVideoAvatarBase {
+  readonly provider: "joggai";
+  readonly avatarId: number;
+  readonly previewUrl: string;
+  readonly cutoutUrl: string;
+  readonly cutoutWidth: number;
+  readonly cutoutHeight: number;
+}
+
+export interface HeyGenIntroVideoAvatar extends IntroVideoAvatarBase {
   readonly provider: "heygen";
   readonly avatarId: string;
   readonly previewUrl?: never;
@@ -28,11 +40,13 @@ export interface HeyGenIntroVideoAvatar {
  * lays the cards out as a masonry grid and needs the aspect ratio before the
  * image loads.
  */
-export interface IntroVideoAvatar extends AvatarVideoAvatar {
+interface JoggAiCatalogEntry extends AvatarVideoAvatar {
   readonly coverUrl: string;
   readonly cutoutWidth: number;
   readonly cutoutHeight: number;
 }
+
+export type IntroVideoAvatar = HeyGenIntroVideoAvatar | JoggAiIntroVideoAvatar;
 
 /**
  * Presenters offered by the intro-video wizard.
@@ -42,7 +56,7 @@ export interface IntroVideoAvatar extends AvatarVideoAvatar {
  * appear here, so this list is deliberately narrower than the full JoggAI
  * catalog used by the generic avatar-video template picker.
  */
-export const INTRO_VIDEO_AVATARS: readonly IntroVideoAvatar[] = [
+const JOGGAI_INTRO_VIDEO_AVATARS: readonly JoggAiCatalogEntry[] = [
   {
     id: 1785,
     name: "Amara",
@@ -837,6 +851,28 @@ export const HEYGEN_INTRO_VIDEO_AVATARS = [
     transparentBackgroundValidated: false,
   };
 });
+
+const JOGGAI_INTRO_VIDEO_PRESENTERS: readonly JoggAiIntroVideoAvatar[] =
+  JOGGAI_INTRO_VIDEO_AVATARS.map((avatar) => {
+    return {
+      key: `joggai:${avatar.id}`,
+      provider: "joggai",
+      avatarId: avatar.id,
+      name: avatar.name,
+      gender: avatar.gender,
+      previewUrl: avatar.coverUrl,
+      previewWidth: avatar.cutoutWidth,
+      previewHeight: avatar.cutoutHeight,
+      cutoutUrl: avatar.coverUrl,
+      cutoutWidth: avatar.cutoutWidth,
+      cutoutHeight: avatar.cutoutHeight,
+    };
+  });
+
+export const INTRO_VIDEO_AVATARS: readonly IntroVideoAvatar[] = [
+  ...JOGGAI_INTRO_VIDEO_PRESENTERS,
+  ...HEYGEN_INTRO_VIDEO_AVATARS,
+];
 
 const HEYGEN_INTRO_VIDEO_AVATAR_IDS = new Set(
   HEYGEN_INTRO_VIDEO_AVATARS.map((avatar) => {
