@@ -176,7 +176,7 @@ export const shuffleAvatar$ = command(
 
 export const openAvatarMaker$ = command(({ get, set }) => {
   const composerEnabled =
-    get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2] ?? false;
+    get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2];
   set(
     internalConfig$,
     composerEnabled ? randomAvatarSvgConfig() : randomLegacyAvatarSvgConfig(),

@@ -4,6 +4,7 @@ import {
   agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { parseAvatarComposerUrl } from "@okouai/core/agent-avatar";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
@@ -254,6 +255,62 @@ test("Pressing Enter creates a named private agent", async () => {
   expect(
     screen.queryByRole("dialog", { name: "Create a new agent" }),
   ).not.toBeInTheDocument();
+});
+
+test("Use composer defaults while a pre-v2 switch cache is being refreshed", async () => {
+  const previousCacheKey = "vm0:feature-switch-cache:v4";
+  const featureRequestStarted = context.mocks.deferred<void>();
+  const releaseFeatureRequest = context.mocks.deferred<void>();
+  const catalog = configureCatalog([
+    agent(CORE_AGENT_ID, { displayName: "Core Agent", visibility: "public" }),
+  ]);
+  globalThis.localStorage.setItem(
+    previousCacheKey,
+    JSON.stringify({ [FeatureSwitchKey.Dummy]: true }),
+  );
+  context.mocks.api(
+    featureSwitchesContract.get,
+    async ({ respond, withSignal }) => {
+      featureRequestStarted.resolve(undefined);
+      await withSignal(releaseFeatureRequest.promise);
+      return respond(200, {
+        switches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+        effectiveSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+      });
+    },
+  );
+
+  try {
+    await setupPage({
+      context,
+      path: "/agents",
+      seedFeatureSwitchCache: false,
+    });
+    await featureRequestStarted.promise;
+    const creationDialog = await openCreateDialog("Private");
+
+    click(buttonByLabel("Customize avatar", creationDialog));
+    const avatarDialog = await screen.findByRole("dialog", {
+      name: "Give your agent a face",
+    });
+    expect(within(avatarDialog).getByText("Face")).toBeVisible();
+    expect(within(avatarDialog).queryByText("Angle")).not.toBeInTheDocument();
+    click(buttonByText("Cancel", avatarDialog));
+    await waitFor(() => {
+      expect(avatarDialog).not.toBeInTheDocument();
+    });
+
+    await fill(within(creationDialog).getByLabelText("Name"), "Cache Agent");
+    click(buttonByText("Create", creationDialog));
+    await waitForAgentCard(CREATED_AGENT_ID);
+
+    expect(
+      parseAvatarComposerUrl(catalog.lastCreatedAgent()?.avatarUrl),
+    ).not.toBeNull();
+  } finally {
+    releaseFeatureRequest.resolve(undefined);
+    globalThis.localStorage.removeItem(previousCacheKey);
+  }
 });
 
 test("Create a public agent with a customized avatar", async () => {

@@ -74,8 +74,6 @@ export const resetJobsDialog$ = command(({ get, set }) => {
   set(internalVisibility$, "private");
   set(
     internalAvatarUrl$,
-    randomSvgAvatarUrl(
-      get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2] ?? false,
-    ),
+    randomSvgAvatarUrl(get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2]),
   );
 });

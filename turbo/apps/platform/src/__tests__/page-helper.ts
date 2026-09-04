@@ -107,6 +107,7 @@ export interface SetupPageOptions {
   readonly env?: PageEnvironment;
   readonly cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  readonly seedFeatureSwitchCache?: boolean;
   readonly sharedWorkerAppVersion?: string;
   readonly sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
@@ -234,17 +235,19 @@ async function setupPageAsync(
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
-  const cachedFeatureSwitchOverrides = {
-    ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
-  };
-  const cachedFeatureSwitches = getAllFeatureStates({
-    orgId: activeOrgId ?? undefined,
-    overrides: cachedFeatureSwitchOverrides,
-  });
-  options.context.store.set(
-    setFeatureSwitchCacheForTest$,
-    cachedFeatureSwitches,
-  );
+  if (options.seedFeatureSwitchCache !== false) {
+    const cachedFeatureSwitchOverrides = {
+      ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
+    };
+    const cachedFeatureSwitches = getAllFeatureStates({
+      orgId: activeOrgId ?? undefined,
+      overrides: cachedFeatureSwitchOverrides,
+    });
+    options.context.store.set(
+      setFeatureSwitchCacheForTest$,
+      cachedFeatureSwitches,
+    );
+  }
   clerk.sessionSignedOut(auth.signedOut);
   clerk.user(auth.user, auth.session);
   clerk.organization(auth.organization);
