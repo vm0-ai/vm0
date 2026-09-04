@@ -117,6 +117,12 @@ describe("POST /api/test/runtime-state/action", () => {
           return route;
         },
       );
+    onTestFinished(async () => {
+      if (!releaseScopedRoute.settled()) {
+        releaseScopedRoute.resolve(undefined);
+      }
+      await scopedResolution;
+    });
 
     await scopedRouteResolved.promise;
     const unscopedRoute = await resolveVm0BuiltInModelRouteFixture(

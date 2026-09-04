@@ -734,6 +734,23 @@ async function configureBuiltInPiModelOnOpenRouter(
   if (!primary || primary.provider_type === "openrouter-codex") {
     throw new Error(`Expected a primary managed route for ${selectedModel}`);
   }
+  const unavailableCandidate = {
+    selectedModel,
+    providerType: primary.provider_type,
+    upstreamModel: primary.upstream_model,
+  };
+  await withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
+    unavailableCandidate,
+    async () => {
+      const fallback = await resolveVm0BuiltInModelRouteFixture(
+        context,
+        selectedModel,
+      );
+      if (!fallback || fallback.provider_type !== "openrouter-codex") {
+        throw new Error(`Expected an OpenRouter fallback for ${selectedModel}`);
+      }
+    },
+  );
   await api.updateOrgModelPolicies(actor, [
     {
       model: selectedModel,
@@ -745,23 +762,8 @@ async function configureBuiltInPiModelOnOpenRouter(
   ]);
   return async <T>(work: () => Promise<T>): Promise<T> => {
     return await withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
-      {
-        selectedModel,
-        providerType: primary.provider_type,
-        upstreamModel: primary.upstream_model,
-      },
-      async () => {
-        const fallback = await resolveVm0BuiltInModelRouteFixture(
-          context,
-          selectedModel,
-        );
-        if (!fallback || fallback.provider_type !== "openrouter-codex") {
-          throw new Error(
-            `Expected an OpenRouter fallback for ${selectedModel}`,
-          );
-        }
-        return await work();
-      },
+      unavailableCandidate,
+      work,
     );
   };
 }
