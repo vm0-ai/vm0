@@ -62,4 +62,11 @@ describe("new UI workspace card frame", () => {
       );
     }
   });
+
+  // Two stacked 0.7px strokes read heavier than one, and the fill's stroke only
+  // survives where content is transparent -- so sharing the border between the
+  // two made the top corners half again as heavy as the bottom ones.
+  it("leaves the border to the frame alone so no edge is drawn twice", () => {
+    expect(readRuleBody(FILL)).not.toMatch(/border:/);
+  });
 });

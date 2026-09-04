@@ -1983,13 +1983,18 @@ html:has(.zero-dialog-overlay)
    That is only enough while the corner triangles stay transparent, and a page
    whose last child is flush with the content box and carries its own opaque
    background -- the chat composer footer, for one -- squares them off again
-   and hides the bottom border with them.
+   and hides the border along that edge with them.
 
-   So the frame is drawn twice: `::before` fills behind content, and `::after`
-   restates the border and repaints the gutter over content. The ring spreads
-   by exactly the gap, which is the only region padding already reserves, so it
-   can only ever cover the triangles the radius cuts away. Clipping the card
-   would do the same job and take every popover that has to escape it with it.
+   So the two jobs are split. `::before` keeps the fill behind content and
+   nothing else; `::after` owns the border and repaints the gutter over
+   content. The ring spreads by exactly the gap, which is the only region
+   padding already reserves, so it can only ever cover the triangles the radius
+   cuts away. Clipping the card would do the same job and take every popover
+   that has to escape it with it.
+
+   The border belongs to one pseudo-element only. While both drew it, the two
+   0.7px strokes stacked wherever content was transparent and the top corners
+   came out half again as heavy as the bottom ones, which sit over the footer.
 
    Desktop only. Below the sidebar breakpoint the columns are gone and a frame
    would just spend width the page does not have. */
@@ -2003,7 +2008,6 @@ html:has(.zero-dialog-overlay)
 
   [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
     inset: var(--zero-workspace-card-gap);
-    border: 0.7px solid hsl(var(--border));
     border-radius: var(--zero-workspace-card-radius);
   }
 
