@@ -102,18 +102,29 @@ test("Reports one parameter-free event for a physical IndexedDB transaction", as
 
   const event = await capturedEvent();
   expect(event).toMatchObject({
-    app_version: "0.540.0",
-    database: "chat",
-    environment: "production",
-    event_name: "indexeddb.transaction",
-    outcome: "success",
-    public_brand: "vm0",
-    request_count: 2,
-    source: "shared_worker",
-    template: "records.put+get",
-    transaction_mode: "readwrite",
+    "attributes.custom": {
+      "db.namespace": "chat",
+      "db.system": "indexeddb",
+      "vm0.client.outcome": "success",
+      "vm0.client.runtime": "shared_worker",
+      "vm0.db.request.count": 2,
+      "vm0.db.transaction.mode": "readwrite",
+    },
+    kind: "client",
+    name: "records.put+get",
+    "resource.custom": {
+      "vm0.public_brand": "vm0",
+    },
+    "resource.deployment.environment.name": "production",
+    "scope.name": "vm0-app/indexeddb",
+    "service.name": "vm0-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
   });
-  expect(event.duration_ms).toStrictEqual(expect.any(Number));
+  expect(event.duration).toStrictEqual(expect.any(Number));
+  expect(event).not.toHaveProperty("duration_ms");
+  expect(event).not.toHaveProperty("event_name");
+  expect(event).not.toHaveProperty("template");
   expect(JSON.stringify(event)).not.toContain(sensitiveKey);
   expect(JSON.stringify(event)).not.toContain(sensitiveValue);
 });
@@ -145,12 +156,14 @@ test("Reports an aborted IndexedDB transaction without hiding its error", async 
   }
 
   await expect(capturedEvent()).resolves.toMatchObject({
-    database: "intro_video_drafts",
-    event_name: "indexeddb.transaction",
-    outcome: "aborted",
-    request_count: 1,
-    template: "records.put",
-    transaction_mode: "readwrite",
+    "attributes.custom": {
+      "db.namespace": "intro_video_drafts",
+      "vm0.client.outcome": "aborted",
+      "vm0.db.request.count": 1,
+      "vm0.db.transaction.mode": "readwrite",
+    },
+    name: "records.put",
+    "status.code": "ERROR",
   });
 });
 
@@ -186,24 +199,32 @@ test("Routes every intro video draft operation through one transaction event", a
     }),
   ).toMatchObject([
     {
-      database: "intro_video_drafts",
-      request_count: 1,
-      template: "intro_video_drafts.put",
+      "attributes.custom": {
+        "db.namespace": "intro_video_drafts",
+        "vm0.db.request.count": 1,
+      },
+      name: "intro_video_drafts.put",
     },
     {
-      database: "intro_video_drafts",
-      request_count: 1,
-      template: "intro_video_drafts.get",
+      "attributes.custom": {
+        "db.namespace": "intro_video_drafts",
+        "vm0.db.request.count": 1,
+      },
+      name: "intro_video_drafts.get",
     },
     {
-      database: "intro_video_drafts",
-      request_count: 1,
-      template: "intro_video_drafts.delete",
+      "attributes.custom": {
+        "db.namespace": "intro_video_drafts",
+        "vm0.db.request.count": 1,
+      },
+      name: "intro_video_drafts.delete",
     },
     {
-      database: "intro_video_drafts",
-      request_count: 1,
-      template: "intro_video_drafts.get",
+      "attributes.custom": {
+        "db.namespace": "intro_video_drafts",
+        "vm0.db.request.count": 1,
+      },
+      name: "intro_video_drafts.get",
     },
   ]);
 });

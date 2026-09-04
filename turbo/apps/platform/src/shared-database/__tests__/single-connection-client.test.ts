@@ -217,12 +217,19 @@ test("Reports the complete shared database query without entity identifiers", as
   expect(dataset).toBe("vm0-client-telemetry-prod");
   expect(events).toHaveLength(1);
   expect(events[0]).toMatchObject({
-    environment: "production",
-    event_name: "shared_database.query",
-    outcome: "success",
-    source: "window",
-    template: "chat-event.cache-only",
+    "attributes.custom": {
+      "vm0.client.outcome": "success",
+      "vm0.client.runtime": "window",
+    },
+    kind: "client",
+    name: "chat-event.cache-only",
+    "resource.deployment.environment.name": "production",
+    "scope.name": "vm0-app/shared-database",
+    "service.name": "vm0-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
   });
+  expect(events[0]?.duration).toStrictEqual(expect.any(Number));
   expect(JSON.stringify(events[0])).not.toContain(sensitiveThreadId);
   expect(events[0]).not.toHaveProperty("after_seq_id");
 });

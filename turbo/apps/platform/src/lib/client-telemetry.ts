@@ -8,9 +8,16 @@ import { nowDate } from "./time.ts";
 // The browser-visible token is a write-only credential whose dataset scope is
 // the security boundary for this direct-ingest client.
 const AXIOM_CLIENT_TELEMETRY_DATASET = "vm0-client-telemetry-prod";
+const CLIENT_TELEMETRY_SERVICE_NAME = "vm0-app";
+const NANOSECONDS_PER_MILLISECOND = 1_000_000;
 const L = logger("ClientTelemetry");
 
 type ClientTelemetryOutcome = "aborted" | "error" | "success";
+type ClientTelemetryStatusCode = "ERROR" | "OK";
+type ClientTelemetryAttributeValue = number | string;
+type ClientTelemetryAttributes = Readonly<
+  Record<string, ClientTelemetryAttributeValue>
+>;
 
 interface ClientTelemetryMeasurement {
   readonly startedAt: string;
@@ -36,6 +43,32 @@ export type ClientTelemetryOperation =
 
 function runtimeName(): "shared_worker" | "window" {
   return typeof window === "undefined" ? "shared_worker" : "window";
+}
+
+function scopeName(operation: ClientTelemetryOperation): string {
+  return operation.event_name === "indexeddb.transaction"
+    ? "vm0-app/indexeddb"
+    : "vm0-app/shared-database";
+}
+
+function statusCode(
+  outcome: ClientTelemetryOutcome,
+): ClientTelemetryStatusCode {
+  return outcome === "success" ? "OK" : "ERROR";
+}
+
+function operationAttributes(
+  operation: ClientTelemetryOperation,
+): ClientTelemetryAttributes {
+  if (operation.event_name === "shared_database.query") {
+    return {};
+  }
+  return {
+    "db.namespace": operation.database,
+    "db.system": "indexeddb",
+    "vm0.db.request.count": operation.request_count,
+    "vm0.db.transaction.mode": operation.transaction_mode,
+  };
 }
 
 function createTelemetryClientCache(): (token: string) => Axiom {
@@ -91,20 +124,30 @@ async function ingestClientTelemetry(
     return;
   }
   const client = telemetryClient(config.token);
+  const duration = Math.round(
+    Math.max(0, performance.now() - measurement.startedAtMonotonic) *
+      NANOSECONDS_PER_MILLISECOND,
+  );
 
   client.ingest(AXIOM_CLIENT_TELEMETRY_DATASET, [
     {
       _time: measurement.startedAt,
-      source: runtimeName(),
-      environment: config.environment,
-      public_brand: config.publicBrand,
-      app_version: __OKOU_APP_VERSION__,
-      duration_ms: Math.max(
-        0,
-        performance.now() - measurement.startedAtMonotonic,
-      ),
-      outcome,
-      ...operation,
+      "attributes.custom": {
+        "vm0.client.outcome": outcome,
+        "vm0.client.runtime": runtimeName(),
+        ...operationAttributes(operation),
+      },
+      duration,
+      kind: "client",
+      name: operation.template,
+      "resource.custom": {
+        "vm0.public_brand": config.publicBrand,
+      },
+      "resource.deployment.environment.name": config.environment,
+      "scope.name": scopeName(operation),
+      "service.name": CLIENT_TELEMETRY_SERVICE_NAME,
+      "service.version": __OKOU_APP_VERSION__,
+      "status.code": statusCode(outcome),
     },
   ]);
 }
