@@ -984,6 +984,129 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
   }
 }
 
+interface HistoricalV3MigrationState {
+  readonly catalog: LaunchSnapshotConstraintCatalogRow[];
+  readonly rows: HistoricalLaunchSnapshotStorageRow[];
+}
+
+async function seedHistoricalV3MigrationState(
+  setup: Client,
+): Promise<HistoricalV3MigrationState> {
+  await seedHistoricalLaunchSnapshotMatrix(setup);
+  const rows = await readHistoricalLaunchSnapshotRows(setup);
+  assert.deepEqual(
+    rows.map(({ launchSnapshot, runId }) => {
+      return { runId, launchSnapshot };
+    }),
+    historicalLaunchSnapshotRows,
+  );
+  const catalog = await readLaunchSnapshotConstraintCatalog(setup);
+  assert.equal(catalog.length, 1);
+  const preV3Constraint = catalog[0];
+  assert.ok(preV3Constraint);
+  assert.equal(preV3Constraint.name, constraintName);
+  assert.equal(preV3Constraint.validated, true);
+  assert.match(preV3Constraint.definition, /'2'::jsonb/u);
+  assert.doesNotMatch(preV3Constraint.definition, /'3'::jsonb/u);
+  assert.equal(
+    await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+    0,
+  );
+  return { catalog, rows };
+}
+
+async function validateV3MigrationLockRecovery(
+  setup: Client,
+  blocker: Client,
+  migrator: Client,
+  historicalState: HistoricalV3MigrationState,
+): Promise<void> {
+  await blocker.query("BEGIN");
+  await blocker.query(`LOCK TABLE "agent_runs" IN ACCESS SHARE MODE`);
+  const lockStartedAt = Date.now();
+  await assert.rejects(
+    applyMigrationsFromDirectoryUpToTag(
+      migrator,
+      migrationsDirectory,
+      launchSnapshotV3Migration,
+    ),
+    (error: unknown) => {
+      return databaseErrorCode(error) === "55P03";
+    },
+  );
+  const lockWaitMilliseconds = Date.now() - lockStartedAt;
+  assert.ok(lockWaitMilliseconds >= 750);
+  assert.ok(lockWaitMilliseconds < 2_500);
+  await migrator.query("ROLLBACK");
+  await blocker.query("COMMIT");
+
+  assert.equal(
+    await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+    0,
+  );
+  assert.deepEqual(
+    await readLaunchSnapshotConstraintCatalog(setup),
+    historicalState.catalog,
+  );
+  assert.deepEqual(
+    await readHistoricalLaunchSnapshotRows(setup),
+    historicalState.rows,
+  );
+}
+
+async function validateSuccessfulV3Migration(
+  setup: Client,
+  migrator: Client,
+  statements: readonly string[],
+  historicalState: HistoricalV3MigrationState,
+): Promise<void> {
+  await applyMigrationsFromDirectoryUpToTag(
+    migrator,
+    migrationsDirectory,
+    launchSnapshotV3Migration,
+  );
+  assert.equal(
+    await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+    1,
+  );
+  assert.deepEqual(
+    await readHistoricalLaunchSnapshotRows(setup),
+    historicalState.rows,
+  );
+  const catalogAfter = await readLaunchSnapshotConstraintCatalog(setup);
+  assert.equal(catalogAfter.length, 1);
+  const v3Constraint = catalogAfter[0];
+  assert.ok(v3Constraint);
+  assert.equal(v3Constraint.name, constraintName);
+  assert.equal(v3Constraint.validated, true);
+  assert.match(v3Constraint.definition, /'1'::jsonb/u);
+  assert.match(v3Constraint.definition, /'2'::jsonb/u);
+  assert.match(v3Constraint.definition, /'3'::jsonb/u);
+
+  const validationFixture = {
+    agentId: "00000000-0000-4000-8000-000000106821",
+    sessionId: "00000000-0000-4000-8000-000000106822",
+    runId: "00000000-0000-4000-8000-000000106823",
+    suffix: "v3-values",
+  } as const;
+  await seedCanonicalAgentRun(setup, validationFixture);
+  await validateConstraintValues(setup, validationFixture.runId, true, true);
+
+  await executeStatements(setup, statements);
+  assert.equal(
+    await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
+    1,
+  );
+  assert.deepEqual(
+    await readHistoricalLaunchSnapshotRows(setup),
+    historicalState.rows,
+  );
+  assert.deepEqual(
+    await readLaunchSnapshotConstraintCatalog(setup),
+    catalogAfter,
+  );
+}
+
 export async function validateAgentRunLaunchSnapshotV3Migration(): Promise<void> {
   console.log("=== Validate Agent Run launch-snapshot V3 upgrade ===\n");
   const databaseUrl = process.env.DATABASE_URL;
@@ -1018,103 +1141,18 @@ export async function validateAgentRunLaunchSnapshotV3Migration(): Promise<void>
       migrationsDirectory,
       previousV3Migration,
     );
-    await seedHistoricalLaunchSnapshotMatrix(setup);
-    const historicalBefore = await readHistoricalLaunchSnapshotRows(setup);
-    assert.deepEqual(
-      historicalBefore.map(({ launchSnapshot, runId }) => {
-        return { runId, launchSnapshot };
-      }),
-      historicalLaunchSnapshotRows,
-    );
-    const catalogBefore = await readLaunchSnapshotConstraintCatalog(setup);
-    assert.equal(catalogBefore.length, 1);
-    const preV3Constraint = catalogBefore[0];
-    assert.ok(preV3Constraint);
-    assert.equal(preV3Constraint.name, constraintName);
-    assert.equal(preV3Constraint.validated, true);
-    assert.match(preV3Constraint.definition, /'2'::jsonb/u);
-    assert.doesNotMatch(preV3Constraint.definition, /'3'::jsonb/u);
-    assert.equal(
-      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
-      0,
-    );
-
-    await blocker.query("BEGIN");
-    await blocker.query(`LOCK TABLE "agent_runs" IN ACCESS SHARE MODE`);
-    const lockStartedAt = Date.now();
-    await assert.rejects(
-      applyMigrationsFromDirectoryUpToTag(
-        migrator,
-        migrationsDirectory,
-        launchSnapshotV3Migration,
-      ),
-      (error: unknown) => {
-        return databaseErrorCode(error) === "55P03";
-      },
-    );
-    const lockWaitMilliseconds = Date.now() - lockStartedAt;
-    assert.ok(lockWaitMilliseconds >= 750);
-    assert.ok(lockWaitMilliseconds < 2_500);
-    await migrator.query("ROLLBACK");
-    await blocker.query("COMMIT");
-
-    assert.equal(
-      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
-      0,
-    );
-    assert.deepEqual(
-      await readLaunchSnapshotConstraintCatalog(setup),
-      catalogBefore,
-    );
-    assert.deepEqual(
-      await readHistoricalLaunchSnapshotRows(setup),
-      historicalBefore,
-    );
-
-    await applyMigrationsFromDirectoryUpToTag(
+    const historicalState = await seedHistoricalV3MigrationState(setup);
+    await validateV3MigrationLockRecovery(
+      setup,
+      blocker,
       migrator,
-      migrationsDirectory,
-      launchSnapshotV3Migration,
+      historicalState,
     );
-    assert.equal(
-      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
-      1,
-    );
-    assert.deepEqual(
-      await readHistoricalLaunchSnapshotRows(setup),
-      historicalBefore,
-    );
-    const catalogAfter = await readLaunchSnapshotConstraintCatalog(setup);
-    assert.equal(catalogAfter.length, 1);
-    const v3Constraint = catalogAfter[0];
-    assert.ok(v3Constraint);
-    assert.equal(v3Constraint.name, constraintName);
-    assert.equal(v3Constraint.validated, true);
-    assert.match(v3Constraint.definition, /'1'::jsonb/u);
-    assert.match(v3Constraint.definition, /'2'::jsonb/u);
-    assert.match(v3Constraint.definition, /'3'::jsonb/u);
-
-    const validationFixture = {
-      agentId: "00000000-0000-4000-8000-000000106821",
-      sessionId: "00000000-0000-4000-8000-000000106822",
-      runId: "00000000-0000-4000-8000-000000106823",
-      suffix: "v3-values",
-    } as const;
-    await seedCanonicalAgentRun(setup, validationFixture);
-    await validateConstraintValues(setup, validationFixture.runId, true, true);
-
-    await executeStatements(setup, statements);
-    assert.equal(
-      await readTrackedMigrationCount(setup, launchSnapshotV3Migration),
-      1,
-    );
-    assert.deepEqual(
-      await readHistoricalLaunchSnapshotRows(setup),
-      historicalBefore,
-    );
-    assert.deepEqual(
-      await readLaunchSnapshotConstraintCatalog(setup),
-      catalogAfter,
+    await validateSuccessfulV3Migration(
+      setup,
+      migrator,
+      statements,
+      historicalState,
     );
 
     console.log(
