@@ -211,7 +211,11 @@ function visibilityOwnerError(
   member: AgentMember,
   requestedVisibility: AgentVisibility | undefined,
 ) {
-  if (requestedVisibility === undefined || existing.owner === member.userId) {
+  if (
+    requestedVisibility === undefined ||
+    requestedVisibility === existing.visibility ||
+    existing.owner === member.userId
+  ) {
     return null;
   }
 
@@ -652,7 +656,9 @@ const updateAgentMetadataInner$ = command(
       const permissionError = requireAgentPermission(
         existing.owner,
         member,
-        "update agent profile",
+        updateBody.avatarUrl === undefined
+          ? "update agent profile"
+          : "update agent avatar",
         { visibility: existing.visibility },
       );
       if (permissionError) {

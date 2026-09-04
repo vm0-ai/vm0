@@ -476,6 +476,28 @@ describe("PATCH /api/agents/:id", () => {
     });
   });
 
+  it("returns an avatar-specific error for a forbidden avatar update", async () => {
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    mocks.clerk.session(`user_${randomUUID()}`, user.orgId, "org:member");
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { avatarUrl: "preset:4" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only the agent owner or org admin can update agent avatar",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("allows an org admin to update another user's public agent", async () => {
     const user = newOrgUser();
     const adminUserId = `user_${randomUUID()}`;
@@ -497,6 +519,32 @@ describe("PATCH /api/agents/:id", () => {
       agentId: agent.agentId,
       ownerId: user.userId,
       displayName: "Admin Updated",
+    });
+  });
+
+  it("accepts an old avatar update that repeats unchanged visibility", async () => {
+    const user = newOrgUser();
+    const adminUserId = `user_${randomUUID()}`;
+    const agent = await createAgentAs(user, {
+      avatarUrl: "preset:0",
+      visibility: "public",
+    });
+    mocks.clerk.session(adminUserId, user.orgId, "org:admin");
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { avatarUrl: "preset:4", visibility: "public" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: user.userId,
+      avatarUrl: "preset:4",
+      visibility: "public",
     });
   });
 
