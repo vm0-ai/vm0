@@ -14,10 +14,8 @@ import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
-  applyColorThemeDocumentAttributes,
-  applyNewUiDocumentAttribute,
-  applyTypefaceDocumentAttribute,
   colorTheme$,
+  shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
@@ -28,22 +26,11 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
     features[FeatureSwitchKey.GradientColorThemes] ?? false;
-  const geistTypefaceEnabled =
-    features[FeatureSwitchKey.GeistTypeface] ?? false;
-  const newUiEnabled = features[FeatureSwitchKey.NewUi] ?? false;
+  const shellDocumentAttributesRef = useSet(shellDocumentAttributesRef$);
 
   return (
     <div
-      ref={(element) => {
-        applyColorThemeDocumentAttributes(
-          element !== null && gradientColorThemesEnabled,
-          colorTheme,
-        );
-        applyTypefaceDocumentAttribute(
-          element !== null && geistTypefaceEnabled,
-        );
-        applyNewUiDocumentAttribute(element !== null && newUiEnabled);
-      }}
+      ref={shellDocumentAttributesRef}
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}

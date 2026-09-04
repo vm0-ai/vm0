@@ -229,6 +229,43 @@ describe("lab page", () => {
     });
   });
 
+  it("updates shell document attributes when a switch changes", async () => {
+    let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.NewUi]: false,
+    };
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches, effectiveSwitches: switches });
+    });
+    context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+      switches = { ...switches, ...body.switches };
+      return respond(200, {
+        switches: body.switches,
+        effectiveSwitches: switches,
+      });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(featureSwitchControl(FeatureSwitchKey.NewUi)).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+      expect(document.documentElement.dataset.newUi).toBeUndefined();
+    });
+
+    click(featureSwitchControl(FeatureSwitchKey.NewUi));
+
+    await waitFor(() => {
+      expect(featureSwitchControl(FeatureSwitchKey.NewUi)).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      expect(document.documentElement.dataset.newUi).toBe("");
+    });
+  });
+
   it("shows feature switches in name order within each rollout stage", async () => {
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
