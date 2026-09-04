@@ -405,72 +405,60 @@ describe("new UI neutral gray palette", () => {
   });
 });
 
-describe("new UI opacity-modified placeholder and rail text", () => {
-  const placeholderThemes = [
+// The rail caption and the two composer placeholders draw their color through a
+// Tailwind opacity modifier, so the token alone says nothing about what a user
+// reads -- only the composite against the surface behind it does.
+describe("new UI opacity-modified text", () => {
+  const cases = [
     {
       alpha: 0.8,
       background: "--card",
       foreground: "--muted-foreground",
-      name: "light",
+      name: "light composer placeholder",
       selector: ":root[data-new-ui]",
     },
     {
       alpha: 0.8,
       background: "--card",
       foreground: "--muted-foreground",
-      name: "dark",
+      name: "dark composer placeholder",
       selector: ".dark[data-new-ui],",
     },
-  ];
-
-  it.each(placeholderThemes)(
-    "keeps $name composer placeholder at WCAG AA after the /80 modifier",
-    ({ alpha, background, foreground, selector }) => {
-      const properties = readCustomProperties(
-        readRuleBody(globalCss, selector),
-      );
-      const placeholder = composite(
-        color(properties, background),
-        color(properties, foreground),
-        alpha,
-      );
-      expect(
-        contrastRatio(placeholder, color(properties, background)),
-      ).toBeGreaterThanOrEqual(4.5);
-    },
-  );
-
-  const railThemes = [
     {
       alpha: 0.7,
       background: "--sidebar-rail",
       foreground: "--sidebar-foreground",
-      name: "light",
+      name: "light rail caption",
       selector: ":root[data-new-ui]",
     },
     {
       alpha: 0.7,
       background: "--sidebar-rail",
       foreground: "--sidebar-foreground",
-      name: "dark",
+      name: "dark rail caption",
       selector: ".dark[data-new-ui],",
     },
   ];
 
-  it.each(railThemes)(
-    "keeps $name rail captions at WCAG AA after the /70 modifier",
+  it.each(cases)(
+    "keeps the $name at WCAG AA once the opacity modifier is composited",
     ({ alpha, background, foreground, selector }) => {
       const properties = readCustomProperties(
         readRuleBody(globalCss, selector),
       );
-      const caption = composite(
-        color(properties, background),
-        color(properties, foreground),
-        alpha,
-      );
-      expect(
-        contrastRatio(caption, color(properties, background)),
-      ).toBeGreaterThanOrEqual(4.5);
+      const surface = color(properties, background);
+      const text = composite(surface, color(properties, foreground), alpha);
+      expect(contrastRatio(text, surface)).toBeGreaterThanOrEqual(4.5);
     },
   );
+
+  // Those modifiers are tuned for this palette and are applied through the
+  // `new-ui:` variant, which has to gate on the same attribute the palette
+  // blocks do or the current brand silently picks the new values up.
+  it("gates the new-ui variant on the attribute the palette blocks use", () => {
+    expect(globalCss).toContain(
+      "@custom-variant new-ui (&:where([data-new-ui], [data-new-ui] *));",
+    );
+    expect(globalCss).toContain(":root[data-new-ui] {");
+  });
 });

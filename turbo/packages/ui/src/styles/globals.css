@@ -3,6 +3,12 @@
 /* Enable Tailwind dark: variant with data-theme attribute */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
+/* Opacity modifiers tuned for the neutral palette read differently against the
+ * current brand, so utilities that depend on it need the same `[data-new-ui]`
+ * gate the palette block near the bottom of this file uses. Delete this variant
+ * with that block when the palette graduates. */
+@custom-variant new-ui (&:where([data-new-ui], [data-new-ui] *));
+
 /*
  * VM0 Design System
  * Based on Figma: https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud
