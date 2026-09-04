@@ -33,7 +33,7 @@ run_cli() {
   local stdout_file="$2"
   local stderr_file="$3"
   shift 3
-  PATH="$clean_path" "$node_path" "$npx_path" \
+  NPM_CONFIG_AUDIT=false PATH="$clean_path" "$node_path" "$npx_path" \
     --yes --package="$package_path" "$entrypoint" "$@" \
     >"$stdout_file" 2>"$stderr_file"
 }
