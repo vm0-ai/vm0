@@ -1,4 +1,4 @@
-import { v5 as uuidv5 } from "uuid";
+import { v4 as uuidv4, v5 as uuidv5 } from "uuid";
 
 import {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
@@ -355,7 +355,8 @@ async function startProviderJob(
       `SocialKit download start failed (${result.response.status})`,
     );
   }
-  return providerStartSchema.parse(result.body).jobId;
+  const providerJobId = providerStartSchema.parse(result.body).jobId;
+  return usePreviewMock ? `${providerJobId}-${uuidv4()}` : providerJobId;
 }
 
 type ProviderPollResult =
@@ -376,7 +377,8 @@ async function pollProviderJob(
   signal: AbortSignal,
 ): Promise<ProviderPollResult> {
   const usePreviewMock =
-    env("ENV") === "preview" && providerJobId === PREVIEW_MOCK_PROVIDER_JOB_ID;
+    env("ENV") === "preview" &&
+    providerJobId.startsWith(`${PREVIEW_MOCK_PROVIDER_JOB_ID}-`);
   const result = await providerJson(
     usePreviewMock
       ? PREVIEW_MOCK_STATUS_URL
@@ -415,7 +417,14 @@ async function pollProviderJob(
   if (result.body.status !== "ready") {
     return { status: "invalid" };
   }
-  const ready = providerReadySchema.safeParse(result.body);
+  const ready = providerReadySchema.safeParse(
+    usePreviewMock &&
+      typeof result.body === "object" &&
+      result.body !== null &&
+      !Array.isArray(result.body)
+      ? { ...result.body, jobId: providerJobId }
+      : result.body,
+  );
   return ready.success
     ? { status: "ready", ready: ready.data }
     : { status: "invalid" };
