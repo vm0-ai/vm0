@@ -267,14 +267,16 @@ test("Manage multiple quoted passages in one feedback message", async () => {
       note: [],
     },
   ]);
-  const launchMentions = await screen.findAllByText(
-    /launch plan has three careful stages/u,
-  );
-  const decisionMentions = await screen.findAllByText(
-    /unrelated answer covers a separate decision/u,
-  );
-  expect(launchMentions).toHaveLength(3);
-  expect(decisionMentions).toHaveLength(3);
-  expect(launchMentions.at(-1)).toBeVisible();
-  expect(decisionMentions.at(-1)).toBeVisible();
+  await waitFor(() => {
+    const launchMentions = screen.getAllByText(
+      /launch plan has three careful stages/u,
+    );
+    const decisionMentions = screen.getAllByText(
+      /unrelated answer covers a separate decision/u,
+    );
+    expect(launchMentions).toHaveLength(3);
+    expect(decisionMentions).toHaveLength(3);
+    expect(launchMentions.at(-1)).toBeVisible();
+    expect(decisionMentions.at(-1)).toBeVisible();
+  });
 });
