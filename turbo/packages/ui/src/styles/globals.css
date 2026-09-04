@@ -373,9 +373,9 @@
     /* Interrupting a run is not destruction -- nothing is lost and the work is
        resumable -- so it takes Coral rather than the delete red, one stop
        lighter than `--destructive` so the two never read as the same control.
-       The glyph stays white: Amber's 1.97:1 forced Ink on `--primary`, but
-       Coral 500 carries white at 3.01:1, over the 3:1 bar an icon has to
-       clear, and the filled white square is what reads as a stop. */
+       The glyph stays white: Coral 500 carries it at 3.01:1, over the 3:1 bar
+       an icon has to clear, and the filled white square is what reads as a
+       stop. */
     --interrupt: 13.9 100% 59.4%; /* #FF6030 - Coral 500 */
     --interrupt-foreground: var(--on-filled); /* white on Coral 500 */
 
@@ -678,9 +678,9 @@
 
     /* Interrupting a run is not destruction -- nothing is lost and the work is
        resumable -- so it steps two stops up the same Coral ramp: still clearly
-       an interruption, but without the delete button's weight. Unlike Amber,
-       Coral 500 does carry white (3.01:1, over the 3:1 an icon has to clear),
-       and the white square is the stop glyph everyone already reads. */
+       an interruption, but without the delete button's weight. Coral 500
+       carries white at 3.01:1, over the 3:1 an icon has to clear, and the
+       white square is the stop glyph everyone already reads. */
     --interrupt: 13.9 100% 59.4%; /* #FF6030 - Coral 500 */
     --interrupt-foreground: var(--on-filled); /* white on Coral 500 */
 
