@@ -5602,17 +5602,71 @@ describe("CHAT-02: model-first provider policies", () => {
       hasTextContent: true,
     });
     expect([201, 503]).toContain(vm0Send.status);
+    type Vm0AdmissionObservation =
+      | {
+          readonly outcome: "route-unavailable";
+          readonly response: {
+            readonly status: 503;
+            readonly errorMessage: string;
+          };
+          readonly cleanup: null;
+        }
+      | {
+          readonly outcome: "run-created";
+          readonly response: {
+            readonly status: 201;
+            readonly runId: string | null;
+          };
+          readonly cleanup: { readonly status: number } | null;
+        };
+    let vm0Observation: Vm0AdmissionObservation;
+    let expectedVm0Observation: Vm0AdmissionObservation;
     if (vm0Send.status === 503) {
       expectApiError(vm0Send.body);
-      expect(vm0Send.body.error.message).toBe(
-        "Every built-in model route for this model is temporarily unavailable",
-      );
+      vm0Observation = {
+        outcome: "route-unavailable",
+        response: {
+          status: 503,
+          errorMessage: vm0Send.body.error.message,
+        },
+        cleanup: null,
+      };
+      expectedVm0Observation = {
+        outcome: "route-unavailable",
+        response: {
+          status: 503,
+          errorMessage:
+            "Every built-in model route for this model is temporarily unavailable",
+        },
+        cleanup: null,
+      };
     } else {
-      const vm0Body = vm0Send.body as { readonly runId: string | null };
-      if (vm0Body.runId !== null) {
-        await api.requestCancelRun(actor, vm0Body.runId, [200]);
+      if (vm0Send.status !== 201) {
+        throw new Error("Expected a legal built-in admission outcome");
       }
+      if (
+        typeof vm0Send.body !== "object" ||
+        vm0Send.body === null ||
+        !("runId" in vm0Send.body) ||
+        (vm0Send.body.runId !== null && typeof vm0Send.body.runId !== "string")
+      ) {
+        throw new Error("Expected a built-in admission response body");
+      }
+      const runId = vm0Send.body.runId;
+      const cancellation =
+        runId === null ? null : await api.requestCancelRun(actor, runId, [200]);
+      vm0Observation = {
+        outcome: "run-created",
+        response: { status: 201, runId },
+        cleanup: cancellation === null ? null : { status: cancellation.status },
+      };
+      expectedVm0Observation = {
+        outcome: "run-created",
+        response: { status: 201, runId },
+        cleanup: runId === null ? null : { status: 200 },
+      };
     }
+    expect(vm0Observation).toStrictEqual(expectedVm0Observation);
   }, 90_000);
 
   it("preserves persisted external model plan-state outcomes", async () => {
@@ -6353,12 +6407,11 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("decodes persisted launch snapshots at webhook completion before Stage 1 admission", async () => {
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
-    const snapshots = [
-      ["historical null", null, false],
+    const rejectedSnapshots = [
+      ["historical null", null],
       [
         "V1 Pi",
         { schemaVersion: 1, framework: "pi", runnerProfile: DEFAULT_PROFILE },
-        false,
       ],
       [
         "V2 Pi disabled with PiLoop enabled",
@@ -6368,17 +6421,6 @@ describe("CHAT-02: model-first provider policies", () => {
           runnerProfile: DEFAULT_PROFILE,
           piMemoryGenerationEnabled: false,
         },
-        false,
-      ],
-      [
-        "V2 Pi enabled",
-        {
-          schemaVersion: 2,
-          framework: "pi",
-          runnerProfile: DEFAULT_PROFILE,
-          piMemoryGenerationEnabled: true,
-        },
-        true,
       ],
       ...(["codex", "claude-code"] as const).flatMap((framework) => {
         return [true, false].map((piMemoryGenerationEnabled) => {
@@ -6390,15 +6432,9 @@ describe("CHAT-02: model-first provider policies", () => {
               runnerProfile: DEFAULT_PROFILE,
               piMemoryGenerationEnabled,
             },
-            false,
           ] as const;
         });
       }),
-      [
-        "V3 Pi",
-        { schemaVersion: 3, framework: "pi", runnerProfile: DEFAULT_PROFILE },
-        true,
-      ],
       ...(["codex", "claude-code"] as const).map((framework) => {
         return [
           `V3 ${framework}`,
@@ -6407,12 +6443,26 @@ describe("CHAT-02: model-first provider policies", () => {
             framework,
             runnerProfile: DEFAULT_PROFILE,
           },
-          false,
         ] as const;
       }),
     ] as const;
+    const admittedSnapshots = [
+      [
+        "V2 Pi enabled",
+        {
+          schemaVersion: 2,
+          framework: "pi",
+          runnerProfile: DEFAULT_PROFILE,
+          piMemoryGenerationEnabled: true,
+        },
+      ],
+      [
+        "V3 Pi",
+        { schemaVersion: 3, framework: "pi", runnerProfile: DEFAULT_PROFILE },
+      ],
+    ] as const;
 
-    for (const [name, snapshot, admitted] of snapshots) {
+    for (const [name, snapshot] of rejectedSnapshots) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = requireOrgId(actor);
       await updateFeatureSwitchesForUser(
@@ -6440,38 +6490,79 @@ describe("CHAT-02: model-first provider policies", () => {
         orgId,
         userId: actor.userId,
       });
-      expect(candidate).toStrictEqual(
-        admitted ? expect.objectContaining({ sourceRunId: run.runId }) : null,
+      expect({ name, candidate }).toStrictEqual({ name, candidate: null });
+    }
+
+    for (const [name, snapshot] of admittedSnapshots) {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
       );
-      if (admitted && candidate) {
-        expect(candidate.sourceHistoryHash).toBe(
-          createHash("sha256")
-            .update(
-              completionOptions.sessionHistory ??
-                `bdd chat session history ${run.runId}`,
-            )
-            .digest("hex"),
-        );
-        expect(
-          candidate.eligibleAt.getTime() -
-            candidate.sourceCompletedAt.getTime(),
-        ).toBe(60_000);
-        await completeChatRunOk(
-          run.runId,
-          claimed.sandboxHeaders,
-          completionOptions,
-        );
-        await flushWaitUntilForTest();
-        await expect(
-          readPiMemoryStage1CandidateFixture({
-            orgId,
-            userId: actor.userId,
-          }),
-        ).resolves.toMatchObject({
-          sourceRunId: run.runId,
-          sourceHistoryHash: candidate.sourceHistoryHash,
-        });
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: `decode ${name} through the completion webhook`,
+      });
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      await setRunLaunchSnapshotFixture(run.runId, snapshot);
+      const completionOptions = frameworkMatchingCompletionOptions(
+        run.threadId,
+        snapshot.framework,
+      );
+      await completeChatRunOk(
+        run.runId,
+        claimed.sandboxHeaders,
+        completionOptions,
+      );
+      await flushWaitUntilForTest();
+      const candidate = await readPiMemoryStage1CandidateFixture({
+        orgId,
+        userId: actor.userId,
+      });
+      if (!candidate) {
+        throw new Error(`Expected ${name} to create a Stage 1 candidate`);
       }
+      const expectedHistoryHash = createHash("sha256")
+        .update(
+          completionOptions.sessionHistory ??
+            `bdd chat session history ${run.runId}`,
+        )
+        .digest("hex");
+      expect({
+        name,
+        sourceRunId: candidate.sourceRunId,
+        sourceHistoryHash: candidate.sourceHistoryHash,
+        eligibilityDelayMs:
+          candidate.eligibleAt.getTime() -
+          candidate.sourceCompletedAt.getTime(),
+      }).toStrictEqual({
+        name,
+        sourceRunId: run.runId,
+        sourceHistoryHash: expectedHistoryHash,
+        eligibilityDelayMs: 60_000,
+      });
+
+      await completeChatRunOk(
+        run.runId,
+        claimed.sandboxHeaders,
+        completionOptions,
+      );
+      await flushWaitUntilForTest();
+      const repeatedCandidate = await readPiMemoryStage1CandidateFixture({
+        orgId,
+        userId: actor.userId,
+      });
+      expect({
+        name,
+        sourceRunId: repeatedCandidate?.sourceRunId,
+        sourceHistoryHash: repeatedCandidate?.sourceHistoryHash,
+      }).toStrictEqual({
+        name,
+        sourceRunId: run.runId,
+        sourceHistoryHash: candidate.sourceHistoryHash,
+      });
     }
   }, 90_000);
 
@@ -14348,21 +14439,22 @@ describe("CHAT-02: run-level model overrides", () => {
       hasTextContent: true,
     });
 
-    for (let attempt = 0; attempt < preparationAttempts; attempt += 1) {
+    const intermediateAttempts = preparationAttempts - 1;
+    for (let attempt = 0; attempt < intermediateAttempts; attempt += 1) {
       await expect
         .poll(conversationChanges.blockedWaiterCount)
         .toBeGreaterThanOrEqual(1);
-      if (attempt + 1 < preparationAttempts) {
-        conversationChanges.queueNextChange();
-        await expect.poll(conversationChanges.queuedChangeIsBlocked).toBe(true);
-      }
+      conversationChanges.queueNextChange();
+      await expect.poll(conversationChanges.queuedChangeIsBlocked).toBe(true);
       conversationChanges.release();
-      if (attempt + 1 < preparationAttempts) {
-        await expect
-          .poll(conversationChanges.stagedChangeCount)
-          .toBe(attempt + 2);
-      }
+      await expect
+        .poll(conversationChanges.stagedChangeCount)
+        .toBe(attempt + 2);
     }
+    await expect
+      .poll(conversationChanges.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    conversationChanges.release();
     await conversationChanges.done;
     const failed = await failedPromise;
     expect(failed).toStrictEqual({
@@ -15881,6 +15973,12 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (!template) {
       throw new Error("Expected a registered presentation runbook item");
     }
+    const colorSystemId = template.colorSystemId;
+    if (!colorSystemId) {
+      throw new Error(
+        "Expected the presentation template to have a color system",
+      );
+    }
 
     const presentation = await sendChatRun(actor, {
       agentId,
@@ -15888,7 +15986,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       template: {
         type: "presentation",
         selection: {
-          colorSystemId: template.colorSystemId,
+          colorSystemId,
           templateId: template.templateId,
         },
       },
@@ -15906,12 +16004,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(presentationPrompt).toContain(
       `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
-    if (template.colorSystemId) {
-      const colorToken = template.colorSystemId
-        .replace("color-system:", "")
-        .replaceAll("-", "_");
-      expect(presentationPrompt).toContain(`Color system token: ${colorToken}`);
-    }
+    const colorToken = colorSystemId
+      .replace("color-system:", "")
+      .replaceAll("-", "_");
+    expect(presentationPrompt).toContain(`Color system token: ${colorToken}`);
     expect(presentationPrompt).toContain(
       "./generated/resources/playful-launch/SKILL.md",
     );
