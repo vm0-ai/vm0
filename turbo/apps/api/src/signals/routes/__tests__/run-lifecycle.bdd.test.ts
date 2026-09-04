@@ -1686,6 +1686,45 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("adds the intro-video workflow to agent tools only while its rollout switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const workflowMarker = "Intro-video workflow:";
+    const cameraCommand =
+      "okou video camera --file <video> --events <events> --output <draft.mp4>";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      workflowMarker,
+    );
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.IntroVideo]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(workflowMarker);
+    expect(appendSystemPrompt).toContain(cameraCommand);
+    expect(appendSystemPrompt).toContain(
+      "okou presentation screenshot --input <deck> --out <dir>",
+    );
+  });
+
   it("advertises presentation screenshots only while their rollout switch is on", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);

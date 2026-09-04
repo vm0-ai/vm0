@@ -19,6 +19,7 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { introVideoWorkflowInstruction } from "@okouai/core/intro-video-workflow";
 import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
 import {
   agentDisplayNameForPublicBrand,
@@ -419,6 +420,7 @@ function buildAgentToolsPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
@@ -435,6 +437,7 @@ function buildAgentToolsPrompt(args: {
     ...(args.presentationTemplatesEnabled
       ? [`- ${presentationTemplateSkillInstruction()}`]
       : []),
+    ...(args.introVideoEnabled ? [`- ${introVideoWorkflowInstruction()}`] : []),
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `okou scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
     ...(args.cloudBrowserEnabled === true
       ? [
@@ -559,6 +562,7 @@ function buildAppendSystemPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
@@ -571,6 +575,7 @@ function buildAppendSystemPrompt(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
       connectorAccountsEnabled: args.connectorAccountsEnabled,
+      introVideoEnabled: args.introVideoEnabled,
       presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
@@ -752,6 +757,7 @@ function createRunBody(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }) {
@@ -764,6 +770,7 @@ function createRunBody(args: {
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
     connectorAccountsEnabled: args.connectorAccountsEnabled,
+    introVideoEnabled: args.introVideoEnabled,
     presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
@@ -966,6 +973,10 @@ function buildZeroCreateAgentRunArgs(args: {
       ),
       connectorAccountsEnabled: isFeatureEnabled(
         FeatureSwitchKey.ConnectorAccounts,
+        args.featureSwitchContext,
+      ),
+      introVideoEnabled: isFeatureEnabled(
+        FeatureSwitchKey.IntroVideo,
         args.featureSwitchContext,
       ),
       presentationScreenshotEnabled: isFeatureEnabled(
