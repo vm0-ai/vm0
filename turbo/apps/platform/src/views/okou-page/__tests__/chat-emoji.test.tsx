@@ -191,6 +191,24 @@ test("The emoji picker names the emoji under the pointer", async () => {
   expect(screen.queryByText(":grinning_face:")).toBeNull();
 });
 
+test("A focused emoji draws the standard ring inside the feed", async () => {
+  const user = userEvent.setup();
+  const searchInput = await openEmojiPicker();
+  await user.type(searchInput, "entry");
+  await waitFor(() => {
+    expect(emojiButton("no entry")).toBeInTheDocument();
+  });
+
+  // Inset, because the feed is a scroll box: an offset ring on the outer
+  // columns or on the first and last rows would be clipped by its overflow.
+  expect(emojiButton("no entry")).toHaveClass(
+    "focus-visible:outline-none",
+    "focus-visible:ring-2",
+    "focus-visible:ring-inset",
+    "focus-visible:ring-ring",
+  );
+});
+
 test("Frequently used product emoji keep their translated labels", async () => {
   await openEmojiPicker();
 
