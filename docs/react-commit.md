@@ -1,7 +1,7 @@
 # React Commit Analysis
 
 This guide describes how to measure excessive React work, identify the state
-subscription that caused it, and reduce unnecessary work in the VM0 platform.
+subscription that caused it, and reduce unnecessary work in the Okou platform.
 The examples use `ccstate-react`, but the measurement method applies to any
 React external store.
 
