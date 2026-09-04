@@ -99,10 +99,16 @@ function okouTokenFromClaim(
 }
 
 async function setup(
-  options: { readonly timezone?: string } = {},
+  options: {
+    readonly timezone?: string;
+    readonly tier?: "pro" | "team";
+  } = {},
 ): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
-  const { actor } = await wf.setupWorkflowOrg({ timezone: options.timezone });
+  const { actor } = await wf.setupWorkflowOrg({
+    timezone: options.timezone,
+    tier: options.tier,
+  });
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
   }
@@ -306,7 +312,7 @@ describe("okou workflow automation scheduler", () => {
   });
 
   it("inherits the chat thread computer-use grant for automation runs", async () => {
-    const scenario = await setup();
+    const scenario = await setup({ tier: "team" });
     const automation = await createDueLoopAutomation(scenario, 3600);
     const seed = await accept(
       automationsClient().create({

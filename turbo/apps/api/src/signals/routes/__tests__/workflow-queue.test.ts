@@ -1949,12 +1949,7 @@ describe("workflow queue", () => {
 
     const automation = await wf.readAutomation(created.body.id);
     expect(automation.nextRunAt).not.toBeNull();
-    if (!automation.chatThreadId) {
-      throw new Error("Expected execution to bind the schedule chat thread");
-    }
-    await expect(
-      pendingAutomationEvents(automation.chatThreadId),
-    ).resolves.toHaveLength(0);
+    expect(automation.chatThreadId).toBeNull();
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
 
@@ -1963,7 +1958,11 @@ describe("workflow queue", () => {
     }
     mockNow(Date.parse(automation.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations(created.body.id);
-    await expect(workflowRunIds(automation.chatThreadId)).resolves.toHaveLength(
+    const recovered = await wf.readAutomation(created.body.id);
+    if (!recovered.chatThreadId) {
+      throw new Error("Expected the recovered schedule to bind a chat thread");
+    }
+    await expect(workflowRunIds(recovered.chatThreadId)).resolves.toHaveLength(
       1,
     );
   });
