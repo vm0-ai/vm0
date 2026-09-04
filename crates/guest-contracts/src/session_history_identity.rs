@@ -53,6 +53,16 @@ pub enum SessionHistoryFramework {
     Pi,
 }
 
+impl From<crate::env::CliFramework> for SessionHistoryFramework {
+    fn from(framework: crate::env::CliFramework) -> Self {
+        match framework {
+            crate::env::CliFramework::ClaudeCode => Self::ClaudeCode,
+            crate::env::CliFramework::Codex => Self::Codex,
+            crate::env::CliFramework::Pi => Self::Pi,
+        }
+    }
+}
+
 /// Storage ref kind for session-history bytes.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -532,6 +542,32 @@ fn is_sha256_hex(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_framework_projects_to_session_history_wire_values() {
+        for (framework, expected, wire_value) in [
+            (
+                crate::env::CliFramework::ClaudeCode,
+                SessionHistoryFramework::ClaudeCode,
+                "claude-code",
+            ),
+            (
+                crate::env::CliFramework::Codex,
+                SessionHistoryFramework::Codex,
+                "codex",
+            ),
+            (
+                crate::env::CliFramework::Pi,
+                SessionHistoryFramework::Pi,
+                "pi",
+            ),
+        ] {
+            let projected = SessionHistoryFramework::from(framework);
+
+            assert_eq!(projected, expected);
+            assert_eq!(projected.as_str(), wire_value);
+        }
+    }
 
     fn valid_source() -> SessionHistorySourceRef {
         SessionHistorySourceRef::ClaudeCode {

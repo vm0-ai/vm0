@@ -9,7 +9,6 @@ import {
   resolveApiBaseForTarget,
   resolveOAuthApiBase,
 } from "../signals/api-base.ts";
-import type { ClerkTokenSource } from "../signals/clerk-token.ts";
 import {
   setSharedDatabaseBridgeHostForTest$,
   type SharedDatabaseBridgeHost,
@@ -26,6 +25,7 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
   SharedDatabasePortLike,
+  SharedDatabaseTokenProvider,
 } from "./bridge.ts";
 import {
   parseComputedValue,
@@ -45,6 +45,7 @@ import {
   forwardChatThreadReadCursorUpdated$,
   registerConnection$,
   reportWorkerUnavailableForConnections$,
+  requestTokenFromFirstConnection$,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import {
@@ -67,7 +68,6 @@ export type SharedWorkerTestTransport = "direct" | "message-port";
 interface SetupSharedWorkerTestBootstrap {
   readonly afterRegistration?: () => Promise<void>;
   readonly appVersion: string;
-  readonly clerk: Promise<ClerkTokenSource>;
   readonly identity: SharedDatabaseIdentity | null;
   readonly transport: SharedWorkerTestTransport;
   readonly workerStore: Store;
@@ -114,6 +114,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     private readonly workerStore: Store,
     private readonly events: SharedDatabaseBridgeEvents,
     private readonly workerSignal: AbortSignal,
+    private readonly getToken: SharedDatabaseTokenProvider,
   ) {}
 
   private readonly emit = onDomEventFn(
@@ -183,9 +184,13 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       registerConnection$,
       this.connectionId,
       connectionController,
-      directWorkerPort(this.emit),
+      { getToken: this.getToken, port: directWorkerPort(this.emit) },
       connectionSignal,
     );
+    const daemon = this.workerStore.set(startSharedDatabaseWorkerDaemons$);
+    if (daemon) {
+      detach(daemon, Reason.Daemon, "test shared database Worker");
+    }
     return Promise.resolve();
   }
 
@@ -271,7 +276,12 @@ export const setupSharedWorkerTestBootstrap$ = command(
           appVersion: options.appVersion,
           identity: options.identity,
           apiBaseUrl: resolveApiBaseForTarget("api"),
-          clerk: options.clerk,
+          getToken: (requestSignal) => {
+            return options.workerStore.set(
+              requestTokenFromFirstConnection$,
+              requestSignal,
+            );
+          },
           oauthApiBaseUrl: resolveOAuthApiBase(),
           onForceUpgrade: () => {
             options.workerStore.set(
@@ -282,20 +292,12 @@ export const setupSharedWorkerTestBootstrap$ = command(
         },
         signal,
       );
-      if (options.transport === "message-port") {
-        const daemon = options.workerStore.set(
-          startSharedDatabaseWorkerDaemons$,
-        );
-        if (daemon) {
-          detach(daemon, Reason.Daemon, "test shared database Worker");
-        }
-      }
     }
 
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
     const host: SharedDatabaseBridgeHost = {
-      createBridge: (_identity, events, connectionSignal) => {
+      createBridge: (_identity, getToken, events, connectionSignal) => {
         let bridge: SharedDatabaseBridge;
         if (options.transport === "message-port") {
           const channel = new MessageChannel();
@@ -308,6 +310,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
             channel.port2,
             events,
             connectionSignal,
+            getToken,
           );
         } else {
           if (!directRealtimeForwardingInstalled) {
@@ -326,6 +329,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
             options.workerStore,
             events,
             signal,
+            getToken,
           );
           bridge = directBridge;
         }

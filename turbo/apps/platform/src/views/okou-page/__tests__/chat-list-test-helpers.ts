@@ -28,7 +28,7 @@ export function chatListThreadId(index: number): string {
   return `b7000000-0000-4000-a000-${index.toString().padStart(12, "0")}`;
 }
 
-export function chatListEventId(caseId: number, sequence: number): string {
+function chatListEventId(caseId: number, sequence: number): string {
   const suffix = caseId * 1000 + sequence;
   return `d7000000-0000-4000-a000-${suffix.toString().padStart(12, "0")}`;
 }

@@ -13,7 +13,6 @@ import type {
 import { appVersion$ } from "./app-version.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { apiClientRuntime$ } from "./api-client-runtime.ts";
-import { readClerkToken } from "./clerk-token.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 /**
@@ -74,11 +73,7 @@ export const apiClient$ = computed((get) => {
   const clientVersion = get(appVersion$);
   const rootSignal = get(rootSignal$);
   const tokenOptions = {
-    getToken: async (signal: AbortSignal) => {
-      const clerk = await runtime.clerk;
-      signal.throwIfAborted();
-      return await readClerkToken(clerk, signal);
-    },
+    getToken: runtime.getToken,
   };
   return <T extends AppRouter>(contract: T, options?: ApiClientOptions) => {
     return createAuthedContractClient(contract, {

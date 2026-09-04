@@ -20,7 +20,6 @@ import { fillComposer } from "./chat-test-helpers.ts";
 export { context };
 
 export const RUN_THREAD_ID = "b0000000-0000-4000-a000-000000000801";
-export const SECOND_RUN_THREAD_ID = "b0000000-0000-4000-a000-000000000802";
 export const RUN_PATH = `/chats/${RUN_THREAD_ID}`;
 export const NEW_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -150,7 +149,7 @@ export async function sendText(text: string): Promise<void> {
   });
 }
 
-export function textDocument(
+function textDocument(
   text: string,
   model?: string,
   serviceTier?: "priority" | null,
@@ -261,27 +260,6 @@ export function cancelledEvent(args: {
     runId: args.runId,
     error: "Run cancelled",
     runLifecycleEvent: "cancelled",
-    seqId: args.seqId,
-    createdAt: `2026-08-01T10:00:${String(args.seqId).padStart(2, "0")}.000Z`,
-  };
-}
-
-export function followupEvent(args: {
-  readonly id: string;
-  readonly runId: string;
-  readonly seqId: number;
-}): MockChatEventInput {
-  return {
-    id: args.id,
-    role: "assistant",
-    content: null,
-    runId: args.runId,
-    followups: [
-      {
-        prompt: "Continue with the next step",
-        kind: "talk",
-      },
-    ],
     seqId: args.seqId,
     createdAt: `2026-08-01T10:00:${String(args.seqId).padStart(2, "0")}.000Z`,
   };

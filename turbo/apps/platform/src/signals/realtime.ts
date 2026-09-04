@@ -41,7 +41,7 @@ const MAX_TRANSIENT_RETRIES = 3;
 export type RealtimeConnectionState = ConnectionStateChange["current"];
 type RealtimeChannelState = ChannelStateChange["current"];
 
-export interface RealtimeConnectionUpdate {
+interface RealtimeConnectionUpdate {
   readonly state: RealtimeConnectionState;
   readonly reconnected: boolean;
 }

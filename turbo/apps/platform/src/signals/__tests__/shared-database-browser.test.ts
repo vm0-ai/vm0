@@ -4,6 +4,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { expect, vi } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../__tests__/mock-auth.ts";
 import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
 import { logger } from "../log.ts";
@@ -15,9 +16,12 @@ const context = testContext();
 const RELOAD_AT_MS = Date.parse("2030-01-01T00:00:00.000Z");
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
+  readonly postedMessages: unknown[] = [];
   private listener: ((event: MessageEvent<unknown>) => void) | null = null;
 
-  postMessage(_value: unknown): void {}
+  postMessage(value: unknown): void {
+    this.postedMessages.push(structuredClone(value));
+  }
 
   start(): void {}
 
@@ -140,12 +144,8 @@ function setupBridge(): void {
   );
 }
 
-test("Pass the page identity and Clerk deployment to the shared worker", async () => {
+test("Pass only the page identity to the shared worker", async () => {
   context.mocks.browser.url("https://app.okou.ai/chats");
-  context.mocks.browser.cookie("__clerk_db_jwt=preview-worker-jwt");
-  vi.stubGlobal("__vm0ClerkBootstrap", {
-    productionPrimaryAppDomain: "app.vm0.ai",
-  });
   const { constructorCalls, workers } = installSharedWorkerMock();
   setupBridge();
   await vi.waitFor(() => {
@@ -155,8 +155,6 @@ test("Pass the page identity and Clerk deployment to the shared worker", async (
   const workerUrl = new URL(String(constructorCalls[0]!.scriptURL));
   expect(workerUrl.origin).toBe("https://app.okou.ai");
   expect(Object.fromEntries(workerUrl.searchParams)).toStrictEqual({
-    __clerk_db_jwt: "preview-worker-jwt",
-    clerkPrimaryAppDomain: "app.vm0.ai",
     orgId: "shared-worker-org",
     userId: "shared-worker-user",
   });
@@ -164,6 +162,28 @@ test("Pass the page identity and Clerk deployment to the shared worker", async (
     name: "okou_shared-worker-user_shared-worker-org",
     type: "module",
   });
+});
+
+test("Return Clerk's cached token when the shared worker requests it", async () => {
+  const { workers } = installSharedWorkerMock();
+  setupBridge();
+  await vi.waitFor(() => {
+    expect(workers).toHaveLength(1);
+  });
+
+  workers[0]!.port.receive({
+    type: "get-token",
+    requestId: "worker-token-request",
+  });
+
+  await vi.waitFor(() => {
+    expect(workers[0]!.port.postedMessages).toContainEqual({
+      type: "token-result",
+      requestId: "worker-token-request",
+      token: "shared-worker-token",
+    });
+  });
+  expect(mockedClerk.sessionGetToken.mock.calls.at(-1)?.[0]).toBeUndefined();
 });
 
 test("Open the force-upgrade dialog when the worker requires an upgrade", async () => {

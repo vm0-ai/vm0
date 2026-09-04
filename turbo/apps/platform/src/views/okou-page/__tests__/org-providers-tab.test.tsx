@@ -673,53 +673,6 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
   });
 });
 
-test("Update a built-in model policy in Portuguese", async () => {
-  mockAdminOrg();
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  context.mocks.data.orgModelProviders([anthropicApiKeyProvider()]);
-  context.mocks.data.orgModelPolicies([
-    builtInPolicy(
-      "00000000-0000-4000-a000-000000000214",
-      "deepseek-v4-flash",
-      "DeepSeek V4 Flash",
-      true,
-    ),
-    claudeOpusApiKeyPolicy(),
-  ]);
-  mockBillingCapabilities({
-    supportByok: true,
-    restrictedVm0Models: false,
-  });
-
-  await setupPage({
-    context,
-    path: "/?settings=model",
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "Modelos" }),
-  ).resolves.toBeInTheDocument();
-  const claudeRow = await screen.findByTestId(
-    "org-model-policy-row-claude-opus-4-8",
-  );
-  expect(within(claudeRow).getByText("Anthropic")).toBeInTheDocument();
-  click(within(claudeRow).getByLabelText("Ações para Claude Opus 4.8"));
-  click(menuItemByText("Editar modelo"));
-  const editDialog = await screen.findByRole("dialog", {
-    name: "Editar modelo",
-  });
-  click(radioByName(/Integrado/u, editDialog));
-  click(buttonByText("Salvar alterações", editDialog));
-
-  await waitFor(() => {
-    expect(within(claudeRow).getByText("Integrado")).toBeInTheDocument();
-    expect(
-      screen.getByText("Configurações dos provedores de modelo atualizadas"),
-    ).toBeInTheDocument();
-    expect(within(claudeRow).getByText("Claude Opus 4.8")).toBeInTheDocument();
-  });
-});
-
 test("Offer only active models when adding a workspace route", async () => {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([]);

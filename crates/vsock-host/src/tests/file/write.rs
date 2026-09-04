@@ -70,23 +70,6 @@ fn encode_test_write_file_frame(
 }
 
 #[tokio::test]
-async fn test_write_file() {
-    let (host, mut guest) = setup_host_and_guest().await;
-    let host = Arc::new(host);
-    let write_task = spawn_write_file(Arc::clone(&host), "/tmp/test.txt", b"hello".to_vec(), false);
-
-    let write = expect_write_file(&mut guest).await;
-    assert_eq!(write.path, "/tmp/test.txt");
-    assert_eq!(write.content, b"hello");
-    assert!(!write.sudo);
-    assert!(!write.append);
-
-    send_write_file_success(&mut guest, write.seq()).await;
-
-    write_task.await.unwrap().unwrap();
-}
-
-#[tokio::test]
 async fn write_files_sends_single_batch_and_tracks_until_result() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

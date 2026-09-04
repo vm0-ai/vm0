@@ -3,6 +3,7 @@ import {
   chatThreadsContract,
   chatThreadEventsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { avatarComposerUrl } from "@okouai/core/agent-avatar";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
@@ -19,6 +20,14 @@ const context = testContext();
 const FIRST_THREAD_ID = "40000000-0000-4000-8000-000000000001";
 const SECOND_THREAD_ID = "40000000-0000-4000-8000-000000000002";
 const FIRST_EVENT_ID = "50000000-0000-4000-8000-000000000001";
+
+function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
+  return Array.from(root.querySelectorAll<HTMLImageElement>("img"), (img) => {
+    return img.src;
+  }).filter((src) => {
+    return src.includes("/platform/views/zero-page/assets/avatar-svg");
+  });
+}
 
 function labelledButton(name: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
@@ -175,6 +184,36 @@ test("A user opens avatar customization from an agent", async () => {
   });
   expect(dialog).toBeVisible();
   expect(within(dialog).getByText("Face")).toBeVisible();
+});
+
+test("The agent header opens avatar customization on the current avatar", async () => {
+  await setupTeamPage({
+    context,
+    path: `/agents/${RESEARCH_AGENT_ID}`,
+    agents: [
+      agentFixture(RESEARCH_AGENT_ID, "Research Agent", {
+        avatarUrl: avatarComposerUrl({
+          face: "oval",
+          hair: "rounded-crop",
+          expression: "neutral-smile",
+          skin: "deep",
+          hairColor: "green",
+        }),
+      }),
+    ],
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  await screen.findByRole("heading", { name: "Research Agent" });
+  click(labelledButton("Customize avatar"));
+
+  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 4)).toStrictEqual([
+    expect.stringContaining("/hairs/oval/rounded-crop-green-rear.svg"),
+    expect.stringContaining("/faces/oval-deep.svg"),
+    expect.stringContaining("/hairs/oval/rounded-crop-green-front.svg"),
+    expect.stringContaining("/expressions/neutral-smile-oval.svg"),
+  ]);
 });
 
 test("A member cannot customize another user's public agent avatar", async () => {

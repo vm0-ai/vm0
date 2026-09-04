@@ -55,10 +55,7 @@ import {
   type ThreeColumnSearchFilter,
 } from "../../signals/okou-page/sidebar-state.ts";
 import type { SubagentInfo } from "../../signals/agent.ts";
-import {
-  pinnedAgentIds$,
-  pinnedAgentRenderOrder$,
-} from "../../signals/okou-page/pinned-agents.ts";
+import { pinnedAgentIds$ } from "../../signals/okou-page/pinned-agents.ts";
 import { sidebarActiveThreadIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
@@ -1300,7 +1297,7 @@ export function PinAgentDialog({
   const query = useGet(pinAgentDialogQuery$);
   const setQuery = useSet(setPinAgentDialogQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinnedRenderOrder = useLastResolved(pinnedAgentRenderOrder$) ?? [];
+  const pinnedRenderOrder = pinnedIds;
 
   const pinnedIdSet = new Set(pinnedIds);
   const trimmedQuery = query.trim().toLowerCase();
