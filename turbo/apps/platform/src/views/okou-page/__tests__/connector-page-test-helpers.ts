@@ -362,8 +362,8 @@ export function mockCustomConnectorStory(context: TestContext): void {
           authMode,
           storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(authMode === "oauth"
-            ? { oauthSetup: "custom", oauthConfig }
-            : { oauthSetup: undefined, oauthConfig: undefined }),
+            ? { oauthConfig }
+            : { oauthConfig: undefined }),
         });
         updated = next;
         return next;
