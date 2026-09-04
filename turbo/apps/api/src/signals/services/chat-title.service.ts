@@ -201,7 +201,7 @@ function chatCompletionContextMessage(
 
 async function generateFastPathText(
   messages: readonly ChatMessageForGeneration[],
-  maxTokens = 30,
+  maxTokens = 512,
   options?: {
     readonly stripMarkdown?: boolean;
   },
@@ -438,7 +438,7 @@ export function generateChatNotificationSummary(
         content: `User request:\n${prompt.slice(0, TITLE_CONTEXT_CHAR_CAP)}\n\nAssistant reply:\n${resultText.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
       },
     ],
-    35,
+    512,
   );
 }
 
@@ -509,7 +509,7 @@ async function generateRecommendedFollowups(
         content: `Recent conversation:\n${context}`,
       },
     ],
-    400,
+    1024,
     { stripMarkdown: false },
   );
 

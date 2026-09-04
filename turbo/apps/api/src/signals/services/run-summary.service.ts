@@ -56,7 +56,7 @@ async function generateRunSummary(
         content: `Context (user request):\n${promptSnippet}\n\nResult:\n${resultSnippet}`,
       },
     ],
-    80,
+    768,
     { reasoning: { effort: "low" }, temperature: 0.3 },
   );
   return content === null ? null : stripMarkdown(content);
