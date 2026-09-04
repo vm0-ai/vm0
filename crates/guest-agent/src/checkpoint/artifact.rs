@@ -168,7 +168,7 @@ async fn snapshot_artifact_plan(
 
 /// Snapshot artifact entries.
 ///
-/// Memory rides in `VM0_ARTIFACTS` post-#10602, so there is no longer a
+/// Memory rides in the private run-payload artifact list, so there is no
 /// separate memory arm. The generated checkpoint contract preserves the
 /// optional missing-root policy for every snapshot path.
 ///
