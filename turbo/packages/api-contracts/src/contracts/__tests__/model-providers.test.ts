@@ -47,6 +47,7 @@ import {
   VM0_MODEL_TO_PROVIDER,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   CODEX_FAST_MODE_MODELS,
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -63,13 +64,16 @@ import { getModelProviderTypeForSurfaceProtocol } from "../model-provider-gatewa
 import { modelProvidersByTypeContract } from "../model-provider-routes";
 
 describe("model-first canonical catalog", () => {
-  it("recognizes GPT 5.6 Codex fast mode models", () => {
+  it("recognizes Codex fast mode models", () => {
     expect(CODEX_FAST_MODE_MODELS).toEqual([
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
     ]);
     expect(isCodexFastModeModel("gpt-5.5")).toBe(false);
+    expect(isCodexFastModeModel("gpt-6-astra")).toBe(true);
+    expect(isCodexFastModeModel("openai/gpt-6-astra")).toBe(true);
     expect(isCodexFastModeModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isCodexFastModeModel("gpt-5.6-terra")).toBe(true);
     expect(isCodexFastModeModel("gpt-5.6-luna")).toBe(true);
@@ -107,6 +111,7 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-8",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -120,6 +125,7 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
       false,
     );
+    expect(supportedRunModelSchema.safeParse("gpt-6-astra").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("gpt-5.6-sol").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("gpt-5.6-terra").success).toBe(
       true,
@@ -190,6 +196,8 @@ describe("model-first canonical catalog", () => {
   });
 
   it("identifies models blocked on limited-free-1", () => {
+    expect(isLimitedFree1RestrictedRunModel("gpt-6-astra")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-6-astra")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(true);
@@ -252,6 +260,7 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
       "Claude Fable 5",
     );
+    expect(getCanonicalModelDisplayName("gpt-6-astra")).toBe("GPT 6 Astra");
     expect(getCanonicalModelDisplayName("gpt-5.6-sol")).toBe("GPT 5.6 Sol");
     expect(getCanonicalModelDisplayName("gpt-5.6-terra")).toBe("GPT 5.6 Terra");
     expect(getCanonicalModelDisplayName("gpt-5.6-luna")).toBe("GPT 5.6 Luna");
@@ -291,6 +300,7 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("glm-5.1")).toBe(false);
     expect(isSupportedRunModel("mimo-v2.5")).toBe(false);
     expect(isSupportedRunModel("hy3-preview")).toBe(false);
+    expect(isSupportedRunModel("gpt-6-astra")).toBe(true);
     expect(isSupportedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isSupportedRunModel("kimi-k3")).toBe(false);
     expect(isSupportedRunModel("openai/gpt-5.6-sol")).toBe(false);
@@ -335,6 +345,7 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-8",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -403,6 +414,12 @@ describe("model-first canonical catalog", () => {
       "openrouter-api-key",
       "vercel-ai-gateway",
     ]);
+    expect(getProvidersForModel("gpt-6-astra")).toEqual([
+      "built-in",
+      "openai-api-key",
+      "codex-oauth-token",
+      "openrouter-codex",
+    ]);
     expect(getProvidersForModel("gpt-5.5")).toEqual([
       "built-in",
       "openai-api-key",
@@ -451,6 +468,19 @@ describe("model-first canonical catalog", () => {
   });
 
   it("checks model/provider compatibility", () => {
+    expect(isModelSupportedByProvider("gpt-6-astra", "built-in")).toBe(true);
+    expect(isModelSupportedByProvider("gpt-6-astra", "openai-api-key")).toBe(
+      true,
+    );
+    expect(isModelSupportedByProvider("gpt-6-astra", "codex-oauth-token")).toBe(
+      true,
+    );
+    expect(isModelSupportedByProvider("gpt-6-astra", "openrouter-codex")).toBe(
+      true,
+    );
+    expect(
+      isModelSupportedByProvider("gpt-6-astra", "vercel-ai-gateway-codex"),
+    ).toBe(false);
     expect(isModelSupportedByProvider("gpt-5.6-sol", "built-in")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openai-api-key")).toBe(
       true,
@@ -543,6 +573,17 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
       "gpt-5.5",
     );
+    expect(getProviderRuntimeModel("openai-api-key", "gpt-6-astra")).toBe(
+      "gpt-6-astra",
+    );
+    expect(getProviderRuntimeModel("openrouter-codex", "gpt-6-astra")).toBe(
+      "openai/gpt-6-astra",
+    );
+    expect(getProviderRuntimeModel("built-in", "gpt-6-astra")).toBe(
+      "gpt-6-astra",
+    );
+    expect(getVm0ConcreteProviderType("gpt-6-astra")).toBe("openai-api-key");
+    expect(getVm0Vendor("gpt-6-astra")).toBe("openai");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.6-sol")).toBe(
       "gpt-5.6-sol",
     );
@@ -554,6 +595,23 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
       "custom/model",
     );
+  });
+
+  it("routes GPT 6 Astra through OpenAI with an OpenRouter fallback", () => {
+    expect(getVm0BuiltInModelRouteCandidates("gpt-6-astra")).toEqual([
+      {
+        selectedModel: "gpt-6-astra",
+        providerType: "openai-api-key",
+        upstreamModel: "gpt-6-astra",
+        vendor: "openai",
+      },
+      {
+        selectedModel: "gpt-6-astra",
+        providerType: "openrouter-codex",
+        upstreamModel: "openai/gpt-6-astra",
+        vendor: "openrouter",
+      },
+    ]);
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
@@ -593,6 +651,7 @@ describe("model-first canonical catalog", () => {
       "claude-sonnet-4-6",
       "deepseek-v4-flash",
       "deepseek-v4-pro",
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -665,6 +724,7 @@ describe("model-first canonical catalog", () => {
     ]);
     expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("deepseek-v4-flash");
     expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("deepseek-v4-flash");
+    expect(DEFAULT_ORG_MODEL_POLICY_MODELS).not.toContain("gpt-6-astra");
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).not.toContain("deepseek-v4-pro");
     expect(getDefaultModel("built-in")).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -695,6 +755,7 @@ describe("model-first canonical catalog", () => {
         "claude-fable-5-1": "$$$$",
         "claude-fable-5": "$$$$",
         "claude-opus-5": "$$$",
+        "gpt-6-astra": "$$$$",
         "gpt-5.6-sol": "$$$",
         "gpt-5.6-terra": "$$",
         "gpt-5.6-luna": "$",
@@ -707,6 +768,7 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-fable-5-1")).toBe("$$$$");
     expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
     expect(getVm0ModelPriceTier("claude-opus-5")).toBe("$$$");
+    expect(getVm0ModelPriceTier("gpt-6-astra")).toBe("$$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-sol")).toBe("$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-terra")).toBe("$$");
     expect(getVm0ModelPriceTier("gpt-5.6-luna")).toBe("$");
@@ -717,6 +779,9 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-opus-4-7")).toBeUndefined();
     expect(getVm0ModelPriceTier("kimi-k3")).toBeUndefined();
     expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
+    expect(MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS["gpt-6-astra"]).toBe(
+      272_001,
+    );
   });
 });
 
@@ -924,6 +989,8 @@ describe("normalizeVm0ModelId", () => {
 
 describe("model image input support", () => {
   it.each([
+    "gpt-6-astra",
+    "openai/gpt-6-astra",
     "claude-fable-5-1",
     "anthropic/claude-fable-5.1",
     "claude-fable-5",
@@ -1059,6 +1126,7 @@ describe("openai-api-key codex provider", () => {
 
   it("offers codex-compatible models with gpt-5.6-sol default", () => {
     expect(getModels("openai-api-key")).toEqual([
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -1275,8 +1343,9 @@ describe("codex-oauth-token codex provider", () => {
     expect(envBindings.OPENAI_MODEL).toBe("$model");
   });
 
-  it("offers gpt-5.x models with gpt-5.6-sol default", () => {
+  it("offers current GPT models with gpt-5.6-sol default", () => {
     expect(getModels("codex-oauth-token")).toEqual([
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -1454,10 +1523,14 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
       if (type === "openrouter-codex") {
         expect(getModels(type)).toEqual(
           expect.arrayContaining([
+            "openai/gpt-6-astra",
             "deepseek/deepseek-v4-flash",
             "deepseek/deepseek-v4-pro",
           ]),
         );
+      }
+      if (type === "vercel-ai-gateway-codex") {
+        expect(getModels(type)).not.toContain("openai/gpt-6-astra");
       }
       expect(getDefaultModel(type)).toBe("openai/gpt-5.6-luna");
     },
@@ -1470,6 +1543,9 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
   });
 
   it("translate canonical GPT models to vendor-prefixed runtime IDs", () => {
+    expect(getProviderRuntimeModel("openrouter-codex", "gpt-6-astra")).toBe(
+      "openai/gpt-6-astra",
+    );
     expect(getProviderRuntimeModel("openrouter-codex", "gpt-5.5")).toBe(
       "openai/gpt-5.5",
     );
