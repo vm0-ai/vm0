@@ -718,13 +718,13 @@ describe("model-first canonical catalog", () => {
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-fable-5-1",
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-luna",
       "deepseek-v4-flash",
     ]);
     expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("deepseek-v4-flash");
     expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("deepseek-v4-flash");
-    expect(DEFAULT_ORG_MODEL_POLICY_MODELS).not.toContain("gpt-6-astra");
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).not.toContain("deepseek-v4-pro");
     expect(getDefaultModel("built-in")).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
