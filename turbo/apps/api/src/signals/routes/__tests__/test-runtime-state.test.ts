@@ -227,7 +227,7 @@ describe("POST /api/test/runtime-state/action", () => {
   );
 
   it("isolates expiry-based cooldowns to exact built-in model routes", async () => {
-    await seedVm0BuiltInModelCandidateKeys(context, "claude-fable-5");
+    await seedVm0BuiltInModelCandidateKeys(context, "claude-fable-5-1");
     await seedVm0BuiltInModelCandidateKeys(context, "gpt-5.6-sol");
     const startedAt = Date.UTC(2026, 7, 20, 0, 0, 0);
     const routeCooldownUntil = new Date(startedAt + 60 * 1000);
@@ -294,7 +294,7 @@ describe("POST /api/test/runtime-state/action", () => {
     const claudePrimary = await withMockNowForTest(startedAt, async () => {
       return await resolveVm0BuiltInModelRouteFixture(
         context,
-        "claude-fable-5",
+        "claude-fable-5-1",
       );
     });
     expect(claudePrimary?.provider_type).toBe("anthropic-api-key");
@@ -303,14 +303,14 @@ describe("POST /api/test/runtime-state/action", () => {
     }
     await setVm0BuiltInCandidateCooldownFixture(
       context,
-      "claude-fable-5",
+      "claude-fable-5-1",
       claudePrimary,
       routeCooldownUntil,
     );
     const claudeFallback = await withMockNowForTest(startedAt, async () => {
       return await resolveVm0BuiltInModelRouteFixture(
         context,
-        "claude-fable-5",
+        "claude-fable-5-1",
       );
     });
     expect(claudeFallback?.provider_type).toBe("openrouter-api-key");
@@ -319,7 +319,7 @@ describe("POST /api/test/runtime-state/action", () => {
     }
     await setVm0BuiltInCandidateCooldownFixture(
       context,
-      "claude-fable-5",
+      "claude-fable-5-1",
       claudeFallback,
       routeCooldownUntil,
     );
@@ -373,7 +373,7 @@ describe("POST /api/test/runtime-state/action", () => {
         resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol"),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "claude-fable-5"),
+        resolveVm0BuiltInModelRouteFixture(context, "claude-fable-5-1"),
       ).resolves.toMatchObject({ provider_type: "anthropic-api-key" });
     });
   });

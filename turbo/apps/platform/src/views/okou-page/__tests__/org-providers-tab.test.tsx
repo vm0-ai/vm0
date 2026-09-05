@@ -915,8 +915,8 @@ test("Offer an upgrade for restricted Pro models", async () => {
   context.mocks.data.orgModelPolicies([
     builtInPolicy(
       "00000000-0000-4000-a000-000000000221",
-      "claude-fable-5",
-      "Claude Fable 5",
+      "claude-fable-5-1",
+      "Claude Fable 5.1",
       false,
     ),
     builtInPolicy(
