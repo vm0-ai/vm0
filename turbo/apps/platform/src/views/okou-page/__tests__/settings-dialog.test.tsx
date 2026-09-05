@@ -545,13 +545,15 @@ test("Inspect empty IndexedDB storage before the first snapshot arrives", async 
 });
 
 test("Measure the threads inside a singleton snapshot on demand", async () => {
-  const snapshotRequested = context.mocks.deferred<void>();
   const agentId = crypto.randomUUID();
+  const snapshotRequested = context.mocks.deferred<void>();
+  const releaseSnapshot = context.mocks.deferred<void>();
   context.mocks.data.agents([{ agentId }]);
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+  context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
     if (!snapshotRequested.settled()) {
       snapshotRequested.resolve();
     }
+    await releaseSnapshot.promise;
     return respond(200, {
       chatThreads: ["Snapshot 文 😀", "Second thread", "Third thread"].map(
         (title) => {
@@ -583,10 +585,13 @@ test("Measure the threads inside a singleton snapshot on demand", async () => {
     featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     sharedWorkerTestTransport: "message-port",
   });
-  // Page content can render before the message-port bootstrap reaches the
-  // snapshot fixture. Start the DOM wait after that network boundary.
+  const sidebar = await screen.findByTestId("sidebar-scroll-area");
+  // Page content can render before the Worker requests its first snapshot.
+  // Release it after both are ready, then observe the committed snapshot.
   await snapshotRequested.promise;
-  await screen.findByText("Snapshot 文 😀");
+  expect(within(sidebar).queryByText("Snapshot 文 😀")).not.toBeInTheDocument();
+  releaseSnapshot.resolve();
+  await within(sidebar).findByText("Snapshot 文 😀");
   const rail = await screen.findByTestId("labeled-nav-rail");
   click(within(rail).getByLabelText("Test User"));
   const accountMenu = await screen.findByRole("menu");

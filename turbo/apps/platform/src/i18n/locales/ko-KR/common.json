@@ -2364,8 +2364,11 @@
       "targetLanguage": "번역 언어"
     },
     "voice": {
+      "busyInAnotherTab": "다른 탭에서 이 대화를 녹음 중입니다. 녹음이 끝나면 다시 시도하세요.",
       "checkingLimit": "음성 입력 제한 확인 중",
+      "cleanupFailed": "텍스트가 추가되었지만 저장된 녹음을 삭제하지 못했습니다.",
       "confirmRecording": "OK",
+      "discarding": "음성 초안 삭제 중...",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",
       "inputLimitReachedMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 업그레이드를 요청하세요.",
@@ -2374,8 +2377,14 @@
       "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
+      "removeDraft": "음성 초안 삭제",
+      "restoreFailed": "음성 초안을 불러올 수 없습니다. 다시 시도하세요.",
+      "restoring": "음성 초안 복원 중...",
+      "retry": "다시 시도",
+      "retryReady": "녹음이 보관되어 있습니다. 텍스트 변환을 다시 시도하세요.",
       "starting": "음성 입력 시작",
       "stopRecording": "녹음 중지",
+      "storageFailed": "오디오를 저장하지 못했습니다. 재시도하면 이 기기에 이미 저장된 오디오만 복구됩니다.",
       "transcribing": "전사 중",
       "transcribingProgress": "전사 진행 중...",
       "transcriptionFailed": "음성 전사 실패. 다시 시도하세요."

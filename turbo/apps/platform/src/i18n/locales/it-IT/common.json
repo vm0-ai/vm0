@@ -2411,8 +2411,11 @@
       "targetLanguage": "Lingua di traduzione"
     },
     "voice": {
+      "busyInAnotherTab": "Questa conversazione ha una registrazione attiva in un’altra scheda. Riprova quando termina.",
       "checkingLimit": "Controllo del limite di input vocale",
+      "cleanupFailed": "Il testo è stato aggiunto, ma non è stato possibile rimuovere la registrazione salvata.",
       "confirmRecording": "OK",
+      "discarding": "Rimozione della bozza vocale...",
       "input": "Ingresso vocale",
       "inputLimitReached": "Limite di input vocale raggiunto. Passa a Pro o Team per limiti più alti.",
       "inputLimitReachedMember": "Limite di input vocale raggiunto. Chiedi a un amministratore dell'area di lavoro di effettuare l'upgrade per ottenere limiti più alti.",
@@ -2421,8 +2424,14 @@
       "inputLimitReachedReset": "Limite di input vocale raggiunto. Attendi che il limite venga reimpostato.",
       "microphoneAccessDenied": "L'accesso al microfono è stato negato. Consenti l'accesso al microfono e riprova.",
       "openingMicrophone": "Apertura del microfono...",
+      "removeDraft": "Rimuovi bozza vocale",
+      "restoreFailed": "Impossibile caricare la bozza vocale. Riprova.",
+      "restoring": "Ripristino della bozza vocale...",
+      "retry": "Riprova",
+      "retryReady": "La registrazione è conservata. Riprova la trascrizione.",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",
+      "storageFailed": "Impossibile salvare l’audio. Riprova recupera solo l’audio già salvato su questo dispositivo.",
       "transcribing": "Trascrizione",
       "transcribingProgress": "Trascrizione...",
       "transcriptionFailed": "La trascrizione vocale non è riuscita. Riprova."

@@ -31,7 +31,10 @@ import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { i18n } from "../../i18n/index.ts";
-import { startVoiceDraftPcmCapture } from "./voice-draft-pcm.ts";
+import {
+  startVoiceDraftPcmCapture,
+  type VoiceDraftPcmPersistence,
+} from "./voice-draft-pcm.ts";
 
 const L = logger("VoiceIO:STT");
 
@@ -82,8 +85,9 @@ const internalStartingPromise$ =
   state<Promise<VoiceRecordingStartup | null> | null>(null);
 const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
 interface VoiceRecordingLifecycle {
-  readonly finish: (recording: VoiceRecordingCapture | null) => Promise<void>;
+  readonly finish: (captured: boolean) => Promise<void>;
   readonly fail: () => Promise<void>;
+  readonly persistence: VoiceDraftPcmPersistence;
 }
 
 interface VoiceRecordingOptions {
@@ -91,13 +95,8 @@ interface VoiceRecordingOptions {
   readonly autoStopOnSilence: boolean;
 }
 
-interface VoiceRecordingCapture {
-  readonly blob: Blob;
-  readonly mimeType: string;
-}
-
 interface VoiceRecordingCompletion {
-  readonly finish: (recording: VoiceRecordingCapture | null) => Promise<void>;
+  readonly finish: (captured: boolean) => Promise<void>;
   readonly fail: () => Promise<void>;
 }
 const internalRecordingCompletion$ = state<VoiceRecordingCompletion | null>(
@@ -249,9 +248,7 @@ interface VoiceRecordingSession {
   readonly cancel: () => void;
   readonly handleActivity?: (activity: VoiceActivity) => void;
   readonly startSilenceTimeout?: () => void;
-  readonly stopAndTranscribe: (
-    signal: AbortSignal,
-  ) => Promise<VoiceRecordingCapture | null>;
+  readonly stopAndTranscribe: (signal: AbortSignal) => Promise<void>;
 }
 
 interface VoiceRecordingStartup {
@@ -1191,15 +1188,12 @@ function createVoiceSegmentSession(
         silenceTimer.start();
       }
     },
-    async stopAndTranscribe(
-      stopSignal: AbortSignal,
-    ): Promise<VoiceRecordingCapture | null> {
+    async stopAndTranscribe(stopSignal: AbortSignal): Promise<void> {
       stopped = true;
       silenceTimer.clear();
       await transcriber.enqueueSegment("stop", shouldUploadStopSegment(), true);
       stopSignal.throwIfAborted();
       await transcriber.waitForPending();
-      return null;
     },
   };
 }
@@ -1227,7 +1221,7 @@ const finishRecordingStartup$ = command(
     if (!startup) {
       const recordingCompletion = get(internalRecordingCompletion$);
       set(resetRecord$);
-      await recordingCompletion?.finish(null);
+      await recordingCompletion?.finish(false);
       parentSignal.throwIfAborted();
       return null;
     }
@@ -1237,9 +1231,10 @@ const finishRecordingStartup$ = command(
 
 async function startVoiceDraftRecordingSession(
   stream: MediaStream,
+  persistence: VoiceDraftPcmPersistence,
   signal: AbortSignal,
 ): Promise<VoiceRecordingSession> {
-  const pcm = await startVoiceDraftPcmCapture(stream, signal);
+  const pcm = await startVoiceDraftPcmCapture(stream, persistence, signal);
   if (signal.aborted) {
     pcm.cancel();
     signal.throwIfAborted();
@@ -1248,8 +1243,7 @@ async function startVoiceDraftRecordingSession(
   return {
     cancel: pcm.cancel,
     async stopAndTranscribe(stopSignal) {
-      const blob = await pcm.finish(stopSignal);
-      return { blob, mimeType: blob.type };
+      await pcm.finish(stopSignal);
     },
   };
 }
@@ -1283,7 +1277,11 @@ export const startRecording$ = command(
         signal.throwIfAborted();
         let session: VoiceRecordingSession;
         if (lifecycle) {
-          session = await startVoiceDraftRecordingSession(stream, signal);
+          session = await startVoiceDraftRecordingSession(
+            stream,
+            lifecycle.persistence,
+            signal,
+          );
         } else {
           const recorder = createMediaRecorder(stream);
           const sessionOptions: VoiceSegmentSessionOptions = {
@@ -1402,7 +1400,7 @@ export const stopAndTranscribe$ = command(
     }
 
     const recordingCompletion = get(internalRecordingCompletion$);
-    let recording: VoiceRecordingCapture | null = null;
+    let captureCompleted = false;
     const completion = withCleanup(
       withCleanup(
         (async () => {
@@ -1438,7 +1436,7 @@ export const stopAndTranscribe$ = command(
             await recordingCompletion.fail();
             return;
           }
-          recording = captured.value;
+          captureCompleted = true;
         })(),
         () => {
           set(resetRecord$);
@@ -1446,7 +1444,7 @@ export const stopAndTranscribe$ = command(
       ),
       async () => {
         if (recordingCompletion) {
-          await recordingCompletion.finish(recording);
+          await recordingCompletion.finish(captureCompleted);
         }
       },
     );

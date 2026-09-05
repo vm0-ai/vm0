@@ -2411,8 +2411,11 @@
       "targetLanguage": "Langue de traduction"
     },
     "voice": {
+      "busyInAnotherTab": "Un enregistrement est en cours pour cette conversation dans un autre onglet. Réessayez après son arrêt.",
       "checkingLimit": "Vérification de la limite d'entrée vocale",
+      "cleanupFailed": "Le texte a été ajouté, mais l’enregistrement sauvegardé n’a pas pu être supprimé.",
       "confirmRecording": "OK",
+      "discarding": "Suppression du brouillon vocal...",
       "input": "Entrée vocale",
       "inputLimitReached": "Limite d'entrée vocale atteinte. Passez à Pro ou Team pour des limites plus élevées.",
       "inputLimitReachedMember": "Limite d'entrée vocale atteinte. Demandez à un administrateur de l'espace de travail d'effectuer une mise à niveau pour obtenir des limites plus élevées.",
@@ -2421,8 +2424,14 @@
       "inputLimitReachedReset": "Limite d'entrée vocale atteinte. Veuillez attendre la réinitialisation de votre limite.",
       "microphoneAccessDenied": "L'accès au microphone a été refusé. Autorisez l'accès au microphone et réessayez.",
       "openingMicrophone": "Ouverture du microphone...",
+      "removeDraft": "Supprimer le brouillon vocal",
+      "restoreFailed": "Impossible de charger votre brouillon vocal. Réessayez.",
+      "restoring": "Restauration du brouillon vocal...",
+      "retry": "Réessayer",
+      "retryReady": "Votre enregistrement est conservé. Réessayez la transcription.",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
+      "storageFailed": "Impossible de sauvegarder le son. Réessayer ne récupère que le son déjà enregistré sur cet appareil.",
       "transcribing": "Transcription",
       "transcribingProgress": "Transcription en cours...",
       "transcriptionFailed": "Échec de la transcription vocale. Réessayez."
