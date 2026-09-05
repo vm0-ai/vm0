@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.85.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.7...guest-agent-v0.85.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* settle private pi maintenance at the generic checkpoint boundary ([#31947](https://github.com/vm0-ai/vm0/issues/31947)) ([2db67fc](https://github.com/vm0-ai/vm0/commit/2db67fc8be4f1fa863c4faf8ed4905acfc65cdb5))
+
 ## [0.85.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.6...guest-agent-v0.85.7) (2026-09-05)
 
 
