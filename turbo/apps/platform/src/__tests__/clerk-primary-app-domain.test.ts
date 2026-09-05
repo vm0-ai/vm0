@@ -100,7 +100,7 @@ test("An explicitly requested app.vm0.ai keeps Okou a satellite", async () => {
   expect(clerk.loads).toContainEqual(VM0_PRIMARY_SATELLITE_LOAD_OPTIONS);
 });
 
-const BOOTSTRAP_SCRIPT_OPENING_TAG = '<script data-okou-clerk-bootstrap="">';
+const BOOTSTRAP_SCRIPT_SELECTOR = "[data-okou-clerk-bootstrap]";
 const PRIMARY_APP_DOMAIN_MARKER = "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";
 
 interface InlineBootstrapLoadOptions {
@@ -132,12 +132,12 @@ type InlineBootstrap = (
 ) => void;
 
 function inlineBootstrapSource(): string {
-  const start = indexHtml.indexOf(BOOTSTRAP_SCRIPT_OPENING_TAG);
-  const end = indexHtml.indexOf("</script>", start);
-  if (start === -1 || end === -1) {
+  const page = new DOMParser().parseFromString(indexHtml, "text/html");
+  const source = page.querySelector(BOOTSTRAP_SCRIPT_SELECTOR)?.textContent;
+  if (!source) {
     throw new Error("index.html no longer contains the Clerk bootstrap script");
   }
-  return indexHtml.slice(start + BOOTSTRAP_SCRIPT_OPENING_TAG.length, end);
+  return source;
 }
 
 // Runs the bootstrap the deployed page runs, with the deployment marker
