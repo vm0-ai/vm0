@@ -182,8 +182,16 @@ interface ComposerDraftSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly save$: Command<Promise<void>, [AbortSignal]>;
+  /** Resolves true only when the draft has been persisted. */
+  readonly save$: Command<Promise<boolean>, [AbortSignal]>;
 }
+
+export const skipComposerDraftSave$ = command(
+  (_context, signal: AbortSignal): Promise<boolean> => {
+    signal.throwIfAborted();
+    return Promise.resolve(false);
+  },
+);
 
 interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly temporaryModelNoticeEnabled$: Computed<boolean>;
@@ -629,7 +637,13 @@ function createVoiceDraftTranscriptionCommand(
       set(workflowComposer.insertText$, result.value.body.polishedText);
       set(state$, { ...voiceInput, transcriptInserted: true });
     }
-    await set(draft.save$, signal);
+    const persisted = await set(draft.save$, signal);
+    signal.throwIfAborted();
+    if (storageKey && !persisted) {
+      // An optimistic thread can skip saving until its created event arrives.
+      // Keep the recording and let cleanup restore Retry for the unsaved text.
+      return;
+    }
     if (storageKey) {
       await deleteVoiceDraftRecording(storageKey, voiceInput.recording.id);
       signal.throwIfAborted();

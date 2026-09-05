@@ -24,6 +24,7 @@ import { selectedComputerUseHostId } from "./computer-use-hosts.ts";
 import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import {
   createComposerSignals,
+  skipComposerDraftSave$,
   type ComposerSubmission,
 } from "./composer-signals.ts";
 import type { ChatEvent } from "../chat-page/chat-event-types.ts";
@@ -298,7 +299,9 @@ function createAgentComposerSignalsWithDraft(
     draft: {
       signals: agentDraft.draft,
       load$: options.forward ? noOpAction$ : agentDraft.load$,
-      save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,
+      save$: options.forward
+        ? skipComposerDraftSave$
+        : agentDraft.queueDraftSync$,
     },
     chatEvents$,
     voiceDraftTarget: options.forward ? null : `agent:${agentId}`,
