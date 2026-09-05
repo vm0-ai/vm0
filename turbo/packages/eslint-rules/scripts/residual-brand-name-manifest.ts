@@ -969,14 +969,10 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
   ...baselineNames(
     [
       "Zero-run",
-      "conflictZeroRunId",
-      "danglingZeroRunId",
-      "goalZeroRunId",
       "zero-run",
       "zero-run-fixture",
       "zeroRunGoalId",
       "zeroRunGroupId",
-      "zeroRunId",
       "zeroRunRows",
       "zeroRuns",
       "zero_runs-only",
