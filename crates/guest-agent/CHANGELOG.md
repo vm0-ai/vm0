@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.85.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.4...guest-agent-v0.85.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** own pending-tool handoff through native settlement ([#31924](https://github.com/vm0-ai/vm0/issues/31924)) ([cdcbfcc](https://github.com/vm0-ai/vm0/commit/cdcbfccdb7e2e32cecfe1a7aff2829d32f28f675))
+
 ## [0.85.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.3...guest-agent-v0.85.4) (2026-09-05)
 
 
