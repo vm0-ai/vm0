@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.845.5](https://github.com/vm0-ai/vm0/compare/app-v0.845.4...app-v0.845.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** preserve connector account card layout while loading ([#31914](https://github.com/vm0-ai/vm0/issues/31914)) ([aed13b2](https://github.com/vm0-ai/vm0/commit/aed13b2c13a2cbff2fd03503a14f7c315764ad73))
+
 ## [0.845.4](https://github.com/vm0-ai/vm0/compare/app-v0.845.3...app-v0.845.4) (2026-09-05)
 
 
