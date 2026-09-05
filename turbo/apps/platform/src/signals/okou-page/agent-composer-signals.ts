@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/connector-accounts";
@@ -86,57 +86,55 @@ const setModelSelection$ = command(
   },
 );
 
-const setVideoModel$ = command(
-  async (
-    { get, set },
-    videoModel: VideoModel | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(setChatPageVideoModelSelection$, videoModel);
-    const explicitDefaultActionEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
-    if (explicitDefaultActionEnabled) {
-      // The composer card carries an explicit "Use this for future chats" action,
-      // so picking a video model only scopes the next new chat.
-      return;
-    }
-    const userPreference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    await set(
-      updateUserModelPreference$,
-      {
-        selectedModel: userPreference.selectedModel,
-        serviceTier: userPreference.serviceTier,
-        selectedVideoModel: videoModel,
-      },
-      signal,
-    );
+function createMediaModelSetter<M extends ImageModel | VideoModel>(
+  setSelection$: Command<void, [M | null]>,
+  preference: (
+    model: M | null,
+  ) =>
+    | { selectedImageModel: ImageModel | null }
+    | { selectedVideoModel: VideoModel | null },
+) {
+  return command(
+    async (
+      { get, set },
+      model: M | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      set(setSelection$, model);
+      const explicitDefaultActionEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ??
+        false;
+      if (explicitDefaultActionEnabled) {
+        // The composer card carries an explicit "Use this for future chats" action,
+        // so picking a media model only scopes the next new chat.
+        return;
+      }
+      const userPreference = await get(userModelPreference$);
+      signal.throwIfAborted();
+      await set(
+        updateUserModelPreference$,
+        {
+          selectedModel: userPreference.selectedModel,
+          serviceTier: userPreference.serviceTier,
+          ...preference(model),
+        },
+        signal,
+      );
+    },
+  );
+}
+
+const setVideoModel$ = createMediaModelSetter(
+  setChatPageVideoModelSelection$,
+  (selectedVideoModel) => {
+    return { selectedVideoModel };
   },
 );
 
-const setImageModel$ = command(
-  async (
-    { get, set },
-    imageModel: ImageModel | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(setChatPageImageModelSelection$, imageModel);
-    const explicitDefaultActionEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
-    if (explicitDefaultActionEnabled) {
-      return;
-    }
-    const userPreference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    await set(
-      updateUserModelPreference$,
-      {
-        selectedModel: userPreference.selectedModel,
-        serviceTier: userPreference.serviceTier,
-        selectedImageModel: imageModel,
-      },
-      signal,
-    );
+const setImageModel$ = createMediaModelSetter(
+  setChatPageImageModelSelection$,
+  (selectedImageModel) => {
+    return { selectedImageModel };
   },
 );
 

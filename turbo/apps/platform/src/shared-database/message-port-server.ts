@@ -34,7 +34,6 @@ type RequestMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "get-computed" | "query" }
 >;
-type RoutedMessage = RequestMessage;
 type TokenResponseMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "token-error" | "token-result" }
@@ -145,7 +144,7 @@ export class SharedDatabaseMessagePortServer {
   }
 
   private routeStoreMessage(
-    message: RoutedMessage,
+    message: RequestMessage,
     signal: AbortSignal,
   ): Promise<unknown> | unknown {
     if (this.registeredSignal !== signal) {

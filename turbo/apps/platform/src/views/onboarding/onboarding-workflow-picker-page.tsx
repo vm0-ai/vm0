@@ -37,7 +37,10 @@ import {
   type OnboardingWorkflowCategory,
 } from "./onboarding-data.ts";
 import type { OnboardingWorkflowCategoryId } from "./onboarding-workflow-specs.ts";
-import { WorkflowPreviewDiagram } from "./onboarding-workflow-diagram.tsx";
+import {
+  WorkflowConnectorIcon,
+  WorkflowPreviewDiagram,
+} from "./onboarding-workflow-diagram.tsx";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import {
   OnboardingDialog,
@@ -61,21 +64,6 @@ const CATEGORY_ICONS: Readonly<
   operations: Sun,
   everyone: Sparkles,
 };
-
-function WorkflowConnectorIcon({
-  connectorSlug,
-  size,
-}: {
-  readonly connectorSlug: ConnectorSlug;
-  readonly size: number;
-}) {
-  const catalogBySlugLoadable = useLastLoadable(connectorCatalogStatusBySlug$);
-  const icon =
-    catalogBySlugLoadable.state === "hasData"
-      ? catalogBySlugLoadable.data.get(connectorSlug)?.icon
-      : undefined;
-  return <ConnectorIcon icon={icon} size={size} />;
-}
 
 export function WorkflowConnectorPills({
   connectorSlugs,

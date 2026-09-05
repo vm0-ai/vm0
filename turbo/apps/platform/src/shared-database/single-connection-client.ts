@@ -105,8 +105,10 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
 
   async registerTab(signal: AbortSignal): Promise<void> {
     await this.prepare(signal);
-    const bridge = this.requireBridge();
-    await bridge.registerTab(this.requireConnectionController().signal);
+    const bridge = this.requireRegistered(this.bridge);
+    await bridge.registerTab(
+      this.requireRegistered(this.connectionController).signal,
+    );
     signal.throwIfAborted();
   }
 
@@ -114,7 +116,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
-    const bridge = this.requireBridge();
+    const bridge = this.requireRegistered(this.bridge);
     return await observeClientOperation(
       {
         event_name: "shared_database.query",
@@ -133,10 +135,10 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
   async getComputed<TKey extends ComputedKey>(
     computedKey: TKey,
   ): Promise<ComputedValue<TKey>> {
-    const bridge = this.requireBridge();
+    const bridge = this.requireRegistered(this.bridge);
     return await this.runWithReload(() => {
       return bridge.getComputed(computedKey);
-    }, this.requireOwnerSignal());
+    }, this.requireRegistered(this.ownerSignal));
   }
 
   private bindOwner(signal: AbortSignal): void {
@@ -152,7 +154,9 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
 
   private async prepareTransport(signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
-    const controller = createChildAbortController(this.requireOwnerSignal());
+    const controller = createChildAbortController(
+      this.requireRegistered(this.ownerSignal),
+    );
     this.options.events.statusChanged("connecting");
     const created = await settle(
       this.constructBridge(controller.signal),
@@ -187,7 +191,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
       withTransportTimeout(
         work,
         this.controlRequestTimeoutMs,
-        this.requireConnectionController().signal,
+        this.requireRegistered(this.connectionController).signal,
       ),
       signal,
     );
@@ -221,24 +225,10 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     return createDeferredPromise<never>(signal).promise;
   }
 
-  private requireBridge(): SharedDatabaseBridge {
-    if (!this.bridge) {
+  private requireRegistered<T>(value: T | null): T {
+    if (!value) {
       throw new Error("Shared database tab registration is required first");
     }
-    return this.bridge;
-  }
-
-  private requireConnectionController(): AbortController {
-    if (!this.connectionController) {
-      throw new Error("Shared database tab registration is required first");
-    }
-    return this.connectionController;
-  }
-
-  private requireOwnerSignal(): AbortSignal {
-    if (!this.ownerSignal) {
-      throw new Error("Shared database tab registration is required first");
-    }
-    return this.ownerSignal;
+    return value;
   }
 }

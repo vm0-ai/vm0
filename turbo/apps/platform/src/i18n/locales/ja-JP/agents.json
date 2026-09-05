@@ -77,7 +77,6 @@
   "detail": {
     "chatWith": "{{agentName}} とチャットする",
     "defaultDescription": "あなた向けに調整されたAIチームメイト",
-    "noSelection": "エージェントが選択されていません",
     "notFound": {
       "back": "チームに戻る",
       "description": "エージェント「{{agentId}}」が存在しないか、アクセス権がありません。",

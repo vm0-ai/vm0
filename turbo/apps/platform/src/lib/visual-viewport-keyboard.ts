@@ -177,7 +177,6 @@ function revealFocusedComposer(): void {
 type KeyboardViewportState = {
   baselineHeight: number;
   keyboardOpen: boolean;
-  keyboardOpening: boolean;
   resetBaselineOnSettle: boolean;
 };
 
@@ -192,7 +191,6 @@ function updateKeyboardViewportState(
     }
     state.baselineHeight = readLayoutViewportHeight(viewport);
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     state.resetBaselineOnSettle = false;
   }
 
@@ -203,7 +201,6 @@ function updateKeyboardViewportState(
       state.baselineHeight = readLayoutViewportHeight(viewport);
     }
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     setKeyboardClosed();
     return;
   }
@@ -214,18 +211,15 @@ function updateKeyboardViewportState(
   );
   if (!hasKeyboardOcclusion) {
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     setKeyboardClosed();
     return;
   }
 
   if (!state.keyboardOpen && !commitOpening) {
-    state.keyboardOpening = true;
     return;
   }
 
   state.keyboardOpen = true;
-  state.keyboardOpening = false;
   setKeyboardOpen(readKeyboardOcclusion(state.baselineHeight, viewport));
 }
 
@@ -245,7 +239,6 @@ export function setupVisualViewportKeyboardState(
   const state: KeyboardViewportState = {
     baselineHeight: readLayoutViewportHeight(viewport),
     keyboardOpen: false,
-    keyboardOpening: false,
     resetBaselineOnSettle: false,
   };
   let scheduledFrameId: number | null = null;
@@ -317,7 +310,6 @@ export function setupVisualViewportKeyboardState(
   const scheduleBaselineReset = () => {
     state.resetBaselineOnSettle = true;
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     cancelSettledUpdate();
     setKeyboardClosed();
 

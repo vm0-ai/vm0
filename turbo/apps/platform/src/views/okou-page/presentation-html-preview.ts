@@ -629,7 +629,7 @@ function hexLuminance(hexColor: string): number {
   );
 }
 
-function contrastRatio(colorA: string, colorB: string): number {
+export function contrastRatio(colorA: string, colorB: string): number {
   const luminanceA = hexLuminance(colorA);
   const luminanceB = hexLuminance(colorB);
   return (
@@ -667,11 +667,11 @@ function mixRgb(
   ];
 }
 
-function previewTextColorOn(background: string): string {
+export function previewTextColorOn(background: string): string {
   return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
 }
 
-function safePreviewGround(accent: string): readonly [string, string] {
+export function safePreviewGround(accent: string): readonly [string, string] {
   const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
   const target: readonly [number, number, number] =
     text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];

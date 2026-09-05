@@ -635,7 +635,6 @@ export function CreditBalanceSection() {
     <CreditBalanceCard
       onBuyCredits={goToBuyCredits}
       onComparePlans={goToComparePlans}
-      splitLayout
     />
   );
 

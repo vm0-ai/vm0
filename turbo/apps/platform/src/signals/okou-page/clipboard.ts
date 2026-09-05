@@ -4,7 +4,13 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { i18n } from "../../i18n/index.ts";
 import { CHAT_ATTACHMENT_HEADINGS } from "../../i18n/resources.ts";
-import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";
+import {
+  isRecord,
+  jsonParseOr,
+  settle,
+  throwIfAbort,
+  withCleanup,
+} from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
 
@@ -20,10 +26,6 @@ export interface ChatClipboardPayload {
   text: string;
   attachments: ChatClipboardAttachment[];
   userMessage?: UserMessageDocument;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isChatClipboardAttachment(

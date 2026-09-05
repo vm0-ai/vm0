@@ -15,9 +15,7 @@ import {
   resolveModelFirstUserDefaultSelection,
 } from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
-import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
-import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
-import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
+import { createPersonalModelProviderAuthSignals } from "./personal-model-provider-auth.ts";
 import { onRef, setLoop } from "../utils.ts";
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
@@ -104,43 +102,14 @@ export const chatPageModelSelection$ = computed(
   },
 );
 
-export const chatPageSelectedModelOauthAvailable$ = computed(
-  async (get): Promise<boolean> => {
-    const selection = await get(chatPageModelSelection$);
-    if (selection === null) {
-      return true;
-    }
-    const status = (await get(personalModelProvider$))[selection.selectedModel];
-    return status === undefined || status.status === "connected";
-  },
-);
+const chatPageSelectedModel$ = computed(async (get): Promise<string | null> => {
+  return (await get(chatPageModelSelection$))?.selectedModel ?? null;
+});
 
-export const configureChatPageSelectedModel$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const selection = await get(chatPageModelSelection$);
-    signal.throwIfAborted();
-    if (selection === null) {
-      return;
-    }
-    const status = (await get(personalModelProvider$))[selection.selectedModel];
-    signal.throwIfAborted();
-    if (status === undefined || status.status === "connected") {
-      return;
-    }
-    const authArgs =
-      status.status === "needs_reconnect"
-        ? {
-            mode: "reconnect" as const,
-            modelProviderId: status.credentialId,
-          }
-        : { mode: "connect" as const };
-    if (status.providerType === "claude-code-oauth-token") {
-      await set(openClaudeCodeDeviceAuthDialogPersonal$, authArgs, signal);
-      return;
-    }
-    await set(openCodexDeviceAuthDialogPersonal$, authArgs, signal);
-  },
-);
+export const {
+  oauthAvailable$: chatPageSelectedModelOauthAvailable$,
+  configure$: configureChatPageSelectedModel$,
+} = createPersonalModelProviderAuthSignals(chatPageSelectedModel$);
 
 export const setChatPageModelSelection$ = command(
   ({ set }, value: ModelProviderSelection | null) => {

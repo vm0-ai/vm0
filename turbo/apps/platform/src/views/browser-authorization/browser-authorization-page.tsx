@@ -12,36 +12,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { locale$ } from "../../signals/locale.ts";
 import { ProductBrandMarkLink } from "../okou-page/directed-shared.tsx";
-
-function formatTime(value: string, locale: string): string {
-  return new Date(value).toLocaleString(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function ErrorState() {
-  const { t } = useTranslation();
-  return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center px-4">
-      <div className="flex w-[430px] max-w-full flex-col items-center gap-6 rounded-xl border border-border bg-background px-6 py-10 text-center">
-        <ProductBrandMarkLink />
-        <div className="flex flex-col gap-2">
-          <h1 className="text-lg font-medium text-foreground">
-            {t(($) => {
-              return $.authorization.browser.unavailableTitle;
-            })}
-          </h1>
-          <p className="text-sm leading-5 text-muted-foreground">
-            {t(($) => {
-              return $.authorization.browser.unavailableDescription;
-            })}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+import {
+  AuthorizationErrorState,
+  formatTime,
+} from "../components/authorization-error-state.tsx";
 
 export function BrowserAuthorizationPage() {
   const { t } = useTranslation();
@@ -62,7 +36,16 @@ export function BrowserAuthorizationPage() {
     );
   }
   if (requestLoadable.state === "hasError" || !request) {
-    return <ErrorState />;
+    return (
+      <AuthorizationErrorState
+        title={t(($) => {
+          return $.authorization.browser.unavailableTitle;
+        })}
+        description={t(($) => {
+          return $.authorization.browser.unavailableDescription;
+        })}
+      />
+    );
   }
 
   const applying = applyLoadable.state === "loading";

@@ -47,14 +47,6 @@ export async function loadInitialLocaleResources(
   };
 }
 
-export async function initializeI18n(
-  locale: SupportedLocale = DEFAULT_LOCALE,
-  signal?: AbortSignal,
-): Promise<SupportedLocale> {
-  const initial = await loadInitialLocaleResources(locale, signal);
-  return initializeI18nWithResources(initial, signal);
-}
-
 export async function initializeI18nWithResources(
   initial: InitialLocaleResources,
   signal?: AbortSignal,

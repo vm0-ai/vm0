@@ -713,31 +713,8 @@ export const changeRole$ = command(
 );
 
 export const selfDemote$ = command(
-  async ({ get, set }, email: string, signal: AbortSignal) => {
-    const createClient = get(apiClient$);
-    const client = createClient(orgMembersContract);
-    await accept(
-      client.updateRole({
-        body: { email, role: "member" },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    toast.success(
-      i18n.t(
-        ($) => {
-          return $.settings.workspace.toasts.roleUpdated;
-        },
-        { email },
-      ),
-    );
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    await clerk.session?.getToken({ skipCache: true });
-    signal.throwIfAborted();
-    set(refreshOrgMembers$);
-    set(refreshOrg$);
+  async ({ set }, email: string, signal: AbortSignal) => {
+    await set(changeRole$, email, "member", signal);
     set(internalSelfDemoteDialogOpen$, false);
   },
 );

@@ -130,10 +130,14 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
-function MobileArtifactsButtonLeaf() {
+function useCurrentThread() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
-  const thread = leftThread ?? rightThread;
+  return leftThread ?? rightThread;
+}
+
+function MobileArtifactsButtonLeaf() {
+  const thread = useCurrentThread();
 
   if (!thread) {
     return null;
@@ -143,10 +147,8 @@ function MobileArtifactsButtonLeaf() {
 }
 
 function MobileAutomationButtonLeaf() {
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
+  const thread = useCurrentThread();
   const { t } = useTranslation();
-  const thread = leftThread ?? rightThread;
 
   if (!thread) {
     return null;
@@ -196,9 +198,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function MobileShareButtonLeaf() {
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
-  const thread = leftThread ?? rightThread;
+  const thread = useCurrentThread();
   return thread ? <MobileShareButtonInner thread={thread} /> : null;
 }
 
@@ -241,9 +241,7 @@ function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function MobileSharingOverlayLeaf() {
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
-  const thread = leftThread ?? rightThread;
+  const thread = useCurrentThread();
   return thread ? <MobileSharingOverlayInner thread={thread} /> : null;
 }
 

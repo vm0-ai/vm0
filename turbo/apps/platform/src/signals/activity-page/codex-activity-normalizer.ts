@@ -1,5 +1,6 @@
 import type { AgentEvent } from "../okou-page/log-types.ts";
 import { i18n } from "../../i18n/index.ts";
+import { isNonArrayRecord } from "../utils.ts";
 
 interface NormalizeCodexEventsOptions {
   framework?: string | null;
@@ -42,10 +43,6 @@ const MAX_ERROR_SIGNAL_DEPTH = 8;
 const MAX_FORMATTED_PLAN_STEPS = 20;
 const MAX_FORMATTED_FILE_CHANGES = 20;
 const MAX_FORMATTED_AGENT_STATES = 6;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function hasOwnKey(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
@@ -179,7 +176,7 @@ function formatUnknownValue(value: unknown, depth = 0): string | undefined {
     return `[${items.join(", ")}${suffix}]`;
   }
 
-  if (!isRecord(value) || depth > 0) {
+  if (!isNonArrayRecord(value) || depth > 0) {
     return undefined;
   }
 
@@ -229,7 +226,7 @@ function hasSignalValue(value: unknown, depth = 0): boolean {
       return hasSignalValue(item, depth + 1);
     });
   }
-  if (!isRecord(value)) {
+  if (!isNonArrayRecord(value)) {
     return false;
   }
 
@@ -334,7 +331,7 @@ function extractErrorMessage(value: unknown, depth = 0): string | undefined {
     return direct;
   }
 
-  if (!isRecord(value)) {
+  if (!isNonArrayRecord(value)) {
     return hasSignalValue(value, depth) ? formatUnknownValue(value) : undefined;
   }
 
@@ -398,7 +395,7 @@ function isGenericFailureMessage(message: string): boolean {
 function getTurnRecord(
   eventData: Record<string, unknown>,
 ): Record<string, unknown> | null {
-  return isRecord(eventData.turn) ? eventData.turn : null;
+  return isNonArrayRecord(eventData.turn) ? eventData.turn : null;
 }
 
 function getTurnId(eventData: Record<string, unknown>): string | undefined {
@@ -442,9 +439,9 @@ function getTurnSuccess(
 
 function getUsage(eventData: Record<string, unknown>): CodexUsage | undefined {
   const turn = getTurnRecord(eventData);
-  const value = isRecord(eventData.usage)
+  const value = isNonArrayRecord(eventData.usage)
     ? eventData.usage
-    : turn && isRecord(turn.usage)
+    : turn && isNonArrayRecord(turn.usage)
       ? turn.usage
       : null;
   if (!value) {
@@ -531,7 +528,7 @@ function isUnsuccessfulTurnCompletionStatus(
 function getItem(
   eventData: Record<string, unknown>,
 ): Record<string, unknown> | null {
-  return isRecord(eventData.item) ? eventData.item : null;
+  return isNonArrayRecord(eventData.item) ? eventData.item : null;
 }
 
 function getItemId(item: Record<string, unknown>): string | undefined {
@@ -574,7 +571,7 @@ function parseCodexChanges(value: unknown): ParsedCodexFileChanges {
   const changes: CodexFileChange[] = [];
   let totalChangeCount = 0;
   for (const change of value) {
-    if (!isRecord(change)) {
+    if (!isNonArrayRecord(change)) {
       continue;
     }
     const parsed = {
@@ -886,7 +883,7 @@ function formatPlanLines(plan: unknown): string[] {
   const lines: string[] = [];
   let totalLineCount = 0;
   for (const step of plan) {
-    if (!isRecord(step)) {
+    if (!isNonArrayRecord(step)) {
       continue;
     }
     const text = trimmedStringValue(step.step);
@@ -1238,24 +1235,28 @@ function normalizeCodexCommandEvent(
   return null;
 }
 
-function normalizeCodexFileMutationEvent(
+function normalizeCodexFileEvent(
   event: AgentEvent,
   codexType: string,
   item: Record<string, unknown>,
+  operation: "mutation" | "read",
 ): AgentEvent | null {
   const itemId = getItemId(item);
   if (!itemId) {
     return null;
   }
-  const itemType = getItemType(item);
-  const toolName = itemType === "file_edit" ? "Edit" : "Write";
   const path = getPath(item);
 
   if (codexType === "item.started" && path) {
     return makeCodexToolUseEvent({
       event,
       itemId,
-      toolName,
+      toolName:
+        operation === "read"
+          ? "Read"
+          : getItemType(item) === "file_edit"
+            ? "Edit"
+            : "Write",
       input: { file_path: path },
     });
   }
@@ -1268,68 +1269,32 @@ function normalizeCodexFileMutationEvent(
       itemId,
       content:
         combineContentWithError(
-          getFirstNonBlankString(item, ["diff"]),
+          getFirstNonBlankString(item, [
+            operation === "read" ? "output" : "diff",
+          ]),
           errorMessage,
         ) ??
         (isFailedStatus(status)
-          ? i18n.t(
-              ($) => {
-                return $.activity.codex.fileOperationStatus;
-              },
-              { status },
-            )
-          : i18n.t(($) => {
-              return $.activity.codex.fileOperationCompleted;
-            })),
-      isError: isFailedStatus(status) || errorMessage !== undefined,
-      durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
-    });
-  }
-
-  return null;
-}
-
-function normalizeCodexFileReadEvent(
-  event: AgentEvent,
-  codexType: string,
-  item: Record<string, unknown>,
-): AgentEvent | null {
-  const itemId = getItemId(item);
-  if (!itemId) {
-    return null;
-  }
-  const path = getPath(item);
-
-  if (codexType === "item.started" && path) {
-    return makeCodexToolUseEvent({
-      event,
-      itemId,
-      toolName: "Read",
-      input: { file_path: path },
-    });
-  }
-
-  if (codexType === "item.completed") {
-    const status = getItemStatus(item);
-    const errorMessage = getItemErrorMessage(item);
-    return makeCodexToolResultEvent({
-      event,
-      itemId,
-      content:
-        combineContentWithError(
-          getFirstNonBlankString(item, ["output"]),
-          errorMessage,
-        ) ??
-        (isFailedStatus(status)
-          ? i18n.t(
-              ($) => {
-                return $.activity.codex.fileReadStatus;
-              },
-              { status },
-            )
-          : i18n.t(($) => {
-              return $.activity.codex.fileReadCompleted;
-            })),
+          ? operation === "read"
+            ? i18n.t(
+                ($) => {
+                  return $.activity.codex.fileReadStatus;
+                },
+                { status },
+              )
+            : i18n.t(
+                ($) => {
+                  return $.activity.codex.fileOperationStatus;
+                },
+                { status },
+              )
+          : operation === "read"
+            ? i18n.t(($) => {
+                return $.activity.codex.fileReadCompleted;
+              })
+            : i18n.t(($) => {
+                return $.activity.codex.fileOperationCompleted;
+              })),
       isError: isFailedStatus(status) || errorMessage !== undefined,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });
@@ -1485,7 +1450,7 @@ function formatCodexCollabResult(item: Record<string, unknown>): string {
   const status = getItemStatus(item);
   const statesValue = item.agents_states ?? item.agentsStates;
   const lines: string[] = [];
-  if (isRecord(statesValue)) {
+  if (isNonArrayRecord(statesValue)) {
     let inspectedStates = 0;
     for (const threadId in statesValue) {
       if (!hasOwnKey(statesValue, threadId)) {
@@ -1500,7 +1465,7 @@ function formatCodexCollabResult(item: Record<string, unknown>): string {
       }
       inspectedStates += 1;
       const rawState = statesValue[threadId];
-      if (!isRecord(rawState)) {
+      if (!isNonArrayRecord(rawState)) {
         continue;
       }
       const agentStatus = getFirstString(rawState, ["status"]);
@@ -1636,7 +1601,7 @@ function normalizeCodexItemAgentEvent(
     case "file_edit":
     case "file_write": {
       return (
-        normalizeCodexFileMutationEvent(event, codexType, item) ??
+        normalizeCodexFileEvent(event, codexType, item, "mutation") ??
         makeCodexAssistantTextEvent(
           event,
           formatGenericCodexItem(codexType, item),
@@ -1645,7 +1610,7 @@ function normalizeCodexItemAgentEvent(
     }
     case "file_read": {
       return (
-        normalizeCodexFileReadEvent(event, codexType, item) ??
+        normalizeCodexFileEvent(event, codexType, item, "read") ??
         makeCodexAssistantTextEvent(
           event,
           formatGenericCodexItem(codexType, item),
@@ -1699,7 +1664,7 @@ function normalizeCodexEvent(
   event: AgentEvent,
   framework: string | null | undefined,
 ): CodexNormalizedEvent {
-  const eventData = isRecord(event.eventData) ? event.eventData : null;
+  const eventData = isNonArrayRecord(event.eventData) ? event.eventData : null;
   const codexType = getCodexType(event, eventData, framework);
   if (!codexType || !eventData) {
     return { event };
@@ -1713,7 +1678,7 @@ function normalizeCodexEvent(
 }
 
 function resultText(event: AgentEvent): string | undefined {
-  if (!isRecord(event.eventData)) {
+  if (!isNonArrayRecord(event.eventData)) {
     return undefined;
   }
   return trimmedStringValue(event.eventData.result);
@@ -1727,7 +1692,7 @@ function mergeFailureEvents(
     resultText(pendingErrorEvent),
     resultText(terminalEvent),
   );
-  if (!mergedResult || !isRecord(terminalEvent.eventData)) {
+  if (!mergedResult || !isNonArrayRecord(terminalEvent.eventData)) {
     return terminalEvent;
   }
   return {

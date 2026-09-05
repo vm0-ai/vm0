@@ -1,11 +1,9 @@
 import { useGet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { JSX, ReactNode } from "react";
-import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
-import { Button } from "@okouai/ui";
+import type { JSX } from "react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
-import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
+import { clerk$ } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
@@ -18,72 +16,43 @@ import {
   type GithubConnectParams,
 } from "../../signals/okou-page/github-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Link } from "../router/link.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import {
+  CenterText,
+  ConnectBackLink,
+  ConnectErrorAlert,
+  ConnectSignInState,
+  ConnectStatusMark,
+  ConnectSubmitButton,
+  PageShell,
+  connectErrorMessage,
+  type MarkState,
+} from "./connect-page-shell.tsx";
 
 const githubIconImg = settingsIconAssetUrl("github");
-
-function signInHref(): string {
-  return resolveAppAuthUrl("/sign-in", { redirectUrl: location.href });
-}
 
 function BackLink() {
   const { t } = useTranslation();
   return (
-    <Link
+    <ConnectBackLink
       pathname="/workflows"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
-    >
-      <ArrowLeft size={14} />
-      {t(($) => {
+      label={t(($) => {
         return $.connectors.providerConnect.github.back;
       })}
-    </Link>
+    />
   );
 }
 
-function PageShell({ children }: { children: ReactNode }) {
+function GithubMark({ state }: { state?: MarkState }) {
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
-      <div className="flex flex-1 items-center justify-center p-4">
-        <div className="zero-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GithubMark({
-  state = "idle",
-}: {
-  state?: "idle" | "success" | "error" | "loading";
-}) {
-  if (state === "success") {
-    return <CircleCheck size={40} className="text-emerald-500" />;
-  }
-
-  if (state === "error") {
-    return <AlertCircle size={40} className="text-destructive" />;
-  }
-
-  if (state === "loading") {
-    return <Loader2 size={40} className="animate-spin" />;
-  }
-
-  return (
-    <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-muted">
-      <img src={githubIconImg} alt="" className="h-8 w-8" />
-    </span>
-  );
-}
-
-function CenterText({ title, body }: { title: string; body: ReactNode }) {
-  return (
-    <div className="text-center space-y-1.5">
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </div>
+    <ConnectStatusMark
+      state={state}
+      idle={
+        <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-muted">
+          <img src={githubIconImg} alt="" className="h-8 w-8" />
+        </span>
+      }
+    />
   );
 }
 
@@ -103,14 +72,6 @@ function githubUserLabel(username: string | undefined): string {
     ? `@${normalized}`
     : i18n.t(($) => {
         return $.connectors.providerConnect.github.accountFallback;
-      });
-}
-
-function getGithubConnectErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : i18n.t(($) => {
-        return $.connectors.providerConnect.github.errorFallback;
       });
 }
 
@@ -178,33 +139,25 @@ function LoadingState({
 function SignInState(): JSX.Element {
   const brandName = useGet(brandName$);
   const { t } = useTranslation();
-
   return (
-    <PageShell>
-      <GithubMark />
-      <CenterText
-        title={t(($) => {
-          return $.connectors.providerConnect.github.signInTitle;
-        })}
-        body={t(
-          ($) => {
-            return $.connectors.providerConnect.github.signInDescription;
-          },
-          { brandName },
-        )}
-      />
-      <a
-        href={signInHref()}
-        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
-      >
-        {t(
-          ($) => {
-            return $.connectors.providerConnect.github.signInButton;
-          },
-          { brandName },
-        )}
-      </a>
-    </PageShell>
+    <ConnectSignInState
+      mark={<GithubMark />}
+      title={t(($) => {
+        return $.connectors.providerConnect.github.signInTitle;
+      })}
+      description={t(
+        ($) => {
+          return $.connectors.providerConnect.github.signInDescription;
+        },
+        { brandName },
+      )}
+      button={t(
+        ($) => {
+          return $.connectors.providerConnect.github.signInButton;
+        },
+        { brandName },
+      )}
+    />
   );
 }
 
@@ -239,25 +192,9 @@ function ConnectState({
           },
         )}
       />
-      {error ? (
-        <div
-          className="w-full rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {error}
-        </div>
-      ) : null}
+      <ConnectErrorAlert error={error} />
       <div className="flex w-full flex-col gap-4">
-        <Button className="w-full" disabled={connecting} onClick={onConnect}>
-          {connecting ? <Loader2 size={16} className="animate-spin" /> : null}
-          {connecting
-            ? t(($) => {
-                return $.connectors.actions.connecting;
-              })
-            : t(($) => {
-                return $.connectors.actions.connect;
-              })}
-        </Button>
+        <ConnectSubmitButton connecting={connecting} onConnect={onConnect} />
         <div className="flex justify-center">
           <BackLink />
         </div>
@@ -324,7 +261,12 @@ export function GithubConnectPage(): JSX.Element {
     connectLoadable.state === "hasData" ? connectLoadable.data : null;
   const error =
     connectLoadable.state === "hasError"
-      ? getGithubConnectErrorMessage(connectLoadable.error)
+      ? connectErrorMessage(
+          connectLoadable.error,
+          i18n.t(($) => {
+            return $.connectors.providerConnect.github.errorFallback;
+          }),
+        )
       : null;
 
   if (!parsed.ok) {
