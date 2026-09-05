@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.186.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.1...runner-rs-v0.186.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **presentation:** make fresh screenshots fast and distinct ([#31921](https://github.com/vm0-ai/vm0/issues/31921)) ([62abfd8](https://github.com/vm0-ai/vm0/commit/62abfd86489bc2c969fcb7d175ca456d69c7764a))
+
 ## [0.186.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.0...runner-rs-v0.186.1) (2026-09-05)
 
 

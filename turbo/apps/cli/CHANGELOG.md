@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.313.6](https://github.com/vm0-ai/vm0/compare/cli-v9.313.5...cli-v9.313.6) (2026-09-05)
+
+
+### Bug Fixes
+
+* **presentation:** make fresh screenshots fast and distinct ([#31921](https://github.com/vm0-ai/vm0/issues/31921)) ([62abfd8](https://github.com/vm0-ai/vm0/commit/62abfd86489bc2c969fcb7d175ca456d69c7764a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.20.3
+
 ## [9.313.5](https://github.com/vm0-ai/vm0/compare/cli-v9.313.4...cli-v9.313.5) (2026-09-05)
 
 
