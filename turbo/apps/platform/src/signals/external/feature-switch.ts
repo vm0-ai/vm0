@@ -1,6 +1,9 @@
 import { command, computed } from "ccstate";
 import type { BrowserClerk as Clerk } from "@clerk/shared/types";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import {
+  getAllFeatureStates,
+  getEmailEnabledFeatureStates,
+} from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { clerk$ } from "../auth";
@@ -90,13 +93,11 @@ const apiFeatureSwitchClient$ = computed((get) => {
 
 function applySwitches(
   result: Record<FeatureSwitchKey, boolean>,
-  overrides: Partial<Record<string, boolean>> | undefined,
-  effectiveSwitches: Partial<Record<string, boolean>> | undefined,
+  switches: Partial<Record<string, boolean>> | undefined,
 ) {
-  const resolvedSwitches = effectiveSwitches ?? overrides;
-  if (resolvedSwitches) {
+  if (switches) {
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = resolvedSwitches[key];
+      const value = switches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
@@ -106,10 +107,6 @@ function applySwitches(
 
 export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
-});
-
-export const imageRecognitionAvailable$ = computed((): boolean => {
-  return true;
 });
 
 export const composerImageAnnotationEnabled$ = computed((get): boolean => {
@@ -170,9 +167,10 @@ const hydrateFeatureSwitch$ = command(
     });
     applySwitches(
       combined,
-      result.body.switches,
-      result.body.effectiveSwitches,
+      result.body.effectiveSwitches ?? result.body.switches,
     );
+    applySwitches(combined, getEmailEnabledFeatureStates(identity.email));
+    applySwitches(combined, result.body.switches);
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
     set(syncShellDocumentAttributes$);
     set(writeConnectionDiagnostic$, {

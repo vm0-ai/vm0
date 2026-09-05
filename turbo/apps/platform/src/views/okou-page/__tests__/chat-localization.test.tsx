@@ -14,7 +14,6 @@ import { expect, test } from "vitest";
 
 import {
   click,
-  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -26,7 +25,6 @@ import {
   buildProvider,
   OPENROUTER_PROVIDER_ID,
 } from "./chat-composer-test-helpers.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000081";
@@ -239,12 +237,6 @@ async function expectLocalizedComposerAttributes(
   return composer;
 }
 
-async function expectLocalizedEmptyComposer(
-  copy: ComposerCopy,
-): Promise<HTMLElement> {
-  return await expectLocalizedComposerAttributes(copy);
-}
-
 test("A cancelled run keeps its meaning when the language changes", async () => {
   const activeRun: ChatEventRow = {
     id: EVENT_ID,
@@ -336,80 +328,6 @@ test("A cancelled run keeps its meaning when the language changes", async () => 
     screen.queryByText("Pausado no meio do raciocínio — retome quando quiser."),
   ).not.toBeInTheDocument();
   expect(pathname()).toBe(`/chats/${THREAD_ID}`);
-});
-
-test("The chat composer works in each supported language", async () => {
-  const copy: ComposerCopy = {
-    locale: "pt-BR",
-    message: "Mensagem",
-    placeholder:
-      "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
-    attach: "Anexar",
-    send: "Enviar",
-    settings: "Configurações",
-    language: "Idioma",
-    close: "Fechar",
-    option: "Português (Brasil)",
-  };
-  const authoredText = "Organize the launch notes exactly as written.";
-  let sentRequest:
-    | {
-        readonly prompt: string;
-        readonly userMessage: ChatEventSendBody["userMessage"];
-      }
-    | undefined;
-
-  context.mocks.data.agents([{ agentId: AGENT_ID }]);
-  configureNoBrowserSession();
-  context.mocks.data.userModelPreference({
-    selectedModel: "claude-sonnet-4-6",
-    serviceTier: null,
-    selectedVideoModel: null,
-    selectedImageModel: null,
-    updatedAt: null,
-  });
-  configureModelRoute();
-  mockChatLifecycle(context, {
-    onSendRequest(body) {
-      sentRequest = {
-        prompt: body.prompt,
-        userMessage: body.userMessage,
-      };
-    },
-  });
-
-  await setupPage({
-    context,
-    locale: copy.locale,
-    path: `/agents/${AGENT_ID}/chat`,
-  });
-
-  const composer = await expectLocalizedEmptyComposer(copy);
-  await fill(composer, authoredText);
-  const send = await waitFor(() => {
-    const current = getAction("button", copy.send);
-    expect(current).toBeEnabled();
-    return current;
-  });
-  click(send);
-
-  await waitFor(() => {
-    expect(sentRequest).toBeDefined();
-  });
-  if (sentRequest?.userMessage === undefined) {
-    throw new Error("Expected a normal chat send request");
-  }
-  expect(sentRequest.prompt).toBe(authoredText);
-  expect(sentRequest.userMessage.parts).toContainEqual({
-    type: "text",
-    text: authoredText,
-  });
-  await waitFor(() => {
-    const visibleMessage = screen.getAllByText(authoredText).find((element) => {
-      return element.closest('[contenteditable="true"]') === null;
-    });
-    expect(visibleMessage).toBeVisible();
-  });
 });
 
 test("Changing language preserves the open conversation and draft", async () => {

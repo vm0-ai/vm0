@@ -279,7 +279,7 @@ function expectArchiveInvariants(
   expect(lines.length).toBeGreaterThan(0);
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
-  for (const [index, line] of lines.entries()) {
+  for (const line of lines) {
     const expectedKeys = [
       ...CANONICAL_ARCHIVE_KEYS,
       ...(line.failureReason === undefined ? [] : ["failureReason"]),
@@ -295,11 +295,14 @@ function expectArchiveInvariants(
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
-    const previous = lines[index - 1];
-    if (previous !== undefined) {
-      expect(line.seqId).toBeGreaterThan(previous.seqId);
-    }
   }
+  const seqIds = lines.map((line) => {
+    return line.seqId;
+  });
+  const strictlyIncreasingSeqIds = [...new Set(seqIds)].sort((left, right) => {
+    return left - right;
+  });
+  expect(seqIds).toStrictEqual(strictlyIncreasingSeqIds);
   return lines;
 }
 

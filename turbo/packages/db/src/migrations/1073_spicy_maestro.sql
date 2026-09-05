@@ -1,0 +1,1 @@
+ALTER TABLE "agent_runs" ADD COLUMN "credit_admitted" boolean DEFAULT false NOT NULL;

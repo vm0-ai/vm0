@@ -17,7 +17,7 @@ import { ROUTES } from "../route-paths.ts";
 import { settle, withCleanup } from "../utils.ts";
 import type { AuthV2Navigation, AuthV2RouteMode } from "./navigation.ts";
 
-export const AUTH_V2_CHOOSE_ORGANIZATION_PATH = "/tasks/choose-organization";
+const AUTH_V2_CHOOSE_ORGANIZATION_PATH = "/tasks/choose-organization";
 
 export interface AuthV2ContinuationOrganization {
   readonly id: string;
@@ -73,7 +73,7 @@ export type AuthV2ContinuationFlowHandoff = Pick<
   "completeSession$" | "failClosed$" | "recover$"
 >;
 
-export interface AuthV2ContinuationDependencies {
+interface AuthV2ContinuationDependencies {
   readonly isContinuationRoute: boolean;
   readonly mode: AuthV2RouteMode;
   readonly navigation: AuthV2Navigation;

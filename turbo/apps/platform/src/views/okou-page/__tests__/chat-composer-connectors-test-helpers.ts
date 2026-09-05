@@ -58,7 +58,7 @@ export const ORDINARY_CONNECTOR_ID = "e0000000-0000-4000-a000-000000000064";
 
 const CREATED_AT = "2026-08-24T10:00:00.000Z";
 
-export interface ComposerThreadFixture {
+interface ComposerThreadFixture {
   readonly id: string;
   readonly title: string;
   readonly agentId: string;
@@ -118,7 +118,7 @@ interface ThreadSelectionUpdate {
   readonly selection: ConnectorAccountSelection;
 }
 
-export interface ComposerConnectorFixture {
+interface ComposerConnectorFixture {
   readonly builtinAuthorizationUpdates: readonly BuiltinAuthorizationUpdate[];
   readonly customAuthorizationUpdates: readonly CustomAuthorizationUpdate[];
   readonly customValueRequests: readonly {
@@ -724,7 +724,6 @@ export function httpConnector(
     authMode,
     ...(authMode === "oauth"
       ? {
-          oauthSetup: "custom",
           oauthConfig: {
             providerAdapter: args.providerAdapter ?? "standard",
             clientId: "client-id",

@@ -81,12 +81,13 @@ function mintOkouToken(args: {
   });
 }
 
-function telegramOauthHead(contentLength: string, expectedOrigin?: string) {
+function telegramOauthHead(
+  contentLength: string,
+  observedOrigins: (string | null)[] = [],
+) {
   return http.head("https://oauth.telegram.org/auth", ({ request }) => {
     const url = new URL(request.url);
-    if (expectedOrigin) {
-      expect(url.searchParams.get("origin")).toBe(expectedOrigin);
-    }
+    observedOrigins.push(url.searchParams.get("origin"));
     return new HttpResponse(null, {
       headers: { "content-length": contentLength },
     });
@@ -936,7 +937,8 @@ describe("GET /api/integrations/telegram/link", () => {
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
     mockEnv("APP_URL", "https://app.example.com");
-    server.use(telegramOauthHead("2048", "https://app.example.com"));
+    const observedOrigins: (string | null)[] = [];
+    server.use(telegramOauthHead("2048", observedOrigins));
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -962,6 +964,7 @@ describe("GET /api/integrations/telegram/link", () => {
         domainConfigured: true,
       },
     });
+    expect(observedOrigins).toStrictEqual(["https://app.example.com"]);
   });
 
   it("returns official bot link status with the login bot id", async () => {

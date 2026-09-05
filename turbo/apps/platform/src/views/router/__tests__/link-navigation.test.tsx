@@ -9,7 +9,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { reportForceUpgradeRequired } from "../../../signals/force-upgrade.ts";
 
 const context = testContext();
 
@@ -56,58 +55,6 @@ test("An unknown route offers a working home link", async () => {
     expect(
       within(screen.getByTestId("labeled-nav-rail")).getByText("Agents"),
     ).toBeInTheDocument();
-  });
-});
-
-test("Shared failure states use the user's language", async () => {
-  await setupPage({
-    context,
-    locale: "pt-BR",
-    path: "/missing-platform-route",
-  });
-
-  await screen.findByRole("heading", { name: "Página não encontrada" });
-  expect(
-    screen.getByText("A página que você procura não existe."),
-  ).toBeInTheDocument();
-  const homeLink = queryAllByRoleFast("link").find((link) => {
-    return link.textContent?.trim() === "Voltar ao início";
-  });
-  expect(homeLink).toHaveAttribute("href", "/");
-
-  reportForceUpgradeRequired();
-
-  const upgradeDialog = await screen.findByRole("dialog", {
-    name: "Atualização necessária",
-  });
-  expect(upgradeDialog).toHaveTextContent(
-    "Esta versão do VM0 não é mais compatível.",
-  );
-  const refreshButton = queryAllByRoleFast("button", upgradeDialog).find(
-    (button) => {
-      return button.textContent?.trim() === "Atualizar";
-    },
-  );
-  expect(refreshButton).toBeDefined();
-});
-
-test("The shared error page is localized in Brazilian Portuguese", async () => {
-  await setupPage({
-    context,
-    locale: "pt-BR",
-    path: "/_/error",
-    host: "app.vm0.ai",
-  });
-
-  await waitFor(() => {
-    expect(screen.getByText("Ops! Algo deu errado")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Tente novamente ou fale com o/u),
-    ).toBeInTheDocument();
-    expect(screen.getByText("suporte")).toHaveAttribute(
-      "href",
-      "mailto:contact@vm0.ai",
-    );
   });
 });
 

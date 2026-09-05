@@ -36,6 +36,8 @@
     },
     "create": "맞춤 아바타 생성",
     "description": "스타일을 선택하거나 셔플을 눌러 놀라움을 경험하세요.",
+    "editDescription": "원하는 부분을 조정하거나 셔플을 눌러 새로운 모습을 만들어 보세요.",
+    "editTitle": "아바타 편집",
     "intensity": {
       "chill": "차분함",
       "hyped": "활기참",

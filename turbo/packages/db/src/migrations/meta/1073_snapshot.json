@@ -1,5 +1,5 @@
 {
-  "id": "a8835e68-b3ba-45ab-a260-52e073a016e6",
+  "id": "00f23b55-7540-4bcd-a70e-6f3f9203d4d4",
   "prevId": "d9e0c40e-d2a0-4a1d-9e66-15188569e0b2",
   "version": "7",
   "dialect": "postgresql",
@@ -731,6 +731,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "credit_admitted": {
+          "name": "credit_admitted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "started_at": {
           "name": "started_at",

@@ -1,40 +1,15 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
 import { expect, vi, type Mock } from "vitest";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
-  chatThreadByIdContract,
-  chatThreadArtifactsContract,
-  chatThreadMarkReadContract,
-  chatThreadEventsContract,
-  chatThreadRenameContract,
-  chatThreadsContract,
-  type ChatEvent,
-  type UserMessageDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
-import {
-  workflowsCollectionContract,
-  workflowAutomationsContract,
-  type WorkflowAutomationUpdateRequest,
-} from "@okouai/api-contracts/contracts/workflows";
-import {
-  createMockWorkflowAutomation,
-  setMockWorkflowAutomations,
-} from "../../../mocks/handlers/workflow-automations-store.ts";
-import {
-  testContext,
-  chatEventRowsResponse,
-} from "../../../signals/__tests__/test-helpers.ts";
-import {
-  click,
   queryAllByRoleFast,
   setupPage as baseSetupPage,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
-import {
-  mockChatEventRows,
-  normalizeMockChatEvents,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
+
 export const context = testContext();
 
 export function setupPage(
@@ -44,35 +19,6 @@ export function setupPage(
 }
 
 export const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-export const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
-export const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
-export const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
-export const EVENT_SOURCED_RENAME_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000706";
-export const KEYBOARD_PREV_THREAD_ID = "b0000000-0000-4000-a000-000000000707";
-export const KEYBOARD_CURRENT_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000708";
-export const KEYBOARD_NEXT_THREAD_ID = "b0000000-0000-4000-a000-000000000709";
-const SERVER_QUEUED_VISIBLE_THREAD_ID = "b0000000-0000-4000-a000-000000000710";
-const SERVER_QUEUED_RESOLVED_THREAD_ID = "b0000000-0000-4000-a000-000000000711";
-export const SERVER_QUEUED_RUN_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000712";
-export const RUNNING_THREAD_ID = "b0000000-0000-4000-a000-000000000713";
-export const COMPLETED_THREAD_ID = "b0000000-0000-4000-a000-000000000714";
-export const COMPLETED_MARKER_ONLY_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000715";
-export const COMPUTER_USE_SELECTION_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000716";
-export const COMPUTER_USE_SEND_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000717";
-export const COMPUTER_USE_SAVED_SELECTION_THREAD_ID =
-  "b0000000-0000-4000-a000-000000000718";
-export const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
-
-type ChatEventSeed = Omit<
-  Extract<ChatEvent, { eventType: "input.prompt" }>,
-  "seqId"
->;
 
 function replaceNavigatorProperty(property: string, value: unknown): void {
   const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
@@ -279,36 +225,6 @@ export function makeRunGroupMessages(params: {
   }).flat();
 }
 
-export function expectTextBefore(
-  container: HTMLElement,
-  beforeText: string,
-  afterText: string,
-): void {
-  const before = within(container).getByText(beforeText);
-  const after = within(container).getByText(afterText);
-  expect(
-    before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
-}
-
-export function makeEvent(
-  id: string,
-  text: string,
-  threadId = "00000000-0000-4000-8000-000000000001",
-): ChatEventSeed {
-  return {
-    id,
-    threadId,
-    eventType: "input.prompt",
-    content: null,
-    userMessage: {
-      version: 1,
-      parts: [{ type: "text", text }],
-    },
-    createdAt: "2026-05-01T00:00:00Z",
-  };
-}
-
 function mockNoBrowserSession(): void {
   context.mocks.api(browserContract.get, ({ respond }) => {
     return respond(404, {
@@ -326,292 +242,6 @@ export function mockChatLifecycleWithoutBrowserSession(
   mockNoBrowserSession();
   return mockChatLifecycle(context, options);
 }
-
-export function mockKeyboardNavigationThreads({
-  currentTitle = "Current keyboard thread",
-  currentDetailTitle = currentTitle,
-}: {
-  currentTitle?: string;
-  currentDetailTitle?: string | null;
-} = {}): void {
-  mockNoBrowserSession();
-  const threadFixtures = [
-    {
-      id: KEYBOARD_PREV_THREAD_ID,
-      title: "Previous keyboard thread",
-      detailTitle: "Previous keyboard thread",
-      message: "Previous thread launch note",
-    },
-    {
-      id: KEYBOARD_CURRENT_THREAD_ID,
-      title: currentTitle,
-      detailTitle: currentDetailTitle,
-      message: "Current thread launch note",
-    },
-    {
-      id: KEYBOARD_NEXT_THREAD_ID,
-      title: "Next keyboard thread",
-      detailTitle: "Next keyboard thread",
-      message: "Next thread launch note",
-    },
-  ];
-  const byId = new Map(
-    threadFixtures.map((thread) => {
-      return [thread.id, thread];
-    }),
-  );
-  const threadList = threadFixtures.map((thread, index) => {
-    const sortMinute = threadFixtures.length - index - 1;
-    return {
-      id: thread.id,
-      title: thread.title,
-      agent: { id: AGENT_ID, avatarUrl: null },
-      createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: `2026-06-01T00:0${sortMinute}:00Z`,
-      pinnedAt: null,
-    };
-  });
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: threadListSnapshot(threadList),
-      latestEventId: null,
-      latestSeqId: null,
-    });
-  });
-  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-    return respond(200, { events: [], hasMore: false });
-  });
-  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-    return respond(200, { agents: {}, threads: {} });
-  });
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-    const thread = byId.get(params.id);
-    if (!thread) {
-      return respond(404, {
-        error: { message: "Thread not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, {
-      lastReadAt: null,
-      cancellationRecoveryPending: false,
-    });
-  });
-  context.mocks.api(
-    chatThreadEventsContract.rows,
-    ({ params, query, respond }) => {
-      const thread = byId.get(params.threadId);
-      const rows = mockChatEventRows(
-        normalizeMockChatEvents(
-          thread
-            ? [
-                {
-                  id: `${thread.id}-message`,
-                  role: "user",
-                  content: thread.message,
-                  createdAt: "2026-06-01T00:00:00Z",
-                },
-              ]
-            : [],
-          params.threadId,
-        ),
-      ).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      });
-      return respond(200, chatEventRowsResponse(rows, query));
-    },
-  );
-  context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
-    return respond(204);
-  });
-}
-
-export function mockAutomationThread(): void {
-  mockChatLifecycle(context, {
-    threadId: AUTOMATION_THREAD_ID,
-    threadTitle: "Scheduled launch review",
-    historyEvents: [
-      {
-        role: "user",
-        content: "Review launch risks",
-        createdAt: "2026-06-09T10:00:00Z",
-      },
-      {
-        role: "assistant",
-        content: "I'll review this on the schedule.",
-        createdAt: "2026-06-09T10:00:01Z",
-      },
-    ],
-  });
-}
-
-export function mockWorkflowAutomationUpdate(
-  onUpdate: (
-    automationId: string,
-    body: WorkflowAutomationUpdateRequest,
-  ) => void,
-): void {
-  context.mocks.api(
-    workflowAutomationsContract.update,
-    ({ body, params, respond }) => {
-      onUpdate(params.id, body);
-      if ("schedule" in body) {
-        return respond(
-          200,
-          createMockWorkflowAutomation({
-            id: params.id,
-            chatThreadId: AUTOMATION_THREAD_ID,
-            kind: "schedule",
-            schedule: body.schedule,
-          }),
-        );
-      }
-      return respond(
-        200,
-        createMockWorkflowAutomation({
-          id: params.id,
-          chatThreadId: AUTOMATION_THREAD_ID,
-          kind: "event",
-          eventType:
-            body.eventConfig.event === "label_applied"
-              ? "gmail-label-applied"
-              : "gmail-new-message",
-          eventConfig: body.eventConfig,
-        }),
-      );
-    },
-  );
-}
-
-export function mockServerQueuedThreadStories(): void {
-  const threads = [
-    {
-      id: SERVER_QUEUED_VISIBLE_THREAD_ID,
-      title: "Server queued run",
-      messages: [
-        {
-          id: "msg-server-queued-visible-user",
-          role: "user" as const,
-          content: "Start queued deployment",
-          runId: "run-server-queued-visible",
-          seqId: 1,
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-server-queued-visible-marker",
-          role: "assistant" as const,
-          content: null,
-          runId: "run-server-queued-visible",
-          runEventId: "queue:queued",
-          seqId: 2,
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-      ] satisfies MockChatEventInput[],
-      activeRunIds: ["run-server-queued-visible"],
-    },
-    {
-      id: SERVER_QUEUED_RESOLVED_THREAD_ID,
-      title: "Resolved server queue",
-      messages: [
-        {
-          id: "msg-server-queued-resolved-user",
-          role: "user" as const,
-          content: "Watch queued deployment resolve",
-          runId: "run-server-queued-resolved",
-          seqId: 1,
-          createdAt: "2026-06-09T10:05:00Z",
-        },
-        {
-          id: "msg-server-queued-resolved-marker",
-          role: "assistant" as const,
-          content: null,
-          runId: "run-server-queued-resolved",
-          runEventId: "queue:queued",
-          seqId: 2,
-          createdAt: "2026-06-09T10:05:01Z",
-        },
-        {
-          id: "msg-server-queued-resolved-assistant",
-          role: "assistant" as const,
-          content: "Queued deployment is running now.",
-          runId: "run-server-queued-resolved",
-          seqId: 3,
-          createdAt: "2026-06-09T10:05:02Z",
-        },
-        {
-          id: "msg-server-queued-resolved-completed",
-          role: "assistant" as const,
-          content: null,
-          runId: "run-server-queued-resolved",
-          runLifecycleEvent: "completed" as const,
-          seqId: 4,
-          createdAt: "2026-06-09T10:05:03Z",
-        },
-      ] satisfies MockChatEventInput[],
-      activeRunIds: [],
-    },
-  ];
-  const byId = new Map(
-    threads.map((thread) => {
-      return [thread.id, thread];
-    }),
-  );
-  const threadList = threads.map((thread, index) => {
-    return {
-      id: thread.id,
-      title: thread.title,
-      agent: { id: AGENT_ID, avatarUrl: null },
-      createdAt: "2026-06-09T10:00:00Z",
-      updatedAt: `2026-06-09T10:0${index}:00Z`,
-      pinnedAt: null,
-    };
-  });
-
-  context.mocks.data.agents([
-    {
-      agentId: AGENT_ID,
-      displayName: null,
-      description: null,
-      sound: null,
-      avatarUrl: null,
-    },
-  ]);
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: threadListSnapshot(threadList),
-      latestEventId: null,
-      latestSeqId: null,
-    });
-  });
-  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-    const thread = byId.get(params.id);
-    if (!thread) {
-      return respond(404, {
-        error: { message: "Thread not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, {
-      lastReadAt: "2026-06-09T10:00:00Z",
-      cancellationRecoveryPending: false,
-    });
-  });
-  context.mocks.api(
-    chatThreadEventsContract.rows,
-    ({ params, query, respond }) => {
-      const rows = mockChatEventRows(
-        normalizeMockChatEvents(
-          byId.get(params.threadId)?.messages ?? [],
-          params.threadId,
-        ),
-      ).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      });
-      return respond(200, chatEventRowsResponse(rows, query));
-    },
-  );
-  context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
-    return respond(200, { lastReadAt: null, unreads: [] });
-  });
-}
 export function buttonByText(
   text: string,
   container?: ParentNode,
@@ -625,66 +255,6 @@ export function buttonByText(
   return button;
 }
 
-export async function findWorkflowComposerEditor(): Promise<HTMLElement> {
-  return await waitFor(() => {
-    const editor = document.querySelector(
-      '.zero-composer [contenteditable="true"]',
-    );
-    if (!(editor instanceof HTMLElement)) {
-      throw new Error("Composer editor not found");
-    }
-    return editor;
-  });
-}
-
-export function mockWorkflowComposerWorkflows(): void {
-  context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
-    return respond(200, []);
-  });
-}
-
-export function selectOptionByLabel(
-  label: string,
-  option: string | RegExp,
-  container: HTMLElement,
-): void {
-  const control =
-    within(container)
-      .getAllByLabelText(label)
-      .find((element) => {
-        return element.getAttribute("role") === "combobox";
-      }) ?? within(container).getByLabelText(label);
-  click(control);
-  click(screen.getByRole("option", { name: option }));
-}
-
-export async function openAutomationSidebarWithWorkflowAutomation(
-  automation: ReturnType<typeof createMockWorkflowAutomation>,
-): Promise<HTMLElement> {
-  mockAutomationThread();
-  setMockWorkflowAutomations([automation]);
-  context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-    return respond(200, { runs: [] });
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${AUTOMATION_THREAD_ID}`,
-  });
-
-  await waitFor(() => {
-    expect(buttonByLabel("Automations")).toBeInTheDocument();
-  });
-
-  click(buttonByLabel("Automations"));
-
-  await waitFor(() => {
-    expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
-  });
-
-  return screen.getByTestId("automation-sidebar");
-}
-
 export function buttonByLabel(label: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return candidate.getAttribute("aria-label") === label;
@@ -693,32 +263,6 @@ export function buttonByLabel(label: string): HTMLElement {
     throw new Error(`${label} button not found`);
   }
   return button;
-}
-
-export function linkByText(text: string): HTMLElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!link) {
-    throw new Error(`${text} link not found`);
-  }
-  return link;
-}
-
-export function queryLinkByText(text: string): HTMLElement | null {
-  return (
-    queryAllByRoleFast("link").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-    }) ?? null
-  );
-}
-
-export function queryButtonByText(text: string): HTMLElement | null {
-  return (
-    queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-    }) ?? null
-  );
 }
 
 export function chatScrollContainer(): HTMLElement {
@@ -950,35 +494,4 @@ export function mockResizeObserver(): { automationAll: () => void } {
       }
     },
   };
-}
-
-export function mockFailedAssistantThread({
-  threadId,
-  error,
-}: {
-  threadId: string;
-  error: string;
-}): void {
-  mockChatLifecycle(context, {
-    threadId,
-    threadTitle: "Failed guidance",
-    chatEvents: [
-      {
-        id: `${threadId}-user`,
-        role: "user",
-        content: "Run the task",
-        runId: `${threadId}-run`,
-        createdAt: "2026-06-09T10:00:00Z",
-      },
-      {
-        id: `${threadId}-assistant`,
-        role: "assistant",
-        content: null,
-        runId: `${threadId}-run`,
-        error,
-        runLifecycleEvent: "failed",
-        createdAt: "2026-06-09T10:00:01Z",
-      },
-    ],
-  });
 }

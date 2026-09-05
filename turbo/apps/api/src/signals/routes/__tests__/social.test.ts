@@ -1824,9 +1824,10 @@ describe("managed SocialKit route", () => {
           message: testCase.expectedMessage,
         },
       });
-      if (testCase.message !== undefined) {
-        expect(JSON.stringify(body)).not.toContain(testCase.message.trim());
-      }
+      const includesProviderMessage =
+        testCase.message !== undefined &&
+        JSON.stringify(body).includes(testCase.message.trim());
+      expect(includesProviderMessage).toBeFalsy();
     }
 
     let nonTranscriptRequests = 0;

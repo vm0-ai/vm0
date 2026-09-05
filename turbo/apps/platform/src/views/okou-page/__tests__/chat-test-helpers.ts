@@ -1,6 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { expect } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import {
   chatThreadsContract,
@@ -89,40 +87,6 @@ export async function fillComposer(
     const editor = input.isConnected ? input : mountedComposerEditor();
     if (!(editor.textContent ?? "").includes(text)) {
       throw new Error("Composer draft did not land in the mounted editor");
-    }
-  });
-}
-
-export async function sendMessageInUI(
-  user: ReturnType<typeof userEvent.setup>,
-  input: Element,
-  text: string,
-): Promise<void> {
-  await fillComposer(input, text);
-  await user.keyboard("{Enter}");
-}
-
-export function activeRunComposer(): Promise<HTMLElement> {
-  return waitFor(() => {
-    return screen.getByRole("textbox", { name: "Message" });
-  });
-}
-
-export async function sendQueuedMessage(
-  user: ReturnType<typeof userEvent.setup>,
-  text: string,
-): Promise<void> {
-  const composer = await activeRunComposer();
-  await fill(composer, text);
-  await user.keyboard("{Enter}");
-}
-
-export async function expectQueuedMessages(contents: string[]): Promise<void> {
-  await waitFor(() => {
-    const queuedEvents = screen.getAllByLabelText("Queued message");
-    expect(queuedEvents).toHaveLength(contents.length);
-    for (const [index, content] of contents.entries()) {
-      expect(queuedEvents[index]).toHaveTextContent(content);
     }
   });
 }

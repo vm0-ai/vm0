@@ -58,7 +58,7 @@ const connectionDiagnosticConnectionStateSchema = z.enum([
   "suspended",
 ]);
 
-export type ConnectionDiagnosticConnectionState = z.infer<
+type ConnectionDiagnosticConnectionState = z.infer<
   typeof connectionDiagnosticConnectionStateSchema
 >;
 
@@ -72,7 +72,7 @@ const connectionDiagnosticChannelStateSchema = z.enum([
   "suspended",
 ]);
 
-export type ConnectionDiagnosticChannelState = z.infer<
+type ConnectionDiagnosticChannelState = z.infer<
   typeof connectionDiagnosticChannelStateSchema
 >;
 
@@ -159,7 +159,7 @@ const activeConnectionDiagnosticWaitSchema = z
   .strict()
   .readonly();
 
-export type ActiveConnectionDiagnosticWait = z.infer<
+type ActiveConnectionDiagnosticWait = z.infer<
   typeof activeConnectionDiagnosticWaitSchema
 >;
 

@@ -60,6 +60,10 @@ import {
 
 const pinnedAgentGridCardFrameClassName =
   "flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5";
+// `leading-tight` at 11px is 13.75px. Keep both loading and resolved labels on
+// the same whole-pixel line box so swapping their DOM elements cannot round the
+// baseline onto different device pixels.
+const pinnedAgentGridLabelFrameClassName = "h-3.5 leading-[14px]";
 
 function PinnedAgentGridSkeletonCard() {
   return (
@@ -71,7 +75,10 @@ function PinnedAgentGridSkeletonCard() {
       <span className="flex h-9 w-9 shrink-0">
         <Skeleton className="h-full w-full rounded-full" />
       </span>
-      <Skeleton className="h-[13.75px] w-10" />
+      <Skeleton
+        data-testid="pinned-agent-label-frame"
+        className={`${pinnedAgentGridLabelFrameClassName} w-10`}
+      />
     </div>
   );
 }
@@ -362,7 +369,8 @@ function PinnedAgentGridCard({
         )}
       </span>
       <span
-        className={`zero-nav-copy w-full truncate text-center text-[11px] leading-tight ${
+        data-testid="pinned-agent-label-frame"
+        className={`zero-nav-copy ${pinnedAgentGridLabelFrameClassName} w-full truncate text-center text-[11px] ${
           isPrimarySelected ? "font-medium" : ""
         } ${isDragging ? "opacity-0" : ""}`}
       >
@@ -538,7 +546,10 @@ export function PinnedAgentListSection({
               <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
                 <Plus size={18} />
               </span>
-              <span className="zero-nav-copy-muted text-[11px] leading-tight">
+              <span
+                data-testid="pinned-agent-label-frame"
+                className={`zero-nav-copy-muted ${pinnedAgentGridLabelFrameClassName} text-[11px]`}
+              >
                 {t(($) => {
                   return $.sidebar.addPin;
                 })}

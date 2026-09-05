@@ -19,7 +19,6 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import { safeJsonParse } from "../utils";
 import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
 import type { RouteEntry } from "../route-entry";
 import { parseCustomConnectorOAuthStateContext } from "../services/custom-connector-oauth2.service";
@@ -241,22 +240,12 @@ async function readCustomOAuthState(
     return actionOk({ custom_oauth_state: null });
   }
   const context = parseCustomConnectorOAuthStateContext(state.oauthContext);
-  const rawContext = safeJsonParse(state.oauthContext ?? "null");
-  const contextFormat =
-    typeof rawContext === "object" &&
-    rawContext !== null &&
-    "version" in rawContext &&
-    rawContext.version === 2
-      ? "canonical"
-      : "legacy";
   return actionOk({
     custom_oauth_state: {
       storage_version: state.storageVersion,
       context_storage_version: context?.storageVersion ?? null,
       context_valid: context !== null,
-      ...(context
-        ? { auth_mode: context.authMode, context_format: contextFormat }
-        : {}),
+      ...(context ? { auth_mode: context.authMode } : {}),
     },
   });
 }
@@ -510,42 +499,6 @@ async function setFeishuMemberConnectorLink(
         status: 400 as const,
         body: { error: "Feishu member connection test fixture was not found" },
       };
-}
-
-async function seedLegacyCustomFeishuOAuthState(
-  db: Db,
-  body: ConnectorCredentialStorageAction<"seed-legacy-custom-feishu-oauth-state">,
-  signal: AbortSignal,
-) {
-  await db.insert(connectorOauthStates).values({
-    state: body.state,
-    customConnectorId: body.custom_connector_id,
-    storageVersion: body.storage_version,
-    authMethod: "oauth",
-    userId: body.user_id,
-    orgId: body.org_id,
-    redirectUri: body.redirect_uri,
-    oauthContext: JSON.stringify({
-      connectorId: body.custom_connector_id,
-      storageVersion: body.storage_version,
-      providerContext: {
-        provider: "feishu",
-        ...(body.provider_context.completion_target === "custom"
-          ? { completionTarget: "custom" }
-          : {
-              completionTarget: "feishu",
-              installationId: body.provider_context.installation_id,
-              ...(body.provider_context.expected_open_id
-                ? { expectedOpenId: body.provider_context.expected_open_id }
-                : {}),
-            }),
-      },
-    }),
-    accountMutation: { intent: "single-account" },
-    expiresAt: connectorOAuthStateExpiresAt(),
-  });
-  signal.throwIfAborted();
-  return actionOk();
 }
 
 async function seedCustomOAuthStateContext(
@@ -1075,9 +1028,6 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "clear-feishu-connector-ownership": {
         return await clearFeishuConnectorOwnership(db, body, signal);
-      }
-      case "seed-legacy-custom-feishu-oauth-state": {
-        return await seedLegacyCustomFeishuOAuthState(db, body, signal);
       }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);

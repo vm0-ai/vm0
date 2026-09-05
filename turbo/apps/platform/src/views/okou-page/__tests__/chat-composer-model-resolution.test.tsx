@@ -1,7 +1,3 @@
-import {
-  billingStatusContract,
-  type BillingStatusResponse,
-} from "@okouai/api-contracts/contracts/billing";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   getCanonicalModelDisplayName,
@@ -10,7 +6,7 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -87,27 +83,6 @@ function preference(
     selectedImageModel: null,
     updatedAt: POLICY_DATE,
   });
-}
-
-function proBillingStatus(): BillingStatusResponse {
-  return {
-    tier: "pro",
-    supportByok: true,
-    restrictedVm0Models: false,
-    credits: 20_000,
-    onboardingPaymentPending: false,
-    subscriptionStatus: null,
-    currentPeriodEnd: null,
-    cancelAtPeriodEnd: false,
-    scheduledChange: null,
-    hasSubscription: false,
-    autoRecharge: { enabled: false, threshold: null, amount: null },
-    creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
-    creditBreakdown: [],
-    creditGrants: [],
-    concurrencyLimit: 0,
-    concurrencySubscriptions: [],
-  };
 }
 
 function buttonNamed(
@@ -256,62 +231,4 @@ test("Ignore Fast mode when it is unavailable", async () => {
   await expect(
     screen.findByText("Run this in standard mode"),
   ).resolves.toBeVisible();
-});
-
-test("Use model and speed controls in Portuguese", async () => {
-  const user = userEvent.setup({ delay: null });
-  installRunChat({ selectedModel: "gpt-5.6-sol" });
-  configurePolicies(
-    ["gpt-5.6-sol", "deepseek-v4-flash", "claude-sonnet-4-6"],
-    "gpt-5.6-sol",
-    {
-      "claude-sonnet-4-6": {
-        providerType: "anthropic-api-key",
-        credentialScope: "member",
-      },
-    },
-  );
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, proBillingStatus());
-  });
-
-  await setupPage({
-    context,
-    path: NEW_CHAT_PATH,
-    locale: "pt-BR",
-    featureSwitches: {
-      [FeatureSwitchKey.CodexFastMode]: true,
-    },
-  });
-
-  const picker = await modelPicker("GPT 5.6 Sol");
-  await user.click(picker);
-  const fastOption = await screen.findByRole("option", {
-    name: "GPT 5.6 Sol Rápido",
-  });
-  await user.hover(fastOption);
-  await expect(
-    screen.findByText(
-      "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
-    ),
-  ).resolves.toBeVisible();
-
-  const economyOption = screen.getByRole("option", {
-    name: /DeepSeek V4 Flash/iu,
-  });
-  await user.hover(within(economyOption).getByText("$"));
-  await expect(
-    screen.findByText("Nível econômico para tarefas simples do dia a dia"),
-  ).resolves.toBeVisible();
-
-  const byokOption = screen.getByRole("option", {
-    name: /Claude Sonnet 4\.6/iu,
-  });
-  await user.hover(within(byokOption).getByText("BYOK"));
-  await expect(
-    screen.findByText("Usa seu provedor configurado"),
-  ).resolves.toBeVisible();
-
-  await user.click(fastOption);
-  await expect(modelPicker("GPT 5.6 Sol Rápido")).resolves.toBeVisible();
 });

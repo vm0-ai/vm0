@@ -841,6 +841,16 @@ pub enum AgentFramework {
     Pi,
 }
 
+impl From<crate::env::CliFramework> for AgentFramework {
+    fn from(framework: crate::env::CliFramework) -> Self {
+        match framework {
+            crate::env::CliFramework::ClaudeCode => Self::ClaudeCode,
+            crate::env::CliFramework::Codex => Self::Codex,
+            crate::env::CliFramework::Pi => Self::Pi,
+        }
+    }
+}
+
 impl AgentFramework {
     /// Return the stable snake_case string representation.
     #[must_use]
@@ -952,6 +962,28 @@ impl PromptMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_framework_projects_to_diagnostic_wire_values() {
+        for (framework, expected, wire_value) in [
+            (
+                crate::env::CliFramework::ClaudeCode,
+                AgentFramework::ClaudeCode,
+                "claude_code",
+            ),
+            (
+                crate::env::CliFramework::Codex,
+                AgentFramework::Codex,
+                "codex",
+            ),
+            (crate::env::CliFramework::Pi, AgentFramework::Pi, "pi"),
+        ] {
+            let projected = AgentFramework::from(framework);
+
+            assert_eq!(projected, expected);
+            assert_eq!(projected.as_str(), wire_value);
+        }
+    }
 
     #[test]
     fn prompt_metadata_classifies_safe_shapes_without_content() {

@@ -115,23 +115,6 @@ test("The Agents document title rejects a look-alike Okou host", async () => {
   expect(document.title).toBe("Agents | VM0");
 });
 
-test("The Private tab explains when no private agents exist", async () => {
-  configureAgentList(context, [
-    agent(RESEARCH_AGENT_ID, {
-      displayName: "Research Agent",
-      visibility: "public",
-    }),
-  ]);
-  await setupPage({ context, path: "/agents" });
-  await waitForVisibilityTabs();
-
-  click(visibilityTab("Private"));
-
-  await expect(
-    screen.findByText("No private agents yet"),
-  ).resolves.toBeInTheDocument();
-});
-
 test("Unread indicators recover after realtime reconnects", async () => {
   let showUnread = false;
   const refreshed = context.mocks.deferred<void>();

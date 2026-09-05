@@ -131,6 +131,7 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5-1",
+  "gpt-6-astra",
   "gpt-5.6-sol",
   "gpt-5.6-luna",
   "deepseek-v4-flash",

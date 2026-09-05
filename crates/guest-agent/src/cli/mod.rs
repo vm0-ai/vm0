@@ -1090,7 +1090,7 @@ async fn execute_cli_inner(
 
     let active_input_controller = active_input.controller();
     let pi_execution = matches!(runtime.framework, env::Framework::Pi);
-    let (pi_rpc_response_tx, pi_rpc_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (pi_rpc_response_tx, pi_rpc_response_rx) = pi_rpc::response_channel();
     let (pi_rpc_startup_tx, pi_rpc_startup_rx) = tokio::sync::oneshot::channel();
     let mut pi_rpc_startup_tx = pi_execution.then_some(pi_rpc_startup_tx);
     let pi_rpc_cancellation = CancellationToken::new();
@@ -1434,7 +1434,7 @@ async fn execute_cli_inner(
                                 }
                             }
                             if let Some(projection) = pi_rpc_projection.as_mut() {
-                                match projection.project(event, &pi_rpc_response_tx) {
+                                match projection.project(event, &pi_rpc_response_tx, line.len()) {
                                     Ok(Some(projected)) => event = projected,
                                     Ok(None) => {
                                         agent_log.write_raw_line(line.as_bytes()).await;

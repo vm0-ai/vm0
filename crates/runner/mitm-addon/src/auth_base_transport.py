@@ -199,7 +199,11 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         last_error: OSError | None = None
         for address in self._validated_addresses:
             self._abort_handle.raise_if_aborted()
-            raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
+            try:
+                raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
+            except OSError as exc:
+                last_error = exc
+                continue
             try:
                 self._abort_handle.register_socket(raw_sock)
                 raw_sock.settimeout(remaining_deadline_seconds(self._deadline))

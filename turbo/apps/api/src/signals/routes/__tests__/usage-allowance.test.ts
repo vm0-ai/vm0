@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   seedOrgMetadata,
   seedUsagePricingRows,
@@ -18,7 +19,10 @@ import {
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState } from "./helpers/runtime-state";
+import {
+  readRunFailureReasonFixture,
+  seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
+} from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   generatedStripeCustomerId,
@@ -134,7 +138,7 @@ async function createVm0Run(
   actor: ApiTestUser,
   agentId: string,
   prompt: string,
-): Promise<{ readonly runId: string }> {
+): Promise<{ readonly runId: string; readonly status: string }> {
   const api = createRunsApi(context);
   return await api.createRun(actor, {
     agentId,
@@ -460,7 +464,7 @@ describe("Usage Allowance", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("leases billable firewall auth from allowance and denies it after exhaustion", async () => {
+  it("keeps billable firewall auth available to an admitted run after exhaustion", async () => {
     const { actor, agentId } = await vm0AllowanceActor({
       credits: 0,
       allowance: { shortWindowUnits: 2, weeklyWindowUnits: 2 },
@@ -483,7 +487,8 @@ describe("Usage Allowance", () => {
     const before = Math.floor(now() / 1000);
     const leased = await accept(client.resolve({ headers, body }), [200]);
     expect(leased.body.expiresAt).not.toBeNull();
-    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 1);
+    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 25);
+    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 35);
 
     const provider = usageProvider();
     await recordPendingUsage({
@@ -494,8 +499,143 @@ describe("Usage Allowance", () => {
     });
     await processOrgUsageEvents(actor);
 
-    const denied = await accept(client.resolve({ headers, body }), [402]);
+    const continued = await accept(client.resolve({ headers, body }), [200]);
+    expect(continued.body.expiresAt).not.toBeNull();
+    expect(continued.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 25);
+    expect(continued.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 35);
+
+    await recordPendingUsage({
+      actor,
+      runId: run.runId,
+      provider,
+      quantity: 3,
+    });
+    await processOrgUsageEvents(actor);
+
+    await expect(readOrgCredits(actor)).resolves.toBe(-3);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(5);
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "new run after admitted run exhausted credits",
+        modelProvider: "built-in",
+      },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("does not let built-in credit admission bypass workspace suspension", async () => {
+    const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 1 });
+    const api = createRunsApi(context);
+    const run = await createVm0Run(
+      actor,
+      agentId,
+      "admitted before suspension",
+    );
+    await seedOrgMetadata({ orgId, tier: "pro-suspend", credits: 1 });
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+
+    const denied = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [402],
+    );
+
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("fails an unfunded built-in queue promotion and continues to BYOK", async () => {
+    const { actor, agentId } = await vm0AllowanceActor({ credits: 1 });
+    const api = createRunsApi(context);
+    const first = await createVm0Run(actor, agentId, "active built-in one");
+    const second = await createVm0Run(actor, agentId, "active built-in two");
+    const unfunded = await createVm0Run(
+      actor,
+      agentId,
+      "queued built-in loses admission",
+    );
+    expect(unfunded.status).toBe("queued");
+
+    await api.ensureOrgModelProvider(actor);
+    const byok = await api.createRun(actor, {
+      agentId,
+      prompt: "queued BYOK remains admissible",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(byok.status).toBe("queued");
+
+    const provider = usageProvider();
+    await recordPendingUsage({
+      actor,
+      runId: first.runId,
+      provider,
+      quantity: 1,
+    });
+    await processOrgUsageEvents(actor);
+    await expect(readOrgCredits(actor)).resolves.toBe(0);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(async () => {
+        return (await api.readRun(actor, unfunded.runId)).status;
+      })
+      .toBe("failed");
+    await expect
+      .poll(async () => {
+        return (await api.readRun(actor, byok.runId)).status;
+      })
+      .toBe("pending");
+    await expect(
+      readRunFailureReasonFixture(context, unfunded.runId),
+    ).resolves.toBe("insufficient_credits");
+
+    const missingJob = await api.requestClaimRunnerJob(
+      true,
+      unfunded.runId,
+      [404],
+    );
+    expectApiError(missingJob.body);
+    expect(missingJob.body.error.message).toBe("Job not found in queue");
+    await api.claimRunnerJob(byok.runId);
+
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+    const denied = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, byok.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [402],
+    );
+    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, byok.runId, [200]);
   });
 
   it("backfills allowance windows during non-vm0 usage settlement", async () => {
@@ -672,8 +812,14 @@ describe("Usage Allowance", () => {
     mockNow(runCreatedAt);
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const api = createRunsApi(context);
-    // The run predates the entitlement, so it has no allowance windows.
-    const run = await createVm0Run(actor, agentId, "run without windows");
+    await api.ensureOrgModelProvider(actor);
+    // BYOK runs do not receive built-in credit admission, and this run
+    // predates the entitlement, so it has no allowance windows.
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without windows",
+      modelProvider: "anthropic-api-key",
+    });
     mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 2,

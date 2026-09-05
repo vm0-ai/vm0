@@ -20,10 +20,6 @@ import {
 } from "../../mocks/handlers/clerk-localizations.ts";
 import { mockClerkResource } from "../../test/mocks/clerk-resource.ts";
 import {
-  mockClerkWorker,
-  type ClerkWorkerMock,
-} from "../../test/mocks/clerk-worker.ts";
-import {
   mockSentry,
   type SentryMock,
 } from "../../test/mocks/sentry-behavior.ts";
@@ -92,12 +88,6 @@ interface BrowserOpenMock {
 
 interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
-}
-
-interface BrowserScreenOptions {
-  readonly height: number;
-  readonly pixelRatio: number;
-  readonly width: number;
 }
 
 interface CanvasRender {
@@ -241,7 +231,6 @@ interface ClerkMock {
   readonly loads: readonly (MockedClerkLoadOptions | undefined)[];
   readonly localizationRequests: ClerkLocalizationLocale[];
   readonly resourceRequests: ClerkResourceRequest[];
-  readonly worker: ClerkWorkerMock;
   readonly loaded: (loaded: boolean) => void;
   readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;
   readonly organization: (...args: Parameters<typeof mockOrganization>) => void;
@@ -533,9 +522,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           maxTouchPoints,
         );
       },
-      screen: (options: BrowserScreenOptions): void => {
-        mockScreen(getSignal(), options);
-      },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
@@ -686,7 +672,6 @@ function mockClerk(
   const localizationRequests: ClerkLocalizationLocale[] = [];
   const unavailableLocalizations = new Set<ClerkLocalizationLocale>();
   const resource = mockClerkResource(signal);
-  const worker = mockClerkWorker(signal);
   const originalClerk = Reflect.get(globalThis, "Clerk");
   const hadOriginalClerk = Reflect.has(globalThis, "Clerk");
 
@@ -721,7 +706,6 @@ function mockClerk(
     },
     localizationRequests,
     resourceRequests: resource.requests,
-    worker,
     loaded: mockClerkLoaded,
     localizationUnavailable(locale): void {
       unavailableLocalizations.add(locale);
@@ -1314,26 +1298,6 @@ function mockImageDimensions(
   });
 
   return { createdUrls, revokedUrls };
-}
-
-function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
-  const widthDescriptor = defineWindowProperty(screen, "width", options.width);
-  const heightDescriptor = defineWindowProperty(
-    screen,
-    "height",
-    options.height,
-  );
-  const pixelRatioDescriptor = defineWindowProperty(
-    window,
-    "devicePixelRatio",
-    options.pixelRatio,
-  );
-
-  restoreOnAbort(signal, () => {
-    restoreWindowProperty(screen, "width", widthDescriptor);
-    restoreWindowProperty(screen, "height", heightDescriptor);
-    restoreWindowProperty(window, "devicePixelRatio", pixelRatioDescriptor);
-  });
 }
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {

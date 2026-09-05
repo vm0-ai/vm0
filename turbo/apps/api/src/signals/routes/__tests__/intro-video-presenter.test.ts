@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
+import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";
 import { buildArtifactKey, buildFileUrlFromKey } from "../../../lib/file-url";
@@ -85,6 +87,16 @@ function createIntroVideoPresenterTestApp(
     ],
     usagePricingResolution,
   });
+}
+
+function introVideoPresenterClient(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
+  return setupApp({
+    context,
+    routes: introVideoPresenterRoutes,
+    usagePricingResolution,
+  })(introVideoPresenterContract);
 }
 
 function okouToken(args: {
@@ -341,6 +353,28 @@ describe("Intro Video HeyGen presenter route", () => {
       nextToken: "next-voice-page",
     });
     expect(voiceRequests).toBe(1);
+
+    server.use(
+      http.get(HEYGEN_VOICES_URL, () => {
+        return HttpResponse.json(
+          { error: { message: "invalid page token" } },
+          { status: 400 },
+        );
+      }),
+    );
+    const invalidTokenResponse = await accept(
+      introVideoPresenterClient(fixture.usagePricingResolution).voices({
+        headers: authHeaders(),
+        query: { token: "expired" },
+      }),
+      [400],
+    );
+    expect(invalidTokenResponse.body).toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "HeyGen rejected the request: invalid page token",
+      },
+    });
   });
 
   it("generates the selected HeyGen voice once for presenter and mix", async () => {
@@ -428,6 +462,18 @@ describe("Intro Video HeyGen presenter route", () => {
         );
       }),
     ).toBeTruthy();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    for (const query of ["", "?kind=file"]) {
+      const catalogResponse = await createIntroVideoPresenterTestApp(
+        fixture.usagePricingResolution,
+      ).request(`/api/artifacts/catalog${query}`, {
+        headers: authHeaders(),
+      });
+      expect(catalogResponse.status).toBe(200);
+      expect(asRecord(await catalogResponse.json()).artifacts).toStrictEqual(
+        [],
+      );
+    }
     await expect(orgCredits(fixture)).resolves.toBe(9959);
   });
 
@@ -485,9 +531,15 @@ describe("Intro Video HeyGen presenter route", () => {
       }),
       http.get(HEYGEN_STATUS_URL, () => {
         statusCalls += 1;
+        if (statusCalls === 1) {
+          return HttpResponse.json(
+            { error: { message: "temporary provider outage" } },
+            { status: 503 },
+          );
+        }
         return HttpResponse.json({
           data:
-            statusCalls === 1
+            statusCalls === 2
               ? { id: HEYGEN_VIDEO_ID, status: "processing" }
               : {
                   id: HEYGEN_VIDEO_ID,
@@ -546,6 +598,35 @@ describe("Intro Video HeyGen presenter route", () => {
     expect(createBody).not.toHaveProperty("background");
     const callbackUrl = new URL(String(createBody?.callback_url));
 
+    for (let index = 0; index < 2; index += 1) {
+      const additionalResponse = await app.request(
+        "/api/intro-video/presenter/generate",
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            avatarId: "Abigail_standing_office_front",
+            audioUrl,
+          }),
+        },
+      );
+      expect(additionalResponse.status).toBe(202);
+    }
+    const limitedResponse = await accept(
+      introVideoPresenterClient(fixture.usagePricingResolution).generate({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          avatarId: "Abigail_standing_office_front",
+          audioUrl,
+        },
+      }),
+      [429],
+    );
+    expect(limitedResponse.body).toMatchObject({
+      error: { code: "BUILT_IN_RUN_CONCURRENCY_LIMIT" },
+    });
+    expect(observedCreateRequests).toHaveLength(4);
+
     const invalidCallback = new URL(callbackUrl);
     invalidCallback.searchParams.set("token", "invalid");
     const invalidResponse = await app.request(
@@ -553,6 +634,18 @@ describe("Intro Video HeyGen presenter route", () => {
       { method: "POST", body: "{}" },
     );
     expect(invalidResponse.status).toBe(401);
+
+    const providerUnavailableResponse = await app.request(
+      `${callbackUrl.pathname}${callbackUrl.search}`,
+      { method: "POST", body: "{}" },
+    );
+    expect(providerUnavailableResponse.status).toBe(503);
+    const activeStatusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(activeStatusResponse.status).toBe(200);
+    expect(asRecord(await activeStatusResponse.json()).status).toBe("running");
 
     const pendingResponse = await app.request(
       `${callbackUrl.pathname}${callbackUrl.search}`,
@@ -596,9 +689,9 @@ describe("Intro Video HeyGen presenter route", () => {
     ).toBeTruthy();
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    for (const kind of ["avatar", "file", "video"] as const) {
+    for (const query of ["", "?kind=avatar", "?kind=file", "?kind=video"]) {
       const catalogResponse = await app.request(
-        `/api/artifacts/catalog?kind=${kind}`,
+        `/api/artifacts/catalog${query}`,
         { headers: authHeaders() },
       );
       expect(catalogResponse.status).toBe(200);

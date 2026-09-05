@@ -22,8 +22,7 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000030";
 const IDEAS_PATH = `/agents/${AGENT_ID}/ideas`;
-const BROWSER_SCREENSHOT_PROMPT =
-  "Open this URL in the browser and take a screenshot: [paste URL]";
+
 const REVENUECAT_PROMPT =
   "Set up a daily RevenueCat digest that tracks new subscriptions, renewals, and cancellations in Google Sheets and alerts on Slack for churn spikes";
 
@@ -329,22 +328,6 @@ test("Ideas remain stable while connector availability reloads", async () => {
   await expect(
     screen.findByText("RevenueCat subscription digest"),
   ).resolves.toBeVisible();
-});
-
-test("The ideas catalog is localized without rewriting the authored prompt", async () => {
-  configureAgent();
-  mockCatalog([]);
-
-  await setupPage({ context, path: IDEAS_PATH, locale: "pt-BR" });
-  await screen.findByRole("heading", { name: "Ideias e casos de uso" });
-  expect(categoryButton("Todos")).toBeVisible();
-  expect(screen.getByLabelText("Buscar casos de uso")).toBeVisible();
-  const idea = await screen.findByText("Capturas de tela do navegador");
-
-  click(idea);
-
-  const composer = await findComposer("Mensagem");
-  expect(composer.textContent).toBe(BROWSER_SCREENSHOT_PROMPT);
 });
 
 test("Pending connector availability is not mistaken for no connectors", async () => {

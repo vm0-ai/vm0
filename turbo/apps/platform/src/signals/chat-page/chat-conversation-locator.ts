@@ -360,7 +360,7 @@ function createVisibleTurns(
       activeGroups,
       get(runGroupExpansionOverrides$),
       targetEventId,
-      { preserveGoalRunsForWorkFolding: runWorkFoldingEnabled },
+      { preserveRunGroupsForWorkFolding: runWorkFoldingEnabled },
     );
     const runGroupVisibleGroups =
       runGroupFolding?.visibleGroups ?? activeGroups;

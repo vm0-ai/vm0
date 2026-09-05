@@ -3,8 +3,8 @@ import {
   buildSignInRedirectUrl,
   clerk$,
   getAllowedAuthRedirectOriginsForCurrentPage,
+  navigateSatelliteAuthRoute$,
   resolveAppAuthUrl,
-  resolveSatelliteAuthRouteRedirectUrl,
 } from "./auth.ts";
 import { searchParams$, detachedNavigateTo$ } from "./route.ts";
 import { logger } from "./log.ts";
@@ -22,10 +22,7 @@ const L = logger("SignInToken");
  */
 export const setupSignInTokenPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const satelliteAuthRedirectUrl =
-      resolveSatelliteAuthRouteRedirectUrl("sign-in");
-    if (satelliteAuthRedirectUrl) {
-      location.replace(satelliteAuthRedirectUrl);
+    if (await set(navigateSatelliteAuthRoute$, "sign-in", signal)) {
       return;
     }
 

@@ -10,7 +10,7 @@ import {
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
 
-export interface DraftAttachmentSnapshot extends PersistedAttachment {
+interface DraftAttachmentSnapshot extends PersistedAttachment {
   readonly annotatedFileId?: string;
   readonly annotations?: ImageAnnotation;
 }

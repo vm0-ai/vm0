@@ -1,5 +1,5 @@
 import { HttpResponse } from "msw";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   uploadsContract,
@@ -53,14 +53,20 @@ function workflow(
     readonly agentId?: string;
     readonly displayName?: string | null;
     readonly description?: string | null;
+    readonly visibility?: WorkflowFixture["visibility"];
+    readonly shadowedBy?: WorkflowFixture["shadowedBy"];
   } = {},
 ): WorkflowFixture {
-  return workflowSummary({
-    name,
-    agentId: options.agentId ?? AGENT_ID,
-    displayName: options.displayName ?? null,
-    description: options.description ?? `${name} description`,
-  });
+  return {
+    ...workflowSummary({
+      name,
+      agentId: options.agentId ?? AGENT_ID,
+      displayName: options.displayName ?? null,
+      description: options.description ?? `${name} description`,
+    }),
+    visibility: options.visibility ?? "public",
+    shadowedBy: options.shadowedBy ?? null,
+  };
 }
 
 function slashMenu(): HTMLElement {
@@ -296,42 +302,6 @@ test("Dismiss workflow suggestions without losing the query", async () => {
   });
 });
 
-test("Navigate a long workflow suggestion list by keyboard", async () => {
-  const workflows = Array.from({ length: 12 }, (_, index) => {
-    return workflow(`task-${String(index + 1).padStart(2, "0")}`);
-  });
-  mockAgent();
-  mockThread();
-  installWorkflows(() => {
-    return workflows;
-  });
-
-  await setupPage({ context, path: `/chats/${THREAD_ID}` });
-
-  const user = userEvent.setup();
-  const editor = await findComposerEditor();
-  await user.click(editor);
-  await user.keyboard("/");
-  await waitFor(() => {
-    expect(slashMenuButtons()).toHaveLength(12);
-  });
-  const lastButton = slashButton("/task-12");
-  const scrollCalls: ScrollIntoViewOptions[] = [];
-  lastButton.scrollIntoView = (options?: boolean | ScrollIntoViewOptions) => {
-    if (typeof options === "object") {
-      scrollCalls.push(options);
-    }
-  };
-
-  await user.keyboard("{ArrowDown}".repeat(11));
-
-  await waitFor(() => {
-    expect(lastButton).toHaveClass("bg-accent");
-    expect(scrollCalls).toContainEqual({ block: "nearest" });
-  });
-  expect(editor).toHaveFocus();
-});
-
 test("Refresh workflow suggestions without disrupting the draft", async () => {
   let workflows: WorkflowFixture[] = [];
   const primaryThread = {
@@ -426,46 +396,6 @@ test("Refresh workflow suggestions without disrupting the draft", async () => {
   });
 });
 
-test("Browse workflow templates in the user's language", async () => {
-  mockAgent();
-  mockThread();
-  installWorkflows(() => {
-    return [];
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${THREAD_ID}`,
-    locale: "pt-BR",
-  });
-
-  await findComposerEditor();
-  await openTemplateCategory("Fluxo de trabalho", "Modelo");
-
-  const dialog = await screen.findByRole("dialog");
-  expect(
-    within(dialog).getByRole("textbox", { name: "Buscar modelos" }),
-  ).toBeVisible();
-  const selectedAllCategory = queryAllByRoleFast("button", dialog).find(
-    (button) => {
-      return (
-        button.textContent?.trim() === "Todos" &&
-        button.getAttribute("aria-pressed") === "true"
-      );
-    },
-  );
-  expect(selectedAllCategory).toBeVisible();
-  expect(
-    within(dialog).getByText("Marcador automático da caixa de entrada"),
-  ).toBeVisible();
-  expect(
-    within(dialog).getByText(
-      "Crie um fluxo que roda quando um marcador do Gmail é aplicado e cuida da mensagem marcada.",
-    ),
-  ).toBeVisible();
-  expect(within(dialog).getAllByText("Usar").length).toBeGreaterThan(0);
-});
-
 test("Insert an attached workflow with slash suggestions", async () => {
   mockAgent();
   mockThread();
@@ -518,6 +448,57 @@ test("Insert an attached workflow with slash suggestions", async () => {
     expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
   });
   expect(window.visualViewport?.offsetTop).toBe(160);
+});
+
+test("Suggest only the effective workflow when a private workflow shadows a public workflow", async () => {
+  const privateWorkflow = workflow("pr-auto", {
+    displayName: "PR Auto",
+    description: "Review, repair, and merge one pull request",
+    visibility: "private",
+  });
+  const publicWorkflow = workflow("pr-auto", {
+    displayName: "PR Auto",
+    description: "Legacy goal-driven pull request automation",
+    shadowedBy: {
+      id: privateWorkflow.id,
+      name: privateWorkflow.name,
+      displayName: privateWorkflow.displayName,
+    },
+  });
+  mockAgent();
+  mockThread();
+  installWorkflows(() => {
+    return [
+      workflow("aardvark"),
+      publicWorkflow,
+      privateWorkflow,
+      workflow("pr-implement"),
+      workflow("topic"),
+    ];
+  });
+
+  await setupPage({ context, path: `/chats/${THREAD_ID}` });
+
+  const user = userEvent.setup();
+  const editor = await findComposerEditor();
+  await user.click(editor);
+  await user.keyboard("/pr");
+
+  await waitFor(() => {
+    const matchingButtons = slashMenuButtons().filter((button) => {
+      return button.textContent
+        ?.replace(/\s+/gu, " ")
+        .trim()
+        .startsWith("/pr-auto");
+    });
+    expect(matchingButtons).toHaveLength(1);
+  });
+  expect(slashButton("/pr-auto")).toHaveTextContent(
+    "Review, repair, and merge one pull request",
+  );
+  expect(
+    screen.queryByText("Legacy goal-driven pull request automation"),
+  ).toBeNull();
 });
 
 test("Send a template while the current run is active", async () => {

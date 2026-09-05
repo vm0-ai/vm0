@@ -20,7 +20,7 @@ export function currentLocale(): string {
   return i18n.resolvedLanguage ?? i18n.language;
 }
 
-export interface InitialLocaleResources {
+interface InitialLocaleResources {
   readonly locale: SupportedLocale;
   readonly resources: Resource;
 }
@@ -97,14 +97,6 @@ export function loadI18nLanguageResources(
     !i18n.hasResourceBundle(locale, "common")
     ? loadLocaleResources(locale, signal)
     : Promise.resolve(undefined);
-}
-
-export async function changeI18nLanguage(
-  locale: SupportedLocale,
-  signal?: AbortSignal,
-): Promise<void> {
-  const resources = await loadI18nLanguageResources(locale, signal);
-  await changeI18nLanguageWithResources(locale, resources, signal);
 }
 
 export async function changeI18nLanguageWithResources(

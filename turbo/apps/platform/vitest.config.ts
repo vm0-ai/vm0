@@ -6,10 +6,6 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@clerk/clerk-js/no-rhc": path.resolve(
-        __dirname,
-        "./src/test/mocks/clerk-worker.ts",
-      ),
       "@clerk/shared/loadClerkJsScript": path.resolve(
         __dirname,
         "./src/test/mocks/clerk-resource.ts",

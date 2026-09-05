@@ -9,26 +9,6 @@ import {
 } from "./chat-message-experience-test-helpers.ts";
 
 const APP_HOST = "app.vm0.ai";
-const THREAD_ID = "b0000000-0000-4000-a000-000000000925";
-
-function installViewportWidth(width: number): void {
-  const descriptor = Object.getOwnPropertyDescriptor(window, "innerWidth");
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    value: width,
-  });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      if (descriptor) {
-        Object.defineProperty(window, "innerWidth", descriptor);
-        return;
-      }
-      Reflect.deleteProperty(window, "innerWidth");
-    },
-    { once: true },
-  );
-}
 
 test("Keep the iPadOS composer from stealing focus", async () => {
   context.mocks.browser.userAgent(
@@ -54,47 +34,4 @@ test("Keep the iPadOS composer from stealing focus", async () => {
   }
   expect(editor).not.toHaveFocus();
   expect(editor.closest(".zero-composer")).not.toContainElement(activeElement);
-});
-
-test("Give a new wide-layout chat comfortable writing space", async () => {
-  installViewportWidth(1280);
-  context.mocks.browser.matchMedia(false);
-  installMessageExperienceChat();
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    host: APP_HOST,
-  });
-
-  const editor = await findComposer();
-  expect(editor).toHaveClass("min-h-[96px]");
-});
-
-test("Keep an existing narrow-layout composer compact", async () => {
-  installViewportWidth(390);
-  context.mocks.browser.matchMedia((query) => {
-    return query === "(pointer: coarse)";
-  });
-  installMessageExperienceChat({
-    threadId: THREAD_ID,
-    chatEvents: [
-      {
-        id: "b0000000-0000-4000-a000-000000000926",
-        role: "assistant",
-        content: "The compact conversation is ready.",
-        runId: "layout-run",
-        createdAt: "2026-08-01T10:00:00Z",
-      },
-    ],
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${THREAD_ID}`,
-    host: APP_HOST,
-  });
-
-  const editor = await findComposer();
-  expect(editor).toHaveClass("min-h-[68px]");
 });

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.185.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.1...runner-rs-v0.185.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **runner:** apply late fast tier to split websocket usage ([#31766](https://github.com/vm0-ai/vm0/issues/31766)) ([17fef7c](https://github.com/vm0-ai/vm0/commit/17fef7c4e9d315661628a21a1899a94c47281329))
+* **runner:** require connector account context at startup ([#31770](https://github.com/vm0-ai/vm0/issues/31770)) ([85edfaf](https://github.com/vm0-ai/vm0/commit/85edfafc9923227b10830e3e77103d4984822701))
+
+
+### Refactoring
+
+* **agent:** centralize cli framework selector parsing ([#31768](https://github.com/vm0-ai/vm0/issues/31768)) ([b98056f](https://github.com/vm0-ai/vm0/commit/b98056feab6c029fc4de1e61e4dcaf6e4d9fda94))
+
 ## [0.185.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.0...runner-rs-v0.185.1) (2026-09-04)
 
 

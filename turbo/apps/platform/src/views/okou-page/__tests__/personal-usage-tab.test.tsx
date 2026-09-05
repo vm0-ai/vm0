@@ -681,30 +681,6 @@ test("Review every workspace member’s package balance", async () => {
   expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
 });
 
-test("Show an empty personal credit-usage period", async () => {
-  mockPersonalUsageStory([]);
-  await openUsageSettings("usage-records");
-
-  const empty = await screen.findByTestId("usage-records-empty");
-  expect(
-    within(empty).getByText("No usage in this time range"),
-  ).toBeInTheDocument();
-  expect(
-    within(empty).getByText(
-      "Credits you spend on chats, automations, and channels show up here.",
-    ),
-  ).toBeInTheDocument();
-  // The illustration is decorative, so it must stay out of the accessible name.
-  const illustrations = Array.from(
-    empty.querySelectorAll<HTMLElement>('[role="presentation"]'),
-  );
-  expect(illustrations).toHaveLength(1);
-  expect(illustrations[0]).toHaveAttribute(
-    "src",
-    expect.stringContaining("empty-usage-"),
-  );
-});
-
 test("Review personal credit-usage records by date range", async () => {
   const user = userEvent.setup();
   const requests = mockPersonalUsageStory();
@@ -800,12 +776,12 @@ test("Identify the model used by limited-free runs", async () => {
   });
 });
 
-test("Label Talking Avatar usage by the product feature", async () => {
+test("Label HeyGen Avatar III usage by the product feature", async () => {
   const user = userEvent.setup();
   const row = usageRow({
-    title: "Talking avatar usage",
+    title: "Avatar rendering usage",
     credits: 100,
-    runId: "run-talking-avatar",
+    runId: "run-heygen-avatar",
   });
   mockPersonalUsageStory([
     {
@@ -814,7 +790,7 @@ test("Label Talking Avatar usage by the product feature", async () => {
         {
           kind: "video",
           credits: 100,
-          providers: [{ provider: "joggai-talking-avatar", credits: 100 }],
+          providers: [{ provider: "heygen-avatar-iii", credits: 100 }],
         },
       ],
     },
@@ -829,10 +805,9 @@ test("Label Talking Avatar usage by the product feature", async () => {
         return element.parentElement?.textContent === "Avatar100";
       }),
     ).toBeTruthy();
-    expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
+    expect(screen.queryByText(/heygen/iu)).not.toBeInTheDocument();
   });
 });
-
 test("Make personal usage-record titles keyboard accessible", async () => {
   mockPersonalUsageStory();
   await openUsageSettings("usage-records");

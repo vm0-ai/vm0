@@ -261,7 +261,10 @@ export const GMAIL_TEXT_FIELDS: readonly {
   },
 ];
 
-function formTextValue(form: FormData, name: string): string | undefined {
+export function formTextValue(
+  form: FormData,
+  name: string,
+): string | undefined {
   const value = form.get(name);
   if (typeof value !== "string") {
     return undefined;
@@ -362,7 +365,7 @@ export function chatRunFinishedStatusLabel(
   }
 }
 
-export function chatRunFinishedAutomationSummary(
+function chatRunFinishedAutomationSummary(
   config: ChatRunFinishedEventConfig,
 ): string {
   const statusText = config.runStatuses

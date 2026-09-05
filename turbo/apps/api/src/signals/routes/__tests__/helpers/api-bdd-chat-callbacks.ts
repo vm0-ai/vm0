@@ -27,10 +27,25 @@ type OrgModelPolicies = z.infer<
 >["policies"];
 
 const openRouterCompletionBodySchema = z.object({
+  model: z.string(),
+  max_tokens: z.number().optional(),
+  reasoning: z.object({ effort: z.string() }).optional(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
 });
 
 type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
+
+/**
+ * A completion the upstream cut short. `generateTextWithUsage` rejects any
+ * `finish_reason` other than `"stop"`, so tests use this to prove a starved
+ * token budget discards the partial text instead of persisting it.
+ */
+interface TruncatedOpenRouterCompletion {
+  readonly content: string;
+  readonly finishReason: "length";
+}
+
+type OpenRouterCompletionResult = string | TruncatedOpenRouterCompletion;
 
 interface StoredS3Object {
   readonly bucket: string;
@@ -301,19 +316,25 @@ export function createChatCallbacksApi(context: TestContext) {
      * system prompt and returns the completion text.
      */
     mockOpenRouterCompletions(
-      handler: (body: OpenRouterCompletionBody) => string | Promise<string>,
+      handler: (
+        body: OpenRouterCompletionBody,
+      ) => OpenRouterCompletionResult | Promise<OpenRouterCompletionResult>,
     ): void {
       server.use(
         http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
           const body = openRouterCompletionBodySchema.parse(
             await request.json(),
           );
+          const result = await handler(body);
           return HttpResponse.json({
             choices: [
-              {
-                finish_reason: "stop",
-                message: { content: await handler(body) },
-              },
+              typeof result === "string"
+                ? { finish_reason: "stop", message: { content: result } }
+                : {
+                    finish_reason: result.finishReason,
+                    native_finish_reason: "MAX_TOKENS",
+                    message: { content: result.content },
+                  },
             ],
           });
         }),
