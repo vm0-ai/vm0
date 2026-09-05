@@ -1,5 +1,6 @@
 import {
   PI_MODEL_CONFIG_CURRENT_GENERATION,
+  PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
   type PiModelConfig,
   type PiModelConfigLegacy,
 } from "@okouai/api-contracts/contracts/runners";
@@ -148,6 +149,18 @@ function piProvider(
   }
 }
 
+function isFastTerraPiProvider(
+  modelProviderType: string | null | undefined,
+  builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined,
+): boolean {
+  return (
+    modelProviderType === "codex-oauth-token" ||
+    (isBuiltInModelProviderType(modelProviderType) &&
+      (builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
+        builtInModelRuntimeRoute?.providerType === "openrouter-codex"))
+  );
+}
+
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;
   readonly modelProviderType: string | null | undefined;
@@ -164,14 +177,16 @@ export function shouldUsePiExecution(args: {
   const isFastTerra =
     catalogProvider === "openai" &&
     args.codexServiceTier === "fast" &&
-    isBuiltInModelProviderType(args.modelProviderType) &&
-    (args.builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
-      args.builtInModelRuntimeRoute?.providerType === "openrouter-codex") &&
+    isFastTerraPiProvider(
+      args.modelProviderType,
+      args.builtInModelRuntimeRoute,
+    ) &&
     isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
   const isPiModelProvider =
     isBuiltInModelProviderType(args.modelProviderType) ||
     args.modelProviderType === "custom-openai-responses" ||
-    (args.modelProviderType === "codex-oauth-token" && isStandardTerra) ||
+    (args.modelProviderType === "codex-oauth-token" &&
+      (isStandardTerra || isFastTerra)) ||
     (standardTerraApiKeyPiRoute(args.modelProviderType) !== null &&
       isStandardTerra);
   return (
@@ -199,8 +214,13 @@ function resolveCodexSubscriptionPiModelConfig(
   if (
     provider.type !== "codex-oauth-token" ||
     provider.selectedModel !== "gpt-5.6-terra" ||
-    codexServiceTier !== undefined ||
-    provider.inlineFirewall === true
+    provider.inlineFirewall === true ||
+    provider.credentialHeader !== undefined ||
+    (provider.concreteType !== undefined &&
+      provider.concreteType !== "codex-oauth-token") ||
+    provider.environment.OPENAI_MODEL !== "gpt-5.6-terra" ||
+    !provider.environment.CHATGPT_ACCESS_TOKEN?.trim() ||
+    !provider.environment.CHATGPT_ACCOUNT_ID?.trim()
   ) {
     return null;
   }
@@ -211,8 +231,20 @@ function resolveCodexSubscriptionPiModelConfig(
   if (!endpoint) {
     return null;
   }
+  const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
+  if (
+    configuredBaseUrl &&
+    normalizedBaseUrl(configuredBaseUrl) !== normalizedBaseUrl(endpoint.baseUrl)
+  ) {
+    return null;
+  }
   const config = {
-    schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION,
+    ...(codexServiceTier === "fast"
+      ? {
+          schemaVersion: PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+          serviceTier: codexServiceTier,
+        }
+      : { schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION }),
     dialect: "openai-codex-responses",
     transport: "sse",
     provider: "openai-codex",
@@ -241,6 +273,7 @@ function resolveCodexSubscriptionPiModelConfig(
     dialect: config.dialect,
     transport: config.transport,
     thinkingLevel: config.thinkingLevel,
+    serviceTier: codexServiceTier,
   })
     ? config
     : null;

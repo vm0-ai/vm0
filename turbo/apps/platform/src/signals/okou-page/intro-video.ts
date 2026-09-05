@@ -1,7 +1,5 @@
-import type {
-  AvatarVideoAvatar,
-  AvatarVideoVoice,
-} from "@okouai/api-contracts/contracts/avatar-video";
+import type { IntroVideoVoice } from "@okouai/api-contracts/contracts/intro-video-presenter";
+import type { IntroVideoAvatar } from "@okouai/core/intro-video-avatars";
 import { command, computed, state, type Command, type State } from "ccstate";
 
 import { i18n } from "../../i18n/index.ts";
@@ -74,7 +72,7 @@ interface AdoptedIntroVideoRecording {
 }
 
 export type IntroVideoVoiceSelection =
-  | { readonly kind: "catalog"; readonly voice: AvatarVideoVoice }
+  | { readonly kind: "catalog"; readonly voice: IntroVideoVoice }
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
@@ -171,14 +169,14 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
 }
 
 function buildIntroVideoPrompt(args: {
-  readonly avatar: AvatarVideoAvatar | null;
+  readonly avatar: IntroVideoAvatar | null;
   readonly instructions: string;
   readonly placement: IntroVideoPlacement;
   readonly source: IntroVideoSource;
   readonly voice: IntroVideoVoiceSelection | null;
 }): string {
   const avatar = args.avatar
-    ? `${args.avatar.name} (${args.avatar.id})`
+    ? `${args.avatar.name} (${args.avatar.provider}:${args.avatar.avatarId})`
     : "No avatar";
   const placementDescription: Record<IntroVideoPlacement, string> = {
     left: "Presenter on the left, slide on the right",
@@ -186,6 +184,38 @@ function buildIntroVideoPrompt(args: {
     right: "Presenter on the right, slide on the left",
   };
   const instructions = args.instructions.trim();
+  const audioPlan = (() => {
+    switch (args.voice?.kind) {
+      case "catalog": {
+        return [
+          `- HeyGen narration command: synthesize exactly once with okou __intro-video-voice --voice-id ${args.voice.voice.id} --text <final-narration-script> --json`,
+          "- Narration reuse: use the command's returned permanent audio URL for presenter lip sync and reuse that exact audio in the final mix; never replace the selected voice with an avatar default voice",
+        ];
+      }
+      case "original": {
+        return [
+          "- Original audio: extract or reuse the source audio once, use that exact track for presenter lip sync, and retain exactly one copy in the final mix",
+        ];
+      }
+      case "none":
+      default: {
+        return args.avatar?.provider === "heygen"
+          ? [
+              "- No-voice presenter: create a duration-matched silent audio input only to drive the provider request; do not synthesize speech or add an avatar default voice, and keep the final mix silent",
+            ]
+          : ["- Audio: do not synthesize narration; keep the final mix silent"];
+      }
+    }
+  })();
+  const heyGenPlan =
+    args.avatar?.provider === "heygen"
+      ? [
+          `- HeyGen presenter command: okou __intro-video-presenter --avatar-id ${args.avatar.avatarId} --audio-url <resolved-audio-url> --json`,
+          "- HeyGen render contract: this Intro Video-only internal renderer uses POST /v3/videos and GET /v3/videos/{video_id}, Avatar III, an idempotency key, Retry-After handling, and output_format webm",
+          "- Presenter validation: download the WebM immediately, require a non-empty decodable video with a real alpha channel, and stop with an actionable error if transparency is absent",
+          "- Intermediate privacy: use the audio and transparent WebM only for composition; never attach them or expose provider job IDs, status payloads, or temporary URLs",
+        ]
+      : [];
   return [
     "Create a polished video from the attached source.",
     "Do not add an opening or ending unless the user explicitly requests them.",
@@ -196,12 +226,15 @@ function buildIntroVideoPrompt(args: {
     `- Aspect ratio: ${INTRO_VIDEO_ASPECT_RATIO_LABEL}`,
     `- Avatar: ${avatar}`,
     `- Voice: ${voiceSelectionLabel(args.voice)}`,
-    ...(args.avatar?.coverUrl
-      ? [`- Avatar cutout (transparent still): ${args.avatar.coverUrl}`]
+    ...(args.avatar ? [`- Avatar provider: ${args.avatar.provider}`] : []),
+    ...(args.avatar?.provider === "joggai"
+      ? [`- Avatar cutout (transparent still): ${args.avatar.cutoutUrl}`]
       : []),
     ...(args.avatar
       ? [
-          "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
+          args.avatar.provider === "heygen"
+            ? "- Avatar background: transparent WebM generated with HeyGen POST /v3/videos using output_format webm and Avatar III; keep this intermediate private"
+            : "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
           ...(args.source.kind === "presentation"
             ? [
                 `- Presenter placement: ${placementDescription[args.placement]}`,
@@ -210,6 +243,11 @@ function buildIntroVideoPrompt(args: {
             : []),
         ]
       : []),
+    "",
+    "Execution contract:",
+    ...audioPlan,
+    ...heyGenPlan,
+    "- Delivery: upload and attach exactly one permanent, playable video/mp4; do not attach audio, WebM, SRT, status JSON, or any other generated-media intermediate",
     ...(instructions ? ["", "Editing direction:", instructions] : []),
   ].join("\n");
 }
@@ -221,7 +259,7 @@ interface IntroVideoInternalState {
    * back off the draft instead of sending a stale recording beside the new one.
    */
   readonly adoptedAttachmentIds$: State<readonly string[]>;
-  readonly avatar$: State<AvatarVideoAvatar | null>;
+  readonly avatar$: State<IntroVideoAvatar | null>;
   readonly busy$: State<boolean>;
   readonly draftDiscarded$: State<boolean>;
   readonly error$: State<IntroVideoWizardError | null>;
@@ -237,7 +275,7 @@ interface IntroVideoInternalState {
 function createIntroVideoInternalState(): IntroVideoInternalState {
   return {
     adoptedAttachmentIds$: state<readonly string[]>([]),
-    avatar$: state<AvatarVideoAvatar | null>(null),
+    avatar$: state<IntroVideoAvatar | null>(null),
     busy$: state(false),
     draftDiscarded$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
@@ -549,7 +587,7 @@ function createSourceCommands(
 
 function createSelectionCommands(internal: IntroVideoInternalState) {
   const setAvatar$ = command(
-    ({ set }, avatar: AvatarVideoAvatar | null): void => {
+    ({ set }, avatar: IntroVideoAvatar | null): void => {
       set(internal.avatar$, avatar);
     },
   );

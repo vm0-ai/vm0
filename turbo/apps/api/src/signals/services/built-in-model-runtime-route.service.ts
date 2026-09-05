@@ -1,8 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
-  getVm0BuiltInModelRouteCandidates,
-  isBuiltInModelProviderType,
+  getBuiltInModelRouteCandidates,
   type BuiltInModelRouteProviderType,
   type BuiltInModelRouteTarget,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -19,12 +18,6 @@ export interface BuiltInModelRuntimeRoute {
   readonly providerType: BuiltInModelRouteProviderType;
   readonly upstreamModel: string;
   readonly modelKeyId: string;
-}
-
-export interface ModelRuntimeSessionRoute {
-  readonly modelProvider: string | null;
-  readonly modelRuntimeProvider: string | null;
-  readonly modelRuntimeModel: string | null;
 }
 
 interface BuiltInModelRuntimeRouteIdentity {
@@ -112,7 +105,7 @@ function routeFromTarget(
 export function builtInModelRuntimeTarget(
   selectedModel: string,
 ): BuiltInModelRouteTarget {
-  const [target] = getVm0BuiltInModelRouteCandidates(selectedModel);
+  const [target] = getBuiltInModelRouteCandidates(selectedModel);
   if (!target) {
     throw new Error(`Built-in model has no candidates: ${selectedModel}`);
   }
@@ -124,7 +117,7 @@ export async function resolveBuiltInModelRuntimeRoute(
   selectedModel: string,
 ): Promise<BuiltInModelRuntimeRoute | null> {
   const timestamp = nowDate();
-  for (const target of getVm0BuiltInModelRouteCandidates(selectedModel)) {
+  for (const target of getBuiltInModelRouteCandidates(selectedModel)) {
     if (runtimeRouteUnavailableForTest(target)) {
       continue;
     }
@@ -158,22 +151,4 @@ export async function resolveBuiltInModelRuntimeRoute(
     return routeFromTarget(target, key);
   }
   return null;
-}
-
-export function hasIncompatibleBuiltInModelRuntimeRoute(args: {
-  readonly previous: ModelRuntimeSessionRoute;
-  readonly next: ModelRuntimeSessionRoute;
-}): boolean {
-  if (
-    !isBuiltInModelProviderType(args.previous.modelProvider) &&
-    !isBuiltInModelProviderType(args.next.modelProvider)
-  ) {
-    return false;
-  }
-  return (
-    isBuiltInModelProviderType(args.previous.modelProvider) !==
-      isBuiltInModelProviderType(args.next.modelProvider) ||
-    args.previous.modelRuntimeProvider !== args.next.modelRuntimeProvider ||
-    args.previous.modelRuntimeModel !== args.next.modelRuntimeModel
-  );
 }

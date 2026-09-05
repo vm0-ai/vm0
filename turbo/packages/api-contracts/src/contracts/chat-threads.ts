@@ -25,7 +25,6 @@ import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
 } from "./avatar-video";
-import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "./voice-io-polish";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
@@ -522,14 +521,6 @@ const userMessageTemplatePartSchema = z
     type: z.literal("template"),
     titleSnapshot: z.string().min(1),
     template: generationTemplateRequestSchema,
-  })
-  .strict();
-
-const draftVoiceSchema = z
-  .object({
-    version: z.literal(1),
-    id: z.string().uuid(),
-    transcript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
   })
   .strict();
 
@@ -1036,9 +1027,6 @@ const chatThreadMetadataSchema = z.object({
 const chatThreadDraftSchema = z
   .object({
     draftUserMessage: userMessageInputDocumentSchema.nullable(),
-    // New App clients may receive responses from a pre-#31562 API while it is
-    // serving or retained for rollback. Remove with #31612 after that window.
-    draftVoice: draftVoiceSchema.nullable().optional(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
@@ -1324,9 +1312,6 @@ export const chatThreadByIdContract = c.router({
     body: z
       .object({
         draftUserMessage: userMessageInputDocumentSchema.nullable(),
-        // Pre-#31562 App clients may omit this for about two days. Remove the
-        // optional bridge with #31612 once the client-version floor excludes them.
-        draftVoice: draftVoiceSchema.nullable().optional(),
         draftAttachments: z
           .array(persistedAttachmentSchema)
           .nullable()
@@ -1995,7 +1980,6 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
-  draftVoiceSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   userMessageInputPartSchema,
@@ -2037,7 +2021,6 @@ export type UserMessageInputDocument = z.infer<
 >;
 export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
-export type DraftVoice = z.infer<typeof draftVoiceSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
   "workflow" | "website"

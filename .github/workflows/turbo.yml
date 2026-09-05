@@ -918,6 +918,9 @@ jobs:
       - name: Test ESLint Config
         working-directory: turbo
         run: pnpm -F @okouai/eslint-config test
+      - name: Test Residual Brand Name Guard
+        working-directory: turbo
+        run: pnpm -F @okouai/eslint-rules exec vitest run --reporter=default scripts/residual-brand-name-inventory.test.ts
       - name: Upload coverage to Codecov
         if: success() || failure()
         continue-on-error: true

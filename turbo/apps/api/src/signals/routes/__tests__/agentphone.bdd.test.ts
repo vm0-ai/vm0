@@ -892,34 +892,6 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await completeSandboxRun(run.sandboxToken, run.runId, 0);
   });
 
-  it("restarts linked sessions when the model route changes", async () => {
-    const ap = createAgentPhoneBddApi(context);
-    const { actor, phone, runnerGroup } = await entitledLinkedActor();
-
-    await ap.postAgentPhoneInboundMessage({
-      channel: "sms",
-      from: phone,
-      body: "establish model session",
-    });
-    const run1 = await claimDispatchedRun(runnerGroup);
-    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
-    const originalSession = await waitForRunSessionIdPresent(actor, run1.runId);
-
-    // Re-pointing the default model policy at an incompatible provider
-    // forces the next DM onto a fresh session.
-    await ap.switchDefaultModelRouteToOpenRouter(actor);
-    await ap.postAgentPhoneInboundMessage({
-      channel: "sms",
-      from: phone,
-      body: "after provider switch",
-    });
-    const run2 = await claimDispatchedRun(runnerGroup);
-    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
-    await expect(ap.readRunSessionId(actor, run2.runId)).resolves.not.toBe(
-      originalSession,
-    );
-  });
-
   it("answers the slash-command surface over SMS with link state and model selection", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);

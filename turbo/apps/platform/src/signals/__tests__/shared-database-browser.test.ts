@@ -1,19 +1,21 @@
 import { screen } from "@testing-library/react";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import { expect, vi } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
-import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
-import { logger } from "../log.ts";
+import { sharedDatabaseClientMessageSchema } from "../../shared-database/protocol.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
+import {
+  bridgeConnected$,
+  installedSharedDatabaseBridge$,
+} from "../shared-database-bridge-state.ts";
+import { sharedDatabaseConnectionStatus$ } from "../shared-database.ts";
 import { detach, Reason } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
-const RELOAD_AT_MS = Date.parse("2030-01-01T00:00:00.000Z");
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
   readonly postedMessages: unknown[] = [];
@@ -195,169 +197,98 @@ test("Open the force-upgrade dialog when the worker requires an upgrade", async 
   });
   await setupPage({ context, path: "/" });
 
-  await screen.findByRole("dialog", {
+  const dialog = await screen.findByRole("dialog", {
     name: "Update required",
   });
-  expect(
-    new URL(window.location.href).searchParams.has(
-      "okou-shared-database-reload",
-    ),
-  ).toBeFalsy();
+  expect(dialog).toBeInTheDocument();
 });
 
-test("Reload after an IndexedDB version change makes the worker unavailable", async () => {
-  const replace = vi.fn<(url: string) => void>();
-  const debug = vi.spyOn(logger("SharedWorkerBridge"), "debug");
+// These failures originate at the browser's worker boundary and have no page
+// action. Exercise production bridge setup and its request contract directly.
+test("Expose worker construction failures to bridge consumers", async () => {
+  const error = new Error("SharedWorker construction failed");
+  vi.stubGlobal(
+    "SharedWorker",
+    class {
+      constructor() {
+        throw error;
+      }
+    },
+  );
+
+  setupBridge();
+
+  await expect(context.store.get(bridgeConnected$)).rejects.toBe(error);
+});
+
+test("Return a worker query error to its caller", async () => {
   const { workers } = installSharedWorkerMock();
   setupBridge();
-  await vi.waitFor(() => {
-    expect(workers).toHaveLength(1);
-  });
-  const currentUrl = new URL("/chat", window.location.href);
-  vi.stubGlobal("location", {
-    href: currentUrl.toString(),
-    hostname: currentUrl.hostname,
-    origin: currentUrl.origin,
-    replace,
-  });
+  await context.store.get(bridgeConnected$);
+  const bridge = context.store.get(installedSharedDatabaseBridge$);
+  const query = bridge.query(
+    {
+      dataKey: { kind: "chat-event", threadId: "thread-1" },
+      afterSeqId: null,
+      consistency: "cache-only",
+    },
+    context.signal,
+  );
+  const request = workers[0]!.port.postedMessages
+    .map((message) => {
+      return sharedDatabaseClientMessageSchema.parse(message);
+    })
+    .find((message) => {
+      return message.type === "query";
+    });
+  if (!request) {
+    throw new Error("Expected a worker query request");
+  }
 
   workers[0]!.port.receive({
-    type: "worker-unavailable",
-    reason: "indexeddb-version-changed",
+    type: "error",
+    requestId: request.requestId,
+    error: {
+      name: "Error",
+      message: "Shared database tab registration is required before query",
+    },
   });
 
-  await vi.waitFor(() => {
-    expect(replace).toHaveBeenCalledOnce();
-  });
-  expect(debug).toHaveBeenLastCalledWith("Reloading app", {
-    reason: "indexeddb-version-changed",
-  });
-  const debugCallOrder = debug.mock.invocationCallOrder.at(-1);
-  const replaceCallOrder = replace.mock.invocationCallOrder[0];
-  if (debugCallOrder === undefined || replaceCallOrder === undefined) {
-    throw new Error("Expected debug log before app reload");
-  }
-  expect(debugCallOrder).toBeLessThan(replaceCallOrder);
+  await expect(query).rejects.toThrow(
+    "Shared database tab registration is required before query",
+  );
 });
 
-test("Reload once after the shared-data service fails to load", async () => {
-  mockNow(RELOAD_AT_MS, context.signal);
-  const replace = vi.fn<(url: string) => void>();
-  const debug = vi.spyOn(logger("SharedWorkerBridge"), "debug");
+test("Reject pending requests and mark the connection disconnected when the worker fails", async () => {
   const { constructorCalls, workers } = installSharedWorkerMock();
   setupBridge();
-  await vi.waitFor(() => {
-    expect(workers).toHaveLength(1);
-  });
-  const currentUrl = new URL(
-    "/chat?threadId=thread-1#latest",
-    window.location.href,
+  await context.store.get(bridgeConnected$);
+  const bridge = context.store.get(installedSharedDatabaseBridge$);
+  workers[0]!.port.receive({ type: "status", status: "connected" });
+  expect(context.store.get(sharedDatabaseConnectionStatus$)).toBe("connected");
+  const query = bridge.query(
+    {
+      dataKey: { kind: "chat-event", threadId: "thread-1" },
+      afterSeqId: null,
+      consistency: "cache-only",
+    },
+    context.signal,
   );
-  vi.stubGlobal("location", {
-    href: currentUrl.toString(),
-    hostname: currentUrl.hostname,
-    origin: currentUrl.origin,
-    replace,
-  });
-  expect(() => {
-    workers[0]!.fail();
-  }).toThrow(
-    "Shared database worker failed to load or its transport became unrecoverable",
-  );
+  const computed = bridge.getComputed("chat-thread-indicators");
 
-  expect(replace).toHaveBeenCalledOnce();
-  expect(debug).toHaveBeenLastCalledWith("Reloading app", {
-    reason: "worker-load-or-transport-failure",
-  });
-  const debugCallOrder = debug.mock.invocationCallOrder.at(-1);
-  const replaceCallOrder = replace.mock.invocationCallOrder[0];
-  if (debugCallOrder === undefined || replaceCallOrder === undefined) {
-    throw new Error("Expected debug log before app reload");
-  }
-  expect(debugCallOrder).toBeLessThan(replaceCallOrder);
-  const recoveryUrl = new URL(replace.mock.calls[0]![0]);
-  expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
-    String(RELOAD_AT_MS),
-  );
-  expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
-  expect(recoveryUrl.hash).toBe("#latest");
-  expect(constructorCalls).toHaveLength(1);
-});
+  workers[0]!.fail();
 
-test("Stop reloading when the shared-data service repeatedly fails", async () => {
-  mockNow(RELOAD_AT_MS, context.signal);
-  const replace = vi.fn<(url: string) => void>();
-  const debug = vi.spyOn(logger("SharedWorkerBridge"), "debug");
-  const replaceState = vi
-    .spyOn(history, "replaceState")
-    .mockImplementation(() => {});
-  const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
-  const { constructorCalls, workers } = installSharedWorkerMock();
-  setupBridge();
-  await vi.waitFor(() => {
-    expect(workers).toHaveLength(1);
-  });
-  const currentUrl = new URL(
-    `/chat?threadId=thread-1&okou-shared-database-reload=${RELOAD_AT_MS - 59_999}#latest`,
-    window.location.href,
+  await expect(query).rejects.toThrow(
+    "SharedWorker module script failed to load",
   );
-  vi.stubGlobal("location", {
-    href: currentUrl.toString(),
-    hostname: currentUrl.hostname,
-    origin: currentUrl.origin,
-    replace,
-  });
-  expect(() => {
-    workers[0]!.fail();
-  }).toThrow(
-    "Shared database worker failed to load or its transport became unrecoverable",
+  await expect(computed).rejects.toThrow(
+    "SharedWorker module script failed to load",
   );
-
-  expect(toastError).toHaveBeenCalledOnce();
-  expect(debug).not.toHaveBeenCalledWith("Reloading app", {
-    reason: "worker-load-or-transport-failure",
-  });
-  expect(replace).not.toHaveBeenCalled();
-  expect(replaceState).toHaveBeenCalledOnce();
-  const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));
-  expect(retryUrl.searchParams.has("okou-shared-database-reload")).toBeFalsy();
-  expect(retryUrl.searchParams.get("threadId")).toBe("thread-1");
-  expect(retryUrl.hash).toBe("#latest");
-  expect(constructorCalls).toHaveLength(1);
-});
-
-test("Reload again after the shared-data recovery window has elapsed", async () => {
-  mockNow(RELOAD_AT_MS, context.signal);
-  const replace = vi.fn<(url: string) => void>();
-  const toastError = vi.spyOn(toast, "error");
-  const { constructorCalls, workers } = installSharedWorkerMock();
-  setupBridge();
-  await vi.waitFor(() => {
-    expect(workers).toHaveLength(1);
-  });
-  const currentUrl = new URL(
-    `/chat?threadId=thread-1&okou-shared-database-reload=${RELOAD_AT_MS - 60_000}#latest`,
-    window.location.href,
+  await expect(bridge.getComputed("chat-thread-indicators")).rejects.toThrow(
+    "SharedWorker module script failed to load",
   );
-  vi.stubGlobal("location", {
-    href: currentUrl.toString(),
-    hostname: currentUrl.hostname,
-    origin: currentUrl.origin,
-    replace,
-  });
-  expect(() => {
-    workers[0]!.fail();
-  }).toThrow(
-    "Shared database worker failed to load or its transport became unrecoverable",
+  expect(context.store.get(sharedDatabaseConnectionStatus$)).toBe(
+    "disconnected",
   );
-
-  expect(replace).toHaveBeenCalledOnce();
-  const recoveryUrl = new URL(replace.mock.calls[0]![0]);
-  expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
-    String(RELOAD_AT_MS),
-  );
-  expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
-  expect(recoveryUrl.hash).toBe("#latest");
-  expect(toastError).not.toHaveBeenCalled();
   expect(constructorCalls).toHaveLength(1);
 });

@@ -102,8 +102,8 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import {
   getModelBrandIconType as getModelIconType,
   getUILabel,
-  getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
+  getBuiltInModelPriceTier,
+  getBuiltInModelPriceTierLabel,
   type ModelPriceTier,
 } from "../settings/provider-ui-config.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
@@ -407,7 +407,7 @@ function PriceTierBadge({ tier }: { tier: ModelPriceTier }) {
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {getVm0ModelPriceTierLabel(tier)}
+          {getBuiltInModelPriceTierLabel(tier)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -640,7 +640,7 @@ function PolicyRow({
   const builtInPriceTier = isBuiltInModelProviderType(
     policy.defaultProviderType,
   )
-    ? getVm0ModelPriceTier(policy.model)
+    ? getBuiltInModelPriceTier(policy.model)
     : undefined;
 
   return (

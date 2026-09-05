@@ -77,7 +77,7 @@ import {
   readOfficialWorkflowRunStateFixture,
   readWorkflowAutomationAutonomyFixture,
   retargetWorkflowAutomationFixture,
-  seedVm0BuiltInModelKey,
+  seedBuiltInModelKey,
   setOfficialWorkflowAutomationAdmissionStateFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -135,7 +135,7 @@ function authHeaders(actor: ApiTestUser) {
 }
 
 async function selectBuiltInDefaultModel(actor: ApiTestUser): Promise<void> {
-  await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
+  await seedBuiltInModelKey(context, "claude-sonnet-5");
   await runs.updateOrgModelPolicies(actor, [
     {
       model: "claude-sonnet-5",

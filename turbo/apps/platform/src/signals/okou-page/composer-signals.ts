@@ -675,9 +675,6 @@ function createStartVoiceDraftRecordingCommand(
       onDomEventFn(() => {}),
       { autoSegment: false, autoStopOnSilence: false },
       {
-        started: () => {
-          return undefined;
-        },
         finish: (recording) => {
           if (!recording) {
             releaseAbortHandler();

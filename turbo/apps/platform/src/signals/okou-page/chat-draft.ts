@@ -35,7 +35,7 @@ import { isAnnotationMeaningful } from "./image-annotation.ts";
 import { createDraftHydrationCommand } from "./draft-hydration.ts";
 
 // ---------------------------------------------------------------------------
-// Attachment types (moved from zero-chat.ts)
+// Attachment types
 // ---------------------------------------------------------------------------
 
 interface FileInfo {

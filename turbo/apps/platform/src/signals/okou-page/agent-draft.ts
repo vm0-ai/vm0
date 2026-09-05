@@ -47,8 +47,6 @@ function userMessageAgentDraftState(args: {
   readonly draftAttachments: PersistedAttachment[] | null;
 }): RestoredDraftState | null {
   const document = args.draftUserMessage ?? null;
-  // Compatibility-only draftVoice responses from old App clients are ignored.
-  // Remove the API/DB field with #31612 after the two-day client-skew window.
   if (draftToEditorDoc(document) === null) {
     return null;
   }

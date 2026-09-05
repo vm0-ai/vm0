@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.7](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.6...app-worker-v1.4.7) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.624.0
+
+## [1.4.6](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.5...app-worker-v1.4.6) (2026-09-05)
+
+
+### Refactoring
+
+* **platform:** rename data-vm0-* dom attributes to data-okou-* ([#31821](https://github.com/vm0-ai/vm0/issues/31821)) ([5555a53](https://github.com/vm0-ai/vm0/commit/5555a535cd2ffed1d2fdf9d79c315e5756c554e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.623.2
+
 ## [1.4.5](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.4...app-worker-v1.4.5) (2026-09-05)
 
 

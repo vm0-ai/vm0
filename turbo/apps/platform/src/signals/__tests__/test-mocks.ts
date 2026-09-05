@@ -581,22 +581,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       canvasRendering: (): CanvasRenderingMock => {
         return mockCanvasRendering(getSignal());
       },
-      noAnimations: (): void => {
-        const descriptor = defineWindowProperty(
-          HTMLElement.prototype,
-          "getAnimations",
-          () => {
-            return [];
-          },
-        );
-        restoreOnAbort(getSignal(), () => {
-          restoreWindowProperty(
-            HTMLElement.prototype,
-            "getAnimations",
-            descriptor,
-          );
-        });
-      },
       indexedDbUnavailable: (): void => {
         const open = vi
           .spyOn(globalThis.indexedDB, "open")
@@ -1064,6 +1048,7 @@ function mockAudioContext(signal: AbortSignal): void {
 }
 
 interface VoiceInputMockOptions {
+  readonly pcmWorkletReady?: () => Promise<void>;
   readonly audioContextReady?: Promise<void>;
   readonly durationSeconds?: number;
   readonly getUserMediaReady?: Promise<void>;
@@ -1144,6 +1129,12 @@ function mockVoiceInput(
   }
 
   class TestVoiceAudioContext {
+    readonly audioWorklet = {
+      addModule(): Promise<void> {
+        return options.pcmWorkletReady?.() ?? Promise.resolve();
+      },
+    };
+
     resume(): Promise<void> {
       return options.audioContextReady ?? Promise.resolve();
     }
@@ -1160,24 +1151,32 @@ function mockVoiceInput(
     createAnalyser(): AnalyserNode {
       return new TestAnalyser() as unknown as AnalyserNode;
     }
+  }
 
-    decodeAudioData(_audioData: ArrayBuffer): Promise<AudioBuffer> {
-      const length = Math.round(
-        16_000 *
-          (options.durationSeconds === undefined ? 1 : options.durationSeconds),
-      );
-      const samples = new Float32Array(length);
-      samples.fill(0.1);
-      return Promise.resolve({
-        duration: length / 16_000,
-        length,
-        numberOfChannels: 1,
-        sampleRate: 16_000,
-        getChannelData: () => {
-          return samples;
-        },
-      } as unknown as AudioBuffer);
+  class TestVoicePcmPort extends EventTarget {
+    private closed = false;
+
+    start(): void {}
+
+    close(): void {
+      this.closed = true;
     }
+
+    postMessage(message: unknown): void {
+      if (message !== "stop" || this.closed) {
+        return;
+      }
+      const samples = new Float32Array(
+        Math.round(16_000 * (options.durationSeconds ?? 1)),
+      );
+      samples.fill(0.1);
+      this.dispatchEvent(new MessageEvent("message", { data: samples.buffer }));
+      this.dispatchEvent(new MessageEvent("message", { data: "done" }));
+    }
+  }
+
+  class TestVoiceAudioWorkletNode {
+    readonly port = new TestVoicePcmPort();
   }
 
   type RecorderDataEvent = Event & { data: Blob };
@@ -1247,6 +1246,11 @@ function mockVoiceInput(
     "MediaRecorder",
     TestMediaRecorder as unknown as typeof MediaRecorder,
   );
+  const audioWorkletDescriptor = defineWindowProperty(
+    window,
+    "AudioWorkletNode",
+    TestVoiceAudioWorkletNode as unknown as typeof AudioWorkletNode,
+  );
   const audioContextDescriptor =
     options.rms === undefined
       ? undefined
@@ -1263,6 +1267,7 @@ function mockVoiceInput(
       "MediaRecorder",
       mediaRecorderDescriptor,
     );
+    restoreWindowProperty(window, "AudioWorkletNode", audioWorkletDescriptor);
     if (audioContextDescriptor !== undefined) {
       restoreWindowProperty(window, "AudioContext", audioContextDescriptor);
     }

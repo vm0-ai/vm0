@@ -24,6 +24,10 @@ const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 interface OpenRouterRequest {
+  readonly reasoning?: {
+    readonly effort?: string;
+    readonly enabled?: boolean;
+  };
   readonly messages: readonly {
     readonly role: string;
     readonly content:
@@ -144,6 +148,26 @@ function requestAudioParts(request: OpenRouterRequest) {
     throw new Error("Expected a multimodal user message");
   }
   return userMessage.content;
+}
+
+function rejectDisabledReasoning(request: OpenRouterRequest) {
+  if (
+    request.reasoning?.effort === "none" ||
+    request.reasoning?.enabled === false
+  ) {
+    return HttpResponse.json(
+      {
+        error: {
+          message:
+            "Reasoning is mandatory for this endpoint and cannot be disabled.",
+          code: 400,
+          metadata: { provider_name: null },
+        },
+      },
+      { status: 400 },
+    );
+  }
+  return undefined;
 }
 
 describe("POST /api/voice-io/transcribe", () => {
@@ -281,6 +305,10 @@ describe("POST /api/voice-io/transcribe", () => {
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         providerRequest = (await request.json()) as OpenRouterRequest;
+        const reasoningError = rejectDisabledReasoning(providerRequest);
+        if (reasoningError) {
+          return reasoningError;
+        }
         return HttpResponse.json({
           choices: [
             {
@@ -314,7 +342,7 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(providerRequest).toMatchObject({
       model: "google/gemini-3.6-flash",
       max_tokens: 65_536,
-      reasoning: { effort: "none" },
+      reasoning: { effort: "minimal" },
       temperature: 0,
       store: false,
       response_format: {
@@ -457,6 +485,10 @@ describe("POST /api/voice-io/transcribe", () => {
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         const body = (await request.json()) as OpenRouterRequest;
+        const reasoningError = rejectDisabledReasoning(body);
+        if (reasoningError) {
+          return reasoningError;
+        }
         const schemaName = body.response_format.json_schema.name;
         schemaNames.push(schemaName);
         return HttpResponse.json({

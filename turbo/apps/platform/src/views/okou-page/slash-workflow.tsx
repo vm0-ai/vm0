@@ -17,14 +17,14 @@ const COMPOSER_SUGGESTION_COLLISION_GAP = 12;
 export function composerSuggestionCollisionPadding():
   | number
   | { top: number; right: number; bottom: number; left: number } {
-  // The global safe-area vars are applied as #root padding, while Base UI portals
-  // the menu to body. Read the resolved pixel values from #root so collision
-  // detection keeps the portal inside the same visible content boundary.
+  // Base UI portals the menu to body. Read the shared root edges and the
+  // component-owned bottom inset so it stays inside the visible boundary.
   const root = document.getElementById("root");
   if (!root) {
     return COMPOSER_SUGGESTION_COLLISION_GAP;
   }
   const styles = window.getComputedStyle(root);
+  const documentStyles = window.getComputedStyle(document.documentElement);
   const inset = (value: string): number => {
     const parsed = Number.parseFloat(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -32,7 +32,9 @@ export function composerSuggestionCollisionPadding():
   return {
     top: COMPOSER_SUGGESTION_COLLISION_GAP + inset(styles.paddingTop),
     right: COMPOSER_SUGGESTION_COLLISION_GAP + inset(styles.paddingRight),
-    bottom: COMPOSER_SUGGESTION_COLLISION_GAP + inset(styles.paddingBottom),
+    bottom:
+      COMPOSER_SUGGESTION_COLLISION_GAP +
+      inset(documentStyles.getPropertyValue("--sab")),
     left: COMPOSER_SUGGESTION_COLLISION_GAP + inset(styles.paddingLeft),
   };
 }

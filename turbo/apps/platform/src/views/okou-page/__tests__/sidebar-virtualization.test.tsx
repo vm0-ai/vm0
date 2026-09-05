@@ -4,7 +4,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   act,
   fireEvent,
@@ -129,72 +128,65 @@ function queueAnimationFrames(): () => void {
   };
 }
 
-test.each([false, true])(
-  "Wait for styles before mounting the virtual viewport (baseUi=%s)",
-  async (baseUi) => {
-    const threadCount = 6406;
-    mockThreads(threadCount);
-    context.mocks.browser.noAnimations();
-    const stylesheet = context.mocks.deferred<"loaded" | "failed">();
-    vi.stubGlobal("__mainStylesheetLoaded", stylesheet.promise);
-    let viewportHeight = threadCount * ROW_HEIGHT;
-    mockViewportHeight(() => {
-      return viewportHeight;
-    }, threadCount);
+test("Wait for styles before mounting the virtual viewport", async () => {
+  const threadCount = 6406;
+  mockThreads(threadCount);
+  const stylesheet = context.mocks.deferred<"loaded" | "failed">();
+  vi.stubGlobal("__mainStylesheetLoaded", stylesheet.promise);
+  let viewportHeight = threadCount * ROW_HEIGHT;
+  mockViewportHeight(() => {
+    return viewportHeight;
+  }, threadCount);
 
-    const page = await startPage({
-      context,
-      path: `/chats/${threadId(0)}`,
-      featureSwitches: {
-        [FeatureSwitchKey.BaseUiSidebarScrollArea]: baseUi,
-      },
-    });
-    const sidebar = await screen.findByTestId("chat-list-column");
-    await within(sidebar).findByTestId("pinned-agent-card");
-    expect(
-      within(sidebar).queryByTestId("sidebar-scroll-area"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryAllByTestId("sidebar-chat-thread-virtual-row"),
-    ).toHaveLength(0);
+  const page = await startPage({
+    context,
+    path: `/chats/${threadId(0)}`,
+  });
+  const sidebar = await screen.findByTestId("chat-list-column");
+  await within(sidebar).findByTestId("pinned-agent-card");
+  expect(
+    within(sidebar).queryByTestId("sidebar-scroll-area"),
+  ).not.toBeInTheDocument();
+  expect(
+    within(sidebar).queryAllByTestId("sidebar-chat-thread-virtual-row"),
+  ).toHaveLength(0);
 
-    // CSS is active before its existing readiness promise resolves.
-    viewportHeight = 612;
-    stylesheet.resolve("loaded");
-    await page.ready;
-    const rows = () => {
-      return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
-    };
-    await waitFor(() => {
-      expect(rows()).toHaveLength(25);
-    });
-    expect(within(sidebar).getByText("History 25")).toBeInTheDocument();
-    expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
+  // CSS is active before its existing readiness promise resolves.
+  viewportHeight = 612;
+  stylesheet.resolve("loaded");
+  await page.ready;
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    expect(rows()).toHaveLength(25);
+  });
+  expect(within(sidebar).getByText("History 25")).toBeInTheDocument();
+  expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
 
-    viewportHeight = 900;
-    resizeWindow();
-    await waitFor(() => {
-      expect(rows()).toHaveLength(33);
-    });
-    viewportHeight = 360;
-    resizeWindow();
-    await waitFor(() => {
-      expect(rows()).toHaveLength(18);
-    });
-
-    const nextThread = queryAllByRoleFast("link", sidebar).find((link) => {
-      return link.getAttribute("href") === `/chats/${threadId(1)}`;
-    });
-    if (!nextThread) {
-      throw new Error("Second sidebar thread is not mounted");
-    }
-    click(nextThread);
-    await waitFor(() => {
-      expect(nextThread).toHaveAttribute("aria-current", "page");
-    });
+  viewportHeight = 900;
+  resizeWindow();
+  await waitFor(() => {
+    expect(rows()).toHaveLength(33);
+  });
+  viewportHeight = 360;
+  resizeWindow();
+  await waitFor(() => {
     expect(rows()).toHaveLength(18);
-  },
-);
+  });
+
+  const nextThread = queryAllByRoleFast("link", sidebar).find((link) => {
+    return link.getAttribute("href") === `/chats/${threadId(1)}`;
+  });
+  if (!nextThread) {
+    throw new Error("Second sidebar thread is not mounted");
+  }
+  click(nextThread);
+  await waitFor(() => {
+    expect(nextThread).toHaveAttribute("aria-current", "page");
+  });
+  expect(rows()).toHaveLength(18);
+});
 
 test("Keep the virtual viewport unmounted when the main stylesheet fails", async () => {
   mockThreads(120);
@@ -216,9 +208,6 @@ test("Coalesce sidebar resize bursts and cancel pending measurements when hidden
   await setupPage({
     context,
     path: `/chats/${threadId(0)}`,
-    featureSwitches: {
-      [FeatureSwitchKey.BaseUiSidebarScrollArea]: false,
-    },
   });
 
   const sidebar = screen.getByTestId("chat-list-column");

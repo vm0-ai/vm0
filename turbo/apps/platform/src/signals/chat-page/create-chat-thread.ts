@@ -1333,12 +1333,14 @@ function enrichedChatEventsFromSemantic(
   entries: readonly SemanticChatEvent[],
 ): EnrichedChatEvent[] {
   return entries.map((entry) => {
-    const { event, isQueued, userMessageRenderDocument } = entry;
+    const { event, isQueued, inputCreatedAt, userMessageRenderDocument } =
+      entry;
     return {
       ...event,
       tree: entry.tree,
       richContentError: entry.richContentError,
       isQueued,
+      inputCreatedAt,
       userMessageRenderDocument,
     };
   });

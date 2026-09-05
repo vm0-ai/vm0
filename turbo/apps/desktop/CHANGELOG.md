@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.46.15](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.14...desktop-v0.46.15) (2026-09-05)
+
+
+### Bug Fixes
+
+* **desktop:** rotate the active okou tray logo clockwise ([#31828](https://github.com/vm0-ai/vm0/issues/31828)) ([88d6430](https://github.com/vm0-ai/vm0/commit/88d6430e8750ee211528f27ca1c2d4418f526293))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+
+## [0.46.14](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.13...desktop-v0.46.14) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+
 ## [0.46.13](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.12...desktop-v0.46.13) (2026-09-05)
 
 

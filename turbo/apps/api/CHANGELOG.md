@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.548.1](https://github.com/vm0-ai/vm0/compare/api-v1.548.0...api-v1.548.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **api:** require account-explicit app bundles ([#31843](https://github.com/vm0-ai/vm0/issues/31843)) ([9ce1640](https://github.com/vm0-ai/vm0/commit/9ce1640f9357d8516fd3f4e97b1a3aea60c35f64))
+* **api:** reuse sessions by runtime and model family ([#31796](https://github.com/vm0-ai/vm0/issues/31796)) ([6fd1c6f](https://github.com/vm0-ai/vm0/commit/6fd1c6ff18aa9bbeaf7d55c833bb1336d193be7a))
+
+
+### Refactoring
+
+* **api:** rename the zero dispatch telemetry action names to agent ([#31846](https://github.com/vm0-ai/vm0/issues/31846)) ([488bb99](https://github.com/vm0-ai/vm0/commit/488bb9902b1c4abace6024ad3611778f8fb59179)), closes [#31842](https://github.com/vm0-ai/vm0/issues/31842)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+    * @okouai/core bumped to 8.624.0
+    * @okouai/db bumped to 1.241.4
+    * @okouai/pi-agent-runtime bumped to 1.17.1
+
+## [1.548.0](https://github.com/vm0-ai/vm0/compare/api-v1.547.1...api-v1.548.0) (2026-09-05)
+
+
+### Features
+
+* **pi:** add dialect-aware fast carrier compatibility ([#31839](https://github.com/vm0-ai/vm0/issues/31839)) ([444bfe5](https://github.com/vm0-ai/vm0/commit/444bfe5a6f04edb5ba3ccbc90a0895e7ca4a44d8))
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+    * @okouai/core bumped to 8.623.2
+    * @okouai/db bumped to 1.241.3
+    * @okouai/pi-agent-runtime bumped to 1.17.0
+
 ## [1.547.1](https://github.com/vm0-ai/vm0/compare/api-v1.547.0...api-v1.547.1) (2026-09-05)
 
 

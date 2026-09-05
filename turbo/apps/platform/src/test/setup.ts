@@ -39,6 +39,21 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+// Base UI Scroll Area requires Web Animations, which happy-dom does not
+// implement. Scope the shim to sidebar viewports so dialogs and menus retain
+// their synchronous no-animation behavior unless a test supplies animations.
+Object.defineProperty(HTMLElement.prototype, "getAnimations", {
+  configurable: true,
+  get(this: HTMLElement): (() => Animation[]) | undefined {
+    if (this.dataset.testid !== "sidebar-scroll-area") {
+      return undefined;
+    }
+    return () => {
+      return [];
+    };
+  },
+});
+
 type HappyDomAttributeCallback = (
   this: HTMLIFrameElement,
   attribute: Attr,

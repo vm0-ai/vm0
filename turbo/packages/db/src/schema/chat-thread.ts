@@ -18,7 +18,6 @@ import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
   ChatThreadDraftUserMessage,
-  ChatThreadDraftVoice,
 } from "@okouai/db/jsonb-contracts/chat-thread";
 import {
   resolveAgentRunId,
@@ -74,8 +73,6 @@ export const chatThreads = pgTable(
     /** Canonical rich document for the thread composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<ChatThreadDraftUserMessage>(),
-    /** Unsent voice input kept outside the canonical user message document. */
-    draftVoice: jsonb("draft_voice").$type<ChatThreadDraftVoice>(),
     /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.

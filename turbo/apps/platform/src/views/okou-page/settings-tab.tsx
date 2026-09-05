@@ -236,7 +236,7 @@ export function SettingsTab({
   visibility: initialVisibility = "public",
   canEditVisibility = true,
   updateSettings$,
-  inputId = "zero-agent-name",
+  inputId = "okou-agent-name",
   isDefaultAgent = false,
   onDelete,
   deleteWorkflows = [],
