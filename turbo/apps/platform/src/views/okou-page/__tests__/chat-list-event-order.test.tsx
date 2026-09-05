@@ -24,7 +24,7 @@ test("Conversation lifecycle events produce the current list", async () => {
   const newThreadId = chatListThreadId(32);
   await seedChatListCache(5, auth, [oldThread]);
   installChatListAgent(context);
-  installChatListStream(context, {
+  const stream = installChatListStream(context, {
     caseId: 5,
     snapshot: [oldThread],
     events: [
@@ -46,6 +46,8 @@ test("Conversation lifecycle events produce the current list", async () => {
     auth,
   });
 
+  // Page readiness can precede the first conversation event response.
+  await stream.eventsServed;
   await waitFor(() => {
     expect(sidebarThreadTitles()).toStrictEqual(["Current conversation"]);
   });

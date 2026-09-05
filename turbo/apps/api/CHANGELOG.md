@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.547.1](https://github.com/vm0-ai/vm0/compare/api-v1.547.0...api-v1.547.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **api:** honor active run credit admission in okou gates ([#31777](https://github.com/vm0-ai/vm0/issues/31777)) ([adeb43c](https://github.com/vm0-ai/vm0/commit/adeb43c245bbcdacd79d1619dc34cf6378921951))
+
+
+### Refactoring
+
+* **api:** retire the legacy zero run vocabulary ([#31811](https://github.com/vm0-ai/vm0/issues/31811)) ([45d2e0f](https://github.com/vm0-ai/vm0/commit/45d2e0fad1c557d5c05d16074322b52ddf1c508a)), closes [#26877](https://github.com/vm0-ai/vm0/issues/26877)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.1
+    * @okouai/core bumped to 8.623.1
+    * @okouai/db bumped to 1.241.2
+    * @okouai/pi-agent-runtime bumped to 1.16.6
+
 ## [1.547.0](https://github.com/vm0-ai/vm0/compare/api-v1.546.0...api-v1.547.0) (2026-09-05)
 
 

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
-  getVm0BuiltInModelRouteCandidates,
+  getBuiltInModelRouteCandidates,
   type BuiltInModelRouteProviderType,
   type BuiltInModelRouteTarget,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -105,7 +105,7 @@ function routeFromTarget(
 export function builtInModelRuntimeTarget(
   selectedModel: string,
 ): BuiltInModelRouteTarget {
-  const [target] = getVm0BuiltInModelRouteCandidates(selectedModel);
+  const [target] = getBuiltInModelRouteCandidates(selectedModel);
   if (!target) {
     throw new Error(`Built-in model has no candidates: ${selectedModel}`);
   }
@@ -117,7 +117,7 @@ export async function resolveBuiltInModelRuntimeRoute(
   selectedModel: string,
 ): Promise<BuiltInModelRuntimeRoute | null> {
   const timestamp = nowDate();
-  for (const target of getVm0BuiltInModelRouteCandidates(selectedModel)) {
+  for (const target of getBuiltInModelRouteCandidates(selectedModel)) {
     if (runtimeRouteUnavailableForTest(target)) {
       continue;
     }

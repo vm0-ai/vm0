@@ -6,9 +6,9 @@ import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { safeJsonParse } from "../utils";
 
-const VM0_BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND = "runtime-state-fixture";
+const BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND = "runtime-state-fixture";
 const vm0BuiltInModelKeyFixtureLabelSchema = z.object({
-  kind: z.literal(VM0_BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND),
+  kind: z.literal(BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND),
   fixtureIds: z.array(z.string().uuid()).min(1),
   preservedLabel: z.string().nullable().optional(),
 });
@@ -23,13 +23,13 @@ function vm0BuiltInModelKeyFixtureLabel(
   preservedLabel?: string | null,
 ): string {
   return JSON.stringify({
-    kind: VM0_BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND,
+    kind: BUILT_IN_MODEL_KEY_FIXTURE_LABEL_KIND,
     fixtureIds,
     ...(preservedLabel === undefined ? {} : { preservedLabel }),
   });
 }
 
-function parseVm0BuiltInModelKeyFixtureLabel(label: string | null) {
+function parseBuiltInModelKeyFixtureLabel(label: string | null) {
   if (!label) {
     return null;
   }
@@ -78,7 +78,7 @@ export async function acquireBuiltInModelKeyFixture(
         );
       }
 
-      const fixtureLabel = parseVm0BuiltInModelKeyFixtureLabel(row.label);
+      const fixtureLabel = parseBuiltInModelKeyFixtureLabel(row.label);
       if (fixtureLabel?.fixtureIds.includes(fixtureId)) {
         return row.apiKey;
       }
@@ -118,7 +118,7 @@ export async function releaseBuiltInModelKeyFixture(
       .for("update");
 
     for (const row of rows) {
-      const fixtureLabel = parseVm0BuiltInModelKeyFixtureLabel(row.label);
+      const fixtureLabel = parseBuiltInModelKeyFixtureLabel(row.label);
       if (!fixtureLabel?.fixtureIds.includes(fixtureId)) {
         continue;
       }

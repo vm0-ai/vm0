@@ -268,15 +268,22 @@ test("Manage multiple quoted passages in one feedback message", async () => {
     },
   ]);
   await waitFor(() => {
-    const launchMentions = screen.getAllByText(
-      /launch plan has three careful stages/u,
+    const feedbackGroups = document.querySelectorAll<HTMLElement>(
+      "[data-structured-feedback-group]",
     );
-    const decisionMentions = screen.getAllByText(
-      /unrelated answer covers a separate decision/u,
+    expect(feedbackGroups).toHaveLength(2);
+    const currentGroup = feedbackGroups.item(1);
+    expect(currentGroup).toBeVisible();
+
+    const quotes = currentGroup.querySelectorAll<HTMLElement>(
+      "[data-structured-feedback-quote]",
     );
-    expect(launchMentions).toHaveLength(3);
-    expect(decisionMentions).toHaveLength(3);
-    expect(launchMentions.at(-1)).toBeVisible();
-    expect(decisionMentions.at(-1)).toBeVisible();
+    expect(quotes).toHaveLength(2);
+    expect(quotes.item(0)).toHaveTextContent(
+      "launch plan has three careful stages",
+    );
+    expect(quotes.item(1)).toHaveTextContent(
+      "unrelated answer covers a separate decision",
+    );
   });
 });

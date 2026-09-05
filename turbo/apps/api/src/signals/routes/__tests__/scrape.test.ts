@@ -32,7 +32,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
-import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 
 const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
@@ -133,7 +133,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 }
 
 async function createAdmittedScrapeRun(actor: ApiTestUser): Promise<string> {
-  await seedVm0BuiltInDefaultModelKey(context);
+  await seedBuiltInDefaultModelKey(context);
   const bdd = createBddApi(context);
   const runs = createRunsApi(context);
   bdd.acceptAgentStorageWrites();

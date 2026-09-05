@@ -26,7 +26,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
 import { createRouteMocks } from "./helpers/route-test";
-import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 import { imageRecognitionRoutes } from "../image-recognition";
 import { usageRecordRoutes } from "../usage-record";
 
@@ -121,7 +121,7 @@ async function seedActor(): Promise<RecognitionActor> {
 }
 
 async function seedAdmittedActor(): Promise<RecognitionActor> {
-  await seedVm0BuiltInDefaultModelKey(context);
+  await seedBuiltInDefaultModelKey(context);
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
   const actor = bdd.user();

@@ -20,9 +20,9 @@ interface HastNode {
 }
 
 export const MARKDOWN_MERMAID_FENCE_ATTRIBUTE =
-  "data-vm0-markdown-mermaid-fence";
+  "data-okou-markdown-mermaid-fence";
 
-const MARKDOWN_MERMAID_FENCE_PROPERTY = "dataVm0MarkdownMermaidFence";
+const MARKDOWN_MERMAID_FENCE_PROPERTY = "dataOkouMarkdownMermaidFence";
 
 interface TextTreeNode {
   readonly type: string;

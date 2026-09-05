@@ -7,8 +7,8 @@ import {
   getModelProviderEnvBindings,
   getFrameworkForType,
   getModelProviderPresentationLabel,
-  getVm0VisibleModels,
-  normalizeVm0ModelId,
+  getBuiltInVisibleModels,
+  normalizeBuiltInModelId,
   getModelImageInputSupport,
   modelSupportsImageInput,
   getSelectableProviderTypes,
@@ -16,12 +16,12 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
-  getVm0ApiModel,
-  getVm0ConcreteProviderType,
-  getVm0Vendor,
-  getVm0BuiltInModelRouteCandidates,
-  getVm0BuiltInModelRouteVendors,
-  getVm0ModelPriceTier,
+  getBuiltInApiModel,
+  getBuiltInConcreteProviderType,
+  getBuiltInVendor,
+  getBuiltInModelRouteCandidates,
+  getBuiltInModelRouteVendors,
+  getBuiltInModelPriceTier,
   isModelSupportedByProvider,
   isCodexFastModeModel,
   isSupportedRunModel,
@@ -42,13 +42,13 @@ import {
   updateOrgModelPolicySchema,
   updateOrgModelPoliciesRequestSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  VM0_MODEL_TO_PROVIDER,
+  BUILT_IN_MODEL_TO_PROVIDER,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   CODEX_FAST_MODE_MODELS,
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   ACTIVE_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
@@ -566,23 +566,27 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("built-in", "gpt-6-astra")).toBe(
       "gpt-6-astra",
     );
-    expect(getVm0ConcreteProviderType("gpt-6-astra")).toBe("openai-api-key");
-    expect(getVm0Vendor("gpt-6-astra")).toBe("openai");
+    expect(getBuiltInConcreteProviderType("gpt-6-astra")).toBe(
+      "openai-api-key",
+    );
+    expect(getBuiltInVendor("gpt-6-astra")).toBe("openai");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.6-sol")).toBe(
       "gpt-5.6-sol",
     );
     expect(getProviderRuntimeModel("built-in", "gpt-5.6-sol")).toBe(
       "gpt-5.6-sol",
     );
-    expect(getVm0ConcreteProviderType("gpt-5.6-sol")).toBe("openai-api-key");
-    expect(getVm0Vendor("gpt-5.6-sol")).toBe("openai");
+    expect(getBuiltInConcreteProviderType("gpt-5.6-sol")).toBe(
+      "openai-api-key",
+    );
+    expect(getBuiltInVendor("gpt-5.6-sol")).toBe("openai");
     expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
       "custom/model",
     );
   });
 
   it("routes GPT 6 Astra through OpenAI with an OpenRouter fallback", () => {
-    expect(getVm0BuiltInModelRouteCandidates("gpt-6-astra")).toEqual([
+    expect(getBuiltInModelRouteCandidates("gpt-6-astra")).toEqual([
       {
         selectedModel: "gpt-6-astra",
         providerType: "openai-api-key",
@@ -601,9 +605,9 @@ describe("model-first canonical catalog", () => {
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
     "routes vm0 built-in model %s directly through DeepSeek",
     (model) => {
-      expect(getVm0ConcreteProviderType(model)).toBe("deepseek");
-      expect(getVm0Vendor(model)).toBe("deepseek");
-      expect(getVm0ApiModel(model)).toBe(model);
+      expect(getBuiltInConcreteProviderType(model)).toBe("deepseek");
+      expect(getBuiltInVendor(model)).toBe("deepseek");
+      expect(getBuiltInApiModel(model)).toBe(model);
       expect(getProviderRuntimeModel("built-in", model)).toBe(model);
     },
   );
@@ -618,15 +622,15 @@ describe("model-first canonical catalog", () => {
   ] as const)(
     "routes vm0 built-in model %s directly through Anthropic",
     (model) => {
-      expect(getVm0ConcreteProviderType(model)).toBe("anthropic-api-key");
-      expect(getVm0Vendor(model)).toBe("anthropic");
-      expect(getVm0ApiModel(model)).toBe(model);
+      expect(getBuiltInConcreteProviderType(model)).toBe("anthropic-api-key");
+      expect(getBuiltInVendor(model)).toBe("anthropic");
+      expect(getBuiltInApiModel(model)).toBe(model);
       expect(getProviderRuntimeModel("built-in", model)).toBe(model);
     },
   );
 
   it("defines two statically compilable built-in model routes for every active model", () => {
-    expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual([
+    expect(Object.keys(BUILT_IN_MODEL_TO_PROVIDER)).toEqual([
       "claude-fable-5-1",
       "claude-fable-5",
       "claude-opus-5",
@@ -641,7 +645,7 @@ describe("model-first canonical catalog", () => {
       "gpt-5.6-luna",
       "gpt-5.5",
     ]);
-    expect(getVm0BuiltInModelRouteVendors()).toEqual([
+    expect(getBuiltInModelRouteVendors()).toEqual([
       "anthropic",
       "openrouter",
       "deepseek",
@@ -649,12 +653,12 @@ describe("model-first canonical catalog", () => {
     ]);
 
     for (const model of ACTIVE_RUN_MODELS) {
-      const candidates = getVm0BuiltInModelRouteCandidates(model);
+      const candidates = getBuiltInModelRouteCandidates(model);
       expect(candidates).toHaveLength(2);
       expect(candidates[0]?.providerType).toBe(
-        getVm0ConcreteProviderType(model),
+        getBuiltInConcreteProviderType(model),
       );
-      expect(candidates[0]?.upstreamModel).toBe(getVm0ApiModel(model));
+      expect(candidates[0]?.upstreamModel).toBe(getBuiltInApiModel(model));
       expect(
         new Set(
           candidates.map((candidate) => {
@@ -734,7 +738,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("exposes VM0 price tiers for built-in reasoning models", () => {
-    expect(VM0_MODEL_PRICE_TIER).toEqual(
+    expect(BUILT_IN_MODEL_PRICE_TIER).toEqual(
       expect.objectContaining({
         "claude-fable-5-1": "$$$$",
         "claude-fable-5": "$$$$",
@@ -749,20 +753,20 @@ describe("model-first canonical catalog", () => {
         "deepseek-v4-pro": "$",
       }),
     );
-    expect(getVm0ModelPriceTier("claude-fable-5-1")).toBe("$$$$");
-    expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
-    expect(getVm0ModelPriceTier("claude-opus-5")).toBe("$$$");
-    expect(getVm0ModelPriceTier("gpt-6-astra")).toBe("$$$$");
-    expect(getVm0ModelPriceTier("gpt-5.6-sol")).toBe("$$$");
-    expect(getVm0ModelPriceTier("gpt-5.6-terra")).toBe("$$");
-    expect(getVm0ModelPriceTier("gpt-5.6-luna")).toBe("$");
-    expect(getVm0ModelPriceTier("claude-opus-4-8")).toBe("$$$");
-    expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
-    expect(getVm0ModelPriceTier("deepseek-v4-flash")).toBe("$");
-    expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
-    expect(getVm0ModelPriceTier("claude-opus-4-7")).toBeUndefined();
-    expect(getVm0ModelPriceTier("kimi-k3")).toBeUndefined();
-    expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
+    expect(getBuiltInModelPriceTier("claude-fable-5-1")).toBe("$$$$");
+    expect(getBuiltInModelPriceTier("claude-fable-5")).toBe("$$$$");
+    expect(getBuiltInModelPriceTier("claude-opus-5")).toBe("$$$");
+    expect(getBuiltInModelPriceTier("gpt-6-astra")).toBe("$$$$");
+    expect(getBuiltInModelPriceTier("gpt-5.6-sol")).toBe("$$$");
+    expect(getBuiltInModelPriceTier("gpt-5.6-terra")).toBe("$$");
+    expect(getBuiltInModelPriceTier("gpt-5.6-luna")).toBe("$");
+    expect(getBuiltInModelPriceTier("claude-opus-4-8")).toBe("$$$");
+    expect(getBuiltInModelPriceTier("claude-sonnet-5")).toBe("$$");
+    expect(getBuiltInModelPriceTier("deepseek-v4-flash")).toBe("$");
+    expect(getBuiltInModelPriceTier("deepseek-v4-pro")).toBe("$");
+    expect(getBuiltInModelPriceTier("claude-opus-4-7")).toBeUndefined();
+    expect(getBuiltInModelPriceTier("kimi-k3")).toBeUndefined();
+    expect(getBuiltInModelPriceTier("custom/model")).toBeUndefined();
     expect(MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS["gpt-6-astra"]).toBe(
       272_001,
     );
@@ -856,9 +860,9 @@ describe("model selection for Claude-compatible gateway providers", () => {
   });
 });
 
-describe("getVm0VisibleModels", () => {
+describe("getBuiltInVisibleModels", () => {
   it("returns only active VM0 built-in models", () => {
-    const models = getVm0VisibleModels();
+    const models = getBuiltInVisibleModels();
     expect(models).toEqual(ACTIVE_RUN_MODELS);
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("claude-sonnet-4-6");
@@ -867,7 +871,7 @@ describe("getVm0VisibleModels", () => {
   });
 });
 
-describe("normalizeVm0ModelId", () => {
+describe("normalizeBuiltInModelId", () => {
   it.each([
     ["anthropic/claude-fable-5.1", "claude-fable-5-1"],
     ["anthropic/claude-fable-5", "claude-fable-5"],
@@ -876,11 +880,11 @@ describe("normalizeVm0ModelId", () => {
     ["anthropic/claude-sonnet-5", "claude-sonnet-5"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
   ])("normalizes %s to %s", (model, expected) => {
-    expect(normalizeVm0ModelId(model)).toBe(expected);
+    expect(normalizeBuiltInModelId(model)).toBe(expected);
   });
 
   it("keeps unknown model ids unchanged", () => {
-    expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
+    expect(normalizeBuiltInModelId("custom/model")).toBe("custom/model");
   });
 });
 
