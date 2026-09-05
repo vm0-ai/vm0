@@ -666,9 +666,9 @@ async function captureDeck(
 
 // --- HTML sources -----------------------------------------------------------
 
-interface SlideBox {
-  readonly top: number;
-  readonly left: number;
+interface SlideTarget {
+  readonly selector: string;
+  readonly index: number;
 }
 
 function browser(session: string) {
@@ -730,22 +730,22 @@ function htmlSources(input: string): { url: string; label: string }[] {
   return [{ url: pathToFileURL(path).href, label: basename(path) }];
 }
 
-function slideBoxes(
+function slideTargets(
   page: ReturnType<typeof browser>,
   selector: string,
-): SlideBox[] {
+): SlideTarget[] {
   if (selector === "") {
-    return [{ top: 0, left: 0 }];
+    return [{ selector, index: 0 }];
   }
-  const found = page.evaluate(`(()=>{
-    const nodes=[...document.querySelectorAll(${JSON.stringify(selector)})];
-    return JSON.stringify(nodes.map(n=>{const b=n.getBoundingClientRect();
-      return {top:Math.round(b.top+window.scrollY),left:Math.round(b.left+window.scrollX)};}));
-  })()`);
-  if (!Array.isArray(found) || found.length < 2) {
-    return [{ top: 0, left: 0 }];
+  const count = page.evaluate(
+    `document.querySelectorAll(${JSON.stringify(selector)}).length`,
+  );
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 2) {
+    return [{ selector: "", index: 0 }];
   }
-  return found as SlideBox[];
+  return Array.from({ length: count }, (_, index) => {
+    return { selector, index };
+  });
 }
 
 function captureHtml(options: Options, outDir: string): string[] {
@@ -766,10 +766,10 @@ function captureHtml(options: Options, outDir: string): string[] {
       page.call(["open", source.url]);
       page.call(["eval", SETTLE]);
 
-      for (const box of slideBoxes(page, options.slides)) {
+      for (const slide of slideTargets(page, options.slides)) {
         const file = `page-${(files.length + 1).toString().padStart(3, "0")}.png`;
         const target = childPath(outDir, file);
-        capturePage(page, box, target, options);
+        capturePage(page, slide, target, options);
         files.push(file);
       }
     }
@@ -781,7 +781,7 @@ function captureHtml(options: Options, outDir: string): string[] {
 
 function capturePage(
   page: ReturnType<typeof browser>,
-  box: SlideBox,
+  slide: SlideTarget,
   target: string,
   options: Options,
 ): void {
@@ -793,9 +793,18 @@ function capturePage(
         page.call(["eval", SETTLE]);
       }
       // An element-scoped screenshot returns the page background for a slide
-      // below the fold, so scroll it to the viewport origin and capture that.
+      // below the fold. scrollIntoView reaches a nested deck scroller as well
+      // as the window, then an ordinary viewport capture includes the page.
       page.evaluate(
-        `(()=>{window.scrollTo(${box.left.toString()},${box.top.toString()});return window.scrollY})()`,
+        slide.selector === ""
+          ? "(()=>{window.scrollTo(0,0);return window.scrollY})()"
+          : `(()=>{
+          const index=${slide.index.toString()};
+          const node=document.querySelectorAll(${JSON.stringify(slide.selector)}).item(index);
+          if(!(node instanceof Element))throw new Error("Slide disappeared before capture");
+          node.scrollIntoView({block:"start",inline:"start",behavior:"instant"});
+          return index;
+        })()`,
       );
       page.evaluate(NEXT_FRAME);
 
