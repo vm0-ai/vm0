@@ -71,7 +71,9 @@ for dependency in "$package_dir/.build/checkouts/"* "$helper_dir/.build/checkout
   dependency_name="$(basename "$dependency")"
   for license in "$dependency"/LICENSE* "$dependency"/COPYING*; do
     if [[ -f "$license" ]]; then
-      cp "$license" "$app_dir/Contents/Resources/Licenses/$dependency_name-$(basename "$license").txt"
+      target="$app_dir/Contents/Resources/Licenses/$dependency_name-$(basename "$license").txt"
+      # Both packages resolve Sentry. SwiftPM checkout licenses can be read-only.
+      if [[ ! -f "$target" ]]; then cp "$license" "$target"; fi
     fi
   done
 done
