@@ -1,10 +1,10 @@
 import {
   afterAll,
-  afterEach,
   beforeEach,
   describe,
   expect,
   it,
+  onTestFinished,
   vi,
 } from "vitest";
 import type { Rectangle, Size } from "electron";
@@ -28,6 +28,7 @@ interface MockNativeImage {
 
 interface MockTrayInstance {
   image: MockNativeImage;
+  readonly nextImage: Promise<MockNativeImage>;
   readonly setToolTip: ReturnType<typeof vi.fn<(tooltip: string) => void>>;
   readonly setContextMenu: ReturnType<typeof vi.fn<(menu: unknown) => void>>;
   readonly setImage: ReturnType<typeof vi.fn<(image: MockNativeImage) => void>>;
@@ -59,11 +60,20 @@ const electronMock = vi.hoisted(() => {
 
   class MockTray implements MockTrayInstance {
     image: MockNativeImage;
+    private imageChanged: ((image: MockNativeImage) => void) | null = null;
     readonly setToolTip = vi.fn<(tooltip: string) => void>();
     readonly setContextMenu = vi.fn<(menu: unknown) => void>();
     readonly setImage = vi.fn<(image: MockNativeImage) => void>((image) => {
       this.image = image;
+      this.imageChanged?.(image);
+      this.imageChanged = null;
     });
+
+    get nextImage(): Promise<MockNativeImage> {
+      return new Promise((resolve) => {
+        this.imageChanged = resolve;
+      });
+    }
 
     constructor(image: MockNativeImage) {
       this.image = image;
@@ -162,13 +172,15 @@ function computerUseState(
 }
 
 function installController(getState: () => DesktopComputerUseState) {
+  let active = true;
   const controller = new DesktopTrayController({
     brandName: "Okou",
     displayName: "Okou",
     iconPath,
     disabledIconPath,
     runningIconPath,
-    getComputerUseState: getState,
+    getComputerUseState: () =>
+      active ? getState() : computerUseState("offline"),
     getAuthState: async () => signedInAuth,
     showMainWindow: vi.fn(async () => {}),
     startComputerUse: vi.fn(async () => {}),
@@ -188,6 +200,10 @@ function installController(getState: () => DesktopComputerUseState) {
     retryScreenRecordingDelivery: vi.fn(async () => {}),
     quit: vi.fn(),
   });
+  onTestFinished(() => {
+    active = false;
+    controller.refresh();
+  });
   controller.install();
   return controller;
 }
@@ -202,7 +218,6 @@ function installedTray(): MockTrayInstance {
 
 describe("desktop tray", () => {
   beforeEach(() => {
-    vi.useRealTimers();
     Object.defineProperty(process, "platform", {
       configurable: true,
       value: "darwin",
@@ -210,10 +225,6 @@ describe("desktop tray", () => {
     electronMock.trays.length = 0;
     electronMock.Menu.buildFromTemplate.mockClear();
     electronMock.nativeImage.createFromPath.mockClear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   afterAll(() => {
@@ -272,9 +283,7 @@ describe("desktop tray", () => {
     expect(tray.setImage).toHaveBeenCalledTimes(2);
   });
 
-  it("cycles orange rotation frames while a local Computer Use command is running", () => {
-    vi.useFakeTimers();
-
+  it("cycles orange rotation frames while a local Computer Use command is running", async () => {
     let status: ComputerUseHostRuntimeStatus = "online";
     const controller = installController(() =>
       computerUseState(status, { runningCommand: true }),
@@ -292,42 +301,43 @@ describe("desktop tray", () => {
     expect(tray.image.templateImage).toBe(false);
 
     for (let index = 1; index < 60; index += 1) {
-      vi.advanceTimersByTime(50);
+      const image = await tray.nextImage;
 
-      expect(tray.image.path).toBe(runningIconPath);
-      expect(tray.image.cropRect).toEqual({
+      expect(image.path).toBe(runningIconPath);
+      expect(image.cropRect).toEqual({
         x: index * 18,
         y: 0,
         width: 18,
         height: 18,
       });
-      expect(tray.image.templateImage).toBe(false);
+      expect(image.templateImage).toBe(false);
     }
 
-    vi.advanceTimersByTime(50);
-
-    expect(tray.image).toBe(initialImage);
+    expect(await tray.nextImage).toBe(initialImage);
 
     status = "offline";
     controller.refresh();
 
     expect(tray.image.path).toBe(disabledIconPath);
-    expect(vi.getTimerCount()).toBe(0);
 
     status = "online";
     controller.refresh();
 
     expect(tray.image).toBe(initialImage);
-    expect(vi.getTimerCount()).toBe(1);
+    expect((await tray.nextImage).cropRect).toEqual({
+      x: 18,
+      y: 0,
+      width: 18,
+      height: 18,
+    });
 
     status = "offline";
     controller.refresh();
   });
 
-  it("keeps animating during the command gap window", () => {
-    vi.useFakeTimers();
-
+  it("keeps animating during the command gap window", async () => {
     let runningCommand = true;
+    const startedAt = Date.now();
     const controller = installController(() =>
       computerUseState("online", { runningCommand }),
     );
@@ -335,14 +345,17 @@ describe("desktop tray", () => {
 
     runningCommand = false;
     controller.refresh();
-    vi.advanceTimersByTime(14_500);
 
     expect(tray.image.path).toBe(runningIconPath);
-    expect(tray.image.templateImage).toBe(false);
 
-    vi.advanceTimersByTime(500);
+    let image = tray.image;
+    while (image.path === runningIconPath) {
+      expect(image.templateImage).toBe(false);
+      image = await tray.nextImage;
+    }
 
-    expect(tray.image.path).toBe(iconPath);
-    expect(tray.image.templateImage).toBe(true);
-  });
+    expect(image.path).toBe(iconPath);
+    expect(image.templateImage).toBe(true);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(15_000);
+  }, 20_000); // Exercise the production 15-second linger with real timers.
 });
