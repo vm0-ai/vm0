@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.550.0](https://github.com/vm0-ai/vm0/compare/api-v1.549.0...api-v1.550.0) (2026-09-05)
+
+
+### Features
+
+* **api:** route api-key Terra Fast through Pi ([#31868](https://github.com/vm0-ai/vm0/issues/31868)) ([32ee834](https://github.com/vm0-ai/vm0/commit/32ee834ce0466969e101ec75c24cda8f8068fb1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/pi-agent-runtime bumped to 1.19.0
+
 ## [1.549.0](https://github.com/vm0-ai/vm0/compare/api-v1.548.1...api-v1.549.0) (2026-09-05)
 
 
