@@ -588,60 +588,106 @@ test.each([false, undefined])(
   },
 );
 
-test("Continue warming unread chats after a trailing indicator catch-up completes", async () => {
-  const startedAt = 10_000;
-  mockNow(startedAt, context.signal);
-  const threadId = crypto.randomUUID();
-  const rows = [row(threadId, 1), row(threadId, 2), row(threadId, 3)];
-  let availableRows = rows.slice(0, 1);
-  mockBatchIndicators(threadId);
-  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
-    return respond(200, {
-      events: Object.fromEntries(
-        body.map(([id, sinceSeqId]) => {
-          return [
-            id,
-            availableRows.filter((event) => {
-              return event.chatThreadId === id && event.seqId > sinceSeqId;
-            }),
-          ];
-        }),
-      ),
-      notFoundThreads: [],
+test.each([
+  { boundary: "before", firstRead: 999, nextRead: 999 },
+  { boundary: "across", firstRead: 999, nextRead: 1000 },
+  { boundary: "at", firstRead: 1000, nextRead: 1000 },
+])(
+  "Continue warming unread chats when indicator catch-up reads time $boundary the throttle boundary",
+  async ({ firstRead, nextRead }) => {
+    const startedAt = 10_000;
+    mockNow(startedAt, context.signal);
+    const threadId = crypto.randomUUID();
+    const rows = [row(threadId, 1), row(threadId, 2), row(threadId, 3)];
+    let availableRows = rows.slice(0, 1);
+    let refreshing = false;
+    mockBatchIndicators(threadId);
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      if (refreshing) {
+        // Arm the clock after the HTTP request so telemetry cannot consume the
+        // boundary read. The scheduler may cross the threshold without yielding.
+        let time = startedAt + firstRead;
+        mockNow(() => {
+          const sampledAt = time;
+          time = startedAt + nextRead;
+          return sampledAt;
+        }, context.signal);
+      }
+      return respond(200, { agents: {}, threads: { [threadId]: "unread" } });
     });
-  });
-  initializeWorker();
-  const { bridge } = connectProtocolTransport(context.signal);
-  await bridge.registerTab(context.signal);
-  await bridge.getComputed("chat-thread-indicators");
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+      return respond(200, {
+        events: Object.fromEntries(
+          body.map(([id, sinceSeqId]) => {
+            return [
+              id,
+              availableRows.filter((event) => {
+                return event.chatThreadId === id && event.seqId > sinceSeqId;
+              }),
+            ];
+          }),
+        ),
+        notFoundThreads: [],
+      });
+    });
+    initializeWorker();
+    const subscriptionCatchUpFinished = context.mocks.deferred<void>();
+    const { bridge } = connectProtocolTransport(context.signal, undefined, {
+      ...bridgeEvents(),
+      computedReloaded: (computedKey) => {
+        if (
+          computedKey === "chat-thread-indicators" &&
+          !subscriptionCatchUpFinished.settled()
+        ) {
+          subscriptionCatchUpFinished.resolve();
+        }
+      },
+    });
+    await bridge.registerTab(context.signal);
+    // The initial realtime subscription also refreshes indicators. Observe its
+    // completion before scheduling a new refresh with the boundary clock.
+    await Promise.all([
+      bridge.getComputed("chat-thread-indicators"),
+      subscriptionCatchUpFinished.promise,
+    ]);
 
-  availableRows = rows.slice(0, 2);
-  mockNow(startedAt + 999, context.signal);
-  context.workerStore.set(refreshWorkerComputed$, "chat-thread-indicators");
-  const indicators = await Promise.all([
-    bridge.getComputed("chat-thread-indicators"),
-    bridge.getComputed("chat-thread-indicators"),
-  ]);
-  expect(indicators).toStrictEqual([
-    { agents: {}, threads: { [threadId]: "unread" } },
-    { agents: {}, threads: { [threadId]: "unread" } },
-  ]);
-  const second = await bridge.query(
-    { dataKey: dataKey(threadId), afterSeqId: null, consistency: "cache-only" },
-    context.signal,
-  );
-  expect(second).toStrictEqual(rows.slice(0, 2));
+    availableRows = rows.slice(0, 2);
+    refreshing = true;
+    context.workerStore.set(refreshWorkerComputed$, "chat-thread-indicators");
+    const indicators = await Promise.all([
+      bridge.getComputed("chat-thread-indicators"),
+      bridge.getComputed("chat-thread-indicators"),
+    ]);
+    expect(indicators).toStrictEqual([
+      { agents: {}, threads: { [threadId]: "unread" } },
+      { agents: {}, threads: { [threadId]: "unread" } },
+    ]);
+    const second = await bridge.query(
+      {
+        dataKey: dataKey(threadId),
+        afterSeqId: null,
+        consistency: "cache-only",
+      },
+      context.signal,
+    );
+    expect(second).toStrictEqual(rows.slice(0, 2));
 
-  availableRows = rows;
-  mockNow(startedAt + 2000, context.signal);
-  context.workerStore.set(refreshWorkerComputed$, "chat-thread-indicators");
-  await bridge.getComputed("chat-thread-indicators");
-  const third = await bridge.query(
-    { dataKey: dataKey(threadId), afterSeqId: null, consistency: "cache-only" },
-    context.signal,
-  );
-  expect(third).toStrictEqual(rows);
-});
+    availableRows = rows;
+    refreshing = false;
+    mockNow(startedAt + 2000, context.signal);
+    context.workerStore.set(refreshWorkerComputed$, "chat-thread-indicators");
+    await bridge.getComputed("chat-thread-indicators");
+    const third = await bridge.query(
+      {
+        dataKey: dataKey(threadId),
+        afterSeqId: null,
+        consistency: "cache-only",
+      },
+      context.signal,
+    );
+    expect(third).toStrictEqual(rows);
+  },
+);
 
 test("Recover indicator catch-up after a shared trailing request fails", async () => {
   const startedAt = 20_000;

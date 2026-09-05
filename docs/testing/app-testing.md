@@ -234,6 +234,12 @@ or `nowDate()` rather than `Date.now()`; only `lib/time.ts` may call
 `Date.now()`. Do not use fake timers, `vi.setSystemTime`, or a `Date.now()`
 spy. Continue using real timers with Testing Library queries and `waitFor`.
 
+For a race that crosses a clock boundary between synchronous reads, `mockNow`
+also accepts a `() => number` reader. Install it at the relevant external
+response boundary and pass `context.signal` so the shared lifecycle removes
+the override. Control only the returned time; keep timers and application
+commands real.
+
 ## Test Context and Cleanup
 
 Create one `testContext()` at file scope. It provides a fresh store and worker
