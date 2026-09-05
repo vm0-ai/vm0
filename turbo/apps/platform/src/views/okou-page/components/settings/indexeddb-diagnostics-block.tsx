@@ -51,19 +51,19 @@ function IndexedDbDiagnosticsSummary({
           })}
         </span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {t(($) => {
               return $.settings.preferences.debug.indexedDb.schema;
             })}
             : {diagnostics.version}
           </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {t(($) => {
               return $.settings.preferences.debug.indexedDb.stores;
             })}
             : {formatLocalizedNumber(diagnostics.stores.length)}
           </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {t(($) => {
               return $.settings.preferences.debug.indexedDb.records;
             })}
@@ -257,7 +257,7 @@ export function IndexedDbDiagnosticsBlock() {
   return (
     <section
       aria-labelledby="indexeddb-diagnostics-title"
-      className="overflow-hidden rounded-xl bg-card zero-border"
+      className="overflow-hidden rounded-xl bg-card okou-border"
     >
       {diagnostics ? (
         <details className="group">
