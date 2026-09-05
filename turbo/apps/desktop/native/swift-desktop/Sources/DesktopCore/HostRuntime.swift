@@ -16,11 +16,17 @@ public final class HostRuntime {
   public var permissions: @MainActor () async throws -> JSON
   private let api: DesktopAPI
   private let installationID: String
-  private var hostToken: String?
-  private var wantsOnline = false
-  private var startTask: Task<Void, Never>?
-  private var heartbeatTask: Task<Void, Never>?
-  private var commandTask: Task<Void, Never>?
+  private var connection: Connection?
+
+  private final class Connection {
+    var accepting = true
+    var executing = false
+    var token: String?
+    var startTask: Task<Void, Never>?
+    var heartbeatTask: Task<Void, Never>?
+    var commandTask: Task<Void, Never>?
+    var stopTask: Task<Void, Never>?
+  }
 
   public init(
     api: DesktopAPI, installationID: String,
@@ -34,29 +40,41 @@ public final class HostRuntime {
   }
 
   public func start() {
-    guard !wantsOnline else { return }
-    wantsOnline = true
-    startTask = Task { [weak self] in
+    guard connection?.accepting != true else { return }
+    let previous = connection
+    let next = Connection()
+    connection = next
+    hostID = nil
+    status = "connecting"
+    onChange()
+    next.startTask = Task { [weak self] in
       guard let self else { return }
+      // A replacement cannot register until claimed work from the previous
+      // connection has completed and its heartbeat/process ownership is joined.
+      if let previous { await self.drain(previous) }
+      guard next.accepting, !Task.isCancelled else { return }
+      self.executing = false
       var attempt = 0
-      while self.wantsOnline && !Task.isCancelled {
+      while next.accepting && !Task.isCancelled {
         self.status = "connecting"
         self.onChange()
         do {
           let body = try await self.runtimeBody()
+          try Task.checkCancellation()
           let response = try await self.api.request(
             "api/computer-use/hosts/start", method: "POST", body: body)
-          self.hostToken = try response.requireString("hostToken")
+          next.token = try response.requireString("hostToken")
+          guard next.accepting, !Task.isCancelled else { return }
           self.hostID = try response.requireString("hostId")
           self.status = "online"
           self.lastError = nil
           self.lastHeartbeat = Date()
           self.onChange()
-          self.heartbeatTask = Task { await self.heartbeatLoop() }
-          self.commandTask = Task { await self.commandLoop() }
+          next.heartbeatTask = Task { await self.heartbeatLoop(next) }
+          next.commandTask = Task { await self.commandLoop(next) }
           return
         } catch {
-          guard await self.recover(error, attempt: &attempt) else { return }
+          guard await self.recover(error, attempt: &attempt, connection: next) else { return }
         }
       }
     }
@@ -65,29 +83,50 @@ public final class HostRuntime {
   /// Stop claiming work, allow a claimed command and its completion to finish,
   /// then revoke the host token. Updates and sign-out use the same drain.
   public func stop() async {
-    wantsOnline = false
-    startTask?.cancel()
-    await startTask?.value
-    startTask = nil
-    if !executing { commandTask?.cancel() }
-    await commandTask?.value
-    commandTask = nil
-    heartbeatTask?.cancel()
-    await heartbeatTask?.value
-    heartbeatTask = nil
-    let token = hostToken
-    hostToken = nil
+    guard let stopped = connection else { return }
+    await drain(stopped)
+    guard connection === stopped else { return }
+    connection = nil
+    executing = false
     hostID = nil
     status = "offline"
     onChange()
-    if let token {
+  }
+
+  private func drain(_ stopped: Connection) async {
+    if let task = stopped.stopTask {
+      await task.value
+      return
+    }
+    stopped.accepting = false
+    stopped.startTask?.cancel()
+    let task = Task {
+      await stopped.startTask?.value
+      stopped.startTask = nil
+      if !stopped.executing { stopped.commandTask?.cancel() }
+      await stopped.commandTask?.value
+      stopped.commandTask = nil
+      stopped.heartbeatTask?.cancel()
+      await stopped.heartbeatTask?.value
+      stopped.heartbeatTask = nil
+      await self.revoke(stopped)
+    }
+    stopped.stopTask = task
+    await task.value
+  }
+
+  private func revoke(_ stopped: Connection) async {
+    if let token = stopped.token {
+      stopped.token = nil
       do {
         _ = try await api.request(
           "api/computer-use/host/stop", method: "POST", body: .object([:]), hostToken: token,
           timeout: 10)
       } catch let error as DesktopHTTPError where error.status == 401 {
         // The server has already revoked this host.
-      } catch { record(error) }
+      } catch {
+        if connection === stopped { record(error) }
+      }
     }
   }
 
@@ -101,26 +140,26 @@ public final class HostRuntime {
     ])
   }
 
-  private func heartbeatLoop() async {
+  private func heartbeatLoop(_ current: Connection) async {
     var attempt = 0
-    while !Task.isCancelled, let token = hostToken {
+    while !Task.isCancelled, let token = current.token {
       do {
         try await Task.sleep(for: .seconds(2))
         _ = try await api.request(
           "api/computer-use/heartbeat", method: "POST", body: runtimeBody(), hostToken: token,
           timeout: 10)
-        lastHeartbeat = Date()
+        if connection === current { lastHeartbeat = Date() }
         attempt = 0
         onChange()
       } catch {
-        if !(await recover(error, attempt: &attempt)) { return }
+        if !(await recover(error, attempt: &attempt, connection: current)) { return }
       }
     }
   }
 
-  private func commandLoop() async {
+  private func commandLoop(_ current: Connection) async {
     var attempt = 0
-    while wantsOnline && !Task.isCancelled, let token = hostToken {
+    while current.accepting && !Task.isCancelled, let token = current.token {
       do {
         let next = try await api.request(
           "api/computer-use/host/commands/next", method: "POST",
@@ -128,7 +167,8 @@ public final class HostRuntime {
         if next["status"].string == "command" {
           let command = next["command"]
           let id = try command.requireString("id")
-          executing = true
+          current.executing = true
+          if connection === current { executing = true }
           let start = Date()
           var log = command
           log["status"] = .string("running")
@@ -157,18 +197,23 @@ public final class HostRuntime {
             commands[index]["response"] = summary
           }
           try await complete(id: id, result: result, token: token)
-          executing = false
+          current.executing = false
+          if connection === current { executing = false }
           lastCommand = Date()
-          status = "online"
-          lastError = nil
+          if connection === current, current.accepting {
+            status = "online"
+            lastError = nil
+          }
           onChange()
         }
+        guard current.accepting else { return }
         attempt = 0
         let elapsed = lastCommand.map { Date().timeIntervalSince($0) } ?? .infinity
         try await Task.sleep(for: .seconds(elapsed < 10 ? 0.5 : elapsed < 60 ? 1 : 5))
       } catch {
-        executing = false
-        if !(await recover(error, attempt: &attempt)) { return }
+        current.executing = false
+        if connection === current { executing = false }
+        if !(await recover(error, attempt: &attempt, connection: current)) { return }
       }
     }
   }
@@ -188,20 +233,23 @@ public final class HostRuntime {
     }
   }
 
-  private func recover(_ error: any Error, attempt: inout Int) async -> Bool {
+  private func recover(_ error: any Error, attempt: inout Int, connection current: Connection)
+    async -> Bool
+  {
     if error is CancellationError || Task.isCancelled { return false }
-    record(error)
+    if connection === current { record(error) }
     if let http = error as? DesktopHTTPError, !http.retryable {
-      status = http.status == 401 ? "unauthenticated" : http.status == 403 ? "disabled" : "error"
-      wantsOnline = false
-      hostToken = nil
-      hostID = nil
-      onChange()
+      current.accepting = false
+      if connection === current {
+        status = http.status == 401 ? "unauthenticated" : http.status == 403 ? "disabled" : "error"
+        hostID = nil
+        onChange()
+      }
       return false
     }
-    guard wantsOnline else { return false }
+    guard current.accepting || current.executing else { return false }
     attempt += 1
-    status = "recovering"
+    if connection === current { status = "recovering" }
     onChange()
     let delay =
       (error as? DesktopHTTPError)?.retryAfter ?? min(60, 2 * pow(2, Double(min(attempt - 1, 5))))
