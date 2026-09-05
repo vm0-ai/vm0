@@ -15,6 +15,7 @@ import {
   File,
   LayoutTemplate,
   Loader2,
+  Pause,
   Play,
   Sparkles,
   Upload,
@@ -55,7 +56,7 @@ import {
   type IntroVideoVoiceSelection,
   type IntroVideoWizardError,
 } from "../../signals/okou-page/intro-video.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, tapError } from "../../signals/utils.ts";
 import {
   VoiceLibraryContent,
   VoiceLibraryToolbar,
@@ -223,11 +224,6 @@ function styleSelectionLabel(
         return $.chat.introVideo.style.auto;
       });
     }
-    case "none": {
-      return t(($) => {
-        return $.chat.introVideo.style.none;
-      });
-    }
     case "catalog": {
       return selection.style.name;
     }
@@ -262,13 +258,18 @@ function voiceSelectionLabel(
 ): string {
   switch (selection.kind) {
     case "default": {
-      return avatar.kind === "catalog"
-        ? t(
-            ($) => {
-              return $.chat.introVideo.voice.defaultForAvatar;
-            },
-            { avatar: avatar.avatar.name },
-          )
+      if (avatar.kind === "catalog") {
+        return t(
+          ($) => {
+            return $.chat.introVideo.voice.defaultForAvatar;
+          },
+          { avatar: avatar.avatar.name },
+        );
+      }
+      return avatar.kind === "none"
+        ? t(($) => {
+            return $.chat.introVideo.voice.auto;
+          })
         : t(($) => {
             return $.chat.introVideo.voice.default;
           });
@@ -315,7 +316,7 @@ function SettingTrigger({
         <small className="block text-[11px] text-muted-foreground">
           {label}
         </small>
-        <strong className="mt-0.5 line-clamp-2 min-h-8 text-xs font-medium leading-4 text-foreground sm:block sm:min-h-0 sm:truncate sm:text-sm sm:leading-normal">
+        <strong className="mt-0.5 line-clamp-2 min-h-8 text-xs font-medium leading-4 text-foreground sm:text-sm sm:leading-5">
           {value}
         </strong>
       </span>
@@ -345,7 +346,7 @@ function UtilityOption({
       type="button"
       aria-pressed={selected}
       className={cn(
-        "relative flex min-w-0 items-start gap-3 rounded-xl border bg-card p-3 pr-10 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-28 sm:flex-col sm:gap-0 sm:pr-3",
+        "relative flex min-w-0 items-start gap-3 rounded-xl border bg-card p-3 pr-10 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected ? "border-primary" : "border-border",
       )}
       onClick={onSelect}
@@ -354,10 +355,10 @@ function UtilityOption({
         {icon}
       </span>
       <span className="min-w-0">
-        <strong className="block text-sm font-semibold text-foreground sm:mt-3">
+        <strong className="block text-sm font-semibold text-foreground">
           {title}
         </strong>
-        <small className="mt-0.5 block text-xs leading-5 text-muted-foreground sm:mt-1">
+        <small className="mt-0.5 block text-xs leading-5 text-muted-foreground">
           {description}
         </small>
       </span>
@@ -429,6 +430,16 @@ function StyleCardMedia({ style }: { readonly style: IntroVideoStyle }) {
             setStylePreviewLoading(event.currentTarget, true);
           }}
           onPlaying={(event) => {
+            const video = event.currentTarget;
+            for (const other of video
+              .closest('[role="dialog"]')
+              ?.querySelectorAll<HTMLVideoElement>(
+                "[data-intro-video-style-preview] video",
+              ) ?? []) {
+              if (other !== video && !other.paused) {
+                other.pause();
+              }
+            }
             setStylePreviewPlaying(event.currentTarget, true);
           }}
           onPause={(event) => {
@@ -461,38 +472,65 @@ function StylePreviewControl({ style }: { readonly style: IntroVideoStyle }) {
     return null;
   }
   return (
-    <button
-      type="button"
-      aria-label={t(
-        ($) => {
-          return $.artifacts.templates.playVideo;
-        },
-        { title: style.name },
-      )}
-      className="absolute inset-x-px top-px flex aspect-video items-center justify-center rounded-t-[11px] bg-black/10 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:pointer-events-none group-data-[preview-playing=true]/style-preview:opacity-0"
-      onClick={(event) => {
-        const preview = event.currentTarget.closest<HTMLElement>(
-          "[data-intro-video-style-preview]",
-        );
-        const video = preview?.querySelector("video");
-        if (!video) {
-          return;
-        }
-        video.defaultMuted = true;
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = "metadata";
-        setStylePreviewLoading(video, true);
-        detach(video.play(), Reason.DomCallback);
-      }}
-    >
-      <span className="grid size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:hidden">
-        <Play size={20} fill="currentColor" />
-      </span>
-      <span className="hidden size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:grid">
-        <Loader2 size={20} className="animate-spin" />
-      </span>
-    </button>
+    <>
+      <button
+        type="button"
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.playVideo;
+          },
+          { title: style.name },
+        )}
+        className="absolute inset-x-px top-px flex aspect-video items-center justify-center rounded-t-[11px] bg-black/10 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:hidden"
+        onClick={(event) => {
+          const preview = event.currentTarget.closest<HTMLElement>(
+            "[data-intro-video-style-preview]",
+          );
+          const video = preview?.querySelector("video");
+          if (!video) {
+            return;
+          }
+          video.defaultMuted = true;
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "metadata";
+          setStylePreviewLoading(video, true);
+          detach(
+            tapError(video.play(), () => {
+              setStylePreviewPlaying(video, false);
+            }),
+            Reason.DomCallback,
+          );
+        }}
+      >
+        <span className="grid size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:hidden">
+          <Play size={20} fill="currentColor" />
+        </span>
+        <span className="hidden size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:grid">
+          <Loader2 size={20} className="animate-spin" />
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label={t(
+          ($) => {
+            return $.chat.introVideo.style.pausePreview;
+          },
+          { title: style.name },
+        )}
+        className="absolute inset-x-px top-px hidden aspect-video items-end justify-end rounded-t-[11px] p-2 text-white transition-colors hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:flex"
+        onClick={(event) => {
+          event.currentTarget
+            .closest("[data-intro-video-style-preview]")
+            ?.querySelector("video")
+            ?.pause();
+        }}
+      >
+        <span className="grid size-8 place-items-center rounded-full bg-black/55">
+          <Pause size={16} fill="currentColor" />
+        </span>
+      </button>
+    </>
   );
 }
 
@@ -622,7 +660,7 @@ function StylePicker() {
   };
   return (
     <div className="grid gap-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+      <div className="grid gap-2">
         <UtilityOption
           title={t(($) => {
             return $.chat.introVideo.style.auto;
@@ -634,19 +672,6 @@ function StylePicker() {
           selected={selection.kind === "auto"}
           onSelect={() => {
             choose({ kind: "auto" });
-          }}
-        />
-        <UtilityOption
-          title={t(($) => {
-            return $.chat.introVideo.style.none;
-          })}
-          description={t(($) => {
-            return $.chat.introVideo.style.noneDescription;
-          })}
-          icon={<Ban size={17} />}
-          selected={selection.kind === "none"}
-          onSelect={() => {
-            choose({ kind: "none" });
           }}
         />
       </div>
@@ -841,7 +866,9 @@ function VoicePicker({
         <div className="grid w-full grid-cols-1 gap-2 sm:flex-1 sm:grid-cols-2 sm:gap-3">
           <UtilityOption
             title={t(($) => {
-              return $.chat.introVideo.voice.default;
+              return avatar.kind === "none"
+                ? $.chat.introVideo.voice.auto
+                : $.chat.introVideo.voice.default;
             })}
             description={
               avatar.kind === "catalog"
@@ -852,9 +879,13 @@ function VoicePicker({
                     },
                     { avatar: avatar.avatar.name },
                   )
-                : t(($) => {
-                    return $.chat.introVideo.voice.defaultDescription;
-                  })
+                : avatar.kind === "none"
+                  ? t(($) => {
+                      return $.chat.introVideo.voice.autoDescription;
+                    })
+                  : t(($) => {
+                      return $.chat.introVideo.voice.defaultDescription;
+                    })
             }
             icon={<Sparkles size={17} />}
             selected={selection.kind === "default"}
@@ -908,7 +939,11 @@ function VoicePicker({
   );
 }
 
-function pickerCopy(t: TFunction<"common">, picker: IntroVideoPicker) {
+function pickerCopy(
+  t: TFunction<"common">,
+  picker: IntroVideoPicker,
+  avatar: IntroVideoAvatarSelection,
+) {
   switch (picker) {
     case "style": {
       return {
@@ -936,7 +971,9 @@ function pickerCopy(t: TFunction<"common">, picker: IntroVideoPicker) {
           return $.chat.introVideo.voice.heading;
         }),
         description: t(($) => {
-          return $.chat.introVideo.voice.help;
+          return avatar.kind === "none"
+            ? $.chat.introVideo.voice.helpWithoutAvatar
+            : $.chat.introVideo.voice.help;
         }),
       };
     }
@@ -957,7 +994,7 @@ function PickerDialog({
   if (!picker) {
     return null;
   }
-  const copy = pickerCopy(t, picker);
+  const copy = pickerCopy(t, picker, avatar);
   return (
     <Dialog
       open

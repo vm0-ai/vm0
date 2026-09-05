@@ -15,6 +15,7 @@ const HEYGEN_VIDEOS_URL = `${HEYGEN_API_BASE_URL}/videos`;
 const HEYGEN_VIDEO_AGENT_STYLES_URL = `${HEYGEN_API_BASE_URL}/video-agents/styles`;
 const HEYGEN_VOICES_URL = `${HEYGEN_API_BASE_URL}/voices`;
 const HEYGEN_VOICE_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
+const HEYGEN_AVATAR_PAGE_SIZE = 50;
 const HEYGEN_RATE_LIMIT_RETRY_MAX_MS = 30_000;
 
 type HeyGenErrorStatus = 400 | 502 | 503;
@@ -484,7 +485,10 @@ export async function listHeyGenPublicAvatars(
   const url = new URL(HEYGEN_AVATAR_LOOKS_URL);
   url.searchParams.set("ownership", "public");
   url.searchParams.set("avatar_type", "studio_avatar");
-  url.searchParams.set("limit", String(options.pageSize));
+  url.searchParams.set(
+    "limit",
+    String(Math.min(options.pageSize, HEYGEN_AVATAR_PAGE_SIZE)),
+  );
   if (options.token) {
     url.searchParams.set("token", options.token);
   }
@@ -557,7 +561,7 @@ export async function verifyHeyGenPublicAvatar(
   const seenTokens = new Set<string>();
   do {
     const page = await listHeyGenPublicAvatars(
-      { groupId, token, pageSize: 100 },
+      { groupId, token, pageSize: HEYGEN_AVATAR_PAGE_SIZE },
       apiKey,
       signal,
     );

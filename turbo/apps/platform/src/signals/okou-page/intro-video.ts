@@ -48,7 +48,6 @@ export type IntroVideoAvatarSelection =
 
 export type IntroVideoStyleSelection =
   | { readonly kind: "auto" }
-  | { readonly kind: "none" }
   | { readonly kind: "catalog"; readonly style: IntroVideoStyle };
 
 export type IntroVideoVoiceSelection =
@@ -95,9 +94,6 @@ function serializeStyleSelection(selection: IntroVideoStyleSelection): string {
     case "auto": {
       return "Auto — choose the best visual direction";
     }
-    case "none": {
-      return "No HeyGen style";
-    }
     case "catalog": {
       return `${selection.style.name} (${selection.style.id})`;
     }
@@ -126,8 +122,11 @@ function serializeVoiceSelection(
 ): string {
   switch (selection.kind) {
     case "default": {
-      return avatar.kind === "catalog"
-        ? `Default — follow ${avatar.avatar.name} (${avatar.avatar.defaultVoiceId})`
+      if (avatar.kind === "catalog") {
+        return `Default — follow ${avatar.avatar.name} (${avatar.avatar.defaultVoiceId})`;
+      }
+      return avatar.kind === "none"
+        ? "Auto — choose a suitable public HeyGen voice"
         : "Default — follow the chosen avatar";
     }
     case "catalog": {

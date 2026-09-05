@@ -456,7 +456,7 @@ describe("Intro Video HeyGen presenter route", () => {
         expect(Object.fromEntries(url.searchParams)).toStrictEqual({
           ownership: "public",
           avatar_type: "studio_avatar",
-          limit: "24",
+          limit: "50",
         });
         return HttpResponse.json({
           data: [
@@ -497,7 +497,7 @@ describe("Intro Video HeyGen presenter route", () => {
       app.request("/api/intro-video/styles?pageSize=24", {
         headers: authHeaders(),
       }),
-      app.request("/api/intro-video/avatars?pageSize=24", {
+      app.request("/api/intro-video/avatars?pageSize=100", {
         headers: authHeaders(),
       }),
     ]);
@@ -562,7 +562,7 @@ describe("Intro Video HeyGen presenter route", () => {
         expect(Object.fromEntries(url.searchParams)).toStrictEqual({
           ownership: "public",
           avatar_type: "studio_avatar",
-          limit: "100",
+          limit: "50",
           group_id: "private-group",
         });
         return HttpResponse.json({

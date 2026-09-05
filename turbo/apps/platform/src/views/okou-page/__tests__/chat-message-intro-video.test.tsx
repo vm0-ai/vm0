@@ -2,9 +2,9 @@ import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   click,
@@ -162,6 +162,8 @@ async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
   const picker = await screen.findByRole("dialog", {
     name: "Choose a video style",
   });
+  expect(within(picker).queryByText("No video style")).toBeNull();
+  expect(within(picker).getByText("Let Okou choose")).toBeVisible();
   const preview = within(picker).getByLabelText(
     "Play video template preview Thriller",
   );
@@ -217,6 +219,43 @@ test("Intro Video opens as one unrestricted multi-file form", async () => {
   expect(input).toHaveAttribute("multiple");
   expect(input).not.toHaveAttribute("accept");
   expect(requiredButtonNamed("Create video", dialog)).toBeDisabled();
+});
+
+test("Style previews can play and pause without selecting a style", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+  await setupIntroVideoPage();
+  await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a video style",
+  });
+  const preview = await within(picker).findByLabelText(
+    "Play video template preview Thriller",
+  );
+  const video = picker.querySelector("video");
+  if (!video) {
+    throw new Error("Expected the HeyGen style preview video");
+  }
+  const play = vi.spyOn(video, "play").mockResolvedValue();
+  const pause = vi.spyOn(video, "pause").mockImplementation(() => {
+    fireEvent.pause(video);
+  });
+  await user.click(preview);
+  expect(play).toHaveBeenCalledOnce();
+  fireEvent.playing(video);
+  const card = video.closest("[data-intro-video-style-preview]");
+  expect(card).toHaveAttribute("data-preview-playing", "true");
+
+  await user.click(
+    within(picker).getByLabelText("Pause video style preview Thriller"),
+  );
+  expect(pause).toHaveBeenCalledOnce();
+  expect(card).toHaveAttribute("data-preview-playing", "false");
+  expect(picker).toBeVisible();
+  expect(
+    within(picker).getByLabelText("Select style Thriller"),
+  ).toHaveAttribute("aria-pressed", "false");
 });
 
 test("A prompt alone creates an Intro Video chat", async () => {
@@ -317,6 +356,48 @@ test("A selected public avatar uses its HeyGen default voice", async () => {
   );
   expect(submittedPrompt).toContain(
     "- Voice: Default — follow Daphne in Grey blazer (812d4eea4a8442a382dcaf2dbaddbd93)",
+  );
+});
+
+test("No avatar gives the voice an independent Okou choice", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Create a caption-led product introduction.",
+  );
+
+  await user.click(requiredButtonNamed("Avatar: Auto · Okou decides", dialog));
+  const avatarPicker = await screen.findByRole("dialog", {
+    name: "Choose an avatar",
+  });
+  await user.click(within(avatarPicker).getByText("No avatar"));
+
+  const voiceTrigger = requiredButtonNamed("Voice: Let Okou choose", dialog);
+  expect(voiceTrigger).toBeVisible();
+  await user.click(voiceTrigger);
+  const voicePicker = await screen.findByRole("dialog", {
+    name: "Choose a voice",
+  });
+  expect(within(voicePicker).getByText("Let Okou choose")).toBeVisible();
+  expect(
+    within(voicePicker).queryByText("Default · Follows avatar"),
+  ).toBeNull();
+  await user.click(within(voicePicker).getByText("Let Okou choose"));
+  await user.click(requiredButtonNamed("Create video", dialog));
+
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("- Avatar: No avatar");
+  });
+  expect(submittedPrompt).toContain(
+    "- Voice: Auto — choose a suitable public HeyGen voice",
   );
 });
 

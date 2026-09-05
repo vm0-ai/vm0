@@ -84,6 +84,11 @@ import {
 } from "../../../test-fixtures/connector-catalog";
 import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
+  cleanupOwnedSkillsState,
+  findSkillByUrlState,
+  seedCurrentSkillVersionsState,
+} from "./helpers/cron-sync-skills-state";
+import {
   readRunIdentityMismatchWriteCountsFixture,
   readRunModelRuntimeRouteFixture,
   readSessionHistoryBlobRefCountFixture,
@@ -1698,6 +1703,43 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("advertises the intro-video skill and camera tooling only while its rollout switch is on", async () => {
+    // This gated skill is published independently of the dev-seed snapshot.
+    // Model a synced volume explicitly so rollout coverage does not depend on
+    // which vm0-skills commit happened to produce that snapshot.
+    const fullPath = `vm0-ai/vm0-skills/tree/main/${INTRO_VIDEO_SKILL_NAME}`;
+    const skillUrl = `https://github.com/${fullPath}`;
+    const storageName = `agent-skills@${fullPath}`;
+    const existingSkill = await findSkillByUrlState(context, skillUrl);
+    if (!existingSkill) {
+      await seedCurrentSkillVersionsState(context, {
+        staleCommitSha: "intro-video-rollout-fixture",
+        versions: [
+          {
+            name: INTRO_VIDEO_SKILL_NAME,
+            url: skillUrl,
+            full_path: fullPath,
+            storage_name: storageName,
+            version_hash: createHash("sha256")
+              .update(randomUUID())
+              .digest("hex"),
+            size: 1024,
+            archive_size: 1024,
+            file_count: 1,
+            frontmatter: {
+              name: INTRO_VIDEO_SKILL_NAME,
+              description:
+                "Create an intro video using the selected HeyGen options",
+            },
+          },
+        ],
+      });
+      onTestFinished(async () => {
+        await cleanupOwnedSkillsState(context, {
+          skillUrls: [skillUrl],
+          storageNames: [storageName],
+        });
+      });
+    }
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
