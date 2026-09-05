@@ -28,7 +28,14 @@ enum FilesystemMatching {
       } else if char == "{", let close = matchingClose(chars, at: index, open: "{", close: "}") {
         let body = Array(chars[(index + 1)..<close])
         let alternatives = split(body, on: ",")
-        if alternatives.count > 1 {
+        if index > 0, chars[index - 1] == "$" {
+          output += NSRegularExpression.escapedPattern(for: "{" + String(body) + "}")
+        } else if let values = sequence(body) {
+          output +=
+            "(?:"
+            + values.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+            + ")"
+        } else if alternatives.count > 1 {
           output += "(?:" + alternatives.map(regex).joined(separator: "|") + ")"
         } else {
           output += "\\{" + regex(body) + "\\}"
@@ -78,11 +85,66 @@ enum FilesystemMatching {
     return output
   }
 
+  /// Numeric/alphabetic range behavior follows brace-expansion, including
+  /// zero padding, descending/zero steps, and its bounded expansion budget.
+  private static func sequence(_ body: [Character]) -> [String]? {
+    let text = String(body)
+    let numeric =
+      text.range(of: "^-?[0-9]+\\.\\.-?[0-9]+(?:\\.\\.-?[0-9]+)?$", options: .regularExpression)
+      != nil
+    let alpha =
+      text.range(of: "^[a-zA-Z]\\.\\.[a-zA-Z](?:\\.\\.-?[0-9]+)?$", options: .regularExpression)
+      != nil
+    guard numeric || alpha else { return nil }
+    let parts = text.components(separatedBy: "..")
+    guard
+      let first = numeric ? Int(parts[0]) : parts[0].unicodeScalars.first.map({ Int($0.value) }),
+      let last = numeric ? Int(parts[1]) : parts[1].unicodeScalars.first.map({ Int($0.value) })
+    else { return nil }
+    let amount: Int
+    if parts.count == 3 {
+      guard let step = Int(parts[2]) else { return nil }
+      amount = max(1, Int(min(step.magnitude, UInt(Int.max))))
+    } else {
+      amount = 1
+    }
+    let step = first <= last ? amount : -amount
+    let padded = parts.contains { $0.range(of: "^-?0[0-9]", options: .regularExpression) != nil }
+    let width = max(parts[0].count, parts[1].count)
+    var values: [String] = []
+    var characters = 0
+    var current = first
+    while first <= last ? current <= last : current >= last {
+      var value = numeric ? String(current) : String(UnicodeScalar(current)!)
+      if alpha && value == "\\" { value = "" }
+      if numeric && padded && value.count < width {
+        let zeroes = String(repeating: "0", count: width - value.count)
+        value = current < 0 ? "-" + zeroes + value.dropFirst() : zeroes + value
+      }
+      guard values.count < 100_000, characters + value.count <= 4_000_000 else { break }
+      values.append(value)
+      characters += value.count
+      let (next, overflow) = current.addingReportingOverflow(step)
+      if overflow { break }
+      current = next
+    }
+    return values
+  }
+
   private static func matchingClose(
     _ chars: [Character], at start: Int, open: Character, close: Character
   ) -> Int? {
     var depth = 0
+    var escaped = false
     for index in start..<chars.count {
+      if escaped {
+        escaped = false
+        continue
+      }
+      if chars[index] == "\\" {
+        escaped = true
+        continue
+      }
       if chars[index] == open { depth += 1 }
       if chars[index] == close { depth -= 1 }
       if depth == 0 { return index }
@@ -93,7 +155,18 @@ enum FilesystemMatching {
   private static func split(_ chars: [Character], on separator: Character) -> [[Character]] {
     var result: [[Character]] = [[]]
     var depth = 0
+    var escaped = false
     for char in chars {
+      if escaped {
+        result[result.count - 1].append(char)
+        escaped = false
+        continue
+      }
+      if char == "\\" {
+        result[result.count - 1].append(char)
+        escaped = true
+        continue
+      }
       if ["{", "("].contains(char) { depth += 1 }
       if ["}", ")"].contains(char) { depth -= 1 }
       if char == separator && depth == 0 {

@@ -65,7 +65,7 @@ cp "$app_bin/okou-desktop-updater" "$app_dir/Contents/Resources/native/"
 if [[ "$product" == zero ]]; then icon=icon-zero.icns; else icon=icon.icns; fi
 cp "$desktop_dir/assets/$icon" "$app_dir/Contents/Resources/icon.icns"
 mkdir -p "$app_dir/Contents/Resources/Licenses"
-cp "$package_dir/Resources/filesystem-server-LICENSE.txt" "$app_dir/Contents/Resources/Licenses/"
+cp "$package_dir/Resources/"*-LICENSE.txt "$app_dir/Contents/Resources/Licenses/"
 for dependency in "$package_dir/.build/checkouts/"* "$helper_dir/.build/checkouts/"*; do
   if [[ ! -d "$dependency" ]]; then continue; fi
   dependency_name="$(basename "$dependency")"

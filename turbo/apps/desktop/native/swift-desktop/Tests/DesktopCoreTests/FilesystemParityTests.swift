@@ -4,6 +4,35 @@ import Testing
 @testable import DesktopCore
 
 @Suite struct FilesystemParityTests {
+  @Test func fileEditsReturnTheBaselineDiffAndRespectDryRun() async throws {
+    let fixture = try #require(
+      Bundle.module.url(forResource: "filesystem", withExtension: "json", subdirectory: "Fixtures"))
+    let cases = try JSON.decode(Data(contentsOf: fixture))
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let tool = FilesystemTools()
+    for (index, row) in cases["edits"].array.enumerated() {
+      let original = try #require(row["original"].string)
+      let file = root.appendingPathComponent("case-\(index)")
+      try Data(original.utf8).write(to: file)
+      let dryRun = index % 2 == 0
+      let result = await tool.execute(
+        .object([
+          "tool": .string("edit_file"),
+          "arguments": .object([
+            "path": .string(file.path), "edits": row["edits"], "dryRun": .bool(dryRun),
+          ]),
+        ]), allowedDirectories: [root.path])
+      let expected = try row.requireString("expectedDiff").replacingOccurrences(
+        of: "<file>", with: file.resolvingSymlinksInPath().path)
+      #expect(result["result"]["content"].string == expected, "\(row["name"])")
+      #expect(
+        try String(contentsOf: file, encoding: .utf8)
+          == (dryRun ? original : row["expected"].string))
+    }
+  }
+
   @Test func preservesFilesystemServerMatchingAndEditing() throws {
     let fixture = try #require(
       Bundle.module.url(forResource: "filesystem", withExtension: "json", subdirectory: "Fixtures"))
@@ -17,7 +46,7 @@ import Testing
     }
     for row in cases["edits"].array {
       let result = try FilesystemMatching.edit(
-        row.requireString("original"), edits: row["edits"].array)
+        #require(row["original"].string), edits: row["edits"].array)
       #expect(result == row["expected"].string, "\(row["name"])")
     }
   }

@@ -2070,6 +2070,686 @@
       "pattern": "src/!(*.test).ts",
       "path": "src/main.ts",
       "expected": true
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file5.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file01.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file02.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file05.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{01..05}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file1.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file3.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file5.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{5..1..2}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file1.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file3.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file5.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file-3.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "file-1.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{-3..3..2}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file5.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "c.txt",
+      "expected": true
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "e.txt",
+      "expected": true
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..e..2}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file1.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file3.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file5.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{1..5..0}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file5.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "Z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "[.txt",
+      "expected": true
+    },
+    {
+      "pattern": "{a..Z}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file5.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file001.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file005.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "${a,b}.txt",
+      "path": "${a,b}.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file5.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file01.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file02.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file05.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file001.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file005.txt",
+      "expected": true
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file-3.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "file-1.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "c.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "e.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "Z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "[.txt",
+      "expected": false
+    },
+    {
+      "pattern": "file{001..5}.txt",
+      "path": "${a,b}.txt",
+      "expected": false
     }
   ],
   "edits": [
@@ -2082,6 +2762,7 @@
           "newText": "changed"
         }
       ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,1 @@\n-hello hello\n+changed hello\n```\n\n",
       "expected": "changed hello\n"
     },
     {
@@ -2093,6 +2774,7 @@
           "newText": "function run() {\n    return false;\n}"
         }
       ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,3 +1,3 @@\n   function run() {\n-    return true;\n-  }\n+    return false;\n+}\n```\n\n",
       "expected": "  function run() {\n    return false;\n}\n"
     },
     {
@@ -2104,6 +2786,7 @@
           "newText": "three\r\nfour"
         }
       ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,2 +1,2 @@\n-one\n-two\n+three\n+four\n```\n\n",
       "expected": "three\nfour\n"
     },
     {
@@ -2115,6 +2798,7 @@
           "newText": "prefix "
         }
       ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,1 @@\n-existing\n\\ No newline at end of file\n+prefix existing\n\\ No newline at end of file\n```\n\n",
       "expected": "prefix existing"
     },
     {
@@ -2130,6 +2814,7 @@
           "newText": "done"
         }
       ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,1 @@\n-one two\n\\ No newline at end of file\n+done\n\\ No newline at end of file\n```\n\n",
       "expected": "done"
     },
     {
@@ -2141,7 +2826,772 @@
           "newText": ""
         }
       ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +0,0 @@\n-hello\n\\ No newline at end of file\n```\n\n",
       "expected": ""
+    },
+    {
+      "name": "separate context hunks",
+      "original": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+      "edits": [
+        {
+          "oldText": "line 2\n",
+          "newText": "changed 2\n"
+        },
+        {
+          "oldText": "line 23\n",
+          "newText": "changed 23\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,7 +1,7 @@\n line 0\n line 1\n-line 2\n+changed 2\n line 3\n line 4\n line 5\n line 6\n@@ -20,9 +20,9 @@\n line 19\n line 20\n line 21\n line 22\n-line 23\n+changed 23\n line 24\n line 25\n line 26\n line 27\n```\n\n",
+      "expected": "line 0\nline 1\nchanged 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nchanged 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n"
+    },
+    {
+      "name": "overlapping context hunks",
+      "original": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+      "edits": [
+        {
+          "oldText": "line 2\n",
+          "newText": "changed 2\n"
+        },
+        {
+          "oldText": "line 8\n",
+          "newText": "changed 8\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,13 +1,13 @@\n line 0\n line 1\n-line 2\n+changed 2\n line 3\n line 4\n line 5\n line 6\n line 7\n-line 8\n+changed 8\n line 9\n line 10\n line 11\n line 12\n```\n\n",
+      "expected": "line 0\nline 1\nchanged 2\nline 3\nline 4\nline 5\nline 6\nline 7\nchanged 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n"
+    },
+    {
+      "name": "identical content",
+      "original": "same\n",
+      "edits": [
+        {
+          "oldText": "same",
+          "newText": "same"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n```\n\n",
+      "expected": "same\n"
+    },
+    {
+      "name": "line diff sample 0",
+      "original": "é\nc\n",
+      "edits": [
+        {
+          "oldText": "é\nc\n",
+          "newText": "c\nalpha beta\n```\na\na\nc\nc\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,2 +1,8 @@\n-é\n c\n+alpha beta\n+```\n+a\n+a\n+c\n+c\n+alpha beta\n````\n\n",
+      "expected": "c\nalpha beta\n```\na\na\nc\nc\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 1",
+      "original": "alpha beta\né\n```\n\n\nalpha beta\nalpha beta\né\nalpha beta\nc\n\na\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\né\n```\n\n\nalpha beta\nalpha beta\né\nalpha beta\nc\n\na\n",
+          "newText": "alpha beta\na\n\na\nalpha beta\nalpha beta\né\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,8 @@\n alpha beta\n-é\n-```\n+a\n \n-\n+a\n alpha beta\n alpha beta\n é\n alpha beta\n-c\n-\n-a\n````\n\n",
+      "expected": "alpha beta\na\n\na\nalpha beta\nalpha beta\né\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 2",
+      "original": "alpha beta\nalpha beta\n```\n\nc\na\nb\nc\n```\nalpha beta\né\n\nalpha beta\n\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\nalpha beta\n```\n\nc\na\nb\nc\n```\nalpha beta\né\n\nalpha beta\n\n",
+          "newText": "\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,1 @@\n-alpha beta\n-alpha beta\n-```\n \n-c\n-a\n-b\n-c\n-```\n-alpha beta\n-é\n-\n-alpha beta\n-\n````\n\n",
+      "expected": "\n"
+    },
+    {
+      "name": "line diff sample 3",
+      "original": "é\nalpha beta\na\nc\né\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "é\nalpha beta\na\nc\né\nalpha beta\n",
+          "newText": "\n\n\na\n```\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,6 @@\n-é\n-alpha beta\n+\n+\n+\n a\n-c\n-é\n+```\n alpha beta\n````\n\n",
+      "expected": "\n\n\na\n```\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 4",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "alpha beta\n```\nb\né\nc\n\na\nc\nc\né\n\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,12 @@\n+alpha beta\n+```\n+b\n+é\n+c\n \n+a\n+c\n+c\n+é\n+\n+c\n````\n\n",
+      "expected": "alpha beta\n```\nb\né\nc\n\na\nc\nc\né\n\nc\n"
+    },
+    {
+      "name": "line diff sample 5",
+      "original": "a\né\nc\nb\na\nalpha beta\nb\n```\n```\n```\na\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "a\né\nc\nb\na\nalpha beta\nb\n```\n```\n```\na\nalpha beta\n",
+          "newText": "é\nalpha beta\né\nb\nalpha beta\n```\n\nc\nalpha beta\nc\nalpha beta\nb\né\n\n```\né\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,16 @@\n-a\n é\n-c\n+alpha beta\n+é\n b\n-a\n alpha beta\n+```\n+\n+c\n+alpha beta\n+c\n+alpha beta\n b\n+é\n+\n ```\n-```\n-```\n-a\n-alpha beta\n+é\n````\n\n",
+      "expected": "é\nalpha beta\né\nb\nalpha beta\n```\n\nc\nalpha beta\nc\nalpha beta\nb\né\n\n```\né\n"
+    },
+    {
+      "name": "line diff sample 6",
+      "original": "b\na\n\né\nc\nalpha beta\na\nb\nb\n\n",
+      "edits": [
+        {
+          "oldText": "b\na\n\né\nc\nalpha beta\na\nb\nb\n\n",
+          "newText": "c\nalpha beta\na\n\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,10 +1,4 @@\n-b\n-a\n-\n-é\n c\n alpha beta\n a\n-b\n-b\n \n```\n\n",
+      "expected": "c\nalpha beta\na\n\n"
+    },
+    {
+      "name": "line diff sample 7",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "é\na\nc\na\nc\né\n\na\nc\n\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,10 @@\n+é\n+a\n+c\n+a\n+c\n+é\n \n+a\n+c\n+\n```\n\n",
+      "expected": "é\na\nc\na\nc\né\n\na\nc\n\n"
+    },
+    {
+      "name": "line diff sample 8",
+      "original": "b\nb\nalpha beta\nalpha beta\né\na\né\nalpha beta\n```\nb\n\n```\nb\n\n",
+      "edits": [
+        {
+          "oldText": "b\nb\nalpha beta\nalpha beta\né\na\né\nalpha beta\n```\nb\n\n```\nb\n\n",
+          "newText": "é\nb\né\n```\n```\na\né\n\nalpha beta\na\n\na\n```\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,14 @@\n+é\n b\n-b\n-alpha beta\n-alpha beta\n é\n+```\n+```\n a\n é\n+\n alpha beta\n-```\n-b\n+a\n \n+a\n ```\n-b\n \n````\n\n",
+      "expected": "é\nb\né\n```\n```\na\né\n\nalpha beta\na\n\na\n```\n\n"
+    },
+    {
+      "name": "line diff sample 9",
+      "original": "```\n\nc\n```\nc\nb\n```\n\n",
+      "edits": [
+        {
+          "oldText": "```\n\nc\n```\nc\nb\n```\n\n",
+          "newText": "b\nb\nb\n\n```\n```\né\nalpha beta\nalpha beta\n\né\né\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,12 @@\n-```\n+b\n+b\n+b\n \n-c\n ```\n-c\n-b\n ```\n+é\n+alpha beta\n+alpha beta\n \n+é\n+é\n````\n\n",
+      "expected": "b\nb\nb\n\n```\n```\né\nalpha beta\nalpha beta\n\né\né\n"
+    },
+    {
+      "name": "line diff sample 10",
+      "original": "```\nc\na\n\n",
+      "edits": [
+        {
+          "oldText": "```\nc\na\n\n",
+          "newText": "b\n\na\nalpha beta\nalpha beta\nb\nc\n```\nc\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,10 @@\n+b\n+\n+a\n+alpha beta\n+alpha beta\n+b\n+c\n ```\n c\n-a\n-\n+c\n````\n\n",
+      "expected": "b\n\na\nalpha beta\nalpha beta\nb\nc\n```\nc\nc\n"
+    },
+    {
+      "name": "line diff sample 11",
+      "original": "é\né\n```\né\n```\n\nb\nalpha beta\né\nc\n```\né\na\né\n",
+      "edits": [
+        {
+          "oldText": "é\né\n```\né\n```\n\nb\nalpha beta\né\nc\n```\né\na\né\n",
+          "newText": "\nc\nc\na\né\né\né\nb\na\né\na\n\nb\né\n```\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,16 @@\n+\n+c\n+c\n+a\n é\n é\n-```\n é\n-```\n+b\n+a\n+é\n+a\n \n b\n-alpha beta\n é\n-c\n ```\n-é\n-a\n-é\n+\n````\n\n",
+      "expected": "\nc\nc\na\né\né\né\nb\na\né\na\n\nb\né\n```\n\n"
+    },
+    {
+      "name": "line diff sample 12",
+      "original": "alpha beta\né\nc\na\né\n\né\n\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\né\nc\na\né\n\né\n\n",
+          "newText": "\nc\nb\nb\nb\n```\nalpha beta\n\né\nc\n\na\né\n```\n```\na\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,16 @@\n+\n+c\n+b\n+b\n+b\n+```\n alpha beta\n+\n é\n c\n+\n a\n é\n-\n-é\n-\n+```\n+```\n+a\n````\n\n",
+      "expected": "\nc\nb\nb\nb\n```\nalpha beta\n\né\nc\n\na\né\n```\n```\na\n"
+    },
+    {
+      "name": "line diff sample 13",
+      "original": "\nalpha beta\n```\n\n\nalpha beta\na\nc\nalpha beta\nb\nb\n```\nalpha beta\nb\n",
+      "edits": [
+        {
+          "oldText": "\nalpha beta\n```\n\n\nalpha beta\na\nc\nalpha beta\nb\nb\n```\nalpha beta\nb\n",
+          "newText": "b\n\né\n\n```\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,6 @@\n+b\n \n-alpha beta\n-```\n+é\n \n-\n-alpha beta\n-a\n-c\n-alpha beta\n-b\n-b\n ```\n-alpha beta\n-b\n+```\n````\n\n",
+      "expected": "b\n\né\n\n```\n```\n"
+    },
+    {
+      "name": "line diff sample 14",
+      "original": "é\né\n\nc\nb\n```\né\né\n\nb\nc\n```\n\nc\n\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "é\né\n\nc\nb\n```\né\né\n\nb\nc\n```\n\nc\n\nalpha beta\n",
+          "newText": "alpha beta\n```\né\nc\né\né\nc\né\né\né\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,16 +1,10 @@\n+alpha beta\n+```\n é\n+c\n é\n-\n+é\n c\n-b\n-```\n é\n é\n-\n-b\n-c\n-```\n-\n-c\n-\n-alpha beta\n+é\n````\n\n",
+      "expected": "alpha beta\n```\né\nc\né\né\nc\né\né\né\n"
+    },
+    {
+      "name": "line diff sample 15",
+      "original": "é\n\n",
+      "edits": [
+        {
+          "oldText": "é\n\n",
+          "newText": "é\n\na\nb\nc\nc\n```\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,2 +1,8 @@\n é\n \n+a\n+b\n+c\n+c\n+```\n+```\n````\n\n",
+      "expected": "é\n\na\nb\nc\nc\n```\n```\n"
+    },
+    {
+      "name": "line diff sample 16",
+      "original": "c\nb\na\n\né\n\nalpha beta\né\n",
+      "edits": [
+        {
+          "oldText": "c\nb\na\n\né\n\nalpha beta\né\n",
+          "newText": "b\n\né\nc\nc\nc\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,6 @@\n-c\n b\n-a\n \n é\n-\n-alpha beta\n-é\n+c\n+c\n+c\n```\n\n",
+      "expected": "b\n\né\nc\nc\nc\n"
+    },
+    {
+      "name": "line diff sample 17",
+      "original": "alpha beta\né\n```\n\nc\n```\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\né\n```\n\nc\n```\n",
+          "newText": "```\na\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,2 @@\n-alpha beta\n-é\n ```\n-\n-c\n-```\n+a\n````\n\n",
+      "expected": "```\na\n"
+    },
+    {
+      "name": "line diff sample 18",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "```\né\na\nb\nc\n\nalpha beta\né\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,8 @@\n+```\n+é\n+a\n+b\n+c\n \n+alpha beta\n+é\n````\n\n",
+      "expected": "```\né\na\nb\nc\n\nalpha beta\né\n"
+    },
+    {
+      "name": "line diff sample 19",
+      "original": "é\na\nb\né\né\nb\nalpha beta\né\nc\na\n```\n\n",
+      "edits": [
+        {
+          "oldText": "é\na\nb\né\né\nb\nalpha beta\né\nc\na\n```\n\n",
+          "newText": "b\na\nc\nc\nc\n\nalpha beta\nalpha beta\né\nalpha beta\na\n```\nb\na\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,14 @@\n-é\n+b\n a\n-b\n+c\n+c\n+c\n+\n+alpha beta\n+alpha beta\n é\n-é\n-b\n alpha beta\n-é\n-c\n a\n ```\n-\n+b\n+a\n````\n\n",
+      "expected": "b\na\nc\nc\nc\n\nalpha beta\nalpha beta\né\nalpha beta\na\n```\nb\na\n"
+    },
+    {
+      "name": "line diff sample 20",
+      "original": "c\nalpha beta\nc\na\nalpha beta\na\nb\nc\n```\nc\né\nalpha beta\na\né\n",
+      "edits": [
+        {
+          "oldText": "c\nalpha beta\nc\na\nalpha beta\na\nb\nc\n```\nc\né\nalpha beta\na\né\n",
+          "newText": "é\nb\na\nc\nb\nc\na\nalpha beta\n\né\n```\nb\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,12 @@\n+é\n+b\n+a\n c\n-alpha beta\n+b\n c\n a\n alpha beta\n-a\n+\n+é\n+```\n b\n-c\n-```\n-c\n-é\n-alpha beta\n-a\n-é\n````\n\n",
+      "expected": "é\nb\na\nc\nb\nc\na\nalpha beta\n\né\n```\nb\n"
+    },
+    {
+      "name": "line diff sample 21",
+      "original": "c\nb\n```\n```\nc\n\nc\nc\n```\na\nb\né\na\n\na\na\n",
+      "edits": [
+        {
+          "oldText": "c\nb\n```\n```\nc\n\nc\nc\n```\na\nb\né\na\n\na\na\n",
+          "newText": "```\n```\n\nc\nc\nalpha beta\né\nb\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,16 +1,8 @@\n-c\n-b\n ```\n ```\n-c\n \n c\n c\n-```\n-a\n+alpha beta\n+é\n b\n-é\n-a\n-\n-a\n-a\n````\n\n",
+      "expected": "```\n```\n\nc\nc\nalpha beta\né\nb\n"
+    },
+    {
+      "name": "line diff sample 22",
+      "original": "alpha beta\né\né\nalpha beta\nb\na\nalpha beta\né\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\né\né\nalpha beta\nb\na\nalpha beta\né\n",
+          "newText": "```\na\nalpha beta\n```\nc\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,6 @@\n+```\n+a\n alpha beta\n-é\n-é\n+```\n+c\n alpha beta\n-b\n-a\n-alpha beta\n-é\n````\n\n",
+      "expected": "```\na\nalpha beta\n```\nc\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 23",
+      "original": "a\nb\n```\nc\n```\nalpha beta\n```\nb\n\nb\né\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "a\nb\n```\nc\n```\nalpha beta\n```\nb\n\nb\né\nalpha beta\n",
+          "newText": "c\n```\né\nb\n```\na\nb\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,8 @@\n-a\n-b\n-```\n c\n ```\n-alpha beta\n+é\n+b\n ```\n+a\n b\n-\n-b\n-é\n-alpha beta\n+c\n````\n\n",
+      "expected": "c\n```\né\nb\n```\na\nb\nc\n"
+    },
+    {
+      "name": "line diff sample 24",
+      "original": "a\nalpha beta\n\n\n```\nb\na\nc\né\nb\na\nc\na\nb\n",
+      "edits": [
+        {
+          "oldText": "a\nalpha beta\n\n\n```\nb\na\nc\né\nb\na\nc\na\nb\n",
+          "newText": "\n```\na\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,4 @@\n-a\n-alpha beta\n \n-\n ```\n-b\n a\n-c\n-é\n-b\n-a\n-c\n-a\n-b\n+\n````\n\n",
+      "expected": "\n```\na\n\n"
+    },
+    {
+      "name": "line diff sample 25",
+      "original": "\n\nc\nc\n```\né\nb\na\né\nalpha beta\nb\nc\n",
+      "edits": [
+        {
+          "oldText": "\n\nc\nc\n```\né\nb\na\né\nalpha beta\nb\nc\n",
+          "newText": "```\nb\nb\nalpha beta\né\nb\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,6 @@\n-\n-\n-c\n-c\n ```\n-é\n b\n-a\n+b\n+alpha beta\n é\n-alpha beta\n b\n-c\n````\n\n",
+      "expected": "```\nb\nb\nalpha beta\né\nb\n"
+    },
+    {
+      "name": "line diff sample 26",
+      "original": "b\na\n```\n\nalpha beta\nc\nalpha beta\n```\n\na\na\nc\né\nalpha beta\nb\nb\n",
+      "edits": [
+        {
+          "oldText": "b\na\n```\n\nalpha beta\nc\nalpha beta\n```\n\na\na\nc\né\nalpha beta\nb\nb\n",
+          "newText": "\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,16 +1,1 @@\n-b\n-a\n-```\n \n-alpha beta\n-c\n-alpha beta\n-```\n-\n-a\n-a\n-c\n-é\n-alpha beta\n-b\n-b\n````\n\n",
+      "expected": "\n"
+    },
+    {
+      "name": "line diff sample 27",
+      "original": "b\nb\na\né\n",
+      "edits": [
+        {
+          "oldText": "b\nb\na\né\n",
+          "newText": "é\nb\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,2 @@\n+é\n b\n-b\n-a\n-é\n```\n\n",
+      "expected": "é\nb\n"
+    },
+    {
+      "name": "line diff sample 28",
+      "original": "a\nalpha beta\nc\na\nalpha beta\n\n```\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "a\nalpha beta\nc\na\nalpha beta\n\n```\nalpha beta\n",
+          "newText": "b\nalpha beta\n\nb\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,4 @@\n-a\n+b\n alpha beta\n-c\n-a\n-alpha beta\n \n-```\n-alpha beta\n+b\n````\n\n",
+      "expected": "b\nalpha beta\n\nb\n"
+    },
+    {
+      "name": "line diff sample 29",
+      "original": "b\nb\n\n\nalpha beta\na\n",
+      "edits": [
+        {
+          "oldText": "b\nb\n\n\nalpha beta\na\n",
+          "newText": "\na\n```\nc\na\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,6 @@\n-b\n-b\n \n-\n-alpha beta\n a\n+```\n+c\n+a\n+```\n````\n\n",
+      "expected": "\na\n```\nc\na\n```\n"
+    },
+    {
+      "name": "line diff sample 30",
+      "original": "\nc\n```\n```\nb\n```\n```\nc\n",
+      "edits": [
+        {
+          "oldText": "\nc\n```\n```\nb\n```\n```\nc\n",
+          "newText": "\nb\nb\na\nb\na\na\n\n\n```\na\n\nc\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,14 @@\n \n-c\n-```\n-```\n b\n+b\n+a\n+b\n+a\n+a\n+\n+\n ```\n-```\n+a\n+\n c\n+\n````\n\n",
+      "expected": "\nb\nb\na\nb\na\na\n\n\n```\na\n\nc\n\n"
+    },
+    {
+      "name": "line diff sample 31",
+      "original": "c\nc\né\nc\n```\na\n",
+      "edits": [
+        {
+          "oldText": "c\nc\né\nc\n```\na\n",
+          "newText": "é\n```\n```\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,4 @@\n-c\n-c\n é\n-c\n ```\n-a\n+```\n+```\n````\n\n",
+      "expected": "é\n```\n```\n```\n"
+    },
+    {
+      "name": "line diff sample 32",
+      "original": "\n\nc\n```\nc\nc\na\n\na\né\n```\n\né\nalpha beta\n\na\n",
+      "edits": [
+        {
+          "oldText": "\n\nc\n```\nc\nc\na\n\na\né\n```\n\né\nalpha beta\n\na\n",
+          "newText": "\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,16 +1,1 @@\n \n-\n-c\n-```\n-c\n-c\n-a\n-\n-a\n-é\n-```\n-\n-é\n-alpha beta\n-\n-a\n````\n\n",
+      "expected": "\n"
+    },
+    {
+      "name": "line diff sample 33",
+      "original": "a\na\na\nb\n",
+      "edits": [
+        {
+          "oldText": "a\na\na\nb\n",
+          "newText": "é\nb\na\né\n```\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,6 @@\n+é\n+b\n a\n-a\n-a\n-b\n+é\n+```\n+alpha beta\n````\n\n",
+      "expected": "é\nb\na\né\n```\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 34",
+      "original": "```\né\né\né\na\né\n\nc\nb\né\na\n```\n```\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "```\né\né\né\na\né\n\nc\nb\né\na\n```\n```\nalpha beta\n",
+          "newText": "alpha beta\nalpha beta\né\na\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,4 @@\n-```\n+alpha beta\n+alpha beta\n é\n-é\n-é\n a\n-é\n-\n-c\n-b\n-é\n-a\n-```\n-```\n-alpha beta\n````\n\n",
+      "expected": "alpha beta\nalpha beta\né\na\n"
+    },
+    {
+      "name": "line diff sample 35",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "é\na\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,2 @@\n-\n+é\n+a\n```\n\n",
+      "expected": "é\na\n"
+    },
+    {
+      "name": "line diff sample 36",
+      "original": "b\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "b\nalpha beta\n",
+          "newText": "c\n\nb\n\n```\nc\n\n\nb\n```\nb\nb\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,2 +1,12 @@\n+c\n+\n b\n-alpha beta\n+\n+```\n+c\n+\n+\n+b\n+```\n+b\n+b\n````\n\n",
+      "expected": "c\n\nb\n\n```\nc\n\n\nb\n```\nb\nb\n"
+    },
+    {
+      "name": "line diff sample 37",
+      "original": "c\nb\nalpha beta\nb\n```\nc\nalpha beta\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "c\nb\nalpha beta\nb\n```\nc\nalpha beta\nalpha beta\n",
+          "newText": "alpha beta\nc\né\n\né\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,6 @@\n-c\n-b\n alpha beta\n-b\n-```\n c\n-alpha beta\n-alpha beta\n+é\n+\n+é\n+\n````\n\n",
+      "expected": "alpha beta\nc\né\n\né\n\n"
+    },
+    {
+      "name": "line diff sample 38",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "é\nalpha beta\nb\nalpha beta\nalpha beta\nalpha beta\n\na\nb\n\nalpha beta\nb\n```\n\nalpha beta\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,16 @@\n+é\n+alpha beta\n+b\n+alpha beta\n+alpha beta\n+alpha beta\n \n+a\n+b\n+\n+alpha beta\n+b\n+```\n+\n+alpha beta\n+c\n````\n\n",
+      "expected": "é\nalpha beta\nb\nalpha beta\nalpha beta\nalpha beta\n\na\nb\n\nalpha beta\nb\n```\n\nalpha beta\nc\n"
+    },
+    {
+      "name": "line diff sample 39",
+      "original": "é\nc\nc\né\n```\né\n\né\nb\n```\na\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "é\nc\nc\né\n```\né\n\né\nb\n```\na\nalpha beta\n",
+          "newText": "c\nc\nc\n```\né\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,6 @@\n-é\n c\n c\n-é\n+c\n ```\n é\n-\n-é\n-b\n ```\n-a\n-alpha beta\n````\n\n",
+      "expected": "c\nc\nc\n```\né\n```\n"
+    },
+    {
+      "name": "line diff sample 40",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "é\né\nc\na\né\né\nalpha beta\nalpha beta\né\n```\n\na\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,12 @@\n+é\n+é\n+c\n+a\n+é\n+é\n+alpha beta\n+alpha beta\n+é\n+```\n \n+a\n````\n\n",
+      "expected": "é\né\nc\na\né\né\nalpha beta\nalpha beta\né\n```\n\na\n"
+    },
+    {
+      "name": "line diff sample 41",
+      "original": "alpha beta\nalpha beta\n\né\na\n```\nb\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\nalpha beta\n\né\na\n```\nb\nalpha beta\n",
+          "newText": "\nc\né\na\nb\n```\nalpha beta\na\nb\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,10 @@\n-alpha beta\n-alpha beta\n \n+c\n é\n a\n+b\n ```\n+alpha beta\n+a\n b\n-alpha beta\n+```\n````\n\n",
+      "expected": "\nc\né\na\nb\n```\nalpha beta\na\nb\n```\n"
+    },
+    {
+      "name": "line diff sample 42",
+      "original": "é\nalpha beta\nalpha beta\n```\n",
+      "edits": [
+        {
+          "oldText": "é\nalpha beta\nalpha beta\n```\n",
+          "newText": "```\n```\nc\nb\nc\nalpha beta\n```\n\né\n```\n\nalpha beta\na\n```\nalpha beta\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,16 @@\n+```\n+```\n+c\n+b\n+c\n+alpha beta\n+```\n+\n é\n+```\n+\n alpha beta\n+a\n+```\n alpha beta\n-```\n+alpha beta\n````\n\n",
+      "expected": "```\n```\nc\nb\nc\nalpha beta\n```\n\né\n```\n\nalpha beta\na\n```\nalpha beta\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 43",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "alpha beta\n\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,2 @@\n+alpha beta\n \n```\n\n",
+      "expected": "alpha beta\n\n"
+    },
+    {
+      "name": "line diff sample 44",
+      "original": "```\nc\na\né\nalpha beta\nb\n",
+      "edits": [
+        {
+          "oldText": "```\nc\na\né\nalpha beta\nb\n",
+          "newText": "```\nalpha beta\nalpha beta\na\nb\nalpha beta\nalpha beta\n```\nc\nc\nc\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,12 @@\n ```\n-c\n+alpha beta\n+alpha beta\n a\n-é\n+b\n alpha beta\n-b\n+alpha beta\n+```\n+c\n+c\n+c\n+\n````\n\n",
+      "expected": "```\nalpha beta\nalpha beta\na\nb\nalpha beta\nalpha beta\n```\nc\nc\nc\n\n"
+    },
+    {
+      "name": "line diff sample 45",
+      "original": "c\nc\né\n\nalpha beta\n```\n```\n\né\na\nc\nb\n\nb\n",
+      "edits": [
+        {
+          "oldText": "c\nc\né\n\nalpha beta\n```\n```\n\né\na\nc\nb\n\nb\n",
+          "newText": "```\né\na\na\n\nb\n\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,8 @@\n-c\n-c\n-é\n-\n-alpha beta\n ```\n-```\n-\n é\n a\n-c\n+a\n+\n b\n \n-b\n+c\n````\n\n",
+      "expected": "```\né\na\na\n\nb\n\nc\n"
+    },
+    {
+      "name": "line diff sample 46",
+      "original": "c\nc\n\n\n\nalpha beta\nc\nc\nb\n```\n\n```\nalpha beta\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "c\nc\n\n\n\nalpha beta\nc\nc\nb\n```\n\n```\nalpha beta\nalpha beta\n",
+          "newText": "a\n\n\né\nalpha beta\nc\n```\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,8 @@\n-c\n-c\n+a\n \n \n-\n+é\n alpha beta\n c\n-c\n-b\n ```\n-\n-```\n alpha beta\n-alpha beta\n````\n\n",
+      "expected": "a\n\n\né\nalpha beta\nc\n```\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 47",
+      "original": "é\n```\nalpha beta\nb\nc\nalpha beta\nb\nalpha beta\nb\né\n\nc\na\n```\n",
+      "edits": [
+        {
+          "oldText": "é\n```\nalpha beta\nb\nc\nalpha beta\nb\nalpha beta\nb\né\n\nc\na\n```\n",
+          "newText": "\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,1 @@\n-é\n-```\n-alpha beta\n-b\n-c\n-alpha beta\n-b\n-alpha beta\n-b\n-é\n \n-c\n-a\n-```\n````\n\n",
+      "expected": "\n"
+    },
+    {
+      "name": "line diff sample 48",
+      "original": "```\nb\na\n\n",
+      "edits": [
+        {
+          "oldText": "```\nb\na\n\n",
+          "newText": "alpha beta\n```\n\nc\nb\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,6 @@\n+alpha beta\n ```\n+\n+c\n b\n-a\n-\n+alpha beta\n````\n\n",
+      "expected": "alpha beta\n```\n\nc\nb\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 49",
+      "original": "alpha beta\n```\na\n```\n```\n\n```\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\n```\na\n```\n```\n\n```\nalpha beta\n",
+          "newText": "```\nc\nalpha beta\na\n```\nc\nc\né\nc\nc\na\na\na\n```\n```\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,16 @@\n+```\n+c\n alpha beta\n+a\n ```\n+c\n+c\n+é\n+c\n+c\n a\n+a\n+a\n ```\n ```\n-\n-```\n-alpha beta\n+c\n````\n\n",
+      "expected": "```\nc\nalpha beta\na\n```\nc\nc\né\nc\nc\na\na\na\n```\n```\nc\n"
+    },
+    {
+      "name": "line diff sample 50",
+      "original": "a\nb\nc\nalpha beta\n\né\n\nalpha beta\na\n```\nc\nb\n",
+      "edits": [
+        {
+          "oldText": "a\nb\nc\nalpha beta\n\né\n\nalpha beta\na\n```\nc\nb\n",
+          "newText": "c\nalpha beta\nb\nalpha beta\nb\nb\nc\na\né\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,12 +1,10 @@\n-a\n+c\n+alpha beta\n b\n+alpha beta\n+b\n+b\n c\n-alpha beta\n-\n+a\n é\n \n-alpha beta\n-a\n-```\n-c\n-b\n````\n\n",
+      "expected": "c\nalpha beta\nb\nalpha beta\nb\nb\nc\na\né\n\n"
+    },
+    {
+      "name": "line diff sample 51",
+      "original": "\nc\nalpha beta\nc\na\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "\nc\nalpha beta\nc\na\nalpha beta\n",
+          "newText": "\n```\nc\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,4 @@\n \n+```\n c\n-alpha beta\n-c\n-a\n-alpha beta\n+```\n````\n\n",
+      "expected": "\n```\nc\n```\n"
+    },
+    {
+      "name": "line diff sample 52",
+      "original": "```\nb\né\na\nalpha beta\n\nc\n\né\n```\nalpha beta\né\nb\na\n",
+      "edits": [
+        {
+          "oldText": "```\nb\né\na\nalpha beta\n\nc\n\né\n```\nalpha beta\né\nb\na\n",
+          "newText": "é\na\n```\n\n\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,14 +1,6 @@\n-```\n-b\n é\n a\n-alpha beta\n+```\n \n+\n c\n-\n-é\n-```\n-alpha beta\n-é\n-b\n-a\n````\n\n",
+      "expected": "é\na\n```\n\n\nc\n"
+    },
+    {
+      "name": "line diff sample 53",
+      "original": "\n\na\n```\n",
+      "edits": [
+        {
+          "oldText": "\n\na\n```\n",
+          "newText": "a\nc\n```\nb\n\né\na\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,8 @@\n+a\n+c\n+```\n+b\n \n+é\n+a\n \n-a\n-```\n````\n\n",
+      "expected": "a\nc\n```\nb\n\né\na\n\n"
+    },
+    {
+      "name": "line diff sample 54",
+      "original": "\n",
+      "edits": [
+        {
+          "oldText": "\n",
+          "newText": "b\nalpha beta\né\nalpha beta\nb\n\nc\n```\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,1 +1,8 @@\n+b\n+alpha beta\n+é\n+alpha beta\n+b\n \n+c\n+```\n````\n\n",
+      "expected": "b\nalpha beta\né\nalpha beta\nb\n\nc\n```\n"
+    },
+    {
+      "name": "line diff sample 55",
+      "original": "\nalpha beta\nc\nalpha beta\n",
+      "edits": [
+        {
+          "oldText": "\nalpha beta\nc\nalpha beta\n",
+          "newText": "\n"
+        }
+      ],
+      "expectedDiff": "```diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,4 +1,1 @@\n \n-alpha beta\n-c\n-alpha beta\n```\n\n",
+      "expected": "\n"
+    },
+    {
+      "name": "line diff sample 56",
+      "original": "```\n\nc\nalpha beta\n```\n```\n",
+      "edits": [
+        {
+          "oldText": "```\n\nc\nalpha beta\n```\n```\n",
+          "newText": "```\nalpha beta\na\né\nb\n```\nalpha beta\na\né\nalpha beta\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,10 @@\n ```\n-\n-c\n alpha beta\n+a\n+é\n+b\n ```\n-```\n+alpha beta\n+a\n+é\n+alpha beta\n````\n\n",
+      "expected": "```\nalpha beta\na\né\nb\n```\nalpha beta\na\né\nalpha beta\n"
+    },
+    {
+      "name": "line diff sample 57",
+      "original": "```\nb\n\nc\nb\na\n",
+      "edits": [
+        {
+          "oldText": "```\nb\n\nc\nb\na\n",
+          "newText": "a\n```\n```\n\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,6 +1,4 @@\n+a\n ```\n-b\n+```\n \n-c\n-b\n-a\n````\n\n",
+      "expected": "a\n```\n```\n\n"
+    },
+    {
+      "name": "line diff sample 58",
+      "original": "alpha beta\na\na\na\nalpha beta\n\nc\nb\n",
+      "edits": [
+        {
+          "oldText": "alpha beta\na\na\na\nalpha beta\n\nc\nb\n",
+          "newText": "alpha beta\nb\n```\na\nc\nalpha beta\nalpha beta\nc\né\n\nc\nc\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,8 +1,12 @@\n alpha beta\n+b\n+```\n a\n-a\n-a\n+c\n alpha beta\n+alpha beta\n+c\n+é\n \n c\n-b\n+c\n````\n\n",
+      "expected": "alpha beta\nb\n```\na\nc\nalpha beta\nalpha beta\nc\né\n\nc\nc\n"
+    },
+    {
+      "name": "line diff sample 59",
+      "original": "```\na\n",
+      "edits": [
+        {
+          "oldText": "```\na\n",
+          "newText": "a\nc\n\nalpha beta\n```\n```\n\nb\nalpha beta\n\né\nb\n```\n```\n```\na\n"
+        }
+      ],
+      "expectedDiff": "````diff\nIndex: <file>\n===================================================================\n--- <file>\toriginal\n+++ <file>\tmodified\n@@ -1,2 +1,16 @@\n+a\n+c\n+\n+alpha beta\n ```\n+```\n+\n+b\n+alpha beta\n+\n+é\n+b\n+```\n+```\n+```\n a\n````\n\n",
+      "expected": "a\nc\n\nalpha beta\n```\n```\n\nb\nalpha beta\n\né\nb\n```\n```\n```\na\n"
     }
   ]
 }
