@@ -352,6 +352,7 @@ install_packages() {
   apt-get update
   apt-get install -y \
     procps wget git ripgrep jq file iproute2 sudo ffmpeg \
+    libreoffice-impress poppler-utils \
     fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
     libnss3 p11-kit-modules tzdata-legacy unzip \
     nodejs \
