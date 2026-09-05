@@ -413,15 +413,16 @@ describe("okou web-search route", () => {
     expect(providerRequests).toBe(0);
   });
 
-  it("uses allowance for runless searches when org credits are exhausted", async () => {
+  it("uses allowance for runless searches under shared debt", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Web Search test actor must belong to an organization");
     }
+    let providerRequests = 0;
     configureProvider();
     const pricing = await setupConfiguredWebSearchPricing();
     await bootstrapOnboarding(actor);
-    await setActorCredits(actor, 0);
+    await setActorCredits(actor, -10);
     const effectiveAt = nowDate();
     await postUsageAllowanceInvoicePaid(context.signal, {
       orgId: actor.orgId,
@@ -431,12 +432,13 @@ describe("okou web-search route", () => {
       effectiveAt,
       expiresAt: new Date(effectiveAt.getTime() + 365 * 24 * 60 * 60 * 1000),
       shortWindowSeconds: 5 * 60 * 60,
-      shortWindowUnits: 100,
+      shortWindowUnits: 10,
       weeklyWindowSeconds: 7 * 24 * 60 * 60,
-      weeklyWindowUnits: 200,
+      weeklyWindowUnits: 10,
     });
     server.use(
       http.post(PERPLEXITY_SEARCH_URL, () => {
+        providerRequests += 1;
         return HttpResponse.json(providerResponse());
       }),
     );
@@ -456,7 +458,8 @@ describe("okou web-search route", () => {
     );
 
     expect(response.body.creditsCharged).toBe(0);
-    expect(status.body.credits).toBe(0);
+    expect(providerRequests).toBe(1);
+    expect(status.body.credits).toBe(-10);
     expect(
       Object.fromEntries(
         status.body.usageAllowance?.windows.map((window) => {
@@ -464,6 +467,49 @@ describe("okou web-search route", () => {
         }) ?? [],
       ),
     ).toStrictEqual({ short: 5, weekly: 5 });
+  });
+
+  it("rejects runless searches when allowance cannot cover the exact price under shared debt", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Web Search test actor must belong to an organization");
+    }
+    let providerRequests = 0;
+    configureProvider();
+    const pricing = await setupConfiguredWebSearchPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, -10);
+    const effectiveAt = nowDate();
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: `sub_web_search_partial_allowance_${randomUUID()}`,
+      effectiveAt,
+      expiresAt: new Date(effectiveAt.getTime() + 365 * 24 * 60 * 60 * 1000),
+      shortWindowSeconds: 5 * 60 * 60,
+      shortWindowUnits: 4,
+      weeklyWindowSeconds: 7 * 24 * 60 * 60,
+      weeklyWindowUnits: 4,
+    });
+    server.use(
+      http.post(PERPLEXITY_SEARCH_URL, () => {
+        providerRequests += 1;
+        return HttpResponse.json(providerResponse());
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(webSearchContract).search({
+        headers: authenticate(actor),
+        body: defaultRequest(),
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(providerRequests).toBe(0);
   });
 
   it("translates filtered searches and records successful usage", async () => {

@@ -405,20 +405,20 @@ describe("Usage Allowance", () => {
     await expect(readVisibleUsageCredits(actor)).resolves.toBe(50);
   });
 
-  it("admits vm0 runs with zero org credits when allowance remains", async () => {
+  it("admits vm0 runs with shared debt when allowance remains", async () => {
     const { actor, agentId } = await vm0AllowanceActor({
-      credits: 0,
+      credits: -10,
       allowance: { shortWindowUnits: 10, weeklyWindowUnits: 10 },
     });
 
     const run = await createVm0Run(
       actor,
       agentId,
-      "vm0 run admitted by usage allowance",
+      "vm0 run admitted by allowance under shared debt",
     );
 
     expect(run.runId).toStrictEqual(expect.any(String));
-    // The activated windows fully cover usage despite the zero balance.
+    // The activated windows fully cover usage without repaying shared debt.
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -427,6 +427,7 @@ describe("Usage Allowance", () => {
       quantity: 10,
     });
     await processOrgUsageEvents(actor);
+    await expect(readOrgCredits(actor)).resolves.toBe(-10);
     await expect(readVisibleUsageCredits(actor)).resolves.toBe(10);
   });
 
@@ -526,6 +527,43 @@ describe("Usage Allowance", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("uses run allowance for billable firewall fallback under shared debt", async () => {
+    const { actor, agentId } = await vm0AllowanceActor({
+      credits: -10,
+      allowance: { shortWindowUnits: 2, weeklyWindowUnits: 2 },
+    });
+    const api = createRunsApi(context);
+    await api.ensureOrgModelProvider(actor);
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "BYOK run uses allowance for billable firewall",
+      modelProvider: "anthropic-api-key",
+    });
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+
+    const before = Math.floor(now() / 1000);
+    const leased = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [200],
+    );
+
+    expect(leased.body.expiresAt).not.toBeNull();
+    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 4);
+    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 6);
   });
 
   it("does not let built-in credit admission bypass workspace suspension", async () => {
