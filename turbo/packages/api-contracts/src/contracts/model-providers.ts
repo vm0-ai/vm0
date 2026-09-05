@@ -1317,32 +1317,6 @@ export function getModelProviderCodexCatalogForModel(
   return undefined;
 }
 
-/**
- * Get the upstream base URL for a model provider type.
- *
- * Returns the framework-appropriate upstream base URL from envBindings —
- * ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL for codex.
- * Returns null when the provider relies on the SDK's default
- * (Anthropic-native providers, OpenAI direct).
- *
- * Used by areProvidersCompatible to detect session-continuation safety
- * across provider swaps. Providers hitting the same upstream URL are
- * compatible; different URLs imply different upstreams and so a
- * potentially different request/response contract.
- */
-export function getProviderBaseUrl(type: ModelProviderType): string | null {
-  const envBindings = getModelProviderEnvBindings(type);
-  if (!envBindings) {
-    return null;
-  }
-  const anthropicUrl = envBindings["ANTHROPIC_BASE_URL"];
-  if (anthropicUrl) {
-    return anthropicUrl;
-  }
-  const openaiUrl = envBindings["OPENAI_BASE_URL"];
-  return openaiUrl ?? null;
-}
-
 const CUSTOM_GATEWAY_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
   "custom-anthropic-messages",
   "custom-openai-responses",
@@ -1350,31 +1324,10 @@ const CUSTOM_GATEWAY_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
 
 /**
  * Check whether a provider type routes through an org-configured gateway
- * surface. These types carry no envBindings, so `getProviderBaseUrl` cannot
- * report their upstream: it is stored per surface in `model_provider_surfaces`.
+ * surface. Its upstream is stored per surface in `model_provider_surfaces`.
  */
 export function isCustomGatewayProviderType(type: ModelProviderType): boolean {
   return CUSTOM_GATEWAY_PROVIDER_TYPES.has(type);
-}
-
-/**
- * Check if two model providers are compatible for session continuation.
- * Providers are compatible if they resolve to the same upstream base URL.
- *
- * A custom gateway type resolves to no base URL here, which must not be read
- * as "the vendor default endpoint" — that would make a self-hosted gateway
- * look interchangeable with anthropic-api-key, openai-api-key, or built-in.
- * It is compatible only with itself; whether two runs used the same surface
- * is a separate question, answered by the surface id the caller also holds.
- */
-export function areProvidersCompatible(
-  a: ModelProviderType,
-  b: ModelProviderType,
-): boolean {
-  if (isCustomGatewayProviderType(a) || isCustomGatewayProviderType(b)) {
-    return a === b;
-  }
-  return getProviderBaseUrl(a) === getProviderBaseUrl(b);
 }
 
 /**

@@ -9665,9 +9665,9 @@ function resolveCompatibleDirectResumeSession(args: {
   readonly next: SessionExecutionIdentity;
 }): ResolvedAgentExecution {
   const previous = args.resolved.resumeSessionIdentity;
-  return previous && !canReuseSession(previous, args.next)
-    ? { ...args.resolved, resumeSession: undefined }
-    : args.resolved;
+  return previous && canReuseSession(previous, args.next)
+    ? args.resolved
+    : { ...args.resolved, resumeSession: undefined };
 }
 
 async function resolvePreparedOfficialWorkflowRun(

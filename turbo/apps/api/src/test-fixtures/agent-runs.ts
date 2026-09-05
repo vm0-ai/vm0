@@ -596,25 +596,6 @@ export async function readRunModelRuntimeRouteFixture(runId: string) {
   return run;
 }
 
-/** Simulate historical or alternate built-in model route metadata not constructible through current policy. */
-export async function setRunModelRuntimeRouteFixture(args: {
-  readonly runId: string;
-  readonly modelRuntimeProvider: string | null;
-  readonly modelRuntimeModel: string | null;
-}): Promise<void> {
-  const updated = await db()
-    .update(agentRuns)
-    .set({
-      modelRuntimeProvider: args.modelRuntimeProvider,
-      modelRuntimeModel: args.modelRuntimeModel,
-    })
-    .where(eq(agentRuns.id, args.runId))
-    .returning({ id: agentRuns.id });
-  if (updated.length !== 1) {
-    throw new Error("Expected one run runtime route to update");
-  }
-}
-
 /**
  * Simulate a persisted discriminator written by a later release. The current
  * production API intentionally cannot construct this canonical row because

@@ -8,10 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/integrations";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
-import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { HttpResponse, http } from "msw";
-import type { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
 import { env } from "../../../../lib/env";
@@ -31,25 +28,17 @@ import { integrationsPhoneUploadCompleteRoutes } from "../../integrations-phone-
 import { integrationsPhoneUploadInitRoutes } from "../../integrations-phone-upload-init";
 import { integrationsPhoneDownloadFileRoutes } from "../../integrations-phone-download-file";
 import { logsRoutes } from "../../logs";
-import { modelPoliciesRoutes } from "../../model-policies";
-import { modelProvidersRoutes } from "../../model-providers";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...integrationsPhoneDownloadFileRoutes,
   ...integrationsPhoneUploadCompleteRoutes,
   ...integrationsPhoneUploadInitRoutes,
   ...logsRoutes,
-  ...modelPoliciesRoutes,
-  ...modelProvidersRoutes,
 ]);
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
 export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
-
-type OrgModelPolicyUpdateBody = z.infer<
-  (typeof modelPoliciesMainContract.update)["body"]
->;
 
 export interface AgentPhoneProviderSend {
   readonly agentId: string | undefined;
@@ -459,39 +448,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
           });
         },
       };
-    },
-
-    async switchDefaultModelRouteToOpenRouter(
-      actor: ApiTestUser,
-    ): Promise<void> {
-      const providers = setupApp({ context, routes: modelProvidersRoutes })(
-        modelProvidersMainContract,
-      );
-      const upserted = await accept(
-        providers.upsert({
-          headers: authenticate(context, actor),
-          body: { type: "openrouter-api-key", secret: "test-openrouter-key" },
-        }),
-        [200, 201],
-      );
-      const policies: OrgModelPolicyUpdateBody["policies"] = [
-        {
-          model: "claude-sonnet-5",
-          isDefault: true,
-          defaultProviderType: "openrouter-api-key",
-          credentialScope: "org",
-          modelProviderId: upserted.body.provider.id,
-        },
-      ];
-      await accept(
-        setupApp({ context, routes: modelPoliciesRoutes })(
-          modelPoliciesMainContract,
-        ).update({
-          headers: authenticate(context, actor),
-          body: { policies },
-        }),
-        [200],
-      );
     },
   };
 }

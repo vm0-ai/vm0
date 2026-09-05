@@ -88,7 +88,6 @@ import {
   readRunModelRuntimeRouteFixture,
   readSessionHistoryBlobRefCountFixture,
   setRunModelProviderFixture,
-  setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
 import {
   holdAgentRunRowLockFixture,
@@ -5799,7 +5798,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("reuses direct continuation across provider route changes but discards history across runtimes", async () => {
+  it("resumes direct sessions only on the same runtime and family", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const selectedModel = await seedVm0BuiltInDefaultModelKey();
@@ -5838,10 +5837,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
-    await setRunModelProviderFixture({
-      runId: first.runId,
-      modelProvider: "built-in",
-    });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
       group: runnerGroup,
@@ -5851,7 +5846,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "reuse the same built-in model runtime route",
+      prompt: "continue on the same runtime and model family",
       modelProvider: "built-in",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
@@ -5871,59 +5866,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await expectBuiltInModelRunRuntimeRoute(resumed.runId, selectedModel);
 
-    const resumedHistory = `managed resumed history ${resumed.runId}`;
-    const resumedHistoryHash = createHash("sha256")
-      .update(resumedHistory)
-      .digest("hex");
-    mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
-    await webhooks.requestAgentComplete(
-      {
-        runId: resumed.runId,
-        exitCode: 0,
-        lastEventSequence: 0,
-        checkpoint: {
-          cliAgentType: resumedClaim.cliAgentType,
-          cliAgentSessionId,
-          cliAgentSessionHistoryHash: resumedHistoryHash,
-        },
-      },
-      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
-      [200],
-    );
-    await setRunModelRuntimeRouteFixture({
-      runId: resumed.runId,
-      modelRuntimeProvider: "openai-api-key",
-      modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
-    });
-    await api.requestHeartbeatRunner(true, [200], {
-      runnerId: randomUUID(),
-      group: runnerGroup,
-      admittableProfiles: [],
-    });
-
-    const rerouted = await api.createRun(actor, {
-      agentId,
-      sessionId: first.sessionId,
-      prompt: "reuse a checkpoint after the built-in provider route changes",
-      modelProvider: "built-in",
-    });
-    expect(rerouted.sessionId).toBe(first.sessionId);
-    const reroutedClaim = await api.claimRunnerJob(rerouted.runId);
-    expect(reroutedClaim.resumeSession).toMatchObject({
-      sessionId: cliAgentSessionId,
-      historyRef: { kind: "blob", hash: resumedHistoryHash },
-    });
-    const reroutedStorageManifest = expectCanonicalStorageManifest(
-      reroutedClaim.storageManifest,
-    );
-    if (!reroutedStorageManifest) {
-      throw new Error("Expected canonical Storage mounts for the rerouted run");
-    }
-    expect(reroutedStorageManifest.storageMounts).toStrictEqual(
-      initialStorageMounts,
-    );
-    await expectBuiltInModelRunRuntimeRoute(rerouted.runId, selectedModel);
-    await api.requestCancelRun(actor, rerouted.runId, [200]);
+    await api.requestCancelRun(actor, resumed.runId, [200]);
 
     const changedRuntime = await api.createRun(actor, {
       agentId,

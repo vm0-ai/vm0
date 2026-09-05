@@ -8,7 +8,7 @@ export interface SessionExecutionIdentity {
 function modelFamily(model: string): string {
   const normalized = normalizeRunModelId(model.trim()).toLowerCase();
   const modelName = normalized.slice(normalized.lastIndexOf("/") + 1);
-  return modelName.split(/[-_.]/, 1)[0] ?? modelName;
+  return modelName.replace(/[-_.].*$/, "");
 }
 
 /** Native session history is reusable within one runtime and model family. */
@@ -16,17 +16,11 @@ export function canReuseSession(
   previous: SessionExecutionIdentity,
   next: SessionExecutionIdentity,
 ): boolean {
-  if (
-    previous.cliAgentType &&
-    next.cliAgentType &&
-    previous.cliAgentType !== next.cliAgentType
-  ) {
-    return false;
-  }
-  if (previous.selectedModel === null || next.selectedModel === null) {
-    return true;
-  }
   return (
+    previous.cliAgentType !== null &&
+    previous.cliAgentType === next.cliAgentType &&
+    previous.selectedModel !== null &&
+    next.selectedModel !== null &&
     modelFamily(previous.selectedModel) === modelFamily(next.selectedModel)
   );
 }
