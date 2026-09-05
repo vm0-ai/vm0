@@ -2368,7 +2368,9 @@
       "targetLanguage": "Übersetzungssprache"
     },
     "voice": {
+      "busyInAnotherTab": "In einem anderen Tab wird für diesen Chat aufgenommen. Versuche es nach dem Ende erneut.",
       "checkingLimit": "Überprüfung des Spracheingabelimits",
+      "cleanupFailed": "Der Text wurde eingefügt, aber die gespeicherte Aufnahme konnte nicht entfernt werden.",
       "confirmRecording": "OK",
       "discarding": "Sprachentwurf wird entfernt...",
       "input": "Spracheingabe",
@@ -2386,6 +2388,7 @@
       "retryReady": "Ihre Aufnahme bleibt erhalten. Versuchen Sie die Transkription erneut.",
       "starting": "Spracheingabe starten",
       "stopRecording": "Aufnahme stoppen",
+      "storageFailed": "Audio konnte nicht gespeichert werden. Erneut versuchen stellt nur bereits auf diesem Gerät gespeichertes Audio wieder her.",
       "transcribing": "Transkribieren",
       "transcribingProgress": "Transkribieren...",
       "transcriptionFailed": "Die Sprachtranskription ist fehlgeschlagen. Versuchen Sie es erneut."

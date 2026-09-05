@@ -84,7 +84,12 @@ registerProcessor(
 
 interface VoiceDraftPcmCapture {
   readonly cancel: () => void;
-  readonly finish: (signal: AbortSignal) => Promise<Blob>;
+  readonly finish: (signal: AbortSignal) => Promise<Blob | null>;
+}
+
+export interface VoiceDraftPcmPersistence {
+  readonly append: (samples: Float32Array, sequence: number) => Promise<void>;
+  readonly fail: (error: unknown) => void;
 }
 
 function writeAscii(bytes: Uint8Array, offset: number, value: string): void {
@@ -203,9 +208,64 @@ function disconnectCaptureGraph(
   source.disconnect(worklet);
 }
 
+function createVoiceDraftSampleBuffer(
+  persistence: VoiceDraftPcmPersistence | undefined,
+  signal: AbortSignal,
+) {
+  const batches: Float32Array[] = [];
+  let sampleCount = 0;
+  let sequence = 0;
+  let pendingWrite = Promise.allSettled([Promise.resolve()]);
+  let writeFailed = false;
+  return {
+    append(batch: Float32Array): void {
+      sampleCount += batch.length;
+      if (!persistence) {
+        batches.push(batch);
+        return;
+      }
+      const previous = pendingWrite;
+      const chunkSequence = sequence++;
+      pendingWrite = Promise.allSettled([
+        (async () => {
+          const [written] = await previous;
+          if (written?.status === "rejected") {
+            throw written.reason;
+          }
+          signal.throwIfAborted();
+          await onRejection(
+            persistence.append(batch, chunkSequence),
+            (error) => {
+              signal.throwIfAborted();
+              if (!writeFailed) {
+                writeFailed = true;
+                persistence.fail(error);
+              }
+            },
+          );
+        })(),
+      ]);
+    },
+    async finish(): Promise<Blob | null> {
+      const [written] = await pendingWrite;
+      if (written?.status === "rejected") {
+        throw written.reason;
+      }
+      signal.throwIfAborted();
+      if (sampleCount === 0) {
+        throw new Error("Voice recording did not contain audio samples");
+      }
+      return persistence
+        ? null
+        : encodeVoiceDraftPcmWav(combineSampleBatches(batches, sampleCount));
+    },
+  };
+}
+
 export async function startVoiceDraftPcmCapture(
   stream: MediaStream,
   signal: AbortSignal,
+  persistence?: VoiceDraftPcmPersistence,
 ): Promise<VoiceDraftPcmCapture> {
   signal.throwIfAborted();
   const audioContext = new AudioContext({
@@ -247,21 +307,15 @@ export async function startVoiceDraftPcmCapture(
         },
       );
       const finished = createDeferredPromise<void>(signal);
-      const batches: Float32Array[] = [];
-      let sampleCount = 0;
+      const samples = createVoiceDraftSampleBuffer(persistence, signal);
       let stopped = false;
-
       worklet.port.addEventListener(
         "message",
         (event: MessageEvent<unknown>) => {
           if (event.data instanceof ArrayBuffer) {
-            const batch = new Float32Array(event.data);
-            batches.push(batch);
-            sampleCount += batch.length;
-            return;
-          }
-          if (event.data === "done" && !finished.settled()) {
-            finished.resolve(undefined);
+            samples.append(new Float32Array(event.data));
+          } else if (event.data === "done" && !finished.settled()) {
+            finished.resolve();
           }
         },
       );
@@ -279,7 +333,7 @@ export async function startVoiceDraftPcmCapture(
           worklet.port.close();
           closePromise = closeAudioContext();
         },
-        async finish(finishSignal: AbortSignal): Promise<Blob> {
+        async finish(finishSignal: AbortSignal): Promise<Blob | null> {
           if (stopped) {
             throw new Error("Voice draft PCM capture has already stopped");
           }
@@ -289,14 +343,7 @@ export async function startVoiceDraftPcmCapture(
               worklet.port.postMessage("stop");
               await finished.promise;
               finishSignal.throwIfAborted();
-              if (sampleCount === 0) {
-                throw new Error(
-                  "Voice recording did not contain audio samples",
-                );
-              }
-              return encodeVoiceDraftPcmWav(
-                combineSampleBatches(batches, sampleCount),
-              );
+              return await samples.finish();
             })(),
             async () => {
               disconnectCaptureGraph(source, worklet);

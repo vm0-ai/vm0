@@ -2411,7 +2411,9 @@
       "targetLanguage": "Idioma da tradução"
     },
     "voice": {
+      "busyInAnotherTab": "Esta conversa tem uma gravação ativa em outra aba. Tente novamente quando ela parar.",
       "checkingLimit": "Verificando limite da entrada de voz",
+      "cleanupFailed": "O texto foi adicionado, mas não foi possível remover a gravação salva.",
       "confirmRecording": "OK",
       "discarding": "Removendo rascunho de voz...",
       "input": "Entrada de voz",
@@ -2429,6 +2431,7 @@
       "retryReady": "Sua gravação foi mantida. Tente transcrever novamente.",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Parar gravação",
+      "storageFailed": "Não foi possível salvar o áudio. Tentar novamente recupera apenas o áudio já salvo neste dispositivo.",
       "transcribing": "Transcrevendo",
       "transcribingProgress": "Transcrevendo...",
       "transcriptionFailed": "Falha na transcrição de voz. Tente novamente."

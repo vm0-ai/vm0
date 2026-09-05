@@ -2368,7 +2368,9 @@
       "targetLanguage": "Translation language"
     },
     "voice": {
+      "busyInAnotherTab": "This conversation has an active recording in another tab. Retry after it stops.",
       "checkingLimit": "Checking voice input limit",
+      "cleanupFailed": "Text was added, but the saved recording could not be removed.",
       "confirmRecording": "OK",
       "discarding": "Removing voice draft...",
       "input": "Voice input",
@@ -2386,6 +2388,7 @@
       "retryReady": "Your recording is kept. Retry transcription.",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
+      "storageFailed": "Audio could not be saved. Retry can recover only audio already saved on this device.",
       "transcribing": "Transcribing",
       "transcribingProgress": "Transcribing...",
       "transcriptionFailed": "Voice transcription failed. Try again."

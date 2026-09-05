@@ -2411,7 +2411,9 @@
       "targetLanguage": "Langue de traduction"
     },
     "voice": {
+      "busyInAnotherTab": "Un enregistrement est en cours pour cette conversation dans un autre onglet. Réessayez après son arrêt.",
       "checkingLimit": "Vérification de la limite d'entrée vocale",
+      "cleanupFailed": "Le texte a été ajouté, mais l’enregistrement sauvegardé n’a pas pu être supprimé.",
       "confirmRecording": "OK",
       "discarding": "Suppression du brouillon vocal...",
       "input": "Entrée vocale",
@@ -2429,6 +2431,7 @@
       "retryReady": "Votre enregistrement est conservé. Réessayez la transcription.",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
+      "storageFailed": "Impossible de sauvegarder le son. Réessayer ne récupère que le son déjà enregistré sur cet appareil.",
       "transcribing": "Transcription",
       "transcribingProgress": "Transcription en cours...",
       "transcriptionFailed": "Échec de la transcription vocale. Réessayez."

@@ -1,3 +1,8 @@
+import {
+  createComposerVoiceInputSignals,
+  type ComposerVoiceInputSignals,
+  type ComposerVoiceInputStatus,
+} from "./composer-voice-input.ts";
 import type {
   ChatRunVideoOptionsRequest,
   GenerationTemplateRequest,
@@ -5,37 +10,15 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
-import {
-  VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
-  voiceIoTranscribeContract,
-} from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
-import { onDomEventFn, onRef, settle, withCleanup } from "../utils.ts";
+import { command, computed, state, type Command, type Computed } from "ccstate";
+import { onRef, withCleanup } from "../utils.ts";
 import {
   featureSwitch$,
   voiceInputV2Enabled$,
 } from "../external/feature-switch.ts";
-import {
-  audioInputAvailable$,
-  audioInputQuota$,
-  openAudioInputQuotaRecovery$,
-  refreshAudioInputQuota$,
-  sttRecording$,
-  sttStarting$,
-  sttTranscribing$,
-  startRecording$,
-  stopAndTranscribe$,
-} from "../voice-io/voice-io-stt.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ChatAttachment } from "./chat-draft.ts";
 import { createComposerFeedbackModel } from "./chat-feedback.ts";
@@ -74,21 +57,6 @@ import {
   replaceWorkflowPromptDraftTarget$,
   setReplaceWorkflowPromptDraftTarget$,
 } from "../chat-page/workflow-prompt-action.ts";
-import { accept } from "../../lib/accept.ts";
-import { apiClient$ } from "../api-client.ts";
-import { logger } from "../log.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
-import {
-  readVoiceDraftRecording,
-  saveVoiceDraftRecording,
-  deleteVoiceDraftRecording,
-  type VoiceDraftRecordingRecord,
-} from "../external/voice-draft-store.ts";
-import { prepareVoiceDraftAudio } from "../voice-io/voice-draft-audio.ts";
-import { i18n } from "../../i18n/index.ts";
-import { toast } from "@okouai/ui/components/ui/sonner";
-
-const L = logger("Composer:VoiceDraft");
 
 type ComposerEditorSignals = Pick<
   WorkflowComposerSignals,
@@ -182,16 +150,8 @@ interface ComposerDraftSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  /** Resolves true only when the draft has been persisted. */
-  readonly save$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly save$: Command<Promise<void>, [AbortSignal]>;
 }
-
-export const skipComposerDraftSave$ = command(
-  (_context, signal: AbortSignal): Promise<boolean> => {
-    signal.throwIfAborted();
-    return Promise.resolve(false);
-  },
-);
 
 interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly temporaryModelNoticeEnabled$: Computed<boolean>;
@@ -291,27 +251,11 @@ interface ComposerTemplateSignals
   >;
 }
 
-export type ComposerVoiceInputStatus =
-  | "idle"
-  | "restoring"
-  | "recording"
-  | "transcribing"
-  | "failed"
-  | "discarding";
-
-interface ComposerVoiceInputSignals {
-  readonly status$: Computed<ComposerVoiceInputStatus>;
-  readonly recordingAvailable$: Computed<boolean>;
-  readonly retry$: Command<Promise<void>, [AbortSignal]>;
-  readonly discard$: Command<Promise<void>, [AbortSignal]>;
+export interface ComposerSignals {
   readonly setLifecycleRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly toggle$: Command<Promise<void>, [AbortSignal]>;
-}
-
-export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
@@ -529,374 +473,6 @@ function createRemoveQueuedMessage(
   );
 }
 
-type VoiceDraftTranscriptionCommand = Command<Promise<void>, [AbortSignal]>;
-
-interface ComposerVoiceInputState {
-  readonly status: ComposerVoiceInputStatus;
-  readonly recording: VoiceDraftRecordingRecord | null;
-  readonly attempt?: symbol;
-}
-
-type ComposerVoiceInputStateSignal = State<ComposerVoiceInputState>;
-
-function idleVoiceInputState(): ComposerVoiceInputState {
-  return { status: "idle", recording: null };
-}
-
-function voiceDraftTranscriptionFailedMessage(): string {
-  return i18n.t(($) => {
-    return $.chat.voice.transcriptionFailed;
-  });
-}
-
-function reportVoiceDraftTranscriptionFailure(error: unknown): void {
-  L.error("Voice draft transcription failed", error);
-  toast.error(voiceDraftTranscriptionFailedMessage());
-}
-
-function createVoiceDraftTranscriptionCommand(
-  workflowComposer: WorkflowComposerSignals,
-  draft: CreateComposerSignalsOptions["draft"],
-  lastAssistantMessage$: Computed<string | undefined>,
-  state$: ComposerVoiceInputStateSignal,
-  storageKey$: Computed<Promise<string | null>>,
-): VoiceDraftTranscriptionCommand {
-  const transcribe$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const voiceInput = get(state$);
-    if (voiceInput.status !== "transcribing" || !voiceInput.recording) {
-      set(state$, idleVoiceInputState());
-      reportVoiceDraftTranscriptionFailure(
-        new Error("Voice draft transcription started without a recording"),
-      );
-      return;
-    }
-    const storageKey = await get(storageKey$);
-    signal.throwIfAborted();
-    if (
-      !set(draft.signals.hasInsertedVoiceRecording$, voiceInput.recording.id)
-    ) {
-      // Commit the original recording before preparation or any network request.
-      // A reload at any later point can offer the same recording for retry.
-      if (storageKey) {
-        const saved = await settle(
-          saveVoiceDraftRecording(storageKey, voiceInput.recording),
-          signal,
-        );
-        if (!saved.ok) {
-          set(state$, { ...voiceInput, status: "failed" });
-          reportVoiceDraftTranscriptionFailure(saved.error);
-          return;
-        }
-      }
-      const prepared = await settle(
-        prepareVoiceDraftAudio(voiceInput.recording.blob, signal),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!prepared.ok) {
-        set(state$, { ...voiceInput, status: "failed" });
-        reportVoiceDraftTranscriptionFailure(prepared.error);
-        return;
-      }
-
-      const formData = new FormData();
-      for (const file of prepared.value) {
-        formData.append("file", file);
-      }
-      const boundedReference = get(lastAssistantMessage$)
-        ?.trim()
-        .slice(0, VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS);
-      if (boundedReference) {
-        formData.append("lastAssistantMessage", boundedReference);
-      }
-
-      const client = get(apiClient$)(voiceIoTranscribeContract);
-      const result = await settle(
-        accept(
-          client.post({ body: formData, fetchOptions: { signal } }),
-          [200, 402, 429],
-          signal,
-          { showErrorToast: false },
-        ),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!result.ok) {
-        set(state$, { ...voiceInput, status: "failed" });
-        reportVoiceDraftTranscriptionFailure(result.error);
-        return;
-      }
-      if (result.value.status !== 200) {
-        set(state$, { ...voiceInput, status: "failed" });
-        await set(openAudioInputQuotaRecovery$, signal);
-        return;
-      }
-
-      // A restored recording can be retried before the remote text draft
-      // arrives. Finish that hydration before inserting or saving its text.
-      await set(draft.load$, signal);
-      set(workflowComposer.insertText$, result.value.body.polishedText);
-      set(draft.signals.setInsertedVoiceRecordingId$, voiceInput.recording.id);
-    }
-    const persisted = await set(draft.save$, signal);
-    signal.throwIfAborted();
-    if (storageKey && !persisted) {
-      // An optimistic thread can skip saving until its created event arrives.
-      // Keep the recording and let cleanup restore Retry for the unsaved text.
-      return;
-    }
-    if (storageKey) {
-      await deleteVoiceDraftRecording(storageKey, voiceInput.recording.id);
-      signal.throwIfAborted();
-    }
-    set(state$, idleVoiceInputState());
-    set(refreshAudioInputQuota$);
-  });
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const attempt = Symbol();
-    set(state$, { ...get(state$), attempt });
-    await withCleanup(set(transcribe$, signal), () => {
-      const current = get(state$);
-      if (current.attempt === attempt && current.status === "transcribing") {
-        set(state$, { ...current, status: "failed" });
-      }
-    });
-  });
-}
-
-function createStartVoiceDraftRecordingCommand(
-  state$: ComposerVoiceInputStateSignal,
-  transcribe$: VoiceDraftTranscriptionCommand,
-): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const resetOnAbort = () => {
-      const current = get(state$);
-      set(
-        state$,
-        current.recording
-          ? { ...current, status: "failed" }
-          : idleVoiceInputState(),
-      );
-    };
-    const releaseAbortHandler = () => {
-      signal.removeEventListener("abort", resetOnAbort);
-    };
-    signal.addEventListener("abort", resetOnAbort, { once: true });
-    set(state$, { status: "recording", recording: null });
-    await set(
-      startRecording$,
-      onDomEventFn(() => {}),
-      { autoSegment: false, autoStopOnSilence: false },
-      {
-        finish: (recording) => {
-          if (!recording) {
-            releaseAbortHandler();
-            set(state$, idleVoiceInputState());
-            return Promise.resolve();
-          }
-          set(state$, {
-            status: "transcribing",
-            recording: { id: crypto.randomUUID(), blob: recording.blob },
-          });
-          return withCleanup(set(transcribe$, signal), releaseAbortHandler);
-        },
-        fail: () => {
-          releaseAbortHandler();
-          set(state$, idleVoiceInputState());
-          reportVoiceDraftTranscriptionFailure(
-            new Error("Voice draft recording failed"),
-          );
-          return Promise.resolve();
-        },
-      },
-      signal,
-    );
-  });
-}
-
-function createVoiceDraftRecoverySignals(
-  state$: ComposerVoiceInputStateSignal,
-  storageKey$: Computed<Promise<string | null>>,
-) {
-  const restore$ = command(async ({ get, set }, signal: AbortSignal) => {
-    set(state$, { status: "restoring", recording: null });
-    const storageKey = await get(storageKey$);
-    signal.throwIfAborted();
-    const restored = storageKey
-      ? await settle(readVoiceDraftRecording(storageKey), signal)
-      : { ok: true as const, value: null };
-    signal.throwIfAborted();
-    if (!restored.ok) {
-      set(state$, { status: "failed", recording: null });
-      reportVoiceDraftTranscriptionFailure(restored.error);
-      return;
-    }
-    set(
-      state$,
-      restored.value
-        ? { status: "failed", recording: restored.value }
-        : idleVoiceInputState(),
-    );
-  });
-  // A composer can mount in either chat pane or a dialog. Its presence owns
-  // restoration; a detached editor must never receive the pending result.
-  // React can reattach the ref before its aborted read settles, so restart a
-  // restoring draft without letting the old attempt reset the new state.
-  const setLifecycleRef$ = onRef(
-    command(
-      async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
-        const status = get(state$).status;
-        if (
-          get(voiceInputV2Enabled$) &&
-          (status === "idle" || status === "restoring")
-        ) {
-          await set(restore$, signal);
-        }
-      },
-    ),
-  );
-  const discard$ = command(async ({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const current = get(state$);
-    if (current.status !== "failed" || !current.recording) {
-      return;
-    }
-    const recordingId = current.recording.id;
-    set(state$, { ...current, status: "discarding" });
-    await withCleanup(
-      (async () => {
-        const storageKey = await get(storageKey$);
-        signal.throwIfAborted();
-        if (storageKey) {
-          await deleteVoiceDraftRecording(storageKey, recordingId);
-          signal.throwIfAborted();
-        }
-        set(state$, idleVoiceInputState());
-      })(),
-      () => {
-        if (get(state$).status === "discarding") {
-          set(state$, { ...current, status: "failed" });
-        }
-      },
-    );
-  });
-  return { restore$, discard$, setLifecycleRef$ };
-}
-
-function createComposerVoiceInputSignals(
-  workflowComposer: WorkflowComposerSignals,
-  draft: CreateComposerSignalsOptions["draft"],
-  lastAssistantMessage$: Computed<string | undefined>,
-  draftTarget: string | null,
-): ComposerVoiceInputSignals {
-  const state$ = state<ComposerVoiceInputState>(idleVoiceInputState());
-  const status$ = computed((get): ComposerVoiceInputStatus => {
-    return get(state$).status;
-  });
-  const storageKey$ = computed(async (get): Promise<string | null> => {
-    if (!draftTarget) {
-      return null;
-    }
-    const identity = await get(authenticatedIdentity$);
-    return JSON.stringify([identity.userId, identity.orgId, draftTarget]);
-  });
-  const recovery = createVoiceDraftRecoverySignals(state$, storageKey$);
-  const transcribe$ = createVoiceDraftTranscriptionCommand(
-    workflowComposer,
-    draft,
-    lastAssistantMessage$,
-    state$,
-    storageKey$,
-  );
-  const startVoiceDraftRecording$ = createStartVoiceDraftRecordingCommand(
-    state$,
-    transcribe$,
-  );
-  const retry$ = command(async ({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    const current = get(state$);
-    if (current.status !== "failed") {
-      return;
-    }
-    if (!current.recording) {
-      await set(recovery.restore$, signal);
-      return;
-    }
-    set(state$, { ...current, status: "transcribing" });
-    await set(transcribe$, signal);
-  });
-  const toggle$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      if (!get(audioInputAvailable$) || get(sttStarting$)) {
-        return;
-      }
-      if (get(voiceInputV2Enabled$)) {
-        const status = get(state$).status;
-        if (status === "failed") {
-          await set(retry$, signal);
-          return;
-        }
-        if (status !== "idle" && status !== "recording") {
-          return;
-        }
-        if (status === "recording") {
-          set(state$, { status: "transcribing", recording: null });
-          await set(stopAndTranscribe$, signal);
-          return;
-        }
-        if (get(sttRecording$) || get(sttTranscribing$)) {
-          return;
-        }
-        const quota = await get(audioInputQuota$);
-        signal.throwIfAborted();
-        if (!quota.allowed) {
-          await set(openAudioInputQuotaRecovery$, signal);
-          return;
-        }
-        await set(startVoiceDraftRecording$, signal);
-        return;
-      }
-
-      if (get(sttTranscribing$)) {
-        return;
-      }
-      if (get(sttRecording$)) {
-        await set(stopAndTranscribe$, signal);
-        return;
-      }
-      const quota = await get(audioInputQuota$);
-      signal.throwIfAborted();
-      if (!quota.allowed) {
-        await set(openAudioInputQuotaRecovery$, signal);
-        return;
-      }
-      await set(
-        startRecording$,
-        onDomEventFn(async (text: string) => {
-          set(workflowComposer.appendText$, text);
-          await set(draft.save$, signal);
-        }),
-        { autoSegment: quota.limit === null, autoStopOnSilence: true },
-        undefined,
-        signal,
-      );
-    },
-  );
-  const recordingAvailable$ = computed((get) => {
-    return get(state$).recording !== null;
-  });
-  return {
-    status$,
-    recordingAvailable$,
-    toggle$,
-    retry$,
-    discard$: recovery.discard$,
-    setLifecycleRef$: recovery.setLifecycleRef$,
-  };
-}
-
 function createTemporaryModelNoticeEnabled(
   options: CreateComposerSignalsOptions,
 ): Computed<boolean> {
@@ -929,6 +505,48 @@ function composerDraftSignals(
   };
 }
 
+function createComposerInputLifecycle(
+  options: Pick<CreateComposerSignalsOptions, "draft" | "voiceDraftTarget">,
+  workflowComposer: WorkflowComposerSignals,
+  lastAssistantMessage$: Computed<string | undefined>,
+) {
+  const ready$ = state<Promise<void> | null>(null);
+  const deliverText$ = command(
+    async ({ get, set }, text: string, signal: AbortSignal) => {
+      const ready = get(ready$);
+      if (!ready) {
+        throw new Error("Composer has not initialized");
+      }
+      await ready;
+      signal.throwIfAborted();
+      set(workflowComposer.insertText$, text);
+    },
+  );
+  const voice = createComposerVoiceInputSignals(
+    workflowComposer.appendText$,
+    deliverText$,
+    lastAssistantMessage$,
+    options.voiceDraftTarget,
+  );
+  const setLifecycleRef$ = onRef(
+    command(
+      async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
+        // Composer initialization owns text hydration. Voice only receives a ready
+        // editor delivery command and never loads or saves a text draft itself.
+        const ready = set(options.draft.load$, signal);
+        set(ready$, ready);
+        await Promise.all([
+          ready,
+          get(voiceInputV2Enabled$)
+            ? set(voice.restore$, signal)
+            : Promise.resolve(),
+        ]);
+      },
+    ),
+  );
+  return { voice, setLifecycleRef$ };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -951,11 +569,10 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const voice = createComposerVoiceInputSignals(
+  const { voice, setLifecycleRef$ } = createComposerInputLifecycle(
+    options,
     workflowComposer,
-    options.draft,
     eventSignals.lastAssistantMessage$,
-    options.voiceDraftTarget,
   );
   const submission = createComposerSubmissionSignals(
     options,
@@ -1000,6 +617,7 @@ export function createComposerSignals(
 
   return {
     agentId: options.agentId,
+    setLifecycleRef$,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,

@@ -64,6 +64,7 @@ test.each([
     const refreshedPage = createChildAbortController(refreshedContext.signal);
     const firstRequest = context.mocks.deferred<void>();
     const firstResponse = context.mocks.deferred<void>();
+    const retryRequested = context.mocks.deferred<void>();
     const hydrationRequested = context.mocks.deferred<void>();
     const hydrationRestarted = context.mocks.deferred<void>();
     const hydrationReady = context.mocks.deferred<void>();
@@ -112,6 +113,9 @@ test.each([
     });
     context.mocks.http.post("*/api/voice-io/transcribe", async () => {
       transcriptionRequests += 1;
+      if (transcriptionRequests === 2) {
+        retryRequested.resolve();
+      }
       if (transcriptionRequests === 1) {
         firstRequest.resolve();
         await firstResponse.promise;
@@ -153,6 +157,7 @@ test.each([
     });
     await hydrationRequested.promise;
     await user.click(await findEnabledButton("Retry"));
+    await retryRequested.promise;
     expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
     if (interruptHydration) {
       click(await findLink("Agents"));
@@ -164,9 +169,11 @@ test.each([
     hydrationReady.resolve();
     delayHydration = false;
     await findEnabledButton("Send");
-    const savedText = draftPlainText(persistedDraft.draftUserMessage);
-    expect(savedText).toContain("Keep these saved notes.");
-    expect(savedText).toContain("Recovered voice note.");
+    await waitFor(() => {
+      const savedText = draftPlainText(persistedDraft.draftUserMessage);
+      expect(savedText).toContain("Keep these saved notes.");
+      expect(savedText).toContain("Recovered voice note.");
+    });
     expect(hydrationRequests).toBe(interruptHydration ? 2 : 1);
     expect(transcriptionRequests).toBe(interruptHydration ? 3 : 2);
 

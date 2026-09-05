@@ -213,7 +213,6 @@ import {
 import { locale$ } from "../locale.ts";
 import {
   createComposerSignals,
-  skipComposerDraftSave$,
   type ComposerSignals,
   type ComposerSubmission,
 } from "../okou-page/composer-signals.ts";
@@ -242,7 +241,7 @@ import {
 } from "../okou-page/connectors.ts";
 
 const L = logger("ChatThread");
-const noOpComposerDraftLoad$ = command(
+const noOpComposerDraftAction$ = command(
   (_context, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
     return Promise.resolve();
@@ -861,7 +860,7 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
         L.debug("draft sync skipped for unsettled optimistic thread create", {
           threadId,
         });
-        return false;
+        return;
       }
 
       const attachments = get(draft.attachments$);
@@ -903,13 +902,12 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
         },
         signal,
       );
-      return true;
     },
   );
 
   const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
     const debouncedSignal = set(draftSyncReset$, signal);
-    return await set(debouncedSyncDraft$, debouncedSignal);
+    await set(debouncedSyncDraft$, debouncedSignal);
   });
 
   const cancelDraftSync$ = command(({ set }) => {
@@ -3410,7 +3408,7 @@ interface RecallMessageDeps {
   readonly agentId: string;
   chatEvents$: Computed<ChatEvent[]>;
   draft: DraftSignals;
-  queueDraftSync$: Command<Promise<boolean>, [AbortSignal]>;
+  queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   sendEvent$: Command<
     Promise<SendChatEventResult>,
     [SendChatEventInput, AbortSignal]
@@ -4015,7 +4013,7 @@ interface CreateChatThreadComposerSignalsOptions {
   readonly agentId: string;
   readonly draft: DraftSignals;
   readonly loadDraft$: Command<Promise<void>, [AbortSignal]>;
-  readonly queueDraftSync$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly modelSelection: ReturnType<typeof createModelSelection>;
   readonly imageModelSelection: ReturnType<typeof createImageModelSelection>;
   readonly videoModelSelection: ReturnType<typeof createVideoModelSelection>;
@@ -4154,8 +4152,10 @@ function createChatThreadComposerSignals(
     connector: options.connector,
     draft: {
       signals: options.draft,
-      load$: options.forward ? noOpComposerDraftLoad$ : options.loadDraft$,
-      save$: options.forward ? skipComposerDraftSave$ : options.queueDraftSync$,
+      load$: options.forward ? noOpComposerDraftAction$ : options.loadDraft$,
+      save$: options.forward
+        ? noOpComposerDraftAction$
+        : options.queueDraftSync$,
     },
     chatEvents$: options.chatEvents.chatEvents$,
     threadId: options.chatEvents.threadId,

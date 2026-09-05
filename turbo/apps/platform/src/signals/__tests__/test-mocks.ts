@@ -1048,6 +1048,8 @@ function mockAudioContext(signal: AbortSignal): void {
 }
 
 interface VoiceInputMockOptions {
+  readonly onPcmCapture?: (emit: (samples: Float32Array) => void) => void;
+  readonly finalPcmSamples?: Float32Array;
   readonly pcmWorkletReady?: () => Promise<void>;
   readonly audioContextReady?: Promise<void>;
   readonly durationSeconds?: number;
@@ -1156,7 +1158,15 @@ function mockVoiceInput(
   class TestVoicePcmPort extends EventTarget {
     private closed = false;
 
-    start(): void {}
+    start(): void {
+      options.onPcmCapture?.((samples) => {
+        if (!this.closed) {
+          this.dispatchEvent(
+            new MessageEvent("message", { data: samples.slice().buffer }),
+          );
+        }
+      });
+    }
 
     close(): void {
       this.closed = true;
@@ -1166,10 +1176,12 @@ function mockVoiceInput(
       if (message !== "stop" || this.closed) {
         return;
       }
-      const samples = new Float32Array(
-        Math.round(16_000 * (options.durationSeconds ?? 1)),
-      );
-      samples.fill(0.1);
+      const samples =
+        options.finalPcmSamples ??
+        new Float32Array(Math.round(16_000 * (options.durationSeconds ?? 1)));
+      if (!options.finalPcmSamples) {
+        samples.fill(0.1);
+      }
       this.dispatchEvent(new MessageEvent("message", { data: samples.buffer }));
       this.dispatchEvent(new MessageEvent("message", { data: "done" }));
     }

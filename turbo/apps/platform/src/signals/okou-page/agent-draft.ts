@@ -33,7 +33,7 @@ const DRAFT_SYNC_DEBOUNCE_MS = 500;
 interface AgentDraftEntry {
   readonly draft: DraftSignals;
   readonly load$: Command<Promise<void>, [AbortSignal]>;
-  readonly queueDraftSync$: Command<Promise<boolean>, [AbortSignal]>;
+  readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly cancelDraftSync$: Command<void, []>;
   readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -119,13 +119,12 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
       });
 
       await set(patchDraft$, payload, signal);
-      return true;
     },
   );
 
   const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
     const debouncedSignal = set(draftSyncReset$, signal);
-    return await set(debouncedSyncDraft$, debouncedSignal);
+    await set(debouncedSyncDraft$, debouncedSignal);
   });
 
   const cancelDraftSync$ = command(({ set }) => {

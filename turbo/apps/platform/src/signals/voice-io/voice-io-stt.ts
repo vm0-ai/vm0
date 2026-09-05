@@ -31,7 +31,10 @@ import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { i18n } from "../../i18n/index.ts";
-import { startVoiceDraftPcmCapture } from "./voice-draft-pcm.ts";
+import {
+  startVoiceDraftPcmCapture,
+  type VoiceDraftPcmPersistence,
+} from "./voice-draft-pcm.ts";
 
 const L = logger("VoiceIO:STT");
 
@@ -84,6 +87,7 @@ const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
 interface VoiceRecordingLifecycle {
   readonly finish: (recording: VoiceRecordingCapture | null) => Promise<void>;
   readonly fail: () => Promise<void>;
+  readonly persistence?: VoiceDraftPcmPersistence;
 }
 
 interface VoiceRecordingOptions {
@@ -92,7 +96,7 @@ interface VoiceRecordingOptions {
 }
 
 interface VoiceRecordingCapture {
-  readonly blob: Blob;
+  readonly blob: Blob | null;
   readonly mimeType: string;
 }
 
@@ -1238,8 +1242,9 @@ const finishRecordingStartup$ = command(
 async function startVoiceDraftRecordingSession(
   stream: MediaStream,
   signal: AbortSignal,
+  persistence?: VoiceDraftPcmPersistence,
 ): Promise<VoiceRecordingSession> {
-  const pcm = await startVoiceDraftPcmCapture(stream, signal);
+  const pcm = await startVoiceDraftPcmCapture(stream, signal, persistence);
   if (signal.aborted) {
     pcm.cancel();
     signal.throwIfAborted();
@@ -1249,7 +1254,7 @@ async function startVoiceDraftRecordingSession(
     cancel: pcm.cancel,
     async stopAndTranscribe(stopSignal) {
       const blob = await pcm.finish(stopSignal);
-      return { blob, mimeType: blob.type };
+      return { blob, mimeType: blob?.type ?? "audio/wav" };
     },
   };
 }
@@ -1283,7 +1288,11 @@ export const startRecording$ = command(
         signal.throwIfAborted();
         let session: VoiceRecordingSession;
         if (lifecycle) {
-          session = await startVoiceDraftRecordingSession(stream, signal);
+          session = await startVoiceDraftRecordingSession(
+            stream,
+            signal,
+            lifecycle.persistence,
+          );
         } else {
           const recorder = createMediaRecorder(stream);
           const sessionOptions: VoiceSegmentSessionOptions = {

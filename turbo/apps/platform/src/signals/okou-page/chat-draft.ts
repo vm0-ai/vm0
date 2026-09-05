@@ -581,8 +581,6 @@ export interface DraftSignals {
   takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
   setEditorDocument$: Command<void, [EditorDocumentSnapshot | null]>;
-  hasInsertedVoiceRecording$: Command<boolean, [string]>;
-  setInsertedVoiceRecordingId$: Command<void, [string | null]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
   setGenerationTemplate$: Command<
     void,
@@ -793,9 +791,6 @@ function createDraftInputSignals() {
 function createDraftDocumentSignals() {
   let restoredUserMessage: UserMessageDocument | null = null;
   let editorDocument: EditorDocumentSnapshot | null = null;
-  // The cached document survives composer remounts. Keep its voice insertion
-  // identity with it, so a failed save can retry without inserting again.
-  let insertedVoiceRecordingId: string | null = null;
   const setRestoredUserMessage$ = command(
     (_context, value: UserMessageDocument | null) => {
       restoredUserMessage = value;
@@ -814,23 +809,11 @@ function createDraftDocumentSignals() {
       editorDocument = value;
     },
   );
-  const hasInsertedVoiceRecording$ = command(
-    (_context, recordingId: string): boolean => {
-      return insertedVoiceRecordingId === recordingId;
-    },
-  );
-  const setInsertedVoiceRecordingId$ = command(
-    (_context, recordingId: string | null): void => {
-      insertedVoiceRecordingId = recordingId;
-    },
-  );
   return {
     setRestoredUserMessage$,
     takeRestoredUserMessage$,
     readEditorDocument$,
     setEditorDocument$,
-    hasInsertedVoiceRecording$,
-    setInsertedVoiceRecordingId$,
   };
 }
 
@@ -902,7 +885,6 @@ function createDraftLifecycleSignals({
     set(draftInput.setInput$, "");
     set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
-    set(draftDocument.setInsertedVoiceRecordingId$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
@@ -921,7 +903,6 @@ function createDraftLifecycleSignals({
       signal: AbortSignal,
     ): Promise<boolean> => {
       set(draftDocument.setEditorDocument$, null);
-      set(draftDocument.setInsertedVoiceRecordingId$, null);
       set(draftDocument.setRestoredUserMessage$, value.userMessage);
       set(internalGenerationTemplate$, value.generationTemplate);
       set(internalAttachments$, value.attachments);
@@ -1044,8 +1025,6 @@ export function createDraftSignals(): DraftSignals {
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,
-    hasInsertedVoiceRecording$: draftDocument.hasInsertedVoiceRecording$,
-    setInsertedVoiceRecordingId$: draftDocument.setInsertedVoiceRecordingId$,
     generationTemplate$,
     setGenerationTemplate$,
     attachments$,

@@ -1,3 +1,4 @@
+import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type {
@@ -252,7 +253,6 @@ import type {
   ComposerImageModelSignals,
   ComposerSignals,
   ComposerVideoModelSignals,
-  ComposerVoiceInputStatus,
 } from "../../signals/okou-page/composer-signals.ts";
 import {
   audioInputAvailable$,
@@ -8666,6 +8666,7 @@ function VoiceDraftFooter({
   const retry = useSet(signals.voice.retry$);
   const discard = useSet(signals.voice.discard$);
   const recordingAvailable = useGet(signals.voice.recordingAvailable$);
+  const voiceMessage = useGet(signals.voice.message$);
 
   if (status === "failed") {
     return (
@@ -8674,13 +8675,14 @@ function VoiceDraftFooter({
           role="status"
           className="min-w-0 flex-1 text-sm text-muted-foreground"
         >
-          {recordingAvailable
-            ? t(($) => {
-                return $.chat.voice.retryReady;
-              })
-            : t(($) => {
-                return $.chat.voice.restoreFailed;
-              })}
+          {voiceMessage ??
+            (recordingAvailable
+              ? t(($) => {
+                  return $.chat.voice.retryReady;
+                })
+              : t(($) => {
+                  return $.chat.voice.restoreFailed;
+                }))}
         </span>
         {recordingAvailable && (
           <Button
@@ -10607,7 +10609,7 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraftStatus = useGet(signals.voice.status$);
   const recording = useGet(sttRecording$);
-  const setVoiceLifecycleRef = useSet(signals.voice.setLifecycleRef$);
+  const setVoiceLifecycleRef = useSet(signals.setLifecycleRef$);
   return (
     <div
       ref={voiceInputV2Enabled ? setVoiceLifecycleRef : undefined}

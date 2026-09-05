@@ -20,6 +20,7 @@ import {
   installRunChat,
   NEW_CHAT_PATH,
   RUN_PATH,
+  queryButton,
 } from "./chat-run-test-fixtures.ts";
 
 const refreshedContext = testContext();
@@ -32,7 +33,7 @@ test.each([
   { path: RUN_PATH, recovery: "reload" },
   { path: NEW_CHAT_PATH, recovery: "reload" },
 ])(
-  "Retry a failed voice draft save at $path after $recovery without duplicating text",
+  "Finish voice independently of a failed text draft save at $path after $recovery",
   async ({ path, recovery }) => {
     const initialPage = createChildAbortController(context.signal);
     context.mocks.browser.voiceInput({ rms: 0.12 });
@@ -47,6 +48,7 @@ test.each([
         language: "en-US",
       });
     });
+    const saveFailed = context.mocks.deferred<void>();
     let canSave = false;
     let persistedDraft = textContinuityDraft("");
     context.mocks.api(agentDraftContract.get, ({ respond }) => {
@@ -57,6 +59,9 @@ test.each([
     });
     context.mocks.api(agentDraftContract.patch, ({ body, respond }) => {
       if (!canSave) {
+        if (!saveFailed.settled()) {
+          saveFailed.resolve();
+        }
         return respond(403, {
           error: {
             code: "FORBIDDEN",
@@ -72,6 +77,9 @@ test.each([
     });
     context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
       if (!canSave) {
+        if (!saveFailed.settled()) {
+          saveFailed.resolve();
+        }
         return respond(403, {
           error: {
             code: "FORBIDDEN",
@@ -92,10 +100,13 @@ test.each([
     });
     click(await findEnabledButton("Voice input"));
     click(await findEnabledButton("Stop recording"));
-    await findEnabledButton("Retry");
+    await findEnabledButton("Voice input");
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
       /^Recorded note\.$/u,
     );
+
+    await saveFailed.promise;
+    expect(queryButton("Retry")).toBeNull();
 
     if (recovery === "navigation") {
       // User edits belong to the retained draft too, even when saving is down.
@@ -106,7 +117,7 @@ test.each([
       click(await findLink("Agents"));
       await screen.findByRole("heading", { name: "Agents" });
       window.history.back();
-      await findEnabledButton("Retry");
+      await findEnabledButton("Voice input");
     }
     if (recovery === "reload") {
       const error = new Error("Page reloaded");
@@ -122,7 +133,7 @@ test.each([
         path,
         featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
       });
-      await findEnabledButton("Retry");
+      await findEnabledButton("Voice input");
     }
 
     const expected =
@@ -135,18 +146,14 @@ test.each([
     });
 
     canSave = true;
-    click(await findEnabledButton("Retry"));
-    await findEnabledButton("Send");
-    expect(screen.getByRole("textbox", { name: "Message" }).textContent).toBe(
-      expected,
-    );
+    expect(queryButton("Retry")).toBeNull();
 
     // A different recording still inserts its transcript into the same draft.
     click(await findEnabledButton("Voice input"));
     click(await findEnabledButton("Stop recording"));
     await findEnabledButton("Send");
     expect(screen.getByRole("textbox", { name: "Message" }).textContent).toBe(
-      `${expected}Recorded note.`,
+      `${retainedText}Recorded note.`,
     );
   },
 );

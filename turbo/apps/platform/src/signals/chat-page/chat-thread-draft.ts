@@ -37,7 +37,7 @@ function userMessageDraftState(
 export function createThreadDraftLoad(
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>,
   draft: DraftSignals,
-  save$: Command<Promise<boolean>, [AbortSignal]>,
+  save$: Command<Promise<void>, [AbortSignal]>,
 ): Command<Promise<void>, [AbortSignal]> {
   const hasLocalDraft$ = computed((get) => {
     return (

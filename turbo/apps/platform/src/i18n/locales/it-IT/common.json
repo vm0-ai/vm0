@@ -2411,7 +2411,9 @@
       "targetLanguage": "Lingua di traduzione"
     },
     "voice": {
+      "busyInAnotherTab": "Questa conversazione ha una registrazione attiva in un’altra scheda. Riprova quando termina.",
       "checkingLimit": "Controllo del limite di input vocale",
+      "cleanupFailed": "Il testo è stato aggiunto, ma non è stato possibile rimuovere la registrazione salvata.",
       "confirmRecording": "OK",
       "discarding": "Rimozione della bozza vocale...",
       "input": "Ingresso vocale",
@@ -2429,6 +2431,7 @@
       "retryReady": "La registrazione è conservata. Riprova la trascrizione.",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",
+      "storageFailed": "Impossibile salvare l’audio. Riprova recupera solo l’audio già salvato su questo dispositivo.",
       "transcribing": "Trascrizione",
       "transcribingProgress": "Trascrizione...",
       "transcriptionFailed": "La trascrizione vocale non è riuscita. Riprova."
