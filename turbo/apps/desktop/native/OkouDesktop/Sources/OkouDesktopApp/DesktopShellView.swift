@@ -43,6 +43,8 @@ struct DesktopShellView: View {
                         inlineAlert(error)
                     }
                     if state.developerTools.available && state.developerTools.enabled {
+                        filesystemPluginPanel
+                        McpServersPanel(state: state, runtime: runtime)
                         runtimePanel
                         commandLogPanel
                     }
@@ -317,6 +319,47 @@ struct DesktopShellView: View {
 
     // MARK: Developer panels
 
+    private static let pluginStatusLabels: [DesktopComputerUsePluginStatus: String] = [
+        .disabled: "Disabled", .starting: "Starting", .running: "Ready", .restarting: "Restarting", .error: "Error",
+    ]
+
+    private var filesystemPluginPanel: some View {
+        let plugin = state.plugins?.filesystem
+        return panel(title: "Filesystem plugin") {
+            HStack(alignment: .top, spacing: 24) {
+                metric("Status", Self.pluginStatusLabels[plugin?.status ?? .disabled] ?? "Disabled")
+                metric("Directories", "\(plugin?.allowedDirectories.count ?? 0)")
+                metric("Tools", "\(plugin?.capabilities.filter { $0.hasPrefix("plugin.filesystem.") }.count ?? 0)")
+                metric("Version", plugin?.version ?? "")
+            }
+            Toggle(isOn: Binding(get: { plugin?.enabled ?? false }, set: { runtime.setFilesystemPluginEnabled($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable filesystem").font(.system(size: 13, weight: .semibold))
+                    Text("Allow authorized Computer Use sessions to use selected folders.").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+            if let directories = plugin?.allowedDirectories, !directories.isEmpty {
+                ForEach(directories, id: \.self) { directory in
+                    HStack {
+                        Text(directory).font(.system(size: 12, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button(action: { runtime.removeFilesystemPluginAllowedDirectory(directory) }) {
+                            Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Remove \(directory)").help("Remove directory")
+                    }
+                }
+            } else {
+                Text("No directories added.").font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            if let error = plugin?.lastError {
+                inlineAlert(error)
+            }
+            secondaryButton("Add directory") { Task { await runtime.addFilesystemPluginAllowedDirectory() } }
+        }
+    }
+
     private var runtimePanel: some View {
         panel(title: "Runtime") {
             HStack(alignment: .top, spacing: 24) {
@@ -462,6 +505,94 @@ struct DesktopShellView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Self.border, lineWidth: 1))
+    }
+}
+/// The MCP servers developer panel: per-server toggles and the import box.
+struct McpServersPanel: View {
+    @ObservedObject var state: DesktopShellState
+    let runtime: DesktopAppRuntime
+    @State private var draft = ""
+    @State private var importError: String? = nil
+    @State private var importing = false
+
+    static let sampleConfig = """
+        {
+          "mcpServers": {
+            "apple-notes": { "command": "npx", "args": ["-y", "mcp-apple-notes"] },
+            "figma": { "url": "http://127.0.0.1:3845/mcp" }
+          }
+        }
+        """
+
+    private static let statusLabels: [DesktopComputerUsePluginStatus: String] = [
+        .disabled: "Disabled", .starting: "Starting", .running: "Ready", .restarting: "Restarting", .error: "Error",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("MCP servers").font(.system(size: 17, weight: .semibold))
+            let servers = state.plugins?.mcp.servers ?? []
+            if servers.isEmpty {
+                Text("No MCP servers configured.").font(.system(size: 12)).foregroundStyle(.secondary)
+            } else {
+                ForEach(servers, id: \.name) { server in
+                    HStack(spacing: 10) {
+                        Toggle(isOn: Binding(get: { server.enabled }, set: { runtime.setMcpPluginServerEnabled(server.name, $0) })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(server.name).font(.system(size: 13, weight: .semibold))
+                                Text(serverMeta(server)).font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        Spacer()
+                        Text(Self.statusLabels[server.status] ?? server.status.rawValue).font(.system(size: 12)).foregroundStyle(.secondary)
+                        Button(action: { runtime.removeMcpPluginServer(server.name) }) {
+                            Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Remove \(server.name)").help("Remove server")
+                    }
+                    if let error = server.lastError {
+                        Text(error).font(.system(size: 11)).foregroundStyle(.red)
+                    }
+                }
+            }
+            TextEditor(text: $draft)
+                .font(.system(size: 12, design: .monospaced))
+                .frame(minHeight: 140)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(red: 30 / 255, green: 38 / 255, blue: 52 / 255).opacity(0.1), lineWidth: 1))
+                .overlay(alignment: .topLeading) {
+                    if draft.isEmpty {
+                        Text(Self.sampleConfig).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary.opacity(0.6))
+                            .padding(6).allowsHitTesting(false)
+                    }
+                }
+            if let importError {
+                Text(importError).font(.system(size: 12)).foregroundStyle(.red)
+            }
+            HStack(spacing: 10) {
+                Button("Use sample") { draft = Self.sampleConfig }.buttonStyle(.bordered)
+                Button("Import servers") {
+                    importing = true
+                    importError = runtime.importMcpPluginServers(draft)
+                    if importError == nil { draft = "" }
+                    importing = false
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || importing)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(red: 30 / 255, green: 38 / 255, blue: 52 / 255).opacity(0.1), lineWidth: 1))
+    }
+
+    private func serverMeta(_ server: DesktopComputerUseMcpServerState) -> String {
+        var meta = server.transport == .http ? "Streamable HTTP" : "stdio"
+        if server.status == .running {
+            meta += " · \(server.tools.count) tools"
+        }
+        return meta
     }
 }
 #endif

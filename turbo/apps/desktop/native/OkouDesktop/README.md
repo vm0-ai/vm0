@@ -53,7 +53,7 @@ open it with right-click → Open or clear quarantine with
 | Main window (setup wizard, hero, dev panels)       | Ported         |
 | Feature switches (developer tools)                 | Ported         |
 | Filesystem plugin (native tools)                   | Ported, tested |
-| MCP plugin manager (stdio, Streamable HTTP)        | Pending        |
+| MCP plugin manager (stdio, Streamable HTTP)        | Ported, tested |
 | Screen recorder windows, controller, delivery      | Ported         |
 | Auto-update from the Squirrel JSON feed            | Pending        |
 | Sentry                                             | Pending        |

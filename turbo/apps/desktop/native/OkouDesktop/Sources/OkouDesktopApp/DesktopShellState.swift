@@ -20,6 +20,7 @@ final class DesktopShellState: ObservableObject {
     @Published var host: ComputerUseHostRuntimeState = .offline
     @Published var keepAwake = DesktopKeepAwakeState(enabled: false, active: false)
     @Published var developerTools = DesktopDeveloperToolsState(available: false, enabled: false)
+    @Published var plugins: DesktopComputerUsePluginsState? = nil
     @Published var busyAction: String? = nil
     @Published var lastActionError: String? = nil
 

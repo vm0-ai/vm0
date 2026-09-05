@@ -31,6 +31,7 @@ final class DesktopAppRuntime {
     private(set) var automationPrompt: AutomationPermissionPrompt!
     private(set) var screenRecorder: DesktopRecorderController!
     private(set) var filesystemPlugin: DesktopFilesystemPluginManager!
+    private(set) var mcpPlugin: DesktopMcpPluginManager!
     let snapshotStore = ComputerUseSnapshotStore()
     let recorderUIState = RecorderUIState()
     private var recorderWindows: DesktopRecorderWindows? = nil
@@ -120,13 +121,18 @@ final class DesktopAppRuntime {
                 guard let self else { return DesktopHTTPResponse(status: 401) }
                 return try await self.authSession.fetchWithSessionAuth(URL(string: apiBaseUrl + DesktopDeveloperToolsController.featureSwitchesPath)!)
             },
-            setPluginsFeatureEnabled: { [weak self] enabled in self?.filesystemPlugin.setFeatureEnabled(enabled) },
+            setPluginsFeatureEnabled: { [weak self] enabled in
+                self?.filesystemPlugin.setFeatureEnabled(enabled)
+                self?.mcpPlugin.setFeatureEnabled(enabled)
+            },
             setScreenRecordingFeatureEnabled: { [weak self] enabled in self?.screenRecorder.setFeatureEnabled(enabled) },
             onChange: { [weak self] in self?.notifyDeveloperToolsChanged() },
             logRefreshError: { error in NSLog("Unable to refresh desktop developer tools state: \(error)") }
         )
         self.filesystemPlugin = DesktopFilesystemPluginManager(store: preferences, onChange: { [weak self] in self?.notifyComputerUseChanged() })
         filesystemPlugin.load()
+        self.mcpPlugin = DesktopMcpPluginManager(store: preferences, onChange: { [weak self] in self?.notifyComputerUseChanged() })
+        mcpPlugin.load()
         let recordingsDirectory = userDataDirectory.appendingPathComponent("recordings")
         self.screenRecorder = DesktopRecorderController(
             createBackend: {
@@ -145,7 +151,10 @@ final class DesktopAppRuntime {
             createRuntime: { [unowned self] in self.createHostRuntime() },
             refreshPermissions: { [unowned self] in try await self.permissionStore.refresh() },
             getAuthState: { [unowned self] in try await self.authSession.getAuthState() },
-            setHostRuntimeOnline: { [weak self] online in self?.filesystemPlugin.setHostRuntimeOnline(online) },
+            setHostRuntimeOnline: { [weak self] online in
+                self?.filesystemPlugin.setHostRuntimeOnline(online)
+                self?.mcpPlugin.setHostRuntimeOnline(online)
+            },
             onChange: { [weak self] in self?.notifyComputerUseChanged() }
         )
         self.autoStart = DesktopComputerUseAutoStartSupervisor(
@@ -345,9 +354,14 @@ final class DesktopAppRuntime {
             hostFetch: { request in try await http.send(request) },
             clientHeaders: clientHeaders,
             getPermissions: { [unowned self] in try await self.permissionStore.refresh() },
-            getSupportedCapabilities: { [unowned self] in ComputerUseCapabilities.supported + self.filesystemPlugin.capabilities },
+            getSupportedCapabilities: { [unowned self] in
+                ComputerUseCapabilities.supported + self.filesystemPlugin.capabilities + self.mcpPlugin.capabilities
+            },
             executeCommand: { [unowned self] command, permissions in
                 if command.kind == ComputerUseCapabilities.pluginCallKind {
+                    if DesktopMcpPluginManager.isMcpCallPayload(command.payload) {
+                        return await self.mcpPlugin.execute(command)
+                    }
                     return await self.filesystemPlugin.execute(command)
                 }
                 return await executor.execute(command, permissions: permissions)
@@ -369,15 +383,14 @@ final class DesktopAppRuntime {
         DesktopComputerUseState(
             platform: "darwin", supported: true, deviceName: shellState.deviceName, permissions: permissionStore.state,
             host: computerUseController.hostState, keepAwake: keepAwake.state,
-            plugins: DesktopComputerUsePluginsState(
-                filesystem: filesystemPlugin.state,
-                mcp: DesktopComputerUseMcpPluginState(featureEnabled: false, servers: [])
-            )
+            plugins: DesktopComputerUsePluginsState(filesystem: filesystemPlugin.state, mcp: mcpPlugin.state)
         )
     }
 
     func notifyComputerUseChanged() {
         filesystemPlugin.setHostRuntimeOnline(computerUseController.isRuntimeOnline)
+        mcpPlugin.setHostRuntimeOnline(computerUseController.isRuntimeOnline)
+        shellState.plugins = DesktopComputerUsePluginsState(filesystem: filesystemPlugin.state, mcp: mcpPlugin.state)
         shellState.permissions = permissionStore.state
         shellState.host = computerUseController.hostState
         shellState.keepAwake = keepAwake.state
@@ -464,6 +477,80 @@ final class DesktopAppRuntime {
         notifyComputerUseChanged()
     }
 
+    func setFilesystemPluginEnabled(_ enabled: Bool) {
+        do {
+            try filesystemPlugin.setEnabled(enabled)
+        } catch {
+            shellState.lastActionError = String(describing: error)
+        }
+        notifyComputerUseChanged()
+    }
+
+    /// The Electron app asks with an open-directory dialog that can also
+    /// create folders.
+    func addFilesystemPluginAllowedDirectory() async {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        let response: NSApplication.ModalResponse
+        if let window = mainWindow?.window, window.isVisible {
+            response = await panel.beginSheetModal(for: window)
+        } else {
+            NSApp.activate()
+            response = panel.runModal()
+        }
+        guard response == .OK, let directory = panel.url?.path else { return }
+        do {
+            try filesystemPlugin.addAllowedDirectory(directory)
+        } catch {
+            shellState.lastActionError = String(describing: error)
+        }
+        notifyComputerUseChanged()
+    }
+
+    func removeFilesystemPluginAllowedDirectory(_ directory: String) {
+        do {
+            try filesystemPlugin.removeAllowedDirectory(directory)
+        } catch {
+            shellState.lastActionError = String(describing: error)
+        }
+        notifyComputerUseChanged()
+    }
+
+    /// Returns the parse error to show inline, or nil on success.
+    func importMcpPluginServers(_ json: String) -> String? {
+        guard !json.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "MCP server configuration must be a JSON string"
+        }
+        do {
+            try mcpPlugin.importServersJson(json)
+        } catch {
+            return String(describing: error)
+        }
+        notifyComputerUseChanged()
+        return nil
+    }
+
+    func setMcpPluginServerEnabled(_ server: String, _ enabled: Bool) {
+        do {
+            try mcpPlugin.setServerEnabled(server, enabled)
+        } catch {
+            shellState.lastActionError = String(describing: error)
+        }
+        notifyComputerUseChanged()
+    }
+
+    func removeMcpPluginServer(_ server: String) {
+        do {
+            try mcpPlugin.removeServer(server)
+        } catch {
+            shellState.lastActionError = String(describing: error)
+        }
+        notifyComputerUseChanged()
+    }
+
     func setDeveloperToolsEnabled(_ enabled: Bool) {
         _ = developerTools.setEnabled(enabled)
         notifyDeveloperToolsChanged()
@@ -498,6 +585,7 @@ final class DesktopAppRuntime {
         }
         if quitPreparation == nil {
             quitPreparation = Task { @MainActor in
+                self.mcpPlugin.stop()
                 await self.computerUseController.stopForQuit()
                 await self.disposeNativeBackend(reason: .appQuit)
                 self.quitPreparationComplete = true
