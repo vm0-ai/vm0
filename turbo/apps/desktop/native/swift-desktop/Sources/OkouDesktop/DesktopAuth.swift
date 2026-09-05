@@ -18,6 +18,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   private var webView: WKWebView?
   private var completion: CheckedContinuation<Void, any Error>?
   private var deadline: Task<Void, Never>?
+  private var signedOutProbe: Task<Void, Never>?
   private var interactive = false
   private var epoch = 0
   private var signingOut = false
@@ -229,6 +230,10 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     window.center()
     self.window = window
     webView = view
+    if interactive {
+      window.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+    }
     let currentEpoch = epoch
     let operationID = UUID()
     windowID = operationID
@@ -257,6 +262,8 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     windowID = nil
     deadline?.cancel()
     deadline = nil
+    signedOutProbe?.cancel()
+    signedOutProbe = nil
     webView?.configuration.userContentController.removeScriptMessageHandler(
       forName: "desktopAuth", contentWorld: .page)
     webView?.stopLoading()
@@ -285,13 +292,17 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     self.token = token
     tokenRevision += 1
     replyHandler(nil, nil)
-    finish(.success(()))
+    // The page still needs this WebView to acknowledge the browser handoff.
+    // Its final navigation closes the window after that request completes.
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async
     -> WKNavigationActionPolicy
   {
     guard webView === self.webView, let url = navigationAction.request.url else { return .cancel }
+    // Clerk may use cross-origin frames. Only a trusted main frame can send
+    // the token bridge message; subframe navigation does not grant that right.
+    if navigationAction.targetFrame?.isMainFrame == false { return .allow }
     guard configuration.allowsAuthPage(url) else {
       if ["https", "http", "mailto"].contains(url.scheme), interactive {
         NSWorkspace.shared.open(url)
@@ -323,6 +334,37 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
       || url.path.range(of: "^/(en|de|ja|es)/?$", options: .regularExpression) != nil
     {
       finish(.success(()))
+    } else if url.path == "/desktop-auth/token", let id = windowID {
+      probeSignedOutSession(webView, id: id)
+    }
+  }
+
+  private func probeSignedOutSession(_ view: WKWebView, id: UUID) {
+    signedOutProbe?.cancel()
+    signedOutProbe = Task { [weak self, weak view] in
+      while !Task.isCancelled {
+        guard let self, let view, self.windowID == id else { return }
+        do {
+          let anonymous =
+            try await view.evaluateJavaScript(
+              "window.Clerk?.loaded === true && window.Clerk.session === null") as? Bool
+          guard !Task.isCancelled, self.windowID == id, self.webView === view,
+            view.url?.path == "/desktop-auth/token"
+          else { return }
+          if anonymous == true {
+            // The web token page waits for workspace-list loading even without
+            // a session. Complete an anonymous restore once Clerk itself is ready.
+            if self.interactive { NSWorkspace.shared.open(self.configuration.signInURL) }
+            self.finish(.success(()))
+            return
+          }
+          try await Task.sleep(for: .milliseconds(250))
+        } catch {
+          guard !Task.isCancelled, self.windowID == id else { return }
+          self.finish(.failure(error))
+          return
+        }
+      }
     }
   }
 

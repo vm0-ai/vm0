@@ -21,7 +21,8 @@ extension NativeIntegrationTests {
           def log_message(self,*args): pass
           def do_GET(self):
               if self.path.startswith('/desktop-auth/'):
-                  kind='text/html';data=b'<script>window.vm0DesktopAuth.completeSignIn({token:"capture-owner"});</script>'
+                  kind='text/html';data=b'<script>window.vm0DesktopAuth.completeSignIn({token:"capture-owner"}).then(()=>window.location.replace("/"));</script>'
+              elif self.path=='/': kind='text/html';data=b'<html>Done</html>'
               elif self.path=='/api/auth/me': kind='application/json';data=b'{"userId":"capture-user"}'
               elif self.path=='/api/org': kind='application/json';data=b'{"id":"capture-org"}'
               else: kind='application/json';data=b'{}'

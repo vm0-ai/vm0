@@ -168,7 +168,8 @@ import Testing
           def do_GET(self):
               global features_valid,organization
               if self.path.startswith('/desktop-auth/'):
-                  self.reply(b'<html><body><script>window.vm0DesktopAuth.completeSignIn({token:"fixture-same-token"});</script></body></html>',content_type='text/html')
+                  self.reply(b'<html><body><script>window.vm0DesktopAuth.completeSignIn({token:"fixture-same-token"}).then(()=>window.location.replace("/"));</script></body></html>',content_type='text/html')
+              elif self.path=='/': self.reply(b'<html>Done</html>',content_type='text/html')
               elif self.path=='/api/auth/me': self.reply(b'{"userId":"fixture-user"}')
               elif self.path=='/api/org': self.reply(json.dumps({"id":organization,"name":"Fixture"}).encode())
               elif self.path=='/api/test/switch-org': organization="changed-org"; self.reply(b'{}')

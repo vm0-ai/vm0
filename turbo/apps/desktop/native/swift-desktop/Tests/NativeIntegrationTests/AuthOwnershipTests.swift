@@ -24,6 +24,10 @@ extension NativeIntegrationTests {
       hold_features=False
       features_started=False
       feature_release=threading.Event()
+      hold_handoff=False
+      handoff_started=False
+      handoff_release=threading.Event()
+      anonymous=False
       class Handler(BaseHTTPRequestHandler):
           def log_message(self,*args): pass
           def reply(self,data,status=200,kind='application/json'):
@@ -33,16 +37,30 @@ extension NativeIntegrationTests {
               self.end_headers()
               try: self.wfile.write(data)
               except (BrokenPipeError,ConnectionResetError): pass
+          def do_POST(self):
+              global handoff_started
+              if self.path=='/api/desktop-auth/handoff/fixture/complete':
+                  with condition:
+                      handoff_started=True
+                      condition.notify_all()
+                  if hold_handoff: handoff_release.wait(20)
+                  self.reply(b'{}')
+              else: self.reply(b'{}',404)
           def do_GET(self):
               global generation,requests,identity_started,expired,features_started
               if self.path.startswith('/desktop-auth/'):
+                  if anonymous:
+                      self.reply(b'<script>window.Clerk={loaded:true,session:null};</script>',kind='text/html')
+                      return
                   with condition:
                       requests+=1
                       if self.path.startswith('/desktop-auth/select-org'): generation+=1
                       expired=False
                       token=f'fixture-{generation}'
-                  self.reply(('<script>window.vm0DesktopAuth.completeSignIn({token:'+json.dumps(token)+'});</script>').encode(),kind='text/html')
+                  page='<script>(async()=>{await window.vm0DesktopAuth.completeSignIn({token:'+json.dumps(token)+'});await fetch("/api/desktop-auth/handoff/fixture/complete",{method:"POST"});window.location.replace("/");})();</script>'
+                  self.reply(page.encode(),kind='text/html')
                   return
+              if self.path=='/': self.reply(b'<html>Done</html>',kind='text/html');return
               token=self.headers.get('Authorization','').removeprefix('Bearer ')
               owner=token.removeprefix('fixture-')
               if expired: self.reply(b'{}',401); return
@@ -81,7 +99,13 @@ extension NativeIntegrationTests {
           elif kind=='wait-features':
               with condition: condition.wait_for(lambda:features_started,timeout=20)
           elif kind=='release-features': feature_release.set()
-          print(json.dumps({'id':command['id'],'status':'succeeded','result':{'port':server.server_port,'requests':requests,'identityStarted':identity_started,'featuresStarted':features_started}}),flush=True)
+          elif kind=='hold-handoff': hold_handoff=True
+          elif kind=='wait-handoff':
+              with condition: condition.wait_for(lambda:handoff_started,timeout=20)
+          elif kind=='release-handoff': hold_handoff=False;handoff_release.set()
+          elif kind=='anonymous': anonymous=True
+          elif kind=='authenticated': anonymous=False
+          print(json.dumps({'id':command['id'],'status':'succeeded','result':{'port':server.server_port,'requests':requests,'identityStarted':identity_started,'featuresStarted':features_started,'handoffStarted':handoff_started}}),flush=True)
       """
     let server = HelperProcess(
       executable: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["python3", "-u", "-c", script])
@@ -111,6 +135,21 @@ extension NativeIntegrationTests {
     await #expect(throws: CancellationError.self) { try await cancelled.value }
     let untouched = try await server.request("inspect")
     #expect(untouched["requests"].number == 0)
+    _ = try await server.request("hold-handoff")
+    var tokenReturned = false
+    let refresh = Task {
+      let token = try await auth.getToken(force: true)
+      tokenReturned = true
+      return token
+    }
+    let handoff = try await server.request("wait-handoff")
+    #expect(handoff["handoffStarted"].bool)
+    #expect(!tokenReturned)
+    _ = try await server.request("release-handoff")
+    #expect(try await refresh.value == "fixture-0")
+    _ = try await server.request("anonymous")
+    #expect(try await auth.getToken(force: true) == nil)
+    _ = try await server.request("authenticated")
     #expect(try await auth.getToken(force: true) == "fixture-0")
     let api = DesktopAPI(configuration: configuration)
     api.tokenProvider = { force in try await auth.getToken(force: force) }

@@ -69,6 +69,15 @@ installation. The current staging Worker frontend origin is also now supported
 by the native API/auth origin resolver; that configuration has not yet undergone
 a live Clerk handoff.
 
+The anonymous token-page stall also reproduces in a separate ordinary browser:
+Clerk reports loaded with a null session while the page remains on its handoff
+spinner. Native restoration now recognizes that state, and interactive WebKit
+windows are visible so consent and error pages can be resolved. Receiving a
+token no longer closes WebKit before the page can complete its server-side
+browser handoff; a real HTTP barrier regression holds that acknowledgement
+before allowing the final navigation. This repair still requires a live
+authenticated Clerk walkthrough on the packaged native build.
+
 ## Feature inventory and evidence
 
 | Existing behavior                                                                                | Native implementation                                        | Acceptance still required                                                           |
