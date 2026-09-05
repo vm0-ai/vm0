@@ -1233,7 +1233,7 @@ function AuthMethodDivider() {
   return (
     <div className="relative py-1">
       <div className="absolute inset-0 flex items-center">
-        <span className="w-full zero-border-t" />
+        <span className="w-full okou-border-t" />
       </div>
       <div className="relative flex justify-center text-xs">
         <span className="bg-background px-2 text-muted-foreground">

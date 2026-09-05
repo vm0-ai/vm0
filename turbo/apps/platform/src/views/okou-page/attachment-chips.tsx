@@ -475,7 +475,7 @@ function ArtifactDialogCard({
       className={`flex w-full flex-1 flex-col overflow-hidden ${
         fillHeight
           ? "h-full min-h-0 bg-transparent"
-          : "zero-chat-card min-h-[420px]"
+          : "okou-chat-card min-h-[420px]"
       }`}
       data-testid="artifact-dialog-card"
     >
@@ -709,7 +709,7 @@ function ArtifactDialogVideoBody({
   return (
     <ArtifactDialogStage centered>
       <div
-        className="zero-chat-frame w-full overflow-hidden bg-black"
+        className="okou-chat-frame w-full overflow-hidden bg-black"
         data-testid="artifact-dialog-video-stage"
       >
         {resourceUrl !== null && (
@@ -745,7 +745,7 @@ function ArtifactDialogAudioBody({
 
   return (
     <ArtifactDialogStage centered>
-      <div className="zero-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
+      <div className="okou-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
         <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
           <FileMusic size={28} />
         </span>
@@ -792,7 +792,7 @@ function ArtifactDialogDocumentFrameBody({
   return (
     <ArtifactDialogStage scrollable={false}>
       <div
-        className="zero-chat-card flex h-full min-h-0 w-full flex-1 overflow-hidden"
+        className="okou-chat-card flex h-full min-h-0 w-full flex-1 overflow-hidden"
         data-testid="artifact-dialog-document-frame"
       >
         {src !== null && (
@@ -817,7 +817,7 @@ function ArtifactDialogGenericFileBody({ filename }: { filename: string }) {
   const { t } = useTranslation();
   return (
     <ArtifactDialogStage centered>
-      <div className="zero-chat-card flex w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
+      <div className="okou-chat-card flex w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
         <p className="text-sm">
           {t(($) => {
             return $.artifacts.preview.noInline;
@@ -1276,9 +1276,9 @@ function ArtifactPreviewDialogContent({
       <DialogContent
         ref={dialogMountRef}
         showCloseButton={false}
-        overlayClassName="zero-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
+        overlayClassName="okou-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
         className={cn(
-          "zero-pwa-fixed-cover fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
+          "okou-pwa-fixed-cover fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
           fullscreen ? "p-0" : "p-6",
         )}
         aria-label={t(
@@ -1312,7 +1312,7 @@ function ArtifactPreviewDialogContent({
           className={cn(
             "relative flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
             fullscreen
-              ? "zero-fixed-viewport-shell w-dvw rounded-none"
+              ? "okou-fixed-viewport-shell w-dvw rounded-none"
               : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-xl",
           )}
           data-testid="attachment-lightbox-panel"

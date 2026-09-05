@@ -181,7 +181,7 @@ function WorkflowCard({
   return (
     <article
       className={cn(
-        "relative flex min-h-[143px] min-w-0 flex-col justify-between gap-3.5 rounded-xl border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        "relative flex min-h-[143px] min-w-0 flex-col justify-between gap-3.5 rounded-xl border bg-background p-4 text-left shadow-[var(--okou-card-shadow)] transition-colors hover:border-primary",
         selected && "border-primary",
       )}
     >
@@ -269,7 +269,7 @@ function WorkflowOptions({
           onSelect(CUSTOM_WORKFLOW_ID);
         }}
         className={cn(
-          "flex min-h-[143px] flex-col justify-center gap-2 rounded-xl border border-dashed border-border bg-background p-4 text-left text-muted-foreground shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary hover:text-foreground",
+          "flex min-h-[143px] flex-col justify-center gap-2 rounded-xl border border-dashed border-border bg-background p-4 text-left text-muted-foreground shadow-[var(--okou-card-shadow)] transition-colors hover:border-primary hover:text-foreground",
           selectedId === CUSTOM_WORKFLOW_ID &&
             "border-solid border-primary text-foreground",
         )}
@@ -386,7 +386,7 @@ function CategoryOptions({
             onClick={() => {
               onSelect(category);
             }}
-            className="relative isolate flex min-h-[130px] min-w-0 flex-col items-start overflow-hidden rounded-xl border border-border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary"
+            className="relative isolate flex min-h-[130px] min-w-0 flex-col items-start overflow-hidden rounded-xl border border-border bg-background p-4 text-left shadow-[var(--okou-card-shadow)] transition-colors hover:border-primary"
           >
             <CategoryConnectorBackground category={category} />
             <span className="relative z-10 flex min-w-0 flex-col items-start gap-2.5">

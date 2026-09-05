@@ -29,7 +29,7 @@ async function messageComposer(): Promise<HTMLElement> {
 }
 
 function composerDropTarget(): HTMLElement {
-  const target = document.querySelector<HTMLElement>(".zero-composer");
+  const target = document.querySelector<HTMLElement>(".okou-composer");
   if (!target) {
     throw new Error("Expected the composer drop target");
   }

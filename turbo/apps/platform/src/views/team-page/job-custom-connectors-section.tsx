@@ -198,7 +198,7 @@ function ConnectedJobCustomConnectorsSection({
   }
 
   return (
-    <div className="zero-card">
+    <div className="okou-card">
       <div className="px-5 pt-4 pb-3 text-sm text-muted-foreground border-b border-border/50">
         {t(($) => {
           return $.authorization.customConnectors.description;

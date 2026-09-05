@@ -190,7 +190,7 @@ function RealtimeStatusIcon({
       className={cn(
         "relative mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground",
         status === "reconnecting"
-          ? "zero-realtime-status-reconnecting"
+          ? "okou-realtime-status-reconnecting"
           : "opacity-80",
       )}
     >
@@ -207,7 +207,7 @@ function RealtimeStatusIcon({
           <Cloud
             size={14}
             strokeWidth={1.75}
-            className="zero-realtime-cloud-flow"
+            className="okou-realtime-cloud-flow"
             aria-hidden="true"
           />
         </>

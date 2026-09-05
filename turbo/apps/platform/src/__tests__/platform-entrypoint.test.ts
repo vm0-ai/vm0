@@ -20,7 +20,7 @@ async function waitForApplicationStart(): Promise<void> {
 async function stopApplication(): Promise<void> {
   window.dispatchEvent(new Event("pagehide"));
   await waitFor(() => {
-    expect(document.querySelector(".zero-app")).toBeNull();
+    expect(document.querySelector(".okou-app")).toBeNull();
   });
 }
 

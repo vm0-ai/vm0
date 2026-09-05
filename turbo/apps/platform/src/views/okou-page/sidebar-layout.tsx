@@ -352,7 +352,7 @@ function MobileSidebarMount() {
       <Sidebar isDesktop={false} />
       <div
         data-sidebar-expanded={expanded || undefined}
-        className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
+        className="okou-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
         aria-label={t(($) => {
           return $.appShell.sidebar.mobile.overlay;
         })}
@@ -375,7 +375,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="zero-app zero-viewport-shell flex w-full bg-background"
+      className="okou-app okou-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
@@ -387,7 +387,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <AttachmentLightboxMount />
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 okou-workspace-bg okou-workspace-card">
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}

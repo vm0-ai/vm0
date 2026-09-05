@@ -1287,7 +1287,7 @@ function WorkflowChatButton({
       size="sm"
       type="button"
       aria-label={chatLabel}
-      className="zero-btn-morandi max-w-[220px] shrink-0 gap-1.5"
+      className="okou-btn-morandi max-w-[220px] shrink-0 gap-1.5"
       disabled={opening}
       onClick={() => {
         detach(
@@ -1400,7 +1400,7 @@ function WorkflowInfoTab({
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
       <WorkflowMetadataForm detail={detail} />
-      <div className="zero-card overflow-hidden">
+      <div className="okou-card overflow-hidden">
         <div className="p-4 sm:p-5">
           <InlineSettingsRow
             label={i18n.t(($) => {
@@ -1415,7 +1415,7 @@ function WorkflowInfoTab({
               type="button"
               variant="outline"
               size="sm"
-              className="zero-btn-morandi h-9 gap-2 rounded-lg"
+              className="okou-btn-morandi h-9 gap-2 rounded-lg"
               onClick={() => {
                 setActionDialog("copy");
               }}
@@ -1432,7 +1432,7 @@ function WorkflowInfoTab({
         <OfficialWorkflowInstallationSettings detail={detail} />
       ) : null}
       {detail.canManage && !detail.official ? (
-        <div className="zero-card overflow-hidden border-destructive/20">
+        <div className="okou-card overflow-hidden border-destructive/20">
           <div className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
               <div className="min-w-0 sm:max-w-[46%]">
@@ -1548,7 +1548,7 @@ function OfficialWorkflowReconfigureCard({
         return $.workflows.official.reconfigureUnavailable;
       });
   return (
-    <div className="zero-card overflow-hidden">
+    <div className="okou-card overflow-hidden">
       <div className="p-4 sm:p-5">
         <InlineSettingsRow
           label={i18n.t(($) => {
@@ -1561,7 +1561,7 @@ function OfficialWorkflowReconfigureCard({
             type="button"
             variant="outline"
             size="sm"
-            className="zero-btn-morandi h-9 rounded-lg"
+            className="okou-btn-morandi h-9 rounded-lg"
             disabled={!definition || loading}
             onClick={() => {
               if (!definition) {
@@ -1594,7 +1594,7 @@ function OfficialWorkflowReconfigureCard({
 function OfficialWorkflowUninstallCard() {
   const setActionDialog = useSet(setWorkflowActionDialog$);
   return (
-    <div className="zero-card overflow-hidden border-destructive/20">
+    <div className="okou-card overflow-hidden border-destructive/20">
       <div className="p-4 sm:p-5">
         <InlineSettingsRow
           label={i18n.t(($) => {
@@ -1987,7 +1987,7 @@ function WorkflowMetadataForm({
     <>
       <form
         aria-label={copy.aria}
-        className="zero-card overflow-hidden"
+        className="okou-card overflow-hidden"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault();
           if (!event.currentTarget.checkValidity()) {
@@ -2017,7 +2017,7 @@ function WorkflowInstructionsTab({
 }) {
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="zero-card overflow-hidden px-5 pb-5">
+      <div className="okou-card overflow-hidden px-5 pb-5">
         <WorkflowFilePreview detail={detail} />
       </div>
     </div>
@@ -4541,7 +4541,7 @@ function AutomationCreateMenu({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
+          className="okou-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
         >
           <Plus size={14} />
           <span>
@@ -5002,7 +5002,7 @@ function AutomationsSection({
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
       <div className="flex flex-col gap-2">
         {automations.length > 0 ? (
-          <div className="zero-card overflow-visible">
+          <div className="okou-card overflow-visible">
             {automations.map((automation, index) => {
               return (
                 <AutomationRow
@@ -5019,7 +5019,7 @@ function AutomationsSection({
             })}
           </div>
         ) : (
-          <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+          <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
             <img
               src={emptyAutomationsImg}
               alt={i18n.t(($) => {

@@ -926,7 +926,7 @@
     background-color: rgba(128, 128, 128, 0.5);
   }
 
-  .zero-dialog-overlay[data-open] {
+  .okou-dialog-overlay[data-open] {
     animation: zero-dialog-overlay-in 180ms ease;
   }
 
@@ -934,7 +934,7 @@
      dialog mounts open again. Only let the ending style win after the dialog
      is no longer open, otherwise the first frame flashes fully visible before
      the enter animation starts. */
-  .zero-dialog-overlay[data-ending-style]:not([data-open]) {
+  .okou-dialog-overlay[data-ending-style]:not([data-open]) {
     animation: zero-dialog-overlay-out 180ms ease;
   }
 
@@ -943,7 +943,7 @@
      a pixel — including the scrim fading its own opacity — re-blurs the whole
      viewport. So the blur waits out the fade and drops again the moment the
      dialog starts closing, which leaves both transitions blur-free. */
-  .zero-dialog-overlay::after {
+  .okou-dialog-overlay::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -951,18 +951,18 @@
     backdrop-filter: blur(2px);
   }
 
-  .zero-dialog-overlay[data-open]::after {
+  .okou-dialog-overlay[data-open]::after {
     animation: zero-dialog-blur-in 180ms step-end;
   }
 
-  .zero-dialog-overlay[data-ending-style]:not([data-open])::after {
+  .okou-dialog-overlay[data-ending-style]:not([data-open])::after {
     visibility: hidden;
   }
 
   /* Dialogs that skip the enter animation have no fade to wait out, so the
      blur lands with the scrim instead of trailing it. */
-  .zero-dialog-overlay-instant[data-open],
-  .zero-dialog-overlay-instant[data-open]::after {
+  .okou-dialog-overlay-instant[data-open],
+  .okou-dialog-overlay-instant[data-open]::after {
     animation: none;
   }
 
@@ -970,32 +970,32 @@
      underneath it, and the page keeps a breathing dot per running thread. Park
      them for as long as a scrim is mounted — indicators inside the dialog keep
      running, since those still carry state the user is looking at. */
-  html:has(.zero-dialog-overlay)
+  html:has(.okou-dialog-overlay)
     :is(.running-indicator-center, .running-indicator-ripple):not(
-      .zero-dialog-content *
+      .okou-dialog-content *
     ) {
     animation-play-state: paused;
   }
 
-  .zero-dialog-content[data-open] {
+  .okou-dialog-content[data-open] {
     animation: zero-dialog-content-in 180ms ease;
   }
 
-  .zero-dialog-content[data-ending-style]:not([data-open]) {
+  .okou-dialog-content[data-ending-style]:not([data-open]) {
     animation: zero-dialog-content-out 180ms ease;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .zero-dialog-overlay[data-open],
-    .zero-dialog-overlay[data-ending-style],
-    .zero-dialog-content[data-open],
-    .zero-dialog-content[data-ending-style] {
+    .okou-dialog-overlay[data-open],
+    .okou-dialog-overlay[data-ending-style],
+    .okou-dialog-content[data-open],
+    .okou-dialog-content[data-ending-style] {
       animation: none;
     }
 
     /* Without the fade there is nothing to wait for, so the blur can land
        with the scrim. */
-    .zero-dialog-overlay[data-open]::after {
+    .okou-dialog-overlay[data-open]::after {
       animation: none;
     }
   }

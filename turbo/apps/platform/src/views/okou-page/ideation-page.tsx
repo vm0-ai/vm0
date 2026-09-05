@@ -247,7 +247,7 @@ export function IdeationPage() {
                           return (
                             <Card
                               key={useCase.title}
-                              className="zero-card cursor-pointer hover:bg-state-hover transition-colors"
+                              className="okou-card cursor-pointer hover:bg-state-hover transition-colors"
                               onClick={() => {
                                 return handleSelectPrompt(useCase.prompt);
                               }}

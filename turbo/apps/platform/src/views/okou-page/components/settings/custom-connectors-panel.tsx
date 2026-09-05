@@ -270,7 +270,7 @@ function CustomConnectorActivationCard({
   const { t } = useTranslation();
   return (
     <div
-      className={`zero-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
+      className={`okou-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
     >
       {canActivate ? (
         <button
@@ -499,7 +499,7 @@ function CustomConnectorDialogs({
 function CustomConnectorEmptyState({ isAdmin }: { readonly isAdmin: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="zero-card py-12 flex flex-col items-center gap-3">
+    <div className="okou-card py-12 flex flex-col items-center gap-3">
       <img
         src={noConnectorImg}
         alt={t(($) => {

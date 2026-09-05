@@ -56,7 +56,7 @@ export function ConnectorIcon({
             decoding="async"
             className={cn(
               "block h-full w-full max-h-full max-w-full object-contain",
-              icon.invertInDarkMode && "zero-icon-mono",
+              icon.invertInDarkMode && "okou-icon-mono",
             )}
             style={
               icon.scale === undefined

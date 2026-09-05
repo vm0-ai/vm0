@@ -138,7 +138,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
       <div
         // 12px, not the Button default 8px: the split control and the menu it
         // opens read as one object when their outer radii agree.
-        className="inline-flex h-8 items-stretch rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-[var(--zero-card-shadow)]"
+        className="inline-flex h-8 items-stretch rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-[var(--okou-card-shadow)]"
       >
         <Button
           type="button"

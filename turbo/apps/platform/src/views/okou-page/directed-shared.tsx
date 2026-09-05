@@ -32,7 +32,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="zero-app zero-viewport-shell flex w-full bg-background"
+      className="okou-app okou-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
@@ -46,7 +46,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
       />
       <CreditPurchaseConfirmDialog />
       <SubscriptionPurchaseConfirmDialog />
-      <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
+      <aside className="okou-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
         <div className="flex-1" />
         <div className="p-2">
           <AccountDropdown
@@ -55,7 +55,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
           />
         </div>
       </aside>
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 okou-workspace-bg okou-workspace-card">
         {children}
       </div>
     </div>

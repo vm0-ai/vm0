@@ -337,7 +337,7 @@ export function AgentDeleteDialog({
   };
 
   return (
-    <Card className="zero-card overflow-hidden border-destructive/20 mt-4">
+    <Card className="okou-card overflow-hidden border-destructive/20 mt-4">
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0 sm:max-w-[46%]">
