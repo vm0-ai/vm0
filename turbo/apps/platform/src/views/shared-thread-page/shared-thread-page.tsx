@@ -213,12 +213,9 @@ function SharedAssistantGroup({
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <SharedAssistantAvatar assistantName={assistantName} />
         <div className="relative flex min-w-0 flex-col gap-2">
-          {group.messages.map((message, index) => {
+          {group.messages.map((message) => {
             return (
-              <ChatAssistantMessageBody
-                key={message.messageIndex}
-                compactTop={index > 0}
-              >
+              <ChatAssistantMessageBody key={message.messageIndex}>
                 {message.tree === undefined && richContent !== undefined ? (
                   <SharedRichMessageBody
                     messageIndex={message.messageIndex}
