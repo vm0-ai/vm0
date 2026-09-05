@@ -898,13 +898,13 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.example.test");
     const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
     const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
         },
       },
     });
@@ -925,6 +925,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const run = await api.createDirectRun(actor, {
       agentId: compose.agentId,
       prompt: "create compressed checkpoint",
+      modelProviderType: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
     const headers = sandboxHeaders(claim.sandboxToken);
@@ -976,6 +977,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const compressedContinuation = await api.createDirectRun(actor, {
       sessionId: run.sessionId,
       prompt: "continue with compressed ref",
+      modelProviderType: "anthropic-api-key",
     });
     const compressedClaim = await api.claimRunnerJob(
       compressedContinuation.runId,
@@ -1000,13 +1002,13 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
     const composeName = `bdd-zstd-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
         },
       },
     });
@@ -1031,6 +1033,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const run = await api.createDirectRun(actor, {
       agentId: compose.agentId,
       prompt: "create zstd compressed checkpoint",
+      modelProviderType: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
     const headers = sandboxHeaders(claim.sandboxToken);
@@ -1082,6 +1085,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const compressedContinuation = await api.createDirectRun(actor, {
       sessionId: run.sessionId,
       prompt: "continue with zstd compressed ref",
+      modelProviderType: "anthropic-api-key",
     });
     const compressedClaim = await api.claimRunnerJob(
       compressedContinuation.runId,
@@ -1284,6 +1288,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
     const volumeArchiveSize = 12_345;
     storages.mockStoragePresignedUrls();
     storages.mockStorageObjectsExist(volumeArchiveSize);
@@ -1328,7 +1333,6 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
           volumes: ["data:/data"],
         },
       },
@@ -1367,6 +1371,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const r1 = await api.createDirectRun(actor, {
       agentId: compose.agentId,
       prompt: "pin the volume by version prefix",
+      modelProviderType: "anthropic-api-key",
       vars: { VOL_VERSION: versionPrefix },
       artifacts: [
         { name: "memory", mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH },
@@ -1435,7 +1440,6 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-latest-inline-key" },
           volumes: ["data:/data"],
         },
       },
@@ -1527,6 +1531,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const continued = await api.createDirectRun(actor, {
       sessionId: r1.sessionId,
       prompt: "continue the checkpointed session",
+      modelProviderType: "anthropic-api-key",
     });
     expect(continued.sessionId).toBe(r1.sessionId);
     const continuedClaim = await api.claimRunnerJob(continued.runId);
