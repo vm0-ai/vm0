@@ -250,7 +250,9 @@ const dispatchClaim$ = command(
         productAgentExecutionPlan: {
           content: {
             version: "1",
-            agent: { framework: "pi" },
+            // Pi is the sandbox execution overlay; the canonical Agent
+            // definition still needs a supported base framework.
+            agent: { framework: "claude-code" },
           },
         },
         connectorScope: {

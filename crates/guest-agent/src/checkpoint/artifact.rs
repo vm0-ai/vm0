@@ -318,19 +318,21 @@ pub(super) async fn snapshot_artifact_entries_for_checkpoint(
     let maintenance =
         maintenance_checkpoint_guard(pi_launch_config, pi_launch_payload_file, run_id, mode)?;
     if let Some(guard) = maintenance.as_ref() {
-        if entries.len() != 1
-            || entries[0].name != "memory"
-            || entries[0].storage_id != guard.launch.memory_storage_id
-            || entries[0].version_id != guard.launch.claimed_base_version_id
+        let [entry] = entries else {
+            return Err(maintenance_checkpoint_error());
+        };
+        if entry.name != "memory"
+            || entry.storage_id != guard.launch.memory_storage_id
+            || entry.version_id != guard.launch.claimed_base_version_id
         {
             return Err(maintenance_checkpoint_error());
         }
         if mode == CheckpointMode::Recovery {
             return Ok(Some(vec![build_artifact_snapshot_entry(
-                &entries[0].name,
-                &entries[0].version_id,
-                &entries[0].mount_path,
-                entries[0].missing_root_policy,
+                &entry.name,
+                &entry.version_id,
+                &entry.mount_path,
+                entry.missing_root_policy,
             )]));
         }
     }
@@ -350,7 +352,7 @@ pub(super) async fn snapshot_artifact_entries_for_checkpoint(
         let Some(attestation) = guard.attestation.as_ref() else {
             return Err(maintenance_checkpoint_error());
         };
-        let ArtifactSnapshotPlan::Snapshot { entry, files } = &plans[0] else {
+        let [ArtifactSnapshotPlan::Snapshot { entry, files }] = plans.as_slice() else {
             return Err(maintenance_checkpoint_error());
         };
         let local_hash = content_hash::compute_content_hash(
