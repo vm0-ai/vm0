@@ -288,11 +288,29 @@ describe("native pending-tool cancellation", () => {
           return event === "agent_settled";
         }),
       ).toHaveLength(1);
-      expect(session.messages.at(-1)).toMatchObject({
+      expect(
+        session.messages
+          .filter((message) => {
+            return message.role === "assistant";
+          })
+          .at(-1),
+      ).toMatchObject({
         role: "assistant",
         stopReason: "aborted",
       });
-      expect(session.pendingMessageCount).toBe(2);
+      expect(session.pendingMessageCount).toBe(0);
+      const cancelledHistory =
+        SessionManager.open(file).buildSessionContext().messages;
+      for (const text of ["acknowledged steering", "acknowledged follow-up"]) {
+        expect(
+          cancelledHistory.filter((message) => {
+            return (
+              message.role === "user" &&
+              JSON.stringify(message.content).includes(text)
+            );
+          }),
+        ).toHaveLength(1);
+      }
       expect(session.agent.signal).toBeUndefined();
       await expect(resumePiApiFirstTurn(session)).rejects.toThrow(
         "no pending tool calls",
@@ -452,10 +470,22 @@ describe("native pending-tool cancellation", () => {
       cancelled.promise,
     ]);
     expect(requests).toBe(1);
-    expect(session.messages.at(-1)).toMatchObject({ stopReason: "aborted" });
-    expect(session.getSteeringMessages()).toContain(
-      "accepted during native end",
-    );
+    expect(
+      session.messages
+        .filter((message) => {
+          return message.role === "assistant";
+        })
+        .at(-1),
+    ).toMatchObject({ stopReason: "aborted" });
+    expect(session.getSteeringMessages()).toEqual([]);
+    expect(
+      session.messages.filter((message) => {
+        return (
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("accepted during native end")
+        );
+      }),
+    ).toHaveLength(1);
     expect(events).not.toContain("auto_retry_start");
     expect(events).not.toContain("compaction_start");
     expect(
@@ -638,7 +668,7 @@ describe("native pending-tool cancellation", () => {
     ).toHaveLength(1);
   }, 150_000);
 
-  it("does not compact or consume an end-handler queue after cancellation", async () => {
+  it("persists an end-handler queue without compaction or execution after cancellation", async () => {
     if (await runInIsolatedProcess(import.meta.url)) return;
     const requests = observeRequests(270_000);
     const { session, events } = await fixture({
@@ -656,10 +686,24 @@ describe("native pending-tool cancellation", () => {
     await resumePiApiFirstTurn(session);
     await abort;
     expect(requests).toHaveLength(1);
-    expect(session.getFollowUpMessages()).toEqual([
-      "owned end-handler follow-up",
-    ]);
-    expect(session.messages.at(-1)).toMatchObject({ stopReason: "aborted" });
+    expect(session.getFollowUpMessages()).toEqual([]);
+    expect(
+      session.messages.filter((message) => {
+        return (
+          message.role === "user" &&
+          JSON.stringify(message.content).includes(
+            "owned end-handler follow-up",
+          )
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      session.messages
+        .filter((message) => {
+          return message.role === "assistant";
+        })
+        .at(-1),
+    ).toMatchObject({ stopReason: "aborted" });
     expect(events).not.toContain("compaction_start");
     expect(
       events.filter((event) => {

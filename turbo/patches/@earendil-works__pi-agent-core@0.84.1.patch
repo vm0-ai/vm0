@@ -7,7 +7,36 @@ diff --git a/dist/agent.js b/dist/agent.js
  import { getDefaultStreamFn } from "./stream-fn.js";
  function defaultConvertToLlm(messages) {
      return messages.filter((message) => message.role === "user" || message.role === "assistant" || message.role === "toolResult");
-@@ -254,6 +254,36 @@
+@@ -171,12 +171,19 @@ export class Agent {
+     }
+     /** Queue a message to be injected after the current assistant turn finishes. */
+     steer(message) {
++        this.assertQueueAdmission();
+         this.steeringQueue.enqueue(message);
+     }
+     /** Queue a message to run only after the agent would otherwise stop. */
+     followUp(message) {
++        this.assertQueueAdmission();
+         this.followUpQueue.enqueue(message);
+     }
++    assertQueueAdmission() {
++        if (this.activeRun?.acceptingMessages === false) {
++            throw new Error("Agent is settling. Wait for completion before submitting input.");
++        }
++    }
+     /** Remove all queued steering messages. */
+     clearSteeringQueue() {
+         this.steeringQueue.clear();
+@@ -200,7 +207,7 @@ export class Agent {
+     }
+     /** Abort the current run, if one is active. */
+     abort() {
+-        this.activeRun?.abortController.abort();
++        if (this.activeRun?.acceptingMessages !== false) this.activeRun?.abortController.abort();
+     }
+     /**
+      * Resolve when the current run and all awaited event listeners have finished.
+@@ -254,6 +261,53 @@ export class Agent {
          }
          await this.runContinuation();
      }
@@ -21,45 +50,88 @@ diff --git a/dist/agent.js b/dist/agent.js
 +        await this.runWithLifecycle(async (signal) => {
 +            options.onStart?.();
 +            await runAgentLoopPendingTools(context, pending, this.createLoopConfig(), (event) => this.processEvents(event), signal, this.streamFunction);
++            await this.handlePendingPostRun(signal, options.afterRun);
++        }, options);
++    }
++    async handlePendingPostRun(signal, afterRun) {
++        if (signal.aborted && this._state.messages.at(-1)?.stopReason === "aborted") return;
++        signal.throwIfAborted();
++        while (await afterRun?.(signal)) {
++            await this.runPendingContinuation(signal);
 +            if (signal.aborted && this._state.messages.at(-1)?.stopReason === "aborted") return;
 +            signal.throwIfAborted();
-+            while (await options.afterRun?.(signal)) {
-+                signal.throwIfAborted();
-+                const lastMessage = this._state.messages.at(-1);
-+                if (lastMessage?.role === "assistant") {
-+                    const steering = this.steeringQueue.drain();
-+                    const messages = steering.length > 0 ? steering : this.followUpQueue.drain();
-+                    if (messages.length === 0) throw new Error("Cannot continue from message role: assistant");
-+                    await runAgentLoop(messages, this.createContextSnapshot(), this.createLoopConfig({ skipInitialSteeringPoll: steering.length > 0 }), (event) => this.processEvents(event), signal, this.streamFunction);
-+                }
-+                else {
-+                    await runAgentLoopContinue(this.createContextSnapshot(), this.createLoopConfig(), (event) => this.processEvents(event), signal, this.streamFunction);
-+                }
-+                if (signal.aborted && this._state.messages.at(-1)?.stopReason === "aborted") return;
-+                signal.throwIfAborted();
++        }
++        signal.throwIfAborted();
++    }
++    async runPendingContinuation(signal) {
++        signal.throwIfAborted();
++        if (this._state.messages.at(-1)?.role === "assistant") {
++            const steering = this.steeringQueue.drain();
++            const messages = steering.length > 0 ? steering : this.followUpQueue.drain();
++            if (messages.length === 0) throw new Error("Cannot continue from message role: assistant");
++            await runAgentLoop(messages, this.createContextSnapshot(), this.createLoopConfig({ skipInitialSteeringPoll: steering.length > 0 }), (event) => this.processEvents(event), signal, this.streamFunction);
++        }
++        else {
++            await runAgentLoopContinue(this.createContextSnapshot(), this.createLoopConfig(), (event) => this.processEvents(event), signal, this.streamFunction);
++        }
++    }
++    async persistCancelledQueue() {
++        // Admission is closed. Preserve accepted input through native events,
++        // without starting another turn, tool, provider, retry or compaction.
++        while (this.hasQueuedMessages()) {
++            const steering = this.steeringQueue.drain();
++            const messages = steering.length > 0 ? steering : this.followUpQueue.drain();
++            for (const message of messages) {
++                await this.processEvents({ type: "message_start", message });
++                await this.processEvents({ type: "message_end", message });
 +            }
-+            signal.throwIfAborted();
-+        }, options.onSettled);
++        }
 +    }
      normalizePromptInput(input, images) {
          if (Array.isArray(input)) {
              return input;
-@@ -323,7 +353,7 @@
+@@ -323,7 +377,7 @@ export class Agent {
              getFollowUpMessages: async () => this.followUpQueue.drain(),
          };
      }
 -    async runWithLifecycle(executor) {
-+    async runWithLifecycle(executor, onSettled) {
++    async runWithLifecycle(executor, settlement) {
          if (this.activeRun) {
              throw new Error("Agent is already processing.");
          }
-@@ -343,7 +373,12 @@
+@@ -343,7 +397,38 @@ export class Agent {
              await this.handleRunFailure(error, abortController.signal.aborted);
          }
          finally {
 -            this.finishRun();
 +            try {
-+                if (onSettled) await onSettled();
++                if (settlement) {
++                    // Extension preparation runs once, even if it accepts more input.
++                    await settlement.beforeSettled?.();
++                    for (;;) {
++                        if (abortController.signal.aborted) {
++                            this.activeRun.acceptingMessages = false;
++                            await this.persistCancelledQueue();
++                            const assistant = this._state.messages.findLast((message) => message.role === "assistant");
++                            if (assistant?.stopReason !== "aborted") {
++                                await this.handleRunFailure(abortController.signal.reason, true);
++                            }
++                            break;
++                        }
++                        if (!this.hasQueuedMessages()) break;
++                        try {
++                            await this.runPendingContinuation(abortController.signal);
++                            await this.handlePendingPostRun(abortController.signal, settlement.afterRun);
++                        }
++                        catch (error) {
++                            await this.handleRunFailure(error, abortController.signal.aborted);
++                        }
++                    }
++                    // No await between the final decision, public settlement and
++                    // finishRun. Reentrant input must receive explicit non-acceptance.
++                    this.activeRun.acceptingMessages = false;
++                    settlement.onSettled?.();
++                }
 +            }
 +            finally {
 +                this.finishRun();
@@ -70,16 +142,28 @@ diff --git a/dist/agent.js b/dist/agent.js
 diff --git a/dist/agent.d.ts b/dist/agent.d.ts
 --- a/dist/agent.d.ts
 +++ b/dist/agent.d.ts
-@@ -109,6 +109,12 @@
+@@ -84,6 +84,7 @@ export declare class Agent {
+     steer(message: AgentMessage): void;
+     /** Queue a message to run only after the agent would otherwise stop. */
+     followUp(message: AgentMessage): void;
++    private assertQueueAdmission;
+     /** Remove all queued steering messages. */
+     clearSteeringQueue(): void;
+     /** Remove all queued follow-up messages. */
+@@ -109,6 +110,16 @@ export declare class Agent {
      prompt(input: string, images?: ImageContent[]): Promise<void>;
      /** Continue from the current transcript. The last message must be a user or tool-result message. */
      continue(): Promise<void>;
-+    /** Local pinned integration; callbacks run inside the native abort/idle owner. */
++    /** Local pinned integration; prepare once, reconcile cancellation/input, then commit synchronously. */
 +    continuePendingTools(options?: {
 +        onStart?: () => void;
 +        afterRun?: (signal: AbortSignal) => Promise<boolean>;
-+        onSettled?: () => Promise<void>;
++        beforeSettled?: () => Promise<void>;
++        onSettled?: () => void;
 +    }): Promise<void>;
++    private handlePendingPostRun;
++    private runPendingContinuation;
++    private persistCancelledQueue;
      private normalizePromptInput;
      private runPromptMessages;
      private runContinuation;
