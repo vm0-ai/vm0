@@ -224,7 +224,7 @@ function createGitRefsResponse(commitSha: string): string {
 }
 
 function buildMockTarball(mockSkills: readonly MockSkillEntry[]): Buffer {
-  const tmpDir = mkdtempSync(join(tmpdir(), "vm0-api-test-tarball-"));
+  const tmpDir = mkdtempSync(join(tmpdir(), "okou-api-test-tarball-"));
   const prefix = `${DEFAULT_SKILLS_REPO}-${DEFAULT_SKILLS_BRANCH}`;
 
   mkdirSync(join(tmpDir, prefix), { recursive: true });

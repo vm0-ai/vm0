@@ -32,7 +32,7 @@ function representativeSkillMarkdown(volume: SeededSystemSkillVolume): string {
 }
 
 function createArchive(volume: SeededSystemSkillVolume): Buffer {
-  const root = mkdtempSync(join(tmpdir(), "vm0-api-seeded-skill-"));
+  const root = mkdtempSync(join(tmpdir(), "okou-api-seeded-skill-"));
   const skillPath = join(root, "SKILL.md");
   const archivePath = join(root, "archive.tar.gz");
   writeFileSync(skillPath, representativeSkillMarkdown(volume));

@@ -25,7 +25,7 @@ const mocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const OFFICIAL_BOT_TOKEN = "9876543210:official-test-token";
-const OFFICIAL_BOT_USERNAME = "official_zero_bot";
+const OFFICIAL_BOT_USERNAME = "official_okou_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-test-webhook-secret";
 
 interface TelegramAuthTestData {

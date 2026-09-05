@@ -5819,7 +5819,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected canonical Storage mounts for the direct run");
     }
     const initialStorageMounts = initialStorageManifest.storageMounts;
-    const cliAgentSessionId = `bdd-vm0-direct-${first.runId}`;
+    const cliAgentSessionId = `bdd-okou-direct-${first.runId}`;
     const firstHistory = `managed direct history ${first.runId}`;
     const firstHistoryHash = createHash("sha256")
       .update(firstHistory)
@@ -7987,14 +7987,14 @@ describe("RUN-01: agent run authorization and session boundaries", () => {
     expectApiError(sandboxDenied.body);
     expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-    const zeroDenied = await api.requestCancelRunAs(
+    const okouDenied = await api.requestCancelRunAs(
       `Bearer ${api.okouTokenForRunWithCapabilities(actor, run.runId, [
         "agent-run:read",
       ])}`,
       run.runId,
       [403],
     );
-    expectApiError(zeroDenied.body);
+    expectApiError(okouDenied.body);
     expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
     const pat = await api.createCliToken(actor);
@@ -9185,10 +9185,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
-      `test-run-lifecycle-zero-scoped-runtime-${randomUUID()}`,
+      `test-run-lifecycle-okou-scoped-runtime-${randomUUID()}`,
     );
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-zero-scoped-runtime-setup-${randomUUID()}`,
+      catalogVersion: `okou-scoped-runtime-setup-${randomUUID()}`,
     });
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -9206,7 +9206,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
     expect(enabled).toContain("x");
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-zero-scoped-runtime-run-${randomUUID()}`,
+      catalogVersion: `okou-scoped-runtime-run-${randomUUID()}`,
     });
 
     const run = await api.createRun(actor, {

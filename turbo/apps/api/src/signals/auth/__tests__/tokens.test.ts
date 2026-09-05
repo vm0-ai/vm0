@@ -91,9 +91,9 @@ describe("auth tokens", () => {
     const nowSeconds = currentSecond();
     const retiredScopeToken = signSandboxJwtForTests({
       scope: "zero",
-      userId: "user_zero",
-      orgId: "org_zero",
-      runId: "run_zero",
+      userId: "user_retired_scope",
+      orgId: "org_retired_scope",
+      runId: "run_retired_scope",
       capabilities: ["file:read"],
       iat: nowSeconds,
       exp: nowSeconds + 60,

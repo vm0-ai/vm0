@@ -21,7 +21,7 @@ teardown() {
 
     local values
     values=$(jq -nc \
-        --arg applicationId "VM0E2E0001" \
+        --arg applicationId "OKOUE2E0001" \
         --arg apiKey "00000000000000000000000000000000" \
         '{applicationId: $applicationId, apiKey: $apiKey}')
     run runner_e2e_connect_manual_connector algolia api-key "$AGENT_ID" "$values"

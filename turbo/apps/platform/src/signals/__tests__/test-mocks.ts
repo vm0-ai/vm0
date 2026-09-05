@@ -387,7 +387,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
             : options.apiOriginMarker;
         if (markerContent !== null) {
           ownedApiOriginMarker = document.createElement("meta");
-          ownedApiOriginMarker.name = "vm0-api-origin";
+          ownedApiOriginMarker.name = "okou-api-origin";
           ownedApiOriginMarker.content = markerContent;
           document.head.append(ownedApiOriginMarker);
         }

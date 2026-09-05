@@ -21,7 +21,7 @@ function stubTestDatabaseUrl(): void {
   );
   databaseUrl.searchParams.set(
     "application_name",
-    `vm0-api-test-${process.pid}-${vitestWorkerId}`,
+    `okou-api-test-${process.pid}-${vitestWorkerId}`,
   );
   vi.stubEnv("DATABASE_URL", databaseUrl.toString());
 }

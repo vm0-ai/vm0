@@ -40,10 +40,10 @@ interface RunsListQuery {
   readonly until?: string;
   readonly limit?: number;
 }
-type ZeroAgentEventsQuery = z.input<
+type AgentEventsQuery = z.input<
   (typeof runAgentEventsContract.getAgentEvents)["query"]
 >;
-type ZeroNetworkLogsQuery = z.input<
+type NetworkLogsQuery = z.input<
   (typeof runNetworkLogsContract.getNetworkLogs)["query"]
 >;
 type LogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
@@ -157,7 +157,7 @@ export function createRunReadsApi(context: TestContext) {
     >(
       actor: ApiTestUser | null,
       runId: string,
-      query: ZeroAgentEventsQuery,
+      query: AgentEventsQuery,
       statuses: readonly TStatus[],
     ) {
       return await accept(
@@ -177,7 +177,7 @@ export function createRunReadsApi(context: TestContext) {
     >(
       actor: ApiTestUser | null,
       runId: string,
-      query: ZeroNetworkLogsQuery,
+      query: NetworkLogsQuery,
       statuses: readonly TStatus[],
     ) {
       return await accept(

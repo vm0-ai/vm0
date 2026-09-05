@@ -32,9 +32,9 @@ describe("shared SDK ingestion", () => {
 
     const telemetryToken = "xaat-private-telemetry-token";
     const sessionsToken = "xaat-private-sessions-token";
-    const requestDataset = "vm0-request-log-shared-test";
-    const contextDataset = "vm0-run-context-shared-test";
-    const sessionsDataset = "vm0-agent-run-events-shared-test";
+    const requestDataset = "okou-request-log-shared-test";
+    const contextDataset = "okou-run-context-shared-test";
+    const sessionsDataset = "okou-agent-run-events-shared-test";
     const requestPayload = "private-request-payload";
     const secondRequestPayload = "private-second-request-payload";
     const contextPayload = "private-context-payload";

@@ -195,7 +195,7 @@ export function createUserConfigBddApi(context: TestContext) {
       return { token, runId };
     },
 
-    zeroBearer(
+    okouBearer(
       actor: ApiTestUser,
       capabilities: readonly Capability[],
       publicBrand?: PublicBrand,

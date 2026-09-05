@@ -89,9 +89,9 @@ function defaultOauthDeviceAuthSessionStartResponse(
     sessionToken: `mock-${connectorSlug}-oauth-device-session-token`,
     connectorSlug,
     status: "pending",
-    userCode: "VM0-DEVICE",
+    userCode: "OKOU-DEVICE",
     verificationUri: `https://oauth.test/${connectorSlug}/device`,
-    verificationUriComplete: `https://oauth.test/${connectorSlug}/device?user_code=VM0-DEVICE`,
+    verificationUriComplete: `https://oauth.test/${connectorSlug}/device?user_code=OKOU-DEVICE`,
     expiresIn: 300,
     interval: 1,
   };
