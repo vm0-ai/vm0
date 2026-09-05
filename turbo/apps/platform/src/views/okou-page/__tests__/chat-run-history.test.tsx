@@ -4,7 +4,10 @@ import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
-import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
+import {
+  queryMessageBody,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
   cancelledEvent,
@@ -197,12 +200,10 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
-  expect(screen.queryByText("Collected requirements")).not.toBeInTheDocument();
+  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
+  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
   expect(
-    screen.queryByText("Compared rollback options"),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByText("Checked launch dependencies"),
+    queryMessageBody("Checked launch dependencies"),
   ).not.toBeInTheDocument();
   const firstExpand = buttonsNamed("Expand work history")[0];
   if (!firstExpand) {
@@ -214,9 +215,7 @@ test("Browse completed work by conversation phase", async () => {
   await expect(
     screen.findByText("Collected requirements"),
   ).resolves.toBeVisible();
-  expect(
-    screen.queryByText("Compared rollback options"),
-  ).not.toBeInTheDocument();
+  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
   expectTextOrder(
     "Plan phase one",
     "Collected requirements",
@@ -225,14 +224,12 @@ test("Browse completed work by conversation phase", async () => {
     "Phase one final plan",
   );
   expect(
-    screen.queryByText("Checked launch dependencies"),
+    queryMessageBody("Checked launch dependencies"),
   ).not.toBeInTheDocument();
 
   click(await findButton("Collapse work history"));
   await waitFor(() => {
-    expect(
-      screen.queryByText("Collected requirements"),
-    ).not.toBeInTheDocument();
+    expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
   });
 
   const secondRunExpand = buttonsNamed("Expand work history").at(-1);
@@ -245,16 +242,14 @@ test("Browse completed work by conversation phase", async () => {
     screen.findByText("Checked launch dependencies"),
   ).resolves.toBeVisible();
   expect(screen.getByLabelText("Credit usage 7")).toBeVisible();
-  expect(screen.queryByText("Collected requirements")).not.toBeInTheDocument();
-  expect(
-    screen.queryByText("Compared rollback options"),
-  ).not.toBeInTheDocument();
+  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
+  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
 
   click(await findButton("Collapse work history"));
 
   await waitFor(() => {
     expect(
-      screen.queryByText("Checked launch dependencies"),
+      queryMessageBody("Checked launch dependencies"),
     ).not.toBeInTheDocument();
   });
   expect(screen.getByText("Plan phase two")).toBeVisible();
@@ -316,7 +311,7 @@ test.each([
     expect(main).toBeVisible();
 
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(screen.queryByText(workMessage(index))).toBeNull();
+      expect(queryMessageBody(workMessage(index))).toBeNull();
     }
     expect(assistantGroupFor(main)).toContainElement(thinking);
 
@@ -453,7 +448,7 @@ test.each([
       canExpandHistory ? 1 : 0,
     );
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(screen.queryByText(workMessage(index))).toBeNull();
+      expect(queryMessageBody(workMessage(index))).toBeNull();
     }
   },
 );
@@ -538,7 +533,7 @@ test.each(finalOutputDocuments)(
     const main = await find();
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
-    expect(screen.queryByText("Earlier output belongs in history")).toBeNull();
+    expect(queryMessageBody("Earlier output belongs in history")).toBeNull();
     expect(buttonsNamed("Expand work history")).toHaveLength(1);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
@@ -547,7 +542,7 @@ test.each(finalOutputDocuments)(
   },
 );
 
-test("Render progress or result actions, never both", async () => {
+test("Keep result actions visible alongside running progress", async () => {
   installRunChat({
     activeRunIds: [RUN_A],
     chatEvents: [
@@ -577,7 +572,7 @@ test("Render progress or result actions, never both", async () => {
   expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
   expect(
     document.querySelector('[data-testid="chat-event-actions"]'),
-  ).toBeNull();
+  ).toBeVisible();
 });
 
 test("Do not render result actions while waiting for assistant output", async () => {

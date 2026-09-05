@@ -1,3 +1,4 @@
+import { RunWorkMessagePreview } from "./run-work-message-preview.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -3018,28 +3019,18 @@ function isWaitingThinkingIndicatorMode(
 function assistantGroupIdForRunWorkIndicator(
   groups: readonly ChatEventGroup[],
   runWorkFolding: RunWorkFolding | null,
-  mode: ThinkingIndicatorMode,
-  currentRunId: string | undefined,
-  currentRunGroupId: string | undefined,
 ): string | null {
-  if (runWorkFolding === null || mode === null || currentRunId === undefined) {
+  const anchorEventId = runWorkFolding?.statusTail?.anchorEventId;
+  if (anchorEventId === undefined) {
     return null;
   }
-
-  for (let index = groups.length - 1; index >= 0; index--) {
-    const group = groups[index]!;
-    const section = runWorkSectionForGroup(runWorkFolding, group);
-    if (
-      group.role === "assistant" &&
-      section !== null &&
-      (section.runIds.includes(currentRunId) ||
-        (currentRunGroupId !== undefined &&
-          section.runGroupId === currentRunGroupId))
-    ) {
-      return group.beginEventId;
-    }
-  }
-  return null;
+  return (
+    groups.find((group) => {
+      return group.events.some((event) => {
+        return event.id === anchorEventId;
+      });
+    })?.beginEventId ?? null
+  );
 }
 
 function ChatThreadRenderedEventGroups({
@@ -3093,15 +3084,14 @@ function ChatThreadRenderedEventGroups({
   const visibleGroups = runWorkFoldingEnabled
     ? (runWorkFolding?.visibleGroups ?? runGroupVisibleGroups)
     : (completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups);
-  const thinkingIndicatorMode =
+  const resolvedThinkingIndicatorMode =
     useLastResolved(thread.thinkingIndicatorMode$) ?? null;
-  const currentEvent = renderedActiveGroups.at(-1)?.events.at(-1);
+  const thinkingIndicatorMode = runWorkFolding?.statusTail?.events.length
+    ? null
+    : resolvedThinkingIndicatorMode;
   const runIndicatorAssistantGroupId = assistantGroupIdForRunWorkIndicator(
     visibleGroups,
     runWorkFolding,
-    thinkingIndicatorMode,
-    currentEvent?.runId,
-    currentEvent?.runGroupId,
   );
   const runGroupFoldPlacements = resolveRunGroupFoldPlacements({
     groups: visibleGroups,
@@ -3449,6 +3439,11 @@ function ChatThreadEventGroups({
                 onToggleRunWork,
               )}
               runIndicatorMode={runIndicatorMode}
+              statusTailEvents={runWorkFolding?.statusTail?.events.filter(
+                (event) => {
+                  return group.events.includes(event);
+                },
+              )}
             />
           </div>
         );
@@ -5947,6 +5942,7 @@ function PagedGroupRow({
   completedWorkFold,
   runWorkSection,
   runIndicatorMode,
+  statusTailEvents,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
@@ -5956,6 +5952,7 @@ function PagedGroupRow({
   completedWorkFold?: CompletedWorkFoldControl;
   runWorkSection?: RunWorkSectionControl;
   runIndicatorMode?: Exclude<ThinkingIndicatorMode, null>;
+  statusTailEvents?: readonly EnrichedChatEvent[];
 }) {
   if (group.role === "user") {
     return (
@@ -5977,6 +5974,7 @@ function PagedGroupRow({
       completedWorkFold={completedWorkFold}
       runWorkSection={runWorkSection}
       runIndicatorMode={runIndicatorMode}
+      statusTailEvents={statusTailEvents}
     />
   );
 }
@@ -6031,6 +6029,7 @@ function SelectablePagedGroupRow({
   completedWorkFold,
   runWorkSection,
   runIndicatorMode,
+  statusTailEvents,
 }: Parameters<typeof PagedGroupRow>[0]) {
   const { t } = useTranslation();
   const phase = useGet(thread.sharing.phase$);
@@ -6057,6 +6056,7 @@ function SelectablePagedGroupRow({
         completedWorkFold={completedWorkFold}
         runWorkSection={runWorkSection}
         runIndicatorMode={runIndicatorMode}
+        statusTailEvents={statusTailEvents}
       />
     );
   }
@@ -6103,6 +6103,7 @@ function SelectablePagedGroupRow({
         completedWorkFold={completedWorkFold}
         runWorkSection={runWorkSection}
         runIndicatorMode={runIndicatorMode}
+        statusTailEvents={statusTailEvents}
       />
       <Checkbox
         checked={checked}
@@ -7462,6 +7463,7 @@ type PagedAssistantGroupProps = {
   readonly completedWorkFold?: CompletedWorkFoldControl;
   readonly runWorkSection?: RunWorkSectionControl;
   readonly runIndicatorMode?: Exclude<ThinkingIndicatorMode, null>;
+  readonly statusTailEvents?: readonly EnrichedChatEvent[];
 };
 
 function visibleRunIndicatorMode(
@@ -7494,6 +7496,10 @@ type PagedAssistantTimelineItem =
   | {
       readonly kind: "run-work";
       readonly control: RunWorkSectionControl;
+    }
+  | {
+      readonly kind: "run-work-preview";
+      readonly event: EnrichedChatEvent;
     }
   | {
       readonly kind: "run-work-main";
@@ -7560,10 +7566,17 @@ function buildPagedAssistantTimeline({
   }
 
   items.push({ kind: "run-work", control: runWorkSection });
-  const anchorEndIndex = anchorIndex + 1;
   if (runWorkSection.expanded) {
     items.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
+    );
+  } else {
+    items.push(
+      ...runWorkSection.previewMessages.map(
+        (event): PagedAssistantTimelineItem => {
+          return { kind: "run-work-preview", event };
+        },
+      ),
     );
   }
   items.push(...assistantTimelineItems(group.events.slice(0, anchorIndex)));
@@ -7583,7 +7596,6 @@ function buildPagedAssistantTimeline({
       ),
     );
   }
-  items.push(...assistantTimelineItems(group.events.slice(anchorEndIndex)));
   return items;
 }
 
@@ -7627,6 +7639,9 @@ function PagedAssistantTimeline({
     }
     const compactTop = renderedAssistantItemCount > 0;
     renderedAssistantItemCount += 1;
+    if (item.kind === "run-work-preview") {
+      return <RunWorkMessagePreview key={item.event.id} event={item.event} />;
+    }
     if (item.kind === "run-work-main") {
       return (
         <div
@@ -7675,6 +7690,7 @@ function PagedRunWorkAssistantContent({
   completedWorkFold,
   runWorkSection,
   runIndicatorMode,
+  statusTailEvents,
 }: Pick<
   PagedAssistantGroupProps,
   | "group"
@@ -7683,13 +7699,19 @@ function PagedRunWorkAssistantContent({
   | "completedWorkFold"
   | "runWorkSection"
   | "runIndicatorMode"
+  | "statusTailEvents"
 >) {
   const recommendedFollowupSource =
     useLastResolved(thread.recommendedFollowupSource$, {
       equalityFn: equalRecommendedFollowupSources,
     }) ?? null;
   const timelineItems = buildPagedAssistantTimeline({
-    group,
+    group: {
+      ...group,
+      events: group.events.filter((event) => {
+        return !statusTailEvents?.includes(event);
+      }),
+    },
     modelChanges,
     completedWorkFold,
     runWorkSection,
@@ -7704,12 +7726,10 @@ function PagedRunWorkAssistantContent({
     recommendedFollowupSource,
   );
   const mainActions =
-    runWorkSection !== undefined &&
-    (visibleIndicatorMode === undefined ||
-      visibleIndicatorMode === "finished") ? (
+    mainEvent !== undefined ? (
       <PagedGroupActions
         group={group}
-        content={mainEvent?.content ?? ""}
+        content={mainEvent.content ?? ""}
         thread={thread}
         embedded
       />
@@ -7722,14 +7742,30 @@ function PagedRunWorkAssistantContent({
         thread={thread}
         mainActions={mainActions}
       />
-      {visibleIndicatorMode === undefined ? null : (
-        <ThinkingIndicator
-          thread={thread}
-          mode={visibleIndicatorMode}
-          runGroupFolds={[]}
-          inAssistantGroup
-        />
-      )}
+      {(statusTailEvents?.length ?? 0) > 0 ||
+      visibleIndicatorMode !== undefined ? (
+        <div data-chat-run-status-tail className="flex min-w-0 flex-col gap-2">
+          {statusTailEvents?.length ? (
+            statusTailEvents.map((event) => {
+              return (
+                <PagedAssistantEventItem
+                  key={event.id}
+                  event={event}
+                  compactTop
+                  thread={thread}
+                />
+              );
+            })
+          ) : visibleIndicatorMode !== undefined ? (
+            <ThinkingIndicator
+              thread={thread}
+              mode={visibleIndicatorMode}
+              runGroupFolds={[]}
+              inAssistantGroup
+            />
+          ) : null}
+        </div>
+      ) : null}
     </>
   );
 }
@@ -7742,6 +7778,7 @@ function PagedAssistantGroup({
   completedWorkFold,
   runWorkSection,
   runIndicatorMode,
+  statusTailEvents,
 }: PagedAssistantGroupProps) {
   const hasRenderableEvent = group.events.some((event) => {
     return isRenderableAssistantEvent(event);
@@ -7769,7 +7806,9 @@ function PagedAssistantGroup({
     .filter(Boolean)
     .join("\n\n");
   const usesRunWorkPresentation =
-    visibleRunWorkSection !== undefined || runIndicatorMode !== undefined;
+    visibleRunWorkSection !== undefined ||
+    runIndicatorMode !== undefined ||
+    (statusTailEvents?.length ?? 0) > 0;
 
   return (
     <div
@@ -7795,6 +7834,7 @@ function PagedAssistantGroup({
               completedWorkFold={visibleCompletedWorkFold}
               runWorkSection={visibleRunWorkSection}
               runIndicatorMode={runIndicatorMode}
+              statusTailEvents={statusTailEvents}
             />
           ) : (
             <PagedAssistantTimeline
@@ -7809,7 +7849,7 @@ function PagedAssistantGroup({
           )}
         </div>
       </div>
-      {visibleRunWorkSection === undefined ? (
+      {!usesRunWorkPresentation ? (
         <PagedGroupActions
           group={group}
           content={fullContent}
