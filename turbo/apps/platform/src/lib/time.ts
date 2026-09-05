@@ -1,16 +1,19 @@
+type NowValue = number | (() => number);
+
 interface NowOverride {
-  readonly value: number;
+  readonly value: NowValue;
 }
 
 function createNowOverride(): {
   readonly get: () => number | undefined;
-  readonly set: (value: number, signal: AbortSignal) => void;
+  readonly set: (value: NowValue, signal: AbortSignal) => void;
 } {
   let current: NowOverride | undefined;
 
   return {
     get: () => {
-      return current?.value;
+      const value = current?.value;
+      return typeof value === "function" ? value() : value;
     },
     set: (value, signal) => {
       signal.throwIfAborted();
@@ -39,6 +42,6 @@ export function nowDate(): Date {
   return new Date(now());
 }
 
-export function mockNow(value: Date | number, signal: AbortSignal): void {
+export function mockNow(value: Date | NowValue, signal: AbortSignal): void {
   setMockedNow(value instanceof Date ? value.getTime() : value, signal);
 }
