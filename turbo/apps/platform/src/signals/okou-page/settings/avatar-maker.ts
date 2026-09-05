@@ -18,6 +18,7 @@ import {
   avatarNeckSweaterEnabled$,
   featureSwitch$,
 } from "../../external/feature-switch.ts";
+import { resetSignal } from "../../utils.ts";
 
 export type ComposerStep =
   | "face"
@@ -121,6 +122,11 @@ function updateLegacyConfig(
 }
 
 const internalOpen$ = state(false);
+const internalDialogSignal$ = state<AbortSignal | null>(null);
+const resetAvatarMakerDialogSignal$ = resetSignal();
+
+export { internalDialogSignal$ as avatarMakerDialogSignal$ };
+
 export const avatarMakerOpen$ = computed((get) => {
   return get(internalOpen$);
 });
@@ -172,8 +178,18 @@ export const setAvatarMakerSaving$ = command(({ set }, value: boolean) => {
   set(internalSaving$, value);
 });
 
+const releaseAvatarMakerSession$ = command(({ set }) => {
+  set(internalDialogSignal$, null);
+  set(internalOpen$, false);
+  set(internalJustPicked$, null);
+  set(internalShowSparkles$, false);
+  set(internalShuffling$, false);
+  set(internalSaving$, false);
+});
+
 export const shuffleAvatar$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
     const config = get(internalConfig$);
     set(
       internalConfig$,
@@ -196,7 +212,17 @@ export const shuffleAvatar$ = command(
  * avatar keeps being edited in the legacy steps even once the composer ships.
  */
 export const openAvatarMaker$ = command(
-  ({ get, set }, avatarUrl: string | null) => {
+  ({ get, set }, avatarUrl: string | null, parentSignal: AbortSignal) => {
+    parentSignal.throwIfAborted();
+    const dialogSignal = set(resetAvatarMakerDialogSignal$, parentSignal);
+    dialogSignal.addEventListener(
+      "abort",
+      () => {
+        set(releaseAvatarMakerSession$);
+      },
+      { once: true },
+    );
+    set(internalDialogSignal$, dialogSignal);
     const composerEnabled =
       get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2];
     const current = resolveAvatarSvgConfig(avatarUrl);
@@ -214,6 +240,7 @@ export const openAvatarMaker$ = command(
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
     set(internalShuffling$, false);
+    set(internalSaving$, false);
     set(internalOpen$, true);
   },
 );
@@ -224,6 +251,7 @@ export const selectAvatarOption$ = command(
     selection: AvatarMakerSelection,
     signal: AbortSignal,
   ) => {
+    signal.throwIfAborted();
     const previous = get(internalConfig$);
     if (isLegacyAvatarSvgConfig(previous)) {
       if (selection.mode !== "legacy") {
@@ -268,7 +296,6 @@ export const goForwardStep$ = command(({ get, set }) => {
 });
 
 export const closeAvatarMaker$ = command(({ set }) => {
-  set(internalOpen$, false);
-  set(internalShowSparkles$, false);
-  set(internalJustPicked$, null);
+  set(resetAvatarMakerDialogSignal$);
+  set(releaseAvatarMakerSession$);
 });

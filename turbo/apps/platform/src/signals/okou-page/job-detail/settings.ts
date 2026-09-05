@@ -33,8 +33,10 @@ export const updateAgentSettings$ = command(
       client.updateMetadata({
         params: { id: detail.agentId },
         body: update,
+        fetchOptions: { signal },
       }),
       [200],
+      signal,
     );
     signal.throwIfAborted();
 
