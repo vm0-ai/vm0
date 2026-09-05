@@ -27,8 +27,8 @@ enum ScreenGeometry {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
     }
 
-    static func screen(displayId: UInt32) -> NSScreen? {
-        NSScreen.screens.first { displayId(_: $0) == displayId }
+    static func screen(displayId target: UInt32) -> NSScreen? {
+        NSScreen.screens.first { Self.displayId($0) == target }
     }
 
     /// The screen with the largest intersection, like `screen.getDisplayMatching`.

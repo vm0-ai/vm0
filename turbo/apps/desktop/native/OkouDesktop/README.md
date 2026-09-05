@@ -53,6 +53,6 @@ open it with right-click → Open or clear quarantine with
 | Main window (setup wizard, hero, dev panels)       | Ported         |
 | Feature switches (developer tools)                 | Ported         |
 | Filesystem and MCP plugin managers                 | Pending        |
-| Screen recorder windows, controller, delivery      | Pending        |
+| Screen recorder windows, controller, delivery      | Ported         |
 | Auto-update from the Squirrel JSON feed            | Pending        |
 | Sentry                                             | Pending        |
