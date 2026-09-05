@@ -14,7 +14,7 @@ use std::time::Duration;
 
 async fn run_settlement_case(
     run_id: &str,
-    assistant_message: &Value,
+    assistant_messages: &[Value],
     expected_result: &str,
     expected_assistant_text: Option<&str>,
     base_path: &OsStr,
@@ -27,13 +27,15 @@ async fn run_settlement_case(
     let assistant_event_path = tmp.path().join("pi-assistant-event.jsonl");
     std::fs::write(
         &assistant_event_path,
-        format!(
-            "{}\n",
-            serde_json::json!({
-                "type": "message_end",
-                "message": assistant_message,
+        assistant_messages
+            .iter()
+            .map(|message| {
+                format!(
+                    "{}\n",
+                    serde_json::json!({ "type": "message_end", "message": message })
+                )
             })
-        ),
+            .collect::<String>(),
     )?;
 
     let npx = bin_dir.join("npx");
@@ -207,7 +209,7 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
     let original_directory = std::env::current_dir()?;
     run_settlement_case(
         "00000000-0000-4000-8000-000000000124",
-        &serde_json::json!({
+        &[serde_json::json!({
             "role": "assistant",
             "content": [{ "type": "text", "text": "ignored assistant text" }],
             "model": "deepseek-v4-flash",
@@ -216,7 +218,7 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "stopReason": "error",
             "errorMessage": "API Error: Overloaded",
             "timestamp": 1,
-        }),
+        })],
         "API Error: Overloaded",
         Some("ignored assistant text"),
         &base_path,
@@ -225,7 +227,7 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
     .await?;
     run_settlement_case(
         "00000000-0000-4000-8000-000000000125",
-        &serde_json::json!({
+        &[serde_json::json!({
             "role": "assistant",
             "content": [{ "type": "text", "text": "ignored assistant text" }],
             "model": "deepseek-v4-flash",
@@ -234,7 +236,7 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "stopReason": "aborted",
             "errorMessage": "",
             "timestamp": 1,
-        }),
+        })],
         "Pi model turn aborted",
         Some("ignored assistant text"),
         &base_path,
@@ -249,7 +251,22 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
     assert_eq!(settlement["type"], "agent_settled");
     run_settlement_case(
         "00000000-0000-4000-8000-000000000126",
-        &assistant_end["message"],
+        std::slice::from_ref(&assistant_end["message"]),
+        "This operation was aborted",
+        None,
+        &base_path,
+        &original_directory,
+    )
+    .await?;
+    // A normal stop already reached Guest when cancellation wins during
+    // settlement preparation. Guest must replace its cached terminal outcome.
+    let [success, aborted, settlement]: [Value; 3] = serde_json::from_str(include_str!(
+        "../../../turbo/packages/pi-agent-runtime/src/test/fixtures/pending-tool-settlement-abort.json"
+    ))?;
+    assert_eq!(settlement["type"], "agent_settled");
+    run_settlement_case(
+        "00000000-0000-4000-8000-000000000127",
+        &[success["message"].clone(), aborted["message"].clone()],
         "This operation was aborted",
         None,
         &base_path,

@@ -147,40 +147,45 @@ function createVoiceDraftTranscriptionCommand(
     }
     const files = await prepareVoiceDraftAudio(blob, signal);
     signal.throwIfAborted();
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append("file", file);
+    if (files.length > 0) {
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append("file", file);
+      }
+      const reference = get(lastAssistantMessage$)
+        ?.trim()
+        .slice(0, VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS);
+      if (reference) {
+        formData.append("lastAssistantMessage", reference);
+      }
+      const result = await accept(
+        get(apiClient$)(voiceIoTranscribeContract).post({
+          body: formData,
+          fetchOptions: { signal },
+        }),
+        [200, 204, 402, 429],
+        signal,
+        { showErrorToast: false },
+      );
+      signal.throwIfAborted();
+      if (result.status !== 200 && result.status !== 204) {
+        await set(openAudioInputQuotaRecovery$, signal);
+        return;
+      }
+      if (result.status === 200) {
+        const text = result.body.polishedText;
+        if (!text.trim()) {
+          throw new Error("Voice transcription returned empty text");
+        }
+        await set(deliverText$, text, signal);
+      }
+      set(refreshAudioInputQuota$);
     }
-    const reference = get(lastAssistantMessage$)
-      ?.trim()
-      .slice(0, VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS);
-    if (reference) {
-      formData.append("lastAssistantMessage", reference);
-    }
-    const result = await accept(
-      get(apiClient$)(voiceIoTranscribeContract).post({
-        body: formData,
-        fetchOptions: { signal },
-      }),
-      [200, 402, 429],
-      signal,
-      { showErrorToast: false },
-    );
-    signal.throwIfAborted();
-    if (result.status !== 200) {
-      await set(openAudioInputQuotaRecovery$, signal);
-      return;
-    }
-    const text = result.body.polishedText;
-    if (!text.trim()) {
-      throw new Error("Voice transcription returned empty text");
-    }
-    await set(deliverText$, text, signal);
-    // The handoff ends audio recovery. Ordinary text autosave owns the text.
+    // Valid text handoff or a confirmed empty/no-speech result ends recovery.
+    // Ordinary text autosave owns any delivered text.
     // Text insertion and local deletion intentionally are not one transaction.
     signal.throwIfAborted();
     set(state$, { ...current, status: "discarding" });
-    set(refreshAudioInputQuota$);
     const removed = await withCleanup(
       settle(
         key

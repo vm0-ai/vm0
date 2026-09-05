@@ -175,7 +175,7 @@ describe("POST /api/voice-io/transcribe", () => {
     { label: "short recording", durations: [1] },
     { label: "long recording", durations: [30, 30, 30, 30] },
   ])(
-    "rejects a $label containing no intelligible speech",
+    "completes a $label containing no intelligible speech without content",
     async ({ durations }) => {
       mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       await enabledActor();
@@ -215,10 +215,10 @@ describe("POST /api/voice-io/transcribe", () => {
             }),
           ),
         }),
-        [502],
+        [204],
       );
 
-      expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+      expect(response.body).toBeUndefined();
       expect(schemaNames).toStrictEqual(
         durations.map(() => {
           return durations.length === 1

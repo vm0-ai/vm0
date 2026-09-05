@@ -252,9 +252,6 @@ function createVoiceDraftSampleBuffer(
         throw written.reason;
       }
       signal.throwIfAborted();
-      if (sampleCount === 0) {
-        throw new Error("Voice recording did not contain audio samples");
-      }
       return persistence
         ? null
         : encodeVoiceDraftPcmWav(combineSampleBatches(batches, sampleCount));

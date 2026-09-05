@@ -34,6 +34,7 @@ export const voiceIoTranscribeContract = c.router({
     body: c.type<FormData>(),
     responses: {
       200: voiceIoTranscribeResponseSchema,
+      204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: voiceIoSttQuotaErrorSchema,

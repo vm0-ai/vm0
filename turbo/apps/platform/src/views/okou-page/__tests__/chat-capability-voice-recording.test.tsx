@@ -209,6 +209,48 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
   },
 );
 
+test.each([
+  { path: RUN_PATH, empty: true },
+  { path: NEW_CHAT_PATH, empty: true },
+  { path: RUN_PATH, empty: false },
+  { path: NEW_CHAT_PATH, empty: false },
+])(
+  "Do not restore a completed silent recording at $path (empty: $empty)",
+  async ({ path, empty }) => {
+    const firstPage = createChildAbortController(context.signal);
+    context.mocks.browser.voiceInput({
+      rms: 0,
+      onPcmCapture: () => {},
+      finalPcmSamples: new Float32Array(empty ? 0 : 4096),
+    });
+    const consoleErrors = installVoiceBoundaries();
+    const uploads: ArrayBuffer[] = [];
+    context.mocks.http.post(
+      "*/api/voice-io/transcribe",
+      async ({ request }) => {
+        uploads.push(await uploadedAudio(request));
+        return new HttpResponse(null, { status: 204 });
+      },
+    );
+    await setupPage({
+      context: { ...context, signal: firstPage.signal },
+      path,
+      featureSwitches: flags,
+    });
+    click(await findEnabledButton("Voice input"));
+    click(await findEnabledButton("Stop recording"));
+    await findEnabledButton("Voice input");
+    expect(queryButton("Retry")).toBeNull();
+    expect(uploads).toHaveLength(empty ? 0 : 1);
+    unload(firstPage);
+    await setupPage({ context: secondContext, path, featureSwitches: flags });
+    await findEnabledButton("Voice input");
+    expect(queryButton("Retry")).toBeNull();
+    expect(queryButton("Stop recording")).toBeNull();
+    expect(consoleErrors).toStrictEqual([]);
+  },
+);
+
 test("Keep the active tab's recording until its owner closes", async () => {
   const firstPage = createChildAbortController(context.signal);
   const capture = context.mocks.deferred<(samples: Float32Array) => void>();

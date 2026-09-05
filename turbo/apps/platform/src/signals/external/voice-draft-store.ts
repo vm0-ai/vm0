@@ -207,7 +207,7 @@ export async function readVoiceDraftAudio(
         const recording = await track(
           transaction.objectStore("drafts").get(key),
         );
-        if (recording?.id !== id || recording.sampleCount === 0) {
+        if (recording?.id !== id) {
           throw new Error("Voice recording has no saved audio");
         }
         const chunks = await track(

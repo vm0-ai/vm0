@@ -86,13 +86,13 @@ overrides:
 
 patchedDependencies:
   '@earendil-works/pi-agent-core@0.84.1':
-    hash: 554d597b60149c6bc6cd8bff1aaf7783431dc79303b1ad6cd83e35ea05c50f0c
+    hash: c16c1735f34a3f1f5bba3dc1d7a80a78b1c9324f00b6ff1813916883f8a4ac11
     path: patches/@earendil-works__pi-agent-core@0.84.1.patch
   '@earendil-works/pi-ai@0.84.1':
     hash: e5308d9f3e3abf237b28f3b607b5f41e4535fe10f23a6c59d6c4a5fbf896be55
     path: patches/@earendil-works__pi-ai@0.84.1.patch
   '@earendil-works/pi-coding-agent@0.84.1':
-    hash: c6d2545cf9fa43d9845d3d4041705f01e30ea2fa9468f276f494506e59b3b6a7
+    hash: ec82bfdbfcd840a2287feaaa6f4b3533743b1723225eb3823464f6b7ffe7c913
     path: patches/@earendil-works__pi-coding-agent@0.84.1.patch
 
 importers:
@@ -370,7 +370,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.1
-        version: 0.84.1(patch_hash=c6d2545cf9fa43d9845d3d4041705f01e30ea2fa9468f276f494506e59b3b6a7)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
+        version: 0.84.1(patch_hash=ec82bfdbfcd840a2287feaaa6f4b3533743b1723225eb3823464f6b7ffe7c913)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -1153,7 +1153,7 @@ importers:
         version: 0.84.1(patch_hash=e5308d9f3e3abf237b28f3b607b5f41e4535fe10f23a6c59d6c4a5fbf896be55)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.1
-        version: 0.84.1(patch_hash=c6d2545cf9fa43d9845d3d4041705f01e30ea2fa9468f276f494506e59b3b6a7)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
+        version: 0.84.1(patch_hash=ec82bfdbfcd840a2287feaaa6f4b3533743b1723225eb3823464f6b7ffe7c913)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@okouai/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
@@ -11215,7 +11215,7 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@earendil-works/pi-agent-core@0.84.1(patch_hash=554d597b60149c6bc6cd8bff1aaf7783431dc79303b1ad6cd83e35ea05c50f0c)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)':
+  '@earendil-works/pi-agent-core@0.84.1(patch_hash=c16c1735f34a3f1f5bba3dc1d7a80a78b1c9324f00b6ff1813916883f8a4ac11)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)':
     dependencies:
       '@earendil-works/pi-ai': 0.84.1(patch_hash=e5308d9f3e3abf237b28f3b607b5f41e4535fe10f23a6c59d6c4a5fbf896be55)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@earendil-works/pi-telemetry': 0.84.1
@@ -11257,9 +11257,9 @@ snapshots:
     dependencies:
       '@earendil-works/pi-protocol': 0.84.2
 
-  '@earendil-works/pi-coding-agent@0.84.1(patch_hash=c6d2545cf9fa43d9845d3d4041705f01e30ea2fa9468f276f494506e59b3b6a7)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)':
+  '@earendil-works/pi-coding-agent@0.84.1(patch_hash=ec82bfdbfcd840a2287feaaa6f4b3533743b1723225eb3823464f6b7ffe7c913)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)':
     dependencies:
-      '@earendil-works/pi-agent-core': 0.84.1(patch_hash=554d597b60149c6bc6cd8bff1aaf7783431dc79303b1ad6cd83e35ea05c50f0c)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
+      '@earendil-works/pi-agent-core': 0.84.1(patch_hash=c16c1735f34a3f1f5bba3dc1d7a80a78b1c9324f00b6ff1813916883f8a4ac11)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@earendil-works/pi-ai': 0.84.1(patch_hash=e5308d9f3e3abf237b28f3b607b5f41e4535fe10f23a6c59d6c4a5fbf896be55)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@earendil-works/pi-client': 0.84.2
       '@earendil-works/pi-protocol': 0.84.2
