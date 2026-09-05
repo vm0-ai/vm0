@@ -3379,10 +3379,6 @@ function buildCreateAgentRunArgs(params: {
     piExecution: prepared.piExecution,
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
-      modelProvider: providerAdmission.effectiveModelProvider ?? null,
-      modelProviderId: modelPin.modelProviderId,
-      modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: cliAgentTypeForRun(prepared),
     },
     codexServiceTier,

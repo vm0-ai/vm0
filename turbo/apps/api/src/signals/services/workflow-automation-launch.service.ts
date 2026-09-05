@@ -354,12 +354,6 @@ function workflowThreadSessionRoute(
 ) {
   return {
     selectedModel: modelContext.modelPin.selectedModel,
-    modelProvider: modelContext.effectiveModelProvider ?? null,
-    modelProviderId: modelContext.modelPin.modelProviderId,
-    modelRuntimeProvider:
-      modelContext.builtInModelRuntimeRoute?.providerType ?? null,
-    modelRuntimeModel:
-      modelContext.builtInModelRuntimeRoute?.upstreamModel ?? null,
     cliAgentType: modelContext.cliAgentType,
   };
 }

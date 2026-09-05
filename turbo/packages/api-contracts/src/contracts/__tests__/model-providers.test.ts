@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  getProviderBaseUrl,
-  areProvidersCompatible,
   hasModelSelection,
   getModels,
   getDefaultModel,
@@ -57,7 +55,6 @@ import {
   MODEL_PROVIDER_TYPES,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
-  type ModelProviderType,
   type ModelProviderWriteType,
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
@@ -776,79 +773,6 @@ describe("model-first canonical catalog", () => {
   });
 });
 
-describe("getProviderBaseUrl", () => {
-  it.each([
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "azure-foundry",
-    "aws-bedrock",
-    "openai-api-key",
-  ] as ModelProviderType[])("returns null for %s", (type) => {
-    expect(getProviderBaseUrl(type)).toBeNull();
-  });
-
-  it.each([
-    ["openrouter-api-key", "https://openrouter.ai/api"],
-    ["deepseek", "https://api.deepseek.com/"],
-    ["vercel-ai-gateway", "https://ai-gateway.vercel.sh"],
-    ["openrouter-codex", "https://openrouter.ai/api/v1"],
-    ["vercel-ai-gateway-codex", "https://ai-gateway.vercel.sh/v1"],
-  ] as [ModelProviderType, string][])(
-    "returns correct URL for %s",
-    (type, expectedUrl) => {
-      expect(getProviderBaseUrl(type)).toBe(expectedUrl);
-    },
-  );
-});
-
-describe("areProvidersCompatible", () => {
-  const anthropicNative: ModelProviderType[] = [
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "azure-foundry",
-    "aws-bedrock",
-  ];
-
-  const thirdParty: ModelProviderType[] = [
-    "openrouter-api-key",
-    "deepseek",
-    "vercel-ai-gateway",
-  ];
-
-  it("all Anthropic-native providers are mutually compatible", () => {
-    for (const a of anthropicNative) {
-      for (const b of anthropicNative) {
-        expect(areProvidersCompatible(a, b)).toBe(true);
-      }
-    }
-  });
-
-  it("every provider is compatible with itself", () => {
-    for (const p of [...anthropicNative, ...thirdParty]) {
-      expect(areProvidersCompatible(p, p)).toBe(true);
-    }
-  });
-
-  it("Anthropic-native is incompatible with third-party providers", () => {
-    for (const native of anthropicNative) {
-      for (const tp of thirdParty) {
-        expect(areProvidersCompatible(native, tp)).toBe(false);
-        expect(areProvidersCompatible(tp, native)).toBe(false);
-      }
-    }
-  });
-
-  it("different third-party providers are incompatible", () => {
-    expect(areProvidersCompatible("openrouter-api-key", "deepseek")).toBe(
-      false,
-    );
-    expect(
-      areProvidersCompatible("openrouter-api-key", "vercel-ai-gateway"),
-    ).toBe(false);
-    expect(areProvidersCompatible("deepseek", "vercel-ai-gateway")).toBe(false);
-  });
-});
-
 describe("model selection for Anthropic-native providers", () => {
   it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
     "%s supports model selection",
@@ -888,11 +812,6 @@ describe("model selection for Anthropic-native providers", () => {
     expect(envBindings).toBeDefined();
     expect(envBindings!["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("$secret");
     expect(envBindings!["ANTHROPIC_MODEL"]).toBe("$model");
-  });
-
-  it("Anthropic-native providers have no ANTHROPIC_BASE_URL (use default)", () => {
-    expect(getProviderBaseUrl("anthropic-api-key")).toBeNull();
-    expect(getProviderBaseUrl("claude-code-oauth-token")).toBeNull();
   });
 });
 
@@ -1340,10 +1259,6 @@ describe("codex-oauth-token codex provider", () => {
     expect(hasModelSelection("codex-oauth-token")).toBe(true);
   });
 
-  it("getProviderBaseUrl returns null (codex provider, no ANTHROPIC_BASE_URL)", () => {
-    expect(getProviderBaseUrl("codex-oauth-token")).toBeNull();
-  });
-
   it("firewall entry has both ChatGPT and auth.openai.com APIs", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.apis).toHaveLength(2);
@@ -1545,15 +1460,6 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
     expect(vercelCodex.secretName).toBe(vercelClaudeCode.secretName);
   });
 
-  it("are NOT compatible with their claude-code twin (different protocol)", () => {
-    expect(
-      areProvidersCompatible("openrouter-codex", "openrouter-api-key"),
-    ).toBe(false);
-    expect(
-      areProvidersCompatible("vercel-ai-gateway-codex", "vercel-ai-gateway"),
-    ).toBe(false);
-  });
-
   it("modelProviderTypeSchema accepts both new types", () => {
     expect(modelProviderTypeSchema.safeParse("openrouter-codex").success).toBe(
       true,
@@ -1640,66 +1546,12 @@ describe("custom model gateway provider types", () => {
     expect(getSecretNameForType("vercel-ai-gateway")).toBe(
       "VERCEL_AI_GATEWAY_API_KEY",
     );
-    expect(getProviderBaseUrl("vercel-ai-gateway-codex")).toBe(
-      "https://ai-gateway.vercel.sh/v1",
-    );
+    expect(
+      getModelProviderEnvBindings("vercel-ai-gateway-codex")?.OPENAI_BASE_URL,
+    ).toBe("https://ai-gateway.vercel.sh/v1");
     const selectable = getSelectableProviderTypes();
     expect(selectable).toContain("vercel-ai-gateway");
     expect(selectable).toContain("vercel-ai-gateway-codex");
-  });
-
-  it.each([
-    "built-in",
-    "anthropic-api-key",
-    "claude-code-oauth-token",
-    "openai-api-key",
-    "codex-oauth-token",
-    "aws-bedrock",
-    "azure-foundry",
-  ] as const)(
-    "are not session-compatible with %s despite sharing an absent base URL",
-    (type) => {
-      // These providers resolve to no base URL because they use the vendor
-      // default endpoint. A custom gateway resolves to none because its
-      // endpoint lives on the surface row, so the two must not be conflated.
-      expect(getProviderBaseUrl(type)).toBeNull();
-      expect(areProvidersCompatible("custom-anthropic-messages", type)).toBe(
-        false,
-      );
-      expect(areProvidersCompatible("custom-openai-responses", type)).toBe(
-        false,
-      );
-    },
-  );
-
-  it("are session-compatible only with themselves", () => {
-    expect(
-      areProvidersCompatible(
-        "custom-anthropic-messages",
-        "custom-anthropic-messages",
-      ),
-    ).toBe(true);
-    expect(
-      areProvidersCompatible(
-        "custom-openai-responses",
-        "custom-openai-responses",
-      ),
-    ).toBe(true);
-    expect(
-      areProvidersCompatible(
-        "custom-anthropic-messages",
-        "custom-openai-responses",
-      ),
-    ).toBe(false);
-    expect(
-      areProvidersCompatible("custom-anthropic-messages", "vercel-ai-gateway"),
-    ).toBe(false);
-    expect(
-      areProvidersCompatible(
-        "custom-openai-responses",
-        "vercel-ai-gateway-codex",
-      ),
-    ).toBe(false);
   });
 });
 

@@ -339,11 +339,14 @@ import {
   type RunMetadataValues,
 } from "./agent-run-metadata-write.service";
 import {
-  hasIncompatibleBuiltInModelRuntimeRoute,
   builtInModelRuntimeTarget,
-  type ModelRuntimeSessionRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
+
+import {
+  canReuseSession,
+  type SessionExecutionIdentity,
+} from "./session-compatibility";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -584,7 +587,7 @@ interface ResolvedAgentExecution {
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
-  readonly resumeSessionModelRoute?: ModelRuntimeSessionRoute;
+  readonly resumeSessionIdentity?: SessionExecutionIdentity;
 }
 
 interface ProductAgentExecutionPlan {
@@ -5936,12 +5939,6 @@ function resolvedSessionStorage(session: {
   };
 }
 
-function resolvedSessionModelRoute(
-  previousRun: ModelRuntimeSessionRoute | null,
-): Pick<ResolvedAgentExecution, "resumeSessionModelRoute"> {
-  return previousRun ? { resumeSessionModelRoute: previousRun } : {};
-}
-
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -5971,6 +5968,7 @@ function resolveBySessionId(
               conversation: {
                 id: conversations.id,
                 runId: conversations.runId,
+                cliAgentType: conversations.cliAgentType,
                 cliAgentSessionId: conversations.cliAgentSessionId,
                 cliAgentSessionHistory: conversations.cliAgentSessionHistory,
                 cliAgentSessionHistoryHash:
@@ -5984,9 +5982,7 @@ function resolveBySessionId(
                 id: agentRuns.id,
                 vars: agentRuns.vars,
                 storageMounts: agentRuns.storageMounts,
-                modelProvider: agentRuns.modelProvider,
-                modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-                modelRuntimeModel: agentRuns.modelRuntimeModel,
+                selectedModel: agentRuns.selectedModel,
               },
             })
             .from(agentSessions)
@@ -6049,7 +6045,10 @@ function resolveBySessionId(
         agentSessionId: snapshot.session.id,
         continuedFromAgentSessionId: snapshot.session.id,
         resumeSession,
-        ...resolvedSessionModelRoute(snapshot.previousRun),
+        resumeSessionIdentity: {
+          selectedModel: snapshot.previousRun?.selectedModel ?? null,
+          cliAgentType: conversation?.cliAgentType ?? null,
+        },
       };
     },
   );
@@ -9655,23 +9654,12 @@ function prepareRunContexts(
 
 function resolveCompatibleDirectResumeSession(args: {
   readonly resolved: ResolvedAgentExecution;
-  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly next: SessionExecutionIdentity;
 }): ResolvedAgentExecution {
-  if (!args.resolved.resumeSessionModelRoute) {
-    return args.resolved;
-  }
-  const runtimeRoute = args.modelProvider?.builtInModelRuntimeRoute;
-  const incompatible = hasIncompatibleBuiltInModelRuntimeRoute({
-    previous: args.resolved.resumeSessionModelRoute,
-    next: {
-      modelProvider: args.modelProvider?.type ?? null,
-      modelRuntimeProvider: runtimeRoute?.providerType ?? null,
-      modelRuntimeModel: runtimeRoute?.upstreamModel ?? null,
-    },
-  });
-  return incompatible
-    ? { ...args.resolved, resumeSession: undefined }
-    : args.resolved;
+  const previous = args.resolved.resumeSessionIdentity;
+  return previous && canReuseSession(previous, args.next)
+    ? args.resolved
+    : { ...args.resolved, resumeSession: undefined };
 }
 
 async function resolvePreparedOfficialWorkflowRun(
@@ -9750,13 +9738,16 @@ function prepareRunContext(
       }
       const { bodyContext, runtimeContext } = contexts;
       const { body } = bodyContext;
-      const resolved = resolveCompatibleDirectResumeSession({
-        resolved: bodyContext.resolved,
-        modelProvider: runtimeContext.modelProvider,
-      });
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         modelProvider: runtimeContext.modelProvider,
+      });
+      const resolved = resolveCompatibleDirectResumeSession({
+        resolved: bodyContext.resolved,
+        next: {
+          selectedModel: runtimeContext.modelProvider?.selectedModel ?? null,
+          cliAgentType: piSandbox ? "pi" : runtimeContext.framework,
+        },
       });
 
       const validation = await timing.measure(

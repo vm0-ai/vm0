@@ -787,22 +787,6 @@ async function readThreadSessionBinding(
   };
 }
 
-async function clearThreadSessionBinding(
-  db: Db,
-  threadId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const [thread] = await db
-    .update(chatThreads)
-    .set({ agentSessionId: null, agentSessionRunId: null })
-    .where(eq(chatThreads.id, threadId))
-    .returning({ id: chatThreads.id });
-  signal.throwIfAborted();
-  if (!thread) {
-    throw new Error("Expected a chat thread session binding row");
-  }
-}
-
 async function readThreadSessionConversation(
   db: Db,
   threadId: string,
@@ -1530,10 +1514,7 @@ async function timingStateActionResponse(
 type ThreadSessionStateAction = Extract<
   TestRuntimeStateActionBody,
   {
-    action:
-      | "read-thread-session-binding"
-      | "read-thread-session-conversation"
-      | "clear-thread-session-binding";
+    action: "read-thread-session-binding" | "read-thread-session-conversation";
   }
 >;
 
@@ -1542,8 +1523,7 @@ function isThreadSessionStateAction(
 ): body is ThreadSessionStateAction {
   return (
     body.action === "read-thread-session-binding" ||
-    body.action === "read-thread-session-conversation" ||
-    body.action === "clear-thread-session-binding"
+    body.action === "read-thread-session-conversation"
   );
 }
 
@@ -1578,10 +1558,6 @@ async function threadSessionStateActionResponse(
           ),
         },
       };
-    }
-    case "clear-thread-session-binding": {
-      await clearThreadSessionBinding(db, body.thread_id, signal);
-      return { status: 200 as const, body: { ok: true as const } };
     }
   }
 }

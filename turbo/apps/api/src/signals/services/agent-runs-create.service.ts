@@ -1103,7 +1103,7 @@ async function captureCodexSubscriptionAccount(
         input.featureSwitchContext,
       )) ||
     command.agentRunModelPin?.modelProvider !== "codex-oauth-token" ||
-    command.threadSessionRoute?.modelProvider !== "codex-oauth-token"
+    command.threadSessionRoute === undefined
   ) {
     return input;
   }
@@ -1124,10 +1124,6 @@ async function captureCodexSubscriptionAccount(
       modelProviderId: account.id,
       agentRunModelPin: {
         ...command.agentRunModelPin,
-        modelProviderId: account.id,
-      },
-      threadSessionRoute: {
-        ...command.threadSessionRoute,
         modelProviderId: account.id,
       },
     },
