@@ -142,17 +142,17 @@ Both are decided in full below.
 | `zero-sized` | `views/okou-page/image-annotation-editor.tsx:58`          | English prose: "would leave a zero-sized mark".                                                                            |
 | `zero-usage` | `views/okou-page/__tests__/chat-run-history.test.tsx:890` | Fixture id for a usage event carrying `creditUsage(0, [])` — a run that consumed zero credits. The numeral, not the brand. |
 
-## Baseline — still undecided
+## Baseline — resolved
 
-| Name        | Site                       | Owner  | Reason                                                                                                                                                                                  |
-| ----------- | -------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zero-left` | `views/css/index.css:1542` | #31840 | `--workflow-zero-left`. #31816's brief labelled this semantic and excluded it from scope; it is not. It positions the Zero avatar node in the onboarding diagram, and nothing reads it. |
-| `zero-size` | `views/css/index.css:1543` | #31840 | `--workflow-zero-size`. Same declaration block, and `72px` is exactly the `.owf-diagram-avatar` box. Also unreferenced.                                                                 |
-
-Both are dead declarations, so #31840 can delete rather than rename them. They
-were left untouched here because #31816's scope explicitly excluded them, and
-changing a name the brief said not to change is worse than recording that the
-brief was wrong.
+`zero-left` and `zero-size` were the only names this document left undecided.
+They were the `--workflow-zero-left: 277px` and `--workflow-zero-size: 72px`
+declarations in the `.owf-diagram` block of `views/css/index.css`: the geometry
+of the Zero avatar node in the onboarding diagram, with no `var()` reader
+anywhere in the repository. #31816's brief labelled them semantic and excluded
+them from scope, which was wrong, so #31816 recorded them here instead of
+changing a name its brief said not to change. #31840 deleted both declarations
+and their R1 baseline entries; deletion, not a rename, because nothing read
+them.
 
 ## Persisted-Key Decisions
 

@@ -1,7 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import { composerVoiceInputShortcutEnabled$ } from "../../signals/external/feature-switch.ts";
+import { voiceInputV2Enabled$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   chatShortcutHelpOpen$,
@@ -101,12 +101,12 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
 
 function shortcutSectionsForRoute(
   route: RouteKey | null,
-  voiceInputShortcutEnabled: boolean,
+  voiceInputV2Enabled: boolean,
 ): readonly ShortcutSectionDefinition[] {
   const removeVoiceInputShortcut = (
     sections: readonly ShortcutSectionDefinition[],
   ): readonly ShortcutSectionDefinition[] => {
-    if (voiceInputShortcutEnabled) {
+    if (voiceInputV2Enabled) {
       return sections;
     }
     return sections.map((section) => {
@@ -228,9 +228,9 @@ export function ChatShortcutHelpDialog() {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
   const activeRoute = useGet(activeRoute$);
-  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const shortcutSections = localizeShortcutSections(
-    shortcutSectionsForRoute(activeRoute, voiceInputShortcutEnabled),
+    shortcutSectionsForRoute(activeRoute, voiceInputV2Enabled),
   );
 
   return (

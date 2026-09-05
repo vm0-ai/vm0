@@ -969,14 +969,10 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
   ...baselineNames(
     [
       "Zero-run",
-      "conflictZeroRunId",
-      "danglingZeroRunId",
-      "goalZeroRunId",
       "zero-run",
       "zero-run-fixture",
       "zeroRunGoalId",
       "zeroRunGroupId",
-      "zeroRunId",
       "zeroRunRows",
       "zeroRuns",
       "zero_runs-only",
@@ -1277,12 +1273,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
     reason:
       "Legacy data-vm0-* edit-protocol reader kept for deck HTML that was stored or externally generated before the okou rename; #31824 drops it once no such deck remains.",
     workstream: "R7",
-  }),
-  ...baselineNames(["workflow-zero-left", "workflow-zero-size"], {
-    ownerIssue: "#31840",
-    reason:
-      "Dead custom property in the onboarding diagram declaration block that nothing reads; docs/residual-platform-brand-names.md records it as undecided and #31840 can delete rather than rename it.",
-    workstream: "R1",
   }),
   ...baselineNames(["vm0-deck-metadata"], {
     ownerIssue: "#31824",

@@ -23,7 +23,7 @@ import {
 import { onDomEventFn, onRef, settle, withCleanup } from "../utils.ts";
 import {
   featureSwitch$,
-  voiceDraftEnabled$,
+  voiceInputV2Enabled$,
 } from "../external/feature-switch.ts";
 import {
   audioInputAvailable$,
@@ -657,7 +657,7 @@ function createComposerVoiceInputSignals(
       if (!get(audioInputAvailable$) || get(sttStarting$)) {
         return;
       }
-      if (get(voiceDraftEnabled$)) {
+      if (get(voiceInputV2Enabled$)) {
         const status = get(state$).status;
         if (status === "transcribing") {
           return;

@@ -7289,9 +7289,9 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
     goalAId: "00000000-0000-4000-8000-000000088604",
     goalBId: "00000000-0000-4000-8000-000000088605",
     sessionId: "00000000-0000-4000-8000-000000088606",
-    goalZeroRunId: "00000000-0000-4000-8000-000000088607",
-    danglingZeroRunId: "00000000-0000-4000-8000-000000088608",
-    conflictZeroRunId: "00000000-0000-4000-8000-000000088609",
+    goalRunId: "00000000-0000-4000-8000-000000088607",
+    danglingRunId: "00000000-0000-4000-8000-000000088608",
+    conflictRunId: "00000000-0000-4000-8000-000000088609",
     multiLeafEventId: "00000000-0000-4000-8000-000000088610",
     userMessageEventId: "00000000-0000-4000-8000-000000088611",
     thinkingEventId: "00000000-0000-4000-8000-000000088612",
@@ -7379,9 +7379,9 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
             ($3, 'canonical-backfill-user', $4, 'completed', 'conflicting goal run', 'canonical-backfill-org')
         `,
         [
-          fixture.goalZeroRunId,
-          fixture.danglingZeroRunId,
-          fixture.conflictZeroRunId,
+          fixture.goalRunId,
+          fixture.danglingRunId,
+          fixture.conflictRunId,
           fixture.sessionId,
         ],
       );
@@ -7503,8 +7503,8 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
             ($2, 'goal', $3, $5, NULL)
         `,
         [
-          fixture.goalZeroRunId,
-          fixture.danglingZeroRunId,
+          fixture.goalRunId,
+          fixture.danglingRunId,
           fixture.threadAId,
           fixture.goalAId,
           fixture.missingGoalId,
@@ -7575,7 +7575,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
           VALUES ($1, 'goal', $2, $3, $4)
         `,
         [
-          fixture.conflictZeroRunId,
+          fixture.conflictRunId,
           fixture.threadAId,
           fixture.goalAId,
           fixture.goalBId,
@@ -7589,7 +7589,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
         /zero_runs has .* rows whose goal_id conflicts with run_group_id/u,
       );
       await client.query(`DELETE FROM "zero_runs" WHERE "id" = $1`, [
-        fixture.conflictZeroRunId,
+        fixture.conflictRunId,
       ]);
 
       // Goal B disappears the way production goals do; its chat event keeps a
@@ -7785,16 +7785,16 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
           WHERE "id" = ANY($1::uuid[])
           ORDER BY "id"
         `,
-        [[fixture.goalZeroRunId, fixture.danglingZeroRunId]],
+        [[fixture.goalRunId, fixture.danglingRunId]],
       );
       assert.deepEqual(zeroRunRows.rows, [
         {
-          id: fixture.goalZeroRunId,
+          id: fixture.goalRunId,
           runGroupId: fixture.goalAId,
           goalId: fixture.goalAId,
         },
         {
-          id: fixture.danglingZeroRunId,
+          id: fixture.danglingRunId,
           runGroupId: fixture.missingGoalId,
           goalId: null,
         },
@@ -8037,7 +8037,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     threadId: "00000000-0000-4000-8000-000000091002",
     goalId: "00000000-0000-4000-8000-000000091003",
     sessionId: "00000000-0000-4000-8000-000000091004",
-    zeroRunId: "00000000-0000-4000-8000-000000091005",
+    runId: "00000000-0000-4000-8000-000000091005",
     legacyEventId: "00000000-0000-4000-8000-000000091006",
     interruptEventId: "00000000-0000-4000-8000-000000091007",
     interruptRunId: "00000000-0000-4000-8000-000000091008",
@@ -8143,7 +8143,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
             'physical contraction goal run', 'physical-contract-org'
           )
         `,
-        [fixture.zeroRunId, fixture.sessionId],
+        [fixture.runId, fixture.sessionId],
       );
       await client.query(
         `
@@ -8151,7 +8151,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
             "id", "trigger_source", "chat_thread_id", "run_group_id", "goal_id"
           ) VALUES ($1, 'goal', $2, $3, $3)
         `,
-        [fixture.zeroRunId, fixture.threadId, fixture.goalId],
+        [fixture.runId, fixture.threadId, fixture.goalId],
       );
 
       await client.query(
@@ -8338,7 +8338,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
               WHERE "id" = $1
             ) AS "zeroRunGoalId"
         `,
-        [fixture.zeroRunId],
+        [fixture.runId],
       );
       assert.deepEqual(catalog.rows, [
         {
