@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.625.0](https://github.com/vm0-ai/vm0/compare/core-v8.624.0...core-v8.625.0) (2026-09-05)
+
+
+### Features
+
+* **platform:** stabilize pinned chats and add numbered search navigation ([#31833](https://github.com/vm0-ai/vm0/issues/31833)) ([6040bad](https://github.com/vm0-ai/vm0/commit/6040bada98116cff9254300136962e5080c03021))
+
+
+### Refactoring
+
+* **voice:** remove draft compatibility and encoded audio fallback ([#31792](https://github.com/vm0-ai/vm0/issues/31792)) ([83979d4](https://github.com/vm0-ai/vm0/commit/83979d4a271483500bce0e63f837b5a9db279262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.2
+
 ## [8.624.0](https://github.com/vm0-ai/vm0/compare/core-v8.623.2...core-v8.624.0) (2026-09-05)
 
 

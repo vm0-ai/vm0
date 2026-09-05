@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.549.0](https://github.com/vm0-ai/vm0/compare/api-v1.548.1...api-v1.549.0) (2026-09-05)
+
+
+### Features
+
+* **api:** route subscription Terra Fast through Pi ([#31857](https://github.com/vm0-ai/vm0/issues/31857)) ([109ef62](https://github.com/vm0-ai/vm0/commit/109ef6256ba3e8c59eeb0f6754d71bd6536d75b7))
+
+
+### Refactoring
+
+* **voice:** remove draft compatibility and encoded audio fallback ([#31792](https://github.com/vm0-ai/vm0/issues/31792)) ([83979d4](https://github.com/vm0-ai/vm0/commit/83979d4a271483500bce0e63f837b5a9db279262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.2
+    * @okouai/core bumped to 8.625.0
+    * @okouai/db bumped to 1.241.5
+    * @okouai/pi-agent-runtime bumped to 1.18.0
+
 ## [1.548.1](https://github.com/vm0-ai/vm0/compare/api-v1.548.0...api-v1.548.1) (2026-09-05)
 
 
