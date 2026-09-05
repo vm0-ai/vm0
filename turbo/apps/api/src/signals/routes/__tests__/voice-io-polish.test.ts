@@ -35,7 +35,7 @@ describe("POST /api/voice-io/polish", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: true },
+      { [FeatureSwitchKey.VoiceInputV2]: true },
     );
     let requestBody: unknown;
     server.use(
@@ -108,7 +108,7 @@ describe("POST /api/voice-io/polish", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: false },
+      { [FeatureSwitchKey.VoiceInputV2]: false },
     );
     const disabled = await client().post({
       headers: { authorization: "Bearer clerk-session" },
@@ -126,7 +126,7 @@ describe("POST /api/voice-io/polish", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: true },
+      { [FeatureSwitchKey.VoiceInputV2]: true },
     );
     let providerRequests = 0;
     server.use(
