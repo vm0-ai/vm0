@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.622.0](https://github.com/vm0-ai/vm0/compare/core-v8.621.2...core-v8.622.0) (2026-09-04)
+
+
+### Features
+
+* add intro video heygen renderer and voice services ([#31658](https://github.com/vm0-ai/vm0/issues/31658)) ([1917a5f](https://github.com/vm0-ai/vm0/commit/1917a5fa59ee61fdb44f0d1822804a256009ef88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.403.0
+
 ## [8.621.2](https://github.com/vm0-ai/vm0/compare/core-v8.621.1...core-v8.621.2) (2026-09-04)
 
 
