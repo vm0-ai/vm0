@@ -43,16 +43,29 @@ interface ShortcutSectionDefinition {
 
 type ShortcutSectionTitleId = "composer" | "global" | "messages";
 
+const GLOBAL_NAVIGATION_SHORTCUTS = [
+  { key: "shift+/", labelId: "showShortcuts" },
+  { key: "mod+b", labelId: "toggleSidebar" },
+  { key: "mod+shift+o", labelId: "newChat" },
+  { key: "mod+shift+f", labelId: "searchWorkspace" },
+  { key: "ctrl+shift+[", labelId: "previousAgent" },
+  { key: "ctrl+shift+]", labelId: "nextAgent" },
+] as const satisfies readonly ShortcutDefinition[];
+
+const COMPOSER_SHORTCUT_SECTION = {
+  titleId: "composer",
+  shortcuts: [
+    { key: "enter", labelId: "sendMessage" },
+    { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
+    { key: "escape", labelId: "blurComposer" },
+  ],
+} as const satisfies ShortcutSectionDefinition;
+
 const CHAT_THREAD_SHORTCUT_SECTIONS = [
   {
     titleId: "global",
     shortcuts: [
-      { key: "shift+/", labelId: "showShortcuts" },
-      { key: "mod+b", labelId: "toggleSidebar" },
-      { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+f", labelId: "searchWorkspace" },
-      { key: "ctrl+shift+[", labelId: "previousAgent" },
-      { key: "ctrl+shift+]", labelId: "nextAgent" },
+      ...GLOBAL_NAVIGATION_SHORTCUTS,
       { key: "f2", labelId: "renameChat" },
       { key: "shift+f2", labelId: "changeIcon" },
       { key: "ctrl+shift+1", labelId: "setIcon" },
@@ -68,51 +81,22 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
       { key: "mod+shift+arrowdown", labelId: "nextThread" },
     ],
   },
-  {
-    titleId: "composer",
-    shortcuts: [
-      { key: "enter", labelId: "sendMessage" },
-      { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
-      { key: "escape", labelId: "blurComposer" },
-    ],
-  },
+  COMPOSER_SHORTCUT_SECTION,
 ] as const satisfies readonly ShortcutSectionDefinition[];
 
 const AGENT_CHAT_SHORTCUT_SECTIONS = [
   {
     titleId: "global",
     shortcuts: [
-      { key: "shift+/", labelId: "showShortcuts" },
-      { key: "mod+b", labelId: "toggleSidebar" },
-      { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+f", labelId: "searchWorkspace" },
-      { key: "ctrl+shift+[", labelId: "previousAgent" },
-      { key: "ctrl+shift+]", labelId: "nextAgent" },
+      ...GLOBAL_NAVIGATION_SHORTCUTS,
       { key: "mod+shift+arrowdown", labelId: "openFirstThread" },
     ],
   },
-  {
-    titleId: "composer",
-    shortcuts: [
-      { key: "enter", labelId: "sendMessage" },
-      { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
-      { key: "escape", labelId: "blurComposer" },
-    ],
-  },
+  COMPOSER_SHORTCUT_SECTION,
 ] as const satisfies readonly ShortcutSectionDefinition[];
 
 const SIDEBAR_SHORTCUT_SECTIONS = [
-  {
-    titleId: "global",
-    shortcuts: [
-      { key: "shift+/", labelId: "showShortcuts" },
-      { key: "mod+b", labelId: "toggleSidebar" },
-      { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+f", labelId: "searchWorkspace" },
-      { key: "ctrl+shift+[", labelId: "previousAgent" },
-      { key: "ctrl+shift+]", labelId: "nextAgent" },
-    ],
-  },
+  { titleId: "global", shortcuts: GLOBAL_NAVIGATION_SHORTCUTS },
 ] as const satisfies readonly ShortcutSectionDefinition[];
 
 function shortcutSectionsForRoute(

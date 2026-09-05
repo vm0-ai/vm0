@@ -54,7 +54,7 @@ import {
 // can drive it. Keyboard events on a detached editor are silently dropped.
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.zero-composer [contenteditable="true"]',
+    '.okou-composer [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");
@@ -338,7 +338,7 @@ function sidebar(): HTMLElement {
 }
 
 function queryMobileSidebar(): HTMLElement | null {
-  const drawer = document.querySelector("aside.zero-pwa-fixed-cover");
+  const drawer = document.querySelector("aside.okou-pwa-fixed-cover");
   return drawer instanceof HTMLElement ? drawer : null;
 }
 
@@ -1337,6 +1337,35 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
     expect(
       menuWithoutMarkAllRead.querySelectorAll('[role="separator"]'),
     ).toHaveLength(0);
+  });
+});
+
+test("Show mark all read in the mobile chat-list menu", async () => {
+  mockMobileLayout();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(INCIDENT_THREAD_ID, "Unread conversation"),
+  ]);
+  mockUnreadAgents(() => {
+    return [AGENT_ID];
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const list = await waitFor(() => {
+    const current = mobileSidebar();
+    expect(
+      within(current).getByText("Unread conversation"),
+    ).toBeInTheDocument();
+    return current;
+  });
+  click(within(list).getByLabelText("Open chat list menu"));
+
+  await waitFor(() => {
+    expect(menuItemByText("Mark all read")).toBeInTheDocument();
   });
 });
 

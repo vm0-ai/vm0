@@ -34,7 +34,7 @@ function composerFileInput(): HTMLInputElement {
 }
 
 function composerRoot(): HTMLElement {
-  const composer = document.querySelector<HTMLElement>(".zero-composer");
+  const composer = document.querySelector<HTMLElement>(".okou-composer");
   if (!composer) {
     throw new Error("Expected the chat composer");
   }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.185.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.2...runner-rs-v0.185.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* **python:** retry auth.base socket creation failures ([#31774](https://github.com/vm0-ai/vm0/issues/31774)) ([047e57c](https://github.com/vm0-ai/vm0/commit/047e57c3857a9c796b82402f1014378d617a5003))
+
+
+### Performance Improvements
+
+* **python:** bound request header field count ([#31775](https://github.com/vm0-ai/vm0/issues/31775)) ([f853951](https://github.com/vm0-ai/vm0/commit/f85395197437a514b1c7da21de4276a5edc3b02b))
+
 ## [0.185.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.1...runner-rs-v0.185.2) (2026-09-04)
 
 

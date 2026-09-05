@@ -103,7 +103,10 @@ function AvatarSettingsControl({
   isDefaultAgent: boolean;
   avatarUrl: string | null;
   alt: string;
-  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
+  onConfirm: (
+    config: ResolvedAvatarSvgConfig,
+    signal: AbortSignal,
+  ) => Promise<void>;
 }) {
   if (isDefaultAgent) {
     return (
@@ -382,7 +385,7 @@ export function SettingsTab({
   return (
     <>
       <div className="mx-auto max-w-[900px]">
-        <Card className="zero-card overflow-hidden">
+        <Card className="okou-card overflow-hidden">
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow
               label={t(($) => {
@@ -403,7 +406,7 @@ export function SettingsTab({
                     isDefaultAgent={isDefaultAgent}
                     avatarUrl={avatarUrl}
                     alt={resolvedAgentName}
-                    onConfirm={async (cfg) => {
+                    onConfirm={async (cfg, signal) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
                       patchForm({
                         agentId,
@@ -417,8 +420,9 @@ export function SettingsTab({
                           avatarUrl: newAvatarUrl,
                           ...(canEditVisibility ? { visibility } : {}),
                         },
-                        pageSignal,
+                        signal,
                       );
+                      signal.throwIfAborted();
                       toast.success(
                         t(($) => {
                           return $.profile.saved;
@@ -532,7 +536,7 @@ export function SettingsTab({
                           "w-full min-w-0 rounded-lg border border-[0.7px] px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           tone === opt
                             ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
-                            : "zero-chip text-muted-foreground hover:text-foreground",
+                            : "okou-chip text-muted-foreground hover:text-foreground",
                         )}
                       >
                         {toneCopy[opt].label}
@@ -541,7 +545,7 @@ export function SettingsTab({
                   })}
                 </div>
                 <div
-                  className="rounded-lg bg-muted/30 px-3 py-2 w-full zero-border"
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full okou-border"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -550,12 +554,12 @@ export function SettingsTab({
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
-                      <div className="zero-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                      <div className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
                         {toneCopy[tone].user}
                       </div>
                     </div>
                     <div className="flex justify-start">
-                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
+                      <div className="okou-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
                         {toneCopy[tone].agent}
                       </div>
                     </div>

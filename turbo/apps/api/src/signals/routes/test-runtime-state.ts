@@ -714,7 +714,7 @@ async function clearRunApiStart(
   });
   signal.throwIfAborted();
   if (!cleared) {
-    throw new Error("Expected a Zero run timing row");
+    throw new Error("Expected an agent run timing row");
   }
 }
 
@@ -730,7 +730,7 @@ async function readRunApiStart(
     .limit(1);
   signal.throwIfAborted();
   if (!run) {
-    throw new Error("Expected a Zero run timing row");
+    throw new Error("Expected an agent run timing row");
   }
   return run.apiStartedAt?.toISOString() ?? null;
 }

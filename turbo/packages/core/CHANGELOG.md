@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.623.0](https://github.com/vm0-ai/vm0/compare/core-v8.622.0...core-v8.623.0) (2026-09-05)
+
+
+### Features
+
+* **platform:** give composer avatars a neck and sweater ([#31740](https://github.com/vm0-ai/vm0/issues/31740)) ([26067de](https://github.com/vm0-ai/vm0/commit/26067de1c1cf4378675cb31b5c30b6fae7efb5df))
+
+
+### Refactoring
+
+* **eslint:** rename the internal lint plugin namespace to okou ([#31806](https://github.com/vm0-ai/vm0/issues/31806)) ([314590e](https://github.com/vm0-ai/vm0/commit/314590ea8d2671714555db2a4cfeb035994eb779)), closes [#31799](https://github.com/vm0-ai/vm0/issues/31799)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.0
+
 ## [8.622.0](https://github.com/vm0-ai/vm0/compare/core-v8.621.2...core-v8.622.0) (2026-09-04)
 
 

@@ -183,9 +183,7 @@ import {
 import { selectedComputerUseHostId } from "../okou-page/computer-use-hosts.ts";
 import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import { isCodexFastModeAvailableForSelection } from "../okou-page/model-default-selection.ts";
-import { personalModelProvider$ } from "../okou-page/model-first-personal-oauth.ts";
-import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../okou-page/settings/claude-code-device-auth.ts";
-import { openCodexDeviceAuthDialogPersonal$ } from "../okou-page/settings/codex-device-auth.ts";
+import { createPersonalModelProviderAuthSignals } from "../okou-page/personal-model-provider-auth.ts";
 import type {
   MessageListSignals,
   ChatPanelSignals,
@@ -493,43 +491,10 @@ function createModelSelection(
     return get(threadMeta$)?.serviceTier === "priority";
   });
 
-  const selectedModelOauthAvailable$ = computed(
-    async (get): Promise<boolean> => {
-      const selectedModel = await get(selectedModel$);
-      if (selectedModel === null) {
-        return true;
-      }
-      const status = (await get(personalModelProvider$))[selectedModel];
-      return status === undefined || status.status === "connected";
-    },
-  );
-
-  const configureSelectedModel$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const selectedModel = await get(selectedModel$);
-      signal.throwIfAborted();
-      if (selectedModel === null) {
-        return;
-      }
-      const status = (await get(personalModelProvider$))[selectedModel];
-      signal.throwIfAborted();
-      if (status === undefined || status.status === "connected") {
-        return;
-      }
-      const authArgs =
-        status.status === "needs_reconnect"
-          ? {
-              mode: "reconnect" as const,
-              modelProviderId: status.credentialId,
-            }
-          : { mode: "connect" as const };
-      if (status.providerType === "claude-code-oauth-token") {
-        await set(openClaudeCodeDeviceAuthDialogPersonal$, authArgs, signal);
-        return;
-      }
-      await set(openCodexDeviceAuthDialogPersonal$, authArgs, signal);
-    },
-  );
+  const {
+    oauthAvailable$: selectedModelOauthAvailable$,
+    configure$: configureSelectedModel$,
+  } = createPersonalModelProviderAuthSignals(selectedModel$);
 
   return {
     selectedModel$,
@@ -962,7 +927,6 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
         {
           threadId,
           userMessage: null,
-          draftVoice: null,
           attachments: null,
         },
         signal,
@@ -3351,23 +3315,7 @@ function createSendMessage(deps: SendMessageDeps) {
   );
 }
 
-interface QueueMessageDeps {
-  readonly threadId: string;
-  readonly agentId: string;
-  modelSelectionForSend$: Command<
-    Promise<ModelProviderSelection | null>,
-    [AbortSignal]
-  >;
-  draft: DraftSignals;
-  cancelDraftSync$: Command<void, []>;
-  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  sendEvent$: Command<
-    Promise<SendChatEventResult>,
-    [SendChatEventInput, AbortSignal]
-  >;
-}
-
-function createQueueMessage(deps: QueueMessageDeps) {
+function createQueueMessage(deps: SendMessageDeps) {
   const {
     threadId,
     agentId,
@@ -3484,7 +3432,6 @@ function createRecallMessage(deps: RecallMessageDeps) {
       {
         content: messageDocumentToPrompt(userMessage) ?? "",
         userMessage,
-        draftVoice: null,
         generationTemplate:
           templatePart?.type === "template" ? templatePart.template : undefined,
         attachments: userMessageFileAttachments(userMessage).map(
@@ -3546,8 +3493,7 @@ function createSkipAutomationEvent({
   );
 }
 
-interface MessageCommandsDeps
-  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
+interface MessageCommandsDeps extends SendMessageDeps, RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {
@@ -3955,12 +3901,6 @@ function nextThinkingTypewriterFrame(args: {
   });
 }
 
-function thinkingTypewriterFrameComplete(
-  frame: ThinkingTypewriterFrame,
-): boolean {
-  return frame.complete;
-}
-
 function createThinkingIndicatorSignals(
   thinkingText$: Computed<Promise<string | null>>,
   thinkingEventId$: Computed<Promise<string | null>>,
@@ -4017,7 +3957,7 @@ function createThinkingIndicatorSignals(
             measureText,
           });
           set(thinkingTypewriterFrame$, nextFrame);
-          return thinkingTypewriterFrameComplete(nextFrame);
+          return nextFrame.complete;
         },
         THINKING_TYPEWRITER_INTERVAL_MS,
         loopSignal,
@@ -4414,24 +4354,6 @@ function createChatPanelSignalsWithDraft(
     artifacts$: messages.artifacts$,
     reloadArtifacts$: messages.reloadArtifacts$,
   };
-}
-
-/**
- * Creates the public panel signals for a chat thread.
- *
- * @public
- */
-export function createChatPanelSignals(
-  chatEvents: ChatEventSignals,
-  agentId: string,
-  signal: AbortSignal,
-): ChatPanelSignals {
-  return createChatPanelSignalsWithDraft(
-    chatEvents,
-    agentId,
-    createDraftSignals(),
-    signal,
-  );
 }
 
 export const createCachedChatPanelSignals$ = command(

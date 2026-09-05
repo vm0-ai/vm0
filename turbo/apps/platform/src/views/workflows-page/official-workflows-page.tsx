@@ -80,7 +80,7 @@ function CatalogLoading() {
         return (
           <div
             key={index}
-            className="zero-card h-52 animate-pulse bg-muted/40"
+            className="okou-card h-52 animate-pulse bg-muted/40"
           />
         );
       })}
@@ -90,7 +90,7 @@ function CatalogLoading() {
 
 function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
   return (
-    <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+    <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
       <RotateCcw size={28} className="text-muted-foreground" />
       <h2 className="mt-4 text-sm font-semibold text-foreground">
         {i18n.t(($) => {
@@ -106,7 +106,7 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
         type="button"
         variant="outline"
         size="sm"
-        className="zero-btn-morandi mt-4"
+        className="okou-btn-morandi mt-4"
         onClick={onRetry}
       >
         {i18n.t(($) => {
@@ -123,7 +123,7 @@ function OfficialWorkflowCard({
   readonly workflow: OfficialWorkflowCatalogSummary;
 }) {
   return (
-    <article className="zero-card flex min-h-52 flex-col overflow-hidden transition-colors hover:bg-state-hover">
+    <article className="okou-card flex min-h-52 flex-col overflow-hidden transition-colors hover:bg-state-hover">
       {workflow.presentation.coverImageUrl ? (
         <img
           src={workflow.presentation.coverImageUrl}
@@ -256,7 +256,7 @@ function OfficialWorkflowCatalogPage() {
             </div>
           ) : null}
           {catalogLoadable.state === "hasData" && workflows.length === 0 ? (
-            <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+            <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
               <Layers3 size={28} className="text-muted-foreground" />
               <h2 className="mt-4 text-sm font-semibold text-foreground">
                 {i18n.t(($) => {
@@ -435,7 +435,7 @@ function OfficialWorkflowDefinitionPage() {
             {definition.lifecycle === "active" ? (
               <Button
                 type="button"
-                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg"
+                className="okou-btn-morandi h-9 shrink-0 gap-2 rounded-lg"
                 onClick={() => {
                   setForm(
                     createOfficialWorkflowConfigurationForm({
@@ -464,7 +464,7 @@ function OfficialWorkflowDefinitionPage() {
           <CatalogError onRetry={reload} />
         ) : null}
         {definitionLoadable.state === "hasData" && !definition ? (
-          <div className="zero-card flex min-h-[20rem] items-center justify-center px-6 text-sm text-muted-foreground">
+          <div className="okou-card flex min-h-[20rem] items-center justify-center px-6 text-sm text-muted-foreground">
             {i18n.t(($) => {
               return $.workflows.official.notFound;
             })}
@@ -486,7 +486,7 @@ function OfficialWorkflowDefinitionPage() {
                 </AlertDescription>
               </Alert>
             ) : null}
-            <section className="zero-card p-5">
+            <section className="okou-card p-5">
               <h2 className="text-sm font-semibold text-foreground">
                 {i18n.t(($) => {
                   return $.workflows.official.includedAutomations;

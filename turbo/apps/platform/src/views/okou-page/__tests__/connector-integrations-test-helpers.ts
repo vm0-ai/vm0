@@ -47,7 +47,7 @@ export function getAction(
 }
 
 export function getIntegrationCard(title: string): HTMLElement {
-  const card = screen.getByText(title).closest(".zero-card");
+  const card = screen.getByText(title).closest(".okou-card");
   if (!(card instanceof HTMLElement)) {
     throw new Error(`Expected integration card titled "${title}"`);
   }

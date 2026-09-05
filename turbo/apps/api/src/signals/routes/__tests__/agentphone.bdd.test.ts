@@ -1202,6 +1202,64 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(coldCutoverIdle.body.job).toBeNull();
   });
 
+  it("wakes iMessage groups on the canonical @okou handle and strips it from the prompt", async () => {
+    const runs = createRunsApi(context);
+    const ap = createAgentPhoneBddApi(context);
+    // The VM0 brand still presents the assistant as "Zero", so serving this
+    // conversation from that brand proves the canonical handle is recognized
+    // regardless of which brand the deployment presents.
+    const { phone, runnerGroup, sends } = await entitledLinkedActor("vm0");
+    const conversationId = uniqueConversationId();
+
+    // Body text addressing the canonical handle wakes the agent, and only the
+    // addressing handle is removed — a bare "okou" stays in the task.
+    const beforeMention = sends.messages.length;
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "@okou draft the okou launch note",
+      conversationId,
+      isGroup: true,
+    });
+    const mentionRun = await claimDispatchedRun(runnerGroup);
+    expect(mentionRun.prompt).toBe("draft the okou launch note");
+    expect(mentionRun.prompt).not.toContain("@okou");
+    await completeSandboxRun(mentionRun.sandboxToken, mentionRun.runId, 0);
+    await waitForSendCount(sends, beforeMention + 1);
+
+    // A provider mention object naming the canonical handle wakes the agent
+    // even when the body carries no handle text.
+    const beforeMentionObject = sends.messages.length;
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "and schedule it for Monday",
+      conversationId,
+      isGroup: true,
+      mentions: [{ username: "okou" }],
+    });
+    const mentionObjectRun = await claimDispatchedRun(runnerGroup);
+    expect(mentionObjectRun.prompt).toBe("and schedule it for Monday");
+    await completeSandboxRun(
+      mentionObjectRun.sandboxToken,
+      mentionObjectRun.runId,
+      0,
+    );
+    await waitForSendCount(sends, beforeMentionObject + 1);
+
+    // Group chatter that names no handle is still ignored.
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "okou would probably know",
+      conversationId,
+      isGroup: true,
+    });
+    await runs.heartbeatRunner(runnerGroup);
+    const idle = await runs.pollRunner(runnerGroup);
+    expect(idle.body.job).toBeNull();
+  });
+
   it("skips completion delivery for runs whose phone link was disconnected mid-flight", async () => {
     const integrations = createBddIntegrationApi(context);
     const ap = createAgentPhoneBddApi(context);

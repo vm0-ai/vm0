@@ -254,9 +254,9 @@ export function OrgMembersTab() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-card zero-border">
+      <div className="overflow-hidden rounded-xl bg-card okou-border">
         <MembersTableHeader showUsagePack={showUsagePack} />
-        <div className="h-0 zero-border-t mx-5" />
+        <div className="h-0 okou-border-t mx-5" />
 
         {isLoading && (
           <>
@@ -296,7 +296,7 @@ export function OrgMembersTab() {
             {membershipRequests.map((req, i) => {
               return (
                 <div key={req.id}>
-                  {i > 0 && <div className="h-0 zero-border-t mx-5" />}
+                  {i > 0 && <div className="h-0 okou-border-t mx-5" />}
                   <MembershipRequestRow
                     request={req}
                     showUsagePack={showUsagePack}
@@ -304,7 +304,7 @@ export function OrgMembersTab() {
                 </div>
               );
             })}
-            <div className="h-0 zero-border-t mx-5" />
+            <div className="h-0 okou-border-t mx-5" />
           </>
         )}
 
@@ -313,7 +313,7 @@ export function OrgMembersTab() {
             return (
               <div key={m.userId}>
                 {(i > 0 || membershipRequests.length > 0) && (
-                  <div className="h-0 zero-border-t mx-5" />
+                  <div className="h-0 okou-border-t mx-5" />
                 )}
                 <MemberRow
                   member={m}
@@ -337,7 +337,7 @@ export function OrgMembersTab() {
                 {(i > 0 ||
                   filtered.length > 0 ||
                   membershipRequests.length > 0) && (
-                  <div className="h-0 zero-border-t mx-5" />
+                  <div className="h-0 okou-border-t mx-5" />
                 )}
                 <PendingInvitationRow
                   invitation={inv}
@@ -1055,7 +1055,7 @@ function MemberRow({
         />
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
           <ShieldCheck
             size={12}
             className={
@@ -1462,7 +1462,7 @@ function PendingInvitationRow({
         </div>
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
           <Clock size={12} className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
@@ -1622,7 +1622,7 @@ function MembershipRequestRow({
         <div className="text-[13px] text-muted-foreground">—</div>
       )}
       <div>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
           <UserPlus size={12} className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;

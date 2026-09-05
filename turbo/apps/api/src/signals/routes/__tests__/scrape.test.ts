@@ -30,7 +30,9 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
+import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
 
 const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
@@ -128,6 +130,26 @@ async function setActorCredits(
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
   await setActorCredits(actor, 1000);
+}
+
+async function createAdmittedScrapeRun(actor: ApiTestUser): Promise<string> {
+  await seedVm0BuiltInDefaultModelKey(context);
+  const bdd = createBddApi(context);
+  const runs = createRunsApi(context);
+  bdd.acceptAgentStorageWrites();
+  runs.configureRunnerGroup();
+  await bootstrapOnboarding(actor);
+  await setActorCredits(actor, 1);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Admitted scrape agent",
+    visibility: "private",
+  });
+  const run = await runs.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "Scrape after credit exhaustion",
+    modelProvider: "built-in",
+  });
+  return run.runId;
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -616,6 +638,93 @@ describe("okou scrape route", () => {
     const response = await accept(
       client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(firecrawlRequests).toBe(0);
+  });
+
+  it("continues an admitted run after credits are exhausted", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    const runId = await createAdmittedScrapeRun(actor);
+    await setActorCredits(actor, 0);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Admitted run",
+            metadata: { sourceURL: "https://example.com/page" },
+          },
+        });
+      }),
+    );
+    const token = createRunsApi(context).okouTokenForRunWithCapabilities(
+      actor,
+      runId,
+      ["scrape:read"],
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(scrapeContract).scrape({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      creditsCharged: 4,
+      result: { markdown: "# Admitted run" },
+    });
+    await expect(credits(actor)).resolves.toBe(-4);
+  });
+
+  it("does not let admitted runs bypass plan suspension", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    const runId = await createAdmittedScrapeRun(actor);
+    if (!actor.orgId) {
+      throw new Error("Scrape test actor must belong to an organization");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    let firecrawlRequests = 0;
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+    const token = createRunsApi(context).okouTokenForRunWithCapabilities(
+      actor,
+      runId,
+      ["scrape:read"],
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(scrapeContract).scrape({
+        headers: { authorization: `Bearer ${token}` },
         body: {
           url: "https://example.com/page",
           format: "markdown",

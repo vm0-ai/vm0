@@ -32,10 +32,10 @@ const THUMBNAIL_INITIAL_TEXT = {
 
 type ThumbnailSize = keyof typeof THUMBNAIL_SIZE;
 
-// `zero-thumb-border` is the 0.5px hairline every thumbnail carries so its
+// `okou-thumb-border` is the 0.5px hairline every thumbnail carries so its
 // bounds stay readable against the sidebar, cards, and menus alike — including
 // avatars whose artwork fades out at the edge.
-const THUMBNAIL_BASE = "shrink-0 zero-thumb-border";
+const THUMBNAIL_BASE = "shrink-0 okou-thumb-border";
 
 /**
  * A person: a circle by default, so it never reads as a workspace or an app

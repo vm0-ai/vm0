@@ -211,7 +211,7 @@ function accountMenuTrigger(userName = "Alex Rivera"): HTMLElement {
   }
 
   const minimalSidebar = document.querySelector(
-    "aside.zero-nav:not(.zero-nav-rail)",
+    "aside.okou-nav:not(.okou-nav-rail)",
   );
   if (!(minimalSidebar instanceof HTMLElement)) {
     throw new Error("Account menu container not found");
@@ -1227,7 +1227,7 @@ test("Restore page interaction after closing Settings", async () => {
     ).not.toBeInTheDocument();
   });
 
-  expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
+  expect(document.querySelector(".okou-dialog-overlay")).toBeNull();
   expect(document.body.style.pointerEvents).not.toBe("none");
 
   const chatList = await screen.findByTestId("chat-list-column");

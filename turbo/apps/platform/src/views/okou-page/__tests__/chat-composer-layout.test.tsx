@@ -33,5 +33,5 @@ test("Keep the iPadOS composer from stealing focus", async () => {
     throw new Error("The page has no active HTML element");
   }
   expect(editor).not.toHaveFocus();
-  expect(editor.closest(".zero-composer")).not.toContainElement(activeElement);
+  expect(editor.closest(".okou-composer")).not.toContainElement(activeElement);
 });

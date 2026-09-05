@@ -105,6 +105,7 @@ import {
   setPermConnectorSlug$,
   permSearch$,
   setPermSearch$,
+  focusPermSearchRef$,
   permSearchActive$,
   setPermSearchActive$,
   permSavingConnectorSlug$,
@@ -217,7 +218,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </div>
             <Link
               pathname="/agents"
-              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+              className="okou-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
             >
               {t(($) => {
                 return $.detail.notFound.back;
@@ -234,13 +235,13 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
       <Breadcrumb />
       <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <Card className="zero-card">
+          <Card className="okou-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
-                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+                className="okou-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
               >
                 {t(($) => {
                   return $.actions.retry;
@@ -347,7 +348,7 @@ function resolveSound(sound: string): Tone {
 function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
-      <div className="zero-card animate-pulse">
+      <div className="okou-card animate-pulse">
         {Array.from({ length: 4 }, (_, i) => {
           return (
             <div
@@ -375,7 +376,7 @@ function PermissionGrantsError() {
   const { t } = useTranslation("agents");
   return (
     <div className="mx-auto max-w-[900px]">
-      <div className="zero-card px-5 py-4 text-sm text-destructive">
+      <div className="okou-card px-5 py-4 text-sm text-destructive">
         {t(($) => {
           return $.authorization.permissionLoadError;
         })}
@@ -388,7 +389,7 @@ function NoConnectedConnectors() {
   const { t } = useTranslation("agents");
   return (
     <>
-      <div className="zero-card py-8 flex flex-col items-center gap-3">
+      <div className="okou-card py-8 flex flex-col items-center gap-3">
         <img
           src={noConnectorImg}
           alt={t(($) => {
@@ -442,9 +443,10 @@ function ConnectedConnectorPermissions({
   onManage: (connectorSlug: ConnectorSlug) => void;
 }) {
   const { t } = useTranslation("agents");
+  const focusSearch = useSet(focusPermSearchRef$);
   return (
     <>
-      <div className="zero-card">
+      <div className="okou-card">
         <div className="relative border-b border-border/50">
           <div
             className={cn(
@@ -461,9 +463,7 @@ function ConnectedConnectorPermissions({
             <div className="absolute inset-0 flex items-center gap-2 px-5">
               <Search size={14} className="shrink-0 text-muted-foreground" />
               <input
-                ref={(el) => {
-                  return el?.focus();
-                }}
+                ref={focusSearch}
                 type="text"
                 placeholder={t(($) => {
                   return $.authorization.searchPlaceholder;
@@ -557,31 +557,21 @@ function ConnectedConnectorPermissions({
 
 function AgentPermissionsDrawer({
   targetId,
-  targetKind = "agent",
   connectorSlug,
   connectorLabel,
   displayName,
   initialPolicies,
   initialGrants,
-  initialIntent,
-  initialSearch,
-  initialContextKey,
-  resetEnabled,
   readOnly,
   onApply,
   onClose,
 }: {
   targetId: string;
-  targetKind?: "agent" | "workflow";
   connectorSlug: ConnectorSlug | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly PlatformUserPermissionGrant[];
-  initialIntent?: PermissionDraftIntent;
-  initialSearch?: string;
-  initialContextKey?: string;
-  resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
     intent: PermissionDraftIntent,
@@ -597,17 +587,12 @@ function AgentPermissionsDrawer({
   return (
     <PermissionsDrawer
       agentId={targetId}
-      targetKind={targetKind}
       connectorSlug={connectorSlug}
       connectorLabel={connectorLabel}
       metadata$={agentPermissionMetadata$}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
-      initialIntent={initialIntent}
-      initialSearch={initialSearch}
-      initialContextKey={initialContextKey}
-      resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}
       onClose={onClose}
@@ -745,7 +730,6 @@ function JobPermissionsTab({
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={activeUserGrantSnapshot.grants}
-            resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
               if (connectorSlug === null) {
@@ -857,6 +841,7 @@ function AgentHeader({
   const { t } = useTranslation("agents");
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <DetailPageHeader>
@@ -876,7 +861,7 @@ function AgentHeader({
                       type="button"
                       onClick={() => {
                         onTabChange("profile");
-                        openMaker(avatarUrl);
+                        openMaker(avatarUrl, pageSignal);
                       }}
                       className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
                       aria-label={t(($) => {
@@ -912,7 +897,7 @@ function AgentHeader({
         <Button
           variant="outline"
           size="sm"
-          className="zero-btn-morandi max-w-[220px] shrink-0 gap-1.5"
+          className="okou-btn-morandi max-w-[220px] shrink-0 gap-1.5"
           onClick={() => {
             nav("/agents/:agentId/chat", {
               pathParams: { agentId: agentId },

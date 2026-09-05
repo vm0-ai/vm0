@@ -239,19 +239,19 @@ describe("dialog transitions", () => {
     expect(
       readRuleBody(
         globalCss,
-        ".zero-dialog-overlay[data-ending-style]:not([data-open])",
+        ".okou-dialog-overlay[data-ending-style]:not([data-open])",
       ),
     ).toMatch(/animation:\s*zero-dialog-overlay-out/);
     expect(
       readRuleBody(
         globalCss,
-        ".zero-dialog-overlay[data-ending-style]:not([data-open])::after",
+        ".okou-dialog-overlay[data-ending-style]:not([data-open])::after",
       ),
     ).toMatch(/visibility:\s*hidden/);
     expect(
       readRuleBody(
         globalCss,
-        ".zero-dialog-content[data-ending-style]:not([data-open])",
+        ".okou-dialog-content[data-ending-style]:not([data-open])",
       ),
     ).toMatch(/animation:\s*zero-dialog-content-out/);
   });
@@ -318,53 +318,35 @@ describe("interaction state ladder", () => {
     "primary",
     "destructive",
     "interrupt",
-  ])("derives %s's hover from a state-alpha ladder", (surface) => {
+  ])("derives %s's hover from the shared state alphas", (surface) => {
     expect(globalCss).toContain(`--color-${surface}-hover: color-mix(`);
   });
 
-  // Primary is the one filled surface that does not ride the shared pair, so
-  // the case above cannot say which ladder it reads. Name it here, and keep a
-  // neighbour on the shared pair so the split stays visible rather than
-  // becoming the new default by drift.
-  it("reads primary's states from the primary alphas and the rest from the shared pair", () => {
+  it("uses the shared filled-state ladder for the Amber primary", () => {
     expect(readDeclarationValue(globalCss, "color-primary-hover")).toContain(
-      "var(--state-primary-hover-alpha)",
+      "var(--state-on-filled-hover-alpha)",
     );
     expect(readDeclarationValue(globalCss, "color-primary-pressed")).toContain(
-      "var(--state-primary-pressed-alpha)",
+      "var(--state-on-filled-pressed-alpha)",
     );
-    expect(
-      readDeclarationValue(globalCss, "color-destructive-hover"),
-    ).toContain("var(--state-on-filled-hover-alpha)");
   });
+});
 
-  // The default is declared once, on the same <html> every theme block targets,
-  // so a palette that does not override it inherits whichever shared pair won.
-  // Nothing else in this file records that, because a `var()` default carries
-  // no percentage for `readAlphas` to find.
-  it("defaults the primary alphas to the shared on-filled pair", () => {
+describe("new UI primary palette", () => {
+  it.each([
+    { name: "light", selector: ":root[data-new-ui]" },
+    { name: "dark", selector: ".dark[data-new-ui]," },
+  ])("pairs Amber with Ink in $name", ({ selector }) => {
+    const properties = readCustomProperties(readRuleBody(globalCss, selector));
+
+    expect(rgbToHex(color(properties, "--primary"))).toBe("#FFA500");
+    expect(rgbToHex(color(properties, "--primary-foreground"))).toBe("#242321");
     expect(
-      readDeclarationValue(globalCss, "state-primary-hover-alpha"),
-    ).toContain("var(--state-on-filled-hover-alpha)");
-    expect(
-      readDeclarationValue(globalCss, "state-primary-pressed-alpha"),
-    ).toContain("var(--state-on-filled-pressed-alpha)");
-  });
-
-  // Dark inverts `--black` to white, so a filled surface lightens on hover.
-  // That suits a fill carrying Ink and starves one carrying white: on Cobalt
-  // the shared 12% / 20% drop the label to 4.30:1 and 3.70:1, under the 4.5:1
-  // it needs. The override exists only to shorten that lift, so pin both the
-  // ordering and the fact that it stays shorter than the pair it replaces.
-  it("shortens the primary step where the new UI's dark fill carries white", () => {
-    const theme = readRuleBody(globalCss, ".dark[data-new-ui]");
-
-    const hover = readAlpha(theme, "primary-hover");
-    const pressed = readAlpha(theme, "primary-pressed");
-
-    expect(hover).toBeLessThan(pressed);
-    expect(hover).toBeLessThan(readAlpha(theme, "on-filled-hover"));
-    expect(pressed).toBeLessThan(readAlpha(theme, "on-filled-pressed"));
+      contrastRatio(
+        color(properties, "--primary-foreground"),
+        color(properties, "--primary"),
+      ),
+    ).toBeGreaterThanOrEqual(7.9);
   });
 });
 

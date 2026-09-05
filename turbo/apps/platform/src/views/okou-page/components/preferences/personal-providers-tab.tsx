@@ -255,7 +255,7 @@ function OAuthAccountGroup({
           type="button"
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="okou-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
           disabled={actionPending || accounts.length >= 10}
           onClick={onAdd}
         >
@@ -1312,7 +1312,7 @@ function OAuthCredentialRow({
             type="button"
             variant="outline"
             size="sm"
-            className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+            className="okou-btn-morandi h-9 shrink-0 rounded-lg border"
             aria-label={t(
               ($) => {
                 return $.settings.models.personal.actionForProvider;

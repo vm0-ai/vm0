@@ -4586,7 +4586,6 @@ describe.sequential("Official Workflow installations", () => {
       context,
       { orgId: actor.orgId, userId: actor.userId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.OfficialWorkflows]: true,
       },
     );
@@ -5782,9 +5781,7 @@ describe.sequential("Official Workflow installations", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      },
+      {},
     );
     const firstAccessToken = `calendar-transition-first-${suffix}`;
     const secondAccessToken = `calendar-transition-second-${suffix}`;
@@ -6778,11 +6775,6 @@ describe.sequential("Official Workflow installations", () => {
       await cleanupCatalog();
     });
     await setOfficialWorkflowsEnabled(actor, true);
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
 
     const firstAccountSpec = {
       code: `meet-race-first-${suffix}`,

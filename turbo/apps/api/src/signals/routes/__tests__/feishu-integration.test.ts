@@ -371,7 +371,7 @@ async function expectExactFeishuMemberConnector(args: {
   const unlinkedStart = await oauthApp.request(appConnectUrl);
   expect(unlinkedStart.status).toBe(400);
   await expect(unlinkedStart.json()).resolves.toStrictEqual({
-    error: "Additional connector accounts are not enabled yet",
+    error: "This connector does not support additional accounts",
   });
   const unlinked = await accept(
     args.client.getStatus({
@@ -4226,7 +4226,6 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
     await enableFeishuIntegration(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.OkouDebug]: true,
     });
     await connectFixtureUser(fixture);

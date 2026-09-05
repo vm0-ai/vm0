@@ -190,7 +190,7 @@ function RealtimeStatusIcon({
       className={cn(
         "relative mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground",
         status === "reconnecting"
-          ? "zero-realtime-status-reconnecting"
+          ? "okou-realtime-status-reconnecting"
           : "opacity-80",
       )}
     >
@@ -207,7 +207,7 @@ function RealtimeStatusIcon({
           <Cloud
             size={14}
             strokeWidth={1.75}
-            className="zero-realtime-cloud-flow"
+            className="okou-realtime-cloud-flow"
             aria-hidden="true"
           />
         </>
@@ -319,18 +319,9 @@ function AccountUsageGroup({
     isAdminLoadable.state === "hasData" && isAdminLoadable.data === true;
 
   if (subscriptionsEnabled) {
-    if (isAdmin) {
-      return (
-        <AccountUsageGroupWithCombinedCredit
-          onOpenCreditBalance={onOpenCreditBalance}
-          onResetCodexUsage={onResetCodexUsage}
-          resetPending={resetPending}
-          subscriptionRowsCacheKey={subscriptionRowsCacheKey}
-        />
-      );
-    }
     return (
-      <AccountUsageGroupWithUsagePackCredit
+      <AccountUsageGroupWithSubscriptions
+        combinedCredit={isAdmin}
         onOpenCreditBalance={onOpenCreditBalance}
         onResetCodexUsage={onResetCodexUsage}
         resetPending={resetPending}
@@ -338,37 +329,41 @@ function AccountUsageGroup({
       />
     );
   }
-
-  if (isAdmin) {
-    return (
-      <AccountCombinedCreditBalanceGroup
-        onOpenCreditBalance={onOpenCreditBalance}
-      />
-    );
-  }
   return (
-    <AccountUsagePackCreditGroup onOpenCreditBalance={onOpenCreditBalance} />
+    <AccountCreditBalanceGroup
+      combinedCredit={isAdmin}
+      onOpenCreditBalance={onOpenCreditBalance}
+    />
   );
 }
 
-function useCombinedCreditBalance(): {
+/**
+ * Administrators see the workspace balance combined with their member package
+ * credits; members only see their own package credits.
+ */
+function useCreditBalance(combined: boolean): {
   readonly creditLabel: string | null;
   readonly loading: boolean;
 } {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
   const usagePackLoadable = useLastLoadable(usagePackCreditsAsync$);
   const organizationCredits =
-    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+    combined && billingLoadable.state === "hasData"
+      ? billingLoadable.data.credits
+      : null;
   const usagePackCredits =
     usagePackLoadable.state === "hasData"
       ? usagePackLoadable.data.totalCredits
       : null;
   const waitingForOrganization =
-    billingLoadable.state === "loading" && organizationCredits === null;
+    combined &&
+    billingLoadable.state === "loading" &&
+    organizationCredits === null;
   const waitingForUsagePack =
     usagePackLoadable.state === "loading" && usagePackCredits === null;
-  const credits =
-    organizationCredits !== null && !waitingForUsagePack
+  const credits = !combined
+    ? usagePackCredits
+    : organizationCredits !== null && !waitingForUsagePack
       ? organizationCredits + (usagePackCredits ?? 0)
       : null;
   return {
@@ -377,33 +372,21 @@ function useCombinedCreditBalance(): {
   };
 }
 
-function useUsagePackCreditBalance(): {
-  readonly creditLabel: string | null;
-  readonly loading: boolean;
-} {
-  const creditsLoadable = useLastLoadable(usagePackCreditsAsync$);
-  const credits =
-    creditsLoadable.state === "hasData"
-      ? creditsLoadable.data.totalCredits
-      : null;
-  return {
-    creditLabel: credits !== null ? formatCreditBalance(credits) : null,
-    loading: creditsLoadable.state === "loading" && credits === null,
-  };
-}
-
-function AccountUsageGroupWithCombinedCredit({
+function AccountUsageGroupWithSubscriptions({
+  combinedCredit,
   onOpenCreditBalance,
   onResetCodexUsage,
   resetPending,
   subscriptionRowsCacheKey,
 }: {
+  combinedCredit: boolean;
   onOpenCreditBalance: () => void;
   onResetCodexUsage: (resetCredits: number | null) => void;
   resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
 }) {
-  const { creditLabel, loading: creditLoading } = useCombinedCreditBalance();
+  const { creditLabel, loading: creditLoading } =
+    useCreditBalance(combinedCredit);
   const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
     cacheKey: subscriptionRowsCacheKey,
   });
@@ -421,7 +404,6 @@ function AccountUsageGroupWithCombinedCredit({
           creditLabel={creditLabel}
           loading={creditLoading}
           onOpenCreditBalance={onOpenCreditBalance}
-          testId="account-menu-credit-balance"
         />
       ) : null}
       {showCredit && showSubscriptions ? <DropdownMenuSeparator /> : null}
@@ -438,58 +420,14 @@ function AccountUsageGroupWithCombinedCredit({
   );
 }
 
-function AccountUsageGroupWithUsagePackCredit({
-  onOpenCreditBalance,
-  onResetCodexUsage,
-  resetPending,
-  subscriptionRowsCacheKey,
-}: {
-  onOpenCreditBalance: () => void;
-  onResetCodexUsage: (resetCredits: number | null) => void;
-  resetPending: boolean;
-  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
-}) {
-  const { creditLabel, loading: creditLoading } = useUsagePackCreditBalance();
-  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
-    cacheKey: subscriptionRowsCacheKey,
-  });
-  const showCredit = creditLoading || creditLabel !== null;
-  const showSubscriptions = subscriptionsLoading || rows.length > 0;
-
-  if (!showCredit && !showSubscriptions) {
-    return null;
-  }
-
-  return (
-    <>
-      {showCredit ? (
-        <CreditBalanceItem
-          creditLabel={creditLabel}
-          loading={creditLoading}
-          onOpenCreditBalance={onOpenCreditBalance}
-          testId="account-menu-credit-balance"
-        />
-      ) : null}
-      {showCredit && showSubscriptions ? <DropdownMenuSeparator /> : null}
-      {showSubscriptions ? (
-        <AccountMenuSubscriptionsPanel
-          loading={subscriptionsLoading}
-          onResetCodexUsage={onResetCodexUsage}
-          resetPending={resetPending}
-          rows={rows}
-        />
-      ) : null}
-      <DropdownMenuSeparator />
-    </>
-  );
-}
-
-function AccountCombinedCreditBalanceGroup({
+function AccountCreditBalanceGroup({
+  combinedCredit,
   onOpenCreditBalance,
 }: {
+  combinedCredit: boolean;
   onOpenCreditBalance: () => void;
 }) {
-  const { creditLabel, loading } = useCombinedCreditBalance();
+  const { creditLabel, loading } = useCreditBalance(combinedCredit);
 
   if (!loading && creditLabel === null) {
     return null;
@@ -501,31 +439,6 @@ function AccountCombinedCreditBalanceGroup({
         creditLabel={creditLabel}
         loading={loading}
         onOpenCreditBalance={onOpenCreditBalance}
-        testId="account-menu-credit-balance"
-      />
-      <DropdownMenuSeparator />
-    </>
-  );
-}
-
-function AccountUsagePackCreditGroup({
-  onOpenCreditBalance,
-}: {
-  onOpenCreditBalance: () => void;
-}) {
-  const { creditLabel, loading } = useUsagePackCreditBalance();
-
-  if (!loading && creditLabel === null) {
-    return null;
-  }
-
-  return (
-    <>
-      <CreditBalanceItem
-        creditLabel={creditLabel}
-        loading={loading}
-        onOpenCreditBalance={onOpenCreditBalance}
-        testId="account-menu-credit-balance"
       />
       <DropdownMenuSeparator />
     </>
@@ -536,18 +449,16 @@ function CreditBalanceItem({
   creditLabel,
   loading,
   onOpenCreditBalance,
-  testId,
 }: {
   creditLabel: string | null;
   loading: boolean;
   onOpenCreditBalance: () => void;
-  testId?: string;
 }) {
   return (
     <DropdownMenuModalItem
       onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5"
-      data-testid={testId}
+      data-testid="account-menu-credit-balance"
     >
       <Coins size={18} className="" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">

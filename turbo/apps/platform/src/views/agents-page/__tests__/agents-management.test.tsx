@@ -127,6 +127,7 @@ function configureCatalog(
   options: {
     readonly defaultAgentId?: string;
     readonly instructions?: Readonly<Record<string, string>>;
+    readonly createResponse?: Promise<void>;
   } = {},
 ): { readonly lastCreatedAgent: () => AgentResponse | null } {
   let agents = [...initialAgents];
@@ -138,17 +139,23 @@ function configureCatalog(
   context.mocks.api(agentsMainContract.list, ({ respond }) => {
     return respond(200, agents);
   });
-  context.mocks.api(agentsMainContract.create, ({ body, respond }) => {
-    const created = agent(CREATED_AGENT_ID, {
-      avatarUrl: body.avatarUrl ?? null,
-      description: body.description ?? null,
-      displayName: body.displayName ?? null,
-      visibility: body.visibility ?? "private",
-    });
-    lastCreatedAgent = created;
-    agents = [...agents, created];
-    return respond(201, created);
-  });
+  context.mocks.api(
+    agentsMainContract.create,
+    async ({ body, respond, withSignal }) => {
+      if (options.createResponse) {
+        await withSignal(options.createResponse);
+      }
+      const created = agent(CREATED_AGENT_ID, {
+        avatarUrl: body.avatarUrl ?? null,
+        description: body.description ?? null,
+        displayName: body.displayName ?? null,
+        visibility: body.visibility ?? "private",
+      });
+      lastCreatedAgent = created;
+      agents = [...agents, created];
+      return respond(201, created);
+    },
+  );
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const selected = agents.find((candidate) => {
       return candidate.agentId === params.id;
@@ -350,6 +357,37 @@ test("Create a public agent with a customized avatar", async () => {
   expect(
     within(createdCard).getByRole("img", { name: "Marketing Bot" }),
   ).toBeVisible();
+});
+
+test("Release avatar editing when the parent agent creation finishes", async () => {
+  const createResponse = context.mocks.deferred<void>();
+  configureCatalog(
+    [agent(CORE_AGENT_ID, { displayName: "Core Agent", visibility: "public" })],
+    { createResponse: createResponse.promise },
+  );
+  await setupPage({ context, path: "/agents" });
+  const creationDialog = await openCreateDialog("Private");
+  await fill(within(creationDialog).getByLabelText("Name"), "Private Analyst");
+  click(buttonByText("Create", creationDialog));
+  click(buttonByLabel("Customize avatar", creationDialog));
+  const avatarDialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  click(buttonByLabel("Randomize avatar", avatarDialog));
+
+  createResponse.resolve(undefined);
+
+  await waitForAgentCard(CREATED_AGENT_ID);
+  const nextCreationDialog = await openCreateDialog("Private");
+  expect(within(nextCreationDialog).getByLabelText("Name")).toHaveValue("");
+  expect(
+    screen.queryByRole("dialog", { name: "Give your agent a face" }),
+  ).not.toBeInTheDocument();
+  click(buttonByLabel("Customize avatar", nextCreationDialog));
+  const nextAvatarDialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  expect(buttonByLabel("Randomize avatar", nextAvatarDialog)).toBeEnabled();
 });
 
 test("Open an agent's management page from its card", async () => {

@@ -134,13 +134,13 @@
     </script>
     <style id="app-bootstrap-critical-styles">
       :root {
-        --zero-viewport-height: 100dvh;
+        --okou-viewport-height: 100dvh;
       }
 
       @supports (height: 100lvh) {
         @media (display-mode: standalone) {
           :root {
-            --zero-viewport-height: 100lvh;
+            --okou-viewport-height: 100lvh;
           }
         }
       }
@@ -154,8 +154,8 @@
       body,
       #root {
         width: 100%;
-        height: var(--zero-viewport-height);
-        min-height: var(--zero-viewport-height);
+        height: var(--okou-viewport-height);
+        min-height: var(--okou-viewport-height);
         overflow: hidden;
       }
 

@@ -182,6 +182,39 @@ test("Load the existing avatar into the maker instead of randomizing it", async 
   ]);
 });
 
+test("Cancel a pending avatar save and reopen an editable dialog", async () => {
+  prepareAgentProfile();
+  const saveStarted = context.mocks.deferred<void>();
+  let saveCancelled = false;
+  context.mocks.api(agentsByIdContract.updateMetadata, ({ request, never }) => {
+    request.signal.addEventListener(
+      "abort",
+      () => {
+        saveCancelled = true;
+      },
+      { once: true },
+    );
+    saveStarted.resolve(undefined);
+    return never();
+  });
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  click(await findCustomizeAvatarButton());
+  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  click(within(dialog).getByLabelText("Angle 2"));
+  click(within(dialog).getByText("Use this avatar"));
+  await saveStarted.promise;
+
+  click(within(dialog).getByLabelText("Close"));
+
+  await waitFor(() => {
+    expect(saveCancelled).toBeTruthy();
+  });
+  click(await findCustomizeAvatarButton());
+  const reopened = await screen.findByRole("dialog", { name: "Edit avatar" });
+  expect(within(reopened).getByText("Use this avatar")).toBeEnabled();
+  expect(within(reopened).getByLabelText("Angle 2")).toBeEnabled();
+});
+
 test("Offer avatar creation instead of editing when the agent has no avatar", async () => {
   prepareAgentProfile(null);
   await setupPage({

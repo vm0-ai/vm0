@@ -62,6 +62,7 @@ interface AgentPhoneInboundMessage {
   readonly conversationId?: string;
   readonly isGroup?: boolean;
   readonly mediaUrl?: string;
+  readonly mentions?: readonly Readonly<Record<string, unknown>>[];
   readonly recentHistory?: readonly Readonly<Record<string, unknown>>[];
   readonly publicBrand?: PublicBrand;
 }
@@ -209,6 +210,7 @@ export function createAgentPhoneBddApi(context: TestContext) {
           : {}),
         ...(message.isGroup === undefined ? {} : { isGroup: message.isGroup }),
         ...(message.mediaUrl ? { mediaUrl: message.mediaUrl } : {}),
+        ...(message.mentions ? { mentions: message.mentions } : {}),
       },
     });
     await integrations.requestAgentPhoneWebhook(

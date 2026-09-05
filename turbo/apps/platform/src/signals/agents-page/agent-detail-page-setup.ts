@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { AgentDetailPage } from "../../views/team-page/agent-detail-page.tsx";
+import { JobDetailPage } from "../../views/team-page/job-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -17,7 +17,7 @@ import { i18n } from "../../i18n/index.ts";
 
 export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(AgentDetailPage), "sidebar");
+    set(updatePage$, createElement(JobDetailPage), "sidebar");
 
     const agentId = get(currentAgentId$);
     if (!agentId) {

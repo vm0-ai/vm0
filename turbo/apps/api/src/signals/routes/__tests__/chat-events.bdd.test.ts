@@ -1417,7 +1417,7 @@ describe("CHAT-02: thread run admission invariant", () => {
     await expect(
       createUnassociatedThreadBoundAgentRunsServiceFixture(),
     ).rejects.toThrow(
-      "Thread-bound Zero run requires a queue-first association",
+      "Thread-bound agent run requires a queue-first association",
     );
 
     await expect(
@@ -1427,7 +1427,7 @@ describe("CHAT-02: thread run admission invariant", () => {
     await expect(
       createUnassociatedThreadBoundAgentRunsServiceFixture(""),
     ).rejects.toThrow(
-      "Thread-bound Zero run requires a queue-first association",
+      "Thread-bound agent run requires a queue-first association",
     );
 
     await expect(
@@ -1445,12 +1445,6 @@ async function selectedThreadConnectorFixture(
   title: string,
 ): Promise<SelectedThreadConnectorFixture> {
   const entitled = await entitledChatActor();
-  const orgId = requireOrgId(entitled.actor);
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: entitled.actor.userId, orgId },
-    { [FeatureSwitchKey.ConnectorAccounts]: true },
-  );
   await installApiTestConnectorCatalog({
     catalogVersion: `api-test-thread-runtime-overlap-${randomUUID()}`,
     runtimeProjection: true,
@@ -1658,11 +1652,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!actor.orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId: actor.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const connection = await connectors.connectManualGrant(
       actor,
       "openai",
@@ -1754,11 +1743,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const connection = await connectors.connectManualGrant(
       actor,
       "openai",
@@ -1862,7 +1846,6 @@ describe("CHAT-02: thread connector account selection", () => {
       context,
       { userId: actor.userId, orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.CustomConnectorMcp]: true,
       },
     );
@@ -1967,11 +1950,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const customConnector = await connectors.createCustomConnector(
       actor,
       manualHttpCustomConnectorCreateBody({
@@ -2059,11 +2037,6 @@ describe("CHAT-02: thread connector account selection", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped chat actor");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const connection = await connectors.connectManualGrant(
       actor,
       "openai",
@@ -17694,7 +17667,7 @@ describe("CHAT-02: run-scoped agent-token chat launches", () => {
       },
       context.signal,
     );
-    expect(immediateState.zero_run).toMatchObject({
+    expect(immediateState.agent_run).toMatchObject({
       triggerSource: "agent",
     });
     expect(
@@ -17760,7 +17733,7 @@ describe("CHAT-02: run-scoped agent-token chat launches", () => {
       },
       context.signal,
     );
-    expect(promotedState.zero_run).toMatchObject({
+    expect(promotedState.agent_run).toMatchObject({
       triggerSource: "agent",
     });
     expect(
@@ -18254,7 +18227,7 @@ describe("CHAT-02: shared user message queue", () => {
       },
       context.signal,
     );
-    expect(forwardedState.zero_run).toMatchObject({ triggerSource: "web" });
+    expect(forwardedState.agent_run).toMatchObject({ triggerSource: "web" });
     const forwardedSystemPrompt = forwardedRun.appendSystemPrompt ?? "";
     expect(forwardedSystemPrompt).toContain("# This Run's Trigger");
     expect(forwardedSystemPrompt).toContain(
@@ -18661,7 +18634,7 @@ describe("CHAT-02: shared user message queue", () => {
       },
       context.signal,
     );
-    expect(rotatedState.zero_run).toMatchObject({ triggerSource: "agent" });
+    expect(rotatedState.agent_run).toMatchObject({ triggerSource: "agent" });
     expect(rotatedSystemPrompt).toContain("# Web Chat Run Context");
     expect(rotatedSystemPrompt).toContain("# This Run's Trigger");
     expect(rotatedSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
@@ -18746,7 +18719,7 @@ describe("CHAT-02: shared user message queue", () => {
       },
       context.signal,
     );
-    expect(incompleteState.zero_run).toMatchObject({ triggerSource: "agent" });
+    expect(incompleteState.agent_run).toMatchObject({ triggerSource: "agent" });
     expect(incompleteSystemPrompt).toContain("# Web Chat Run Context");
     expect(incompleteSystemPrompt).toContain(incompletePrompt);
     expect(incompleteSystemPrompt).not.toContain("# Incomplete Rounds Context");

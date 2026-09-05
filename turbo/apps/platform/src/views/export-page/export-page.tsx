@@ -301,7 +301,7 @@ function ExportActions({
           <Button
             type="button"
             variant="outline"
-            className="zero-btn-morandi h-9 w-full gap-2 rounded-lg border"
+            className="okou-btn-morandi h-9 w-full gap-2 rounded-lg border"
             disabled={triggering}
             onClick={onTrigger}
           >
@@ -431,9 +431,9 @@ export function ExportPage() {
   };
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
+    <div className="okou-app okou-viewport-shell flex w-full bg-background okou-workspace-bg">
       <main className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-4 py-8">
-        <section className="zero-card w-full max-w-[440px] p-5 sm:p-7">
+        <section className="okou-card w-full max-w-[440px] p-5 sm:p-7">
           <div className="mb-6 flex items-center justify-between gap-4">
             <Link
               pathname="/"

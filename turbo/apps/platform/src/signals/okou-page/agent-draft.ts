@@ -5,7 +5,6 @@ import {
   agentDraftResponseSchema,
 } from "@okouai/api-contracts/contracts/agent-draft";
 import type {
-  DraftVoice,
   PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -17,7 +16,6 @@ import {
   createDraftSignals,
   createRestoredAttachment,
   type DraftSignals,
-  type RestorableAttachment,
 } from "./chat-draft.ts";
 import {
   buildDraftPersistencePayload,
@@ -26,6 +24,8 @@ import {
 import {
   draftToEditorDoc,
   messageDocumentToPrompt,
+  userMessageDraftAttachments,
+  type RestoredDraftState,
 } from "./user-message-document-codec.ts";
 
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
@@ -41,53 +41,16 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
   readonly isNew: boolean;
 }
 
-interface RestoredAgentDraftState {
-  readonly content: string;
-  readonly userMessage: UserMessageDocument | null;
-  readonly draftVoice: DraftVoice | null;
-  readonly attachments: RestorableAttachment[];
-}
-
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
-
-function userMessageAgentDraftAttachments(
-  document: UserMessageDocument,
-  attachments: readonly PersistedAttachment[],
-): RestorableAttachment[] {
-  const attachmentById = new Map(
-    attachments.map((attachment) => {
-      return [attachment.id, attachment] as const;
-    }),
-  );
-  return document.parts.flatMap((part) => {
-    if (part.type !== "file") {
-      return [];
-    }
-    const attachment = attachmentById.get(part.fileId);
-    return attachment
-      ? [
-          {
-            ...attachment,
-            ...(part.annotatedFileId
-              ? { annotatedFileId: part.annotatedFileId }
-              : {}),
-            ...(part.annotations ? { annotations: part.annotations } : {}),
-          },
-        ]
-      : [];
-  });
-}
 
 function userMessageAgentDraftState(args: {
   readonly draftUserMessage?: UserMessageDocument | null;
-  readonly draftVoice?: DraftVoice | null;
   readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState | null {
+}): RestoredDraftState | null {
   const document = args.draftUserMessage ?? null;
-  // A new App may receive a pre-#31562 API response during serving or rollback.
-  // Remove this new-App -> old-API bridge with #31612 after that window closes.
-  const draftVoice = args.draftVoice ?? null;
-  if (draftToEditorDoc(document, draftVoice) === null) {
+  // Compatibility-only draftVoice responses from old App clients are ignored.
+  // Remove the API/DB field with #31612 after the two-day client-skew window.
+  if (draftToEditorDoc(document) === null) {
     return null;
   }
   const content = document ? messageDocumentToPrompt(document) : "";
@@ -97,9 +60,8 @@ function userMessageAgentDraftState(args: {
   return {
     content,
     userMessage: document,
-    draftVoice,
     attachments: document
-      ? userMessageAgentDraftAttachments(document, args.draftAttachments ?? [])
+      ? userMessageDraftAttachments(document, args.draftAttachments ?? [])
       : [],
   };
 }
@@ -115,7 +77,6 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           params: { id: agentId },
           body: {
             draftUserMessage: payload.userMessage,
-            ...(payload.draftVoice ? { draftVoice: payload.draftVoice } : {}),
             draftAttachments: payload.attachments,
           },
           fetchOptions: { signal },
@@ -175,11 +136,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
     set(draftSyncReset$);
-    await set(
-      patchDraft$,
-      { userMessage: null, draftVoice: null, attachments: null },
-      signal,
-    );
+    await set(patchDraft$, { userMessage: null, attachments: null }, signal);
   });
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
@@ -262,7 +219,6 @@ export const loadAgentDraft$ = command(
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
-      restoredDraft.draftVoice !== null ||
       restoredDraft.attachments.length > 0;
     if (!hasServerDraft) {
       return;
@@ -273,7 +229,6 @@ export const loadAgentDraft$ = command(
       {
         content: restoredDraft.content,
         userMessage: restoredDraft.userMessage,
-        draftVoice: restoredDraft.draftVoice,
         generationTemplate: undefined,
         attachments: restoredDraft.attachments.map(createRestoredAttachment),
       },

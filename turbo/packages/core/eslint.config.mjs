@@ -9,7 +9,7 @@ export default [
   {
     files: ["src/*.ts", "src/contracts/index.ts"],
     rules: {
-      "vm0/no-re-export": "off",
+      "okou/no-re-export": "off",
     },
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),

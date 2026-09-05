@@ -25,7 +25,7 @@ export function UnsavedBar({
     <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center px-4">
       <div
         data-testid={testId}
-        className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
+        className="okou-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
           <Pencil size={18} className="shrink-0" />

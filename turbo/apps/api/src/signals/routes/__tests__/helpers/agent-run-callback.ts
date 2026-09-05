@@ -27,7 +27,7 @@ const agentRunCallbackSnapshotSchema = z.object({
 });
 
 const agentRunStateResponseSchema = z.object({
-  zero_run: z
+  agent_run: z
     .object({
       triggerSource: z.string().nullable(),
     })

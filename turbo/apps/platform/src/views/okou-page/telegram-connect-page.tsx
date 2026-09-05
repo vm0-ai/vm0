@@ -1,11 +1,11 @@
 import { useGet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { JSX, ReactNode } from "react";
-import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
+import type { JSX } from "react";
+import { Loader2 } from "lucide-react";
 import { Button, CopyButton } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
-import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
+import { clerk$ } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
@@ -18,76 +18,43 @@ import {
   type TelegramConnectParams,
 } from "../../signals/okou-page/telegram-connect-params.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Link } from "../router/link.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import {
+  CenterText,
+  ConnectBackLink,
+  ConnectErrorAlert,
+  ConnectSignInState,
+  ConnectStatusMark,
+  ConnectSubmitButton,
+  PageShell,
+  connectErrorMessage,
+  type MarkState,
+} from "./connect-page-shell.tsx";
 
 const telegramIconImg = settingsIconAssetUrl("telegram");
-
-function signInHref(): string {
-  return resolveAppAuthUrl("/sign-in", { redirectUrl: location.href });
-}
 
 function BackLink() {
   const { t } = useTranslation();
   return (
-    <Link
+    <ConnectBackLink
       pathname="/settings/telegram"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
-    >
-      <ArrowLeft size={14} />
-      {t(($) => {
+      label={t(($) => {
         return $.connectors.providerConnect.telegram.back;
       })}
-    </Link>
+    />
   );
 }
 
-function PageShell({ children }: { children: ReactNode }) {
+function TelegramMark({ state }: { state?: MarkState }) {
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
-      <div className="flex flex-1 items-center justify-center p-4">
-        <div className="zero-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TelegramMark({
-  state = "idle",
-}: {
-  state?: "idle" | "success" | "error" | "loading" | "warning";
-}) {
-  if (state === "success") {
-    return <CircleCheck size={40} className="text-emerald-500" />;
-  }
-
-  if (state === "warning") {
-    return <AlertCircle size={40} className="text-amber-500" />;
-  }
-
-  if (state === "error") {
-    return <AlertCircle size={40} className="text-destructive" />;
-  }
-
-  if (state === "loading") {
-    return <Loader2 size={40} className="animate-spin" />;
-  }
-
-  return (
-    <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-[#2AABEE]/10">
-      <img src={telegramIconImg} alt="" className="h-8 w-8" />
-    </span>
-  );
-}
-
-function CenterText({ title, body }: { title: string; body: ReactNode }) {
-  return (
-    <div className="text-center space-y-1.5">
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </div>
+    <ConnectStatusMark
+      state={state}
+      idle={
+        <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-[#2AABEE]/10">
+          <img src={telegramIconImg} alt="" className="h-8 w-8" />
+        </span>
+      }
+    />
   );
 }
 
@@ -194,18 +161,6 @@ function AlreadyConnectedState({
   );
 }
 
-function getTelegramLoginDomain(): string {
-  return location.hostname;
-}
-
-function getTelegramConnectErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : i18n.t(($) => {
-        return $.connectors.providerConnect.telegram.errorFallback;
-      });
-}
-
 function DomainStatusPolling() {
   const { t } = useTranslation();
 
@@ -225,7 +180,7 @@ function DomainSetupState({
   botUsername: string | undefined;
 }) {
   const { t } = useTranslation();
-  const domain = getTelegramLoginDomain();
+  const domain = location.hostname;
   const normalizedBotUsername = botUsername?.replace(/^@/, "");
   const botLabel = normalizedBotUsername
     ? `@${normalizedBotUsername}`
@@ -236,21 +191,17 @@ function DomainSetupState({
   return (
     <PageShell>
       <TelegramMark state="warning" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.telegram.domainTitle;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {t(
-            ($) => {
-              return $.connectors.providerConnect.telegram.domainDescription;
-            },
-            { bot: botLabel },
-          )}
-        </p>
-      </div>
+      <CenterText
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.domainTitle;
+        })}
+        body={t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.domainDescription;
+          },
+          { bot: botLabel },
+        )}
+      />
       <div className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-relaxed text-foreground">
         <p>
           {t(($) => {
@@ -325,31 +276,19 @@ function ConnectActions({
   if (parsed.connectSignature) {
     return (
       <div className="flex w-full flex-col gap-3">
-        <Button className="w-full" disabled={connecting} onClick={onConnect}>
-          {connecting ? <Loader2 size={16} className="animate-spin" /> : null}
-          {connecting
-            ? t(($) => {
-                return $.connectors.actions.connecting;
-              })
-            : t(($) => {
-                return $.connectors.actions.connect;
-              })}
-        </Button>
+        <ConnectSubmitButton connecting={connecting} onConnect={onConnect} />
       </div>
     );
   }
 
   return (
-    <Button className="w-full" disabled={connecting} onClick={onConnect}>
-      {connecting ? <Loader2 size={16} className="animate-spin" /> : null}
-      {connecting
-        ? t(($) => {
-            return $.connectors.actions.connecting;
-          })
-        : t(($) => {
-            return $.connectors.providerConnect.telegram.continue;
-          })}
-    </Button>
+    <ConnectSubmitButton
+      connecting={connecting}
+      onConnect={onConnect}
+      label={t(($) => {
+        return $.connectors.providerConnect.telegram.continue;
+      })}
+    />
   );
 }
 
@@ -412,37 +351,6 @@ function TelegramSessionLoadingState({ brandName }: { brandName: string }) {
   );
 }
 
-function TelegramSignInState({ brandName }: { brandName: string }) {
-  const { t } = useTranslation();
-  return (
-    <PageShell>
-      <TelegramMark />
-      <CenterText
-        title={t(($) => {
-          return $.connectors.providerConnect.telegram.signInTitle;
-        })}
-        body={t(
-          ($) => {
-            return $.connectors.providerConnect.telegram.signInDescription;
-          },
-          { brandName },
-        )}
-      />
-      <a
-        href={signInHref()}
-        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
-      >
-        {t(
-          ($) => {
-            return $.connectors.providerConnect.telegram.signInButton;
-          },
-          { brandName },
-        )}
-      </a>
-    </PageShell>
-  );
-}
-
 function TelegramConnectionLoadingState() {
   const { t } = useTranslation();
   return (
@@ -477,7 +385,12 @@ export function TelegramConnectPage(): JSX.Element {
     connectLoadable.state === "hasData" ? connectLoadable.data : null;
   const error =
     connectLoadable.state === "hasError"
-      ? getTelegramConnectErrorMessage(connectLoadable.error)
+      ? connectErrorMessage(
+          connectLoadable.error,
+          i18n.t(($) => {
+            return $.connectors.providerConnect.telegram.errorFallback;
+          }),
+        )
       : null;
 
   if (!parsed.ok) {
@@ -502,7 +415,26 @@ export function TelegramConnectPage(): JSX.Element {
   }
 
   if (!clerkLoadable.data.user) {
-    return <TelegramSignInState brandName={brandName} />;
+    return (
+      <ConnectSignInState
+        mark={<TelegramMark />}
+        title={t(($) => {
+          return $.connectors.providerConnect.telegram.signInTitle;
+        })}
+        description={t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.signInDescription;
+          },
+          { brandName },
+        )}
+        button={t(
+          ($) => {
+            return $.connectors.providerConnect.telegram.signInButton;
+          },
+          { brandName },
+        )}
+      />
+    );
   }
 
   if (success) {
@@ -538,14 +470,7 @@ export function TelegramConnectPage(): JSX.Element {
           return $.connectors.providerConnect.telegram.connectDescription;
         })}
       />
-      {error ? (
-        <div
-          className="w-full rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {error}
-        </div>
-      ) : null}
+      <ConnectErrorAlert error={error} />
       <div className="flex w-full flex-col gap-4">
         <ConnectActions
           parsed={parsed.params}

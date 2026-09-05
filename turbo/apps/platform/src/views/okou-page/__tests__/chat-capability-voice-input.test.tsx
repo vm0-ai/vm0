@@ -1,12 +1,12 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
-import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import {
   assistantEvent,
   context,
@@ -41,6 +41,37 @@ function currentComposer(): HTMLElement {
 
 function normalizedComposerText(): string {
   return currentComposer().textContent?.replace(/\s+/gu, " ").trim() ?? "";
+}
+
+function captureVoiceTranscriptionErrors(): unknown[][] {
+  const errorSpy = vi.spyOn(console, "error");
+  const defaultErrorHandler = errorSpy.getMockImplementation();
+  if (!defaultErrorHandler) {
+    throw new Error("Expected the shared unexpected-console-error guard");
+  }
+  const errors: unknown[][] = [];
+  errorSpy.mockImplementation((...args: unknown[]) => {
+    if (args[0] === "[E][Composer:VoiceDraft]") {
+      errors.push(args);
+      return;
+    }
+    defaultErrorHandler(...args);
+  });
+  return errors;
+}
+
+function expectNoVoiceDraftNode(): void {
+  const thread = context.store.get(currentLeftThread$);
+  if (!thread) {
+    throw new Error("Expected the current chat thread");
+  }
+  let found = false;
+  thread.composer.editor.editor.state.doc.descendants((node) => {
+    if (node.type.name === "voiceDraft") {
+      found = true;
+    }
+  });
+  expect(found).toBeFalsy();
 }
 
 async function activeVoiceStopButton(): Promise<HTMLElement> {
@@ -192,22 +223,24 @@ test("Toggle voice input from the focused composer shortcut", async () => {
   await expect(findButton("Voice input")).resolves.toBeEnabled();
 });
 
-test("Polish a voice draft using the latest assistant reply", async () => {
-  const polishStarted = context.mocks.deferred<void>();
-  const polishReady = context.mocks.deferred<void>();
+test("Transcribe a voice draft using the latest assistant reference", async () => {
+  const transcriptionStarted = context.mocks.deferred<void>();
+  const transcriptionReady = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/stt", () => {
-    return HttpResponse.json({ text: "um send the launch update tomorrow" });
-  });
-  context.mocks.api(voiceIoPolishContract.post, async ({ body, respond }) => {
-    expect(body).toStrictEqual({
-      text: "um send the launch update tomorrow",
-      lastAssistantMessage: "Use LaunchPad for the rollout.",
+  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
+    const body = await request.formData();
+    expect(body.get("lastAssistantMessage")).toBe(
+      "Use LaunchPad for the rollout.",
+    );
+    expect(body.getAll("file")).toHaveLength(1);
+    transcriptionStarted.resolve(undefined);
+    await transcriptionReady.promise;
+    return HttpResponse.json({
+      transcript: "um send the launch update tomorrow",
+      polishedText: "Send the launch update tomorrow.",
+      language: "en-US",
     });
-    polishStarted.resolve(undefined);
-    await polishReady.promise;
-    return respond(200, { text: "Send the launch update tomorrow." });
   });
   installRunChat({
     chatEvents: [
@@ -236,20 +269,17 @@ test("Polish a voice draft using the latest assistant reply", async () => {
   await fill(currentComposer(), "Opening  closing");
   click(voiceInput);
   const stop = await activeVoiceDraftStopButton();
+  expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   click(stop);
-  await polishStarted.promise;
+  await transcriptionStarted.promise;
 
-  await waitFor(() => {
-    expect(
-      screen.getByText("um send the launch update tomorrow"),
-    ).not.toBeVisible();
-  });
   expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   placeCaret(currentComposer(), "Opening  closing", 8);
 
-  polishReady.resolve(undefined);
+  transcriptionReady.resolve(undefined);
 
   await waitFor(() => {
     expect(normalizedComposerText()).toBe(
@@ -259,11 +289,12 @@ test("Polish a voice draft using the latest assistant reply", async () => {
   expect(window.getSelection()?.toString()).toBe(
     "Send the launch update tomorrow.",
   );
+  expectNoVoiceDraftNode();
   await expect(findButton("Send")).resolves.toBeEnabled();
-  expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
+  expect(queryButton("Finish")).toBeNull();
 });
 
-test("Enter voice-draft recording only after the microphone starts", async () => {
+test("Keep voice-draft recording outside TipTap while the microphone starts", async () => {
   const microphoneReady = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({
     getUserMediaReady: microphoneReady.promise,
@@ -280,28 +311,47 @@ test("Enter voice-draft recording only after the microphone starts", async () =>
 
   click(await readyVoiceInput());
 
-  await expect(findButton("Starting voice input")).resolves.toBeDisabled();
-  expect(
-    document.querySelector("[data-voice-level-waveform]"),
-  ).not.toBeInTheDocument();
+  await expect(findButton("Stop recording")).resolves.toBeDisabled();
+  expectNoVoiceDraftNode();
 
   microphoneReady.resolve(undefined);
 
   await activeVoiceDraftStopButton();
+  expectNoVoiceDraftNode();
   expect(
     document.querySelector("[data-voice-level-waveform]"),
   ).toBeInTheDocument();
 });
 
 test("Keep a silent voice draft recording until the user stops it", async () => {
+  const voiceActivityObserved = context.mocks.deferred<void>();
   let recorderStops = 0;
+  let multimodalCalls = 0;
+  let legacySttCalls = 0;
   context.mocks.browser.voiceInput({
-    rms: 0,
+    rms: () => {
+      if (!voiceActivityObserved.settled()) {
+        voiceActivityObserved.resolve(undefined);
+      }
+      return 0;
+    },
     onRecorderStop() {
       recorderStops += 1;
     },
   });
   installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    multimodalCalls += 1;
+    return HttpResponse.json({
+      transcript: "Extended voice draft",
+      polishedText: "Extended voice draft.",
+      language: "en-US",
+    });
+  });
+  context.mocks.http.post("*/api/voice-io/stt", () => {
+    legacySttCalls += 1;
+    return HttpResponse.json({ text: "Legacy transcription" });
+  });
   installRunChat();
 
   await setupPage({
@@ -311,25 +361,8 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   });
 
   const voiceInput = await readyVoiceInput();
-  vi.useFakeTimers();
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      vi.useRealTimers();
-    },
-    { once: true },
-  );
-
   click(voiceInput);
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(40);
-  });
-
-  expect(queryButton("Stop recording")).toBeEnabled();
-
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(100);
-  });
+  await voiceActivityObserved.promise;
 
   const stop = queryButton("Stop recording");
   if (!stop) {
@@ -339,35 +372,27 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   }
   expect(stop).toBeEnabled();
   expect(recorderStops).toBe(0);
+  expect(multimodalCalls).toBe(0);
+  expect(legacySttCalls).toBe(0);
+  expectNoVoiceDraftNode();
 
   click(stop);
-  await act(async () => {
-    await vi.runOnlyPendingTimersAsync();
-  });
 
-  expect(recorderStops).toBe(1);
-  expect(queryButton("Voice input")).toBeEnabled();
+  await waitFor(() => {
+    expect(recorderStops).toBe(1);
+  });
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe("Extended voice draft.");
+  });
+  expect(multimodalCalls).toBe(1);
+  expect(legacySttCalls).toBe(0);
+  expectNoVoiceDraftNode();
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
 });
 
-test("Let the user retry or remove a voice draft when polishing fails", async () => {
-  let polishAttempts = 0;
+test("Show recent voice levels at the end of the waveform", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/stt", () => {
-    return HttpResponse.json({ text: "raw launch update" });
-  });
-  context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
-    polishAttempts += 1;
-    if (polishAttempts === 1) {
-      return respond(503, {
-        error: {
-          code: "VOICE_POLISH_UNAVAILABLE",
-          message: "Voice polish is temporarily unavailable",
-        },
-      });
-    }
-    return respond(200, { text: "Polished launch update." });
-  });
   installRunChat();
 
   await setupPage({
@@ -377,22 +402,203 @@ test("Let the user retry or remove a voice draft when polishing fails", async ()
   });
 
   click(await readyVoiceInput());
-  click(await activeVoiceDraftStopButton());
+  await activeVoiceDraftStopButton();
 
-  const draft = await screen.findByLabelText("Voice draft");
-  expect(draft).toBeVisible();
-  expect(draft).toHaveTextContent("raw launch update");
-  await expect(findButton("Finish")).resolves.toBeEnabled();
-  await expect(findButton("Remove voice draft")).resolves.toBeEnabled();
-  await expect(findButton("Send")).resolves.toBeDisabled();
-
-  click(await findButton("Finish"));
+  const waveform = document.querySelector("[data-voice-level-waveform]");
+  if (!(waveform instanceof HTMLElement)) {
+    throw new Error("Voice level waveform not found");
+  }
 
   await waitFor(() => {
-    expect(normalizedComposerText()).toBe("Polished launch update.");
+    const bars = Array.from(waveform.children);
+    expect(bars).toHaveLength(32);
+    expect(bars[0]).toHaveStyle({ height: "4px" });
+    expect(bars.at(-1)).toHaveStyle({ height: "16px" });
   });
-  expect(polishAttempts).toBe(2);
+});
+
+test.each([
+  {
+    status: 503,
+    code: "PROVIDER_UNAVAILABLE",
+    message: "Voice transcription is temporarily unavailable",
+  },
+  {
+    status: 502,
+    code: "VOICE_TRANSCRIPTION_FAILED",
+    message: "Voice draft transcription failed to produce a usable response",
+  },
+])("Preserve the draft and return to idle after $code", async (failure) => {
+  const transcriptionFailed = context.mocks.deferred<void>();
+  const consoleErrors = captureVoiceTranscriptionErrors();
+  let transcriptionAttempts = 0;
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    transcriptionAttempts += 1;
+    if (transcriptionAttempts === 1) {
+      transcriptionFailed.resolve(undefined);
+      return HttpResponse.json(
+        {
+          error: {
+            code: failure.code,
+            message: failure.message,
+          },
+        },
+        { status: failure.status },
+      );
+    }
+    return HttpResponse.json({
+      transcript: "raw launch update",
+      polishedText: "Polished launch update.",
+      language: "en-US",
+    });
+  });
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), "Keep these notes. ");
+  click(voiceInput);
+  click(await activeVoiceDraftStopButton());
+  await transcriptionFailed.promise;
+
+  await expect(
+    screen.findByText("Voice transcription failed. Try again."),
+  ).resolves.toBeVisible();
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(transcriptionAttempts).toBe(1);
+  expectNoVoiceDraftNode();
+  expect(queryButton("Finish")).toBeNull();
+  expect(queryButton("Remove voice draft")).toBeNull();
+  expect(normalizedComposerText()).toBe("Keep these notes.");
   await expect(findButton("Send")).resolves.toBeEnabled();
+
+  click(await findButton("Voice input"));
+  click(await activeVoiceDraftStopButton());
+
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe(
+      "Keep these notes. Polished launch update.",
+    );
+  });
+  expect(transcriptionAttempts).toBe(2);
+  expectNoVoiceDraftNode();
+  await expect(findButton("Send")).resolves.toBeEnabled();
+  expect(consoleErrors).toStrictEqual([
+    [
+      "[E][Composer:VoiceDraft]",
+      "Voice draft transcription failed",
+      expect.objectContaining({
+        message: failure.message,
+        code: failure.code,
+        status: failure.status,
+      }),
+    ],
+  ]);
+});
+
+test("Recover voice input when the recorder fails to start", async () => {
+  let stoppedTracks = 0;
+  const consoleErrors = captureVoiceTranscriptionErrors();
+  context.mocks.browser.voiceInput({
+    rms: 0.12,
+    onTrackStop() {
+      stoppedTracks += 1;
+    },
+  });
+  vi.spyOn(MediaRecorder.prototype, "start").mockImplementationOnce(() => {
+    throw new DOMException(
+      "The audio encoder is unavailable",
+      "NotSupportedError",
+    );
+  });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    return HttpResponse.json({
+      transcript: "new voice note",
+      polishedText: "New voice note.",
+      language: "en-US",
+    });
+  });
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), "Keep these notes. ");
+  click(voiceInput);
+
+  await expect(
+    screen.findByText("Voice transcription failed. Try again."),
+  ).resolves.toBeVisible();
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await expect(findButton("Send")).resolves.toBeEnabled();
+  expect(normalizedComposerText()).toBe("Keep these notes.");
+  expect(stoppedTracks).toBe(1);
+  expectNoVoiceDraftNode();
+
+  click(await findButton("Voice input"));
+  click(await activeVoiceDraftStopButton());
+
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe("Keep these notes. New voice note.");
+  });
+  await expect(findButton("Send")).resolves.toBeEnabled();
+  expectNoVoiceDraftNode();
+  expect(consoleErrors).toStrictEqual([
+    [
+      "[E][Composer:VoiceDraft]",
+      "Voice draft transcription failed",
+      expect.objectContaining({ message: "Voice draft recording failed" }),
+    ],
+  ]);
+});
+
+test("Release a late microphone stream after navigating away during voice startup", async () => {
+  const microphoneReady = context.mocks.deferred<void>();
+  const tracksStopped = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({
+    getUserMediaReady: microphoneReady.promise,
+    rms: 0.12,
+    onTrackStop() {
+      tracksStopped.resolve(undefined);
+    },
+  });
+  const microphoneRequest = vi.spyOn(navigator.mediaDevices, "getUserMedia");
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  click(await readyVoiceInput());
+  await expect(findButton("Stop recording")).resolves.toBeDisabled();
+  await waitFor(() => {
+    expect(microphoneRequest).toHaveBeenCalledOnce();
+  });
+  click(await findLink("Agents"));
+  await expect(
+    screen.findByRole("heading", { name: "Agents" }),
+  ).resolves.toBeVisible();
+
+  microphoneReady.resolve(undefined);
+  await tracksStopped.promise;
+  expect(
+    screen.queryByText("Voice transcription failed. Try again."),
+  ).toBeNull();
 });
 
 test("Make voice-input startup and silent cancellation clear", async () => {

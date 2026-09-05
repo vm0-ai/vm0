@@ -42,7 +42,7 @@ export function ChatUserMessageBubble({
   return (
     <div
       className={cn(
-        "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden",
+        "okou-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden",
         className,
       )}
       {...props}
@@ -58,7 +58,7 @@ export function ChatAssistantMessageBody({
   return (
     <div
       className={cn(
-        "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
+        "okou-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
         compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         className,
       )}

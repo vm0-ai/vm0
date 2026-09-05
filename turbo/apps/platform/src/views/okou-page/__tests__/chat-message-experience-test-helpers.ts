@@ -91,7 +91,7 @@ export function queryFastControl(
 export async function findComposer(): Promise<HTMLElement> {
   return await waitFor(() => {
     const editor = document.querySelector<HTMLElement>(
-      '.zero-composer [contenteditable="true"]',
+      '.okou-composer [contenteditable="true"]',
     );
     if (!editor) {
       throw new Error("Composer editor not found");

@@ -648,7 +648,6 @@
       "renameImportedTemplate": "Renommer le modèle",
       "searchConnector": "Rechercher des modèles",
       "searchConnectors": "Rechercher des modèles",
-      "selected": "Modèle : {{title}}",
       "selectStyle": "Sélectionner le style {{style}}",
       "selectTemplate": "Sélectionner le modèle {{title}}",
       "selectVideo": "Sélectionner le modèle vidéo {{title}}",
@@ -1383,38 +1382,22 @@
     },
     "plans": {
       "cancellationNotice": "Votre abonnement {{plan}} a été annulé et prendra fin le {{date}}.",
-      "changeAnytime": "Passez à un niveau supérieur ou inférieur à tout moment.",
       "compare": "Comparer les forfaits",
       "compareAll": "Comparer tous les forfaits",
-      "currentPlan": "Forfait actuel",
       "custom": {
         "name": "Personnalisé"
       },
       "customAccess": "Accès personnalisé avec {{value}} exécutions concurrentes",
       "customCancellationNotice": "Votre forfait personnalisé prendra fin le {{date}}.",
-      "customCheckoutUnavailable": "Les espaces de travail personnalisés ne peuvent pas passer à Pro ou à Team checkout.",
       "downgrade": "Rétrograder",
       "downgradeNotice": "Votre plan {{currentPlan}} rétrogradera vers {{targetPlan}} le {{date}}.",
       "downgradesOn": "Rétrogradations vers {{plan}} le {{date}}",
       "downgradeTo": "Rétrograder vers {{plan}}",
       "endsOn": "Se termine le {{date}}",
       "features": {
-        "byok": "Apportez vos propres clés LLM",
-        "communitySupport": "Support communautaire",
-        "emailSupport": "Support par e-mail",
-        "existingCredits": "Crédits gratuits existants uniquement",
-        "oneConcurrentRun": "1 exécution simultanée",
-        "prioritySupport": "Support prioritaire",
-        "sharedAndPrivateAgents": "7 agents partagés, agents privés illimités",
-        "tenConcurrentRuns": "10 exécutions simultanées",
-        "twoConcurrentRuns": "2 exécutions simultanées",
-        "unlimitedAgents": "Agents totaux illimités",
-        "voiceInputFree": "Saisie vocale (10 requêtes au total · 10 min/jour par membre)",
-        "voiceInputPro": "Saisie vocale (300 requêtes/jour · 200 min/jour par membre)",
-        "voiceInputTeam": "Saisie vocale (500 requêtes/jour · 500 min/jour par membre)"
+        "byok": "Apportez vos propres clés LLM"
       },
       "free": {
-        "description": "Accès gratuit hérité pour les espaces de travail existants.",
         "name": "Gratuit"
       },
       "highlights": {
@@ -1441,7 +1424,6 @@
         "name": "Gratuit limité"
       },
       "loadError": "Impossible de charger le statut de facturation.",
-      "manageSubscription": "Gérer l'abonnement",
       "namedPlan": "Forfait {{plan}}",
       "noActivePlan": "Pas de forfait actif",
       "noActiveSubscription": "Pas d'abonnement actif",
@@ -1449,11 +1431,9 @@
         "name": "Aucun forfait"
       },
       "perMonth": "/mois",
-      "popular": "Populaire",
       "pricePerMonth": "{{price}}/mois",
       "pro": {
         "description": "Du travail quotidien avec des agents, au prix par membre.",
-        "legacyDescription": "Plus de crédits et de simultanéité pour les équipes qui utilisent des agents IA au quotidien.",
         "name": "Pro"
       },
       "renews": "Renouvelle le {{date}}",
@@ -1462,7 +1442,6 @@
       "selectedPlan": "le forfait sélectionné",
       "team": {
         "description": "Pour une équipe qui fait tourner des agents toute la journée.",
-        "legacyDescription": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
         "name": "Team"
       },
       "upgrade": "Mettre à niveau",
@@ -1565,13 +1544,11 @@
       "subscriptionChangeConfirmed": "La modification de l’abonnement a été confirmée."
     },
     "usage": {
-      "added": "Ajouté {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} restants",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} crédits",
         "remainingAria": "Allocation d'utilisation {{label}} restante",
         "resets": "Réinitialise {{date}}",
         "resetsRaw": "Réinitialise {{value}}",
@@ -1592,16 +1569,12 @@
         "teamPlan": "Plan Équipe"
       },
       "creditAdditions": "Ajouts de crédits",
-      "creditsRemaining_one": "{{value}} crédit restant",
-      "creditsRemaining_many": "{{value}} crédits restants",
-      "creditsRemaining_other": "{{value}} crédits restants",
       "expires": "Expire le {{date}}",
       "grantsTable": {
         "credits": "Crédits",
         "date": "Date",
         "left": "Restant"
       },
-      "left": "{{value}} restant",
       "member": "Membre",
       "neverExpires": "N'expire jamais",
       "orgCredits": "Crédits de l’organisation",
@@ -2440,10 +2413,6 @@
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
       "confirmRecording": "OK",
-      "draft": "Brouillon vocal",
-      "draftTooLong": "Ce brouillon vocal est trop long. Démarrez un nouvel enregistrement.",
-      "finishDraft": "Finaliser",
-      "finishingDraft": "Finalisation...",
       "input": "Entrée vocale",
       "inputLimitReached": "Limite d'entrée vocale atteinte. Passez à Pro ou Team pour des limites plus élevées.",
       "inputLimitReachedMember": "Limite d'entrée vocale atteinte. Demandez à un administrateur de l'espace de travail d'effectuer une mise à niveau pour obtenir des limites plus élevées.",
@@ -2452,7 +2421,6 @@
       "inputLimitReachedReset": "Limite d'entrée vocale atteinte. Veuillez attendre la réinitialisation de votre limite.",
       "microphoneAccessDenied": "L'accès au microphone a été refusé. Autorisez l'accès au microphone et réessayez.",
       "openingMicrophone": "Ouverture du microphone...",
-      "removeDraft": "Supprimer le brouillon vocal",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
       "transcribing": "Transcription",
@@ -2815,12 +2783,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Plus d'options",
-      "statusConnected": "Connecté",
       "toasts": {
         "connected": "Connecté",
         "created": "Créé \"{{connector}}\"",
         "deleted": "Connecteur personnalisé supprimé",
-        "disconnected": "Déconnecté",
         "updated": "Mis à jour \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2863,7 +2829,6 @@
       "always": "Toujours",
       "clearSearch": "Effacer la recherche de permissions",
       "descriptionAgent": "Configurer les actions que cet agent est autorisé à effectuer via ce connecteur.",
-      "descriptionWorkflow": "Configurer les actions que ce workflow est autorisé à effectuer via ce connecteur.",
       "find": "Trouver des permissions",
       "findPlaceholder": "Recherche de permissions...",
       "forTarget": "pour {{target}}",
@@ -3328,8 +3293,7 @@
       "redirectTitle": "Redirection vers {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connecté",
-      "disconnected": "{{connector}} déconnecté"
+      "connected": "{{connector}} connecté"
     }
   },
   "global": {

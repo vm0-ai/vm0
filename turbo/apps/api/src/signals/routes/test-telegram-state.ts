@@ -1046,7 +1046,7 @@ async function getTelegramPostRunStateForAction(
   if (!run) {
     return actionOk({
       run: null,
-      zero_run: null,
+      agent_run: null,
       callbacks: [],
       job_exists: false,
     });
@@ -1087,7 +1087,7 @@ async function getTelegramPostRunStateForAction(
 
   return actionOk({
     run,
-    zero_run: agentRun ?? null,
+    agent_run: agentRun ?? null,
     callbacks: callbacks.map((callback) => {
       return {
         id: callback.id,

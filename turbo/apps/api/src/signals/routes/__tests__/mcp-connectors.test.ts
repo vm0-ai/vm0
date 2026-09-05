@@ -147,7 +147,6 @@ describe("GET /api/mcp-connectors", () => {
     });
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     const selected = await connectors.createCustomConnector(
       actor,
@@ -329,7 +328,6 @@ describe("GET /api/mcp-connectors", () => {
     await runs.ensureOrgModelProvider(actor);
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     const agent = await bdd.createAgent(actor, {
       displayName: "MCP exact identity Agent",
@@ -529,7 +527,6 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       });
       await connectors.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.CustomConnectorMcp]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
       });
       const connector = await connectors.createCustomConnector(actor, {
         kind: "mcp",

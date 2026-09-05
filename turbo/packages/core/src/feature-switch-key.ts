@@ -62,7 +62,6 @@ export enum FeatureSwitchKey {
   BaseUiSidebarScrollArea = "baseUiSidebarScrollArea",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
-  ConnectorAccounts = "connectorAccounts",
   ComposerConnectorPopoverPlacement = "composerConnectorPopoverPlacement",
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",

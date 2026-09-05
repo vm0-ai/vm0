@@ -201,7 +201,7 @@ function CurrentPlanStatus({
   };
 
   return (
-    <div className="shrink-0 rounded-[var(--zero-card-radius)] zero-border p-5">
+    <div className="shrink-0 rounded-[var(--okou-card-radius)] okou-border p-5">
       <p className={`mb-3 text-sm font-mono font-semibold ${tierColor}`}>
         {tierLabel}
       </p>
@@ -293,12 +293,12 @@ function UpgradeCard({
     maximumFractionDigits: 0,
   });
   return (
-    <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
+    <div className="flex-1 flex flex-col rounded-[var(--okou-card-radius)] okou-border p-5">
       <div className="flex items-start justify-between mb-2">
         <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {upgrade.targetLabel}
         </h3>
-        <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+        <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
           <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.upgrade.recommended;
@@ -488,14 +488,14 @@ function ConcurrencyPurchaseCard({
     unitAmountCents,
   );
   return (
-    <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
+    <div className="flex-1 flex flex-col rounded-[var(--okou-card-radius)] okou-border p-5">
       <div className="flex items-start justify-between mb-2">
         <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {t(($) => {
             return $.queue.purchase.title;
           })}
         </h3>
-        <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+        <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
           <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.purchase.addOn;
@@ -713,8 +713,8 @@ function QueueDrawerContent() {
   if (!data) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="h-24 animate-pulse rounded-[var(--zero-card-radius)] bg-muted/20" />
-        <div className="h-48 animate-pulse rounded-[var(--zero-card-radius)] bg-muted/20" />
+        <div className="h-24 animate-pulse rounded-[var(--okou-card-radius)] bg-muted/20" />
+        <div className="h-48 animate-pulse rounded-[var(--okou-card-radius)] bg-muted/20" />
       </div>
     );
   }

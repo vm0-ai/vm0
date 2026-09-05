@@ -58,7 +58,7 @@ function capturePromptLaunch(): PromptLaunchCapture {
 
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.zero-composer [contenteditable="true"]',
+    '.okou-composer [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Message composer not found");

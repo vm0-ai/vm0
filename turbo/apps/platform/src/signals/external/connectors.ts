@@ -1,6 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
 import { connectorsMainContract } from "@okouai/api-contracts/contracts/connectors";
-import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorCatalogContract,
   type PublicConnectorCatalogDiscoveryResponse,
@@ -97,27 +96,3 @@ export const reloadConnectors$ = command(({ set }) => {
     return x + 1;
   });
 });
-
-/**
- * Delete a connector by slug.
- */
-export const deleteConnector$ = command(
-  async ({ get, set }, connectorSlug: ConnectorSlug, signal: AbortSignal) => {
-    const createClient = get(apiClient$);
-    const client = createClient(connectorAccountsContract);
-    await accept(
-      client.disconnectSingleAccount({
-        body: {
-          target: { kind: "builtin", connectorSlug },
-        },
-        fetchOptions: { signal },
-      }),
-      [204],
-    );
-    signal.throwIfAborted();
-
-    set(internalReloadConnectors$, (x) => {
-      return x + 1;
-    });
-  },
-);

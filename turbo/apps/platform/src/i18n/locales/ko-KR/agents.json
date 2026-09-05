@@ -77,7 +77,6 @@
   "detail": {
     "chatWith": "{{agentName}}와(과) 채팅하기",
     "defaultDescription": "당신에게 맞춘 AI 팀원",
-    "noSelection": "선택된 에이전트가 없습니다",
     "notFound": {
       "back": "팀으로 돌아가기",
       "description": "에이전트 “{{agentId}}”가 존재하지 않거나 접근 권한이 없습니다.",
