@@ -41,7 +41,6 @@ enum SentrySetup {
             options.environment = settings.environment
             options.sendDefaultPii = false
             options.tracesSampleRate = 0
-            options.attachScreenshot = false
             options.enableAutoPerformanceTracing = false
         }
         SentrySDK.configureScope { scope in
