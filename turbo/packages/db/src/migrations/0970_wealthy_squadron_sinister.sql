@@ -1,1 +1,0 @@
-CREATE INDEX "pi_resource_snapshots_created_at_idx" ON "pi_resource_snapshots" USING btree ("created_at");

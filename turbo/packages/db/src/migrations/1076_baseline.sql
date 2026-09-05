@@ -3,8 +3,8 @@
 --
 
 
--- Dumped from database version 17.10 (Debian 17.10-1.pgdg12+1)
--- Dumped by pg_dump version 17.10 (Debian 17.10-1.pgdg12+1)
+-- Dumped from database version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+-- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -59,6 +59,8 @@ CREATE TYPE public.chat_thread_event_kind AS ENUM (
     'model_selection_updated',
     'service_tier_updated',
     'computer_use_host_updated',
+    'video_model_updated',
+    'image_model_updated',
     'sort_touched'
 );
 
@@ -169,39 +171,16 @@ BEGIN
 		AND config."org_id" = "target_org_id";
 
 	IF (
+		"target_auth_mode" IN ('none', 'manual', 'automatic')
+		AND "oauth_config_count" <> 0
+	) OR (
 		"target_auth_mode" = 'oauth'
 		AND "oauth_config_count" <> 1
-	) OR (
-		"target_auth_mode" = 'manual'
-		AND "oauth_config_count" <> 0
 	) THEN
 		RAISE EXCEPTION
-			'custom connector auth mode and OAuth config do not match'
+			'custom connector OAuth mode and config do not match'
 			USING ERRCODE = '23514';
 	END IF;
-END;
-$$;
-
-
---
--- Name: bridge_chat_event_run_event_sequence_number_0807(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.bridge_chat_event_run_event_sequence_number_0807() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-  IF NEW."run_event_sequence_number" IS NULL THEN
-    NEW."run_event_sequence_number" := NEW."sequence_number";
-  ELSIF NEW."sequence_number" IS NULL THEN
-    NEW."sequence_number" := NEW."run_event_sequence_number";
-  ELSIF NEW."run_event_sequence_number"
-    IS DISTINCT FROM NEW."sequence_number"
-  THEN
-    RAISE EXCEPTION 'chat event run event sequence columns must match';
-  END IF;
-
-  RETURN NEW;
 END;
 $$;
 
@@ -230,8 +209,9 @@ BEGIN
   IF NEW."chat_thread_id" IS NULL AND NEW."created_from_run_id" IS NOT NULL THEN
     SELECT "run"."chat_thread_id"
     INTO NEW."chat_thread_id"
-    FROM "zero_runs" AS "run"
-    WHERE "run"."id"::text = NEW."created_from_run_id";
+    FROM "agent_runs" AS "run"
+    WHERE "run"."id"::text = NEW."created_from_run_id"
+      AND "run"."trigger_source" IS NOT NULL;
   END IF;
 
   RETURN NEW;
@@ -292,8 +272,9 @@ BEGIN
   IF NEW."run_id" IS NOT NULL THEN
     SELECT "run"."chat_thread_id"
     INTO "run_chat_thread_id"
-    FROM "zero_runs" AS "run"
-    WHERE "run"."id"::text = NEW."run_id";
+    FROM "agent_runs" AS "run"
+    WHERE "run"."id"::text = NEW."run_id"
+      AND "run"."trigger_source" IS NOT NULL;
   END IF;
 
   IF "site_chat_thread_id" IS DISTINCT FROM "run_chat_thread_id" THEN
@@ -366,7 +347,7 @@ BEGIN
 		"can_buy_credits",
 		"auto_recharge_allowed",
 		"support_byok",
-		"restricted_vm0_models",
+		"restricted_built_in_models",
 		"video_generation_allowed",
 		"workflow_webhook_trigger_allowed",
 		"audio_lifetime_limit",
@@ -384,7 +365,7 @@ BEGIN
 		plans."can_buy_credits",
 		plans."auto_recharge_allowed",
 		plans."support_byok",
-		plans."restricted_vm0_models",
+		plans."restricted_built_in_models",
 		plans."video_generation_allowed",
 		plans."workflow_webhook_trigger_allowed",
 		plans."audio_lifetime_limit",
@@ -407,7 +388,7 @@ BEGIN
 		"can_buy_credits",
 		"auto_recharge_allowed",
 		"support_byok",
-		"restricted_vm0_models",
+		"restricted_built_in_models",
 		"video_generation_allowed",
 		"workflow_webhook_trigger_allowed",
 		"audio_lifetime_limit",
@@ -457,6 +438,47 @@ $$;
 
 
 --
+-- Name: pi_memory_stage1_candidate_blob_ref_count(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.pi_memory_stage1_candidate_blob_ref_count() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' OR (
+    TG_OP = 'UPDATE' AND
+    NEW.source_history_hash IS DISTINCT FROM OLD.source_history_hash
+  ) THEN
+    UPDATE "blobs"
+    SET "ref_count" = "ref_count" + 1
+    WHERE "hash" = NEW.source_history_hash;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Pi memory candidate source blob does not exist';
+    END IF;
+  END IF;
+
+  IF TG_OP = 'DELETE' OR (
+    TG_OP = 'UPDATE' AND
+    NEW.source_history_hash IS DISTINCT FROM OLD.source_history_hash
+  ) THEN
+    UPDATE "blobs"
+    SET "ref_count" = "ref_count" - 1
+    WHERE "hash" = OLD.source_history_hash
+      AND "ref_count" > 0;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Pi memory candidate source blob has no retained reference';
+    END IF;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: queue_artifact_catalog_file(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -480,8 +502,9 @@ BEGIN
         NEW."chat_thread_id",
         (
           SELECT run."chat_thread_id"
-          FROM "zero_runs" AS run
+          FROM "agent_runs" AS run
           WHERE run."id" = NEW."run_id"
+            AND run."trigger_source" IS NOT NULL
         ),
         (
           SELECT message."chat_thread_id"
@@ -551,35 +574,150 @@ END;
 $$;
 
 
+--
+-- Name: sync_legacy_org_plan_entitlement_member_invitation_allowed(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_legacy_org_plan_entitlement_member_invitation_allowed() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+	IF NEW."source" IN (
+		'stripe_subscription',
+		'stripe_atom_grant',
+		'org_metadata_bootstrap',
+		'org_metadata_migration'
+	) THEN
+		NEW."member_invitation_allowed" := NEW."plan_key" IN ('pro', 'team', 'custom');
+	END IF;
+	RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: sync_usage_pack_pending_snapshot_guard_0954(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_usage_pack_pending_snapshot_guard_0954() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  affected_rows integer;
+  should_claim boolean := false;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD."subscription_status" IN ('checkout_pending', 'purchase_pending') THEN
+      UPDATE "usage_pack_pending_snapshot_guards"
+      SET "pending_snapshot_count" = "pending_snapshot_count" - 1
+      WHERE "org_id" = OLD."org_id"
+        AND "pending_snapshot_count" > 0;
+      GET DIAGNOSTICS affected_rows = ROW_COUNT;
+      IF affected_rows = 0 THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '23514',
+          MESSAGE = 'usage-pack pending snapshot guard count is missing',
+          CONSTRAINT = 'chk_usage_pack_pending_snapshot_guard_count';
+      END IF;
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    should_claim := NEW."subscription_status" IN ('checkout_pending', 'purchase_pending');
+  ELSE
+    IF OLD."subscription_status" IN ('checkout_pending', 'purchase_pending')
+      AND (
+        NEW."subscription_status" NOT IN ('checkout_pending', 'purchase_pending')
+        OR OLD."org_id" IS DISTINCT FROM NEW."org_id"
+      )
+    THEN
+      UPDATE "usage_pack_pending_snapshot_guards"
+      SET "pending_snapshot_count" = "pending_snapshot_count" - 1
+      WHERE "org_id" = OLD."org_id"
+        AND "pending_snapshot_count" > 0;
+      GET DIAGNOSTICS affected_rows = ROW_COUNT;
+      IF affected_rows = 0 THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '23514',
+          MESSAGE = 'usage-pack pending snapshot guard count is missing',
+          CONSTRAINT = 'chk_usage_pack_pending_snapshot_guard_count';
+      END IF;
+    END IF;
+    should_claim := NEW."subscription_status" IN ('checkout_pending', 'purchase_pending')
+      AND (
+        OLD."subscription_status" NOT IN ('checkout_pending', 'purchase_pending')
+        OR OLD."org_id" IS DISTINCT FROM NEW."org_id"
+      );
+  END IF;
+
+  IF should_claim THEN
+    INSERT INTO "usage_pack_pending_snapshot_guards" (
+      "org_id",
+      "pending_snapshot_count"
+    )
+    VALUES (NEW."org_id", 1)
+    ON CONFLICT ("org_id") DO UPDATE
+    SET "pending_snapshot_count" = 1
+    WHERE "usage_pack_pending_snapshot_guards"."pending_snapshot_count" = 0;
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    IF affected_rows = 0 THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '23505',
+        MESSAGE = 'another usage-pack purchase is already pending for this organization',
+        CONSTRAINT = 'uq_usage_pack_subscriptions_pending_org';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 --
--- Name: agent_compose_versions; Type: TABLE; Schema: public; Owner: -
+-- Name: active_input_deliveries; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.agent_compose_versions (
-    id character varying(64) NOT NULL,
-    compose_id uuid NOT NULL,
-    content jsonb NOT NULL,
-    created_by text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+CREATE TABLE public.active_input_deliveries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    run_id uuid NOT NULL,
+    chat_thread_id uuid NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    CONSTRAINT active_input_deliveries_status_check CHECK ((status = ANY (ARRAY['open'::text, 'settled'::text])))
 );
 
 
 --
--- Name: agent_composes; Type: TABLE; Schema: public; Owner: -
+-- Name: active_input_delivery_items; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.agent_composes (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
+CREATE TABLE public.active_input_delivery_items (
+    delivery_id uuid NOT NULL,
+    source_event_id uuid NOT NULL,
+    "position" integer NOT NULL,
+    disposition text,
+    CONSTRAINT active_input_delivery_items_disposition_check CHECK (((disposition IS NULL) OR (disposition = ANY (ARRAY['delivered'::text, 'released'::text, 'expired'::text])))),
+    CONSTRAINT active_input_delivery_items_position_check CHECK (("position" >= 0))
+);
+
+
+--
+-- Name: agent_drafts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_drafts (
+    user_id text NOT NULL,
+    org_id text NOT NULL,
+    agent_id uuid NOT NULL,
+    draft_attachments jsonb,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    user_id text NOT NULL,
-    name character varying(64) DEFAULT ''::character varying NOT NULL,
-    head_version_id character varying(64),
-    org_id text NOT NULL
+    draft_user_message jsonb,
+    CONSTRAINT agent_drafts_draft_user_message_check CHECK (((draft_user_message IS NOT NULL) OR (COALESCE(draft_attachments, '[]'::jsonb) = '[]'::jsonb)))
 );
 
 
@@ -600,23 +738,6 @@ CREATE TABLE public.agent_run_callbacks (
     delivered_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     internal_kind character varying(64)
-);
-
-
---
--- Name: agent_run_custom_connector_auth_refs; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.agent_run_custom_connector_auth_refs (
-    run_id uuid NOT NULL,
-    secret_name character varying(255) NOT NULL,
-    connector_id uuid NOT NULL,
-    kind character varying(16) NOT NULL,
-    key character varying(64) NOT NULL,
-    encrypted_value text,
-    expires_at timestamp without time zone NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    connector_revision integer DEFAULT 1 NOT NULL
 );
 
 
@@ -650,7 +771,6 @@ CREATE TABLE public.agent_runs (
     started_at timestamp without time zone,
     completed_at timestamp without time zone,
     user_id text NOT NULL,
-    agent_compose_version_id character varying(64),
     last_heartbeat_at timestamp without time zone,
     secret_names jsonb,
     continued_from_session_id uuid,
@@ -663,7 +783,38 @@ CREATE TABLE public.agent_runs (
     storage_mounts jsonb,
     cancellation_recovery_completed boolean,
     runner_id uuid,
-    runner_heartbeat_generation bigint
+    runner_heartbeat_generation bigint,
+    active_input_enabled boolean DEFAULT false NOT NULL,
+    workspace_reuse_result character varying(50),
+    trigger_source character varying(20),
+    autonomy_budget integer,
+    workflow_automation_id uuid,
+    goal_id uuid,
+    model_provider character varying(100),
+    model_provider_id uuid,
+    model_provider_credential_scope character varying(20),
+    selected_model character varying(255),
+    codex_service_tier character varying(20),
+    selected_video_model character varying(255),
+    chat_thread_id uuid,
+    api_started_at timestamp without time zone,
+    first_assistant_event_acknowledged_at timestamp without time zone,
+    summary text,
+    trigger_brief text,
+    launch_snapshot jsonb,
+    selected_image_model character varying(255),
+    model_runtime_provider character varying(100),
+    model_runtime_model character varying(255),
+    built_in_model_key_id uuid,
+    runner_hostname character varying(255),
+    runner_version character varying(128),
+    official_workflow_provenance jsonb,
+    failure_reason text,
+    credit_admitted boolean DEFAULT false NOT NULL,
+    CONSTRAINT agent_runs_autonomy_budget_check CHECK (((autonomy_budget >= 0) AND (autonomy_budget <= 10))),
+    CONSTRAINT agent_runs_launch_snapshot_check CHECK (((launch_snapshot IS NULL) OR ((jsonb_typeof(launch_snapshot) = 'object'::text) AND (jsonb_typeof((launch_snapshot -> 'framework'::text)) = 'string'::text) AND ((launch_snapshot ->> 'framework'::text) = ANY (ARRAY['claude-code'::text, 'codex'::text, 'pi'::text])) AND (jsonb_typeof((launch_snapshot -> 'runnerProfile'::text)) = 'string'::text) AND (char_length((launch_snapshot ->> 'runnerProfile'::text)) >= 1) AND (char_length((launch_snapshot ->> 'runnerProfile'::text)) <= 255) AND (((launch_snapshot ?& ARRAY['schemaVersion'::text, 'framework'::text, 'runnerProfile'::text]) AND ((((launch_snapshot - 'schemaVersion'::text) - 'framework'::text) - 'runnerProfile'::text) = '{}'::jsonb) AND ((launch_snapshot -> 'schemaVersion'::text) = '1'::jsonb)) OR ((launch_snapshot ?& ARRAY['schemaVersion'::text, 'framework'::text, 'runnerProfile'::text, 'piMemoryGenerationEnabled'::text]) AND (((((launch_snapshot - 'schemaVersion'::text) - 'framework'::text) - 'runnerProfile'::text) - 'piMemoryGenerationEnabled'::text) = '{}'::jsonb) AND ((launch_snapshot -> 'schemaVersion'::text) = '2'::jsonb) AND (jsonb_typeof((launch_snapshot -> 'piMemoryGenerationEnabled'::text)) = 'boolean'::text)) OR ((launch_snapshot ?& ARRAY['schemaVersion'::text, 'framework'::text, 'runnerProfile'::text]) AND ((((launch_snapshot - 'schemaVersion'::text) - 'framework'::text) - 'runnerProfile'::text) = '{}'::jsonb) AND ((launch_snapshot -> 'schemaVersion'::text) = '3'::jsonb)))))),
+    CONSTRAINT agent_runs_metadata_presence_check CHECK ((((trigger_source IS NULL) AND (autonomy_budget IS NULL) AND (workflow_automation_id IS NULL) AND (goal_id IS NULL) AND (model_provider IS NULL) AND (model_provider_id IS NULL) AND (model_provider_credential_scope IS NULL) AND (selected_model IS NULL) AND (model_runtime_provider IS NULL) AND (model_runtime_model IS NULL) AND (built_in_model_key_id IS NULL) AND (codex_service_tier IS NULL) AND (selected_video_model IS NULL) AND (selected_image_model IS NULL) AND (chat_thread_id IS NULL) AND (api_started_at IS NULL) AND (first_assistant_event_acknowledged_at IS NULL) AND (summary IS NULL) AND (trigger_brief IS NULL)) OR ((trigger_source IS NOT NULL) AND (autonomy_budget IS NOT NULL)))),
+    CONSTRAINT agent_runs_official_workflow_provenance_check CHECK (((official_workflow_provenance IS NULL) OR ((jsonb_typeof(official_workflow_provenance) = 'object'::text) AND (official_workflow_provenance ?& ARRAY['schemaVersion'::text, 'definitions'::text]) AND (((official_workflow_provenance - 'schemaVersion'::text) - 'definitions'::text) = '{}'::jsonb) AND ((official_workflow_provenance -> 'schemaVersion'::text) = '1'::jsonb) AND (jsonb_typeof((official_workflow_provenance -> 'definitions'::text)) = 'array'::text) AND (jsonb_array_length((official_workflow_provenance -> 'definitions'::text)) > 0) AND (NOT jsonb_path_exists(official_workflow_provenance, '$."definitions"[*]?(((((((((((((((((((((((@.type() != "object" || !(exists (@."name"))) || @."name".type() != "string") || !(@."name" like_regex "^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")) || !(exists (@."revision"))) || @."revision".type() != "string") || !(@."revision" like_regex "^[0-9a-f]{64}$")) || !(exists (@."artifact"))) || @."artifact".type() != "object") || exists (@.keyvalue()?((@."key" != "name" && @."key" != "revision") && @."key" != "artifact"))) || !(exists (@."artifact"."orgId"))) || @."artifact"."orgId" != "__system__") || !(exists (@."artifact"."userId"))) || @."artifact"."userId" != "__org__") || !(exists (@."artifact"."storageName"))) || @."artifact"."storageName".type() != "string") || !(@."artifact"."storageName" like_regex "^.{1,255}.?$")) || !(exists (@."artifact"."storageId"))) || @."artifact"."storageId".type() != "string") || !(@."artifact"."storageId" like_regex "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")) || !(exists (@."artifact"."storageVersion"))) || @."artifact"."storageVersion".type() != "string") || !(@."artifact"."storageVersion" like_regex "^[0-9a-f]{64}$")) || exists (@."artifact".keyvalue()?((((@."key" != "orgId" && @."key" != "userId") && @."key" != "storageName") && @."key" != "storageId") && @."key" != "storageVersion")))'::jsonpath)))))
 );
 
 
@@ -674,12 +825,12 @@ CREATE TABLE public.agent_runs (
 CREATE TABLE public.agent_sessions (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id text NOT NULL,
-    agent_compose_id uuid NOT NULL,
     conversation_id uuid,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     org_id text NOT NULL,
-    storage_mounts jsonb
+    storage_mounts jsonb,
+    agent_id uuid
 );
 
 
@@ -717,7 +868,8 @@ CREATE TABLE public.agentphone_messages (
     media_url text,
     is_bot boolean DEFAULT false NOT NULL,
     received_at timestamp without time zone,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text
 );
 
 
@@ -726,11 +878,11 @@ CREATE TABLE public.agentphone_messages (
 --
 
 CREATE TABLE public.agentphone_user_agent_preferences (
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
-    selected_compose_id uuid,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    selected_agent_id uuid
 );
 
 
@@ -741,10 +893,11 @@ CREATE TABLE public.agentphone_user_agent_preferences (
 CREATE TABLE public.agentphone_user_links (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     phone_handle character varying(254) NOT NULL,
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL
 );
 
 
@@ -756,6 +909,28 @@ CREATE TABLE public.agentphone_verification_send_cooldowns (
     scope character varying(32) NOT NULL,
     scope_key text NOT NULL,
     last_sent_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: agents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agents (
+    id uuid NOT NULL,
+    org_id text NOT NULL,
+    owner text NOT NULL,
+    name character varying(64) NOT NULL,
+    visibility character varying(16) DEFAULT 'public'::character varying NOT NULL,
+    display_name character varying(256),
+    description text,
+    sound character varying(64),
+    avatar_url character varying(1024),
+    model_provider_id uuid,
+    selected_model character varying(255),
+    prefer_personal_provider boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
@@ -799,7 +974,7 @@ CREATE TABLE public.artifacts (
     kind character varying(32) NOT NULL,
     entity_id uuid NOT NULL,
     logical_key text NOT NULL,
-    projection_file_id uuid NOT NULL,
+    projection_file_id uuid,
     projection_created_at timestamp without time zone NOT NULL,
     title text NOT NULL,
     thumbnail jsonb,
@@ -846,7 +1021,9 @@ CREATE TABLE public.banking_accounts (
     enabled boolean DEFAULT true NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    institution_login_id character varying(128),
+    repair_required_at timestamp without time zone
 );
 
 
@@ -865,7 +1042,47 @@ CREATE TABLE public.banking_agent_enablements (
     revoked_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    allow_automation_runs boolean DEFAULT false NOT NULL
+    allow_automation_runs boolean DEFAULT false NOT NULL,
+    purpose text,
+    expires_at timestamp without time zone
+);
+
+
+--
+-- Name: banking_connect_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.banking_connect_events (
+    event_id character varying(128) NOT NULL,
+    session_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    connection_id uuid NOT NULL,
+    event_type character varying(64) NOT NULL,
+    end_reason character varying(64),
+    provider_occurred_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: banking_connect_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.banking_connect_sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    connection_id uuid NOT NULL,
+    mode character varying(16) NOT NULL,
+    status character varying(16) DEFAULT 'pending'::character varying NOT NULL,
+    institution_login_id character varying(128),
+    added_at timestamp without time zone,
+    done_at timestamp without time zone,
+    completed_at timestamp without time zone,
+    end_reason character varying(64),
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -971,6 +1188,30 @@ CREATE TABLE public.browser_session_resize_states (
 
 
 --
+-- Name: browser_session_screenshot_deletions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.browser_session_screenshot_deletions (
+    object_key text NOT NULL,
+    chat_thread_id uuid NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: browser_session_screenshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.browser_session_screenshots (
+    chat_thread_id uuid NOT NULL,
+    object_key text NOT NULL,
+    url text NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: browser_session_tab_snapshots; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1001,7 +1242,8 @@ CREATE TABLE public.browser_sessions (
     suspension_reason character varying(20),
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    browser_thread_profile_id uuid
+    browser_thread_profile_id uuid,
+    public_brand text NOT NULL
 );
 
 
@@ -1042,6 +1284,35 @@ CREATE TABLE public.built_in_generation_jobs (
 
 
 --
+-- Name: built_in_model_candidate_cooldown; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.built_in_model_candidate_cooldown (
+    selected_model character varying(255) NOT NULL,
+    provider_type character varying(100) NOT NULL,
+    upstream_model character varying(255) NOT NULL,
+    unavailable_until timestamp without time zone NOT NULL,
+    connection_observation_started_at timestamp without time zone,
+    connection_observation_until timestamp without time zone,
+    CONSTRAINT built_in_model_cooldown_observation_pair_check CHECK ((((connection_observation_started_at IS NULL) AND (connection_observation_until IS NULL)) OR ((connection_observation_started_at IS NOT NULL) AND (connection_observation_until IS NOT NULL))))
+);
+
+
+--
+-- Name: built_in_model_keys; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.built_in_model_keys (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vendor character varying(50) NOT NULL,
+    api_key text NOT NULL,
+    label text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: canonical_asset_deliveries; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1057,6 +1328,18 @@ CREATE TABLE public.canonical_asset_deliveries (
     last_error jsonb,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: chat_agent_run_context; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_agent_run_context (
+    id uuid NOT NULL,
+    source_chat_thread_id uuid NOT NULL,
+    source_agent_id uuid NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1079,7 +1362,8 @@ CREATE TABLE public.chat_agentphone_context (
     to_number text,
     user_link_id uuid,
     agentphone_agent_id text,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text
 );
 
 
@@ -1095,19 +1379,69 @@ CREATE TABLE public.chat_automation_context (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     workflow_name text,
     event_type text,
-    event_payload jsonb
+    event_payload jsonb,
+    connector_source_id uuid,
+    public_brand text DEFAULT 'vm0'::text NOT NULL
 );
 
 
 --
--- Name: chat_event_asset_refs; Type: TABLE; Schema: public; Owner: -
+-- Name: chat_event_search_message_watermarks; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.chat_event_asset_refs (
-    chat_event_id uuid NOT NULL,
-    asset_id uuid NOT NULL,
-    "position" integer NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+CREATE TABLE public.chat_event_search_message_watermarks (
+    chat_thread_id uuid NOT NULL,
+    indexed_seq_id bigint NOT NULL
+);
+
+
+--
+-- Name: chat_event_search_messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_event_search_messages (
+    chat_thread_id uuid NOT NULL,
+    seq_id bigint NOT NULL,
+    run_id uuid,
+    user_id text NOT NULL,
+    org_id text NOT NULL,
+    role text NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    text text NOT NULL,
+    text_bigram text NOT NULL,
+    tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple'::regconfig, text_bigram)) STORED,
+    agent_id uuid
+);
+
+
+--
+-- Name: chat_event_snapshot_scan_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_event_snapshot_scan_state (
+    scope text NOT NULL,
+    cursor_chat_thread_id uuid,
+    cycle_upper_bound_last_message_at timestamp(3) without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chat_event_snapshot_scan_state_scope_check CHECK ((scope = 'global'::text))
+);
+
+
+--
+-- Name: chat_event_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_event_snapshots (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    chat_thread_id uuid NOT NULL,
+    last_seq_id bigint NOT NULL,
+    archive_schema_version integer DEFAULT 7 NOT NULL,
+    object_key text NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    last_event_id uuid NOT NULL,
+    terminal_event_id uuid,
+    terminal_seq_id bigint,
+    CONSTRAINT chat_event_snapshots_archive_schema_version_check CHECK ((archive_schema_version = 7)),
+    CONSTRAINT chat_event_snapshots_terminal_cursor_check CHECK ((((terminal_event_id IS NULL) AND (terminal_seq_id = 0)) OR ((terminal_event_id IS NOT NULL) AND (terminal_seq_id > 0) AND (terminal_seq_id <= last_seq_id))))
 );
 
 
@@ -1119,33 +1453,36 @@ CREATE TABLE public.chat_events (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     chat_thread_id uuid NOT NULL,
     run_id uuid,
-    content text,
-    error text,
-    sequence_number integer,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     run_event_id text,
-    attach_files jsonb,
-    interrupts_run_id uuid,
-    recommended_followups jsonb,
-    generation_template jsonb,
-    usage_payload jsonb,
-    run_group_id uuid,
-    goal_event jsonb,
-    thinking text,
     seq_id bigint NOT NULL,
     event_type text NOT NULL,
-    trigger_source text,
-    user_message jsonb,
     context_type text,
     context_id uuid,
     revokes_event_id uuid,
     run_event_sequence_number integer,
-    CONSTRAINT chat_events_context_pair_check CHECK (((context_type IS NULL) = (context_id IS NULL))),
-    CONSTRAINT chat_events_context_type_check CHECK ((context_type = ANY (ARRAY['slack'::text, 'feishu'::text, 'teams'::text, 'telegram'::text, 'github'::text, 'agentphone'::text, 'automation'::text, 'goal'::text, 'morning_brief'::text]))),
-    CONSTRAINT chat_events_event_type_check CHECK ((event_type = ANY (ARRAY['input.prompt'::text, 'input.automation'::text, 'input.goal'::text, 'input.rejected'::text, 'output.message'::text, 'output.error'::text, 'output.thinking'::text, 'output.followups'::text, 'run.queued'::text, 'run.dequeued'::text, 'run.completed'::text, 'run.failed'::text, 'run.cancelled'::text, 'control.interrupt'::text, 'control.revoke'::text, 'browser.started'::text, 'browser.stopped'::text, 'goal.changed'::text, 'usage.recorded'::text]))),
-    CONSTRAINT chat_events_input_content_check CHECK (((event_type <> ALL (ARRAY['input.prompt'::text, 'input.rejected'::text])) OR (content IS NULL))),
-    CONSTRAINT chat_events_input_user_message_check CHECK (((event_type <> ALL (ARRAY['input.prompt'::text, 'input.rejected'::text])) OR (user_message IS NOT NULL)))
+    payload jsonb,
+    required_official_workflow_ids uuid[],
+    failure_reason text,
+    CONSTRAINT chat_events_context_pair_check CHECK (((context_id IS NULL) OR (context_type IS NOT NULL))),
+    CONSTRAINT chat_events_context_type_check CHECK ((context_type = ANY (ARRAY['web'::text, 'slack'::text, 'feishu'::text, 'teams'::text, 'telegram'::text, 'github'::text, 'agentphone'::text, 'automation'::text, 'goal'::text, 'agent_run'::text]))),
+    CONSTRAINT chat_events_event_type_check CHECK ((event_type = ANY (ARRAY['input.prompt'::text, 'input.automation'::text, 'input.goal'::text, 'input.budget'::text, 'input.rejected'::text, 'output.message'::text, 'output.error'::text, 'output.thinking'::text, 'output.followups'::text, 'run.queued'::text, 'run.dequeued'::text, 'run.completed'::text, 'run.failed'::text, 'run.cancelled'::text, 'control.interrupt'::text, 'control.revoke'::text, 'browser.open'::text, 'browser.close'::text, 'goal.open'::text, 'goal.close'::text, 'usage.recorded'::text]))),
+    CONSTRAINT chat_events_failure_reason_event_type_check CHECK (((failure_reason IS NULL) OR (event_type = 'run.failed'::text))),
+    CONSTRAINT chat_events_goal_close_payload_check CHECK (((event_type <> 'goal.close'::text) OR (payload IS NULL))),
+    CONSTRAINT chat_events_goal_marker_payload_check CHECK (((event_type <> ALL (ARRAY['goal.open'::text, 'goal.close'::text])) OR ((run_id IS NULL) AND (revokes_event_id IS NULL) AND (context_type IS NULL) AND (context_id IS NULL) AND (run_event_sequence_number IS NULL) AND (run_event_id IS NULL)))),
+    CONSTRAINT chat_events_goal_open_payload_check CHECK (((event_type <> 'goal.open'::text) OR ((payload IS NOT NULL) AND (payload ? 'content'::text) AND (jsonb_typeof((payload -> 'content'::text)) = 'string'::text) AND ((payload ->> 'content'::text) = btrim((payload ->> 'content'::text))) AND (char_length((payload ->> 'content'::text)) > 0) AND ((payload - 'content'::text) = '{}'::jsonb)))),
+    CONSTRAINT chat_events_input_context_type_check CHECK (((event_type <> ALL (ARRAY['input.prompt'::text, 'input.automation'::text, 'input.goal'::text, 'input.budget'::text])) OR (context_type IS NOT NULL))),
+    CONSTRAINT chat_events_input_payload_content_check CHECK (((event_type <> ALL (ARRAY['input.prompt'::text, 'input.budget'::text, 'input.rejected'::text])) OR (payload IS NULL) OR (NOT (payload ? 'content'::text)))),
+    CONSTRAINT chat_events_input_user_message_payload_check CHECK (((event_type <> ALL (ARRAY['input.prompt'::text, 'input.budget'::text, 'input.rejected'::text])) OR ((payload IS NOT NULL) AND (payload ? 'userMessage'::text)))),
+    CONSTRAINT chat_events_official_workflow_queue_claim_check CHECK (((required_official_workflow_ids IS NULL) OR ((event_type = 'input.prompt'::text) AND (cardinality(required_official_workflow_ids) > 0))))
 );
+
+
+--
+-- Name: COLUMN chat_events.context_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.chat_events.context_type IS 'Input source discriminator; context_id points to a source context row when one exists. web and goal have no context row.';
 
 
 --
@@ -1155,7 +1492,6 @@ CREATE TABLE public.chat_events (
 CREATE TABLE public.chat_feishu_context (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     chat_thread_id uuid NOT NULL,
-    chat_open_url text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     conversation_history text,
     message_text text,
@@ -1168,7 +1504,8 @@ CREATE TABLE public.chat_feishu_context (
     reaction_id text,
     sender_open_id text,
     connection_id uuid,
-    installation_id uuid
+    installation_id uuid,
+    public_brand text
 );
 
 
@@ -1188,33 +1525,8 @@ CREATE TABLE public.chat_github_context (
     message_text text,
     trigger_reaction_id text,
     trigger_comment_body text,
+    public_brand text DEFAULT 'vm0'::text NOT NULL,
     CONSTRAINT chat_github_context_subject_kind_check CHECK ((subject_kind = ANY (ARRAY['issue'::text, 'pull_request'::text])))
-);
-
-
---
--- Name: chat_goal_context; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.chat_goal_context (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    chat_thread_id uuid NOT NULL,
-    objective_brief text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: chat_morning_brief_context; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.chat_morning_brief_context (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    chat_thread_id uuid NOT NULL,
-    delivery_id uuid NOT NULL,
-    timezone text,
-    triggered_at timestamp without time zone,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1241,7 +1553,6 @@ CREATE TABLE public.chat_output_materializations (
 CREATE TABLE public.chat_slack_context (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     chat_thread_id uuid NOT NULL,
-    message_permalink text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     channel_id text,
     message_ts text,
@@ -1253,7 +1564,10 @@ CREATE TABLE public.chat_slack_context (
     sender_user_id text,
     channel_type text,
     thread_ts text,
-    route_thread_ts text
+    route_thread_ts text,
+    bot_user_id text,
+    message_assets jsonb,
+    public_brand text NOT NULL
 );
 
 
@@ -1279,12 +1593,11 @@ CREATE TABLE public.chat_teams_context (
     thread_id text,
     service_url text,
     teams_app_id text,
-    bot_id text,
-    bot_name text,
     sender_user_id text,
     sender_display_name text,
     sender_principal_name text,
-    connection_id uuid
+    connection_id uuid,
+    public_brand text NOT NULL
 );
 
 
@@ -1297,7 +1610,6 @@ CREATE TABLE public.chat_telegram_context (
     chat_thread_id uuid NOT NULL,
     chat_id text NOT NULL,
     message_id text NOT NULL,
-    is_dm boolean NOT NULL,
     message_thread_id integer,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     message_text text,
@@ -1306,11 +1618,25 @@ CREATE TABLE public.chat_telegram_context (
     thinking_message_id text,
     user_link_id uuid,
     user_link_kind text,
-    chat_type text,
+    chat_type text NOT NULL,
     sender_user_id text,
     sender_display_name text,
     sender_username text,
-    sender_language text
+    sender_language text,
+    public_brand text
+);
+
+
+--
+-- Name: chat_thread_connector_selections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_thread_connector_selections (
+    chat_thread_id uuid NOT NULL,
+    connector_id uuid NOT NULL,
+    connector_slug character varying(64),
+    custom_connector_id uuid,
+    CONSTRAINT chk_chat_thread_connector_selections_target CHECK ((num_nonnulls(connector_slug, custom_connector_id) = 1))
 );
 
 
@@ -1335,7 +1661,6 @@ CREATE TABLE public.chat_thread_events (
     org_id text NOT NULL,
     chat_thread_id uuid NOT NULL,
     kind public.chat_thread_event_kind NOT NULL,
-    agent_compose_id uuid NOT NULL,
     title text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     selected_model character varying(255),
@@ -1343,6 +1668,9 @@ CREATE TABLE public.chat_thread_events (
     computer_use_host_id uuid,
     cloud_browser_enabled boolean DEFAULT false NOT NULL,
     seq_id bigint NOT NULL,
+    selected_video_model character varying(255),
+    selected_image_model character varying(255),
+    agent_id uuid,
     CONSTRAINT chat_thread_events_computer_access_check CHECK ((NOT (cloud_browser_enabled AND (computer_use_host_id IS NOT NULL))))
 );
 
@@ -1369,7 +1697,6 @@ CREATE TABLE public.chat_thread_snapshots (
 CREATE TABLE public.chat_threads (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id text NOT NULL,
-    agent_compose_id uuid NOT NULL,
     title text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -1384,13 +1711,15 @@ CREATE TABLE public.chat_threads (
     model_provider_credential_scope character varying(20),
     last_message_at timestamp without time zone DEFAULT now() NOT NULL,
     computer_use_host_id uuid,
-    generation_template jsonb,
     codex_service_tier character varying(20),
     agent_session_id uuid,
     agent_session_run_id uuid,
     cloud_browser_enabled boolean DEFAULT false NOT NULL,
     draft_user_message jsonb,
     last_chat_event_seq_id bigint DEFAULT 0 NOT NULL,
+    selected_video_model character varying(255),
+    selected_image_model character varying(255),
+    agent_id uuid,
     CONSTRAINT chat_threads_computer_access_check CHECK ((NOT (cloud_browser_enabled AND (computer_use_host_id IS NOT NULL)))),
     CONSTRAINT chat_threads_draft_user_message_check CHECK (((draft_user_message IS NOT NULL) OR (COALESCE(draft_attachments, '[]'::jsonb) = '[]'::jsonb)))
 );
@@ -1404,7 +1733,6 @@ CREATE TABLE public.checkpoints (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     run_id uuid NOT NULL,
     conversation_id uuid NOT NULL,
-    agent_compose_snapshot jsonb NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     storage_mounts jsonb
 );
@@ -1537,7 +1865,9 @@ CREATE TABLE public.computer_use_hosts (
     status text DEFAULT 'online'::text NOT NULL,
     last_seen_at timestamp without time zone DEFAULT now() NOT NULL,
     revoked_at timestamp without time zone,
-    installation_id uuid
+    installation_id uuid,
+    client_product text DEFAULT 'zero'::text NOT NULL,
+    CONSTRAINT computer_use_hosts_client_product_check CHECK ((client_product = ANY (ARRAY['zero'::text, 'okou'::text])))
 );
 
 
@@ -1582,6 +1912,41 @@ CREATE TABLE public.connector_catalog_compatibility_evaluation (
 
 
 --
+-- Name: connector_catalog_runtime_projection_sets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.connector_catalog_runtime_projection_sets (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    source_id character varying(64) NOT NULL,
+    schema_version integer NOT NULL,
+    catalog_version character varying(255) NOT NULL,
+    catalog_digest character varying(71) NOT NULL,
+    projection_version integer NOT NULL,
+    connector_count integer NOT NULL,
+    catalog_validation_backend_version character varying(64) NOT NULL,
+    catalog_validation_build_commit_sha character varying(40),
+    CONSTRAINT connector_catalog_projection_sets_count_positive CHECK ((connector_count > 0)),
+    CONSTRAINT connector_catalog_projection_sets_digest_valid CHECK (((catalog_digest)::text ~ '^sha256:[a-f0-9]{64}$'::text)),
+    CONSTRAINT connector_catalog_projection_sets_schema_positive CHECK ((schema_version > 0)),
+    CONSTRAINT connector_catalog_projection_sets_validator_complete CHECK ((((catalog_validation_backend_version)::text ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'::text) AND ((catalog_validation_build_commit_sha IS NULL) OR ((catalog_validation_build_commit_sha)::text ~ '^[a-f0-9]{40}$'::text)))),
+    CONSTRAINT connector_catalog_projection_sets_version_supported CHECK ((projection_version = 2))
+);
+
+
+--
+-- Name: connector_catalog_runtime_projections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.connector_catalog_runtime_projections (
+    projection_set_id uuid NOT NULL,
+    connector_slug character varying(64) NOT NULL,
+    connector_digest character varying(71) NOT NULL,
+    connector_payload bytea NOT NULL,
+    CONSTRAINT connector_catalog_projections_connector_digest_valid CHECK (((connector_digest)::text ~ '^sha256:[a-f0-9]{64}$'::text))
+);
+
+
+--
 -- Name: connector_catalog_sync_state; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1606,7 +1971,7 @@ CREATE TABLE public.connector_catalog_sync_state (
     last_rejected_backend_version character varying(64),
     last_rejected_build_commit_sha character varying(40),
     CONSTRAINT connector_catalog_sync_state_attempt_cache_reuse_complete CHECK ((((last_attempt_outcome IS NULL) AND (last_attempt_reused_cached_rejection IS NULL)) OR ((last_attempt_outcome IS NOT NULL) AND (last_attempt_reused_cached_rejection IS NOT NULL) AND ((last_attempt_reused_cached_rejection = false) OR ((last_attempt_outcome)::text = 'rejected'::text))))),
-    CONSTRAINT connector_catalog_sync_state_attempt_complete CHECK ((((last_attempt_outcome IS NULL) AND (last_attempt_at IS NULL) AND (last_failure_code IS NULL)) OR (((last_attempt_outcome)::text = 'rejected'::text) AND (last_attempt_at IS NOT NULL) AND (last_failure_code IS NOT NULL)) OR (((last_attempt_outcome)::text = ANY ((ARRAY['accepted'::character varying, 'unchanged'::character varying])::text[])) AND (last_attempt_at IS NOT NULL) AND (last_failure_code IS NULL)))),
+    CONSTRAINT connector_catalog_sync_state_attempt_complete CHECK ((((last_attempt_outcome IS NULL) AND (last_attempt_at IS NULL) AND (last_failure_code IS NULL)) OR (((last_attempt_outcome)::text = 'rejected'::text) AND (last_attempt_at IS NOT NULL) AND (last_failure_code IS NOT NULL)) OR (((last_attempt_outcome)::text = ANY (ARRAY[('accepted'::character varying)::text, ('unchanged'::character varying)::text])) AND (last_attempt_at IS NOT NULL) AND (last_failure_code IS NULL)))),
     CONSTRAINT connector_catalog_sync_state_observed_identity_complete CHECK ((((last_observed_catalog_version IS NULL) AND (last_observed_catalog_key IS NULL) AND (last_observed_catalog_digest IS NULL)) OR ((last_observed_catalog_version IS NOT NULL) AND (last_observed_catalog_key IS NOT NULL) AND (last_observed_catalog_digest IS NOT NULL)))),
     CONSTRAINT connector_catalog_sync_state_rejected_candidate_complete CHECK ((((last_rejected_catalog_version IS NULL) AND (last_rejected_catalog_key IS NULL) AND (last_rejected_catalog_digest IS NULL) AND (last_rejected_pointer_etag IS NULL) AND (last_rejected_failure_code IS NULL)) OR ((last_rejected_failure_code IS NOT NULL) AND ((last_rejected_failure_code)::text <> 'source-unavailable'::text) AND (((last_rejected_catalog_version IS NOT NULL) AND (last_rejected_catalog_key IS NOT NULL) AND (last_rejected_catalog_digest IS NOT NULL)) OR (last_rejected_pointer_etag IS NOT NULL)) AND (((last_rejected_catalog_version IS NULL) AND (last_rejected_catalog_key IS NULL) AND (last_rejected_catalog_digest IS NULL)) OR ((last_rejected_catalog_version IS NOT NULL) AND (last_rejected_catalog_key IS NOT NULL) AND (last_rejected_catalog_digest IS NOT NULL)))))),
     CONSTRAINT connector_catalog_sync_state_rejection_authority_complete CHECK ((((last_rejected_failure_code IS NULL) AND (last_rejected_backend_version IS NULL) AND (last_rejected_build_commit_sha IS NULL)) OR ((last_rejected_failure_code IS NOT NULL) AND (last_rejected_backend_version IS NOT NULL) AND ((last_rejected_backend_version)::text ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'::text) AND ((last_rejected_build_commit_sha IS NULL) OR ((last_rejected_build_commit_sha)::text ~ '^[a-f0-9]{40}$'::text))))),
@@ -1636,7 +2001,10 @@ CREATE TABLE public.connector_external_code_sessions (
     completed_at timestamp without time zone,
     agent_id uuid,
     authorize_agent boolean DEFAULT false NOT NULL,
-    connector_slug character varying(64) NOT NULL
+    connector_slug character varying(64) NOT NULL,
+    account_mutation jsonb NOT NULL,
+    oauth_requested_scopes text,
+    completed_connector_id uuid
 );
 
 
@@ -1664,7 +2032,10 @@ CREATE TABLE public.connector_oauth_device_authorization_sessions (
     auth_method character varying(50) NOT NULL,
     agent_id uuid,
     authorize_agent boolean DEFAULT false NOT NULL,
-    connector_slug character varying(64) NOT NULL
+    connector_slug character varying(64) NOT NULL,
+    account_mutation jsonb NOT NULL,
+    oauth_requested_scopes text,
+    completed_connector_id uuid
 );
 
 
@@ -1688,9 +2059,11 @@ CREATE TABLE public.connector_oauth_states (
     authorize_agent boolean DEFAULT false NOT NULL,
     authorization_url text,
     custom_connector_id uuid,
-    connector_revision integer,
     connector_slug character varying(64),
-    CONSTRAINT chk_connector_oauth_states_custom_revision CHECK ((((custom_connector_id IS NULL) AND (connector_revision IS NULL)) OR ((custom_connector_id IS NOT NULL) AND (connector_revision IS NOT NULL)))),
+    storage_version bigint,
+    account_mutation jsonb NOT NULL,
+    oauth_requested_scopes text,
+    CONSTRAINT chk_connector_oauth_states_custom_storage_version CHECK ((((custom_connector_id IS NULL) AND (storage_version IS NULL)) OR ((custom_connector_id IS NOT NULL) AND ((storage_version IS NULL) OR (storage_version > 0))))),
     CONSTRAINT chk_connector_oauth_states_identity CHECK ((num_nonnulls(connector_slug, custom_connector_id) = 1))
 );
 
@@ -1716,6 +2089,9 @@ CREATE TABLE public.connectors (
     storage_version bigint NOT NULL,
     custom_connector_id uuid,
     connector_slug character varying(64),
+    display_name character varying(255),
+    is_default boolean DEFAULT true NOT NULL,
+    oauth_granted_scopes text,
     CONSTRAINT chk_connectors_identity CHECK ((num_nonnulls(connector_slug, custom_connector_id) = 1)),
     CONSTRAINT chk_connectors_storage_version_positive CHECK ((storage_version > 0))
 );
@@ -1753,6 +2129,29 @@ CREATE TABLE public.credit_expires_record (
 
 
 --
+-- Name: custom_connector_account_oauth_bindings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.custom_connector_account_oauth_bindings (
+    connector_account_id uuid NOT NULL,
+    custom_connector_id uuid NOT NULL,
+    issuer text NOT NULL,
+    resource text NOT NULL,
+    resource_metadata_url text,
+    token_endpoint text NOT NULL,
+    client_id character varying(255) NOT NULL,
+    token_endpoint_auth_method character varying(32) NOT NULL,
+    registration_method character varying(8) NOT NULL,
+    dcr_registration_id uuid,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_custom_connector_account_oauth_binding_identity CHECK (((btrim(issuer) <> ''::text) AND (btrim(resource) <> ''::text) AND (btrim(token_endpoint) <> ''::text) AND (btrim((client_id)::text) <> ''::text) AND ((resource_metadata_url IS NULL) OR (btrim(resource_metadata_url) <> ''::text)))),
+    CONSTRAINT chk_custom_connector_account_oauth_binding_registration CHECK (((((registration_method)::text = 'cimd'::text) AND (dcr_registration_id IS NULL) AND ((token_endpoint_auth_method)::text = 'none'::text)) OR (((registration_method)::text = 'dcr'::text) AND (dcr_registration_id IS NOT NULL)))),
+    CONSTRAINT chk_custom_connector_account_oauth_binding_token_auth_method CHECK ((token_endpoint_auth_method IN ('none', 'client_secret_basic', 'client_secret_post')))
+);
+
+
+--
 -- Name: desktop_auth_handoff_codes; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1778,61 +2177,7 @@ CREATE TABLE public.device_codes (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     expires_at timestamp without time zone NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    org_id text,
-    purpose character varying(32) DEFAULT 'cli'::character varying NOT NULL,
-    ble_session_nonce text,
-    poll_token_hash text,
-    poll_interval_seconds integer,
-    cli_token_id uuid,
-    chat_thread_id uuid,
-    approved_at timestamp without time zone,
-    consumed_at timestamp without time zone
-);
-
-
---
--- Name: e2e_slack_mock_call_log; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.e2e_slack_mock_call_log (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    method character varying(64) NOT NULL,
-    team_id character varying(255),
-    channel_id character varying(255),
-    body text NOT NULL,
-    body_json jsonb,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: e2e_teams_mock_call_log; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.e2e_teams_mock_call_log (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    method character varying(64) NOT NULL,
-    tenant_id character varying(255),
-    conversation_id character varying(255),
-    activity_id character varying(255),
-    body text NOT NULL,
-    body_json jsonb,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: e2e_telegram_mock_call_log; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.e2e_telegram_mock_call_log (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    method character varying(64) NOT NULL,
-    bot_token character varying(255),
-    chat_id character varying(255),
-    body text NOT NULL,
-    body_json jsonb,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    org_id text
 );
 
 
@@ -1854,7 +2199,11 @@ CREATE TABLE public.email_outbox (
     last_error text,
     next_retry_at timestamp without time zone,
     resend_id text,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL,
+    source_run_id uuid,
+    source_workflow_automation_id uuid,
+    CONSTRAINT email_outbox_source_identity_check CHECK ((((source_run_id IS NULL) AND (source_workflow_automation_id IS NULL)) OR ((source_run_id IS NOT NULL) AND (source_workflow_automation_id IS NOT NULL))))
 );
 
 
@@ -1885,7 +2234,8 @@ CREATE TABLE public.export_jobs (
     error text,
     expires_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    completed_at timestamp without time zone
+    completed_at timestamp without time zone,
+    public_brand text DEFAULT 'vm0'::text NOT NULL
 );
 
 
@@ -1904,8 +2254,9 @@ CREATE TABLE public.feishu_chat_ingress (
     last_error text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text,
     CONSTRAINT chk_feishu_chat_ingress_retry_count CHECK ((retry_count >= 0)),
-    CONSTRAINT chk_feishu_chat_ingress_status CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT chk_feishu_chat_ingress_status CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('processed'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -1932,11 +2283,13 @@ CREATE TABLE public.feishu_org_connections (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     installation_id uuid NOT NULL,
     feishu_open_id character varying(255) NOT NULL,
-    vm0_user_id text NOT NULL,
     feishu_user_name character varying(255),
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    dm_welcome_sent boolean DEFAULT false NOT NULL
+    dm_welcome_sent boolean DEFAULT false NOT NULL,
+    user_id text NOT NULL,
+    connector_id uuid,
+    public_brand text
 );
 
 
@@ -1962,7 +2315,6 @@ CREATE TABLE public.feishu_org_installations (
     encrypted_app_secret text NOT NULL,
     encrypted_verification_token text NOT NULL,
     encrypted_encrypt_key text NOT NULL,
-    default_compose_id uuid NOT NULL,
     feishu_tenant_key character varying(255),
     feishu_tenant_name character varying(255),
     encrypted_tenant_access_token text,
@@ -1975,7 +2327,10 @@ CREATE TABLE public.feishu_org_installations (
     bot_name character varying(255),
     bot_avatar_url text,
     setup_completed_at timestamp without time zone,
-    bot_open_id character varying(255)
+    bot_open_id character varying(255),
+    public_brand text DEFAULT 'vm0'::text NOT NULL,
+    custom_connector_id uuid,
+    default_agent_id uuid
 );
 
 
@@ -1984,11 +2339,11 @@ CREATE TABLE public.feishu_org_installations (
 --
 
 CREATE TABLE public.feishu_user_agent_preferences (
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
-    selected_compose_id uuid,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    selected_agent_id uuid
 );
 
 
@@ -2017,7 +2372,6 @@ CREATE TABLE public.github_installations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     installation_id character varying(255),
     encrypted_access_token text,
-    default_compose_id uuid NOT NULL,
     repo_configs jsonb,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -2026,7 +2380,12 @@ CREATE TABLE public.github_installations (
     target_id character varying(255),
     target_name character varying(255),
     admin_github_user_id character varying(255),
-    org_id text NOT NULL
+    org_id text NOT NULL,
+    default_agent_id uuid,
+    app_id character varying(255),
+    app_slug character varying(255),
+    public_brand text DEFAULT 'okou'::text NOT NULL,
+    setup_public_brand text DEFAULT 'vm0'::text NOT NULL
 );
 
 
@@ -2038,8 +2397,8 @@ CREATE TABLE public.github_user_links (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     github_user_id character varying(255) NOT NULL,
     installation_id uuid NOT NULL,
-    vm0_user_id text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL
 );
 
 
@@ -2138,6 +2497,57 @@ CREATE TABLE public.google_calendar_watch_states (
     last_watch_renewed_at timestamp without time zone NOT NULL,
     needs_rewatch boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    previous_channel_id uuid,
+    previous_channel_token character varying(255),
+    previous_resource_id character varying(255)
+);
+
+
+--
+-- Name: google_forms_automation_cursors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.google_forms_automation_cursors (
+    automation_id uuid NOT NULL,
+    watch_state_id uuid NOT NULL,
+    last_seen_submitted_time text NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: google_forms_processed_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.google_forms_processed_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    watch_state_id uuid NOT NULL,
+    automation_id uuid NOT NULL,
+    pubsub_message_id character varying(255) NOT NULL,
+    response_id character varying(255) NOT NULL,
+    last_submitted_time text NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: google_forms_watch_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.google_forms_watch_states (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    connector_id uuid NOT NULL,
+    form_id text NOT NULL,
+    watch_id character varying(255) NOT NULL,
+    topic_name text NOT NULL,
+    expire_time timestamp without time zone NOT NULL,
+    last_renewed_at timestamp without time zone NOT NULL,
+    needs_rewatch boolean DEFAULT false NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
@@ -2208,7 +2618,8 @@ CREATE TABLE public.hosted_deployments (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     ready_at timestamp without time zone,
     deployment_version integer,
-    artifact_url text
+    artifact_url text,
+    public_brand text NOT NULL
 );
 
 
@@ -2230,7 +2641,8 @@ CREATE TABLE public.hosted_sites (
     active_deployment_version integer,
     next_deployment_version integer DEFAULT 1 NOT NULL,
     requested_slug character varying(64),
-    chat_thread_id uuid
+    chat_thread_id uuid,
+    public_brand text NOT NULL
 );
 
 
@@ -2265,27 +2677,11 @@ CREATE TABLE public.image_artifacts (
 
 
 --
--- Name: insights_daily; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.insights_daily (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    org_id text NOT NULL,
-    user_id text,
-    date date NOT NULL,
-    data jsonb NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
 -- Name: mail_drafts; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.mail_drafts (
     id uuid NOT NULL,
-    draft jsonb,
     chat_thread_id uuid,
     connector_id uuid,
     gmail_draft_id text,
@@ -2298,8 +2694,78 @@ CREATE TABLE public.mail_drafts (
     subject text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    sent_at timestamp without time zone,
-    follow_up_automation_id uuid
+    sent_at timestamp without time zone
+);
+
+
+--
+-- Name: memory_summary_projections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.memory_summary_projections (
+    memory_storage_id uuid NOT NULL,
+    storage_version_id character varying(64) NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    status character varying(16) DEFAULT 'pending'::character varying NOT NULL,
+    lease_id uuid,
+    lease_expires_at timestamp without time zone,
+    available_at timestamp without time zone DEFAULT now() NOT NULL,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_error_class character varying(128),
+    content text,
+    source_hash character varying(64),
+    source_size integer,
+    token_count integer,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT memory_summary_projections_attempt_count_check CHECK ((attempt_count >= 0)),
+    CONSTRAINT memory_summary_projections_content_check CHECK (((((status)::text = 'ready'::text) AND (content IS NOT NULL) AND (source_hash IS NOT NULL) AND (source_size IS NOT NULL) AND (token_count IS NOT NULL)) OR (((status)::text <> 'ready'::text) AND (content IS NULL) AND (source_hash IS NULL) AND (source_size IS NULL) AND (token_count IS NULL)))),
+    CONSTRAINT memory_summary_projections_lease_check CHECK (((((status)::text = 'running'::text) AND (lease_id IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR (((status)::text <> 'running'::text) AND (lease_id IS NULL) AND (lease_expires_at IS NULL)))),
+    CONSTRAINT memory_summary_projections_source_size_check CHECK (((source_size IS NULL) OR (source_size >= 0))),
+    CONSTRAINT memory_summary_projections_status_check CHECK ((status IN ('pending', 'running', 'ready', 'missing', 'invalid', 'over_limit'))),
+    CONSTRAINT memory_summary_projections_token_count_check CHECK (((token_count IS NULL) OR (token_count >= 0)))
+);
+
+
+--
+-- Name: model_provider_account_secrets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_provider_account_secrets (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    model_provider_account_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    encrypted_value text NOT NULL,
+    description text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: model_provider_accounts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_provider_accounts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    model_provider_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    type character varying(50) NOT NULL,
+    auth_method character varying(50),
+    is_active boolean DEFAULT false NOT NULL,
+    external_account_id character varying(255),
+    account_email character varying(320),
+    workspace_name character varying(255),
+    plan_type character varying(32),
+    token_expires_at timestamp without time zone,
+    needs_reconnect boolean DEFAULT false NOT NULL,
+    last_refresh_error_code character varying(64),
+    subscription_reset_period character varying(64),
+    subscription_next_reset_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2355,7 +2821,7 @@ CREATE TABLE public.model_provider_surfaces (
     model_mappings jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chk_model_provider_surfaces_protocol CHECK (((protocol)::text = ANY ((ARRAY['anthropic-messages'::character varying, 'openai-responses'::character varying])::text[])))
+    CONSTRAINT chk_model_provider_surfaces_protocol CHECK (((protocol)::text = ANY (ARRAY[('anthropic-messages'::character varying)::text, ('openai-responses'::character varying)::text])))
 );
 
 
@@ -2381,74 +2847,6 @@ CREATE TABLE public.model_providers (
     plan_type character varying(32),
     subscription_reset_period character varying(64),
     subscription_next_reset_at timestamp without time zone
-);
-
-
---
--- Name: model_stat; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.model_stat (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    hour_start timestamp without time zone NOT NULL,
-    model character varying(255) NOT NULL,
-    input_tokens bigint DEFAULT 0 NOT NULL,
-    output_tokens bigint DEFAULT 0 NOT NULL,
-    cache_read_input_tokens bigint DEFAULT 0 NOT NULL,
-    cache_creation_input_tokens bigint DEFAULT 0 NOT NULL,
-    total_tokens bigint DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: model_usage_observation; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.model_usage_observation (
-    idempotency_key uuid NOT NULL,
-    model character varying(255) NOT NULL,
-    input_tokens bigint NOT NULL,
-    output_tokens bigint NOT NULL,
-    cache_read_input_tokens bigint NOT NULL,
-    cache_creation_input_tokens bigint NOT NULL,
-    observed_at timestamp without time zone DEFAULT now() NOT NULL,
-    aggregated_at timestamp without time zone
-);
-
-
---
--- Name: morning_brief_deliveries; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.morning_brief_deliveries (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    org_id text NOT NULL,
-    user_id text NOT NULL,
-    brief_date character varying(10) NOT NULL,
-    status character varying(20) DEFAULT 'collecting'::character varying NOT NULL,
-    run_id uuid,
-    input_key text,
-    output_key text,
-    error text,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: morning_brief_schedules; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.morning_brief_schedules (
-    org_id text NOT NULL,
-    user_id text NOT NULL,
-    chat_thread_id uuid,
-    next_run_at timestamp without time zone,
-    last_success_at timestamp without time zone,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2507,7 +2905,100 @@ CREATE TABLE public.notion_workflow_pending_events (
     scope_type character varying(32) NOT NULL,
     scope_id uuid NOT NULL,
     latest_event_context jsonb,
-    automation_id uuid NOT NULL
+    automation_id uuid NOT NULL,
+    connector_id uuid
+);
+
+
+--
+-- Name: official_automation_result_email_claims; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.official_automation_result_email_claims (
+    run_id uuid NOT NULL,
+    workflow_automation_id uuid NOT NULL,
+    email_outbox_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: official_workflow_automation_identities; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.official_workflow_automation_identities (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    workflow_id uuid NOT NULL,
+    automation_id uuid,
+    blueprint_key character varying(64) NOT NULL,
+    state character varying(32) NOT NULL,
+    retained_parameter_bindings jsonb,
+    retained_intended_enabled boolean,
+    retained_applied_fingerprint character varying(64),
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT official_workflow_automation_identities_state_check CHECK (((((state)::text = 'active'::text) AND (automation_id IS NOT NULL) AND (retained_parameter_bindings IS NULL) AND (retained_intended_enabled IS NULL) AND (retained_applied_fingerprint IS NULL)) OR ((state IN ('reconciling', 'needs_reconfiguration', 'failed', 'removed')) AND (automation_id IS NULL) AND (jsonb_typeof(retained_parameter_bindings) = 'array'::text) AND (retained_intended_enabled IS NOT NULL) AND ((retained_applied_fingerprint IS NULL) OR ((retained_applied_fingerprint)::text ~ '^[0-9a-f]{64}$'::text)))))
+);
+
+
+--
+-- Name: official_workflow_catalog_releases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.official_workflow_catalog_releases (
+    id character varying(64) NOT NULL,
+    payload jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT official_workflow_catalog_release_hash_format CHECK (((id)::text ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: official_workflow_catalog_state; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.official_workflow_catalog_state (
+    authority character varying(32) NOT NULL,
+    accepted_release_id character varying(64) NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT official_workflow_catalog_state_authority CHECK (((authority)::text = 'official'::text))
+);
+
+
+--
+-- Name: official_workflow_definition_revisions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.official_workflow_definition_revisions (
+    definition_name character varying(64) NOT NULL,
+    revision character varying(64) NOT NULL,
+    payload jsonb NOT NULL,
+    storage_name character varying(256) NOT NULL,
+    storage_id uuid NOT NULL,
+    storage_version character varying(64) NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT official_workflow_definition_revision_hash_format CHECK (((revision)::text ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: official_workflow_reconciliation_work; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.official_workflow_reconciliation_work (
+    definition_name character varying(64) NOT NULL,
+    requested_release_id character varying(64) NOT NULL,
+    cursor_workflow_id uuid,
+    state character varying(16) DEFAULT 'pending'::character varying NOT NULL,
+    lease_id uuid,
+    lease_expires_at timestamp without time zone,
+    available_at timestamp without time zone DEFAULT now() NOT NULL,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_error text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT official_workflow_reconciliation_work_attempt_count_check CHECK ((attempt_count >= 0)),
+    CONSTRAINT official_workflow_reconciliation_work_state_check CHECK (((((state)::text = 'pending'::text) AND (lease_id IS NULL) AND (lease_expires_at IS NULL)) OR (((state)::text = 'running'::text) AND (lease_id IS NOT NULL) AND (lease_expires_at IS NOT NULL))))
 );
 
 
@@ -2517,7 +3008,6 @@ CREATE TABLE public.notion_workflow_pending_events (
 
 CREATE TABLE public.org_cache (
     org_id text NOT NULL,
-    slug text NOT NULL,
     cached_at timestamp without time zone DEFAULT now() NOT NULL,
     name text DEFAULT ''::text NOT NULL,
     created_by text
@@ -2558,7 +3048,34 @@ CREATE TABLE public.org_concurrency_subscriptions (
     cancel_at_period_end boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    scheduled_slots integer,
+    scheduled_change_at timestamp without time zone,
+    CONSTRAINT chk_org_concurrency_subscriptions_scheduled_slots CHECK (((scheduled_slots IS NULL) OR (scheduled_slots > 0))),
     CONSTRAINT chk_org_concurrency_subscriptions_slots CHECK ((slots > 0))
+);
+
+
+--
+-- Name: org_custom_connector_dcr_registrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.org_custom_connector_dcr_registrations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    custom_connector_id uuid NOT NULL,
+    issuer text NOT NULL,
+    client_id character varying(255) NOT NULL,
+    encrypted_client_secret text,
+    token_endpoint_auth_method character varying(32) NOT NULL,
+    registered_scopes text[] DEFAULT '{}'::text[] NOT NULL,
+    redirect_uri text NOT NULL,
+    issued_at timestamp without time zone NOT NULL,
+    expires_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_org_custom_connector_dcr_registration_expiry CHECK (((expires_at IS NULL) OR (expires_at > issued_at))),
+    CONSTRAINT chk_org_custom_connector_dcr_registration_identity CHECK (((btrim(issuer) <> ''::text) AND (btrim((client_id)::text) <> ''::text) AND (btrim(redirect_uri) <> ''::text))),
+    CONSTRAINT chk_org_custom_connector_dcr_registration_token_auth_method CHECK (((((token_endpoint_auth_method)::text = 'none'::text) AND (encrypted_client_secret IS NULL)) OR ((token_endpoint_auth_method IN ('client_secret_basic', 'client_secret_post')) AND (encrypted_client_secret IS NOT NULL))))
 );
 
 
@@ -2580,41 +3097,9 @@ CREATE TABLE public.org_custom_connector_oauth_configs (
     authorization_params jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chk_org_custom_connector_oauth_configs_pkce_method CHECK (((pkce_method)::text = ANY ((ARRAY['none'::character varying, 'S256'::character varying])::text[]))),
-    CONSTRAINT chk_org_custom_connector_oauth_configs_provider_adapter CHECK (((provider_adapter)::text = ANY ((ARRAY['standard'::character varying, 'feishu'::character varying])::text[]))),
-    CONSTRAINT chk_org_custom_connector_oauth_configs_token_auth_method CHECK (((token_endpoint_auth_method)::text = ANY ((ARRAY['client_secret_basic'::character varying, 'client_secret_post'::character varying])::text[])))
-);
-
-
---
--- Name: org_custom_connector_secrets; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.org_custom_connector_secrets (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    connector_id uuid NOT NULL,
-    user_id text NOT NULL,
-    org_id text NOT NULL,
-    encrypted_value text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: org_custom_connector_values; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.org_custom_connector_values (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    connector_id uuid NOT NULL,
-    user_id text NOT NULL,
-    org_id text NOT NULL,
-    kind character varying(16) NOT NULL,
-    key character varying(64) NOT NULL,
-    encrypted_value text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    CONSTRAINT chk_org_custom_connector_oauth_configs_pkce_method CHECK (((pkce_method)::text = ANY (ARRAY[('none'::character varying)::text, ('S256'::character varying)::text]))),
+    CONSTRAINT chk_org_custom_connector_oauth_configs_provider_adapter CHECK (((provider_adapter)::text = ANY (ARRAY[('standard'::character varying)::text, ('feishu'::character varying)::text]))),
+    CONSTRAINT chk_org_custom_connector_oauth_configs_token_auth_method CHECK (((token_endpoint_auth_method)::text = ANY (ARRAY[('client_secret_basic'::character varying)::text, ('client_secret_post'::character varying)::text])))
 );
 
 
@@ -2627,9 +3112,6 @@ CREATE TABLE public.org_custom_connectors (
     org_id text NOT NULL,
     slug character varying(64) NOT NULL,
     display_name character varying(128) NOT NULL,
-    prefixes jsonb NOT NULL,
-    header_name character varying(128) NOT NULL,
-    header_template text NOT NULL,
     created_by text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -2642,14 +3124,16 @@ CREATE TABLE public.org_custom_connectors (
     permission_bundle_ref character varying(128),
     mcp_endpoint text,
     mcp_transport character varying(32),
-    mcp_resource text,
     skill_markdown text,
-    revision integer DEFAULT 1 NOT NULL,
-    CONSTRAINT chk_org_custom_connectors_auth_mode CHECK (((auth_mode)::text = ANY ((ARRAY['manual'::character varying, 'oauth'::character varying])::text[]))),
-    CONSTRAINT chk_org_custom_connectors_mcp CHECK ((((mcp_endpoint IS NULL) AND (mcp_transport IS NULL)) OR ((mcp_endpoint IS NOT NULL) AND ((mcp_transport)::text = 'streamable-http'::text)))),
-    CONSTRAINT chk_org_custom_connectors_revision_positive CHECK ((revision > 0)),
+    storage_version bigint DEFAULT 1 NOT NULL,
+    skill_storage_version_id character varying(64),
+    CONSTRAINT chk_org_custom_connectors_auth_mode CHECK ((auth_mode IN ('none', 'manual', 'oauth', 'automatic'))),
+    CONSTRAINT chk_org_custom_connectors_automatic_oauth_mcp CHECK ((((auth_mode)::text <> 'automatic'::text) OR ((mcp_endpoint IS NOT NULL) AND ((mcp_transport)::text = 'streamable-http'::text)))),
+    CONSTRAINT chk_org_custom_connectors_mcp CHECK (((jsonb_typeof(prefix_templates) = 'array'::text) AND (jsonb_typeof(fields) = 'array'::text) AND (jsonb_typeof(header_injections) = 'array'::text) AND (jsonb_typeof(query_injections) = 'array'::text) AND (((mcp_endpoint IS NULL) AND (mcp_transport IS NULL) AND (prefix_templates <> '[]'::jsonb) AND ((((auth_mode)::text = 'none'::text) AND (NOT jsonb_path_exists(fields, '$[*]?(@."kind" == "secret")'::jsonpath)) AND (header_injections = '[]'::jsonb) AND (query_injections = '[]'::jsonb)) OR ((auth_mode IN ('manual', 'oauth')) AND ((header_injections <> '[]'::jsonb) OR (query_injections <> '[]'::jsonb))))) OR ((mcp_endpoint IS NOT NULL) AND (btrim(mcp_endpoint) <> ''::text) AND (mcp_transport IS NOT NULL) AND ((mcp_transport)::text = 'streamable-http'::text) AND (prefix_templates = '[]'::jsonb) AND (((auth_mode IN ('none', 'automatic')) AND (fields = '[]'::jsonb) AND (header_injections = '[]'::jsonb) AND (query_injections = '[]'::jsonb)) OR ((auth_mode IN ('manual', 'oauth')) AND ((header_injections <> '[]'::jsonb) OR (query_injections <> '[]'::jsonb)))) AND (permission_bundle_ref IS NULL))))),
     CONSTRAINT chk_org_custom_connectors_skill_size CHECK (((skill_markdown IS NULL) OR (octet_length(skill_markdown) <= 65536))),
-    CONSTRAINT chk_org_custom_connectors_slug CHECK (("left"((slug)::text, 1) = '_'::text))
+    CONSTRAINT chk_org_custom_connectors_skill_version_pair CHECK ((((skill_markdown IS NULL) AND (skill_storage_version_id IS NULL)) OR ((skill_markdown IS NOT NULL) AND (skill_storage_version_id IS NOT NULL)))),
+    CONSTRAINT chk_org_custom_connectors_slug CHECK (("left"((slug)::text, 1) = '_'::text)),
+    CONSTRAINT chk_org_custom_connectors_storage_version_positive CHECK ((storage_version > 0))
 );
 
 
@@ -2681,8 +3165,15 @@ CREATE TABLE public.org_members_metadata (
     capture_network_bodies_remaining integer DEFAULT 0,
     selected_model character varying(255),
     onboarding_role text,
-    morning_brief_enabled boolean DEFAULT false NOT NULL,
-    locale text
+    locale text,
+    service_tier character varying(32),
+    selected_video_model character varying(255),
+    selected_image_model character varying(255),
+    theme text,
+    color_theme text,
+    translation_language text,
+    morning_brief_default_eligible_at timestamp without time zone,
+    cloud_browser_enabled_by_default boolean DEFAULT true NOT NULL
 );
 
 
@@ -2711,7 +3202,24 @@ CREATE TABLE public.org_metadata (
     pending_subscription_schedule_id text,
     pending_subscription_target_tier text,
     pending_subscription_change_at timestamp without time zone,
-    onboarding_complete boolean DEFAULT false NOT NULL
+    onboarding_complete boolean DEFAULT false NOT NULL,
+    acquisition_source_type text,
+    acquisition_campaign_id text,
+    acquisition_ad_group_id text,
+    acquisition_campaign text,
+    acquisition_utm_source text,
+    acquisition_utm_medium text,
+    acquisition_utm_content text,
+    acquisition_utm_term text,
+    acquisition_gclid text,
+    acquisition_gbraid text,
+    acquisition_wbraid text,
+    acquisition_ga_client_id text,
+    acquisition_landing_host text,
+    acquisition_landing_path text,
+    acquisition_referrer_domain text,
+    acquisition_recorded_at timestamp without time zone,
+    acquisition_first_party_source text
 );
 
 
@@ -2723,7 +3231,7 @@ CREATE TABLE public.org_model_policies (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     org_id text NOT NULL,
     model character varying(255) NOT NULL,
-    default_provider_type character varying(50) DEFAULT 'vm0'::character varying NOT NULL,
+    default_provider_type character varying(50) DEFAULT 'built-in'::character varying NOT NULL,
     credential_scope character varying(20) DEFAULT 'org'::character varying NOT NULL,
     model_provider_id uuid,
     created_by_user_id text,
@@ -2732,11 +3240,11 @@ CREATE TABLE public.org_model_policies (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     is_default boolean DEFAULT false NOT NULL,
     model_provider_surface_id uuid,
-    CONSTRAINT chk_org_model_policies_builtin_route_no_provider_id CHECK ((((default_provider_type)::text <> 'vm0'::text) OR ((model_provider_id IS NULL) AND (model_provider_surface_id IS NULL)))),
-    CONSTRAINT chk_org_model_policies_credential_scope CHECK (((credential_scope)::text = ANY ((ARRAY['org'::character varying, 'member'::character varying])::text[]))),
+    CONSTRAINT chk_org_model_policies_builtin_route_no_provider_id CHECK ((((default_provider_type)::text <> 'built-in'::text) OR ((model_provider_id IS NULL) AND (model_provider_surface_id IS NULL)))),
+    CONSTRAINT chk_org_model_policies_credential_scope CHECK (((credential_scope)::text = ANY (ARRAY[('org'::character varying)::text, ('member'::character varying)::text]))),
     CONSTRAINT chk_org_model_policies_member_scope_no_provider_id CHECK ((((credential_scope)::text <> 'member'::text) OR ((model_provider_id IS NULL) AND (model_provider_surface_id IS NULL)))),
-    CONSTRAINT chk_org_model_policies_member_scope_oauth_provider CHECK ((((credential_scope)::text <> 'member'::text) OR ((default_provider_type)::text = ANY ((ARRAY['claude-code-oauth-token'::character varying, 'codex-oauth-token'::character varying])::text[])))),
-    CONSTRAINT chk_org_model_policies_oauth_provider_member_scope CHECK ((((default_provider_type)::text <> ALL ((ARRAY['claude-code-oauth-token'::character varying, 'codex-oauth-token'::character varying])::text[])) OR ((credential_scope)::text = 'member'::text))),
+    CONSTRAINT chk_org_model_policies_member_scope_oauth_provider CHECK ((((credential_scope)::text <> 'member'::text) OR ((default_provider_type)::text = ANY (ARRAY[('claude-code-oauth-token'::character varying)::text, ('codex-oauth-token'::character varying)::text])))),
+    CONSTRAINT chk_org_model_policies_oauth_provider_member_scope CHECK ((((default_provider_type)::text <> ALL (ARRAY[('claude-code-oauth-token'::character varying)::text, ('codex-oauth-token'::character varying)::text])) OR ((credential_scope)::text = 'member'::text))),
     CONSTRAINT chk_org_model_policies_one_route_id CHECK (((model_provider_id IS NULL) OR (model_provider_surface_id IS NULL)))
 );
 
@@ -2755,7 +3263,6 @@ CREATE TABLE public.org_plan_entitlements (
     can_buy_concurrency boolean DEFAULT false NOT NULL,
     auto_recharge_allowed boolean DEFAULT false NOT NULL,
     support_byok boolean DEFAULT false NOT NULL,
-    restricted_vm0_models boolean DEFAULT true NOT NULL,
     video_generation_allowed boolean DEFAULT false NOT NULL,
     audio_lifetime_limit integer,
     audio_daily_rate_limit integer DEFAULT 0 NOT NULL,
@@ -2774,6 +3281,9 @@ CREATE TABLE public.org_plan_entitlements (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     workflow_webhook_trigger_allowed boolean DEFAULT false NOT NULL,
     can_buy_credits boolean DEFAULT false NOT NULL,
+    member_invite_usage_pack_required boolean DEFAULT false NOT NULL,
+    member_invitation_allowed boolean DEFAULT false NOT NULL,
+    restricted_built_in_models boolean NOT NULL,
     CONSTRAINT chk_org_plan_entitlements_audio_daily_duration CHECK ((audio_daily_duration_seconds >= 0)),
     CONSTRAINT chk_org_plan_entitlements_audio_daily_rate CHECK ((audio_daily_rate_limit >= 0)),
     CONSTRAINT chk_org_plan_entitlements_audio_lifetime CHECK (((audio_lifetime_limit IS NULL) OR (audio_lifetime_limit >= 0))),
@@ -2841,9 +3351,133 @@ CREATE TABLE public.org_usage_allowance_windows (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_org_usage_allowance_windows_consumed CHECK ((consumed_units >= 0)),
-    CONSTRAINT chk_org_usage_allowance_windows_kind CHECK (((kind)::text = ANY ((ARRAY['short'::character varying, 'weekly'::character varying])::text[]))),
+    CONSTRAINT chk_org_usage_allowance_windows_kind CHECK (((kind)::text = ANY (ARRAY[('short'::character varying)::text, ('weekly'::character varying)::text]))),
     CONSTRAINT chk_org_usage_allowance_windows_limit CHECK ((unit_limit > 0)),
     CONSTRAINT chk_org_usage_allowance_windows_time CHECK ((expires_at > starts_at))
+);
+
+
+--
+-- Name: pi_memory_phase2_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pi_memory_phase2_jobs (
+    memory_storage_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    status character varying(32) DEFAULT 'pending'::character varying NOT NULL,
+    input_revision integer DEFAULT 1 NOT NULL,
+    completed_revision integer DEFAULT 0 NOT NULL,
+    claimed_revision integer,
+    lease_token uuid,
+    lease_expires_at timestamp without time zone,
+    retry_count integer DEFAULT 0 NOT NULL,
+    retry_at timestamp without time zone,
+    last_error_class character varying(128),
+    last_succeeded_at timestamp without time zone,
+    claimed_selection_digest character varying(64),
+    claimed_selected_count integer,
+    claimed_selected_utf8_bytes integer,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    reconciliation_revision integer DEFAULT 0 NOT NULL,
+    claimed_base_version_id character varying(64),
+    last_observed_head_version_id character varying(64),
+    conflict_count integer DEFAULT 0 NOT NULL,
+    last_conflict_at timestamp without time zone,
+    last_conflicting_head_version_id character varying(64),
+    last_published_version_id character varying(64),
+    last_published_at timestamp without time zone,
+    CONSTRAINT pi_memory_phase2_jobs_conflict_check CHECK ((((conflict_count = 0) AND (last_conflict_at IS NULL) AND (last_conflicting_head_version_id IS NULL)) OR ((conflict_count > 0) AND (last_conflict_at IS NOT NULL) AND (last_conflicting_head_version_id IS NOT NULL)))),
+    CONSTRAINT pi_memory_phase2_jobs_error_class_check CHECK (((last_error_class IS NULL) OR ((last_error_class)::text ~ '^[a-z][a-z0-9_]{0,127}$'::text))),
+    CONSTRAINT pi_memory_phase2_jobs_publication_check CHECK ((((last_published_version_id IS NULL) AND (last_published_at IS NULL)) OR ((last_published_version_id IS NOT NULL) AND (last_published_at IS NOT NULL)))),
+    CONSTRAINT pi_memory_phase2_jobs_retry_count_check CHECK (((retry_count >= 0) AND (retry_count <= 3))),
+    CONSTRAINT pi_memory_phase2_jobs_revisions_check CHECK (((input_revision > 0) AND (completed_revision >= 0) AND (completed_revision <= input_revision) AND (reconciliation_revision >= 0) AND (reconciliation_revision <= input_revision) AND ((claimed_revision IS NULL) OR ((completed_revision < claimed_revision) AND (claimed_revision <= input_revision))))),
+    CONSTRAINT pi_memory_phase2_jobs_selection_check CHECK ((((claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR ((claimed_selection_digest IS NOT NULL) AND (claimed_selected_count IS NOT NULL) AND (claimed_selected_utf8_bytes IS NOT NULL) AND ((claimed_selection_digest)::text ~ '^[0-9a-f]{64}$'::text) AND (claimed_selected_count >= 0) AND (claimed_selected_count <= 256) AND (claimed_selected_utf8_bytes >= 0) AND (claimed_selected_utf8_bytes <= 21036800)))),
+    CONSTRAINT pi_memory_phase2_jobs_state_check CHECK (((((status)::text = 'idle'::text) AND (completed_revision = input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count = 0) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR (((status)::text = 'pending'::text) AND (completed_revision < input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count = 0) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR (((status)::text = 'leased'::text) AND (claimed_revision IS NOT NULL) AND (claimed_base_version_id IS NOT NULL) AND (completed_revision < claimed_revision) AND (claimed_revision <= input_revision) AND (lease_token IS NOT NULL) AND (lease_expires_at IS NOT NULL) AND (retry_count >= 0) AND (retry_count < 3) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (claimed_selection_digest IS NOT NULL) AND (claimed_selected_count IS NOT NULL) AND (claimed_selected_utf8_bytes IS NOT NULL)) OR (((status)::text = 'retryable_failure'::text) AND (completed_revision < input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count > 0) AND (retry_count < 3) AND (retry_at IS NOT NULL) AND (last_error_class IS NOT NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR (((status)::text = 'terminal_failure'::text) AND (completed_revision < input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count = 3) AND (retry_at IS NULL) AND (last_error_class IS NOT NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)))),
+    CONSTRAINT pi_memory_phase2_jobs_status_check CHECK ((status IN ('idle', 'pending', 'leased', 'retryable_failure', 'terminal_failure'))),
+    CONSTRAINT pi_memory_phase2_jobs_version_ids_check CHECK ((((claimed_base_version_id IS NULL) OR ((claimed_base_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_observed_head_version_id IS NULL) OR ((last_observed_head_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_conflicting_head_version_id IS NULL) OR ((last_conflicting_head_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_published_version_id IS NULL) OR ((last_published_version_id)::text ~ '^[0-9a-f]{64}$'::text))))
+);
+
+
+--
+-- Name: pi_memory_publication_provenance; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pi_memory_publication_provenance (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    memory_storage_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    claimed_revision integer NOT NULL,
+    input_revision integer NOT NULL,
+    reconciliation_revision integer NOT NULL,
+    selection_digest character varying(64) NOT NULL,
+    selected_count integer NOT NULL,
+    selected_utf8_bytes integer NOT NULL,
+    base_version_id character varying(64) NOT NULL,
+    prepared_version_id character varying(64) NOT NULL,
+    observed_head_version_id character varying(64) NOT NULL,
+    writer character varying(16) NOT NULL,
+    outcome character varying(16) NOT NULL,
+    size bigint NOT NULL,
+    archive_size bigint NOT NULL,
+    file_count integer NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    CONSTRAINT pi_memory_publication_provenance_counts_check CHECK (((size >= 0) AND (archive_size >= 0) AND (file_count >= 0))),
+    CONSTRAINT pi_memory_publication_provenance_outcome_check CHECK (((outcome IN ('published', 'conflicted')) AND (((outcome)::text <> 'published'::text) OR ((observed_head_version_id)::text = (prepared_version_id)::text)))),
+    CONSTRAINT pi_memory_publication_provenance_revisions_check CHECK (((claimed_revision > 0) AND (input_revision >= claimed_revision) AND (reconciliation_revision >= 0) AND (reconciliation_revision <= input_revision))),
+    CONSTRAINT pi_memory_publication_provenance_selection_check CHECK ((((selection_digest)::text ~ '^[0-9a-f]{64}$'::text) AND (selected_count >= 0) AND (selected_count <= 256) AND (selected_utf8_bytes >= 0) AND (selected_utf8_bytes <= 21036800))),
+    CONSTRAINT pi_memory_publication_provenance_versions_check CHECK ((((base_version_id)::text ~ '^[0-9a-f]{64}$'::text) AND ((prepared_version_id)::text ~ '^[0-9a-f]{64}$'::text) AND ((observed_head_version_id)::text ~ '^[0-9a-f]{64}$'::text) AND ((base_version_id)::text <> (prepared_version_id)::text))),
+    CONSTRAINT pi_memory_publication_provenance_writer_check CHECK ((writer IN ('pi', 'reconciler')))
+);
+
+
+--
+-- Name: pi_memory_stage1_candidates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pi_memory_stage1_candidates (
+    memory_storage_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    pi_session_id character varying(255) NOT NULL,
+    source_run_id uuid NOT NULL,
+    source_history_hash character varying(64) NOT NULL,
+    source_completed_at timestamp without time zone NOT NULL,
+    eligible_at timestamp without time zone NOT NULL,
+    status character varying(32) DEFAULT 'pending'::character varying NOT NULL,
+    lease_token uuid,
+    lease_expires_at timestamp without time zone,
+    retry_at timestamp without time zone,
+    retry_count integer DEFAULT 0 NOT NULL,
+    last_error_class character varying(128),
+    raw_memory text,
+    rollout_summary text,
+    rollout_slug character varying(255),
+    generated_at timestamp without time zone,
+    last_selected_source_history_hash character varying(64),
+    usage_count integer DEFAULT 0 NOT NULL,
+    last_used_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT pi_memory_stage1_candidates_counts_check CHECK (((retry_count >= 0) AND (usage_count >= 0))),
+    CONSTRAINT pi_memory_stage1_candidates_lease_check CHECK (((((status)::text = 'leased'::text) AND (lease_token IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR (((status)::text <> 'leased'::text) AND (lease_token IS NULL) AND (lease_expires_at IS NULL)))),
+    CONSTRAINT pi_memory_stage1_candidates_selected_hash_check CHECK (((last_selected_source_history_hash IS NULL) OR ((last_selected_source_history_hash)::text = (source_history_hash)::text))),
+    CONSTRAINT pi_memory_stage1_candidates_source_hash_check CHECK (((source_history_hash)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT pi_memory_stage1_candidates_state_check CHECK ((((status IN ('pending', 'leased')) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)) OR (((status)::text = 'succeeded'::text) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NOT NULL) AND (rollout_summary IS NOT NULL) AND (generated_at IS NOT NULL)) OR (((status)::text = 'succeeded_no_output'::text) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NOT NULL)) OR (((status)::text = 'retryable_failure'::text) AND (retry_at IS NOT NULL) AND (last_error_class IS NOT NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)) OR (((status)::text = 'terminal_failure'::text) AND (retry_at IS NULL) AND (last_error_class IS NOT NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)))),
+    CONSTRAINT pi_memory_stage1_candidates_status_check CHECK ((status IN ('pending', 'leased', 'succeeded', 'succeeded_no_output', 'retryable_failure', 'terminal_failure')))
+);
+
+
+--
+-- Name: pi_resource_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pi_resource_snapshots (
+    digest character varying(64) NOT NULL,
+    snapshot jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2861,6 +3495,28 @@ CREATE TABLE public.presentation_artifacts (
 
 
 --
+-- Name: presentation_templates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.presentation_templates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    owner_user_id text NOT NULL,
+    visibility character varying(16) DEFAULT 'private'::character varying NOT NULL,
+    title text NOT NULL,
+    source_storage_key text NOT NULL,
+    source_filename text NOT NULL,
+    page_keys text[] DEFAULT '{}'::text[] NOT NULL,
+    aspect_ratio real,
+    created_by text NOT NULL,
+    updated_by text NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_presentation_templates_visibility CHECK ((visibility IN ('private', 'public')))
+);
+
+
+--
 -- Name: push_subscriptions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2870,7 +3526,8 @@ CREATE TABLE public.push_subscriptions (
     endpoint text NOT NULL,
     p256dh text NOT NULL,
     auth text NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL
 );
 
 
@@ -2945,7 +3602,6 @@ CREATE TABLE public.runner_job_queue (
 
 CREATE TABLE public.runner_state (
     runner_id uuid NOT NULL,
-    runner_name character varying(255) NOT NULL,
     runner_group character varying(255) NOT NULL,
     total_vcpu integer DEFAULT 0 NOT NULL,
     total_memory_mb integer DEFAULT 0 NOT NULL,
@@ -2995,6 +3651,21 @@ CREATE TABLE public.secrets (
 
 
 --
+-- Name: shared_threads; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.shared_threads (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id text NOT NULL,
+    source_chat_thread_id uuid,
+    title text NOT NULL,
+    messages jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL
+);
+
+
+--
 -- Name: skills; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3030,8 +3701,9 @@ CREATE TABLE public.slack_chat_ingress (
     last_error text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text NOT NULL,
     CONSTRAINT chk_slack_chat_ingress_retry_count CHECK ((retry_count >= 0)),
-    CONSTRAINT chk_slack_chat_ingress_status CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying, 'processed'::character varying, 'failed'::character varying])::text[])))
+    CONSTRAINT chk_slack_chat_ingress_status CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('processed'::character varying)::text, ('failed'::character varying)::text])))
 );
 
 
@@ -3058,9 +3730,9 @@ CREATE TABLE public.slack_org_connections (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     slack_user_id character varying(255) NOT NULL,
     slack_workspace_id character varying(255) NOT NULL,
-    vm0_user_id text NOT NULL,
     dm_welcome_sent boolean DEFAULT false NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL
 );
 
 
@@ -3077,7 +3749,8 @@ CREATE TABLE public.slack_org_installations (
     installed_by_user_id text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    bot_scopes text
+    bot_scopes text,
+    public_brand text DEFAULT 'okou'::text NOT NULL
 );
 
 
@@ -3086,11 +3759,36 @@ CREATE TABLE public.slack_org_installations (
 --
 
 CREATE TABLE public.slack_user_agent_preferences (
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
-    selected_compose_id uuid,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    selected_agent_id uuid
+);
+
+
+--
+-- Name: socialkit_download_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.socialkit_download_jobs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    status character varying(24) DEFAULT 'submitting'::character varying NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    run_id uuid,
+    public_brand character varying(8) NOT NULL,
+    request jsonb NOT NULL,
+    provider_job_id text,
+    provider_result jsonb,
+    artifact jsonb,
+    error jsonb,
+    credits_charged bigint,
+    retry_count integer DEFAULT 0 NOT NULL,
+    claim_expires_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    completed_at timestamp without time zone
 );
 
 
@@ -3145,60 +3843,45 @@ CREATE TABLE public.storages (
 
 
 --
--- Name: strapi_integrations; Type: TABLE; Schema: public; Owner: -
+-- Name: stripe_workflow_automation_health; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.strapi_integrations (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    org_id text NOT NULL,
-    created_by_user_id text NOT NULL,
-    name character varying(128) NOT NULL,
-    base_url text NOT NULL,
-    normalized_base_url text NOT NULL,
-    token_hash text NOT NULL,
-    encrypted_token text NOT NULL,
-    secret_last_four character varying(4) NOT NULL,
-    last_tested_at timestamp without time zone,
-    last_received_at timestamp without time zone,
+CREATE TABLE public.stripe_workflow_automation_health (
+    automation_id uuid NOT NULL,
+    last_matching_event_received_at timestamp without time zone,
+    latest_delivery_id uuid,
+    latest_delivery_status character varying(32),
+    latest_delivery_status_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
 --
--- Name: strapi_webhook_deliveries; Type: TABLE; Schema: public; Owner: -
+-- Name: stripe_workflow_deliveries; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.strapi_webhook_deliveries (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    integration_id uuid NOT NULL,
-    body_sha256 text NOT NULL,
-    event character varying(64) NOT NULL,
-    received_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: strapi_workflow_pending_events; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.strapi_workflow_pending_events (
+CREATE TABLE public.stripe_workflow_deliveries (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     automation_id uuid NOT NULL,
-    integration_id uuid NOT NULL,
-    uid character varying(255) NOT NULL,
-    model character varying(255) NOT NULL,
-    document_id character varying(255) NOT NULL,
-    locales text[] NOT NULL,
+    connector_id uuid NOT NULL,
+    stripe_account_id character varying(255) NOT NULL,
+    livemode boolean NOT NULL,
+    stripe_event_id character varying(255) NOT NULL,
+    stripe_event_created_at timestamp without time zone NOT NULL,
+    billing_reason text,
+    snapshot jsonb NOT NULL,
     status character varying(32) DEFAULT 'pending'::character varying NOT NULL,
-    first_event_at timestamp without time zone NOT NULL,
-    latest_event_at timestamp without time zone NOT NULL,
-    run_after timestamp without time zone NOT NULL,
     attempts integer DEFAULT 0 NOT NULL,
     revision integer DEFAULT 0 NOT NULL,
+    claim_expires_at timestamp without time zone,
+    next_attempt_at timestamp without time zone NOT NULL,
     last_error text,
     skip_reason text,
-    processed_at timestamp without time zone,
+    delivered_at timestamp without time zone,
+    skipped_at timestamp without time zone,
+    failed_at timestamp without time zone,
+    received_at timestamp without time zone DEFAULT now() NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
@@ -3249,13 +3932,13 @@ CREATE TABLE public.teams_org_connections (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     teams_user_id character varying(255),
     teams_tenant_id character varying(255) NOT NULL,
-    vm0_user_id text NOT NULL,
     teams_user_display_name character varying(255),
     teams_user_principal_name character varying(255),
     dm_welcome_sent boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    teams_aad_object_id character varying(255)
+    teams_aad_object_id character varying(255),
+    user_id text NOT NULL
 );
 
 
@@ -3275,7 +3958,8 @@ CREATE TABLE public.teams_org_installations (
     org_id text,
     installed_by_user_id text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text DEFAULT 'okou'::text NOT NULL
 );
 
 
@@ -3284,11 +3968,11 @@ CREATE TABLE public.teams_org_installations (
 --
 
 CREATE TABLE public.teams_user_agent_preferences (
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
-    selected_compose_id uuid,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    selected_agent_id uuid
 );
 
 
@@ -3317,11 +4001,12 @@ CREATE TABLE public.telegram_installations (
     bot_username character varying(255),
     encrypted_bot_token text NOT NULL,
     webhook_secret character varying(255) NOT NULL,
-    default_compose_id uuid NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     owner_user_id text NOT NULL,
-    org_id text NOT NULL
+    org_id text NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL,
+    default_agent_id uuid
 );
 
 
@@ -3364,11 +4049,12 @@ CREATE TABLE public.telegram_official_user_links (
     telegram_user_id character varying(255) NOT NULL,
     telegram_username character varying(255),
     telegram_display_name character varying(255),
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
     dm_welcome_sent boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL
 );
 
 
@@ -3377,11 +4063,11 @@ CREATE TABLE public.telegram_official_user_links (
 --
 
 CREATE TABLE public.telegram_user_agent_preferences (
-    vm0_user_id text NOT NULL,
     org_id text NOT NULL,
-    selected_compose_id uuid,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    user_id text NOT NULL,
+    selected_agent_id uuid
 );
 
 
@@ -3392,13 +4078,13 @@ CREATE TABLE public.telegram_user_agent_preferences (
 CREATE TABLE public.telegram_user_links (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     telegram_user_id character varying(255) NOT NULL,
-    vm0_user_id text NOT NULL,
     dm_welcome_sent boolean DEFAULT false NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     installation_id character varying(255) NOT NULL,
     telegram_username character varying(255),
-    telegram_display_name character varying(255)
+    telegram_display_name character varying(255),
+    user_id text NOT NULL
 );
 
 
@@ -3417,7 +4103,9 @@ CREATE TABLE public.thread_goals (
     objective_brief text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT thread_goals_status_check CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'paused'::character varying, 'blocked'::character varying, 'complete'::character varying])::text[])))
+    autonomy_budget integer DEFAULT 10 NOT NULL,
+    CONSTRAINT thread_goals_autonomy_budget_check CHECK (((autonomy_budget >= 0) AND (autonomy_budget <= 10))),
+    CONSTRAINT thread_goals_status_check CHECK (((status)::text = ANY (ARRAY[('active'::character varying)::text, ('paused'::character varying)::text, ('blocked'::character varying)::text, ('complete'::character varying)::text])))
 );
 
 
@@ -3439,22 +4127,6 @@ CREATE TABLE public.usage_allowance_allocations (
 
 
 --
--- Name: usage_daily; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.usage_daily (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id text NOT NULL,
-    date date NOT NULL,
-    run_count integer DEFAULT 0 NOT NULL,
-    run_time_ms bigint DEFAULT 0 NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    org_id text NOT NULL
-);
-
-
---
 -- Name: usage_event; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3472,8 +4144,7 @@ CREATE TABLE public.usage_event (
     status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     processed_at timestamp without time zone,
-    billing_error character varying(50),
-    gross_credits bigint
+    billing_error character varying(50)
 );
 
 
@@ -3500,6 +4171,305 @@ CREATE TABLE public.usage_event_hourly_rollup (
     CONSTRAINT chk_usage_event_hourly_rollup_credits_charged CHECK ((credits_charged >= 0)),
     CONSTRAINT chk_usage_event_hourly_rollup_processed_hour CHECK ((processed_hour = date_trunc('hour'::text, processed_hour))),
     CONSTRAINT chk_usage_event_hourly_rollup_quantity CHECK ((quantity >= 0))
+);
+
+
+--
+-- Name: usage_pack_allocation_changes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_allocation_changes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usage_pack_subscription_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    source_allocation_id uuid,
+    replacement_allocation_id uuid,
+    kind character varying(20) NOT NULL,
+    status character varying(30) DEFAULT 'previewed'::character varying NOT NULL,
+    source_usage_pack_usd integer,
+    source_stripe_price_id text,
+    target_usage_pack_usd integer,
+    target_stripe_price_id text,
+    proration_timestamp bigint,
+    immediate_amount_cents integer,
+    next_recurring_amount_cents integer,
+    currency character varying(3),
+    effective_at timestamp without time zone,
+    preview_expires_at timestamp without time zone,
+    stripe_invoice_id text,
+    stripe_schedule_id text,
+    stripe_pending_update_expires_at timestamp without time zone,
+    failure_reason text,
+    completed_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    subscription_change_id uuid,
+    CONSTRAINT chk_usage_pack_changes_amounts CHECK ((((immediate_amount_cents IS NULL) OR (immediate_amount_cents >= 0)) AND ((next_recurring_amount_cents IS NULL) OR (next_recurring_amount_cents >= 0)))),
+    CONSTRAINT chk_usage_pack_changes_kind CHECK ((kind IN ('addition', 'upgrade', 'downgrade', 'removal'))),
+    CONSTRAINT chk_usage_pack_changes_source CHECK (((((kind)::text = 'addition'::text) AND (source_allocation_id IS NULL) AND (source_usage_pack_usd IS NULL) AND (source_stripe_price_id IS NULL)) OR (((kind)::text <> 'addition'::text) AND (source_allocation_id IS NOT NULL) AND (source_usage_pack_usd = ANY (ARRAY[20, 50, 100, 200])) AND (source_stripe_price_id IS NOT NULL)))),
+    CONSTRAINT chk_usage_pack_changes_status CHECK ((status IN ('previewed', 'applying', 'pending_payment', 'scheduled', 'applied', 'completed', 'failed'))),
+    CONSTRAINT chk_usage_pack_changes_target_package CHECK (((((kind)::text = 'removal'::text) AND (target_usage_pack_usd IS NULL) AND (target_stripe_price_id IS NULL)) OR (((kind)::text <> 'removal'::text) AND (target_usage_pack_usd = ANY (ARRAY[20, 50, 100, 200])) AND (target_stripe_price_id IS NOT NULL))))
+);
+
+
+--
+-- Name: usage_pack_allocations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_allocations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usage_pack_subscription_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text,
+    invitation_id text,
+    usage_pack_usd integer NOT NULL,
+    stripe_price_id text NOT NULL,
+    status character varying(30) DEFAULT 'pending_payment'::character varying NOT NULL,
+    current_period_start timestamp without time zone,
+    current_period_end timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_allocations_owner CHECK ((((user_id IS NOT NULL) AND (invitation_id IS NULL)) OR ((user_id IS NULL) AND (invitation_id IS NOT NULL)))),
+    CONSTRAINT chk_usage_pack_allocations_package CHECK ((usage_pack_usd = ANY (ARRAY[20, 50, 100, 200]))),
+    CONSTRAINT chk_usage_pack_allocations_period CHECK ((((current_period_start IS NULL) AND (current_period_end IS NULL)) OR ((current_period_start IS NOT NULL) AND (current_period_end IS NOT NULL) AND (current_period_end > current_period_start)))),
+    CONSTRAINT chk_usage_pack_allocations_status CHECK ((status IN ('pending_payment', 'active', 'pending_invitation', 'paid_pending_invitation', 'inactive')))
+);
+
+
+--
+-- Name: usage_pack_credit_grants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_credit_grants (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    grant_type character varying(20) NOT NULL,
+    idempotency_key text NOT NULL,
+    original_amount bigint NOT NULL,
+    remaining_amount bigint NOT NULL,
+    expires_at timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_credit_grants_original_amount CHECK ((original_amount > 0)),
+    CONSTRAINT chk_usage_pack_credit_grants_remaining_amount CHECK (((remaining_amount >= 0) AND (remaining_amount <= original_amount))),
+    CONSTRAINT chk_usage_pack_credit_grants_type CHECK ((grant_type IN ('purchased', 'bonus')))
+);
+
+
+--
+-- Name: usage_pack_credit_refunds; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_credit_refunds (
+    credit_grant_id uuid NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    source_type character varying(20) NOT NULL,
+    stripe_invoice_id text,
+    stripe_invoice_line_id text,
+    stripe_payment_intent_id text,
+    source_amount_cents integer NOT NULL,
+    status character varying(20) DEFAULT 'available'::character varying NOT NULL,
+    refund_credits bigint,
+    requested_amount_cents integer,
+    refunded_amount_cents integer,
+    stripe_credit_note_id text,
+    stripe_refund_id text,
+    attempt integer DEFAULT 1 NOT NULL,
+    failure_reason text,
+    refunded_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_credit_refunds_attempt CHECK ((attempt > 0)),
+    CONSTRAINT chk_usage_pack_credit_refunds_refunded_amount CHECK (((refunded_amount_cents IS NULL) OR (refunded_amount_cents >= 0))),
+    CONSTRAINT chk_usage_pack_credit_refunds_snapshot CHECK (((((status)::text = 'available'::text) AND (refund_credits IS NULL) AND (requested_amount_cents IS NULL)) OR (((status)::text <> 'available'::text) AND (refund_credits > 0) AND (requested_amount_cents > 0)))),
+    CONSTRAINT chk_usage_pack_credit_refunds_source CHECK (((((source_type)::text = 'invoice'::text) AND (stripe_invoice_id IS NOT NULL) AND (stripe_payment_intent_id IS NULL)) OR (((source_type)::text = 'payment_intent'::text) AND (stripe_invoice_id IS NULL) AND (stripe_invoice_line_id IS NULL) AND (stripe_payment_intent_id IS NOT NULL)))),
+    CONSTRAINT chk_usage_pack_credit_refunds_source_amount CHECK ((source_amount_cents >= 0)),
+    CONSTRAINT chk_usage_pack_credit_refunds_status CHECK ((status IN ('available', 'pending', 'processing', 'succeeded', 'failed')))
+);
+
+
+--
+-- Name: usage_pack_invitation_purchases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_invitation_purchases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usage_pack_subscription_id uuid NOT NULL,
+    allocation_id uuid,
+    org_id text NOT NULL,
+    normalized_email text NOT NULL,
+    role character varying(20) NOT NULL,
+    inviter_user_id text NOT NULL,
+    usage_pack_usd integer NOT NULL,
+    stripe_price_id text NOT NULL,
+    status character varying(40) DEFAULT 'checkout_pending'::character varying NOT NULL,
+    current_period_start timestamp without time zone NOT NULL,
+    current_period_end timestamp without time zone NOT NULL,
+    proration_timestamp bigint NOT NULL,
+    unit_amount_cents integer NOT NULL,
+    expected_amount_cents integer NOT NULL,
+    amount_paid_cents integer,
+    currency character varying(3) NOT NULL,
+    purchased_credits bigint DEFAULT 0 NOT NULL,
+    bonus_credits bigint DEFAULT 0 NOT NULL,
+    stripe_checkout_session_id text,
+    stripe_checkout_expires_at timestamp without time zone,
+    stripe_payment_intent_id text,
+    stripe_refund_id text,
+    refund_attempt integer DEFAULT 1 NOT NULL,
+    clerk_invitation_id text,
+    accepted_user_id text,
+    failure_reason text,
+    paid_at timestamp without time zone,
+    accepted_at timestamp without time zone,
+    refunded_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    public_brand text DEFAULT 'vm0'::text NOT NULL,
+    CONSTRAINT chk_usage_pack_invitation_purchases_amounts CHECK (((unit_amount_cents > 0) AND (expected_amount_cents >= 0) AND ((amount_paid_cents IS NULL) OR (amount_paid_cents >= 0)) AND (purchased_credits >= 0) AND (bonus_credits >= 0) AND (refund_attempt > 0))),
+    CONSTRAINT chk_usage_pack_invitation_purchases_package CHECK ((usage_pack_usd = ANY (ARRAY[20, 50, 100, 200]))),
+    CONSTRAINT chk_usage_pack_invitation_purchases_period CHECK ((current_period_end > current_period_start)),
+    CONSTRAINT chk_usage_pack_invitation_purchases_role CHECK ((role IN ('admin', 'member'))),
+    CONSTRAINT chk_usage_pack_invitation_purchases_status CHECK ((status IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating', 'accepted', 'refund_pending', 'refunding', 'refunded', 'failed')))
+);
+
+
+--
+-- Name: usage_pack_invoice_fulfillments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_invoice_fulfillments (
+    stripe_invoice_id text NOT NULL,
+    usage_pack_subscription_id uuid NOT NULL,
+    period_start timestamp without time zone,
+    period_end timestamp without time zone NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_invoice_fulfillments_period CHECK (((period_start IS NULL) OR (period_end > period_start)))
+);
+
+
+--
+-- Name: usage_pack_pending_snapshot_guards; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_pending_snapshot_guards (
+    org_id text NOT NULL,
+    pending_snapshot_count integer NOT NULL,
+    CONSTRAINT chk_usage_pack_pending_snapshot_guard_count CHECK ((pending_snapshot_count >= 0))
+);
+
+
+--
+-- Name: usage_pack_subscription_changes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_subscription_changes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    usage_pack_subscription_id uuid NOT NULL,
+    org_id text NOT NULL,
+    source_tier character varying(20) NOT NULL,
+    target_tier character varying(20) NOT NULL,
+    status character varying(30) DEFAULT 'previewed'::character varying NOT NULL,
+    proration_timestamp bigint NOT NULL,
+    immediate_amount_cents integer NOT NULL,
+    next_recurring_amount_cents integer NOT NULL,
+    currency character varying(3) NOT NULL,
+    preview_expires_at timestamp without time zone NOT NULL,
+    stripe_invoice_id text,
+    stripe_pending_update_expires_at timestamp without time zone,
+    effective_at timestamp without time zone NOT NULL,
+    failure_reason text,
+    completed_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_subscription_changes_amounts CHECK (((immediate_amount_cents >= 0) AND (next_recurring_amount_cents >= 0))),
+    CONSTRAINT chk_usage_pack_subscription_changes_status CHECK ((status IN ('previewed', 'applying', 'pending_payment', 'completed', 'failed'))),
+    CONSTRAINT chk_usage_pack_subscription_changes_tiers CHECK (((source_tier IN ('pro', 'team')) AND (target_tier IN ('pro', 'team'))))
+);
+
+
+--
+-- Name: usage_pack_subscription_migration_selections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_subscription_migration_selections (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    migration_id uuid NOT NULL,
+    user_id text,
+    invitation_id text,
+    normalized_email text,
+    role character varying(20),
+    inviter_user_id text,
+    usage_pack_usd integer NOT NULL,
+    stripe_price_id text NOT NULL,
+    unit_amount_cents integer NOT NULL,
+    purchased_credits bigint DEFAULT 0 NOT NULL,
+    bonus_credits bigint DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_migration_selections_amounts CHECK (((unit_amount_cents > 0) AND (purchased_credits > 0) AND (bonus_credits > 0))),
+    CONSTRAINT chk_usage_pack_migration_selections_owner CHECK ((((user_id IS NOT NULL) AND (invitation_id IS NULL) AND (normalized_email IS NULL) AND (role IS NULL) AND (inviter_user_id IS NULL)) OR ((user_id IS NULL) AND (invitation_id IS NOT NULL) AND (normalized_email IS NOT NULL) AND (role IS NOT NULL) AND (inviter_user_id IS NOT NULL)))),
+    CONSTRAINT chk_usage_pack_migration_selections_package CHECK ((usage_pack_usd = ANY (ARRAY[20, 50, 100, 200]))),
+    CONSTRAINT chk_usage_pack_migration_selections_role CHECK (((role IS NULL) OR (role IN ('admin', 'member'))))
+);
+
+
+--
+-- Name: usage_pack_subscription_migrations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_subscription_migrations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    source_tier character varying(20) NOT NULL,
+    target_tier character varying(20) NOT NULL,
+    stripe_customer_id text NOT NULL,
+    stripe_subscription_id text NOT NULL,
+    legacy_stripe_price_id text NOT NULL,
+    legacy_stripe_item_id text NOT NULL,
+    stripe_plan_price_id text NOT NULL,
+    status character varying(30) DEFAULT 'previewed'::character varying NOT NULL,
+    current_recurring_amount_cents integer NOT NULL,
+    next_recurring_amount_cents integer NOT NULL,
+    recurring_difference_cents integer NOT NULL,
+    currency character varying(3) NOT NULL,
+    effective_at timestamp without time zone NOT NULL,
+    preview_expires_at timestamp without time zone NOT NULL,
+    stripe_schedule_id text,
+    stripe_invoice_id text,
+    stripe_payment_intent_id text,
+    hosted_invoice_url text,
+    failure_reason text,
+    completed_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_subscription_migrations_amounts CHECK (((current_recurring_amount_cents >= 0) AND (next_recurring_amount_cents >= 0) AND (recurring_difference_cents = (next_recurring_amount_cents - current_recurring_amount_cents)))),
+    CONSTRAINT chk_usage_pack_subscription_migrations_status CHECK ((status IN ('previewed', 'applying', 'revising', 'scheduled', 'completed', 'failed'))),
+    CONSTRAINT chk_usage_pack_subscription_migrations_tiers CHECK (((source_tier IN ('pro', 'team')) AND (target_tier IN ('pro', 'team'))))
+);
+
+
+--
+-- Name: usage_pack_subscriptions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.usage_pack_subscriptions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    tier character varying(20) NOT NULL,
+    stripe_plan_price_id text NOT NULL,
+    stripe_customer_id text NOT NULL,
+    stripe_checkout_session_id text,
+    stripe_subscription_id text,
+    subscription_status character varying(30) DEFAULT 'checkout_pending'::character varying NOT NULL,
+    current_period_start timestamp without time zone,
+    current_period_end timestamp without time zone,
+    cancel_at_period_end boolean DEFAULT false NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_usage_pack_subscriptions_period CHECK ((((current_period_start IS NULL) AND (current_period_end IS NULL)) OR ((current_period_start IS NOT NULL) AND (current_period_end IS NOT NULL) AND (current_period_end > current_period_start)))),
+    CONSTRAINT chk_usage_pack_subscriptions_tier CHECK ((tier IN ('pro', 'team')))
 );
 
 
@@ -3583,11 +4553,7 @@ CREATE TABLE public.user_custom_connectors (
     agent_id uuid NOT NULL,
     custom_connector_id uuid NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    connector_revision integer DEFAULT 1 NOT NULL,
-    permission_names text[] DEFAULT '{}'::text[] NOT NULL,
-    allow_all_mcp_tools boolean DEFAULT false NOT NULL,
-    mcp_tool_names text[] DEFAULT '{}'::text[] NOT NULL,
-    CONSTRAINT chk_user_custom_connectors_mcp_grant CHECK (((NOT allow_all_mcp_tools) OR (cardinality(mcp_tool_names) = 0)))
+    permission_names text[] DEFAULT '{}'::text[] NOT NULL
 );
 
 
@@ -3618,7 +4584,7 @@ CREATE TABLE public.user_permission_grants (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     connector_slug character varying(64) NOT NULL,
-    CONSTRAINT chk_user_permission_grants_action CHECK (((action)::text = ANY ((ARRAY['allow'::character varying, 'deny'::character varying])::text[])))
+    CONSTRAINT chk_user_permission_grants_action CHECK (((action)::text = ANY (ARRAY[('allow'::character varying)::text, ('deny'::character varying)::text])))
 );
 
 
@@ -3669,101 +4635,10 @@ CREATE TABLE public.video_artifacts (
 
 
 --
--- Name: vm0_api_keys; Type: TABLE; Schema: public; Owner: -
+-- Name: workflow_automations; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.vm0_api_keys (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    vendor character varying(50) NOT NULL,
-    model character varying(255) NOT NULL,
-    api_key text NOT NULL,
-    label text,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: workflow_user_automation_threads; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.workflow_user_automation_threads (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    org_id text NOT NULL,
-    user_id text NOT NULL,
-    workflow_id uuid NOT NULL,
-    chat_thread_id uuid,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: zero_agent_drafts; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.zero_agent_drafts (
-    user_id text NOT NULL,
-    org_id text NOT NULL,
-    agent_id uuid NOT NULL,
-    draft_attachments jsonb,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    draft_user_message jsonb,
-    CONSTRAINT zero_agent_drafts_draft_user_message_check CHECK (((draft_user_message IS NOT NULL) OR (COALESCE(draft_attachments, '[]'::jsonb) = '[]'::jsonb)))
-);
-
-
---
--- Name: zero_agents; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.zero_agents (
-    org_id text NOT NULL,
-    name character varying(64) NOT NULL,
-    display_name character varying(256),
-    description text,
-    sound character varying(64),
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    id uuid NOT NULL,
-    avatar_url character varying(1024),
-    owner text NOT NULL,
-    model_provider_id uuid,
-    selected_model character varying(255),
-    prefer_personal_provider boolean DEFAULT false NOT NULL,
-    visibility character varying(16) DEFAULT 'public'::character varying NOT NULL
-);
-
-
---
--- Name: zero_runs; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.zero_runs (
-    id uuid NOT NULL,
-    trigger_source character varying(20) NOT NULL,
-    trigger_agent_id uuid,
-    model_provider character varying(100),
-    selected_model character varying(255),
-    summary text,
-    chat_thread_id uuid,
-    model_provider_id uuid,
-    model_provider_credential_scope character varying(20),
-    run_group_id uuid,
-    goal_id uuid,
-    trigger_brief text,
-    workflow_automation_id uuid,
-    api_started_at timestamp without time zone,
-    first_assistant_event_acknowledged_at timestamp without time zone
-);
-
-
---
--- Name: zero_workflow_automations; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.zero_workflow_automations (
+CREATE TABLE public.workflow_automations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     org_id text NOT NULL,
     workflow_id uuid NOT NULL,
@@ -3783,15 +4658,25 @@ CREATE TABLE public.zero_workflow_automations (
     kind character varying(16) DEFAULT 'schedule'::character varying NOT NULL,
     event_type character varying(64),
     event_config jsonb,
-    CONSTRAINT zero_workflow_automations_schedule_config_check CHECK (((((kind)::text = 'schedule'::text) AND (event_type IS NULL) AND (event_config IS NULL) AND ((((schedule_type)::text = 'cron'::text) AND (cron_expression IS NOT NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'loop'::text) AND (interval_seconds IS NOT NULL) AND (cron_expression IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'once'::text) AND (at_time IS NOT NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL)))) OR (((kind)::text = 'event'::text) AND ((event_type)::text = ANY ((ARRAY['chat-run-finished'::character varying, 'gmail-new-message'::character varying, 'gmail-label-applied'::character varying, 'github-label-applied'::character varying, 'github-deployment-status-created'::character varying, 'github-issue-comment-created'::character varying, 'github-pull-request-review-submitted'::character varying, 'github-workflow-job-completed'::character varying, 'github-workflow-run-completed'::character varying, 'google-calendar-event-created'::character varying, 'google-calendar-event-updated'::character varying, 'google-calendar-event-cancelled'::character varying, 'google-meet-transcript-generated'::character varying, 'notion-child-page-created'::character varying, 'notion-database-item-created'::character varying, 'notion-page-content-updated'::character varying, 'strapi-entry-published'::character varying, 'webhook-received'::character varying])::text[])) AND (event_config IS NOT NULL) AND (schedule_type IS NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL))))
+    autonomy_budget integer DEFAULT 10 NOT NULL,
+    official_blueprint_key character varying(64),
+    official_applied_fingerprint character varying(64),
+    official_reconciliation_status character varying(32),
+    official_parameter_bindings jsonb,
+    official_intended_enabled boolean,
+    official_result_email_enabled boolean,
+    event_connector_id uuid,
+    CONSTRAINT workflow_automations_autonomy_budget_check CHECK (((autonomy_budget >= 0) AND (autonomy_budget <= 10))),
+    CONSTRAINT workflow_automations_official_binding_check CHECK ((((official_blueprint_key IS NULL) AND (official_applied_fingerprint IS NULL) AND (official_reconciliation_status IS NULL) AND (official_parameter_bindings IS NULL) AND (official_intended_enabled IS NULL) AND (official_result_email_enabled IS NULL)) OR ((official_blueprint_key IS NOT NULL) AND ((official_applied_fingerprint)::text ~ '^[0-9a-f]{64}$'::text) AND (official_reconciliation_status IN ('current', 'reconciling', 'needs_reconfiguration', 'failed')) AND (jsonb_typeof(official_parameter_bindings) = 'array'::text) AND (official_intended_enabled IS NOT NULL) AND (official_result_email_enabled IS NOT NULL)))),
+    CONSTRAINT workflow_automations_schedule_config_check CHECK (((((kind)::text = 'schedule'::text) AND (event_type IS NULL) AND (event_config IS NULL) AND ((((schedule_type)::text = 'cron'::text) AND (cron_expression IS NOT NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'loop'::text) AND (interval_seconds IS NOT NULL) AND (cron_expression IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'once'::text) AND (at_time IS NOT NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL)))) OR (((kind)::text = 'event'::text) AND (event_type IN ('chat-run-finished', 'gmail-new-message', 'gmail-label-applied', 'github-deployment-status-created', 'github-issue-comment-created', 'github-pull-request', 'github-pull-request-review-submitted', 'github-workflow-job-completed', 'github-workflow-run-completed', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-forms-response-submitted', 'google-meet-transcript-generated', 'notion-child-page-created', 'notion-database-item-created', 'notion-page-content-updated', 'stripe-invoice-paid', 'webhook-received')) AND (event_config IS NOT NULL) AND (schedule_type IS NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL))))
 );
 
 
 --
--- Name: zero_workflow_github_processed_events; Type: TABLE; Schema: public; Owner: -
+-- Name: workflow_github_processed_events; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.zero_workflow_github_processed_events (
+CREATE TABLE public.workflow_github_processed_events (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     github_delivery_id character varying(255) NOT NULL,
     repo character varying(255) NOT NULL,
@@ -3805,21 +4690,25 @@ CREATE TABLE public.zero_workflow_github_processed_events (
 
 
 --
--- Name: zero_workflow_strapi_automations; Type: TABLE; Schema: public; Owner: -
+-- Name: workflow_user_automation_threads; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.zero_workflow_strapi_automations (
-    automation_id uuid NOT NULL,
-    integration_id uuid NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
+CREATE TABLE public.workflow_user_automation_threads (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id text NOT NULL,
+    user_id text NOT NULL,
+    workflow_id uuid NOT NULL,
+    chat_thread_id uuid,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
 --
--- Name: zero_workflow_webhook_automations; Type: TABLE; Schema: public; Owner: -
+-- Name: workflow_webhook_automations; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.zero_workflow_webhook_automations (
+CREATE TABLE public.workflow_webhook_automations (
     automation_id uuid NOT NULL,
     token_hash text NOT NULL,
     encrypted_token text NOT NULL,
@@ -3833,10 +4722,10 @@ CREATE TABLE public.zero_workflow_webhook_automations (
 
 
 --
--- Name: zero_workflow_webhook_deliveries; Type: TABLE; Schema: public; Owner: -
+-- Name: workflow_webhook_deliveries; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.zero_workflow_webhook_deliveries (
+CREATE TABLE public.workflow_webhook_deliveries (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     delivery_key text NOT NULL,
     body_sha256 text NOT NULL,
@@ -3850,10 +4739,10 @@ CREATE TABLE public.zero_workflow_webhook_deliveries (
 
 
 --
--- Name: zero_workflows; Type: TABLE; Schema: public; Owner: -
+-- Name: workflows; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.zero_workflows (
+CREATE TABLE public.workflows (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     org_id text NOT NULL,
     name character varying(64) NOT NULL,
@@ -3866,24 +4755,27 @@ CREATE TABLE public.zero_workflows (
     owner_user_id text NOT NULL,
     agent_id uuid NOT NULL,
     instruction text,
-    updated_by text NOT NULL
+    updated_by text NOT NULL,
+    official_definition_name character varying(64),
+    official_installation_state character varying(32),
+    CONSTRAINT workflows_official_installation_check CHECK ((((official_definition_name IS NULL) AND (official_installation_state IS NULL)) OR ((official_definition_name IS NOT NULL) AND (official_installation_state IN ('installing', 'installed')) AND ((official_definition_name)::text = (name)::text) AND ((visibility)::text = 'private'::text) AND (instruction IS NULL) AND (display_name IS NULL) AND (description IS NULL))))
 );
 
 
 --
--- Name: agent_compose_versions agent_compose_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: active_input_deliveries active_input_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agent_compose_versions
-    ADD CONSTRAINT agent_compose_versions_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.active_input_deliveries
+    ADD CONSTRAINT active_input_deliveries_pkey PRIMARY KEY (id);
 
 
 --
--- Name: agent_composes agent_composes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: active_input_delivery_items active_input_delivery_items_delivery_id_source_event_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agent_composes
-    ADD CONSTRAINT agent_composes_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.active_input_delivery_items
+    ADD CONSTRAINT active_input_delivery_items_delivery_id_source_event_id_pk PRIMARY KEY (delivery_id, source_event_id);
 
 
 --
@@ -3892,14 +4784,6 @@ ALTER TABLE ONLY public.agent_composes
 
 ALTER TABLE ONLY public.agent_run_callbacks
     ADD CONSTRAINT agent_run_callbacks_pkey PRIMARY KEY (id);
-
-
---
--- Name: agent_run_custom_connector_auth_refs agent_run_custom_connector_auth_refs_run_id_secret_name_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.agent_run_custom_connector_auth_refs
-    ADD CONSTRAINT agent_run_custom_connector_auth_refs_run_id_secret_name_pk PRIMARY KEY (run_id, secret_name);
 
 
 --
@@ -3943,11 +4827,11 @@ ALTER TABLE ONLY public.agentphone_messages
 
 
 --
--- Name: agentphone_user_agent_preferences agentphone_user_agent_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: agentphone_user_agent_preferences agentphone_user_agent_preferences_user_id_org_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agentphone_user_agent_preferences
-    ADD CONSTRAINT agentphone_user_agent_preferences_pkey PRIMARY KEY (vm0_user_id, org_id);
+    ADD CONSTRAINT agentphone_user_agent_preferences_user_id_org_id_pk PRIMARY KEY (user_id, org_id);
 
 
 --
@@ -3964,6 +4848,14 @@ ALTER TABLE ONLY public.agentphone_user_links
 
 ALTER TABLE ONLY public.agentphone_verification_send_cooldowns
     ADD CONSTRAINT agentphone_verification_send_cooldowns_pkey PRIMARY KEY (scope, scope_key);
+
+
+--
+-- Name: agents agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agents
+    ADD CONSTRAINT agents_pkey PRIMARY KEY (id);
 
 
 --
@@ -4015,6 +4907,22 @@ ALTER TABLE ONLY public.banking_agent_enablements
 
 
 --
+-- Name: banking_connect_events banking_connect_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.banking_connect_events
+    ADD CONSTRAINT banking_connect_events_pkey PRIMARY KEY (event_id);
+
+
+--
+-- Name: banking_connect_sessions banking_connect_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.banking_connect_sessions
+    ADD CONSTRAINT banking_connect_sessions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: banking_connections banking_connections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4063,6 +4971,22 @@ ALTER TABLE ONLY public.browser_session_resize_states
 
 
 --
+-- Name: browser_session_screenshot_deletions browser_session_screenshot_deletions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.browser_session_screenshot_deletions
+    ADD CONSTRAINT browser_session_screenshot_deletions_pkey PRIMARY KEY (object_key);
+
+
+--
+-- Name: browser_session_screenshots browser_session_screenshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.browser_session_screenshots
+    ADD CONSTRAINT browser_session_screenshots_pkey PRIMARY KEY (chat_thread_id);
+
+
+--
 -- Name: browser_session_tab_snapshots browser_session_tab_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4095,11 +5019,35 @@ ALTER TABLE ONLY public.built_in_generation_jobs
 
 
 --
+-- Name: built_in_model_candidate_cooldown built_in_model_candidate_cooldown_selected_model_provider_type_; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.built_in_model_candidate_cooldown
+    ADD CONSTRAINT built_in_model_candidate_cooldown_selected_model_provider_type_ PRIMARY KEY (selected_model, provider_type, upstream_model);
+
+
+--
+-- Name: built_in_model_keys built_in_model_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.built_in_model_keys
+    ADD CONSTRAINT built_in_model_keys_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: canonical_asset_deliveries canonical_asset_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.canonical_asset_deliveries
     ADD CONSTRAINT canonical_asset_deliveries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: chat_agent_run_context chat_agent_run_context_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_agent_run_context
+    ADD CONSTRAINT chat_agent_run_context_pkey PRIMARY KEY (id);
 
 
 --
@@ -4119,11 +5067,35 @@ ALTER TABLE ONLY public.chat_automation_context
 
 
 --
--- Name: chat_event_asset_refs chat_event_asset_refs_pk; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: chat_event_search_message_watermarks chat_event_search_message_watermarks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.chat_event_asset_refs
-    ADD CONSTRAINT chat_event_asset_refs_pk PRIMARY KEY (chat_event_id, asset_id);
+ALTER TABLE ONLY public.chat_event_search_message_watermarks
+    ADD CONSTRAINT chat_event_search_message_watermarks_pkey PRIMARY KEY (chat_thread_id);
+
+
+--
+-- Name: chat_event_search_messages chat_event_search_messages_chat_thread_id_seq_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_event_search_messages
+    ADD CONSTRAINT chat_event_search_messages_chat_thread_id_seq_id_pk PRIMARY KEY (chat_thread_id, seq_id);
+
+
+--
+-- Name: chat_event_snapshot_scan_state chat_event_snapshot_scan_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_event_snapshot_scan_state
+    ADD CONSTRAINT chat_event_snapshot_scan_state_pkey PRIMARY KEY (scope);
+
+
+--
+-- Name: chat_event_snapshots chat_event_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_event_snapshots
+    ADD CONSTRAINT chat_event_snapshots_pkey PRIMARY KEY (id);
 
 
 --
@@ -4148,22 +5120,6 @@ ALTER TABLE ONLY public.chat_feishu_context
 
 ALTER TABLE ONLY public.chat_github_context
     ADD CONSTRAINT chat_github_context_pkey PRIMARY KEY (id);
-
-
---
--- Name: chat_goal_context chat_goal_context_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_goal_context
-    ADD CONSTRAINT chat_goal_context_pkey PRIMARY KEY (id);
-
-
---
--- Name: chat_morning_brief_context chat_morning_brief_context_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_morning_brief_context
-    ADD CONSTRAINT chat_morning_brief_context_pkey PRIMARY KEY (id);
 
 
 --
@@ -4196,6 +5152,14 @@ ALTER TABLE ONLY public.chat_teams_context
 
 ALTER TABLE ONLY public.chat_telegram_context
     ADD CONSTRAINT chat_telegram_context_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: chat_thread_connector_selections chat_thread_connector_selections_thread_connector_pk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_thread_connector_selections
+    ADD CONSTRAINT chat_thread_connector_selections_thread_connector_pk PRIMARY KEY (chat_thread_id, connector_id);
 
 
 --
@@ -4319,6 +5283,22 @@ ALTER TABLE ONLY public.connector_catalog_compatibility_evaluation
 
 
 --
+-- Name: connector_catalog_runtime_projection_sets connector_catalog_runtime_projection_sets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.connector_catalog_runtime_projection_sets
+    ADD CONSTRAINT connector_catalog_runtime_projection_sets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: connector_catalog_runtime_projections connector_catalog_runtime_projections_pk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.connector_catalog_runtime_projections
+    ADD CONSTRAINT connector_catalog_runtime_projections_pk PRIMARY KEY (projection_set_id, connector_slug);
+
+
+--
 -- Name: connector_catalog_sync_state connector_catalog_sync_state_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4383,6 +5363,14 @@ ALTER TABLE ONLY public.credit_expires_record
 
 
 --
+-- Name: custom_connector_account_oauth_bindings custom_connector_account_oauth_bindings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.custom_connector_account_oauth_bindings
+    ADD CONSTRAINT custom_connector_account_oauth_bindings_pkey PRIMARY KEY (connector_account_id);
+
+
+--
 -- Name: desktop_auth_handoff_codes desktop_auth_handoff_codes_code_hash_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4404,30 +5392,6 @@ ALTER TABLE ONLY public.desktop_auth_handoff_codes
 
 ALTER TABLE ONLY public.device_codes
     ADD CONSTRAINT device_codes_pkey PRIMARY KEY (code);
-
-
---
--- Name: e2e_slack_mock_call_log e2e_slack_mock_call_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.e2e_slack_mock_call_log
-    ADD CONSTRAINT e2e_slack_mock_call_log_pkey PRIMARY KEY (id);
-
-
---
--- Name: e2e_teams_mock_call_log e2e_teams_mock_call_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.e2e_teams_mock_call_log
-    ADD CONSTRAINT e2e_teams_mock_call_log_pkey PRIMARY KEY (id);
-
-
---
--- Name: e2e_telegram_mock_call_log e2e_telegram_mock_call_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.e2e_telegram_mock_call_log
-    ADD CONSTRAINT e2e_telegram_mock_call_log_pkey PRIMARY KEY (id);
 
 
 --
@@ -4495,11 +5459,11 @@ ALTER TABLE ONLY public.feishu_org_installations
 
 
 --
--- Name: feishu_user_agent_preferences feishu_user_agent_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: feishu_user_agent_preferences feishu_user_agent_preferences_user_id_org_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.feishu_user_agent_preferences
-    ADD CONSTRAINT feishu_user_agent_preferences_pkey PRIMARY KEY (vm0_user_id, org_id);
+    ADD CONSTRAINT feishu_user_agent_preferences_user_id_org_id_pk PRIMARY KEY (user_id, org_id);
 
 
 --
@@ -4567,6 +5531,30 @@ ALTER TABLE ONLY public.google_calendar_watch_states
 
 
 --
+-- Name: google_forms_automation_cursors google_forms_automation_cursors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_automation_cursors
+    ADD CONSTRAINT google_forms_automation_cursors_pkey PRIMARY KEY (automation_id);
+
+
+--
+-- Name: google_forms_processed_events google_forms_processed_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_processed_events
+    ADD CONSTRAINT google_forms_processed_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: google_forms_watch_states google_forms_watch_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_watch_states
+    ADD CONSTRAINT google_forms_watch_states_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: google_workspace_event_subscription_states google_workspace_event_subscription_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4599,6 +5587,14 @@ ALTER TABLE ONLY public.hosted_sites
 
 
 --
+-- Name: connectors idx_connectors_id_custom_connector; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.connectors
+    ADD CONSTRAINT idx_connectors_id_custom_connector UNIQUE (id, custom_connector_id);
+
+
+--
 -- Name: connectors idx_connectors_id_org_user; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4607,11 +5603,35 @@ ALTER TABLE ONLY public.connectors
 
 
 --
+-- Name: connectors idx_connectors_id_slug; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.connectors
+    ADD CONSTRAINT idx_connectors_id_slug UNIQUE (id, connector_slug);
+
+
+--
+-- Name: hosted_sites idx_hosted_sites_id_public_brand; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hosted_sites
+    ADD CONSTRAINT idx_hosted_sites_id_public_brand UNIQUE (id, public_brand);
+
+
+--
 -- Name: org_custom_connectors idx_org_custom_connectors_id_org; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.org_custom_connectors
     ADD CONSTRAINT idx_org_custom_connectors_id_org UNIQUE (id, org_id);
+
+
+--
+-- Name: storages idx_storages_id_org_user; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storages
+    ADD CONSTRAINT idx_storages_id_org_user UNIQUE (id, org_id, user_id);
 
 
 --
@@ -4631,19 +5651,35 @@ ALTER TABLE ONLY public.image_artifacts
 
 
 --
--- Name: insights_daily insights_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.insights_daily
-    ADD CONSTRAINT insights_daily_pkey PRIMARY KEY (id);
-
-
---
 -- Name: mail_drafts mail_drafts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.mail_drafts
     ADD CONSTRAINT mail_drafts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: memory_summary_projections memory_summary_projections_memory_storage_id_storage_version_id; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_summary_projections
+    ADD CONSTRAINT memory_summary_projections_memory_storage_id_storage_version_id PRIMARY KEY (memory_storage_id, storage_version_id);
+
+
+--
+-- Name: model_provider_account_secrets model_provider_account_secrets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_provider_account_secrets
+    ADD CONSTRAINT model_provider_account_secrets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: model_provider_accounts model_provider_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_provider_accounts
+    ADD CONSTRAINT model_provider_accounts_pkey PRIMARY KEY (id);
 
 
 --
@@ -4679,38 +5715,6 @@ ALTER TABLE ONLY public.model_providers
 
 
 --
--- Name: model_stat model_stat_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model_stat
-    ADD CONSTRAINT model_stat_pkey PRIMARY KEY (id);
-
-
---
--- Name: model_usage_observation model_usage_observation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.model_usage_observation
-    ADD CONSTRAINT model_usage_observation_pkey PRIMARY KEY (idempotency_key);
-
-
---
--- Name: morning_brief_deliveries morning_brief_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.morning_brief_deliveries
-    ADD CONSTRAINT morning_brief_deliveries_pkey PRIMARY KEY (id);
-
-
---
--- Name: morning_brief_schedules morning_brief_schedules_org_id_user_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.morning_brief_schedules
-    ADD CONSTRAINT morning_brief_schedules_org_id_user_id_pk PRIMARY KEY (org_id, user_id);
-
-
---
 -- Name: notion_webhook_events notion_webhook_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4732,6 +5736,54 @@ ALTER TABLE ONLY public.notion_webhook_secrets
 
 ALTER TABLE ONLY public.notion_workflow_pending_events
     ADD CONSTRAINT notion_workflow_pending_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: official_automation_result_email_claims official_automation_result_email_claims_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_automation_result_email_claims
+    ADD CONSTRAINT official_automation_result_email_claims_pkey PRIMARY KEY (run_id, workflow_automation_id);
+
+
+--
+-- Name: official_workflow_automation_identities official_workflow_automation_identities_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_automation_identities
+    ADD CONSTRAINT official_workflow_automation_identities_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: official_workflow_catalog_releases official_workflow_catalog_releases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_catalog_releases
+    ADD CONSTRAINT official_workflow_catalog_releases_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: official_workflow_catalog_state official_workflow_catalog_state_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_catalog_state
+    ADD CONSTRAINT official_workflow_catalog_state_pkey PRIMARY KEY (authority);
+
+
+--
+-- Name: official_workflow_definition_revisions official_workflow_definition_revisions_pk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_definition_revisions
+    ADD CONSTRAINT official_workflow_definition_revisions_pk PRIMARY KEY (definition_name, revision);
+
+
+--
+-- Name: official_workflow_reconciliation_work official_workflow_reconciliation_work_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_reconciliation_work
+    ADD CONSTRAINT official_workflow_reconciliation_work_pkey PRIMARY KEY (definition_name);
 
 
 --
@@ -4759,27 +5811,19 @@ ALTER TABLE ONLY public.org_concurrency_subscriptions
 
 
 --
+-- Name: org_custom_connector_dcr_registrations org_custom_connector_dcr_registrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_custom_connector_dcr_registrations
+    ADD CONSTRAINT org_custom_connector_dcr_registrations_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: org_custom_connector_oauth_configs org_custom_connector_oauth_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.org_custom_connector_oauth_configs
     ADD CONSTRAINT org_custom_connector_oauth_configs_pkey PRIMARY KEY (connector_id);
-
-
---
--- Name: org_custom_connector_secrets org_custom_connector_secrets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.org_custom_connector_secrets
-    ADD CONSTRAINT org_custom_connector_secrets_pkey PRIMARY KEY (id);
-
-
---
--- Name: org_custom_connector_values org_custom_connector_values_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.org_custom_connector_values
-    ADD CONSTRAINT org_custom_connector_values_pkey PRIMARY KEY (id);
 
 
 --
@@ -4847,11 +5891,51 @@ ALTER TABLE ONLY public.org_usage_allowance_windows
 
 
 --
+-- Name: pi_memory_phase2_jobs pi_memory_phase2_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_phase2_jobs
+    ADD CONSTRAINT pi_memory_phase2_jobs_pkey PRIMARY KEY (memory_storage_id);
+
+
+--
+-- Name: pi_memory_publication_provenance pi_memory_publication_provenance_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_publication_provenance
+    ADD CONSTRAINT pi_memory_publication_provenance_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pi_memory_stage1_candidates pi_memory_stage1_candidates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_stage1_candidates
+    ADD CONSTRAINT pi_memory_stage1_candidates_pkey PRIMARY KEY (memory_storage_id, pi_session_id);
+
+
+--
+-- Name: pi_resource_snapshots pi_resource_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_resource_snapshots
+    ADD CONSTRAINT pi_resource_snapshots_pkey PRIMARY KEY (digest);
+
+
+--
 -- Name: presentation_artifacts presentation_artifacts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.presentation_artifacts
     ADD CONSTRAINT presentation_artifacts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: presentation_templates presentation_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.presentation_templates
+    ADD CONSTRAINT presentation_templates_pkey PRIMARY KEY (id);
 
 
 --
@@ -4911,6 +5995,14 @@ ALTER TABLE ONLY public.secrets
 
 
 --
+-- Name: shared_threads shared_threads_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shared_threads
+    ADD CONSTRAINT shared_threads_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: skills skills_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4959,11 +6051,19 @@ ALTER TABLE ONLY public.slack_org_installations
 
 
 --
--- Name: slack_user_agent_preferences slack_user_agent_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: slack_user_agent_preferences slack_user_agent_preferences_user_id_org_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.slack_user_agent_preferences
-    ADD CONSTRAINT slack_user_agent_preferences_pkey PRIMARY KEY (vm0_user_id, org_id);
+    ADD CONSTRAINT slack_user_agent_preferences_user_id_org_id_pk PRIMARY KEY (user_id, org_id);
+
+
+--
+-- Name: socialkit_download_jobs socialkit_download_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.socialkit_download_jobs
+    ADD CONSTRAINT socialkit_download_jobs_pkey PRIMARY KEY (id);
 
 
 --
@@ -4991,27 +6091,19 @@ ALTER TABLE ONLY public.storages
 
 
 --
--- Name: strapi_integrations strapi_integrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: stripe_workflow_automation_health stripe_workflow_automation_health_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.strapi_integrations
-    ADD CONSTRAINT strapi_integrations_pkey PRIMARY KEY (id);
-
-
---
--- Name: strapi_webhook_deliveries strapi_webhook_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.strapi_webhook_deliveries
-    ADD CONSTRAINT strapi_webhook_deliveries_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.stripe_workflow_automation_health
+    ADD CONSTRAINT stripe_workflow_automation_health_pkey PRIMARY KEY (automation_id);
 
 
 --
--- Name: strapi_workflow_pending_events strapi_workflow_pending_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: stripe_workflow_deliveries stripe_workflow_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.strapi_workflow_pending_events
-    ADD CONSTRAINT strapi_workflow_pending_events_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.stripe_workflow_deliveries
+    ADD CONSTRAINT stripe_workflow_deliveries_pkey PRIMARY KEY (id);
 
 
 --
@@ -5047,11 +6139,11 @@ ALTER TABLE ONLY public.teams_org_installations
 
 
 --
--- Name: teams_user_agent_preferences teams_user_agent_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: teams_user_agent_preferences teams_user_agent_preferences_user_id_org_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.teams_user_agent_preferences
-    ADD CONSTRAINT teams_user_agent_preferences_pkey PRIMARY KEY (vm0_user_id, org_id);
+    ADD CONSTRAINT teams_user_agent_preferences_user_id_org_id_pk PRIMARY KEY (user_id, org_id);
 
 
 --
@@ -5087,11 +6179,11 @@ ALTER TABLE ONLY public.telegram_official_user_links
 
 
 --
--- Name: telegram_user_agent_preferences telegram_user_agent_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: telegram_user_agent_preferences telegram_user_agent_preferences_user_id_org_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.telegram_user_agent_preferences
-    ADD CONSTRAINT telegram_user_agent_preferences_pkey PRIMARY KEY (vm0_user_id, org_id);
+    ADD CONSTRAINT telegram_user_agent_preferences_user_id_org_id_pk PRIMARY KEY (user_id, org_id);
 
 
 --
@@ -5111,19 +6203,27 @@ ALTER TABLE ONLY public.thread_goals
 
 
 --
+-- Name: org_custom_connector_dcr_registrations uq_org_custom_connector_dcr_registration_id_connector; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_custom_connector_dcr_registrations
+    ADD CONSTRAINT uq_org_custom_connector_dcr_registration_id_connector UNIQUE (id, custom_connector_id);
+
+
+--
+-- Name: org_custom_connector_dcr_registrations uq_org_custom_connector_dcr_registration_issuer; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_custom_connector_dcr_registrations
+    ADD CONSTRAINT uq_org_custom_connector_dcr_registration_issuer UNIQUE (custom_connector_id, issuer);
+
+
+--
 -- Name: usage_allowance_allocations usage_allowance_allocations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.usage_allowance_allocations
     ADD CONSTRAINT usage_allowance_allocations_pkey PRIMARY KEY (id);
-
-
---
--- Name: usage_daily usage_daily_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.usage_daily
-    ADD CONSTRAINT usage_daily_pkey PRIMARY KEY (id);
 
 
 --
@@ -5140,6 +6240,86 @@ ALTER TABLE ONLY public.usage_event_hourly_rollup
 
 ALTER TABLE ONLY public.usage_event
     ADD CONSTRAINT usage_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_allocation_changes usage_pack_allocation_changes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_allocation_changes
+    ADD CONSTRAINT usage_pack_allocation_changes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_allocations usage_pack_allocations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_allocations
+    ADD CONSTRAINT usage_pack_allocations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_credit_grants usage_pack_credit_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_credit_grants
+    ADD CONSTRAINT usage_pack_credit_grants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_credit_refunds usage_pack_credit_refunds_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_credit_refunds
+    ADD CONSTRAINT usage_pack_credit_refunds_pkey PRIMARY KEY (credit_grant_id);
+
+
+--
+-- Name: usage_pack_invitation_purchases usage_pack_invitation_purchases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_invitation_purchases
+    ADD CONSTRAINT usage_pack_invitation_purchases_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_invoice_fulfillments usage_pack_invoice_fulfillments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_invoice_fulfillments
+    ADD CONSTRAINT usage_pack_invoice_fulfillments_pkey PRIMARY KEY (stripe_invoice_id);
+
+
+--
+-- Name: usage_pack_subscription_changes usage_pack_subscription_changes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_subscription_changes
+    ADD CONSTRAINT usage_pack_subscription_changes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_subscription_migration_selections usage_pack_subscription_migration_selections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_subscription_migration_selections
+    ADD CONSTRAINT usage_pack_subscription_migration_selections_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_subscription_migrations usage_pack_subscription_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_subscription_migrations
+    ADD CONSTRAINT usage_pack_subscription_migrations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: usage_pack_subscriptions usage_pack_subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_subscriptions
+    ADD CONSTRAINT usage_pack_subscriptions_pkey PRIMARY KEY (id);
 
 
 --
@@ -5231,11 +6411,19 @@ ALTER TABLE ONLY public.video_artifacts
 
 
 --
--- Name: vm0_api_keys vm0_api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: workflow_automations workflow_automations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.vm0_api_keys
-    ADD CONSTRAINT vm0_api_keys_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.workflow_automations
+    ADD CONSTRAINT workflow_automations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: workflow_github_processed_events workflow_github_processed_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow_github_processed_events
+    ADD CONSTRAINT workflow_github_processed_events_pkey PRIMARY KEY (id);
 
 
 --
@@ -5247,67 +6435,55 @@ ALTER TABLE ONLY public.workflow_user_automation_threads
 
 
 --
--- Name: zero_agents zero_agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: workflow_webhook_automations workflow_webhook_automations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_agents
-    ADD CONSTRAINT zero_agents_pkey PRIMARY KEY (id);
-
-
---
--- Name: zero_runs zero_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_runs
-    ADD CONSTRAINT zero_runs_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.workflow_webhook_automations
+    ADD CONSTRAINT workflow_webhook_automations_pkey PRIMARY KEY (automation_id);
 
 
 --
--- Name: zero_workflow_automations zero_workflow_automations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: workflow_webhook_deliveries workflow_webhook_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_workflow_automations
-    ADD CONSTRAINT zero_workflow_automations_pkey PRIMARY KEY (id);
-
-
---
--- Name: zero_workflow_github_processed_events zero_workflow_github_processed_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_github_processed_events
-    ADD CONSTRAINT zero_workflow_github_processed_events_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.workflow_webhook_deliveries
+    ADD CONSTRAINT workflow_webhook_deliveries_pkey PRIMARY KEY (id);
 
 
 --
--- Name: zero_workflow_strapi_automations zero_workflow_strapi_automations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: workflows workflows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_workflow_strapi_automations
-    ADD CONSTRAINT zero_workflow_strapi_automations_pkey PRIMARY KEY (automation_id);
-
-
---
--- Name: zero_workflow_webhook_automations zero_workflow_webhook_automations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_webhook_automations
-    ADD CONSTRAINT zero_workflow_webhook_automations_pkey PRIMARY KEY (automation_id);
+ALTER TABLE ONLY public.workflows
+    ADD CONSTRAINT workflows_pkey PRIMARY KEY (id);
 
 
 --
--- Name: zero_workflow_webhook_deliveries zero_workflow_webhook_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: active_input_deliveries_run_open_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_workflow_webhook_deliveries
-    ADD CONSTRAINT zero_workflow_webhook_deliveries_pkey PRIMARY KEY (id);
+CREATE UNIQUE INDEX active_input_deliveries_run_open_unique ON public.active_input_deliveries USING btree (run_id) WHERE (status = 'open'::text);
 
 
 --
--- Name: zero_workflows zero_workflows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: active_input_deliveries_thread_open_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_workflows
-    ADD CONSTRAINT zero_workflows_pkey PRIMARY KEY (id);
+CREATE INDEX active_input_deliveries_thread_open_idx ON public.active_input_deliveries USING btree (chat_thread_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: active_input_delivery_items_delivery_position_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX active_input_delivery_items_delivery_position_unique ON public.active_input_delivery_items USING btree (delivery_id, "position");
+
+
+--
+-- Name: active_input_delivery_items_source_open_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX active_input_delivery_items_source_open_unique ON public.active_input_delivery_items USING btree (source_event_id) WHERE (disposition IS NULL);
 
 
 --
@@ -5388,17 +6564,52 @@ CREATE INDEX chat_automation_context_automation_id_idx ON public.chat_automation
 
 
 --
--- Name: chat_event_asset_refs_asset_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: chat_event_search_messages_tsv_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX chat_event_asset_refs_asset_idx ON public.chat_event_asset_refs USING btree (asset_id);
+CREATE INDEX chat_event_search_messages_tsv_idx ON public.chat_event_search_messages USING gin (tsv);
 
 
 --
--- Name: chat_event_asset_refs_event_position_unique; Type: INDEX; Schema: public; Owner: -
+-- Name: chat_event_search_messages_user_org_agent_id_created_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX chat_event_asset_refs_event_position_unique ON public.chat_event_asset_refs USING btree (chat_event_id, "position");
+CREATE INDEX chat_event_search_messages_user_org_agent_id_created_idx ON public.chat_event_search_messages USING btree (user_id, org_id, agent_id, created_at DESC NULLS LAST);
+
+
+--
+-- Name: chat_event_search_messages_user_org_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX chat_event_search_messages_user_org_created_idx ON public.chat_event_search_messages USING btree (user_id, org_id, created_at DESC NULLS LAST);
+
+
+--
+-- Name: chat_event_snapshots_object_key_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX chat_event_snapshots_object_key_idx ON public.chat_event_snapshots USING btree (object_key);
+
+
+--
+-- Name: chat_event_snapshots_thread_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX chat_event_snapshots_thread_idx ON public.chat_event_snapshots USING btree (chat_thread_id);
+
+
+--
+-- Name: chat_event_snapshots_thread_version_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX chat_event_snapshots_thread_version_unique ON public.chat_event_snapshots USING btree (chat_thread_id, archive_schema_version);
+
+
+--
+-- Name: chat_events_control_interrupt_run_id_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX chat_events_control_interrupt_run_id_unique ON public.chat_events USING btree (run_id) WHERE ((event_type = 'control.interrupt'::text) AND (run_id IS NOT NULL));
 
 
 --
@@ -5406,13 +6617,6 @@ CREATE UNIQUE INDEX chat_event_asset_refs_event_position_unique ON public.chat_e
 --
 
 CREATE INDEX chat_events_input_automation_context_idx ON public.chat_events USING btree (context_id) WHERE (event_type = 'input.automation'::text);
-
-
---
--- Name: chat_events_interrupts_run_id_not_null_unique; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX chat_events_interrupts_run_id_not_null_unique ON public.chat_events USING btree (interrupts_run_id) WHERE (interrupts_run_id IS NOT NULL);
 
 
 --
@@ -5437,24 +6641,10 @@ CREATE UNIQUE INDEX chat_events_run_event_seq_unique ON public.chat_events USING
 
 
 --
--- Name: chat_events_run_seq_unique; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX chat_events_run_seq_unique ON public.chat_events USING btree (run_id, sequence_number);
-
-
---
 -- Name: chat_events_run_terminal_unique; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX chat_events_run_terminal_unique ON public.chat_events USING btree (run_id) WHERE (event_type = ANY (ARRAY['run.completed'::text, 'run.failed'::text, 'run.cancelled'::text]));
-
-
---
--- Name: chat_events_run_thinking_unique; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX chat_events_run_thinking_unique ON public.chat_events USING btree (run_id) WHERE (thinking IS NOT NULL);
 
 
 --
@@ -5465,17 +6655,17 @@ CREATE UNIQUE INDEX chat_events_thread_seq_unique ON public.chat_events USING bt
 
 
 --
--- Name: chat_events_usage_run_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX chat_events_usage_run_id_idx ON public.chat_events USING btree (run_id) WHERE (usage_payload IS NOT NULL);
-
-
---
 -- Name: chat_thread_events_user_org_seq_unique; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX chat_thread_events_user_org_seq_unique ON public.chat_thread_events USING btree (user_id, org_id, seq_id);
+
+
+--
+-- Name: connector_catalog_runtime_projection_sets_source_schema_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX connector_catalog_runtime_projection_sets_source_schema_unique ON public.connector_catalog_runtime_projection_sets USING btree (source_id, schema_version);
 
 
 --
@@ -5493,6 +6683,13 @@ CREATE INDEX email_outbox_drain_idx ON public.email_outbox USING btree (status, 
 
 
 --
+-- Name: email_outbox_source_run_automation_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX email_outbox_source_run_automation_unique ON public.email_outbox USING btree (source_run_id, source_workflow_automation_id);
+
+
+--
 -- Name: email_suppressions_email_lower_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5507,24 +6704,10 @@ CREATE UNIQUE INDEX github_installations_installation_id_unique ON public.github
 
 
 --
--- Name: idx_agent_compose_versions_compose_id; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_agent_drafts_user_org_agent; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_agent_compose_versions_compose_id ON public.agent_compose_versions USING btree (compose_id);
-
-
---
--- Name: idx_agent_composes_org; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_agent_composes_org ON public.agent_composes USING btree (org_id);
-
-
---
--- Name: idx_agent_composes_org_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_agent_composes_org_name ON public.agent_composes USING btree (org_id, name);
+CREATE UNIQUE INDEX idx_agent_drafts_user_org_agent ON public.agent_drafts USING btree (user_id, org_id, agent_id);
 
 
 --
@@ -5542,17 +6725,17 @@ CREATE INDEX idx_agent_run_callbacks_run_id ON public.agent_run_callbacks USING 
 
 
 --
--- Name: idx_agent_run_custom_connector_auth_refs_expires; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_agent_runs_chat_thread_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_agent_run_custom_connector_auth_refs_expires ON public.agent_run_custom_connector_auth_refs USING btree (expires_at);
+CREATE INDEX idx_agent_runs_chat_thread_id ON public.agent_runs USING btree (chat_thread_id) WHERE (chat_thread_id IS NOT NULL);
 
 
 --
--- Name: idx_agent_runs_completed_org_user; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_agent_runs_goal; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_agent_runs_completed_org_user ON public.agent_runs USING btree (completed_at DESC NULLS LAST, org_id, user_id) WHERE (completed_at IS NOT NULL);
+CREATE INDEX idx_agent_runs_goal ON public.agent_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL);
 
 
 --
@@ -5598,6 +6781,13 @@ CREATE INDEX idx_agent_runs_user_created ON public.agent_runs USING btree (user_
 
 
 --
+-- Name: idx_agent_runs_workflow_automation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agent_runs_workflow_automation ON public.agent_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL);
+
+
+--
 -- Name: idx_agent_sessions_org; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5605,10 +6795,10 @@ CREATE INDEX idx_agent_sessions_org ON public.agent_sessions USING btree (org_id
 
 
 --
--- Name: idx_agent_sessions_user_compose; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_agent_sessions_user_agent; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_agent_sessions_user_compose ON public.agent_sessions USING btree (user_id, agent_compose_id);
+CREATE INDEX idx_agent_sessions_user_agent ON public.agent_sessions USING btree (user_id, agent_id);
 
 
 --
@@ -5675,10 +6865,24 @@ CREATE UNIQUE INDEX idx_agentphone_user_links_phone_handle ON public.agentphone_
 
 
 --
--- Name: idx_agentphone_user_links_vm0_org; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_agentphone_user_links_user_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_agentphone_user_links_vm0_org ON public.agentphone_user_links USING btree (vm0_user_id, org_id);
+CREATE UNIQUE INDEX idx_agentphone_user_links_user_org ON public.agentphone_user_links USING btree (user_id, org_id);
+
+
+--
+-- Name: idx_agents_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_agents_org ON public.agents USING btree (org_id);
+
+
+--
+-- Name: idx_agents_org_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_agents_org_name ON public.agents USING btree (org_id, name);
 
 
 --
@@ -5735,6 +6939,34 @@ CREATE INDEX idx_banking_agent_enablements_agent_user ON public.banking_agent_en
 --
 
 CREATE UNIQUE INDEX idx_banking_agent_enablements_unique ON public.banking_agent_enablements USING btree (org_id, user_id, agent_id, connection_id);
+
+
+--
+-- Name: idx_banking_connect_events_session; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_banking_connect_events_session ON public.banking_connect_events USING btree (session_id, created_at);
+
+
+--
+-- Name: idx_banking_connect_sessions_connection; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_banking_connect_sessions_connection ON public.banking_connect_sessions USING btree (connection_id, created_at);
+
+
+--
+-- Name: idx_banking_connect_sessions_one_pending; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_banking_connect_sessions_one_pending ON public.banking_connect_sessions USING btree (connection_id) WHERE ((status)::text = 'pending'::text);
+
+
+--
+-- Name: idx_banking_connect_sessions_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_banking_connect_sessions_owner ON public.banking_connect_sessions USING btree (org_id, user_id, created_at);
 
 
 --
@@ -5850,6 +7082,20 @@ CREATE INDEX idx_built_in_generation_jobs_user_created ON public.built_in_genera
 
 
 --
+-- Name: idx_built_in_model_keys_vendor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_built_in_model_keys_vendor ON public.built_in_model_keys USING btree (vendor);
+
+
+--
+-- Name: idx_chat_events_created_at_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_events_created_at_id ON public.chat_events USING btree (created_at, id);
+
+
+--
 -- Name: idx_chat_events_run_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5871,6 +7117,34 @@ CREATE INDEX idx_chat_events_thread_run_terminal_created ON public.chat_events U
 
 
 --
+-- Name: idx_chat_thread_connector_selections_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_thread_connector_selections_connector ON public.chat_thread_connector_selections USING btree (connector_id);
+
+
+--
+-- Name: idx_chat_thread_connector_selections_custom_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_thread_connector_selections_custom_connector ON public.chat_thread_connector_selections USING btree (custom_connector_id);
+
+
+--
+-- Name: idx_chat_thread_connector_selections_thread_custom_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_chat_thread_connector_selections_thread_custom_connector ON public.chat_thread_connector_selections USING btree (chat_thread_id, custom_connector_id) WHERE (custom_connector_id IS NOT NULL);
+
+
+--
+-- Name: idx_chat_thread_connector_selections_thread_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_chat_thread_connector_selections_thread_slug ON public.chat_thread_connector_selections USING btree (chat_thread_id, connector_slug) WHERE (connector_slug IS NOT NULL);
+
+
+--
 -- Name: idx_chat_thread_events_thread_created; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5885,24 +7159,24 @@ CREATE INDEX idx_chat_thread_events_user_org_created ON public.chat_thread_event
 
 
 --
--- Name: idx_chat_threads_user_compose_last_message; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_chat_threads_user_agent_last_message; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_chat_threads_user_compose_last_message ON public.chat_threads USING btree (user_id, agent_compose_id, last_message_at DESC NULLS LAST);
-
-
---
--- Name: idx_chat_threads_user_compose_pinned; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_chat_threads_user_compose_pinned ON public.chat_threads USING btree (user_id, agent_compose_id) WHERE (pinned_at IS NOT NULL);
+CREATE INDEX idx_chat_threads_user_agent_last_message ON public.chat_threads USING btree (user_id, agent_id, last_message_at DESC NULLS LAST);
 
 
 --
--- Name: idx_chat_threads_user_compose_updated; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_chat_threads_user_agent_pinned; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_chat_threads_user_compose_updated ON public.chat_threads USING btree (user_id, agent_compose_id, updated_at DESC NULLS LAST);
+CREATE INDEX idx_chat_threads_user_agent_pinned ON public.chat_threads USING btree (user_id, agent_id) WHERE (pinned_at IS NOT NULL);
+
+
+--
+-- Name: idx_chat_threads_user_agent_updated; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_threads_user_agent_updated ON public.chat_threads USING btree (user_id, agent_id, updated_at DESC NULLS LAST);
 
 
 --
@@ -5923,7 +7197,7 @@ CREATE INDEX idx_compose_jobs_created ON public.compose_jobs USING btree (create
 -- Name: idx_compose_jobs_user_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_compose_jobs_user_active ON public.compose_jobs USING btree (user_id) WHERE status IN ('pending', 'running');
+CREATE UNIQUE INDEX idx_compose_jobs_user_active ON public.compose_jobs USING btree (user_id) WHERE (status IN ('pending', 'running'));
 
 
 --
@@ -6098,14 +7372,35 @@ CREATE INDEX idx_connectors_org ON public.connectors USING btree (org_id);
 -- Name: idx_connectors_org_user_custom_connector; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_connectors_org_user_custom_connector ON public.connectors USING btree (org_id, user_id, custom_connector_id) WHERE (custom_connector_id IS NOT NULL);
+CREATE INDEX idx_connectors_org_user_custom_connector ON public.connectors USING btree (org_id, user_id, custom_connector_id, created_at, id) WHERE (custom_connector_id IS NOT NULL);
+
+
+--
+-- Name: idx_connectors_org_user_custom_connector_default; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_connectors_org_user_custom_connector_default ON public.connectors USING btree (org_id, user_id, custom_connector_id) WHERE ((custom_connector_id IS NOT NULL) AND (is_default = true));
 
 
 --
 -- Name: idx_connectors_org_user_slug; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_connectors_org_user_slug ON public.connectors USING btree (org_id, user_id, connector_slug) WHERE (connector_slug IS NOT NULL);
+CREATE INDEX idx_connectors_org_user_slug ON public.connectors USING btree (org_id, user_id, connector_slug, created_at, id) WHERE (connector_slug IS NOT NULL);
+
+
+--
+-- Name: idx_connectors_org_user_slug_default; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_connectors_org_user_slug_default ON public.connectors USING btree (org_id, user_id, connector_slug) WHERE ((connector_slug IS NOT NULL) AND (is_default = true));
+
+
+--
+-- Name: idx_connectors_stripe_oauth_external_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_connectors_stripe_oauth_external_id ON public.connectors USING btree (external_id) WHERE (((connector_slug)::text = 'stripe'::text) AND ((auth_method)::text = 'oauth'::text));
 
 
 --
@@ -6113,6 +7408,20 @@ CREATE UNIQUE INDEX idx_connectors_org_user_slug ON public.connectors USING btre
 --
 
 CREATE INDEX idx_credit_expires_org_active ON public.credit_expires_record USING btree (org_id, expires_at) WHERE (remaining > 0);
+
+
+--
+-- Name: idx_custom_connector_account_oauth_bindings_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_custom_connector_account_oauth_bindings_connector ON public.custom_connector_account_oauth_bindings USING btree (custom_connector_id);
+
+
+--
+-- Name: idx_custom_connector_account_oauth_bindings_dcr; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_custom_connector_account_oauth_bindings_dcr ON public.custom_connector_account_oauth_bindings USING btree (dcr_registration_id);
 
 
 --
@@ -6130,69 +7439,6 @@ CREATE INDEX idx_desktop_auth_handoff_codes_user_created ON public.desktop_auth_
 
 
 --
--- Name: idx_e2e_slack_mock_call_log_created_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_slack_mock_call_log_created_at ON public.e2e_slack_mock_call_log USING btree (created_at);
-
-
---
--- Name: idx_e2e_slack_mock_call_log_method; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_slack_mock_call_log_method ON public.e2e_slack_mock_call_log USING btree (method);
-
-
---
--- Name: idx_e2e_teams_mock_call_log_conversation; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_teams_mock_call_log_conversation ON public.e2e_teams_mock_call_log USING btree (conversation_id);
-
-
---
--- Name: idx_e2e_teams_mock_call_log_created_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_teams_mock_call_log_created_at ON public.e2e_teams_mock_call_log USING btree (created_at);
-
-
---
--- Name: idx_e2e_teams_mock_call_log_method; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_teams_mock_call_log_method ON public.e2e_teams_mock_call_log USING btree (method);
-
-
---
--- Name: idx_e2e_teams_mock_call_log_tenant; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_teams_mock_call_log_tenant ON public.e2e_teams_mock_call_log USING btree (tenant_id);
-
-
---
--- Name: idx_e2e_telegram_mock_call_log_chat_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_telegram_mock_call_log_chat_id ON public.e2e_telegram_mock_call_log USING btree (chat_id);
-
-
---
--- Name: idx_e2e_telegram_mock_call_log_created_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_telegram_mock_call_log_created_at ON public.e2e_telegram_mock_call_log USING btree (created_at);
-
-
---
--- Name: idx_e2e_telegram_mock_call_log_method; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_e2e_telegram_mock_call_log_method ON public.e2e_telegram_mock_call_log USING btree (method);
-
-
---
 -- Name: idx_export_jobs_created; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6203,7 +7449,7 @@ CREATE INDEX idx_export_jobs_created ON public.export_jobs USING btree (created_
 -- Name: idx_export_jobs_user_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_export_jobs_user_active ON public.export_jobs USING btree (user_id) WHERE status IN ('pending', 'running');
+CREATE UNIQUE INDEX idx_export_jobs_user_active ON public.export_jobs USING btree (user_id) WHERE (status IN ('pending', 'running'));
 
 
 --
@@ -6228,10 +7474,24 @@ CREATE UNIQUE INDEX idx_feishu_chat_thread_routes_conn_chat_thread_user ON publi
 
 
 --
+-- Name: idx_feishu_org_connections_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_feishu_org_connections_connector ON public.feishu_org_connections USING btree (connector_id) WHERE (connector_id IS NOT NULL);
+
+
+--
 -- Name: idx_feishu_org_connections_installation; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_feishu_org_connections_installation ON public.feishu_org_connections USING btree (installation_id);
+
+
+--
+-- Name: idx_feishu_org_connections_user_id_installation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_feishu_org_connections_user_id_installation ON public.feishu_org_connections USING btree (user_id, installation_id);
 
 
 --
@@ -6242,17 +7502,17 @@ CREATE UNIQUE INDEX idx_feishu_org_connections_user_installation ON public.feish
 
 
 --
--- Name: idx_feishu_org_connections_vm0_installation; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_feishu_org_connections_vm0_installation ON public.feishu_org_connections USING btree (vm0_user_id, installation_id);
-
-
---
 -- Name: idx_feishu_org_installations_app; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX idx_feishu_org_installations_app ON public.feishu_org_installations USING btree (app_id);
+
+
+--
+-- Name: idx_feishu_org_installations_custom_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_feishu_org_installations_custom_connector ON public.feishu_org_installations USING btree (custom_connector_id);
 
 
 --
@@ -6382,6 +7642,48 @@ CREATE INDEX idx_google_calendar_watch_states_resource ON public.google_calendar
 
 
 --
+-- Name: idx_google_forms_automation_cursors_watch; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_google_forms_automation_cursors_watch ON public.google_forms_automation_cursors USING btree (watch_state_id);
+
+
+--
+-- Name: idx_google_forms_processed_events_automation_response; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_google_forms_processed_events_automation_response ON public.google_forms_processed_events USING btree (watch_state_id, automation_id, response_id, last_submitted_time);
+
+
+--
+-- Name: idx_google_forms_processed_events_pubsub_message; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_google_forms_processed_events_pubsub_message ON public.google_forms_processed_events USING btree (pubsub_message_id);
+
+
+--
+-- Name: idx_google_forms_watch_states_connector_form; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_google_forms_watch_states_connector_form ON public.google_forms_watch_states USING btree (connector_id, form_id);
+
+
+--
+-- Name: idx_google_forms_watch_states_renewal; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_google_forms_watch_states_renewal ON public.google_forms_watch_states USING btree (expire_time);
+
+
+--
+-- Name: idx_google_forms_watch_states_watch; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_google_forms_watch_states_watch ON public.google_forms_watch_states USING btree (watch_id);
+
+
+--
 -- Name: idx_google_workspace_event_subscription_name; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6501,13 +7803,6 @@ CREATE UNIQUE INDEX idx_image_artifact_edit_snapshots_owner_artifact ON public.i
 
 
 --
--- Name: idx_insights_daily_org_user_date_desc; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_insights_daily_org_user_date_desc ON public.insights_daily USING btree (org_id, user_id, date DESC NULLS LAST);
-
-
---
 -- Name: idx_mail_drafts_chat_thread; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6515,10 +7810,52 @@ CREATE INDEX idx_mail_drafts_chat_thread ON public.mail_drafts USING btree (chat
 
 
 --
--- Name: idx_mail_drafts_follow_up_automation; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_memory_summary_projections_expired_lease; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_mail_drafts_follow_up_automation ON public.mail_drafts USING btree (follow_up_automation_id);
+CREATE INDEX idx_memory_summary_projections_expired_lease ON public.memory_summary_projections USING btree (lease_expires_at, memory_storage_id, storage_version_id) WHERE ((status)::text = 'running'::text);
+
+
+--
+-- Name: idx_memory_summary_projections_owner; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_memory_summary_projections_owner ON public.memory_summary_projections USING btree (org_id, user_id, memory_storage_id, storage_version_id);
+
+
+--
+-- Name: idx_memory_summary_projections_pending; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_memory_summary_projections_pending ON public.memory_summary_projections USING btree (available_at, memory_storage_id, storage_version_id) WHERE ((status)::text = 'pending'::text);
+
+
+--
+-- Name: idx_model_provider_account_secrets_account_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_model_provider_account_secrets_account_name ON public.model_provider_account_secrets USING btree (model_provider_account_id, name);
+
+
+--
+-- Name: idx_model_provider_accounts_one_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_model_provider_accounts_one_active ON public.model_provider_accounts USING btree (model_provider_id) WHERE (is_active = true);
+
+
+--
+-- Name: idx_model_provider_accounts_owner_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_model_provider_accounts_owner_type ON public.model_provider_accounts USING btree (org_id, user_id, type);
+
+
+--
+-- Name: idx_model_provider_accounts_provider; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_model_provider_accounts_provider ON public.model_provider_accounts USING btree (model_provider_id);
 
 
 --
@@ -6599,52 +7936,17 @@ CREATE INDEX idx_model_providers_secret ON public.model_providers USING btree (s
 
 
 --
--- Name: idx_model_stat_hour_start; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_model_stat_hour_start ON public.model_stat USING btree (hour_start DESC NULLS LAST);
-
-
---
--- Name: idx_model_stat_model_hour; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_model_stat_model_hour ON public.model_stat USING btree (model, hour_start DESC NULLS LAST);
-
-
---
--- Name: idx_model_usage_observation_observed_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_model_usage_observation_observed_at ON public.model_usage_observation USING btree (observed_at DESC NULLS LAST);
-
-
---
--- Name: idx_morning_brief_deliveries_org_user_date; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_morning_brief_deliveries_org_user_date ON public.morning_brief_deliveries USING btree (org_id, user_id, brief_date);
-
-
---
--- Name: idx_morning_brief_deliveries_run; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_morning_brief_deliveries_run ON public.morning_brief_deliveries USING btree (run_id);
-
-
---
--- Name: idx_morning_brief_schedules_next_run; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_morning_brief_schedules_next_run ON public.morning_brief_schedules USING btree (next_run_at) WHERE (next_run_at IS NOT NULL);
-
-
---
 -- Name: idx_notion_pending_events_automation_page_family_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_notion_pending_events_automation_page_family_active ON public.notion_workflow_pending_events USING btree (automation_id, page_id, event_family) WHERE status IN ('pending', 'running');
+CREATE UNIQUE INDEX idx_notion_pending_events_automation_page_family_active ON public.notion_workflow_pending_events USING btree (automation_id, page_id, event_family) WHERE (status IN ('pending', 'running'));
+
+
+--
+-- Name: idx_notion_pending_events_connector; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_notion_pending_events_connector ON public.notion_workflow_pending_events USING btree (connector_id);
 
 
 --
@@ -6697,10 +7999,31 @@ CREATE UNIQUE INDEX idx_notion_webhook_secrets_active_single ON public.notion_we
 
 
 --
--- Name: idx_org_cache_slug; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_official_workflow_automation_identities_automation_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_org_cache_slug ON public.org_cache USING btree (slug);
+CREATE UNIQUE INDEX idx_official_workflow_automation_identities_automation_unique ON public.official_workflow_automation_identities USING btree (automation_id) WHERE (automation_id IS NOT NULL);
+
+
+--
+-- Name: idx_official_workflow_automation_identities_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_official_workflow_automation_identities_key ON public.official_workflow_automation_identities USING btree (workflow_id, blueprint_key);
+
+
+--
+-- Name: idx_official_workflow_automation_identities_workflow; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_official_workflow_automation_identities_workflow ON public.official_workflow_automation_identities USING btree (workflow_id);
+
+
+--
+-- Name: idx_official_workflow_reconciliation_work_due; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_official_workflow_reconciliation_work_due ON public.official_workflow_reconciliation_work USING btree (available_at, definition_name);
 
 
 --
@@ -6725,45 +8048,10 @@ CREATE INDEX idx_org_concurrency_subscriptions_status_period ON public.org_concu
 
 
 --
--- Name: idx_org_custom_connector_secrets_connector; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_org_custom_connector_dcr_registrations_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_org_custom_connector_secrets_connector ON public.org_custom_connector_secrets USING btree (connector_id);
-
-
---
--- Name: idx_org_custom_connector_secrets_connector_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_org_custom_connector_secrets_connector_user ON public.org_custom_connector_secrets USING btree (connector_id, user_id);
-
-
---
--- Name: idx_org_custom_connector_secrets_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_org_custom_connector_secrets_user ON public.org_custom_connector_secrets USING btree (user_id);
-
-
---
--- Name: idx_org_custom_connector_values_connector; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_org_custom_connector_values_connector ON public.org_custom_connector_values USING btree (connector_id);
-
-
---
--- Name: idx_org_custom_connector_values_unique; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_org_custom_connector_values_unique ON public.org_custom_connector_values USING btree (connector_id, user_id, kind, key);
-
-
---
--- Name: idx_org_custom_connector_values_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_org_custom_connector_values_user ON public.org_custom_connector_values USING btree (user_id);
+CREATE INDEX idx_org_custom_connector_dcr_registrations_org ON public.org_custom_connector_dcr_registrations USING btree (org_id);
 
 
 --
@@ -6778,6 +8066,27 @@ CREATE INDEX idx_org_custom_connectors_org ON public.org_custom_connectors USING
 --
 
 CREATE UNIQUE INDEX idx_org_custom_connectors_org_slug ON public.org_custom_connectors USING btree (org_id, slug);
+
+
+--
+-- Name: idx_org_custom_connectors_skill_storage_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_org_custom_connectors_skill_storage_version ON public.org_custom_connectors USING btree (skill_storage_version_id);
+
+
+--
+-- Name: idx_org_metadata_acquisition_ad_group_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_org_metadata_acquisition_ad_group_id ON public.org_metadata USING btree (acquisition_ad_group_id);
+
+
+--
+-- Name: idx_org_metadata_acquisition_campaign_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_org_metadata_acquisition_campaign_id ON public.org_metadata USING btree (acquisition_campaign_id);
 
 
 --
@@ -6855,6 +8164,62 @@ CREATE INDEX idx_org_usage_allowance_windows_org_kind_expires ON public.org_usag
 --
 
 CREATE INDEX idx_org_usage_allowance_windows_org_kind_starts ON public.org_usage_allowance_windows USING btree (org_id, kind, starts_at DESC NULLS LAST);
+
+
+--
+-- Name: idx_pi_memory_phase2_jobs_claimable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_phase2_jobs_claimable ON public.pi_memory_phase2_jobs USING btree (status, retry_at, lease_expires_at, last_succeeded_at, updated_at, memory_storage_id) WHERE ((completed_revision < input_revision) AND (status IN ('pending', 'leased', 'retryable_failure')));
+
+
+--
+-- Name: idx_pi_memory_phase2_jobs_user_export; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_phase2_jobs_user_export ON public.pi_memory_phase2_jobs USING btree (user_id, org_id, memory_storage_id);
+
+
+--
+-- Name: idx_pi_memory_publication_provenance_attempt; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_pi_memory_publication_provenance_attempt ON public.pi_memory_publication_provenance USING btree (memory_storage_id, claimed_revision, base_version_id, prepared_version_id);
+
+
+--
+-- Name: idx_pi_memory_publication_provenance_user_export; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_publication_provenance_user_export ON public.pi_memory_publication_provenance USING btree (user_id, org_id, memory_storage_id, created_at);
+
+
+--
+-- Name: idx_pi_memory_stage1_candidates_eligible; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_stage1_candidates_eligible ON public.pi_memory_stage1_candidates USING btree (eligible_at, retry_at) WHERE (status IN ('pending', 'retryable_failure'));
+
+
+--
+-- Name: idx_pi_memory_stage1_candidates_expired_lease; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_stage1_candidates_expired_lease ON public.pi_memory_stage1_candidates USING btree (lease_expires_at) WHERE ((status)::text = 'leased'::text);
+
+
+--
+-- Name: idx_pi_memory_stage1_candidates_phase2; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_stage1_candidates_phase2 ON public.pi_memory_stage1_candidates USING btree (memory_storage_id, generated_at, pi_session_id) WHERE (status IN ('succeeded', 'succeeded_no_output'));
+
+
+--
+-- Name: idx_presentation_templates_owner_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_presentation_templates_owner_created ON public.presentation_templates USING btree (org_id, owner_user_id, created_at DESC NULLS LAST);
 
 
 --
@@ -6991,17 +8356,17 @@ CREATE UNIQUE INDEX idx_slack_chat_thread_routes_conn_channel_thread_user ON pub
 
 
 --
+-- Name: idx_slack_org_connections_user_id_workspace; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_slack_org_connections_user_id_workspace ON public.slack_org_connections USING btree (user_id, slack_workspace_id);
+
+
+--
 -- Name: idx_slack_org_connections_user_workspace; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX idx_slack_org_connections_user_workspace ON public.slack_org_connections USING btree (slack_user_id, slack_workspace_id);
-
-
---
--- Name: idx_slack_org_connections_vm0_user_workspace; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_slack_org_connections_vm0_user_workspace ON public.slack_org_connections USING btree (vm0_user_id, slack_workspace_id);
 
 
 --
@@ -7023,6 +8388,27 @@ CREATE INDEX idx_slack_org_installations_org ON public.slack_org_installations U
 --
 
 CREATE UNIQUE INDEX idx_slack_org_installations_org_unique ON public.slack_org_installations USING btree (org_id) WHERE (org_id IS NOT NULL);
+
+
+--
+-- Name: idx_socialkit_download_jobs_owner_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_socialkit_download_jobs_owner_created ON public.socialkit_download_jobs USING btree (org_id, user_id, created_at DESC NULLS LAST);
+
+
+--
+-- Name: idx_socialkit_download_jobs_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_socialkit_download_jobs_reconcile ON public.socialkit_download_jobs USING btree (status, claim_expires_at);
+
+
+--
+-- Name: idx_socialkit_download_jobs_run; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_socialkit_download_jobs_run ON public.socialkit_download_jobs USING btree (run_id);
 
 
 --
@@ -7061,59 +8447,24 @@ CREATE UNIQUE INDEX idx_storages_org_user_name ON public.storages USING btree (o
 
 
 --
--- Name: idx_strapi_integrations_org; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_stripe_workflow_deliveries_automation; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_strapi_integrations_org ON public.strapi_integrations USING btree (org_id);
-
-
---
--- Name: idx_strapi_integrations_org_base_url; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_strapi_integrations_org_base_url ON public.strapi_integrations USING btree (org_id, normalized_base_url);
+CREATE INDEX idx_stripe_workflow_deliveries_automation ON public.stripe_workflow_deliveries USING btree (automation_id);
 
 
 --
--- Name: idx_strapi_integrations_token_hash; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_stripe_workflow_deliveries_dedupe; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_strapi_integrations_token_hash ON public.strapi_integrations USING btree (token_hash);
-
-
---
--- Name: idx_strapi_pending_events_automation_document_active; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_strapi_pending_events_automation_document_active ON public.strapi_workflow_pending_events USING btree (automation_id, uid, document_id) WHERE ((status)::text = 'pending'::text);
+CREATE UNIQUE INDEX idx_stripe_workflow_deliveries_dedupe ON public.stripe_workflow_deliveries USING btree (automation_id, stripe_account_id, livemode, stripe_event_id);
 
 
 --
--- Name: idx_strapi_pending_events_due; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_stripe_workflow_deliveries_due; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_strapi_pending_events_due ON public.strapi_workflow_pending_events USING btree (status, run_after);
-
-
---
--- Name: idx_strapi_pending_events_integration; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_strapi_pending_events_integration ON public.strapi_workflow_pending_events USING btree (integration_id);
-
-
---
--- Name: idx_strapi_webhook_deliveries_integration_body; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_strapi_webhook_deliveries_integration_body ON public.strapi_webhook_deliveries USING btree (integration_id, body_sha256);
-
-
---
--- Name: idx_strapi_webhook_deliveries_received; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_strapi_webhook_deliveries_received ON public.strapi_webhook_deliveries USING btree (received_at);
+CREATE INDEX idx_stripe_workflow_deliveries_due ON public.stripe_workflow_deliveries USING btree (next_attempt_at, claim_expires_at) WHERE ((status)::text = 'pending'::text);
 
 
 --
@@ -7173,17 +8524,17 @@ CREATE INDEX idx_teams_org_connections_tenant ON public.teams_org_connections US
 
 
 --
+-- Name: idx_teams_org_connections_user_id_tenant; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_teams_org_connections_user_id_tenant ON public.teams_org_connections USING btree (user_id, teams_tenant_id);
+
+
+--
 -- Name: idx_teams_org_connections_user_tenant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX idx_teams_org_connections_user_tenant ON public.teams_org_connections USING btree (teams_user_id, teams_tenant_id) WHERE (teams_user_id IS NOT NULL);
-
-
---
--- Name: idx_teams_org_connections_vm0_tenant; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_teams_org_connections_vm0_tenant ON public.teams_org_connections USING btree (vm0_user_id, teams_tenant_id);
 
 
 --
@@ -7292,10 +8643,17 @@ CREATE UNIQUE INDEX idx_telegram_official_user_links_tg_user ON public.telegram_
 
 
 --
--- Name: idx_telegram_official_user_links_vm0_org; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_telegram_official_user_links_user_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_telegram_official_user_links_vm0_org ON public.telegram_official_user_links USING btree (vm0_user_id, org_id);
+CREATE UNIQUE INDEX idx_telegram_official_user_links_user_org ON public.telegram_official_user_links USING btree (user_id, org_id);
+
+
+--
+-- Name: idx_telegram_user_links_user_id_installation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_telegram_user_links_user_id_installation ON public.telegram_user_links USING btree (user_id, installation_id);
 
 
 --
@@ -7303,13 +8661,6 @@ CREATE UNIQUE INDEX idx_telegram_official_user_links_vm0_org ON public.telegram_
 --
 
 CREATE UNIQUE INDEX idx_telegram_user_links_user_installation ON public.telegram_user_links USING btree (telegram_user_id, installation_id);
-
-
---
--- Name: idx_telegram_user_links_vm0_installation; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_telegram_user_links_vm0_installation ON public.telegram_user_links USING btree (vm0_user_id, installation_id);
 
 
 --
@@ -7345,13 +8696,6 @@ CREATE INDEX idx_usage_allowance_allocations_org ON public.usage_allowance_alloc
 --
 
 CREATE INDEX idx_usage_allowance_allocations_run ON public.usage_allowance_allocations USING btree (run_id);
-
-
---
--- Name: idx_usage_event_compacted_created_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_usage_event_compacted_created_id ON public.usage_event USING btree (created_at, id) WHERE ((status)::text = 'compacted'::text);
 
 
 --
@@ -7439,6 +8783,139 @@ CREATE INDEX idx_usage_event_run_id ON public.usage_event USING btree (run_id);
 
 
 --
+-- Name: idx_usage_pack_allocations_org_invitation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_allocations_org_invitation ON public.usage_pack_allocations USING btree (org_id, invitation_id);
+
+
+--
+-- Name: idx_usage_pack_allocations_org_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_allocations_org_user ON public.usage_pack_allocations USING btree (org_id, user_id);
+
+
+--
+-- Name: idx_usage_pack_allocations_subscription_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_allocations_subscription_status ON public.usage_pack_allocations USING btree (usage_pack_subscription_id, status);
+
+
+--
+-- Name: idx_usage_pack_changes_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_changes_reconcile ON public.usage_pack_allocation_changes USING btree (status, updated_at);
+
+
+--
+-- Name: idx_usage_pack_changes_subscription_change; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_changes_subscription_change ON public.usage_pack_allocation_changes USING btree (subscription_change_id);
+
+
+--
+-- Name: idx_usage_pack_changes_subscription_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_changes_subscription_status ON public.usage_pack_allocation_changes USING btree (usage_pack_subscription_id, status);
+
+
+--
+-- Name: idx_usage_pack_credit_grants_member_spendable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_credit_grants_member_spendable ON public.usage_pack_credit_grants USING btree (org_id, user_id, grant_type, expires_at, id) WHERE (remaining_amount > 0);
+
+
+--
+-- Name: idx_usage_pack_credit_refunds_member; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_credit_refunds_member ON public.usage_pack_credit_refunds USING btree (org_id, user_id, status);
+
+
+--
+-- Name: idx_usage_pack_credit_refunds_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_credit_refunds_reconcile ON public.usage_pack_credit_refunds USING btree (status, updated_at);
+
+
+--
+-- Name: idx_usage_pack_invitation_purchases_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_invitation_purchases_org ON public.usage_pack_invitation_purchases USING btree (org_id);
+
+
+--
+-- Name: idx_usage_pack_invitation_purchases_payment_intent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_invitation_purchases_payment_intent ON public.usage_pack_invitation_purchases USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL);
+
+
+--
+-- Name: idx_usage_pack_invitation_purchases_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_invitation_purchases_reconcile ON public.usage_pack_invitation_purchases USING btree (status, current_period_end, updated_at);
+
+
+--
+-- Name: idx_usage_pack_invoice_fulfillments_subscription; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_invoice_fulfillments_subscription ON public.usage_pack_invoice_fulfillments USING btree (usage_pack_subscription_id, period_end);
+
+
+--
+-- Name: idx_usage_pack_migration_selections_migration; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_migration_selections_migration ON public.usage_pack_subscription_migration_selections USING btree (migration_id);
+
+
+--
+-- Name: idx_usage_pack_subscription_changes_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_subscription_changes_reconcile ON public.usage_pack_subscription_changes USING btree (status, updated_at);
+
+
+--
+-- Name: idx_usage_pack_subscription_changes_subscription_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_subscription_changes_subscription_status ON public.usage_pack_subscription_changes USING btree (usage_pack_subscription_id, status);
+
+
+--
+-- Name: idx_usage_pack_subscription_migrations_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_subscription_migrations_reconcile ON public.usage_pack_subscription_migrations USING btree (status, updated_at);
+
+
+--
+-- Name: idx_usage_pack_subscriptions_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_subscriptions_org ON public.usage_pack_subscriptions USING btree (org_id);
+
+
+--
+-- Name: idx_usage_pack_subscriptions_reconcile; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_usage_pack_subscriptions_reconcile ON public.usage_pack_subscriptions USING btree (subscription_status, current_period_end);
+
+
+--
 -- Name: idx_user_connectors_agent_user; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7495,6 +8972,13 @@ CREATE INDEX idx_variables_connector ON public.variables USING btree (connector_
 
 
 --
+-- Name: idx_variables_connector_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_variables_connector_name ON public.variables USING btree (connector_id, name) WHERE (connector_id IS NOT NULL);
+
+
+--
 -- Name: idx_variables_org; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7505,14 +8989,56 @@ CREATE INDEX idx_variables_org ON public.variables USING btree (org_id);
 -- Name: idx_variables_org_user_type_name; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_variables_org_user_type_name ON public.variables USING btree (org_id, user_id, type, name);
+CREATE UNIQUE INDEX idx_variables_org_user_type_name ON public.variables USING btree (org_id, user_id, type, name) WHERE (connector_id IS NULL);
 
 
 --
--- Name: idx_vm0_api_keys_vendor; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflow_automations_event_connector; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_vm0_api_keys_vendor ON public.vm0_api_keys USING btree (vendor);
+CREATE INDEX idx_workflow_automations_event_connector ON public.workflow_automations USING btree (event_connector_id);
+
+
+--
+-- Name: idx_workflow_automations_next_run; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_workflow_automations_next_run ON public.workflow_automations USING btree (next_run_at) WHERE (enabled = true);
+
+
+--
+-- Name: idx_workflow_automations_official_blueprint_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_workflow_automations_official_blueprint_unique ON public.workflow_automations USING btree (workflow_id, official_blueprint_key) WHERE (official_blueprint_key IS NOT NULL);
+
+
+--
+-- Name: idx_workflow_automations_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_workflow_automations_org ON public.workflow_automations USING btree (org_id);
+
+
+--
+-- Name: idx_workflow_automations_workflow; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_workflow_automations_workflow ON public.workflow_automations USING btree (workflow_id);
+
+
+--
+-- Name: idx_workflow_github_processed_automation_delivery; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_workflow_github_processed_automation_delivery ON public.workflow_github_processed_events USING btree (automation_id, github_delivery_id);
+
+
+--
+-- Name: idx_workflow_github_processed_subject; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_workflow_github_processed_subject ON public.workflow_github_processed_events USING btree (repo, subject_type, subject_number);
 
 
 --
@@ -7537,150 +9063,59 @@ CREATE INDEX idx_workflow_user_automation_threads_workflow_user ON public.workfl
 
 
 --
--- Name: idx_zero_agent_drafts_user_org_agent; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflow_webhook_automations_token_hash; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_zero_agent_drafts_user_org_agent ON public.zero_agent_drafts USING btree (user_id, org_id, agent_id);
-
-
---
--- Name: idx_zero_agents_org; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_agents_org ON public.zero_agents USING btree (org_id);
+CREATE UNIQUE INDEX idx_workflow_webhook_automations_token_hash ON public.workflow_webhook_automations USING btree (token_hash);
 
 
 --
--- Name: idx_zero_agents_org_name; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflow_webhook_deliveries_automation_key; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_zero_agents_org_name ON public.zero_agents USING btree (org_id, name);
-
-
---
--- Name: idx_zero_runs_chat_thread_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_runs_chat_thread_id ON public.zero_runs USING btree (chat_thread_id) WHERE (chat_thread_id IS NOT NULL);
+CREATE UNIQUE INDEX idx_workflow_webhook_deliveries_automation_key ON public.workflow_webhook_deliveries USING btree (automation_id, delivery_key);
 
 
 --
--- Name: idx_zero_runs_goal; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflow_webhook_deliveries_automation_received; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_zero_runs_goal ON public.zero_runs USING btree (goal_id) WHERE (goal_id IS NOT NULL);
-
-
---
--- Name: idx_zero_runs_run_group; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_runs_run_group ON public.zero_runs USING btree (run_group_id) WHERE (run_group_id IS NOT NULL);
+CREATE INDEX idx_workflow_webhook_deliveries_automation_received ON public.workflow_webhook_deliveries USING btree (automation_id, received_at);
 
 
 --
--- Name: idx_zero_runs_workflow_automation; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflows_agent; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_zero_runs_workflow_automation ON public.zero_runs USING btree (workflow_automation_id) WHERE (workflow_automation_id IS NOT NULL);
-
-
---
--- Name: idx_zero_workflow_automations_next_run; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflow_automations_next_run ON public.zero_workflow_automations USING btree (next_run_at) WHERE (enabled = true);
+CREATE INDEX idx_workflows_agent ON public.workflows USING btree (agent_id, name);
 
 
 --
--- Name: idx_zero_workflow_automations_org; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflows_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_zero_workflow_automations_org ON public.zero_workflow_automations USING btree (org_id);
-
-
---
--- Name: idx_zero_workflow_automations_workflow; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflow_automations_workflow ON public.zero_workflow_automations USING btree (workflow_id);
+CREATE INDEX idx_workflows_org ON public.workflows USING btree (org_id);
 
 
 --
--- Name: idx_zero_workflow_github_processed_automation_delivery; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflows_org_owner; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_zero_workflow_github_processed_automation_delivery ON public.zero_workflow_github_processed_events USING btree (automation_id, github_delivery_id);
-
-
---
--- Name: idx_zero_workflow_github_processed_subject; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflow_github_processed_subject ON public.zero_workflow_github_processed_events USING btree (repo, subject_type, subject_number);
+CREATE INDEX idx_workflows_org_owner ON public.workflows USING btree (org_id, owner_user_id);
 
 
 --
--- Name: idx_zero_workflow_strapi_automations_integration; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflows_private_owner_agent_name_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_zero_workflow_strapi_automations_integration ON public.zero_workflow_strapi_automations USING btree (integration_id);
-
-
---
--- Name: idx_zero_workflow_webhook_automations_token_hash; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_zero_workflow_webhook_automations_token_hash ON public.zero_workflow_webhook_automations USING btree (token_hash);
+CREATE UNIQUE INDEX idx_workflows_private_owner_agent_name_unique ON public.workflows USING btree (org_id, agent_id, owner_user_id, name) WHERE ((visibility)::text = 'private'::text);
 
 
 --
--- Name: idx_zero_workflow_webhook_deliveries_automation_key; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_workflows_public_agent_name_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_zero_workflow_webhook_deliveries_automation_key ON public.zero_workflow_webhook_deliveries USING btree (automation_id, delivery_key);
-
-
---
--- Name: idx_zero_workflow_webhook_deliveries_automation_received; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflow_webhook_deliveries_automation_received ON public.zero_workflow_webhook_deliveries USING btree (automation_id, received_at);
-
-
---
--- Name: idx_zero_workflows_agent; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflows_agent ON public.zero_workflows USING btree (agent_id, name);
-
-
---
--- Name: idx_zero_workflows_org; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflows_org ON public.zero_workflows USING btree (org_id);
-
-
---
--- Name: idx_zero_workflows_org_owner; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_zero_workflows_org_owner ON public.zero_workflows USING btree (org_id, owner_user_id);
-
-
---
--- Name: idx_zero_workflows_private_owner_agent_name_unique; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_zero_workflows_private_owner_agent_name_unique ON public.zero_workflows USING btree (org_id, agent_id, owner_user_id, name) WHERE ((visibility)::text = 'private'::text);
-
-
---
--- Name: idx_zero_workflows_public_agent_name_unique; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_zero_workflows_public_agent_name_unique ON public.zero_workflows USING btree (org_id, agent_id, name) WHERE ((visibility)::text = 'public'::text);
+CREATE UNIQUE INDEX idx_workflows_public_agent_name_unique ON public.workflows USING btree (org_id, agent_id, name) WHERE ((visibility)::text = 'public'::text);
 
 
 --
@@ -7695,6 +9130,20 @@ CREATE UNIQUE INDEX image_artifacts_file_unique ON public.image_artifacts USING 
 --
 
 CREATE UNIQUE INDEX mail_drafts_connector_gmail_draft_unique ON public.mail_drafts USING btree (connector_id, gmail_draft_id);
+
+
+--
+-- Name: official_automation_result_email_claims_outbox_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX official_automation_result_email_claims_outbox_unique ON public.official_automation_result_email_claims USING btree (email_outbox_id);
+
+
+--
+-- Name: pi_resource_snapshots_created_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX pi_resource_snapshots_created_at_idx ON public.pi_resource_snapshots USING btree (created_at);
 
 
 --
@@ -7747,6 +9196,20 @@ CREATE INDEX runner_state_last_seen_idx ON public.runner_state USING btree (last
 
 
 --
+-- Name: shared_threads_source_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX shared_threads_source_created_idx ON public.shared_threads USING btree (source_chat_thread_id, created_at DESC NULLS LAST, id DESC NULLS LAST);
+
+
+--
+-- Name: shared_threads_user_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX shared_threads_user_created_idx ON public.shared_threads USING btree (user_id, created_at DESC NULLS LAST, id DESC NULLS LAST);
+
+
+--
 -- Name: uq_browser_authorization_requests_token_hash; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7771,14 +9234,14 @@ CREATE UNIQUE INDEX uq_browser_profiles_provider_profile ON public.browser_profi
 -- Name: uq_browser_session_instances_thread_owned; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_browser_session_instances_thread_owned ON public.browser_session_instances USING btree (chat_thread_id) WHERE status IN ('active', 'stopping');
+CREATE UNIQUE INDEX uq_browser_session_instances_thread_owned ON public.browser_session_instances USING btree (chat_thread_id) WHERE (status IN ('active', 'stopping'));
 
 
 --
 -- Name: uq_browser_sessions_thread_owned; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_browser_sessions_thread_owned ON public.browser_sessions USING btree (chat_thread_id) WHERE status IN ('creating', 'active', 'resuming', 'stopping');
+CREATE UNIQUE INDEX uq_browser_sessions_thread_owned ON public.browser_sessions USING btree (chat_thread_id) WHERE (status IN ('creating', 'active', 'resuming', 'stopping'));
 
 
 --
@@ -7807,20 +9270,6 @@ CREATE UNIQUE INDEX uq_credit_expires_invoice ON public.credit_expires_record US
 --
 
 CREATE UNIQUE INDEX uq_credit_expires_starter_grant ON public.credit_expires_record USING btree (org_id) WHERE ((source)::text = 'starter_grant'::text);
-
-
---
--- Name: uq_insights_daily_org_user_date; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_insights_daily_org_user_date ON public.insights_daily USING btree (org_id, user_id, date);
-
-
---
--- Name: uq_model_stat_hour_model; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_model_stat_hour_model ON public.model_stat USING btree (hour_start, model);
 
 
 --
@@ -7859,6 +9308,20 @@ CREATE UNIQUE INDEX uq_org_usage_allowance_entitlements_org ON public.org_usage_
 
 
 --
+-- Name: uq_socialkit_download_jobs_provider_job; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_socialkit_download_jobs_provider_job ON public.socialkit_download_jobs USING btree (provider_job_id);
+
+
+--
+-- Name: uq_socialkit_download_jobs_user_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_socialkit_download_jobs_user_active ON public.socialkit_download_jobs USING btree (user_id) WHERE (status IN ('submitting', 'processing', 'materializing', 'artifact_failed'));
+
+
+--
 -- Name: uq_usage_allowance_allocations_usage_event; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7866,17 +9329,178 @@ CREATE UNIQUE INDEX uq_usage_allowance_allocations_usage_event ON public.usage_a
 
 
 --
--- Name: uq_usage_daily_user_org_date; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX uq_usage_daily_user_org_date ON public.usage_daily USING btree (user_id, org_id, date);
-
-
---
 -- Name: uq_usage_event_idempotency_key; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX uq_usage_event_idempotency_key ON public.usage_event USING btree (idempotency_key);
+
+
+--
+-- Name: uq_usage_pack_allocations_current_invitation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_allocations_current_invitation ON public.usage_pack_allocations USING btree (org_id, invitation_id) WHERE ((invitation_id IS NOT NULL) AND ((status)::text <> 'inactive'::text));
+
+
+--
+-- Name: uq_usage_pack_allocations_current_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_allocations_current_user ON public.usage_pack_allocations USING btree (org_id, user_id) WHERE ((user_id IS NOT NULL) AND ((status)::text <> 'inactive'::text));
+
+
+--
+-- Name: uq_usage_pack_changes_active_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_changes_active_org ON public.usage_pack_allocation_changes USING btree (org_id) WHERE ((subscription_change_id IS NULL) AND (status IN ('previewed', 'applying', 'pending_payment')));
+
+
+--
+-- Name: uq_usage_pack_changes_current_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_changes_current_user ON public.usage_pack_allocation_changes USING btree (org_id, user_id) WHERE (((subscription_change_id IS NULL) AND (status IN ('previewed', 'applying', 'pending_payment'))) OR (status IN ('scheduled', 'applied')));
+
+
+--
+-- Name: uq_usage_pack_changes_stripe_invoice; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_changes_stripe_invoice ON public.usage_pack_allocation_changes USING btree (stripe_invoice_id) WHERE (stripe_invoice_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_credit_grants_idempotency; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_credit_grants_idempotency ON public.usage_pack_credit_grants USING btree (idempotency_key);
+
+
+--
+-- Name: uq_usage_pack_credit_refunds_credit_note; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_credit_refunds_credit_note ON public.usage_pack_credit_refunds USING btree (stripe_credit_note_id) WHERE (stripe_credit_note_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_credit_refunds_refund; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_credit_refunds_refund ON public.usage_pack_credit_refunds USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_invitation_purchases_allocation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_allocation ON public.usage_pack_invitation_purchases USING btree (allocation_id) WHERE (allocation_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_invitation_purchases_checkout; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_checkout ON public.usage_pack_invitation_purchases USING btree (stripe_checkout_session_id) WHERE (stripe_checkout_session_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_invitation_purchases_clerk_invitation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_clerk_invitation ON public.usage_pack_invitation_purchases USING btree (clerk_invitation_id) WHERE (clerk_invitation_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_invitation_purchases_current_email; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_current_email ON public.usage_pack_invitation_purchases USING btree (org_id, normalized_email) WHERE (status IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating'));
+
+
+--
+-- Name: uq_usage_pack_invitation_purchases_refund; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_refund ON public.usage_pack_invitation_purchases USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_migration_selections_invitation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_migration_selections_invitation ON public.usage_pack_subscription_migration_selections USING btree (migration_id, invitation_id) WHERE (invitation_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_migration_selections_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_migration_selections_user ON public.usage_pack_subscription_migration_selections USING btree (migration_id, user_id) WHERE (user_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_subscription_changes_active_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscription_changes_active_org ON public.usage_pack_subscription_changes USING btree (org_id) WHERE (status IN ('previewed', 'applying', 'pending_payment'));
+
+
+--
+-- Name: uq_usage_pack_subscription_changes_stripe_invoice; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscription_changes_stripe_invoice ON public.usage_pack_subscription_changes USING btree (stripe_invoice_id) WHERE (stripe_invoice_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_subscription_migrations_invoice; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_invoice ON public.usage_pack_subscription_migrations USING btree (stripe_invoice_id) WHERE (stripe_invoice_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_subscription_migrations_open_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_open_org ON public.usage_pack_subscription_migrations USING btree (org_id) WHERE (status IN ('previewed', 'applying', 'revising', 'scheduled'));
+
+
+--
+-- Name: uq_usage_pack_subscription_migrations_open_subscription; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_open_subscription ON public.usage_pack_subscription_migrations USING btree (stripe_subscription_id) WHERE (status IN ('previewed', 'applying', 'revising', 'scheduled'));
+
+
+--
+-- Name: uq_usage_pack_subscription_migrations_schedule; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_schedule ON public.usage_pack_subscription_migrations USING btree (stripe_schedule_id) WHERE (stripe_schedule_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_subscriptions_checkout_session; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscriptions_checkout_session ON public.usage_pack_subscriptions USING btree (stripe_checkout_session_id) WHERE (stripe_checkout_session_id IS NOT NULL);
+
+
+--
+-- Name: uq_usage_pack_subscriptions_pending_org; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscriptions_pending_org ON public.usage_pack_pending_snapshot_guards USING btree (org_id);
+
+
+--
+-- Name: uq_usage_pack_subscriptions_stripe_subscription; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_usage_pack_subscriptions_stripe_subscription ON public.usage_pack_subscriptions USING btree (stripe_subscription_id) WHERE (stripe_subscription_id IS NOT NULL);
 
 
 --
@@ -7905,13 +9529,6 @@ CREATE UNIQUE INDEX video_artifacts_file_unique ON public.video_artifacts USING 
 --
 
 CREATE TRIGGER allocate_legacy_chat_thread_event_seq_id BEFORE INSERT ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION public.allocate_legacy_chat_thread_event_seq_id();
-
-
---
--- Name: chat_events bridge_chat_event_run_event_sequence_number_0807; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER bridge_chat_event_run_event_sequence_number_0807 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION public.bridge_chat_event_run_event_sequence_number_0807();
 
 
 --
@@ -7978,6 +9595,13 @@ CREATE TRIGGER image_artifacts_delete_artifact_registry AFTER DELETE ON public.i
 
 
 --
+-- Name: pi_memory_stage1_candidates pi_memory_stage1_candidate_blob_ref_count_trigger; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER pi_memory_stage1_candidate_blob_ref_count_trigger AFTER INSERT OR DELETE OR UPDATE OF source_history_hash ON public.pi_memory_stage1_candidates FOR EACH ROW EXECUTE FUNCTION public.pi_memory_stage1_candidate_blob_ref_count();
+
+
+--
 -- Name: presentation_artifacts presentation_artifacts_delete_artifact_registry; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -8006,6 +9630,20 @@ CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR
 
 
 --
+-- Name: org_plan_entitlements sync_legacy_org_plan_entitlement_member_invitation_allowed; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION public.sync_legacy_org_plan_entitlement_member_invitation_allowed();
+
+
+--
+-- Name: usage_pack_subscriptions sync_usage_pack_pending_snapshot_guard_0954; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER sync_usage_pack_pending_snapshot_guard_0954 AFTER INSERT OR DELETE OR UPDATE OF org_id, subscription_status ON public.usage_pack_subscriptions FOR EACH ROW EXECUTE FUNCTION public.sync_usage_pack_pending_snapshot_guard_0954();
+
+
+--
 -- Name: org_custom_connector_oauth_configs trg_org_custom_connector_oauth_configs_mode; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -8027,11 +9665,43 @@ CREATE TRIGGER video_artifacts_delete_artifact_registry AFTER DELETE ON public.v
 
 
 --
--- Name: agent_compose_versions agent_compose_versions_compose_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: active_input_deliveries active_input_deliveries_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.agent_compose_versions
-    ADD CONSTRAINT agent_compose_versions_compose_id_agent_composes_id_fk FOREIGN KEY (compose_id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.active_input_deliveries
+    ADD CONSTRAINT active_input_deliveries_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
+
+
+--
+-- Name: active_input_deliveries active_input_deliveries_run_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_input_deliveries
+    ADD CONSTRAINT active_input_deliveries_run_id_agent_runs_id_fk FOREIGN KEY (run_id) REFERENCES public.agent_runs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: active_input_delivery_items active_input_delivery_items_delivery_id_active_input_deliveries; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_input_delivery_items
+    ADD CONSTRAINT active_input_delivery_items_delivery_id_active_input_deliveries FOREIGN KEY (delivery_id) REFERENCES public.active_input_deliveries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: active_input_delivery_items active_input_delivery_items_source_event_id_chat_events_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.active_input_delivery_items
+    ADD CONSTRAINT active_input_delivery_items_source_event_id_chat_events_id_fk FOREIGN KEY (source_event_id) REFERENCES public.chat_events(id) ON DELETE CASCADE;
+
+
+--
+-- Name: agent_drafts agent_drafts_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_drafts
+    ADD CONSTRAINT agent_drafts_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -8043,14 +9713,6 @@ ALTER TABLE ONLY public.agent_run_callbacks
 
 
 --
--- Name: agent_run_custom_connector_auth_refs agent_run_custom_connector_auth_refs_run_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.agent_run_custom_connector_auth_refs
-    ADD CONSTRAINT agent_run_custom_connector_auth_refs_run_id_agent_runs_id_fk FOREIGN KEY (run_id) REFERENCES public.agent_runs(id) ON DELETE CASCADE;
-
-
---
 -- Name: agent_run_queue agent_run_queue_run_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8059,11 +9721,19 @@ ALTER TABLE ONLY public.agent_run_queue
 
 
 --
--- Name: agent_runs agent_runs_agent_compose_version_id_agent_compose_versions_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: agent_runs agent_runs_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_runs
-    ADD CONSTRAINT agent_runs_agent_compose_version_id_agent_compose_versions_id_f FOREIGN KEY (agent_compose_version_id) REFERENCES public.agent_compose_versions(id) ON DELETE SET NULL;
+    ADD CONSTRAINT agent_runs_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE SET NULL;
+
+
+--
+-- Name: agent_runs agent_runs_goal_id_thread_goals_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_goal_id_thread_goals_id_fk FOREIGN KEY (goal_id) REFERENCES public.thread_goals(id) ON DELETE SET NULL;
 
 
 --
@@ -8075,11 +9745,19 @@ ALTER TABLE ONLY public.agent_runs
 
 
 --
--- Name: agent_sessions agent_sessions_agent_compose_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: agent_runs agent_runs_workflow_automation_id_workflow_automations_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_workflow_automation_id_workflow_automations_id_fk FOREIGN KEY (workflow_automation_id) REFERENCES public.workflow_automations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: agent_sessions agent_sessions_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_sessions
-    ADD CONSTRAINT agent_sessions_agent_compose_id_agent_composes_id_fk FOREIGN KEY (agent_compose_id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+    ADD CONSTRAINT agent_sessions_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -8115,11 +9793,19 @@ ALTER TABLE ONLY public.agentphone_messages
 
 
 --
--- Name: agentphone_user_agent_preferences agentphone_user_agent_preferences_selected_compose_id_agent_com; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: agentphone_user_agent_preferences agentphone_user_agent_preferences_selected_agent_id_agents_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agentphone_user_agent_preferences
-    ADD CONSTRAINT agentphone_user_agent_preferences_selected_compose_id_agent_com FOREIGN KEY (selected_compose_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT agentphone_user_agent_preferences_selected_agent_id_agents_id_f FOREIGN KEY (selected_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
+
+
+--
+-- Name: agents agents_model_provider_id_model_providers_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agents
+    ADD CONSTRAINT agents_model_provider_id_model_providers_id_fk FOREIGN KEY (model_provider_id) REFERENCES public.model_providers(id) ON DELETE SET NULL;
 
 
 --
@@ -8139,11 +9825,11 @@ ALTER TABLE ONLY public.banking_accounts
 
 
 --
--- Name: banking_agent_enablements banking_agent_enablements_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: banking_agent_enablements banking_agent_enablements_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.banking_agent_enablements
-    ADD CONSTRAINT banking_agent_enablements_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
+    ADD CONSTRAINT banking_agent_enablements_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -8152,6 +9838,22 @@ ALTER TABLE ONLY public.banking_agent_enablements
 
 ALTER TABLE ONLY public.banking_agent_enablements
     ADD CONSTRAINT banking_agent_enablements_connection_id_banking_connections_id_ FOREIGN KEY (connection_id) REFERENCES public.banking_connections(id) ON DELETE CASCADE;
+
+
+--
+-- Name: banking_connect_events banking_connect_events_session_id_banking_connect_sessions_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.banking_connect_events
+    ADD CONSTRAINT banking_connect_events_session_id_banking_connect_sessions_id_f FOREIGN KEY (session_id) REFERENCES public.banking_connect_sessions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: banking_connect_sessions banking_connect_sessions_connection_id_banking_connections_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.banking_connect_sessions
+    ADD CONSTRAINT banking_connect_sessions_connection_id_banking_connections_id_f FOREIGN KEY (connection_id) REFERENCES public.banking_connections(id) ON DELETE CASCADE;
 
 
 --
@@ -8235,19 +9937,11 @@ ALTER TABLE ONLY public.chat_automation_context
 
 
 --
--- Name: chat_event_asset_refs chat_event_asset_refs_asset_id_run_uploaded_files_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: chat_event_snapshots chat_event_snapshots_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.chat_event_asset_refs
-    ADD CONSTRAINT chat_event_asset_refs_asset_id_run_uploaded_files_id_fk FOREIGN KEY (asset_id) REFERENCES public.run_uploaded_files(id) ON DELETE CASCADE;
-
-
---
--- Name: chat_event_asset_refs chat_event_asset_refs_chat_event_id_chat_events_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_event_asset_refs
-    ADD CONSTRAINT chat_event_asset_refs_chat_event_id_chat_events_id_fk FOREIGN KEY (chat_event_id) REFERENCES public.chat_events(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.chat_event_snapshots
+    ADD CONSTRAINT chat_event_snapshots_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
 
 
 --
@@ -8256,14 +9950,6 @@ ALTER TABLE ONLY public.chat_event_asset_refs
 
 ALTER TABLE ONLY public.chat_events
     ADD CONSTRAINT chat_events_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
-
-
---
--- Name: chat_events chat_events_revokes_event_id_chat_events_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_events
-    ADD CONSTRAINT chat_events_revokes_event_id_chat_events_id_fk FOREIGN KEY (revokes_event_id) REFERENCES public.chat_events(id);
 
 
 --
@@ -8280,22 +9966,6 @@ ALTER TABLE ONLY public.chat_feishu_context
 
 ALTER TABLE ONLY public.chat_github_context
     ADD CONSTRAINT chat_github_context_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
-
-
---
--- Name: chat_goal_context chat_goal_context_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_goal_context
-    ADD CONSTRAINT chat_goal_context_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
-
-
---
--- Name: chat_morning_brief_context chat_morning_brief_context_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chat_morning_brief_context
-    ADD CONSTRAINT chat_morning_brief_context_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
 
 
 --
@@ -8331,11 +10001,11 @@ ALTER TABLE ONLY public.chat_telegram_context
 
 
 --
--- Name: chat_threads chat_threads_agent_compose_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: chat_threads chat_threads_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.chat_threads
-    ADD CONSTRAINT chat_threads_agent_compose_id_agent_composes_id_fk FOREIGN KEY (agent_compose_id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+    ADD CONSTRAINT chat_threads_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -8419,6 +10089,22 @@ ALTER TABLE ONLY public.connector_catalog_compatibility_evaluation
 
 
 --
+-- Name: connector_catalog_runtime_projection_sets connector_catalog_runtime_projection_sets_sync_state_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.connector_catalog_runtime_projection_sets
+    ADD CONSTRAINT connector_catalog_runtime_projection_sets_sync_state_fk FOREIGN KEY (source_id, schema_version) REFERENCES public.connector_catalog_sync_state(source_id, schema_version);
+
+
+--
+-- Name: connector_catalog_runtime_projections connector_catalog_runtime_projections_set_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.connector_catalog_runtime_projections
+    ADD CONSTRAINT connector_catalog_runtime_projections_set_fk FOREIGN KEY (projection_set_id) REFERENCES public.connector_catalog_runtime_projection_sets(id) ON DELETE CASCADE;
+
+
+--
 -- Name: conversations conversations_run_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8451,6 +10137,14 @@ ALTER TABLE ONLY public.feishu_chat_thread_routes
 
 
 --
+-- Name: feishu_org_connections feishu_org_connections_connector_id_connectors_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.feishu_org_connections
+    ADD CONSTRAINT feishu_org_connections_connector_id_connectors_id_fk FOREIGN KEY (connector_id) REFERENCES public.connectors(id) ON DELETE SET NULL;
+
+
+--
 -- Name: feishu_org_connections feishu_org_connections_installation_id_feishu_org_installations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8467,19 +10161,43 @@ ALTER TABLE ONLY public.feishu_org_events
 
 
 --
--- Name: feishu_org_installations feishu_org_installations_default_compose_id_agent_composes_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: feishu_org_installations feishu_org_installations_default_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.feishu_org_installations
-    ADD CONSTRAINT feishu_org_installations_default_compose_id_agent_composes_id_f FOREIGN KEY (default_compose_id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+    ADD CONSTRAINT feishu_org_installations_default_agent_id_agents_id_fk FOREIGN KEY (default_agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
--- Name: feishu_user_agent_preferences feishu_user_agent_preferences_selected_compose_id_agent_compose; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: feishu_user_agent_preferences feishu_user_agent_preferences_selected_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.feishu_user_agent_preferences
-    ADD CONSTRAINT feishu_user_agent_preferences_selected_compose_id_agent_compose FOREIGN KEY (selected_compose_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT feishu_user_agent_preferences_selected_agent_id_agents_id_fk FOREIGN KEY (selected_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
+
+
+--
+-- Name: chat_thread_connector_selections fk_chat_thread_connector_selections_connector_slug; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_thread_connector_selections
+    ADD CONSTRAINT fk_chat_thread_connector_selections_connector_slug FOREIGN KEY (connector_id, connector_slug) REFERENCES public.connectors(id, connector_slug) ON DELETE RESTRICT;
+
+
+--
+-- Name: chat_thread_connector_selections fk_chat_thread_connector_selections_custom_connector; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_thread_connector_selections
+    ADD CONSTRAINT fk_chat_thread_connector_selections_custom_connector FOREIGN KEY (connector_id, custom_connector_id) REFERENCES public.connectors(id, custom_connector_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: chat_thread_connector_selections fk_chat_thread_connector_selections_thread; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_thread_connector_selections
+    ADD CONSTRAINT fk_chat_thread_connector_selections_thread FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE CASCADE;
 
 
 --
@@ -8499,6 +10217,46 @@ ALTER TABLE ONLY public.connectors
 
 
 --
+-- Name: custom_connector_account_oauth_bindings fk_custom_connector_account_oauth_bindings_account; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.custom_connector_account_oauth_bindings
+    ADD CONSTRAINT fk_custom_connector_account_oauth_bindings_account FOREIGN KEY (connector_account_id, custom_connector_id) REFERENCES public.connectors(id, custom_connector_id) ON DELETE CASCADE;
+
+
+--
+-- Name: custom_connector_account_oauth_bindings fk_custom_connector_account_oauth_bindings_dcr_registration; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.custom_connector_account_oauth_bindings
+    ADD CONSTRAINT fk_custom_connector_account_oauth_bindings_dcr_registration FOREIGN KEY (dcr_registration_id, custom_connector_id) REFERENCES public.org_custom_connector_dcr_registrations(id, custom_connector_id);
+
+
+--
+-- Name: feishu_org_installations fk_feishu_org_installations_custom_connector; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.feishu_org_installations
+    ADD CONSTRAINT fk_feishu_org_installations_custom_connector FOREIGN KEY (custom_connector_id, org_id) REFERENCES public.org_custom_connectors(id, org_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: hosted_deployments fk_hosted_deployments_site_public_brand; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hosted_deployments
+    ADD CONSTRAINT fk_hosted_deployments_site_public_brand FOREIGN KEY (site_id, public_brand) REFERENCES public.hosted_sites(id, public_brand) ON DELETE CASCADE;
+
+
+--
+-- Name: org_custom_connector_dcr_registrations fk_org_custom_connector_dcr_registrations_connector; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_custom_connector_dcr_registrations
+    ADD CONSTRAINT fk_org_custom_connector_dcr_registrations_connector FOREIGN KEY (custom_connector_id, org_id) REFERENCES public.org_custom_connectors(id, org_id) ON DELETE CASCADE;
+
+
+--
 -- Name: org_custom_connector_oauth_configs fk_org_custom_connector_oauth_configs_connector; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8507,19 +10265,11 @@ ALTER TABLE ONLY public.org_custom_connector_oauth_configs
 
 
 --
--- Name: org_custom_connector_secrets fk_org_custom_connector_secrets_connector; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: org_custom_connectors fk_org_custom_connectors_skill_storage_version; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.org_custom_connector_secrets
-    ADD CONSTRAINT fk_org_custom_connector_secrets_connector FOREIGN KEY (connector_id, org_id) REFERENCES public.org_custom_connectors(id, org_id) ON DELETE CASCADE;
-
-
---
--- Name: org_custom_connector_values fk_org_custom_connector_values_connector; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.org_custom_connector_values
-    ADD CONSTRAINT fk_org_custom_connector_values_connector FOREIGN KEY (connector_id, org_id) REFERENCES public.org_custom_connectors(id, org_id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.org_custom_connectors
+    ADD CONSTRAINT fk_org_custom_connectors_skill_storage_version FOREIGN KEY (skill_storage_version_id) REFERENCES public.storage_versions(id) ON DELETE RESTRICT;
 
 
 --
@@ -8555,6 +10305,14 @@ ALTER TABLE ONLY public.user_custom_connectors
 
 
 --
+-- Name: variables fk_variables_connector_owner; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.variables
+    ADD CONSTRAINT fk_variables_connector_owner FOREIGN KEY (connector_id, org_id, user_id) REFERENCES public.connectors(id, org_id, user_id) ON DELETE CASCADE;
+
+
+--
 -- Name: github_chat_thread_routes github_chat_thread_routes_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8571,11 +10329,11 @@ ALTER TABLE ONLY public.github_chat_thread_routes
 
 
 --
--- Name: github_installations github_installations_default_compose_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: github_installations github_installations_default_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.github_installations
-    ADD CONSTRAINT github_installations_default_compose_id_agent_composes_id_fk FOREIGN KEY (default_compose_id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+    ADD CONSTRAINT github_installations_default_agent_id_agents_id_fk FOREIGN KEY (default_agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -8587,11 +10345,11 @@ ALTER TABLE ONLY public.github_user_links
 
 
 --
--- Name: gmail_processed_events gmail_processed_events_automation_id_zero_workflow_automations_; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: gmail_processed_events gmail_processed_events_automation_id_workflow_automations_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.gmail_processed_events
-    ADD CONSTRAINT gmail_processed_events_automation_id_zero_workflow_automations_ FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
+    ADD CONSTRAINT gmail_processed_events_automation_id_workflow_automations_id_fk FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
@@ -8619,11 +10377,11 @@ ALTER TABLE ONLY public.google_calendar_event_snapshots
 
 
 --
--- Name: google_calendar_processed_events google_calendar_processed_events_automation_id_zero_workflow_au; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: google_calendar_processed_events google_calendar_processed_events_automation_id_workflow_automat; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.google_calendar_processed_events
-    ADD CONSTRAINT google_calendar_processed_events_automation_id_zero_workflow_au FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
+    ADD CONSTRAINT google_calendar_processed_events_automation_id_workflow_automat FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
@@ -8643,6 +10401,46 @@ ALTER TABLE ONLY public.google_calendar_watch_states
 
 
 --
+-- Name: google_forms_automation_cursors google_forms_automation_cursors_automation_id_workflow_automati; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_automation_cursors
+    ADD CONSTRAINT google_forms_automation_cursors_automation_id_workflow_automati FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: google_forms_automation_cursors google_forms_automation_cursors_watch_state_id_google_forms_wat; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_automation_cursors
+    ADD CONSTRAINT google_forms_automation_cursors_watch_state_id_google_forms_wat FOREIGN KEY (watch_state_id) REFERENCES public.google_forms_watch_states(id) ON DELETE CASCADE;
+
+
+--
+-- Name: google_forms_processed_events google_forms_processed_events_automation_id_workflow_automation; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_processed_events
+    ADD CONSTRAINT google_forms_processed_events_automation_id_workflow_automation FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: google_forms_processed_events google_forms_processed_events_watch_state_id_google_forms_watch; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_processed_events
+    ADD CONSTRAINT google_forms_processed_events_watch_state_id_google_forms_watch FOREIGN KEY (watch_state_id) REFERENCES public.google_forms_watch_states(id) ON DELETE CASCADE;
+
+
+--
+-- Name: google_forms_watch_states google_forms_watch_states_connector_id_connectors_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_forms_watch_states
+    ADD CONSTRAINT google_forms_watch_states_connector_id_connectors_id_fk FOREIGN KEY (connector_id) REFERENCES public.connectors(id) ON DELETE CASCADE;
+
+
+--
 -- Name: google_workspace_event_subscription_states google_workspace_event_subscription_states_connector_id_connect; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8651,11 +10449,11 @@ ALTER TABLE ONLY public.google_workspace_event_subscription_states
 
 
 --
--- Name: google_workspace_processed_events google_workspace_processed_events_automation_id_zero_workflow_a; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: google_workspace_processed_events google_workspace_processed_events_automation_id_workflow_automa; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.google_workspace_processed_events
-    ADD CONSTRAINT google_workspace_processed_events_automation_id_zero_workflow_a FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
+    ADD CONSTRAINT google_workspace_processed_events_automation_id_workflow_automa FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
@@ -8707,11 +10505,35 @@ ALTER TABLE ONLY public.mail_drafts
 
 
 --
--- Name: mail_drafts mail_drafts_follow_up_automation_id_zero_workflow_automations_i; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: memory_summary_projections memory_summary_projections_memory_storage_id_storages_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.mail_drafts
-    ADD CONSTRAINT mail_drafts_follow_up_automation_id_zero_workflow_automations_i FOREIGN KEY (follow_up_automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.memory_summary_projections
+    ADD CONSTRAINT memory_summary_projections_memory_storage_id_storages_id_fk FOREIGN KEY (memory_storage_id) REFERENCES public.storages(id) ON DELETE CASCADE;
+
+
+--
+-- Name: memory_summary_projections memory_summary_projections_storage_version_id_storage_versions_; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_summary_projections
+    ADD CONSTRAINT memory_summary_projections_storage_version_id_storage_versions_ FOREIGN KEY (storage_version_id) REFERENCES public.storage_versions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: model_provider_account_secrets model_provider_account_secrets_model_provider_account_id_model_; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_provider_account_secrets
+    ADD CONSTRAINT model_provider_account_secrets_model_provider_account_id_model_ FOREIGN KEY (model_provider_account_id) REFERENCES public.model_provider_accounts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: model_provider_accounts model_provider_accounts_model_provider_id_model_providers_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_provider_accounts
+    ADD CONSTRAINT model_provider_accounts_model_provider_id_model_providers_id_fk FOREIGN KEY (model_provider_id) REFERENCES public.model_providers(id) ON DELETE CASCADE;
 
 
 --
@@ -8739,35 +10561,75 @@ ALTER TABLE ONLY public.model_providers
 
 
 --
--- Name: morning_brief_deliveries morning_brief_deliveries_run_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.morning_brief_deliveries
-    ADD CONSTRAINT morning_brief_deliveries_run_id_agent_runs_id_fk FOREIGN KEY (run_id) REFERENCES public.agent_runs(id) ON DELETE SET NULL;
-
-
---
--- Name: morning_brief_schedules morning_brief_schedules_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.morning_brief_schedules
-    ADD CONSTRAINT morning_brief_schedules_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE SET NULL;
-
-
---
--- Name: notion_workflow_pending_events notion_workflow_pending_events_automation_id_zero_workflow_auto; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: notion_workflow_pending_events notion_workflow_pending_events_automation_id_workflow_automatio; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.notion_workflow_pending_events
-    ADD CONSTRAINT notion_workflow_pending_events_automation_id_zero_workflow_auto FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
+    ADD CONSTRAINT notion_workflow_pending_events_automation_id_workflow_automatio FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
--- Name: org_metadata org_metadata_default_agent_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: notion_workflow_pending_events notion_workflow_pending_events_connector_id_connectors_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notion_workflow_pending_events
+    ADD CONSTRAINT notion_workflow_pending_events_connector_id_connectors_id_fk FOREIGN KEY (connector_id) REFERENCES public.connectors(id) ON DELETE SET NULL;
+
+
+--
+-- Name: official_workflow_automation_identities official_workflow_automation_identity_automation_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_automation_identities
+    ADD CONSTRAINT official_workflow_automation_identity_automation_fk FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: official_workflow_automation_identities official_workflow_automation_identity_workflow_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_automation_identities
+    ADD CONSTRAINT official_workflow_automation_identity_workflow_fk FOREIGN KEY (workflow_id) REFERENCES public.workflows(id) ON DELETE CASCADE;
+
+
+--
+-- Name: official_workflow_catalog_state official_workflow_catalog_state_accepted_release_id_official_wo; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_catalog_state
+    ADD CONSTRAINT official_workflow_catalog_state_accepted_release_id_official_wo FOREIGN KEY (accepted_release_id) REFERENCES public.official_workflow_catalog_releases(id);
+
+
+--
+-- Name: official_workflow_definition_revisions official_workflow_definition_revisions_storage_id_storages_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_definition_revisions
+    ADD CONSTRAINT official_workflow_definition_revisions_storage_id_storages_id_f FOREIGN KEY (storage_id) REFERENCES public.storages(id);
+
+
+--
+-- Name: official_workflow_definition_revisions official_workflow_definition_revisions_storage_version_storage_; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_definition_revisions
+    ADD CONSTRAINT official_workflow_definition_revisions_storage_version_storage_ FOREIGN KEY (storage_version) REFERENCES public.storage_versions(id);
+
+
+--
+-- Name: official_workflow_reconciliation_work official_workflow_reconciliation_work_requested_release_id_offi; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.official_workflow_reconciliation_work
+    ADD CONSTRAINT official_workflow_reconciliation_work_requested_release_id_offi FOREIGN KEY (requested_release_id) REFERENCES public.official_workflow_catalog_releases(id);
+
+
+--
+-- Name: org_metadata org_metadata_default_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.org_metadata
-    ADD CONSTRAINT org_metadata_default_agent_id_agent_composes_id_fk FOREIGN KEY (default_agent_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT org_metadata_default_agent_id_agents_id_fk FOREIGN KEY (default_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
 
 
 --
@@ -8800,6 +10662,38 @@ ALTER TABLE ONLY public.org_usage_allowance_windows
 
 ALTER TABLE ONLY public.org_usage_allowance_windows
     ADD CONSTRAINT org_usage_allowance_windows_entitlement_id_org_usage_allowance_ FOREIGN KEY (entitlement_id) REFERENCES public.org_usage_allowance_entitlements(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pi_memory_phase2_jobs pi_memory_phase2_jobs_storage_owner_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_phase2_jobs
+    ADD CONSTRAINT pi_memory_phase2_jobs_storage_owner_fk FOREIGN KEY (memory_storage_id, org_id, user_id) REFERENCES public.storages(id, org_id, user_id) ON DELETE CASCADE;
+
+
+--
+-- Name: pi_memory_publication_provenance pi_memory_publication_provenance_storage_owner_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_publication_provenance
+    ADD CONSTRAINT pi_memory_publication_provenance_storage_owner_fk FOREIGN KEY (memory_storage_id, org_id, user_id) REFERENCES public.storages(id, org_id, user_id) ON DELETE CASCADE;
+
+
+--
+-- Name: pi_memory_stage1_candidates pi_memory_stage1_candidates_source_history_hash_blobs_hash_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_stage1_candidates
+    ADD CONSTRAINT pi_memory_stage1_candidates_source_history_hash_blobs_hash_fk FOREIGN KEY (source_history_hash) REFERENCES public.blobs(hash);
+
+
+--
+-- Name: pi_memory_stage1_candidates pi_memory_stage1_candidates_storage_owner_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pi_memory_stage1_candidates
+    ADD CONSTRAINT pi_memory_stage1_candidates_storage_owner_fk FOREIGN KEY (memory_storage_id, org_id, user_id) REFERENCES public.storages(id, org_id, user_id) ON DELETE CASCADE;
 
 
 --
@@ -8859,6 +10753,14 @@ ALTER TABLE ONLY public.sandbox_telemetry
 
 
 --
+-- Name: shared_threads shared_threads_source_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.shared_threads
+    ADD CONSTRAINT shared_threads_source_chat_thread_id_chat_threads_id_fk FOREIGN KEY (source_chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE SET NULL;
+
+
+--
 -- Name: skills skills_storage_id_storages_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8899,11 +10801,19 @@ ALTER TABLE ONLY public.slack_org_connections
 
 
 --
--- Name: slack_user_agent_preferences slack_user_agent_preferences_selected_compose_id_agent_composes; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: slack_user_agent_preferences slack_user_agent_preferences_selected_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.slack_user_agent_preferences
-    ADD CONSTRAINT slack_user_agent_preferences_selected_compose_id_agent_composes FOREIGN KEY (selected_compose_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT slack_user_agent_preferences_selected_agent_id_agents_id_fk FOREIGN KEY (selected_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
+
+
+--
+-- Name: socialkit_download_jobs socialkit_download_jobs_run_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.socialkit_download_jobs
+    ADD CONSTRAINT socialkit_download_jobs_run_id_agent_runs_id_fk FOREIGN KEY (run_id) REFERENCES public.agent_runs(id) ON DELETE SET NULL;
 
 
 --
@@ -8939,27 +10849,11 @@ ALTER TABLE ONLY public.storages
 
 
 --
--- Name: strapi_webhook_deliveries strapi_webhook_deliveries_integration_id_strapi_integrations_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: stripe_workflow_automation_health stripe_workflow_automation_health_automation_id_workflow_automa; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.strapi_webhook_deliveries
-    ADD CONSTRAINT strapi_webhook_deliveries_integration_id_strapi_integrations_id FOREIGN KEY (integration_id) REFERENCES public.strapi_integrations(id) ON DELETE CASCADE;
-
-
---
--- Name: strapi_workflow_pending_events strapi_workflow_pending_events_automation_id_zero_workflow_auto; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.strapi_workflow_pending_events
-    ADD CONSTRAINT strapi_workflow_pending_events_automation_id_zero_workflow_auto FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
-
-
---
--- Name: strapi_workflow_pending_events strapi_workflow_pending_events_integration_id_strapi_integratio; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.strapi_workflow_pending_events
-    ADD CONSTRAINT strapi_workflow_pending_events_integration_id_strapi_integratio FOREIGN KEY (integration_id) REFERENCES public.strapi_integrations(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.stripe_workflow_automation_health
+    ADD CONSTRAINT stripe_workflow_automation_health_automation_id_workflow_automa FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
@@ -8987,11 +10881,11 @@ ALTER TABLE ONLY public.teams_org_connections
 
 
 --
--- Name: teams_user_agent_preferences teams_user_agent_preferences_selected_compose_id_agent_composes; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: teams_user_agent_preferences teams_user_agent_preferences_selected_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.teams_user_agent_preferences
-    ADD CONSTRAINT teams_user_agent_preferences_selected_compose_id_agent_composes FOREIGN KEY (selected_compose_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT teams_user_agent_preferences_selected_agent_id_agents_id_fk FOREIGN KEY (selected_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
 
 
 --
@@ -9019,11 +10913,11 @@ ALTER TABLE ONLY public.telegram_chat_thread_routes
 
 
 --
--- Name: telegram_installations telegram_installations_default_compose_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: telegram_installations telegram_installations_default_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.telegram_installations
-    ADD CONSTRAINT telegram_installations_default_compose_id_agent_composes_id_fk FOREIGN KEY (default_compose_id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+    ADD CONSTRAINT telegram_installations_default_agent_id_agents_id_fk FOREIGN KEY (default_agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -9043,11 +10937,11 @@ ALTER TABLE ONLY public.telegram_messages
 
 
 --
--- Name: telegram_user_agent_preferences telegram_user_agent_preferences_selected_compose_id_agent_compo; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: telegram_user_agent_preferences telegram_user_agent_preferences_selected_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.telegram_user_agent_preferences
-    ADD CONSTRAINT telegram_user_agent_preferences_selected_compose_id_agent_compo FOREIGN KEY (selected_compose_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT telegram_user_agent_preferences_selected_agent_id_agents_id_fk FOREIGN KEY (selected_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
 
 
 --
@@ -9059,11 +10953,11 @@ ALTER TABLE ONLY public.telegram_user_links
 
 
 --
--- Name: thread_goals thread_goals_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: thread_goals thread_goals_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.thread_goals
-    ADD CONSTRAINT thread_goals_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
+    ADD CONSTRAINT thread_goals_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -9123,35 +11017,107 @@ ALTER TABLE ONLY public.usage_event
 
 
 --
--- Name: user_connectors user_connectors_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: usage_pack_allocation_changes usage_pack_allocation_changes_source_allocation_id_usage_pack_a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_allocation_changes
+    ADD CONSTRAINT usage_pack_allocation_changes_source_allocation_id_usage_pack_a FOREIGN KEY (source_allocation_id) REFERENCES public.usage_pack_allocations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_allocation_changes usage_pack_allocation_changes_subscription_change_id_usage_pack; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_allocation_changes
+    ADD CONSTRAINT usage_pack_allocation_changes_subscription_change_id_usage_pack FOREIGN KEY (subscription_change_id) REFERENCES public.usage_pack_subscription_changes(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_allocation_changes usage_pack_allocation_changes_usage_pack_subscription_id_usage_; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_allocation_changes
+    ADD CONSTRAINT usage_pack_allocation_changes_usage_pack_subscription_id_usage_ FOREIGN KEY (usage_pack_subscription_id) REFERENCES public.usage_pack_subscriptions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_allocations usage_pack_allocations_usage_pack_subscription_id_usage_pack_su; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_allocations
+    ADD CONSTRAINT usage_pack_allocations_usage_pack_subscription_id_usage_pack_su FOREIGN KEY (usage_pack_subscription_id) REFERENCES public.usage_pack_subscriptions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_credit_refunds usage_pack_credit_refunds_credit_grant_id_usage_pack_credit_gra; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_credit_refunds
+    ADD CONSTRAINT usage_pack_credit_refunds_credit_grant_id_usage_pack_credit_gra FOREIGN KEY (credit_grant_id) REFERENCES public.usage_pack_credit_grants(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_invitation_purchases usage_pack_invitation_purchases_allocation_id_usage_pack_alloca; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_invitation_purchases
+    ADD CONSTRAINT usage_pack_invitation_purchases_allocation_id_usage_pack_alloca FOREIGN KEY (allocation_id) REFERENCES public.usage_pack_allocations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: usage_pack_invitation_purchases usage_pack_invitation_purchases_usage_pack_subscription_id_usag; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_invitation_purchases
+    ADD CONSTRAINT usage_pack_invitation_purchases_usage_pack_subscription_id_usag FOREIGN KEY (usage_pack_subscription_id) REFERENCES public.usage_pack_subscriptions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_invoice_fulfillments usage_pack_invoice_fulfillments_usage_pack_subscription_id_usag; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_invoice_fulfillments
+    ADD CONSTRAINT usage_pack_invoice_fulfillments_usage_pack_subscription_id_usag FOREIGN KEY (usage_pack_subscription_id) REFERENCES public.usage_pack_subscriptions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_subscription_changes usage_pack_subscription_changes_usage_pack_subscription_id_usag; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_subscription_changes
+    ADD CONSTRAINT usage_pack_subscription_changes_usage_pack_subscription_id_usag FOREIGN KEY (usage_pack_subscription_id) REFERENCES public.usage_pack_subscriptions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: usage_pack_subscription_migration_selections usage_pack_subscription_migration_selections_migration_id_usage; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.usage_pack_subscription_migration_selections
+    ADD CONSTRAINT usage_pack_subscription_migration_selections_migration_id_usage FOREIGN KEY (migration_id) REFERENCES public.usage_pack_subscription_migrations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_connectors user_connectors_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_connectors
-    ADD CONSTRAINT user_connectors_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
+    ADD CONSTRAINT user_connectors_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
--- Name: user_custom_connectors user_custom_connectors_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: user_custom_connectors user_custom_connectors_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_custom_connectors
-    ADD CONSTRAINT user_custom_connectors_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
+    ADD CONSTRAINT user_custom_connectors_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
--- Name: user_permission_grants user_permission_grants_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: user_permission_grants user_permission_grants_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_permission_grants
-    ADD CONSTRAINT user_permission_grants_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
-
-
---
--- Name: variables variables_connector_id_connectors_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.variables
-    ADD CONSTRAINT variables_connector_id_connectors_id_fk FOREIGN KEY (connector_id) REFERENCES public.connectors(id) ON DELETE CASCADE;
+    ADD CONSTRAINT user_permission_grants_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
@@ -9171,6 +11137,30 @@ ALTER TABLE ONLY public.video_artifacts
 
 
 --
+-- Name: workflow_automations workflow_automations_event_connector_id_connectors_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow_automations
+    ADD CONSTRAINT workflow_automations_event_connector_id_connectors_id_fk FOREIGN KEY (event_connector_id) REFERENCES public.connectors(id) ON DELETE SET NULL;
+
+
+--
+-- Name: workflow_automations workflow_automations_workflow_id_workflows_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow_automations
+    ADD CONSTRAINT workflow_automations_workflow_id_workflows_id_fk FOREIGN KEY (workflow_id) REFERENCES public.workflows(id) ON DELETE CASCADE;
+
+
+--
+-- Name: workflow_github_processed_events workflow_github_processed_events_automation_id_workflow_automat; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.workflow_github_processed_events
+    ADD CONSTRAINT workflow_github_processed_events_automation_id_workflow_automat FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
+
+
+--
 -- Name: workflow_user_automation_threads workflow_user_automation_threads_chat_thread_id_chat_threads_id; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -9179,131 +11169,44 @@ ALTER TABLE ONLY public.workflow_user_automation_threads
 
 
 --
--- Name: workflow_user_automation_threads workflow_user_automation_threads_workflow_id_zero_workflows_id_; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: workflow_user_automation_threads workflow_user_automation_threads_workflow_id_workflows_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workflow_user_automation_threads
-    ADD CONSTRAINT workflow_user_automation_threads_workflow_id_zero_workflows_id_ FOREIGN KEY (workflow_id) REFERENCES public.zero_workflows(id) ON DELETE CASCADE;
+    ADD CONSTRAINT workflow_user_automation_threads_workflow_id_workflows_id_fk FOREIGN KEY (workflow_id) REFERENCES public.workflows(id) ON DELETE CASCADE;
 
 
 --
--- Name: zero_agent_drafts zero_agent_drafts_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: workflow_webhook_automations workflow_webhook_automations_automation_id_workflow_automations; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_agent_drafts
-    ADD CONSTRAINT zero_agent_drafts_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
-
-
---
--- Name: zero_agents zero_agents_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_agents
-    ADD CONSTRAINT zero_agents_id_agent_composes_id_fk FOREIGN KEY (id) REFERENCES public.agent_composes(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.workflow_webhook_automations
+    ADD CONSTRAINT workflow_webhook_automations_automation_id_workflow_automations FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
--- Name: zero_agents zero_agents_model_provider_id_model_providers_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: workflow_webhook_deliveries workflow_webhook_deliveries_automation_id_workflow_automations_; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_agents
-    ADD CONSTRAINT zero_agents_model_provider_id_model_providers_id_fk FOREIGN KEY (model_provider_id) REFERENCES public.model_providers(id) ON DELETE SET NULL;
-
-
---
--- Name: zero_runs zero_runs_chat_thread_id_chat_threads_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_runs
-    ADD CONSTRAINT zero_runs_chat_thread_id_chat_threads_id_fk FOREIGN KEY (chat_thread_id) REFERENCES public.chat_threads(id) ON DELETE SET NULL;
+ALTER TABLE ONLY public.workflow_webhook_deliveries
+    ADD CONSTRAINT workflow_webhook_deliveries_automation_id_workflow_automations_ FOREIGN KEY (automation_id) REFERENCES public.workflow_automations(id) ON DELETE CASCADE;
 
 
 --
--- Name: zero_runs zero_runs_goal_id_thread_goals_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: workflows workflows_agent_id_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_runs
-    ADD CONSTRAINT zero_runs_goal_id_thread_goals_id_fk FOREIGN KEY (goal_id) REFERENCES public.thread_goals(id) ON DELETE SET NULL;
-
-
---
--- Name: zero_runs zero_runs_id_agent_runs_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_runs
-    ADD CONSTRAINT zero_runs_id_agent_runs_id_fk FOREIGN KEY (id) REFERENCES public.agent_runs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.workflows
+    ADD CONSTRAINT workflows_agent_id_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.agents(id) ON DELETE CASCADE;
 
 
 --
--- Name: zero_runs zero_runs_trigger_agent_id_agent_composes_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: chat_event_snapshot_scan_state; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.zero_runs
-    ADD CONSTRAINT zero_runs_trigger_agent_id_agent_composes_id_fk FOREIGN KEY (trigger_agent_id) REFERENCES public.agent_composes(id) ON DELETE SET NULL;
-
-
---
--- Name: zero_runs zero_runs_workflow_automation_id_zero_workflow_automations_id_f; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_runs
-    ADD CONSTRAINT zero_runs_workflow_automation_id_zero_workflow_automations_id_f FOREIGN KEY (workflow_automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE SET NULL;
-
-
---
--- Name: zero_workflow_automations zero_workflow_automations_workflow_id_zero_workflows_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_automations
-    ADD CONSTRAINT zero_workflow_automations_workflow_id_zero_workflows_id_fk FOREIGN KEY (workflow_id) REFERENCES public.zero_workflows(id) ON DELETE CASCADE;
-
-
---
--- Name: zero_workflow_github_processed_events zero_workflow_github_processed_events_automation_id_zero_workfl; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_github_processed_events
-    ADD CONSTRAINT zero_workflow_github_processed_events_automation_id_zero_workfl FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
-
-
---
--- Name: zero_workflow_strapi_automations zero_workflow_strapi_automations_automation_id_zero_workflow_au; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_strapi_automations
-    ADD CONSTRAINT zero_workflow_strapi_automations_automation_id_zero_workflow_au FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
-
-
---
--- Name: zero_workflow_strapi_automations zero_workflow_strapi_automations_integration_id_strapi_integrat; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_strapi_automations
-    ADD CONSTRAINT zero_workflow_strapi_automations_integration_id_strapi_integrat FOREIGN KEY (integration_id) REFERENCES public.strapi_integrations(id) ON DELETE RESTRICT;
-
-
---
--- Name: zero_workflow_webhook_automations zero_workflow_webhook_automations_automation_id_zero_workflow_a; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_webhook_automations
-    ADD CONSTRAINT zero_workflow_webhook_automations_automation_id_zero_workflow_a FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
-
-
---
--- Name: zero_workflow_webhook_deliveries zero_workflow_webhook_deliveries_automation_id_zero_workflow_au; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflow_webhook_deliveries
-    ADD CONSTRAINT zero_workflow_webhook_deliveries_automation_id_zero_workflow_au FOREIGN KEY (automation_id) REFERENCES public.zero_workflow_automations(id) ON DELETE CASCADE;
-
-
---
--- Name: zero_workflows zero_workflows_agent_id_zero_agents_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.zero_workflows
-    ADD CONSTRAINT zero_workflows_agent_id_zero_agents_id_fk FOREIGN KEY (agent_id) REFERENCES public.zero_agents(id) ON DELETE CASCADE;
+INSERT INTO public.chat_event_snapshot_scan_state (scope)
+VALUES
+    ('global');
 
 
 --
@@ -9313,12 +11216,19 @@ ALTER TABLE ONLY public.zero_workflows
 INSERT INTO public.usage_pricing (kind, provider, category, unit_price, unit_size)
 VALUES
     ('audio', 'gpt-4o-mini-tts', 'output_audio_seconds', 19, 60),
+    ('audio', 'heygen-starfish-tts', 'output_audio_seconds', 40, 60),
     ('finance', 'apidojo', 'request', 1, 1),
+    ('image', 'alibaba/qwen-image-3/text-to-image', 'output_image.1k', 48, 1),
+    ('image', 'alibaba/qwen-image-3/text-to-image', 'output_image.2k', 90, 1),
+    ('image', 'dola-seedream-5-0-pro-260628', 'provider_cost_usd_micros', 1250, 1000000),
     ('image', 'fal-ai/bytedance/seedream/v4/text-to-image', 'output_image', 36, 1),
+    ('image', 'fal-ai/flux-2-pro', 'processed_megapixel.additional', 18, 1),
+    ('image', 'fal-ai/flux-2-pro', 'processed_megapixel.first', 36, 1),
     ('image', 'fal-ai/flux-pro/v1.1', 'output_megapixel', 48, 1),
     ('image', 'fal-ai/flux-pro/v1.1-ultra', 'output_image', 72, 1),
     ('image', 'fal-ai/nano-banana-2', 'output_image', 96, 1),
     ('image', 'fal-ai/qwen-image', 'output_megapixel', 24, 1),
+    ('image', 'google/nano-banana-2-lite', 'output_image', 50, 1),
     ('image', 'gpt-image-1', 'output_image.high.large', 300, 1),
     ('image', 'gpt-image-1', 'output_image.high.standard', 200, 1),
     ('image', 'gpt-image-1', 'output_image.low.large', 19, 1),
@@ -9328,15 +11238,6 @@ VALUES
     ('image', 'gpt-image-1', 'tokens.input.image', 12000, 1000000),
     ('image', 'gpt-image-1', 'tokens.input.text', 6000, 1000000),
     ('image', 'gpt-image-1', 'tokens.output.image', 48000, 1000000),
-    ('image', 'gpt-image-1.5', 'output_image.high.large', 240, 1),
-    ('image', 'gpt-image-1.5', 'output_image.high.standard', 160, 1),
-    ('image', 'gpt-image-1.5', 'output_image.low.large', 16, 1),
-    ('image', 'gpt-image-1.5', 'output_image.low.standard', 11, 1),
-    ('image', 'gpt-image-1.5', 'output_image.medium.large', 61, 1),
-    ('image', 'gpt-image-1.5', 'output_image.medium.standard', 41, 1),
-    ('image', 'gpt-image-1.5', 'tokens.input.image', 9600, 1000000),
-    ('image', 'gpt-image-1.5', 'tokens.input.text', 9600, 1000000),
-    ('image', 'gpt-image-1.5', 'tokens.output.image', 38400, 1000000),
     ('image', 'gpt-image-1-mini', 'output_image.high.large', 62, 1),
     ('image', 'gpt-image-1-mini', 'output_image.high.standard', 43, 1),
     ('image', 'gpt-image-1-mini', 'output_image.low.large', 7, 1),
@@ -9346,6 +11247,15 @@ VALUES
     ('image', 'gpt-image-1-mini', 'tokens.input.image', 2400, 1000000),
     ('image', 'gpt-image-1-mini', 'tokens.input.text', 1200, 1000000),
     ('image', 'gpt-image-1-mini', 'tokens.output.image', 12000, 1000000),
+    ('image', 'gpt-image-1.5', 'output_image.high.large', 240, 1),
+    ('image', 'gpt-image-1.5', 'output_image.high.standard', 160, 1),
+    ('image', 'gpt-image-1.5', 'output_image.low.large', 16, 1),
+    ('image', 'gpt-image-1.5', 'output_image.low.standard', 11, 1),
+    ('image', 'gpt-image-1.5', 'output_image.medium.large', 61, 1),
+    ('image', 'gpt-image-1.5', 'output_image.medium.standard', 41, 1),
+    ('image', 'gpt-image-1.5', 'tokens.input.image', 9600, 1000000),
+    ('image', 'gpt-image-1.5', 'tokens.input.text', 9600, 1000000),
+    ('image', 'gpt-image-1.5', 'tokens.output.image', 38400, 1000000),
     ('image', 'gpt-image-2', 'output_image.high.large', 481, 1),
     ('image', 'gpt-image-2', 'output_image.high.standard', 253, 1),
     ('image', 'gpt-image-2', 'output_image.low.large', 14, 1),
@@ -9355,6 +11265,10 @@ VALUES
     ('image', 'gpt-image-2', 'tokens.input.image', 9600, 1000000),
     ('image', 'gpt-image-2', 'tokens.input.text', 6000, 1000000),
     ('image', 'gpt-image-2', 'tokens.output.image', 36000, 1000000),
+    ('image', 'ideogram/v4', 'output_megapixel.balanced', 18, 1),
+    ('image', 'ideogram/v4', 'output_megapixel.quality', 30, 1),
+    ('image', 'ideogram/v4', 'output_megapixel.turbo', 9, 1),
+    ('image', 'seedream-5-0-lite-260128', 'provider_cost_usd_micros', 1250, 1000000),
     ('maps', 'google-maps', 'geocoding', 6, 1),
     ('maps', 'google-maps', 'places.details.enterprise', 24, 1),
     ('maps', 'google-maps', 'places.details.essentials', 6, 1),
@@ -9378,36 +11292,45 @@ VALUES
     ('model', 'gpt-realtime-2', 'tokens.input.text', 0, 1000000),
     ('model', 'gpt-realtime-2', 'tokens.output.audio', 0, 1000000),
     ('model', 'gpt-realtime-2', 'tokens.output.text', 0, 1000000),
-    ('model', 'kimi-k2.7-code', 'tokens.cache_creation', 1140, 1000000),
-    ('model', 'kimi-k2.7-code', 'tokens.cache_read', 192, 1000000),
-    ('model', 'kimi-k2.7-code', 'tokens.input', 1140, 1000000),
-    ('model', 'kimi-k2.7-code', 'tokens.output', 4800, 1000000),
-    ('model', 'kimi-k3', 'tokens.cache_creation', 3600, 1000000),
-    ('model', 'kimi-k3', 'tokens.cache_read', 360, 1000000),
-    ('model', 'kimi-k3', 'tokens.input', 3600, 1000000),
-    ('model', 'kimi-k3', 'tokens.output', 18000, 1000000),
-    ('video', 'bytedance/seedance-2.0/fast/text-to-video', 'output_video_tokens', 1344, 100000),
-    ('video', 'bytedance/seedance-2.0/text-to-video', 'output_video_tokens', 1680, 100000),
-    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.1080p.no_video', 15400, 1000000),
-    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.1080p.with_video', 9400, 1000000),
-    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.480p_720p.no_video', 14000, 1000000),
-    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.480p_720p.with_video', 8600, 1000000),
-    ('video', 'dreamina-seedance-2-0-fast-260128', 'output_video_tokens.480p_720p.no_video', 11200, 1000000),
-    ('video', 'dreamina-seedance-2-0-fast-260128', 'output_video_tokens.480p_720p.with_video', 6600, 1000000),
-    ('video', 'fal-ai/kling-video/o3/standard/text-to-video', 'output_video_seconds.audio', 135, 1),
-    ('video', 'fal-ai/kling-video/o3/standard/text-to-video', 'output_video_seconds.silent', 101, 1),
-    ('video', 'fal-ai/kling-video/v3/4k/text-to-video', 'output_video_seconds.audio.4k', 504, 1),
-    ('video', 'fal-ai/kling-video/v3/4k/text-to-video', 'output_video_seconds.silent.4k', 504, 1),
-    ('video', 'fal-ai/veo3.1', 'output_video_seconds.audio', 480, 1),
-    ('video', 'fal-ai/veo3.1', 'output_video_seconds.audio.4k', 720, 1),
-    ('video', 'fal-ai/veo3.1', 'output_video_seconds.silent', 240, 1),
-    ('video', 'fal-ai/veo3.1', 'output_video_seconds.silent.4k', 480, 1),
-    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.audio', 180, 1),
-    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.audio.4k', 420, 1),
-    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.silent', 120, 1),
-    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.silent.4k', 360, 1),
-    ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.audio', 4800, 1000000),
-    ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.silent', 2400, 1000000),
+    ('seo', 'dataforseo', 'provider_cost_usd_micros', 1250, 1000000),
+    ('translation', 'qwen/qwen-2.5-7b-instruct', 'tokens.cache_read', 100, 1000000),
+    ('translation', 'qwen/qwen-2.5-7b-instruct', 'tokens.input', 100, 1000000),
+    ('translation', 'qwen/qwen-2.5-7b-instruct', 'tokens.output', 200, 1000000),
+    ('video', 'MiniMax-H3', 'input_image.additional', 50, 1),
+    ('video', 'MiniMax-H3', 'input_video_seconds.2k', 163, 1),
+    ('video', 'MiniMax-H3', 'input_video_seconds.768p', 100, 1),
+    ('video', 'MiniMax-H3', 'output_video_seconds.2k', 163, 1),
+    ('video', 'MiniMax-H3', 'output_video_seconds.768p', 100, 1),
+    ('video', 'bytedance/seedance-2.0/fast/text-to-video', 'output_video_tokens', 1400, 100000),
+    ('video', 'bytedance/seedance-2.0/text-to-video', 'output_video_tokens', 1750, 100000),
+    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.1080p.no_video', 9625, 1000000),
+    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.1080p.with_video', 5875, 1000000),
+    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.480p_720p.no_video', 8750, 1000000),
+    ('video', 'dreamina-seedance-2-0-260128', 'output_video_tokens.480p_720p.with_video', 5375, 1000000),
+    ('video', 'dreamina-seedance-2-0-fast-260128', 'output_video_tokens.480p_720p.no_video', 7000, 1000000),
+    ('video', 'dreamina-seedance-2-0-fast-260128', 'output_video_tokens.480p_720p.with_video', 4125, 1000000),
+    ('video', 'dreamina-seedance-2-0-mini-260615', 'output_video_tokens.480p_720p.no_video', 4375, 1000000),
+    ('video', 'dreamina-seedance-2-0-mini-260615', 'output_video_tokens.480p_720p.with_video', 2625, 1000000),
+    ('video', 'dreamina-seedance-2-5-260628', 'output_video_tokens.1080p.no_video', 14625, 1000000),
+    ('video', 'dreamina-seedance-2-5-260628', 'output_video_tokens.1080p.with_video', 8750, 1000000),
+    ('video', 'dreamina-seedance-2-5-260628', 'output_video_tokens.480p_720p.no_video', 13375, 1000000),
+    ('video', 'dreamina-seedance-2-5-260628', 'output_video_tokens.480p_720p.with_video', 8000, 1000000),
+    ('video', 'fal-ai/kling-video/o3/standard/text-to-video', 'output_video_seconds.audio', 141, 1),
+    ('video', 'fal-ai/kling-video/o3/standard/text-to-video', 'output_video_seconds.silent', 105, 1),
+    ('video', 'fal-ai/kling-video/v3/4k/text-to-video', 'output_video_seconds.audio.4k', 525, 1),
+    ('video', 'fal-ai/kling-video/v3/4k/text-to-video', 'output_video_seconds.silent.4k', 525, 1),
+    ('video', 'fal-ai/veo3.1', 'output_video_seconds.audio', 500, 1),
+    ('video', 'fal-ai/veo3.1', 'output_video_seconds.audio.4k', 750, 1),
+    ('video', 'fal-ai/veo3.1', 'output_video_seconds.silent', 250, 1),
+    ('video', 'fal-ai/veo3.1', 'output_video_seconds.silent.4k', 500, 1),
+    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.audio', 188, 1),
+    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.audio.4k', 438, 1),
+    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.silent', 125, 1),
+    ('video', 'fal-ai/veo3.1/fast', 'output_video_seconds.silent.4k', 375, 1),
+    ('video', 'heygen-avatar-iii', 'output_video_seconds', 1250, 60),
+    ('video', 'joggai-talking-avatar', 'output_video_joggai_credits', 623, 1),
+    ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.audio', 3000, 1000000),
+    ('video', 'seedance-1-5-pro-251215', 'output_video_tokens.silent', 1500, 1000000),
     ('weather', 'google-air-quality', 'current', 0, 1),
     ('weather', 'google-weather', 'current', 0, 1),
     ('weather', 'google-weather', 'forecast.daily', 0, 1),

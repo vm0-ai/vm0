@@ -1,1 +1,0 @@
-ALTER TABLE "github_installations" ADD COLUMN "setup_public_brand" text DEFAULT 'vm0' NOT NULL;

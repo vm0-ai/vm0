@@ -1,2 +1,0 @@
-ALTER TABLE "computer_use_hosts" ADD COLUMN "client_product" text DEFAULT 'zero' NOT NULL;--> statement-breakpoint
-ALTER TABLE "computer_use_hosts" ADD CONSTRAINT "computer_use_hosts_client_product_check" CHECK (client_product IN ('zero', 'okou'));

@@ -1,1 +1,0 @@
-DROP INDEX "idx_agent_runs_completed_org_user";
