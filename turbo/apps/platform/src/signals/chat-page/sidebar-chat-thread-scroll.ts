@@ -101,8 +101,7 @@ function createSidebarChatThreadDomSignals() {
     return getScrollThumbStyle(get(internalScrollMetrics$));
   });
 
-  const bindScrollViewport$ = command(({ set }, viewport: HTMLElement) => {
-    set(internalScrollViewport$, viewport);
+  const measureScrollViewport$ = command(({ set }, viewport: HTMLElement) => {
     set(internalScrollMetrics$, {
       scrollTop: viewport.scrollTop,
       scrollHeight: viewport.scrollHeight,
@@ -120,10 +119,17 @@ function createSidebarChatThreadDomSignals() {
   );
   const setScrollViewport$ = onRef(
     command(({ set }, viewport: HTMLElement, signal: AbortSignal) => {
-      set(bindScrollViewport$, viewport);
+      set(internalScrollViewport$, viewport);
+      set(measureScrollViewport$, viewport);
+      // Async stylesheet activation can change the viewport without scrolling.
+      const resizeObserver = new ResizeObserver(() => {
+        set(measureScrollViewport$, viewport);
+      });
+      resizeObserver.observe(viewport);
       signal.addEventListener(
         "abort",
         () => {
+          resizeObserver.disconnect();
           set(clearScrollViewport$, viewport);
         },
         { once: true },
