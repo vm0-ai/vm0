@@ -231,10 +231,21 @@ all 121 helper tests passed. The first earlier Preview half-page command needed
 frontmost restoration; that remains recorded in the initial evidence.
 [Final candidate and nested-target evidence](https://cdn.vm0.io/artifacts/wiu49jyt34.json).
 
-These are real helper tests, not a new packaged Desktop/server round trip.
-The latest wheel implementation still needs release-artifact acceptance. Targets
-without an AX axis scrollbar, including unexposed nested web containers, and
-broader application coverage remain open.
+The downloaded `27cdeb1` release helper repeated all eight cross-app background
+commands successfully, with the expected wheel/mixed dispatch metadata. It also
+passed the nested Safari test: the outer page moved 425 points while the inner
+offset remained -301 points. A 1000-page request returned the explicit time-limit
+error in 8.15 seconds; two settled snapshots remained at y=-15026, and the next
+page completed in 1.37 seconds. The release helper's SHA-256 is
+`987b2653bca53aac7ef208f25f87455824798975762cbcd6e0cd47e4e18c3692`.
+Both CI ZIPs were downloaded and checked, including all 102 source inputs and
+84 Swift files, both dependency lockfiles, all four arm64 executables, and eleven
+dependency notices. CI passed 31 app/core tests and 121 helper tests.
+[Downloaded release acceptance](https://cdn.vm0.io/artifacts/ja1li8sllt.json).
+
+These are real release helper tests, not a new packaged Desktop/server round trip.
+Targets without an AX axis scrollbar, including unexposed nested web containers,
+and broader application coverage remain open.
 The old installed `f0b3b92` Desktop remains unchanged;
 do not mark all nine authenticated Desktop command kinds accepted from this test.
 
