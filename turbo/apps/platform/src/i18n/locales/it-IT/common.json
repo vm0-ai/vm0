@@ -1896,7 +1896,6 @@
       "threadSuggestions": "Thread di chat",
       "useForFutureChats": "Usa questo modello per le chat future",
       "videoModelForThisChat": "Modello video per questa chat",
-      "visualAttachmentsUnsupported": "{{modelName}} non supporta immagini o video. Passa a un modello con capacità visive per allegarli.",
       "workflows": {
         "empty": "Nessun flusso di lavoro corrispondente",
         "loading": "Caricamento flussi di lavoro...",

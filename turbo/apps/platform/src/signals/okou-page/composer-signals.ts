@@ -22,12 +22,7 @@ import {
 } from "ccstate";
 import { onDomEventFn, onRef, settle, withCleanup } from "../utils.ts";
 import {
-  isVisualAttachment,
-  shouldExcludeVisualAttachmentsForModel,
-} from "../chat-page/resolve-draft-attachments.ts";
-import {
   featureSwitch$,
-  imageRecognitionAvailable$,
   voiceDraftEnabled$,
 } from "../external/feature-switch.ts";
 import {
@@ -412,24 +407,6 @@ function composerTemplateSignals(
     insertTemplate$: composer.insertTemplate$,
     openTemplatePicker$: composer.openTemplatePicker$,
   };
-}
-
-function hasVisibleAttachment(
-  selection: ModelProviderSelection | null,
-  attachments: readonly ChatAttachment[],
-  imageRecognitionEnabled: boolean,
-): boolean {
-  if (
-    !shouldExcludeVisualAttachmentsForModel(
-      selection?.selectedModel,
-      imageRecognitionEnabled,
-    )
-  ) {
-    return attachments.length > 0;
-  }
-  return attachments.some((attachment) => {
-    return !isVisualAttachment(attachment);
-  });
 }
 
 function createComputerUseUiSignals(): Pick<
@@ -1032,16 +1009,8 @@ function createComposerPrimaryActionSignal(args: {
 
     const uploadsReady = get(draft.attachmentUploadsReady$);
     const attachments = get(draft.attachments$);
-    let hasContent = get(workflowComposer.hasInput$);
-    if (!hasContent && attachments.length > 0) {
-      const modelSelection = await get(options.modelSelection$);
-      const imageRecognitionEnabled = get(imageRecognitionAvailable$);
-      hasContent = hasVisibleAttachment(
-        modelSelection,
-        attachments,
-        imageRecognitionEnabled,
-      );
-    }
+    const hasContent =
+      get(workflowComposer.hasInput$) || attachments.length > 0;
     const canSend = uploadsReady && hasContent;
     const sending = await get(eventSignals.sending$);
     if (sending && !canSend) {
@@ -1112,23 +1081,11 @@ function createComposerSubmissionSignals(
           );
           signal.throwIfAborted();
           const visiblePrompt = submission.prompt.trim();
-          if (visiblePrompt.length === 0) {
-            const attachments = get(draft.attachments$);
-            if (attachments.length === 0) {
-              return false;
-            }
-            const modelSelection = await get(options.modelSelection$);
-            signal.throwIfAborted();
-            const imageRecognitionEnabled = get(imageRecognitionAvailable$);
-            if (
-              !hasVisibleAttachment(
-                modelSelection,
-                attachments,
-                imageRecognitionEnabled,
-              )
-            ) {
-              return false;
-            }
+          if (
+            visiblePrompt.length === 0 &&
+            get(draft.attachments$).length === 0
+          ) {
+            return false;
           }
           if (!get(draft.attachmentUploadsReady$)) {
             return false;

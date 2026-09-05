@@ -675,7 +675,7 @@ test("Continue a run classified by a structured execution timeout reason", async
   installRunChat({
     selectedModel: "gpt-5.6-sol",
     chatEvents: failedRunEvents(
-      "Contradictory runner failure",
+      "execution: Agent execution timed out after 7200 seconds",
       "gpt-5.6-sol",
       "execution_timeout",
     ),

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.842.1](https://github.com/vm0-ai/vm0/compare/app-v0.842.0...app-v0.842.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** derive run work folding from output events ([#31779](https://github.com/vm0-ai/vm0/issues/31779)) ([2c7c890](https://github.com/vm0-ai/vm0/commit/2c7c8906aa780b246974b5af4e25a7b537eb3c8a))
+
 ## [0.842.0](https://github.com/vm0-ai/vm0/compare/app-v0.841.1...app-v0.842.0) (2026-09-04)
 
 

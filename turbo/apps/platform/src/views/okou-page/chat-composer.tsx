@@ -117,10 +117,6 @@ import {
 import { sendMode$ } from "../../signals/send-mode.ts";
 import type { ComposerTemplateAttachment } from "../../signals/okou-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/okou-page/template-preview-runtime.ts";
-import {
-  isVisualAttachment,
-  shouldExcludeVisualAttachmentsForModel,
-} from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { agents$ } from "../../signals/agent.ts";
 import type {
   GenerationTemplateRequest,
@@ -226,7 +222,6 @@ import {
   composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
   featureSwitch$,
-  imageRecognitionAvailable$,
   voiceDraftEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -351,12 +346,6 @@ interface ComposerComputerUseHost {
   status: "online" | "offline";
 }
 
-interface ComposerModelPicker {
-  readonly value: ModelProviderSelection | null;
-  readonly onChange: (value: ModelProviderSelection | null) => void;
-  readonly disabled?: boolean;
-}
-
 interface ComposerTemplatePicker {
   readonly value: GenerationTemplateRequest | undefined;
   readonly onChange: (value: GenerationTemplateRequest | undefined) => void;
@@ -426,83 +415,6 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
 type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
-
-function resolveComposerModelForSelection(
-  modelPicker: ComposerModelPicker | undefined,
-  selection: ModelProviderSelection | null,
-): ModelProviderSelection | null {
-  if (!modelPicker) {
-    return null;
-  }
-  if (selection) {
-    return selection;
-  }
-  return null;
-}
-
-interface VisualAttachmentUnsupportedState {
-  currentModelName: string;
-}
-
-interface VisualAttachmentCandidate {
-  contentType: string;
-  filename: string;
-}
-
-function getVisualAttachmentUnsupportedState(
-  modelPicker: ComposerModelPicker | undefined,
-  imageRecognitionEnabled: boolean,
-  selection: ModelProviderSelection | null = modelPicker?.value ?? null,
-): VisualAttachmentUnsupportedState | null {
-  const currentModel = resolveComposerModelForSelection(modelPicker, selection);
-  if (
-    !currentModel ||
-    !shouldExcludeVisualAttachmentsForModel(
-      currentModel.selectedModel,
-      imageRecognitionEnabled,
-    )
-  ) {
-    return null;
-  }
-  return {
-    currentModelName: getModelDisplayName(currentModel.selectedModel),
-  };
-}
-
-function isVisualAttachmentFile(file: File): boolean {
-  return isVisualAttachment({
-    contentType: file.type,
-    filename: file.name,
-  });
-}
-
-function showVisualAttachmentUnsupportedToast(
-  state: VisualAttachmentUnsupportedState,
-): void {
-  toast.error(
-    i18n.t(
-      ($) => {
-        return $.chat.composer.visualAttachmentsUnsupported;
-      },
-      {
-        modelName: state.currentModelName,
-      },
-    ),
-    { id: "visual-attachment-unsupported" },
-  );
-}
-
-function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
-  attachments: T[],
-  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null,
-): T[] {
-  if (!visualAttachmentUnsupported) {
-    return attachments;
-  }
-  return attachments.filter((attachment) => {
-    return !isVisualAttachment(attachment);
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Queued messages strip — separate card stacked behind the composer with a
@@ -9212,14 +9124,12 @@ function toRestorableAttachments(
 
 function restoreChatClipboardPayload({
   event,
-  visualAttachmentUnsupported,
   insertPromptMarkdown,
   insertUserMessage,
   restoreAttachments,
   onDraftChange,
 }: {
   event: ComposerPasteEvent;
-  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
   insertUserMessage: (value: UserMessageDocument) => void;
   restoreAttachments: (attachments: RestorableAttachment[]) => void;
@@ -9242,17 +9152,6 @@ function restoreChatClipboardPayload({
   if (!userMessage && persistedAttachments.length === 0) {
     return false;
   }
-  const allowedAttachments = visualAttachmentUnsupported
-    ? persistedAttachments.filter((attachment) => {
-        return !isVisualAttachment(attachment);
-      })
-    : persistedAttachments;
-  if (
-    visualAttachmentUnsupported &&
-    allowedAttachments.length < persistedAttachments.length
-  ) {
-    showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-  }
 
   event.preventDefault();
   const hasInsertableUserMessagePart = userMessage?.parts.some((part) => {
@@ -9269,8 +9168,8 @@ function restoreChatClipboardPayload({
   } else if (payload.text) {
     insertPromptMarkdown(payload.text);
   }
-  if (allowedAttachments.length > 0) {
-    restoreAttachments(allowedAttachments);
+  if (persistedAttachments.length > 0) {
+    restoreAttachments(persistedAttachments);
   }
   onDraftChange?.();
   return true;
@@ -9282,20 +9181,6 @@ function useComposerDraftChange(signals: ComposerSignals): () => void {
   return () => {
     detach(saveDraft(pageSignal), Reason.DomCallback);
   };
-}
-
-function useComposerVisualAttachmentUnsupported(
-  signals: ComposerSignals,
-): VisualAttachmentUnsupportedState | null {
-  const modelSelection = useLastResolved(signals.model.modelSelection$) ?? null;
-  const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
-  return getVisualAttachmentUnsupportedState(
-    {
-      value: modelSelection,
-      onChange: () => {},
-    },
-    imageRecognitionEnabled,
-  );
 }
 
 function useComposerTemplatePicker(
@@ -9358,16 +9243,10 @@ function startComposerSubmission(
 function useComposerFileUpload(
   signals: ComposerSignals,
 ): (file: File) => boolean {
-  const visualAttachmentUnsupported =
-    useComposerVisualAttachmentUnsupported(signals);
   const uploadAttachment = useSet(signals.draft.uploadAttachment$);
   const rootSignal = useGet(rootSignal$);
   const { t } = useTranslation();
   return (file) => {
-    if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
-      showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
-      return false;
-    }
     if (file.size > MAX_FILE_SIZE) {
       toast.error(
         t(
@@ -9387,8 +9266,6 @@ function useComposerFileUpload(
 function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
-  const visualAttachmentUnsupported =
-    useComposerVisualAttachmentUnsupported(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
   const pageSignal = useGet(pageSignal$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
@@ -9407,7 +9284,6 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
     if (
       restoreChatClipboardPayload({
         event,
-        visualAttachmentUnsupported,
         insertPromptMarkdown,
         insertUserMessage,
         restoreAttachments: (attachments) => {
@@ -9903,28 +9779,10 @@ function ComposerModelPickerSlotBase({
   const selectedModelOauthAvailable =
     useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
   const setModelSelection = useSet(signals.model.setModelSelection$);
-  const attachments = useGet(signals.draft.attachments$);
-  const imageRecognitionEnabled = useGet(imageRecognitionAvailable$);
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
   const onModelPickerChange = (selection: ModelProviderSelection | null) => {
-    const nextUnsupported = getVisualAttachmentUnsupportedState(
-      {
-        value,
-        onChange: onModelPickerChange,
-      },
-      imageRecognitionEnabled,
-      selection,
-    );
-    if (
-      nextUnsupported &&
-      attachments.some((attachment) => {
-        return isVisualAttachment(attachment);
-      })
-    ) {
-      showVisualAttachmentUnsupportedToast(nextUnsupported);
-    }
     detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
   };
   if (modelPickerLoading || value === null) {
@@ -10514,21 +10372,15 @@ function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
 
 function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   const attachments = useGet(signals.draft.attachments$);
-  const visualAttachmentUnsupported =
-    useComposerVisualAttachmentUnsupported(signals);
-  const visibleAttachments = resolveVisibleAttachments(
-    attachments,
-    visualAttachmentUnsupported,
-  );
   const removeAttachment = useSet(signals.draft.removeAttachment$);
   const notifyDraftChanged = useComposerDraftChange(signals);
 
-  if (visibleAttachments.length === 0) {
+  if (attachments.length === 0) {
     return null;
   }
   return (
     <AttachmentChips
-      attachments={visibleAttachments}
+      attachments={attachments}
       annotationSignals={signals.imageAnnotation}
       onAnnotationChange={notifyDraftChanged}
       onRemove={(attachment) => {

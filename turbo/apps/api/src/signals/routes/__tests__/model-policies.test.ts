@@ -3,7 +3,7 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
-  SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   isBuiltInModelProviderType,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
@@ -150,6 +150,52 @@ async function makeLimitedFreeWorkspace(
 }
 
 describe("GET/PUT /api/model-policies", () => {
+  it("keeps the successor usable after rejecting retired policy and preference writes", async () => {
+    const fixture = seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const existing = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const retired = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            ...toUpdate(existing.body),
+            makeVm0Policy("claude-fable-5"),
+          ],
+        },
+      }),
+      [400],
+    );
+    expect(retired.body.error.message).toBe(
+      "Claude Fable 5 has been retired. Select Claude Fable 5.1.",
+    );
+
+    const preferences = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+    const oldPreference = await accept(
+      preferences.update({
+        headers: authHeaders(),
+        body: { selectedModel: "claude-fable-5", serviceTier: null },
+      }),
+      [400],
+    );
+    expect(oldPreference.body.error.message).toBe(retired.body.error.message);
+    const successor = await accept(
+      preferences.update({
+        headers: authHeaders(),
+        body: { selectedModel: "claude-fable-5-1", serviceTier: null },
+      }),
+      [200],
+    );
+    expect(successor.body.selectedModel).toBe("claude-fable-5-1");
+  });
+
   it("returns 401 for unauthenticated reads and writes", async () => {
     const client = apiClient();
 
@@ -634,7 +680,7 @@ describe("GET/PUT /api/model-policies", () => {
         return policy.model;
       }),
     ).toStrictEqual(
-      SUPPORTED_RUN_MODELS.filter((model) => {
+      ACTIVE_RUN_MODELS.filter((model) => {
         return configuredModels.has(model);
       }),
     );

@@ -155,9 +155,9 @@ export function mockOrgModelRoutes(defaultSelectedModel: string): void {
   context.mocks.data.orgModelPolicies([
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000201",
-      model: "claude-fable-5",
-      modelLabel: "Claude Fable 5",
-      isDefault: defaultSelectedModel === "claude-fable-5",
+      model: "claude-fable-5-1",
+      modelLabel: "Claude Fable 5.1",
+      isDefault: defaultSelectedModel === "claude-fable-5-1",
       defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
       modelProviderId: OPENROUTER_PROVIDER_ID,

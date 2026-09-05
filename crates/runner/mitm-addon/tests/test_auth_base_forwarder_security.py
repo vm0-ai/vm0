@@ -9,7 +9,7 @@ import pytest
 
 import auth_base_forwarder as forwarder
 import auth_base_transport as transport
-from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream
+from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream, http_response
 
 
 class TestAuthBaseForwarderSecurity:
@@ -117,6 +117,66 @@ class TestAuthBaseForwarderSecurity:
         assert upstream.contexts[-1].server_hostnames == ["hooks.example.com"]
         assert upstream.socket.request_lines()[0] == "GET /path HTTP/1.1"
         assert upstream.socket.request_header_values("Host") == ["hooks.example.com"]
+
+    async def test_retries_validated_address_after_socket_creation_failure(self):
+        creation_error = OSError(errno.EAFNOSUPPORT, "address family not supported")
+        fallback_socket = FakeSocket(http_response())
+        socket_factory = MagicMock(side_effect=[creation_error, fallback_socket])
+
+        with fake_forwarder_upstream(
+            addresses=("2001:4860:4860::8888", "93.184.216.34"),
+            socket_factory=socket_factory,
+        ) as upstream:
+            status, body, headers = await forwarder.forward_request(
+                "https://hooks.example.com/path",
+                "GET",
+                [],
+                None,
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        assert list(headers.items(multi=True)) == []
+        assert upstream.resolve_calls == ["hooks.example.com"]
+        assert upstream.socket_calls == [
+            (transport.socket.AF_INET6, transport.socket.SOCK_STREAM),
+            (transport.socket.AF_INET, transport.socket.SOCK_STREAM),
+        ]
+        assert upstream.sockets == [fallback_socket]
+        assert upstream.connect_calls == [("93.184.216.34", 443)]
+        assert upstream.contexts[-1].server_hostnames == ["hooks.example.com"]
+        assert fallback_socket.request_lines()[0] == "GET /path HTTP/1.1"
+        assert fallback_socket.closed
+        assert fallback_socket.close_count == 1
+
+    async def test_propagates_last_socket_creation_error_without_created_socket(self):
+        first_error = OSError(errno.EAFNOSUPPORT, "address family not supported")
+        last_error = OSError(errno.EMFILE, "too many open files")
+        socket_factory = MagicMock(side_effect=[first_error, last_error])
+
+        with (
+            fake_forwarder_upstream(
+                addresses=("2001:4860:4860::8888", "93.184.216.34"),
+                socket_factory=socket_factory,
+            ) as upstream,
+            pytest.raises(OSError, match="too many open files") as raised,
+        ):
+            await forwarder.forward_request(
+                "https://hooks.example.com/path",
+                "GET",
+                [],
+                None,
+            )
+
+        assert raised.value is last_error
+        assert upstream.resolve_calls == ["hooks.example.com"]
+        assert upstream.socket_calls == [
+            (transport.socket.AF_INET6, transport.socket.SOCK_STREAM),
+            (transport.socket.AF_INET, transport.socket.SOCK_STREAM),
+        ]
+        assert upstream.sockets == []
+        assert upstream.connect_calls == []
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
     async def test_reuses_https_context_without_reusing_connections(self):
         with fake_forwarder_upstream() as upstream:
