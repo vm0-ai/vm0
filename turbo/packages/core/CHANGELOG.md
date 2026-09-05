@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.624.0](https://github.com/vm0-ai/vm0/compare/core-v8.623.2...core-v8.624.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Bug Fixes
+
+* **api:** reuse sessions by runtime and model family ([#31796](https://github.com/vm0-ai/vm0/issues/31796)) ([6fd1c6f](https://github.com/vm0-ai/vm0/commit/6fd1c6ff18aa9bbeaf7d55c833bb1336d193be7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+
 ## [8.623.2](https://github.com/vm0-ai/vm0/compare/core-v8.623.1...core-v8.623.2) (2026-09-05)
 
 

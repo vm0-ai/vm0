@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.313.0](https://github.com/vm0-ai/vm0/compare/cli-v9.312.0...cli-v9.313.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.1
+    * @okouai/core bumped to 8.624.0
+    * @okouai/pi-agent-runtime bumped to 1.17.1
+
 ## [9.312.0](https://github.com/vm0-ai/vm0/compare/cli-v9.311.1...cli-v9.312.0) (2026-09-05)
 
 

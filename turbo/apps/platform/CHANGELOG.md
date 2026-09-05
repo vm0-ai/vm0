@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.844.0](https://github.com/vm0-ai/vm0/compare/app-v0.843.2...app-v0.844.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Bug Fixes
+
+* **platform:** assign pwa bottom safe areas to content ([#31734](https://github.com/vm0-ai/vm0/issues/31734)) ([2bde699](https://github.com/vm0-ai/vm0/commit/2bde6994874e55f7caa936844fb839e17b5ffaa9))
+
+
+### Refactoring
+
+* **platform:** classify and retire the residual zero-* platform names ([#31844](https://github.com/vm0-ai/vm0/issues/31844)) ([5fcd876](https://github.com/vm0-ai/vm0/commit/5fcd876c6ebad5753a58d79f111a6e55b903f108))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+    * @okouai/core bumped to 8.624.0
+    * @okouai/ui bumped to 1.5.3
+
 ## [0.843.2](https://github.com/vm0-ai/vm0/compare/app-v0.843.1...app-v0.843.2) (2026-09-05)
 
 
