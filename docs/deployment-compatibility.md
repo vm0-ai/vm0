@@ -76,6 +76,30 @@ after a backend deployment. When changing an API used by the frontend, keep the
 old request shape working until old browser clients can no longer reasonably be
 active, or introduce a versioned/new endpoint and migrate the frontend first.
 
+#### Connector App retirement
+
+The first singleton-free connector App release is `0.843.1`, built from
+`3795939e97660ef4228122a57e3f6425b1e413c2` and promoted on
+2026-09-05 at 04:24:28 UTC after #29773 / #31780. Issue #29775 raises the API
+App floor to that version in a later release. Verify the deployed artifact,
+not only the GitHub deployment's moving-main SHA: the preceding `0.843.0`
+release deployed `30aadb42008af91a999faac6170262dd1de881cb`, which predates
+the connector producer cleanup.
+
+Older identified App bundles receive `426` before route handling and use the
+existing update dialog to refresh into the supported App. This applies to
+all handled App API requests, not only connector actions; idle pages are not
+automatically refreshed. No passive browser-expiry window or rollback gate
+is required for #29775.
+
+The floor does not retire CLI, unidentified, or missing/unparseable-version
+requests. Keep singleton request and persisted authorization-state decoding
+until their independent gates pass. #29776 must verify the deployed App cutoff
+and inventory the three authorization-state tables before #29777 removes the
+remaining singleton contract. The pre-cutoff production request evidence on
+#29775 is not proof that account mutations were exercised or stored callbacks
+have drained.
+
 ### Backend
 
 The backend is the compatibility boundary for both frontend and runner traffic.

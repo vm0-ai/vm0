@@ -375,7 +375,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="okou-app okou-viewport-shell flex w-full bg-background"
+      className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >

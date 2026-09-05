@@ -466,28 +466,28 @@ const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_direct_parse_body",
   "api_dispatch_pre_create_direct_prepare_args",
 ] as const;
-const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_parse_body",
-  "api_dispatch_pre_create_zero_prepare_args",
-  "api_dispatch_pre_create_zero_resolve_agent_id",
-  "api_dispatch_pre_create_zero_load_agent",
-  "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
-  "api_dispatch_pre_create_zero_materialize_bootstrap_context",
-  "api_dispatch_pre_create_zero_resolve_firewall_metadata",
-  "api_dispatch_pre_create_zero_build_create_run_args",
+const API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_parse_body",
+  "api_dispatch_pre_create_agent_prepare_args",
+  "api_dispatch_pre_create_agent_resolve_agent_id",
+  "api_dispatch_pre_create_agent_load_agent",
+  "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
+  "api_dispatch_pre_create_agent_materialize_bootstrap_context",
+  "api_dispatch_pre_create_agent_resolve_firewall_metadata",
+  "api_dispatch_pre_create_agent_build_create_run_args",
 ] as const;
-const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_entrypoint_gap",
+const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_entrypoint_gap",
 ] as const;
-const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-  "api_dispatch_pre_create_zero_web_chat_check_active_run",
-  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
-  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
+  "api_dispatch_pre_create_agent_web_chat_check_active_run",
+  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
+  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
 ] as const;
 const API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
@@ -1874,11 +1874,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
     expectNoApiDispatchActions(
@@ -1887,11 +1887,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expect(
       singleApiDispatchEvent(
@@ -3544,15 +3544,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expect(
       singleApiDispatchEvent(
@@ -5799,7 +5799,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("reuses built-in continuation across provider aliases and isolates runtime changes", async () => {
+  it("resumes direct sessions only on the same runtime and family", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const selectedModel = await seedBuiltInDefaultModelKey();
@@ -5838,10 +5838,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
-    await setRunModelProviderFixture({
-      runId: first.runId,
-      modelProvider: "built-in",
-    });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
       group: runnerGroup,
@@ -5851,7 +5847,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "reuse the same built-in model runtime route",
+      prompt: "continue on the same runtime and model family",
       modelProvider: "built-in",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
@@ -5871,56 +5867,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await expectBuiltInModelRunRuntimeRoute(resumed.runId, selectedModel);
 
-    const resumedHistory = `managed resumed history ${resumed.runId}`;
-    const resumedHistoryHash = createHash("sha256")
-      .update(resumedHistory)
-      .digest("hex");
-    mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
-    await webhooks.requestAgentComplete(
-      {
-        runId: resumed.runId,
-        exitCode: 0,
-        lastEventSequence: 0,
-        checkpoint: {
-          cliAgentType: resumedClaim.cliAgentType,
-          cliAgentSessionId,
-          cliAgentSessionHistoryHash: resumedHistoryHash,
-        },
-      },
-      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
-      [200],
-    );
-    await setRunModelRuntimeRouteFixture({
-      runId: resumed.runId,
-      modelRuntimeProvider: "openai-api-key",
-      modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
-    });
-    await api.requestHeartbeatRunner(true, [200], {
-      runnerId: randomUUID(),
-      group: runnerGroup,
-      admittableProfiles: [],
-    });
+    await api.requestCancelRun(actor, resumed.runId, [200]);
 
-    const rotated = await api.createRun(actor, {
+    const changedRuntime = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "discard a checkpoint from another built-in model provider route",
-      modelProvider: "built-in",
+      prompt: "continue on a different native runtime",
+      modelProvider: "anthropic-api-key",
     });
-    expect(rotated.sessionId).toBe(first.sessionId);
-    const rotatedClaim = await api.claimRunnerJob(rotated.runId);
-    expect(rotatedClaim.resumeSession).toBeNull();
-    const rotatedStorageManifest = expectCanonicalStorageManifest(
-      rotatedClaim.storageManifest,
-    );
-    if (!rotatedStorageManifest) {
-      throw new Error("Expected canonical Storage mounts for the rotated run");
-    }
-    expect(rotatedStorageManifest.storageMounts).toStrictEqual(
-      initialStorageMounts,
-    );
-    await expectBuiltInModelRunRuntimeRoute(rotated.runId, selectedModel);
-    await api.requestCancelRun(actor, rotated.runId, [200]);
+    const changedRuntimeClaim = await api.claimRunnerJob(changedRuntime.runId);
+    expect(changedRuntimeClaim.cliAgentType).toBe("claude-code");
+    expect(changedRuntimeClaim.cliAgentType).not.toBe(firstClaim.cliAgentType);
+    expect(changedRuntimeClaim.resumeSession).toBeNull();
+    await api.requestCancelRun(actor, changedRuntime.runId, [200]);
   });
 
   it("validates same-thread reuse heartbeat inventory shapes", async () => {
@@ -7895,7 +7854,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         dataset === "vm0-sandbox-op-log-dev" &&
         Array.isArray(events) &&
         events.some((event) => {
-          return isRecord(event) && event.op_type === "enqueue_zero_run";
+          return isRecord(event) && event.op_type === "enqueue_agent_run";
         })
       ) {
         throw new Error("enqueue telemetry failed");
@@ -7916,7 +7875,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     expect(sandboxOperationEventsForRun(queued.runId)).toContainEqual(
       expect.objectContaining({
-        op_type: "enqueue_zero_run",
+        op_type: "enqueue_agent_run",
         run_id: queued.runId,
       }),
     );
@@ -15325,14 +15284,14 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
-      "api_dispatch_pre_create_zero_materialize_bootstrap_context",
-      "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+      "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
+      "api_dispatch_pre_create_agent_materialize_bootstrap_context",
+      "api_dispatch_pre_create_agent_resolve_firewall_metadata",
     ]);
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+        "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
       ),
     ).toStrictEqual(
       expect.objectContaining({
@@ -15343,7 +15302,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+        "api_dispatch_pre_create_agent_materialize_bootstrap_context",
       ),
     ).toStrictEqual(
       expect.objectContaining({
@@ -19168,12 +19127,19 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       const api = createRunsApi(context);
       const webhooks = createWebhookCallbackApi(context);
       const { actor, agentId } = await entitledRunActor();
+      const modelProvider =
+        cliAgentType === "codex" ? "openai-api-key" : "anthropic-api-key";
+      await api.createOrgModelProvider(actor, {
+        type: modelProvider,
+        secret: `bdd-${cliAgentType}-key`,
+      });
       const run = await api.createRun(actor, {
         agentId,
         prompt: `complete with ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const claim = await api.claimRunnerJob(run.runId);
+      expect(claim.cliAgentType).toBe(cliAgentType);
       const history = `bdd combined ${cliAgentType} history ${run.runId}`;
       const historyHash = createHash("sha256").update(history).digest("hex");
       const cliAgentSessionId = `bdd-combined-${cliAgentType}-${run.runId}`;
@@ -19269,7 +19235,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentId,
         sessionId: run.sessionId,
         prompt: `resume combined ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const continuedClaim = await api.claimRunnerJob(continued.runId);
       expect(continuedClaim.resumeSession).toMatchObject({
@@ -19307,7 +19273,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentId,
         sessionId: run.sessionId,
         prompt: `resume successor ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
       expect(afterRetryClaim.resumeSession).toMatchObject({

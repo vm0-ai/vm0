@@ -468,8 +468,6 @@ export {
   getCustomModelPlaceholder,
   getDefaultOrgModelPolicySeed,
   // Provider compatibility
-  getProviderBaseUrl,
-  areProvidersCompatible,
   getCanonicalModelDisplayName,
   getProvidersForModel,
   getProviderRuntimeModel,

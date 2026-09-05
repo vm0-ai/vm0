@@ -9,7 +9,7 @@ import { logger } from "../../signals/log.ts";
 import { throwIfAbort } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 
-const log = logger("zero-attachment-url");
+const log = logger("okou-attachment-url");
 
 const LEGACY_FILE_PATH_PATTERN = /^\/f\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/([^/]+)\/([^/]+)\/([^/]+)$/;

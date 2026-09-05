@@ -50,10 +50,7 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  modelProviderConnectionsByIdContract,
-  modelProviderConnectionsMainContract,
-} from "@okouai/api-contracts/contracts/model-provider-gateways";
+import { modelProviderConnectionsMainContract } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
@@ -79,7 +76,6 @@ import {
   readRunModelRuntimeRouteFixture,
   setRunPiMemoryAdmissionInputsFixture,
   setRunLaunchSnapshotFixture,
-  setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
 import {
   commitPiMemoryStage1CandidateFixture,
@@ -153,7 +149,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import {
-  clearThreadSessionBinding,
   readRunAutonomyBudgetFixture,
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
@@ -188,7 +183,6 @@ import {
 import {
   acquireBddVm0ApiKey,
   completeRunWithoutCallbacksFixture,
-  deleteAgentRunFixture,
   deletePiApiFirstTurnUsageEventsFixture,
   holdAgentRunRowLockFixture,
   holdChatEventQueueItemFixture,
@@ -317,64 +311,64 @@ A normal completion provides a reliable handoff for the next run. The handoff in
 
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
 const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source";
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_agent_run_source";
 const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata";
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_attachment_metadata";
 const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_transaction",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_clear_draft",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_persist_event",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_register_input_assets",
 ] as const;
 const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort";
-const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_touch_thread_sort";
+const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_model_selection",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
   API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_codex_service_tier",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_model_selection",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
   API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue",
   ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
-  "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
-  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
-  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
-  "api_dispatch_pre_create_zero_resolve_thread_session",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_check_dispatchable",
+  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
+  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
+  "api_dispatch_pre_create_agent_resolve_thread_session",
 ] as const;
 const API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_resolve_thread_session";
+  "api_dispatch_pre_create_agent_resolve_thread_session";
 const API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context";
+  "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context";
 const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
 const API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_prepare_recent_chat_context",
 ] as const;
 const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
   API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
   API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
 const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
   API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
-const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_entrypoint_gap",
+const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_entrypoint_gap",
 ] as const;
 const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
   "api_dispatch_validate_thread_session_snapshot_thread",
@@ -1401,12 +1395,6 @@ function modelProviderConnectionsClient() {
   );
 }
 
-function modelProviderConnectionsByIdClient() {
-  return setupApp({ context, routes: modelProviderGatewayRoutes })(
-    modelProviderConnectionsByIdContract,
-  );
-}
-
 function chatEventsClient() {
   return setupApp({ context, routes: chatEventsRoutes })(chatEventsContract);
 }
@@ -2376,11 +2364,11 @@ describe("CHAT-02: web chat send and client ids", () => {
     const timingEvents = apiDispatchTimingEventsForRun(runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
     expectNoApiDispatchActions(timingEvents, [
@@ -2435,7 +2423,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
@@ -2747,7 +2735,8 @@ describe("CHAT-02: interrupting active chat runs", () => {
       "clientEventId is already in use",
     );
 
-    // Both cancelled rounds surface as incomplete context for the next run.
+    // Neither cancelled round saved native history, so the next run replays
+    // both rounds in a fresh session.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -2755,10 +2744,13 @@ describe("CHAT-02: interrupting active chat runs", () => {
     });
     const thirdRun = await api.readRun(actor, third.runId);
     const appended = thirdRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Incomplete Rounds Context");
+    expect(appended).toContain("# Web Chat Run Context");
     expect(appended).toContain("RUN_STATUS: cancelled");
     expect(appended).toContain("User: long task to interrupt");
-    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).toContain("User: cancelled through the cancel api");
+    expect(appended).not.toContain("# Incomplete Rounds Context");
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
@@ -4242,7 +4234,7 @@ describe("CHAT-02: org queue markers", () => {
     ]);
     expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
       expect.objectContaining({
-        op_type: "enqueue_zero_run",
+        op_type: "enqueue_agent_run",
         queue_depth: 1,
       }),
     );
@@ -11110,7 +11102,7 @@ describe("CHAT-02: model-first provider policies", () => {
   );
 
   it.each(STANDARD_TERRA_API_KEY_BDD_ROUTES)(
-    "runs $name API-key Terra through API-first and generation-2 Sandbox with exact credential continuity",
+    "runs $name API-key Terra through API-first and generation-2 Sandbox across credential rotation",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const firewall = createFirewallApi(context);
@@ -11449,10 +11441,10 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(occurrences(rotatedBody, firstPrompt)).toBe(1);
       expect(occurrences(rotatedBody, sandboxAnswer)).toBe(1);
       expect(occurrences(rotatedBody, followUpPrompt)).toBe(1);
-      expect(rotatedBody).not.toContain(sandboxToolResult);
+      expect(rotatedBody).toContain(sandboxToolResult);
       await expect(
         readThreadSessionConversation(context, first.threadId),
-      ).resolves.not.toMatchObject({
+      ).resolves.toMatchObject({
         agent_session_id: firstSession.agent_session_id,
       });
       await expectNoBuiltInModelUsage(rotated.runId);
@@ -11590,7 +11582,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type:
-          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
         model_resolution_path: "read_only",
       }),
     );
@@ -11679,7 +11671,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type:
-          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
         model_resolution_path: "locked_reconciliation",
       }),
     );
@@ -13182,7 +13174,7 @@ describe("CHAT-02: run-level model overrides", () => {
     90_000,
   );
 
-  it("rotates switched Codex accounts and resumes the captured account", async () => {
+  it("reuses Codex sessions across account switches with the newly captured account", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     const firewall = createFirewallApi(context);
@@ -13311,7 +13303,9 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "continue with account B",
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession).toBeNull();
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
     expect(
       secondClaim.claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
     ).toMatchObject({ sourceId: accountBId });
@@ -13421,163 +13415,109 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
-  it("rotates VM0 chat sessions on runtime-model and legacy-route mismatches", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const selectedModel = "claude-sonnet-5";
-    await seedBuiltInModelKey(selectedModel);
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: selectedModel,
-        isDefault: true,
-        defaultProviderType: "built-in",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
+  it.each([
+    {
+      from: "gpt-5.6-sol",
+      to: "gpt-6-astra",
+      runtime: "codex",
+      reuse: true,
+    },
+    {
+      from: "claude-opus-4-8",
+      to: "claude-sonnet-5",
+      runtime: "claude-code",
+      reuse: true,
+    },
+    {
+      from: "deepseek-v4-flash",
+      to: "deepseek-v4-pro",
+      runtime: "codex",
+      reuse: true,
+    },
+    {
+      from: "gpt-6-astra",
+      to: "deepseek-v4-flash",
+      runtime: "codex",
+      reuse: false,
+    },
+  ] as const)(
+    "applies family compatibility when switching built-in $from to $to on $runtime",
+    async ({ from, to, runtime, reuse }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId: requireOrgId(actor) },
+        { [FeatureSwitchKey.PiLoop]: false },
+      );
+      await seedBuiltInModelKey(from);
+      await seedBuiltInModelKey(to);
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: from,
+          isDefault: true,
+          defaultProviderType: "built-in",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+        {
+          model: to,
+          isDefault: false,
+          defaultProviderType: "built-in",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ]);
+      const first = await sendChatRun(actor, {
+        agentId,
+        prompt: "establish native history before switching models",
+        model: from,
+      });
+      const firstClaim = await claimChatRun(runnerGroup, first.runId);
+      expect(firstClaim.claim.cliAgentType).toBe(runtime);
+      chatCallbacks.mockChatOutputEvents([]);
+      await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+        cliAgentType: runtime,
+      });
+      await flushWaitUntilForTest();
+      const firstRun = await api.readRun(actor, first.runId);
+      expect(firstRun).toMatchObject({
+        status: "completed",
+        result: { agentSessionId: expect.any(String) },
+      });
 
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "establish a built-in model runtime route",
-      model: selectedModel,
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
-    const firstBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    if (!firstBinding.agent_session_id) {
-      throw new Error("Expected the built-in model route to bind a session");
-    }
-    await expect(
-      readRunModelRuntimeRouteFixture(first.runId),
-    ).resolves.toMatchObject({
-      modelProvider: "built-in",
-      selectedModel,
-      modelRuntimeProvider: "anthropic-api-key",
-      modelRuntimeModel: selectedModel,
-      builtInModelKeyId: expect.any(String),
-      builtInModelKeyVendor: "anthropic",
-    });
-
-    const reused = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "reuse the same built-in model route",
-    });
-    const reusedBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(reusedBinding.agent_session_id).toBe(firstBinding.agent_session_id);
-    const reusedClaim = await claimChatRun(runnerGroup, reused.runId);
-    expect(reusedClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${first.runId}`,
-    );
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(reused.runId, reusedClaim.sandboxHeaders);
-
-    await setRunModelRuntimeRouteFixture({
-      runId: reused.runId,
-      modelRuntimeProvider: "anthropic-api-key",
-      modelRuntimeModel: "alternate-upstream-model",
-    });
-    const mismatched = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "rotate after the upstream model changes",
-    });
-    const mismatchedBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(mismatchedBinding.agent_session_id).not.toBe(
-      reusedBinding.agent_session_id,
-    );
-    const mismatchedClaim = await claimChatRun(runnerGroup, mismatched.runId);
-    expect(mismatchedClaim.claim.resumeSession).toBeNull();
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(mismatched.runId, mismatchedClaim.sandboxHeaders);
-
-    await setRunModelRuntimeRouteFixture({
-      runId: mismatched.runId,
-      modelRuntimeProvider: null,
-      modelRuntimeModel: null,
-    });
-    const legacy = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "rotate legacy managed history",
-    });
-    const legacyBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(legacyBinding.agent_session_id).not.toBe(
-      mismatchedBinding.agent_session_id,
-    );
-    const legacyClaim = await claimChatRun(runnerGroup, legacy.runId);
-    expect(legacyClaim.claim.resumeSession).toBeNull();
-    await cancelChatRun(actor, legacy.runId);
-  }, 90_000);
-
-  it("lazily adopts the latest eligible session for a legacy unbound thread", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "establish history before lazy adoption",
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
-    const firstBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    if (!firstBinding.agent_session_id) {
-      throw new Error("Expected the first run to establish a session");
-    }
-
-    await clearThreadSessionBinding(context, first.threadId);
-    await expect(
-      readThreadSessionBinding(context, first.threadId),
-    ).resolves.toMatchObject({
-      agent_session_id: null,
-      agent_session_run_id: null,
-    });
-
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "adopt the historical session",
-    });
-    const secondBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(secondBinding).toMatchObject({
-      agent_session_id: firstBinding.agent_session_id,
-      agent_session_run_id: second.runId,
-      run_session_id: firstBinding.agent_session_id,
-    });
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        chat_thread_id: first.threadId,
-        agent_session_id: firstBinding.agent_session_id,
-        agent_session_run_id: second.runId,
-        binding_action: "adopted",
-      }),
-    );
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${first.runId}`,
-    );
-    await cancelChatRun(actor, second.runId);
-  }, 90_000);
+      const second = await sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue with the selected model",
+        model: to,
+      });
+      const secondClaim = await claimChatRun(runnerGroup, second.runId);
+      expect(secondClaim.claim.cliAgentType).toBe(runtime);
+      const environment = claimEnvironment(secondClaim.claim);
+      expect(
+        runtime === "codex"
+          ? environment.OPENAI_MODEL
+          : environment.ANTHROPIC_MODEL,
+      ).toBe(to);
+      expect(secondClaim.claim.resumeSession?.sessionId ?? null).toBe(
+        reuse ? `bdd-cli-${first.runId}` : null,
+      );
+      chatCallbacks.mockChatOutputEvents([]);
+      await completeChatRunOk(second.runId, secondClaim.sandboxHeaders, {
+        cliAgentType: runtime,
+      });
+      await flushWaitUntilForTest();
+      const secondRun = await api.readRun(actor, second.runId);
+      expect(secondRun).toMatchObject({
+        status: "completed",
+        result: { agentSessionId: expect.any(String) },
+      });
+      expect(
+        secondRun.result?.agentSessionId === firstRun.result?.agentSessionId,
+      ).toBe(reuse);
+    },
+    90_000,
+  );
 
   it("refuses a canonical session owned by another user and organization", async () => {
     const primary = await entitledChatActor();
@@ -13628,29 +13568,30 @@ describe("CHAT-02: run-level model overrides", () => {
       primaryFirst.threadId,
     );
     expect(repairedBinding).toMatchObject({
-      agent_session_id: primaryBinding.agent_session_id,
+      agent_session_id: expect.any(String),
       agent_session_run_id: primarySecond.runId,
-      run_session_id: primaryBinding.agent_session_id,
+      run_session_id: repairedBinding.agent_session_id,
     });
     expect(repairedBinding.agent_session_id).not.toBe(
       foreignBinding.agent_session_id,
+    );
+    expect(repairedBinding.agent_session_id).not.toBe(
+      primaryBinding.agent_session_id,
     );
     expect(sandboxOperationEventsForRun(primarySecond.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",
         chat_thread_id: primaryFirst.threadId,
-        agent_session_id: primaryBinding.agent_session_id,
+        agent_session_id: expect.any(String),
         agent_session_run_id: primarySecond.runId,
-        binding_action: "adopted",
+        binding_action: "initialized",
       }),
     );
     const primarySecondClaim = await claimChatRun(
       runnerGroup,
       primarySecond.runId,
     );
-    expect(primarySecondClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${primaryFirst.runId}`,
-    );
+    expect(primarySecondClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(primary.actor, primarySecond.runId);
   }, 90_000);
 
@@ -13995,10 +13936,13 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
     );
     expect(secondBinding).toMatchObject({
-      agent_session_id: firstBinding.agent_session_id,
+      agent_session_id: expect.any(String),
       agent_session_run_id: second.runId,
-      run_session_id: firstBinding.agent_session_id,
+      run_session_id: secondBinding.agent_session_id,
     });
+    expect(secondBinding.agent_session_id).not.toBe(
+      firstBinding.agent_session_id,
+    );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     await expect(
       readRunLaunchSnapshotFixture(context, second.runId),
@@ -14010,195 +13954,8 @@ describe("CHAT-02: run-level model overrides", () => {
         runnerProfile: DEFAULT_PROFILE,
       },
     });
-    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${first.runId}`,
-    );
+    expect(secondClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(actor, second.runId);
-  }, 90_000);
-
-  it("rebuilds Web prompt context when a stale retry rotates the session", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for binding validation");
-    }
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const created = await accept(
-      modelProviderConnectionsClient().create({
-        headers: sessionHeaders(actor),
-        body: {
-          displayName: "Retry session gateway",
-          secret: "retry-session-gateway-secret",
-          surfaces: [
-            {
-              protocol: "anthropic-messages",
-              apiBaseUrl: "https://gateway.example.com/anthropic",
-              authHeaderName: "Authorization",
-              authHeaderTemplate: "Bearer {{secret}}",
-              modelMappings: {
-                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
-              },
-            },
-          ],
-        },
-      }),
-      [201],
-    );
-    const surfaceId = created.body.surfaces[0]?.id;
-    if (!surfaceId) {
-      throw new Error("Expected the retry gateway to have a surface");
-    }
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "custom-anthropic-messages",
-        credentialScope: "org",
-        modelProviderId: null,
-        modelProviderSurfaceId: surfaceId,
-      },
-    ]);
-
-    const anchorPrompt = "successful context before the incomplete round";
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: anchorPrompt,
-      model: "claude-sonnet-5",
-    });
-    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "successful context response"),
-    ]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await flushWaitUntilForTest();
-
-    const incompletePrompt = "failed context from the reusable session";
-    const incomplete = await sendChatRun(actor, {
-      agentId,
-      threadId: anchor.threadId,
-      prompt: incompletePrompt,
-    });
-    const incompleteClaim = await claimChatRun(runnerGroup, incomplete.runId);
-    await failChatRun(
-      incomplete.runId,
-      incompleteClaim.sandboxHeaders,
-      "expected retry context failure",
-    );
-    await flushWaitUntilForTest();
-    const originalBinding = await readThreadSessionBinding(
-      context,
-      anchor.threadId,
-    );
-    if (!originalBinding.agent_session_id) {
-      throw new Error("Expected the incomplete run to retain its session");
-    }
-
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: actor.orgId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      admissionLock.release();
-      await admissionLock.done;
-    });
-    const messageId = randomUUID();
-    const retriedPromise = sendChatRun(actor, {
-      agentId,
-      threadId: anchor.threadId,
-      prompt: "rotate the prompt context during retry",
-      clientEventId: messageId,
-    });
-    await expect
-      .poll(async () => {
-        const messages = await chat.listThreadEvents(actor, anchor.threadId);
-        return messages.events.some((message) => {
-          return message.id === messageId;
-        });
-      })
-      .toBe(true);
-
-    const bindingClear = await holdThreadSessionBindingClearFixture({
-      threadId: anchor.threadId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      bindingClear.release();
-      await bindingClear.done;
-    });
-    admissionLock.release();
-    await admissionLock.done;
-    await expect
-      .poll(bindingClear.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
-
-    await accept(
-      modelProviderConnectionsByIdClient().update({
-        headers: sessionHeaders(actor),
-        params: { id: created.body.id },
-        body: {
-          displayName: "Updated retry session gateway",
-          surfaces: [
-            {
-              protocol: "anthropic-messages",
-              apiBaseUrl: "https://gateway.example.com/anthropic-v2",
-              authHeaderName: "Authorization",
-              authHeaderTemplate: "Bearer {{secret}}",
-              modelMappings: {
-                "claude-sonnet-5": "anthropic/claude-sonnet-4.6-v2",
-              },
-            },
-          ],
-        },
-      }),
-      [200],
-    );
-    bindingClear.release();
-    await bindingClear.done;
-    const retried = await retriedPromise;
-
-    expect(
-      sandboxOperationEvents().filter((event) => {
-        return (
-          event.op_type === "chat_thread_session_binding_retry" &&
-          event.chat_thread_id === anchor.threadId
-        );
-      }),
-    ).toContainEqual(
-      expect.objectContaining({
-        agent_session_id: originalBinding.agent_session_id,
-        resolution_action: "reused",
-        retry_reason: "binding_changed",
-      }),
-    );
-    expect(sandboxOperationEventsForRun(retried.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        binding_action: "rotated",
-      }),
-    );
-    const retriedRun = await api.readRun(actor, retried.runId);
-    const appendSystemPrompt = retriedRun.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain("# Web Chat Run Context");
-    expect(appendSystemPrompt).toContain(anchorPrompt);
-    expect(appendSystemPrompt).toContain(incompletePrompt);
-    expect(appendSystemPrompt).not.toContain("# Incomplete Rounds Context");
-
-    const retryTimingEvents = apiDispatchTimingEventsForRun(retried.runId);
-    for (const actionType of [
-      API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-      API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
-    ]) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(2);
-    }
-    const retriedClaim = await claimChatRun(runnerGroup, retried.runId);
-    expect(retriedClaim.claim.resumeSession).toBeNull();
-    await cancelChatRun(actor, retried.runId);
   }, 90_000);
 
   it("replays only each prior run's final answer when a model family rotates the session", async () => {
@@ -14422,10 +14179,13 @@ describe("CHAT-02: run-level model overrides", () => {
       first.threadId,
     );
     expect(secondBinding).toMatchObject({
-      agent_session_id: firstBinding.agent_session_id,
+      agent_session_id: expect.any(String),
       agent_session_run_id: second.runId,
-      run_session_id: firstBinding.agent_session_id,
+      run_session_id: secondBinding.agent_session_id,
     });
+    expect(secondBinding.agent_session_id).not.toBe(
+      firstBinding.agent_session_id,
+    );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(actor, second.runId);
@@ -14520,320 +14280,6 @@ describe("CHAT-02: run-level model overrides", () => {
     await expect(
       readThreadSessionBinding(context, first.threadId),
     ).resolves.toStrictEqual(firstBinding);
-  }, 90_000);
-
-  it("rotates after a custom gateway is deleted and replaced by its legacy adapter", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const created = await accept(
-      modelProviderConnectionsClient().create({
-        headers: sessionHeaders(actor),
-        body: {
-          displayName: "Deleted session gateway",
-          secret: "deleted-session-gateway-secret",
-          surfaces: [
-            {
-              protocol: "anthropic-messages",
-              apiBaseUrl: "https://gateway.example.com/anthropic",
-              authHeaderName: "Authorization",
-              authHeaderTemplate: "Bearer {{secret}}",
-              modelMappings: {
-                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
-              },
-            },
-          ],
-        },
-      }),
-      [201],
-    );
-    const surfaceId = created.body.surfaces[0]?.id;
-    if (!surfaceId) {
-      throw new Error("Expected the custom gateway to have a surface");
-    }
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "custom-anthropic-messages",
-        credentialScope: "org",
-        modelProviderId: null,
-        modelProviderSurfaceId: surfaceId,
-      },
-    ]);
-
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "establish a custom gateway session",
-      model: "claude-sonnet-5",
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
-    const originalBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    if (!originalBinding.agent_session_id) {
-      throw new Error("Expected the custom gateway route to bind a session");
-    }
-
-    await accept(
-      modelProviderConnectionsByIdClient().delete({
-        headers: sessionHeaders(actor),
-        params: { id: created.body.id },
-      }),
-      [204],
-    );
-    const { providerId: legacyProviderId } = await upsertOrgModelProvider(
-      actor,
-      {
-        type: "vercel-ai-gateway",
-        secret: "replacement-legacy-vercel-key",
-      },
-    );
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "vercel-ai-gateway",
-        credentialScope: "org",
-        modelProviderId: legacyProviderId,
-      },
-    ]);
-
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "rotate away from the deleted custom surface",
-    });
-    const rotatedBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(rotatedBinding.agent_session_id).not.toBe(
-      originalBinding.agent_session_id,
-    );
-    expect(rotatedBinding).toMatchObject({
-      agent_session_run_id: second.runId,
-      run_session_id: rotatedBinding.agent_session_id,
-    });
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        chat_thread_id: first.threadId,
-        agent_session_id: rotatedBinding.agent_session_id,
-        agent_session_run_id: second.runId,
-        binding_action: "rotated",
-      }),
-    );
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession).toBeNull();
-    await cancelChatRun(actor, second.runId);
-  }, 90_000);
-
-  it("rotates after a custom gateway is deleted and replaced by a direct vendor key", async () => {
-    const { actor, agentId, runnerGroup, providerId } =
-      await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const created = await accept(
-      modelProviderConnectionsClient().create({
-        headers: sessionHeaders(actor),
-        body: {
-          displayName: "Direct replacement gateway",
-          secret: "direct-replacement-gateway-secret",
-          surfaces: [
-            {
-              protocol: "anthropic-messages",
-              apiBaseUrl: "https://gateway.example.com/anthropic",
-              authHeaderName: "Authorization",
-              authHeaderTemplate: "Bearer {{secret}}",
-              modelMappings: {
-                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
-              },
-            },
-          ],
-        },
-      }),
-      [201],
-    );
-    const surfaceId = created.body.surfaces[0]?.id;
-    if (!surfaceId) {
-      throw new Error("Expected the custom gateway to have a surface");
-    }
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "custom-anthropic-messages",
-        credentialScope: "org",
-        modelProviderId: null,
-        modelProviderSurfaceId: surfaceId,
-      },
-    ]);
-
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "establish a custom gateway session",
-      model: "claude-sonnet-5",
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
-    const originalBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    if (!originalBinding.agent_session_id) {
-      throw new Error("Expected the custom gateway route to bind a session");
-    }
-
-    // A direct vendor key resolves to no upstream base URL because it uses the
-    // vendor default endpoint, and so does a custom gateway, whose endpoint is
-    // stored on the surface row. The session must still rotate: the deleted
-    // surface pointed somewhere else entirely.
-    await accept(
-      modelProviderConnectionsByIdClient().delete({
-        headers: sessionHeaders(actor),
-        params: { id: created.body.id },
-      }),
-      [204],
-    );
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "anthropic-api-key",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      },
-    ]);
-
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "rotate onto the direct vendor key",
-    });
-    const rotatedBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(rotatedBinding.agent_session_id).not.toBe(
-      originalBinding.agent_session_id,
-    );
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        chat_thread_id: first.threadId,
-        agent_session_id: rotatedBinding.agent_session_id,
-        agent_session_run_id: second.runId,
-        binding_action: "rotated",
-      }),
-    );
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession).toBeNull();
-    await cancelChatRun(actor, second.runId);
-  }, 90_000);
-
-  it("rotates from the latest session run when binding provenance is deleted", async () => {
-    const { actor, agentId, runnerGroup, providerId } =
-      await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "anthropic-api-key",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      },
-    ]);
-
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "establish the original provider route",
-      model: "claude-sonnet-5",
-    });
-    const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
-
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "advance binding provenance on the same route",
-    });
-    const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${first.runId}`,
-    );
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
-    // Settle terminal materialization before simulating later retention.
-    await flushWaitUntilForTest();
-    const originalBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    if (!originalBinding.agent_session_id) {
-      throw new Error("Expected the original route to bind a session");
-    }
-
-    await deleteAgentRunFixture({ runId: second.runId });
-    await expect(
-      readThreadSessionBinding(context, first.threadId),
-    ).resolves.toMatchObject({
-      agent_session_id: originalBinding.agent_session_id,
-      agent_session_run_id: null,
-      run_session_id: null,
-    });
-
-    const { providerId: openRouterProviderId } = await upsertOrgModelProvider(
-      actor,
-      {
-        type: "openrouter-api-key",
-        secret: "provenance-fallback-openrouter-key",
-      },
-    );
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "openrouter-api-key",
-        credentialScope: "org",
-        modelProviderId: openRouterProviderId,
-      },
-    ]);
-
-    const third = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "rotate after the provenance run is removed",
-    });
-    const rotatedBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(rotatedBinding.agent_session_id).not.toBe(
-      originalBinding.agent_session_id,
-    );
-    expect(rotatedBinding).toMatchObject({
-      agent_session_run_id: third.runId,
-      run_session_id: rotatedBinding.agent_session_id,
-    });
-    expect(sandboxOperationEventsForRun(third.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        chat_thread_id: first.threadId,
-        agent_session_id: rotatedBinding.agent_session_id,
-        agent_session_run_id: third.runId,
-        binding_action: "rotated",
-      }),
-    );
-    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
-    expect(thirdClaim.claim.resumeSession).toBeNull();
-    await cancelChatRun(actor, third.runId);
   }, 90_000);
 
   it("re-resolves a sticky model through the current provider policy", async () => {
@@ -14944,18 +14390,20 @@ describe("CHAT-02: run-level model overrides", () => {
       ),
     );
     expect(thirdClaim.claim.cliAgentType).toBe("claude-code");
-    expect(thirdClaim.claim.resumeSession).toBeNull();
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${second.runId}`,
+    );
     await completeChatRunOk(third.runId, thirdClaim.sandboxHeaders);
-    const rotatedBinding = await readThreadSessionBinding(
+    const reusedBinding = await readThreadSessionBinding(
       context,
       first.threadId,
     );
-    expect(rotatedBinding.agent_session_id).not.toBe(
+    expect(reusedBinding.agent_session_id).toBe(
       originalBinding.agent_session_id,
     );
-    expect(rotatedBinding).toMatchObject({
+    expect(reusedBinding).toMatchObject({
       agent_session_run_id: third.runId,
-      run_session_id: rotatedBinding.agent_session_id,
+      run_session_id: reusedBinding.agent_session_id,
     });
     await expectNoThreadModelUpdateEvent(
       actor,
@@ -14966,16 +14414,16 @@ describe("CHAT-02: run-level model overrides", () => {
     const fourth = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "continue after the canonical session rotates",
+      prompt: "continue on the same canonical session",
     });
     const fourthBinding = await readThreadSessionBinding(
       context,
       first.threadId,
     );
     expect(fourthBinding).toMatchObject({
-      agent_session_id: rotatedBinding.agent_session_id,
+      agent_session_id: reusedBinding.agent_session_id,
       agent_session_run_id: fourth.runId,
-      run_session_id: rotatedBinding.agent_session_id,
+      run_session_id: reusedBinding.agent_session_id,
     });
     const fourthClaim = await claimChatRun(runnerGroup, fourth.runId);
     expect(fourthClaim.claim.resumeSession?.sessionId).toBe(
@@ -15063,8 +14511,16 @@ describe("CHAT-02: incomplete-round context", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish native session history",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+
     const first = await sendChatRun(actor, {
       agentId,
+      threadId: anchor.threadId,
       prompt: "first incomplete",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -15116,6 +14572,10 @@ describe("CHAT-02: incomplete-round context", () => {
     );
     expect(appended).toContain("...[truncated]");
     expect(appended).not.toContain("retry after two failures");
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${anchor.runId}`,
+    );
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
@@ -16380,9 +15840,11 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(workflowPrompt).not.toContain("Before creating anything");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
-    // The illustration run was cancelled, so only its message text is replayed
-    // via "# Incomplete Rounds Context"; the style id is not.
-    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    // The illustration run saved no native history, so its message text is
+    // replayed in the new session without the style id.
+    expect(workflowPrompt).toContain("# Web Chat Run Context");
+    expect(workflowPrompt).toContain("User: draw a labeled inbox");
+    expect(workflowPrompt).not.toContain("# Incomplete Rounds Context");
     expect(workflowPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
 
@@ -16393,14 +15855,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
-    // No explicit selection this turn, so there is no live block for either
-    // type. Both earlier runs were cancelled, so the general "# Web Chat Run
-    // Context" replay is suppressed in favor of resuming the existing session
-    // (see prepareRecentChatContext).
+    // Neither cancelled run saved native history. Replay their message text
+    // without carrying either prior template selection into the new session.
     expect(followUpPrompt).not.toContain("# Inline Templates");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
-    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
-    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
+    expect(followUpPrompt).toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("User: draw a labeled inbox");
+    expect(followUpPrompt).toContain("User: create the workflow version");
+    expect(followUpPrompt).not.toContain("# Incomplete Rounds Context");
     expect(followUpPrompt).not.toContain("Selected a template");
     expect(followUpPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
@@ -19260,14 +18722,15 @@ describe("CHAT-02: shared user message queue", () => {
       context.signal,
     );
     expect(incompleteState.agent_run).toMatchObject({ triggerSource: "agent" });
-    expect(incompleteSystemPrompt).toContain("# Incomplete Rounds Context");
+    expect(incompleteSystemPrompt).toContain("# Web Chat Run Context");
     expect(incompleteSystemPrompt).toContain(incompletePrompt);
-    expect(incompleteSystemPrompt).not.toContain("# Web Chat Run Context");
+    expect(incompleteSystemPrompt).not.toContain("# Incomplete Rounds Context");
     expect(incompleteSystemPrompt).toContain("Web chat files: use");
     const promotedIncompleteClaim = await claimChatRun(
       runnerGroup,
       incompleteRunId,
     );
+    expect(promotedIncompleteClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(
       actor,
       incompleteRunId,
@@ -19582,9 +19045,9 @@ describe("CHAT-02: shared user message queue", () => {
           apiDispatchTimingEventsForRun(queuedRunId),
         );
         return [
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
         ].every((actionType) => {
           return actionTypes.has(actionType);
         });
@@ -19593,14 +19056,14 @@ describe("CHAT-02: shared user message queue", () => {
     const timingEvents = apiDispatchTimingEventsForRun(queuedRunId);
     expectApiDispatchSpanKind(
       timingEvents,
-      ["api_dispatch_pre_create_zero_chat_callback_auto_send_build_input"],
+      ["api_dispatch_pre_create_agent_chat_callback_auto_send_build_input"],
       "top_level",
     );
     expectApiDispatchSpanKind(
       timingEvents,
       [
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
       ],
       "nested",
     );

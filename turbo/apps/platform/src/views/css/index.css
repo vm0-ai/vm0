@@ -44,8 +44,7 @@
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
-  --sab-raw: env(safe-area-inset-bottom, 0px);
-  --sab: var(--sab-raw);
+  --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --okou-viewport-height: 100dvh;
   --okou-desktop-titlebar-height: 48px;
@@ -59,8 +58,12 @@
   }
 }
 
-:root[data-keyboard-open="true"] {
-  --sab: 0px;
+[data-chat-composer] {
+  --okou-composer-safe-bottom: var(--sab);
+}
+
+:root[data-keyboard-open="true"] [data-chat-composer] {
+  --okou-composer-safe-bottom: 0px;
 }
 
 html,
@@ -99,9 +102,10 @@ body {
   top: 0;
   right: 0;
   left: 0;
-  /* Keep the root-owned safe-area padding opaque behind translucent iOS chrome. */
+  /* Top and horizontal insets are shared by every route. Bottom ownership is
+     delegated to the active viewport shell or its bottom interaction. */
   background-color: hsl(var(--background));
-  padding: var(--sat) var(--sar) var(--sab-raw) var(--sal);
+  padding: var(--sat) var(--sar) 0 var(--sal);
 }
 
 @media (display-mode: standalone) {
@@ -127,10 +131,18 @@ body {
 }
 
 .okou-viewport-shell {
+  box-sizing: border-box;
   height: 100%;
   min-height: 100%;
   max-height: 100%;
   overflow: hidden;
+  padding-bottom: var(--sab);
+}
+
+/* Workspace scrollports reach the physical viewport edge. Their scroll content,
+   composer, and other bottom interactions own the safe inset instead. */
+.okou-managed-bottom-safe-area {
+  padding-bottom: 0;
 }
 
 .okou-fixed-viewport-shell {
@@ -149,11 +161,31 @@ body {
 }
 
 @media (max-width: 767px) {
-  /* Fixed mobile surfaces escape the padded page shell, so they own the same
-     content boundary while their background still covers the viewport. */
+  /* Fixed mobile surfaces escape the page shell, so their interactive content
+     owns an immutable safe-area boundary. */
   .okou-mobile-fixed-safe-area {
     box-sizing: border-box;
     padding: var(--sat) var(--sar) var(--sab) var(--sal);
+  }
+}
+
+.okou-mobile-sidebar {
+  isolation: isolate;
+}
+
+.okou-mobile-sidebar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-color: hsl(var(--sidebar));
+  content: "";
+  pointer-events: none;
+}
+
+@media (display-mode: standalone) {
+  /* Paint may extend below the viewport without moving drawer content. */
+  .okou-mobile-sidebar::before {
+    bottom: calc(-1 * var(--sab));
   }
 }
 
@@ -215,7 +247,7 @@ body {
    box that holds glyphs, so the text cannot shift.
 
    `contain: paint` keeps the per-frame repaint inside the label. */
-@keyframes zero-shimmer {
+@keyframes okou-shimmer {
   from {
     background-position: 100% center;
   }
@@ -238,10 +270,10 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   contain: paint;
-  animation: zero-shimmer 3.5s linear infinite;
+  animation: okou-shimmer 3.5s linear infinite;
 }
 
-@keyframes zero-thinking-in {
+@keyframes okou-thinking-in {
   from {
     opacity: 0;
     transform: translateY(0.5rem);
@@ -252,7 +284,7 @@ body {
   }
 }
 .okou-thinking-enter {
-  animation: zero-thinking-in 0.3s ease-out;
+  animation: okou-thinking-in 0.3s ease-out;
 }
 
 .okou-thinking-spinner {
@@ -272,7 +304,7 @@ body {
 }
 
 /* Conversation locator: mark where a rail jump landed, then fade back out. */
-@keyframes zero-locator-landed {
+@keyframes okou-locator-landed {
   from {
     background-color: hsl(var(--primary) / 0.1);
     box-shadow: 0 0 0 0.75rem hsl(var(--primary) / 0.1);
@@ -284,7 +316,7 @@ body {
 }
 [data-locator-landed] {
   border-radius: 0.75rem;
-  animation: zero-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: okou-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @media (prefers-reduced-motion: reduce) {
   [data-locator-landed] {
@@ -306,21 +338,21 @@ body {
   background: var(--zb-c1);
   grid-column: 2;
   grid-row: 1;
-  animation: zero-block-pop 1.4s ease-in-out infinite;
+  animation: okou-block-pop 1.4s ease-in-out infinite;
 }
 .okou-blocks span:nth-child(2) {
   background: var(--zb-c2);
   grid-column: 1;
   grid-row: 2;
-  animation: zero-block-pop 1.4s ease-in-out 0.2s infinite;
+  animation: okou-block-pop 1.4s ease-in-out 0.2s infinite;
 }
 .okou-blocks span:nth-child(3) {
   background: var(--zb-c3);
   grid-column: 2;
   grid-row: 2;
-  animation: zero-block-pop 1.4s ease-in-out 0.4s infinite;
+  animation: okou-block-pop 1.4s ease-in-out 0.4s infinite;
 }
-@keyframes zero-block-pop {
+@keyframes okou-block-pop {
   0%,
   100% {
     transform: scale(0.8);
@@ -602,7 +634,7 @@ body {
 
 .okou-realtime-status-reconnecting {
   opacity: 0;
-  animation: zero-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
+  animation: okou-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
     300ms forwards;
 }
 
@@ -611,7 +643,7 @@ body {
   animation: okou-realtime-cloud-flow 1.05s linear infinite;
 }
 
-@keyframes zero-realtime-status-reveal {
+@keyframes okou-realtime-status-reveal {
   to {
     opacity: 0.8;
   }
@@ -1755,7 +1787,7 @@ details > summary {
   padding: 4px;
 }
 
-.owf-diagram-zero-icon {
+.owf-diagram-okou-icon {
   position: relative;
   display: inline-block;
   width: 64px;
@@ -1763,7 +1795,7 @@ details > summary {
   overflow: hidden;
 }
 
-.owf-diagram-zero-icon img {
+.owf-diagram-okou-icon img {
   position: absolute;
   top: -9.73px;
   left: -6.4px;

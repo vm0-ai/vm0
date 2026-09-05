@@ -6,8 +6,11 @@ import {
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { OpenRouterRequestError, type OpenRouterTextPart } from "./openrouter";
 import { readBoundedResponseText, safeJsonParse } from "../utils";
+
+const L = logger("OpenRouterVoice");
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -15,6 +18,8 @@ const OPENROUTER_VOICE_RESPONSE_MAX_BYTES = 1024 * 1024;
 const OPENROUTER_VOICE_MAX_TOKENS = 65_536;
 
 const OPENROUTER_VOICE_MODEL = "google/gemini-3.6-flash";
+// Gemini 3.6 Flash requires reasoning and rejects the "none" effort with HTTP 400.
+const OPENROUTER_VOICE_REASONING_EFFORT = "minimal";
 export const OPENROUTER_VOICE_NO_SPEECH = "[NO_SPEECH]";
 
 const TRANSCRIPTION_SYSTEM_PROMPT = [
@@ -298,7 +303,7 @@ async function generateStructuredVoiceResponse<T>(
         { role: "user", content: args.content },
       ],
       max_tokens: OPENROUTER_VOICE_MAX_TOKENS,
-      reasoning: { effort: "none" },
+      reasoning: { effort: OPENROUTER_VOICE_REASONING_EFFORT },
       temperature: 0,
       store: false,
       response_format: {
@@ -316,11 +321,19 @@ async function generateStructuredVoiceResponse<T>(
   const parsedBody =
     responseBody.kind === "text" ? safeJsonParse(responseBody.text) : undefined;
   if (!response.ok) {
-    throw requestError(
+    const error = requestError(
       "OpenRouter voice request failed",
       response.status,
       parsedBody,
     );
+    L.warn("OpenRouter voice request rejected", {
+      model: OPENROUTER_VOICE_MODEL,
+      reasoningEffort: OPENROUTER_VOICE_REASONING_EFFORT,
+      responseSchema: args.jsonSchema.name,
+      status: error.status,
+      errorType: error.errorType,
+    });
+    throw error;
   }
   if (parsedBody === undefined) {
     throw new Error("OpenRouter voice response was not valid JSON");

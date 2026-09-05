@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.186.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.3...runner-rs-v0.186.0) (2026-09-05)
+
+
+### Features
+
+* **pi:** add dialect-aware fast carrier compatibility ([#31839](https://github.com/vm0-ai/vm0/issues/31839)) ([444bfe5](https://github.com/vm0-ai/vm0/commit/444bfe5a6f04edb5ba3ccbc90a0895e7ca4a44d8))
+
 ## [0.185.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.2...runner-rs-v0.185.3) (2026-09-05)
 
 
