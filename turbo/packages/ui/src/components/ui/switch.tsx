@@ -34,7 +34,7 @@ const Switch = React.forwardRef<HTMLElement, SwitchProps>(
       <SwitchPrimitive.Root
         data-slot="switch"
         className={cn(
-          "peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors outline-none data-checked:bg-primary data-unchecked:bg-muted new-ui:data-unchecked:bg-gray-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-disabled:cursor-not-allowed data-disabled:opacity-50",
+          "peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors outline-none data-checked:bg-primary new-ui:data-checked:bg-primary-400 data-unchecked:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-disabled:cursor-not-allowed data-disabled:opacity-50",
           s.root,
           className,
         )}

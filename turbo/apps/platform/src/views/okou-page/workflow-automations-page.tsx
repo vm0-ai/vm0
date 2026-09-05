@@ -738,6 +738,7 @@ export function WorkflowAutomationEnabledSwitch({
               { title },
             )
       }
+      className="data-checked:bg-primary data-unchecked:bg-muted"
       onCheckedChange={(enabled) => {
         detach(
           setEnabled(
