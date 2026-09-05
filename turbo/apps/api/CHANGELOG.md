@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.548.0](https://github.com/vm0-ai/vm0/compare/api-v1.547.1...api-v1.548.0) (2026-09-05)
+
+
+### Features
+
+* **pi:** add dialect-aware fast carrier compatibility ([#31839](https://github.com/vm0-ai/vm0/issues/31839)) ([444bfe5](https://github.com/vm0-ai/vm0/commit/444bfe5a6f04edb5ba3ccbc90a0895e7ca4a44d8))
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+    * @okouai/core bumped to 8.623.2
+    * @okouai/db bumped to 1.241.3
+    * @okouai/pi-agent-runtime bumped to 1.17.0
+
 ## [1.547.1](https://github.com/vm0-ai/vm0/compare/api-v1.547.0...api-v1.547.1) (2026-09-05)
 
 
