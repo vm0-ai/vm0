@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.845.6](https://github.com/vm0-ai/vm0/compare/app-v0.845.5...app-v0.845.6) (2026-09-05)
+
+
+### Bug Fixes
+
+* restore the search dialog chat result limit ([#31928](https://github.com/vm0-ai/vm0/issues/31928)) ([96bb60e](https://github.com/vm0-ai/vm0/commit/96bb60ed942feae6d12b1cf3b8586503b60d1675))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+    * @okouai/core bumped to 8.625.4
+
 ## [0.845.5](https://github.com/vm0-ai/vm0/compare/app-v0.845.4...app-v0.845.5) (2026-09-05)
 
 

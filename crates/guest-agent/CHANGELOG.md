@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.85.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.5...guest-agent-v0.85.6) (2026-09-05)
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
 ## [0.85.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.4...guest-agent-v0.85.5) (2026-09-05)
 
 

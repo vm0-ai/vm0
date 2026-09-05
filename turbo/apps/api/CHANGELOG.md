@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.551.4](https://github.com/vm0-ai/vm0/compare/api-v1.551.3...api-v1.551.4) (2026-09-05)
+
+
+### Bug Fixes
+
+* **billing:** preserve managed allowance under shared debt ([#31851](https://github.com/vm0-ai/vm0/issues/31851)) ([eebda82](https://github.com/vm0-ai/vm0/commit/eebda828b10f54ee455826c3715222f6a3356d43))
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+    * @okouai/core bumped to 8.625.4
+    * @okouai/db bumped to 1.241.9
+    * @okouai/pi-agent-runtime bumped to 1.20.4
+
 ## [1.551.3](https://github.com/vm0-ai/vm0/compare/api-v1.551.2...api-v1.551.3) (2026-09-05)
 
 
