@@ -15,7 +15,7 @@ extension ComputerUseHostRuntime: ComputerUseRuntimeLike {}
 /// start/stop, sign-out and quit.
 @MainActor
 public final class ComputerUseRuntimeController {
-    public static let defaultQuitStopTimeoutMs: Double = 1_000
+    nonisolated public static let defaultQuitStopTimeoutMs: Double = 1_000
 
     private let createRuntime: () -> ComputerUseRuntimeLike
     private let refreshPermissions: () async throws -> ComputerUsePermissionState

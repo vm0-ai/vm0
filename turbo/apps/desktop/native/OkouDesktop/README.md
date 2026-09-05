@@ -52,7 +52,8 @@ open it with right-click → Open or clear quarantine with
 | Keep awake, quit confirmation, app menu            | Ported         |
 | Main window (setup wizard, hero, dev panels)       | Ported         |
 | Feature switches (developer tools)                 | Ported         |
-| Filesystem and MCP plugin managers                 | Pending        |
+| Filesystem plugin (native tools)                   | Ported, tested |
+| MCP plugin manager (stdio, Streamable HTTP)        | Pending        |
 | Screen recorder windows, controller, delivery      | Ported         |
 | Auto-update from the Squirrel JSON feed            | Pending        |
 | Sentry                                             | Pending        |

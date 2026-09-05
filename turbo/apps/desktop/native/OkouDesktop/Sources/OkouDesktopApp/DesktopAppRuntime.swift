@@ -30,6 +30,7 @@ final class DesktopAppRuntime {
     private(set) var developerTools: DesktopDeveloperToolsController!
     private(set) var automationPrompt: AutomationPermissionPrompt!
     private(set) var screenRecorder: DesktopRecorderController!
+    private(set) var filesystemPlugin: DesktopFilesystemPluginManager!
     let snapshotStore = ComputerUseSnapshotStore()
     let recorderUIState = RecorderUIState()
     private var recorderWindows: DesktopRecorderWindows? = nil
@@ -119,11 +120,13 @@ final class DesktopAppRuntime {
                 guard let self else { return DesktopHTTPResponse(status: 401) }
                 return try await self.authSession.fetchWithSessionAuth(URL(string: apiBaseUrl + DesktopDeveloperToolsController.featureSwitchesPath)!)
             },
-            setPluginsFeatureEnabled: { _ in },
+            setPluginsFeatureEnabled: { [weak self] enabled in self?.filesystemPlugin.setFeatureEnabled(enabled) },
             setScreenRecordingFeatureEnabled: { [weak self] enabled in self?.screenRecorder.setFeatureEnabled(enabled) },
             onChange: { [weak self] in self?.notifyDeveloperToolsChanged() },
             logRefreshError: { error in NSLog("Unable to refresh desktop developer tools state: \(error)") }
         )
+        self.filesystemPlugin = DesktopFilesystemPluginManager(store: preferences, onChange: { [weak self] in self?.notifyComputerUseChanged() })
+        filesystemPlugin.load()
         let recordingsDirectory = userDataDirectory.appendingPathComponent("recordings")
         self.screenRecorder = DesktopRecorderController(
             createBackend: {
@@ -142,7 +145,7 @@ final class DesktopAppRuntime {
             createRuntime: { [unowned self] in self.createHostRuntime() },
             refreshPermissions: { [unowned self] in try await self.permissionStore.refresh() },
             getAuthState: { [unowned self] in try await self.authSession.getAuthState() },
-            setHostRuntimeOnline: { _ in },
+            setHostRuntimeOnline: { [weak self] online in self?.filesystemPlugin.setHostRuntimeOnline(online) },
             onChange: { [weak self] in self?.notifyComputerUseChanged() }
         )
         self.autoStart = DesktopComputerUseAutoStartSupervisor(
@@ -342,8 +345,13 @@ final class DesktopAppRuntime {
             hostFetch: { request in try await http.send(request) },
             clientHeaders: clientHeaders,
             getPermissions: { [unowned self] in try await self.permissionStore.refresh() },
-            getSupportedCapabilities: { ComputerUseCapabilities.supported },
-            executeCommand: { command, permissions in await executor.execute(command, permissions: permissions) },
+            getSupportedCapabilities: { [unowned self] in ComputerUseCapabilities.supported + self.filesystemPlugin.capabilities },
+            executeCommand: { [unowned self] command, permissions in
+                if command.kind == ComputerUseCapabilities.pluginCallKind {
+                    return await self.filesystemPlugin.execute(command)
+                }
+                return await executor.execute(command, permissions: permissions)
+            },
             onCommandFailure: { [weak self] command, failure in self?.automationPrompt.handle(command: command, failure: failure) },
             onChange: { [weak self] in self?.notifyComputerUseChanged() }
         ))
@@ -360,11 +368,16 @@ final class DesktopAppRuntime {
     func computerUseState() -> DesktopComputerUseState {
         DesktopComputerUseState(
             platform: "darwin", supported: true, deviceName: shellState.deviceName, permissions: permissionStore.state,
-            host: computerUseController.hostState, keepAwake: keepAwake.state, plugins: nil
+            host: computerUseController.hostState, keepAwake: keepAwake.state,
+            plugins: DesktopComputerUsePluginsState(
+                filesystem: filesystemPlugin.state,
+                mcp: DesktopComputerUseMcpPluginState(featureEnabled: false, servers: [])
+            )
         )
     }
 
     func notifyComputerUseChanged() {
+        filesystemPlugin.setHostRuntimeOnline(computerUseController.isRuntimeOnline)
         shellState.permissions = permissionStore.state
         shellState.host = computerUseController.hostState
         shellState.keepAwake = keepAwake.state
