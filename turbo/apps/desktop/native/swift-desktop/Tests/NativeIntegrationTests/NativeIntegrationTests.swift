@@ -401,7 +401,11 @@ import Testing
     #expect(desktop.recorder.available && desktop.recorder.capturing)
     try await waitForPermissionRefresh(
       desktop, after: try #require(desktop.permissions["queries"].number))
-    await #expect(throws: DecodingError.self) { try await desktop.shutdown() }
+    let authRevision = desktop.auth.revision
+    await #expect(throws: DecodingError.self) { try await desktop.switchOrganization() }
+    #expect(desktop.auth.revision == authRevision)
+    #expect(desktop.recorder.available && desktop.recorder.capturing)
+    #expect(!desktop.changingAccount)
     try await desktop.shutdown()
     await desktop.launch(startHost: false)
     #expect(desktop.recorder.available)

@@ -25,6 +25,7 @@ final class DesktopModel: ObservableObject {
   private var featuresTask: Task<Void, Never>?
   private var shuttingDown = false
   private var featureRequestID: UUID?
+  private(set) var changingAccount = false
   var onChange: @MainActor () -> Void = {}
   private let filesystem = FilesystemTools()
 
@@ -109,7 +110,8 @@ final class DesktopModel: ObservableObject {
       \.string)
   }
   var ready: Bool {
-    auth.signedIn && auth.organization["id"].string != nil && permissions["accessibility"].bool
+    !changingAccount && !shuttingDown && auth.signedIn && auth.organization["id"].string != nil
+      && permissions["accessibility"].bool
       && permissions["screenRecording"].bool
   }
 
@@ -145,14 +147,19 @@ final class DesktopModel: ObservableObject {
   }
 
   func refresh() async throws {
+    try await refresh(allowAccountChange: false)
+  }
+
+  private func refresh(allowAccountChange: Bool) async throws {
+    guard !changingAccount || allowAccountChange else { throw CancellationError() }
     try await refreshPermissions()
     try await auth.refreshIdentity(api: api)
-    try await refreshFeatures()
+    try await refreshFeatures(allowAccountChange: allowAccountChange)
     changed()
   }
 
-  private func refreshFeatures() async throws {
-    guard !shuttingDown else { return }
+  private func refreshFeatures(allowAccountChange: Bool = false) async throws {
+    guard !shuttingDown, !changingAccount || allowAccountChange else { return }
     let id = UUID()
     let authRevision = auth.revision
     featureRequestID = id
@@ -197,30 +204,77 @@ final class DesktopModel: ObservableObject {
 
   func consume(_ url: URL) async throws {
     guard configuration.callback(url) != nil else { return }
-    await host.stop()
-    if try await auth.consume(url) {
-      try await refresh()
-      if ready { host.start() }
+    try await changeAccount {
+      if try await self.auth.consume(url) {
+        try await self.refresh(allowAccountChange: true)
+      }
     }
+    if ready { host.start() }
   }
 
   func switchOrganization() async throws {
-    await host.stop()
-    try await auth.selectOrganization()
-    try await refresh()
+    try await changeAccount {
+      try await self.auth.selectOrganization()
+      try await self.refresh(allowAccountChange: true)
+    }
     if ready { host.start() }
   }
 
   func signOut() async throws {
+    try await changeAccount {
+      try await self.auth.signOut()
+      self.pluginsAvailable = false
+      self.recorder.available = false
+      self.debugAvailable = false
+      self.debugEnabled = false
+    }
+  }
+
+  private func changeAccount(_ operation: @escaping @MainActor () async throws -> Void) async throws
+  {
+    guard !changingAccount, !shuttingDown else {
+      throw DesktopFailure("auth_busy", "Wait for the current account change or shutdown to finish")
+    }
+    let wasOnline = ["online", "connecting", "recovering"].contains(host.status)
+    let recordingAvailable = recorder.available
+    changingAccount = true
+    featureRequestID = nil
+    recorder.available = false
+    areaSelector.cancel()
+    changed()
+    defer {
+      changingAccount = false
+      changed()
+    }
     await host.stop()
     await mcp.shutdownAndWait()
-    try await recorder.shutdown()
-    try await auth.signOut()
-    pluginsAvailable = false
-    recorder.available = false
-    debugAvailable = false
-    debugEnabled = false
-    changed()
+    var authenticationStarted = false
+    do {
+      // Finish delivery with its original identity, or cancel preparation and
+      // preserve finalized capture files, before WebKit can change accounts.
+      try await recorder.shutdown()
+      try Task.checkCancellation()
+      authenticationStarted = true
+      try await operation()
+    } catch {
+      var canResume = true
+      if authenticationStarted {
+        pluginsAvailable = false
+        debugAvailable = false
+        debugEnabled = false
+        do { try await refresh(allowAccountChange: true) } catch {
+          canResume = false
+          if !(error is CancellationError) { report(error) }
+        }
+      } else {
+        recorder.available = recordingAvailable
+      }
+      changingAccount = false
+      if canResume, wasOnline, ready { host.start() }
+      mcp.setContext(
+        available: pluginsAvailable, online: ["online", "recovering"].contains(host.status))
+      throw error
+    }
   }
 
   func requestPermission(_ name: String) async throws {
@@ -293,6 +347,9 @@ final class DesktopModel: ObservableObject {
   }
 
   func shutdown() async throws {
+    guard !changingAccount else {
+      throw DesktopFailure("auth_busy", "Wait for the account change to finish before quitting")
+    }
     let wasOnline = ["online", "connecting", "recovering"].contains(host.status)
     let recordingAvailable = recorder.available
     shuttingDown = true

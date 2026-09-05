@@ -67,7 +67,7 @@ struct DesktopView: View {
           Text("Sign in to connect this Mac to your workspace.").foregroundStyle(.secondary)
           Button("Sign In") { model.run { try model.auth.signIn() } }.buttonStyle(
             .borderedProminent
-          ).controlSize(.large)
+          ).controlSize(.large).disabled(model.changingAccount)
         } else {
           GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -78,11 +78,13 @@ struct DesktopView: View {
                 Text(model.auth.organization["name"].string ?? "Select a workspace")
                   .foregroundStyle(.secondary)
                 Button("Switch") { model.run { try await model.switchOrganization() } }
+                  .disabled(model.changingAccount)
               }
               HStack {
                 Button("Open Okou") { NSWorkspace.shared.open(model.configuration.platformURL) }
                 Spacer()
                 Button("Sign Out") { model.run { try await model.signOut() } }
+                  .disabled(model.changingAccount)
               }
             }.padding(8)
           }
@@ -96,6 +98,7 @@ struct DesktopView: View {
                 .buttonStyle(.borderedProminent)
             }
             Button("Refresh Status") { model.run { try await model.refresh() } }
+              .disabled(model.changingAccount)
           }.controlSize(.large)
         }
         GroupBox("Permissions") {
