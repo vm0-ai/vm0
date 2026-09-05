@@ -102,7 +102,10 @@ function Sparkles({ active }: { active: boolean }) {
 
   const particles = getSparkleParticles();
   return (
-    <div className="pointer-events-none absolute inset-0 z-10">
+    <div
+      className="pointer-events-none absolute inset-0 z-10"
+      data-testid="avatar-sparkles"
+    >
       {particles.map((p) => {
         const key = `${p.x.toFixed(2)}_${p.y.toFixed(2)}_${p.size.toFixed(2)}`;
         return (
