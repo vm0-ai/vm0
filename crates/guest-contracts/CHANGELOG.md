@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.32](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.31...guest-contracts-v0.12.32) (2026-09-04)
+
+
+### Refactoring
+
+* **agent:** centralize cli framework selector parsing ([#31768](https://github.com/vm0-ai/vm0/issues/31768)) ([b98056f](https://github.com/vm0-ai/vm0/commit/b98056feab6c029fc4de1e61e4dcaf6e4d9fda94))
+
 ## [0.12.31](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.30...guest-contracts-v0.12.31) (2026-09-04)
 
 

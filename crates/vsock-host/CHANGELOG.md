@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.137](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.136...vsock-host-v0.17.137) (2026-09-04)
+
+
+### Documentation
+
+* **vsock-host:** clarify agent start timeout semantics ([#31760](https://github.com/vm0-ai/vm0/issues/31760)) ([ab7d2b0](https://github.com/vm0-ai/vm0/commit/ab7d2b0f3ec0cf5d7ffb9a65670957c5cf5b52bf))
+
 ## [0.17.136](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.135...vsock-host-v0.17.136) (2026-09-04)
 
 ## [0.17.135](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.134...vsock-host-v0.17.135) (2026-09-04)

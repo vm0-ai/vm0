@@ -1840,7 +1840,6 @@
       "threadSuggestions": "Chat-Threads",
       "useForFutureChats": "Dieses Modell für zukünftige Chats verwenden",
       "videoModelForThisChat": "Videomodell für diesen Chat",
-      "visualAttachmentsUnsupported": "{{modelName}} kann Bilder oder Videos nicht erkennen. Wechseln Sie vor dem Anhängen zu einem visionsfähigen Modell.",
       "workflows": {
         "empty": "Keine passenden Workflows",
         "loading": "Workflows werden geladen...",

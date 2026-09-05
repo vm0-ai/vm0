@@ -16,7 +16,7 @@ import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
-import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { isActiveRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
@@ -193,7 +193,7 @@ export function userModelPreference({
       )
       .limit(1);
 
-    const selectedModel = isSupportedRunModel(row?.selectedModel)
+    const selectedModel = isActiveRunModel(row?.selectedModel)
       ? row.selectedModel
       : null;
     const serviceTier: ChatThreadServiceTier | null =

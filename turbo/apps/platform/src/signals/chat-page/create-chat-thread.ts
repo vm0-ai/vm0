@@ -47,7 +47,6 @@ import { buildDraftPersistencePayload } from "../okou-page/draft-persistence.ts"
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
-  shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import type {
   ChatEvent,
@@ -87,7 +86,6 @@ import { apiClient$ } from "../api-client.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
-  imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -3237,12 +3235,6 @@ function createPerformSendMessage(deps: SendMessageDeps) {
             prepareUserMessageFromDraft$,
             draft,
             submissionPrompt,
-            {
-              excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-                request.modelSelection?.selectedModel,
-                get(imageRecognitionAvailable$),
-              ),
-            },
             signal,
           );
         },
@@ -3356,12 +3348,6 @@ function createQueueMessage(deps: SendMessageDeps) {
         prepareUserMessageFromDraft$,
         draft,
         prompt,
-        {
-          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-            modelSelection?.selectedModel,
-            get(imageRecognitionAvailable$),
-          ),
-        },
         signal,
       );
       if (!result) {

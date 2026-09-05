@@ -4,7 +4,7 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   MODEL_PROVIDER_TYPES,
-  SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   getCanonicalModelDisplayName,
   getDefaultOrgModelPolicySeed,
   getFrameworkForType,
@@ -12,6 +12,8 @@ import {
   isBuiltInModelProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
+  getRunModelAccess,
+  RETIRED_RUN_MODEL_MESSAGE,
   type ModelProviderCredentialScope,
   type OrgModelPoliciesResponse,
   type OrgModelPolicy,
@@ -109,7 +111,7 @@ function parseProviderType(value: string): ModelProviderType | null {
 }
 
 function parseSupportedModel(value: string): SupportedRunModel | null {
-  return SUPPORTED_RUN_MODELS.includes(value as SupportedRunModel)
+  return ACTIVE_RUN_MODELS.includes(value as SupportedRunModel)
     ? (value as SupportedRunModel)
     : null;
 }
@@ -140,7 +142,7 @@ function loadRows(db: Db, orgId: string): Promise<OrgModelPolicyRow[]> {
     .where(
       and(
         eq(orgModelPolicies.orgId, orgId),
-        inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+        inArray(orgModelPolicies.model, [...ACTIVE_RUN_MODELS]),
       ),
     );
 }
@@ -195,8 +197,7 @@ function modelAllowedForOrgPlan(
   capabilities: Pick<OrgPlanCapabilities, "restrictedVm0Models">,
 ): boolean {
   return (
-    !capabilities.restrictedVm0Models ||
-    !isLimitedFree1RestrictedRunModel(model)
+    getRunModelAccess(model, capabilities.restrictedVm0Models) === "allowed"
   );
 }
 
@@ -208,8 +209,8 @@ function modelProviderAllowedForOrgPlan(
 }
 
 function getSupportedModelRank(model: string): number {
-  const catalogIndex = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
-  return catalogIndex === -1 ? SUPPORTED_RUN_MODELS.length : catalogIndex;
+  const catalogIndex = ACTIVE_RUN_MODELS.indexOf(model as SupportedRunModel);
+  return catalogIndex === -1 ? ACTIVE_RUN_MODELS.length : catalogIndex;
 }
 
 function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
@@ -562,6 +563,9 @@ async function validateUpdatePolicies(
   let defaultCount = 0;
 
   for (const policy of policies) {
+    if (getRunModelAccess(policy.model) === "retired") {
+      return bad(RETIRED_RUN_MODEL_MESSAGE);
+    }
     if (!parseSupportedModel(policy.model)) {
       return bad(`Unknown model "${policy.model}"`);
     }
@@ -792,7 +796,7 @@ async function persistOrgModelPolicyUpdates(params: {
       .where(
         and(
           eq(orgModelPolicies.orgId, params.orgId),
-          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+          inArray(orgModelPolicies.model, [...ACTIVE_RUN_MODELS]),
           notInArray(
             orgModelPolicies.model,
             params.policies.map((policy) => {

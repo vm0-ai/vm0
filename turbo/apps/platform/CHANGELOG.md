@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.842.1](https://github.com/vm0-ai/vm0/compare/app-v0.842.0...app-v0.842.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** derive run work folding from output events ([#31779](https://github.com/vm0-ai/vm0/issues/31779)) ([2c7c890](https://github.com/vm0-ai/vm0/commit/2c7c8906aa780b246974b5af4e25a7b537eb3c8a))
+
+## [0.842.0](https://github.com/vm0-ai/vm0/compare/app-v0.841.1...app-v0.842.0) (2026-09-04)
+
+
+### Features
+
+* add heygen intro video foundations ([#31648](https://github.com/vm0-ai/vm0/issues/31648)) ([87394e8](https://github.com/vm0-ai/vm0/commit/87394e8f07d62d1394742db09f0cfd206b1b3ff8))
+* add intro video heygen renderer and voice services ([#31658](https://github.com/vm0-ai/vm0/issues/31658)) ([1917a5f](https://github.com/vm0-ai/vm0/commit/1917a5fa59ee61fdb44f0d1822804a256009ef88))
+* **platform:** report indexeddb setup telemetry ([#31772](https://github.com/vm0-ai/vm0/issues/31772)) ([cd13281](https://github.com/vm0-ai/vm0/commit/cd13281ca93050178ff59aeb56b374017a009fd2))
+
+
+### Bug Fixes
+
+* **platform:** load the current avatar when opening the avatar maker ([#31742](https://github.com/vm0-ai/vm0/issues/31742)) ([f2b6d9c](https://github.com/vm0-ai/vm0/commit/f2b6d9c2d4982bea26e4a615cb461880d1123681))
+* **platform:** request worker tokens from the first tab ([#31748](https://github.com/vm0-ai/vm0/issues/31748)) ([67405db](https://github.com/vm0-ai/vm0/commit/67405db486e677be320b95e99a87774a98de04c1))
+* **platform:** show standalone upgrade as one dialog ([#31737](https://github.com/vm0-ai/vm0/issues/31737)) ([edefd23](https://github.com/vm0-ai/vm0/commit/edefd23804f274d81440a1566edc8ac1a78bac09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.403.0
+    * @okouai/core bumped to 8.622.0
+
 ## [0.841.1](https://github.com/vm0-ai/vm0/compare/app-v0.841.0...app-v0.841.1) (2026-09-04)
 
 

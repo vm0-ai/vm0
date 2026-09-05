@@ -23,10 +23,7 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import { talkDraft$, type DraftSignals } from "../okou-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../okou-page/agent-draft.ts";
-import {
-  prepareUserMessageFromDraft$,
-  shouldExcludeVisualAttachmentsForModel,
-} from "./resolve-draft-attachments.ts";
+import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatEvent$,
   createOptimisticChatEventEntry,
@@ -39,10 +36,7 @@ import {
 } from "../okou-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
-import {
-  featureSwitch$,
-  imageRecognitionAvailable$,
-} from "../external/feature-switch.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import {
   runOptionsFromModelProviderSelection,
@@ -554,12 +548,6 @@ const sendNewThreadMessage$ = command(
       prepareUserMessageFromDraft$,
       draft,
       prompt,
-      {
-        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-          resolvedModelSelection.selectedModel,
-          get(imageRecognitionAvailable$),
-        ),
-      },
       signal,
     );
     if (!prepared) {

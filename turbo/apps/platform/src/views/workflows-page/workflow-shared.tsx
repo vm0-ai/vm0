@@ -361,7 +361,7 @@ export function chatRunFinishedStatusLabel(
   }
 }
 
-export function chatRunFinishedAutomationSummary(
+function chatRunFinishedAutomationSummary(
   config: ChatRunFinishedEventConfig,
 ): string {
   const statusText = config.runStatuses
@@ -374,7 +374,7 @@ export function chatRunFinishedAutomationSummary(
     : statusText;
 }
 
-export function quote(value: string): string {
+function quote(value: string): string {
   return `"${value}"`;
 }
 
@@ -437,9 +437,7 @@ function textMatcherParts(
   return parts;
 }
 
-export function formatGmailMatchSummary(
-  config: GmailNewMessageEventConfig,
-): string {
+function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   const parts: string[] = config.threadId
     ? [
         i18n.t(

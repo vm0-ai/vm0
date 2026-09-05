@@ -43,7 +43,7 @@ import {
 } from "@okouai/ui";
 import {
   MODEL_PROVIDER_TYPES,
-  SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
   isBuiltInModelProviderType,
@@ -1752,14 +1752,14 @@ export function OrgModelPoliciesSection() {
 
   const policies = data.policies;
   const visiblePolicies = policies.filter((policy) => {
-    return SUPPORTED_RUN_MODELS.includes(policy.model);
+    return ACTIVE_RUN_MODELS.includes(policy.model);
   });
   const configuredModels = new Set(
     policies.map((policy) => {
       return policy.model;
     }),
   );
-  const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
+  const addableModels = ACTIVE_RUN_MODELS.filter((model) => {
     return isAddableBuiltInModel(model) && !configuredModels.has(model);
   });
 

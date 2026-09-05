@@ -1840,7 +1840,6 @@
       "threadSuggestions": "चैट थ्रेड",
       "useForFutureChats": "भविष्य की चैट के लिए इस मॉडल का इस्तेमाल करें",
       "videoModelForThisChat": "इस चैट के लिए वीडियो मॉडल",
-      "visualAttachmentsUnsupported": "{{modelName}} छवियों या वीडियो को नहीं पहचान सकता। उन्हें संलग्न करने के लिए दृष्टि-सक्षम मॉडल पर स्विच करें।",
       "workflows": {
         "empty": "कोई मेल खाता वर्कफ़्लो नहीं",
         "loading": "वर्कफ़्लो लोड हो रहा है...",
