@@ -77,6 +77,15 @@ import Testing
   }
 
   @Test func callbackAndServiceOriginsRemainCompatible() throws {
+    for reference in ["staging", "pr-31838"] {
+      let preview = try DesktopConfiguration(
+        platformURL: "https://\(reference)-app-okou-app-preview.vm0.workers.dev", version: "0.46.15"
+      )
+      #expect(preview.apiURL.absoluteString == "https://\(reference)-api.vm6.ai")
+      #expect(preview.webURL.absoluteString == "https://\(reference)-www.omby.ai")
+      #expect(preview.signInURL.host == "\(reference)-www.omby.ai")
+      #expect(preview.bundleID == "ai.okou.desktop.dev")
+    }
     let config = try DesktopConfiguration(platformURL: "https://app.okou.ai", version: "0.46.12")
     #expect(config.apiURL.absoluteString == "https://api.vm0.ai")
     #expect(config.webURL.absoluteString == "https://www.vm0.ai")

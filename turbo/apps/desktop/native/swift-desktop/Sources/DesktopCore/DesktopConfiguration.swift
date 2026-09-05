@@ -41,6 +41,13 @@ public struct DesktopConfiguration: Sendable {
     }
     if host == "app.okou.ai" {
       components.host = "\(target).vm0.ai"
+    } else if host.range(
+      of: "^(staging|pr-[0-9]+)-app-okou-app-preview\\.vm0\\.workers\\.dev$",
+      options: .regularExpression) != nil
+    {
+      let reference = host.replacingOccurrences(
+        of: "-app-okou-app-preview.vm0.workers.dev", with: "")
+      components.host = "\(reference)-\(target).\(target == "api" ? "vm6.ai" : "omby.ai")"
     } else {
       var rewritten = host.replacingOccurrences(
         of: "(^|-)(api|app|platform|www)\\.", with: "$1\(target).", options: .regularExpression)
