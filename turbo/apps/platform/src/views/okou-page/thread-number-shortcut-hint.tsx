@@ -15,7 +15,7 @@ export function ThreadNumberShortcutHint({
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none inline-flex shrink-0 items-center gap-1 duration-150 animate-in fade-in slide-in-from-right-2 motion-reduce:animate-none"
+      className="pointer-events-none inline-flex shrink-0 animate-thread-number-shortcut-hint items-center gap-1 motion-reduce:animate-none"
     >
       {getShortcutParts(`mod+${shortcutNumber}`).map((part) => {
         return (

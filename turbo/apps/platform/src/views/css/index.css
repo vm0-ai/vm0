@@ -7,6 +7,20 @@
 @source "../../../../../packages/ui/src/**/*.tsx";
 
 @theme {
+  --animate-thread-number-shortcut-hint: thread-number-shortcut-hint-in 150ms
+    ease-out both;
+
+  @keyframes thread-number-shortcut-hint-in {
+    from {
+      opacity: 0;
+      transform: translateX(0.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   /* Font families */
   --font-family-sans:
     "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
