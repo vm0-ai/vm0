@@ -78,5 +78,13 @@ recording delivery, or signed self-update installation.
 
 The filesystem editing behavior is ported from
 `@modelcontextprotocol/server-filesystem@2026.1.14`; its MIT notice is retained in
-`Resources/filesystem-server-LICENSE.txt`. The packaged app also includes the
-licenses from the resolved Swift dependencies.
+`Resources/filesystem-server-LICENSE.txt`. The jsdiff line/patch port and
+brace-expansion range behavior retain their BSD/MIT notices in `Resources`.
+The packaged app includes these notices and licenses from all resolved Swift
+dependencies.
+
+To regenerate the filesystem reference cases, unpack the pinned filesystem
+server package into a separate directory and install its dependencies there
+with `npm install --ignore-scripts`. Then pass that package directory to
+`scripts/generate-filesystem-fixtures.mjs`. This Node script only generates test
+reference data; it is not used to build or run the native application.
