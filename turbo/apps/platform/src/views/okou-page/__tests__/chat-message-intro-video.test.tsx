@@ -688,11 +688,10 @@ test("A failed upload keeps the request editable and can be retried", async () =
   await user.upload(input, new File(["brief"], "launch.pdf"));
   await user.type(prompt, "Keep this brief.");
   await user.click(requiredButtonNamed("Create video", dialog));
-  expect(
-    await within(dialog).findByText(
-      "One or more files could not be uploaded. Remove them or try again.",
-    ),
-  ).toBeVisible();
+  const error = await within(dialog).findByText(
+    "One or more files could not be uploaded. Remove them or try again.",
+  );
+  expect(error).toBeVisible();
   expect(prompt).toBeEnabled();
   expect(within(dialog).getByText("launch.pdf")).toBeVisible();
   context.mocks.upload.success({

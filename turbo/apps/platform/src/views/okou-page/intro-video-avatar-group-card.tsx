@@ -88,9 +88,6 @@ export function IntroVideoAvatarGroupCard({
     }) ??
     selectedLook ??
     group.looks[0];
-  if (!avatar) {
-    return null;
-  }
   const namePrefix = `${group.name} in `;
   const lookName = avatar.name.startsWith(namePrefix)
     ? avatar.name.slice(namePrefix.length)

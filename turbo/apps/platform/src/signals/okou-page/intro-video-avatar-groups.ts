@@ -4,13 +4,13 @@ import { command, computed, state } from "ccstate";
 export interface IntroVideoAvatarGroup {
   readonly id: string;
   readonly name: string;
-  readonly looks: readonly IntroVideoAvatar[];
+  readonly looks: readonly [IntroVideoAvatar, ...IntroVideoAvatar[]];
 }
 
 export function groupIntroVideoAvatars(
   avatars: readonly IntroVideoAvatar[],
 ): readonly IntroVideoAvatarGroup[] {
-  const groups = new Map<string, IntroVideoAvatar[]>();
+  const groups = new Map<string, [IntroVideoAvatar, ...IntroVideoAvatar[]]>();
   for (const avatar of avatars) {
     const looks = groups.get(avatar.groupId);
     if (!looks) {
@@ -23,15 +23,14 @@ export function groupIntroVideoAvatars(
       looks.push(avatar);
     }
   }
-  return [...groups].flatMap(([id, looks]) => {
+  return [...groups].map(([id, looks]) => {
     const first = looks[0];
-    if (!first) {
-      return [];
-    }
     // Shorten the provider's outfit label for display only. Identity grouping
     // always uses groupId, including when two different people share a name.
-    const name = first.name.split(" in ")[0]?.trim() || first.name;
-    return [{ id, name, looks }];
+    const separator = first.name.indexOf(" in ");
+    const name =
+      separator === -1 ? first.name : first.name.slice(0, separator).trim();
+    return { id, name, looks };
   });
 }
 
