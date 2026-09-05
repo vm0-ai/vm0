@@ -35,10 +35,10 @@ import {
 } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
-  bestEffort,
   detach,
   onDomEventFn,
   Reason,
+  withCleanup,
 } from "../../signals/utils.ts";
 import {
   type AvatarMakerSelection,
@@ -46,6 +46,7 @@ import {
   type LegacyStep,
   type Step,
   avatarMakerOpen$,
+  avatarMakerDialogSignal$,
   avatarMakerConfig$,
   avatarMakerEditing$,
   avatarMakerStep$,
@@ -385,7 +386,7 @@ function AvatarPreviewWithShuffle() {
   const showSparkles = useGet(avatarMakerShowSparkles$);
   const shuffling = useGet(avatarMakerShuffling$);
   const shuffle = useSet(shuffleAvatar$);
-  const pageSignal = useGet(pageSignal$);
+  const dialogSignal = useGet(avatarMakerDialogSignal$);
 
   return (
     <div
@@ -402,9 +403,12 @@ function AvatarPreviewWithShuffle() {
             <button
               type="button"
               tabIndex={-1}
+              disabled={!dialogSignal}
               className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border hover:text-foreground transition-colors"
               onClick={() => {
-                detach(shuffle(pageSignal), Reason.DomCallback);
+                if (dialogSignal) {
+                  detach(shuffle(dialogSignal), Reason.DomCallback);
+                }
               }}
               aria-label={t(($) => {
                 return $.avatar.randomize;
@@ -534,7 +538,10 @@ function StepNavigator() {
 function AvatarMakerDialogBody({
   onConfirm,
 }: {
-  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
+  onConfirm: (
+    config: ResolvedAvatarSvgConfig,
+    signal: AbortSignal,
+  ) => Promise<void>;
 }) {
   const { t } = useTranslation("agents");
   const config = useGet(avatarMakerConfig$);
@@ -544,7 +551,7 @@ function AvatarMakerDialogBody({
   const saving = useGet(avatarMakerSaving$);
 
   const selectOption = useSet(selectAvatarOption$);
-  const pageSignal = useGet(pageSignal$);
+  const dialogSignal = useGet(avatarMakerDialogSignal$);
   const closeMaker = useSet(closeAvatarMaker$);
   const setSaving = useSet(setAvatarMakerSaving$);
 
@@ -564,14 +571,23 @@ function AvatarMakerDialogBody({
       });
 
   const handleConfirm = onDomEventFn(async () => {
+    if (!dialogSignal) {
+      return;
+    }
+    dialogSignal.throwIfAborted();
     setSaving(true);
-    await bestEffort(
+    await withCleanup(
       (async () => {
-        await onConfirm(config);
+        await onConfirm(config, dialogSignal);
+        dialogSignal.throwIfAborted();
         closeMaker();
       })(),
+      () => {
+        if (!dialogSignal.aborted) {
+          setSaving(false);
+        }
+      },
     );
-    setSaving(false);
   });
 
   return (
@@ -609,7 +625,12 @@ function AvatarMakerDialogBody({
               config={config}
               justPicked={justPicked}
               selectOption={(selection) => {
-                detach(selectOption(selection, pageSignal), Reason.DomCallback);
+                if (dialogSignal) {
+                  detach(
+                    selectOption(selection, dialogSignal),
+                    Reason.DomCallback,
+                  );
+                }
               }}
             />
           </div>
@@ -623,7 +644,7 @@ function AvatarMakerDialogBody({
             return $.actions.cancel;
           })}
         </Button>
-        <Button onClick={handleConfirm} disabled={saving}>
+        <Button onClick={handleConfirm} disabled={saving || !dialogSignal}>
           {saving
             ? t(($) => {
                 return $.actions.saving;
@@ -638,7 +659,10 @@ function AvatarMakerDialogBody({
 }
 
 interface AvatarMakerProps {
-  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
+  onConfirm: (
+    config: ResolvedAvatarSvgConfig,
+    signal: AbortSignal,
+  ) => Promise<void>;
   /** Avatar to load for editing. Omit to start from a random avatar. */
   avatarUrl?: string | null;
   /** Custom trigger element. Receives `openMaker` as `onClick`. When omitted, the default wand button is rendered. */
@@ -654,8 +678,9 @@ export function AvatarMaker({
   const open = useGet(avatarMakerOpen$);
   const setOpenMaker = useSet(openAvatarMaker$);
   const closeMaker = useSet(closeAvatarMaker$);
+  const pageSignal = useGet(pageSignal$);
   const openMaker = () => {
-    setOpenMaker(avatarUrl);
+    setOpenMaker(avatarUrl, pageSignal);
   };
 
   return (

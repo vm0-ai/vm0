@@ -103,7 +103,10 @@ function AvatarSettingsControl({
   isDefaultAgent: boolean;
   avatarUrl: string | null;
   alt: string;
-  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
+  onConfirm: (
+    config: ResolvedAvatarSvgConfig,
+    signal: AbortSignal,
+  ) => Promise<void>;
 }) {
   if (isDefaultAgent) {
     return (
@@ -403,7 +406,7 @@ export function SettingsTab({
                     isDefaultAgent={isDefaultAgent}
                     avatarUrl={avatarUrl}
                     alt={resolvedAgentName}
-                    onConfirm={async (cfg) => {
+                    onConfirm={async (cfg, signal) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
                       patchForm({
                         agentId,
@@ -417,8 +420,9 @@ export function SettingsTab({
                           avatarUrl: newAvatarUrl,
                           ...(canEditVisibility ? { visibility } : {}),
                         },
-                        pageSignal,
+                        signal,
                       );
+                      signal.throwIfAborted();
                       toast.success(
                         t(($) => {
                           return $.profile.saved;
