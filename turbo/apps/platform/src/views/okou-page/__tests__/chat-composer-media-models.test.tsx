@@ -87,7 +87,7 @@ function composerFor(threadId?: string): HTMLElement {
   const root = threadId
     ? document.querySelector(`[data-chat-thread-container-id="${threadId}"]`)
     : document;
-  const composer = root?.querySelector(".zero-composer");
+  const composer = root?.querySelector(".okou-composer");
   if (!(composer instanceof HTMLElement)) {
     throw new Error(`Composer${threadId ? ` for ${threadId}` : ""} not found`);
   }

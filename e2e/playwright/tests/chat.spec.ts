@@ -19,7 +19,7 @@ test("send a message through the deployed runner", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
-  const composer = page.locator(".zero-composer");
+  const composer = page.locator(".okou-composer");
   const editor = composer.getByRole("textbox", { name: "Message" });
   await expect(editor).toBeVisible();
   await editor.fill(`printf ${marker}`);

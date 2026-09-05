@@ -265,7 +265,7 @@ function ActivityNotFound() {
         </p>
         <Link
           pathname="/"
-          className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+          className="okou-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
         >
           {t(($) => {
             return $.activity.detail.notFound.back;
@@ -307,7 +307,7 @@ export function ActivityHeaderCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="zero-card shrink-0 px-4 py-3">
+    <div className="okou-card shrink-0 px-4 py-3">
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 flex-1">
@@ -1267,7 +1267,7 @@ function ActivitySkeleton() {
         </nav>
         <div className="mx-auto max-w-[900px] px-4 sm:px-6 pt-4 pb-8 w-full">
           {/* Header card skeleton */}
-          <div className="zero-card shrink-0 px-4 py-3">
+          <div className="okou-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
               <div className="h-5 w-28 rounded bg-muted/50 animate-pulse" />
               <span

@@ -281,7 +281,7 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
+        className="okou-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden okou-border rounded-xl bg-card"
       >
         <DialogTitle className="sr-only">
           {t(($) => {
@@ -321,7 +321,7 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
           </div>
 
           {/* Desktop: sidebar nav */}
-          <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
+          <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto okou-border-r bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => {
               return (
                 <div key={group.label} className="shrink-0">

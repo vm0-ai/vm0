@@ -263,7 +263,7 @@ export function OnboardingMakePage() {
               disabled={completeLoadable.state === "loading"}
               aria-busy={selected && completeLoadable.state === "loading"}
               className={cn(
-                "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-[var(--zero-card-shadow)] transition-colors sm:px-6 sm:py-[15px]",
+                "flex min-h-[72px] items-center gap-3 rounded-xl border bg-background px-4 py-3.5 text-left shadow-[var(--okou-card-shadow)] transition-colors sm:px-6 sm:py-[15px]",
                 "hover:border-primary/55",
                 selected ? "border-primary" : "border-border",
                 option.id === "explore" && "sm:col-span-2",

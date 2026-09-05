@@ -54,7 +54,7 @@ import {
 // can drive it. Keyboard events on a detached editor are silently dropped.
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.zero-composer [contenteditable="true"]',
+    '.okou-composer [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");
@@ -338,7 +338,7 @@ function sidebar(): HTMLElement {
 }
 
 function queryMobileSidebar(): HTMLElement | null {
-  const drawer = document.querySelector("aside.zero-pwa-fixed-cover");
+  const drawer = document.querySelector("aside.okou-pwa-fixed-cover");
   return drawer instanceof HTMLElement ? drawer : null;
 }
 

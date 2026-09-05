@@ -1088,7 +1088,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 
 /**
  * Soft, cool-tinted card shadow matching the home chat composer
- * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
+ * (`--okou-card-shadow`). The token is scoped to `.okou-app`, but the template
  * picker renders through a Base UI portal on `document.body` — outside that
  * scope — so the value is inlined here instead of referencing the CSS var.
  * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
@@ -6288,7 +6288,7 @@ function TemplatePickerDialog({
         })}
         className={dialogContentClassName}
         overlayClassName={
-          skipEnterAnimation ? "zero-dialog-overlay-instant" : undefined
+          skipEnterAnimation ? "okou-dialog-overlay-instant" : undefined
         }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
@@ -6880,7 +6880,7 @@ function ConnectorTriggerIcons({
               (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background okou-border sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
               ) : (
@@ -6896,14 +6896,14 @@ function ConnectorTriggerIcons({
       })}
       {hasComputerUse && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text zero-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
             <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text zero-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
             <Globe size={16} />
           </span>
         </span>
@@ -6946,7 +6946,7 @@ function CustomConnectorCatalogCard({
         },
         { connector: connector.displayName },
       )}
-      className="zero-card cursor-pointer overflow-hidden text-left"
+      className="okou-card cursor-pointer overflow-hidden text-left"
       onClick={onConnect}
     >
       <span className="flex items-center gap-2.5 px-5 pb-1 pt-4">
@@ -7036,7 +7036,7 @@ function AddConnectorsDialog({
       }}
     >
       <DialogContent
-        className="zero-app max-w-2xl flex max-h-[80vh] flex-col"
+        className="okou-app max-w-2xl flex max-h-[80vh] flex-col"
         aria-describedby={undefined}
       >
         <DialogHeader className="shrink-0">
@@ -10582,7 +10582,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
   return (
     <Card
       className={cn(
-        "zero-composer relative z-10 overflow-visible",
+        "okou-composer relative z-10 overflow-visible",
         dragOver && "outline outline-2 outline-blue-400/60",
       )}
       onDrop={(event) => {

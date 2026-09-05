@@ -281,7 +281,7 @@ export function ChatForwardDialog({
         }
       }}
     >
-      <DialogContent className="zero-app w-[calc(100vw-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent className="okou-app w-[calc(100vw-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="min-w-0 px-5 pb-3 pt-5">
           <div className="flex min-w-0 items-center gap-2 pr-8">
             {target ? (

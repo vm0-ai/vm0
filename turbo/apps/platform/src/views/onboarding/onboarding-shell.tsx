@@ -201,7 +201,7 @@ export function OnboardingShell({
   const closeSettings = useSet(closeSettingsModal$);
 
   return (
-    <div className="zero-app zero-viewport-shell relative w-full bg-background text-foreground">
+    <div className="okou-app okou-viewport-shell relative w-full bg-background text-foreground">
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={(open) => {

@@ -509,7 +509,7 @@ function ConnectorFilterDropdown({
           aria-label={t(($) => {
             return $.connectors.catalog.filters.aria;
           })}
-          className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
+          className="okou-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
           <Filter size={14} className="" />
           {activeAgent && (
@@ -654,7 +654,7 @@ function ConnectorsToolbarActions({
         <Button
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+          className="okou-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
           onClick={onCreateCustom}
         >
           <Plus size={14} />
@@ -787,7 +787,7 @@ function renderBuiltinList({
             <div
               key={i}
               data-testid="connector-skeleton"
-              className="zero-card flex flex-col animate-pulse"
+              className="okou-card flex flex-col animate-pulse"
             >
               <div className="flex h-14 items-center gap-2.5 px-5">
                 <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />

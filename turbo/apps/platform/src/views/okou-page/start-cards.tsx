@@ -327,7 +327,7 @@ function StartCard({
   // breakpoint yields a 292px card with the sidebar open and a wider one
   // without it.
   return (
-    <div className="zero-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
+    <div className="okou-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
       {/* Stretched hit area so the whole card opens the template picker, kept as
           a real button so the hover actions stay focusable siblings. */}
       <button
@@ -415,7 +415,7 @@ function IntroVideoStartCard({ onOpen }: { readonly onOpen: () => void }) {
       type="button"
       data-testid="intro-video-start-card"
       onClick={onOpen}
-      className="zero-card group relative flex min-h-28 items-center gap-3 overflow-hidden p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.025] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="okou-card group relative flex min-h-28 items-center gap-3 overflow-hidden p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.025] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-primary/[0.06] blur-2xl" />
       <span className="grid size-[72px] shrink-0 place-items-center rounded-xl bg-primary/10 text-brand-text">

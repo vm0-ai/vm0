@@ -209,7 +209,7 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   // consecutive cards sit border-to-border.
   if (data?.card) {
     return (
-      <div className="zero-markdown-card">
+      <div className="okou-markdown-card">
         <MarkdownCardView card={data.card} />
       </div>
     );

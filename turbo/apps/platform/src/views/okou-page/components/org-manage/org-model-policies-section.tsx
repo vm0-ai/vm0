@@ -597,7 +597,7 @@ function AddModelButton({
       type="button"
       variant="outline"
       size="sm"
-      className="zero-btn-morandi h-9 gap-2 rounded-lg border"
+      className="okou-btn-morandi h-9 gap-2 rounded-lg border"
       disabled={disabled}
       onClick={onClick}
     >

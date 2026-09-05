@@ -177,7 +177,7 @@ export function LanguageSettings() {
               aria-label={t(($) => {
                 return $.settings.preferences.language.label;
               })}
-              className="zero-btn-morandi"
+              className="okou-btn-morandi"
             >
               <SelectValue />
             </SelectTrigger>

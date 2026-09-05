@@ -239,19 +239,19 @@ describe("dialog transitions", () => {
     expect(
       readRuleBody(
         globalCss,
-        ".zero-dialog-overlay[data-ending-style]:not([data-open])",
+        ".okou-dialog-overlay[data-ending-style]:not([data-open])",
       ),
     ).toMatch(/animation:\s*zero-dialog-overlay-out/);
     expect(
       readRuleBody(
         globalCss,
-        ".zero-dialog-overlay[data-ending-style]:not([data-open])::after",
+        ".okou-dialog-overlay[data-ending-style]:not([data-open])::after",
       ),
     ).toMatch(/visibility:\s*hidden/);
     expect(
       readRuleBody(
         globalCss,
-        ".zero-dialog-content[data-ending-style]:not([data-open])",
+        ".okou-dialog-content[data-ending-style]:not([data-open])",
       ),
     ).toMatch(/animation:\s*zero-dialog-content-out/);
   });

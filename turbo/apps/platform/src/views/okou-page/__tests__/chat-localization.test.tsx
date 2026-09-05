@@ -209,14 +209,14 @@ async function expectLocalizedComposerAttributes(
 ): Promise<HTMLElement> {
   const composer = await waitFor(() => {
     const editor = document.querySelector<HTMLElement>(
-      '.zero-composer [contenteditable="true"]',
+      '.okou-composer [contenteditable="true"]',
     );
     if (!editor) {
       throw new Error("Composer editor not found");
     }
     expect(editor).toHaveAttribute("aria-label", copy.message);
     expect(editor).toHaveAttribute("placeholder", copy.placeholder);
-    const root = editor.closest<HTMLElement>(".zero-composer");
+    const root = editor.closest<HTMLElement>(".okou-composer");
     if (!root) {
       throw new Error("Composer root not found");
     }

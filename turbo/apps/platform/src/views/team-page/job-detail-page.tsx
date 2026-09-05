@@ -218,7 +218,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </div>
             <Link
               pathname="/agents"
-              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+              className="okou-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
             >
               {t(($) => {
                 return $.detail.notFound.back;
@@ -235,13 +235,13 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
       <Breadcrumb />
       <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <Card className="zero-card">
+          <Card className="okou-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
-                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
+                className="okou-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
               >
                 {t(($) => {
                   return $.actions.retry;
@@ -348,7 +348,7 @@ function resolveSound(sound: string): Tone {
 function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
-      <div className="zero-card animate-pulse">
+      <div className="okou-card animate-pulse">
         {Array.from({ length: 4 }, (_, i) => {
           return (
             <div
@@ -376,7 +376,7 @@ function PermissionGrantsError() {
   const { t } = useTranslation("agents");
   return (
     <div className="mx-auto max-w-[900px]">
-      <div className="zero-card px-5 py-4 text-sm text-destructive">
+      <div className="okou-card px-5 py-4 text-sm text-destructive">
         {t(($) => {
           return $.authorization.permissionLoadError;
         })}
@@ -389,7 +389,7 @@ function NoConnectedConnectors() {
   const { t } = useTranslation("agents");
   return (
     <>
-      <div className="zero-card py-8 flex flex-col items-center gap-3">
+      <div className="okou-card py-8 flex flex-col items-center gap-3">
         <img
           src={noConnectorImg}
           alt={t(($) => {
@@ -446,7 +446,7 @@ function ConnectedConnectorPermissions({
   const focusSearch = useSet(focusPermSearchRef$);
   return (
     <>
-      <div className="zero-card">
+      <div className="okou-card">
         <div className="relative border-b border-border/50">
           <div
             className={cn(
@@ -897,7 +897,7 @@ function AgentHeader({
         <Button
           variant="outline"
           size="sm"
-          className="zero-btn-morandi max-w-[220px] shrink-0 gap-1.5"
+          className="okou-btn-morandi max-w-[220px] shrink-0 gap-1.5"
           onClick={() => {
             nav("/agents/:agentId/chat", {
               pathParams: { agentId: agentId },

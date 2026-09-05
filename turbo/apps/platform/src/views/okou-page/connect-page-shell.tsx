@@ -13,9 +13,9 @@ export function connectErrorMessage(error: unknown, fallback: string): string {
 
 export function PageShell({ children }: { children: ReactNode }) {
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
+    <div className="okou-app okou-viewport-shell flex w-full bg-background okou-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">
-        <div className="zero-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
+        <div className="okou-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
           {children}
         </div>
       </div>
