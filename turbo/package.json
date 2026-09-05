@@ -35,7 +35,7 @@
     "knip": "^5.63.1",
     "prettier": "^3.6.2",
     "tsx": "^4.21.0",
-    "turbo": "^2.10.11",
+    "turbo": "^2.10.12",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "^4.1.10"
   },
