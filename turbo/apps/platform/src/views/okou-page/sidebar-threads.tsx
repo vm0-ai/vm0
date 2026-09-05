@@ -46,6 +46,7 @@ import {
 import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { mainStylesheetLoaded$ } from "../../signals/app-skeleton.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   deleteChatThread$,
@@ -1153,6 +1154,7 @@ export function ChatThreadsSection({
   showMarkAllRead?: boolean;
 }) {
   const agentScope = useGet(currentChatAgentScope$);
+  const mainStylesheetLoaded = useLastResolved(mainStylesheetLoaded$);
 
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
@@ -1162,10 +1164,12 @@ export function ChatThreadsSection({
           showMarkAllRead={showMarkAllRead}
         />
       </div>
-      <ChatThreadsContent
-        scrollSignals={scrollSignals}
-        contentClassName={contentClassName}
-      />
+      {mainStylesheetLoaded && (
+        <ChatThreadsContent
+          scrollSignals={scrollSignals}
+          contentClassName={contentClassName}
+        />
+      )}
     </div>
   );
 }
