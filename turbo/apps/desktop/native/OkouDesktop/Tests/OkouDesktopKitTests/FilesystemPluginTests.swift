@@ -67,7 +67,7 @@ final class FilesystemPluginTests: XCTestCase {
         XCTAssertTrue(info.contains("isFile: true"))
         XCTAssertTrue(info.contains("permissions: "))
         let sizes = try tools.listDirectoryWithSizes(path: ".", sortBy: "size")
-        XCTAssertTrue(sizes.contains("Total: 1 files, 2 directories"))
+        XCTAssertTrue(sizes.contains("Total: 1 files, 1 directories"))
         XCTAssertTrue(sizes.contains("[FILE] b.md"))
         XCTAssertEqual(FilesystemTools.formatSize(1536), "1.50 KB")
         XCTAssertEqual(tools.listAllowedDirectories(), "Allowed directories:\n\(root.path)")

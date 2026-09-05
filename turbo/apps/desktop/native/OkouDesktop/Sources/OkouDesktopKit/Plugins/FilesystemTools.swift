@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 public struct FilesystemToolError: Error, Equatable, CustomStringConvertible {
     public let message: String
@@ -156,7 +161,10 @@ public struct FilesystemTools: Sendable {
         let attributes = try? fileManager.attributesOfItem(atPath: path)
         do {
             try Data(content.utf8).write(to: URL(fileURLWithPath: temporary))
-            _ = try fileManager.replaceItemAt(URL(fileURLWithPath: path), withItemAt: URL(fileURLWithPath: temporary))
+            // rename(2) replaces the target atomically and never follows a symlink.
+            guard rename(temporary, path) == 0 else {
+                throw FilesystemToolError("Unable to replace \(path): \(String(cString: strerror(errno)))")
+            }
         } catch {
             try? fileManager.removeItem(atPath: temporary)
             throw error
