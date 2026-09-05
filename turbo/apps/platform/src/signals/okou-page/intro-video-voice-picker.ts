@@ -11,7 +11,7 @@ import { onRejection } from "../utils.ts";
 
 const INTRO_VIDEO_VOICE_PAGE_SIZE = 24;
 
-export interface IntroVideoVoiceFilters {
+interface IntroVideoVoiceFilters {
   readonly language: IntroVideoVoicesQuery["language"];
   readonly gender: IntroVideoVoicesQuery["gender"];
 }
@@ -22,7 +22,7 @@ interface IntroVideoVoicePage {
   readonly nextToken: string | null;
 }
 
-export interface IntroVideoVoiceCatalogPage extends IntroVideoVoicePage {
+interface IntroVideoVoiceCatalogPage extends IntroVideoVoicePage {
   readonly generation: number;
 }
 
