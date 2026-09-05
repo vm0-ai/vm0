@@ -96,6 +96,11 @@ import { setThreadListNumberShortcutRoot$ } from "../../signals/okou-page/thread
 import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
+import {
+  PinnedThreadRow,
+  PinnedThreadDragAnnouncement,
+} from "./sidebar-thread-reorder.tsx";
+import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import { equalArrays } from "../../lib/equality.ts";
 
 // The row glyphs draw at 17px, which the shared button base (`[&_svg]:size-4`)
@@ -393,17 +398,19 @@ function ChatThreadItemLink({
 function ChatThreadItem({
   signals,
   shortcutNumber,
+  dragSignals,
 }: {
   signals: SidebarChatThreadItemSignals;
   shortcutNumber: number | undefined;
+  dragSignals: PinnedThreadDragSignals;
 }) {
   return (
-    <div className="group relative">
+    <PinnedThreadRow signals={signals} dragSignals={dragSignals}>
       <ChatThreadItemLink signals={signals} shortcutNumber={shortcutNumber} />
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
         <ChatThreadMenu signals={signals} />
       </div>
-    </div>
+    </PinnedThreadRow>
   );
 }
 
@@ -625,6 +632,7 @@ function VirtualizedChatThreads({
       data-testid="sidebar-chat-threads-virtual-list"
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
+      <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />
       {visibleItems.map((signals, visibleOffset) => {
         const index = startIndex + visibleOffset;
         return (
@@ -642,6 +650,7 @@ function VirtualizedChatThreads({
             <ChatThreadItem
               signals={signals}
               shortcutNumber={!searchOpen && index < 9 ? index + 1 : undefined}
+              dragSignals={scrollSignals.pinReorder}
             />
           </div>
         );

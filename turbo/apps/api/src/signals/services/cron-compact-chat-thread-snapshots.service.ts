@@ -150,6 +150,7 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
             'createdAt', thread.created_at,
             'updatedAt', thread.updated_at,
             'pinnedAt', thread.pinned_at,
+            'pinOrder', thread.pin_order,
             'renamedAt', thread.renamed_at,
             'selectedModel', thread.selected_model,
             'serviceTier', CASE

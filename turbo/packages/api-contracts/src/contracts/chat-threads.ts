@@ -326,6 +326,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   pinnedAt: z.string().nullable(),
+  // Optional for existing snapshots and browser caches without manual ordering.
+  pinOrder: z.string().nullable().optional(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
@@ -368,6 +370,8 @@ const chatThreadEventSchema = z.object({
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
+  // On sort_touched, this changes pin rank instead of activity recency.
+  pinOrder: z.string().nullable().optional(),
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
@@ -1451,7 +1455,12 @@ export const chatThreadPinContract = c.router({
     path: "/api/chat-threads/:id/pin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
+    query: z
+      .object({
+        eventId: chatThreadEventIdSchema.optional(),
+        pinOrder: z.string().min(2).max(2048).optional(),
+      })
+      .optional(),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -1460,6 +1469,27 @@ export const chatThreadPinContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Pin a chat thread to the top of the sidebar",
+  },
+});
+
+export const chatThreadPinOrderContract = c.router({
+  reorder: {
+    method: "POST",
+    path: "/api/chat-threads/:id/pin-order",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: z.object({
+      pinOrder: z.string().min(2).max(2048),
+      eventId: chatThreadEventIdSchema,
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Set a pinned chat thread's order",
   },
 });
 
@@ -1958,6 +1988,7 @@ export type ChatThreadMarkUnreadContract = typeof chatThreadMarkUnreadContract;
 export type ChatThreadMarkAgentReadContract =
   typeof chatThreadMarkAgentReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
+export type ChatThreadPinOrderContract = typeof chatThreadPinOrderContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatThreadMetadataContract = typeof chatThreadMetadataContract;

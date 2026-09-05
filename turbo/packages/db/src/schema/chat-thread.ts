@@ -129,11 +129,13 @@ export const chatThreads = pgTable(
       .notNull(),
     /**
      * Timestamp at which the user pinned this thread to the top of the sidebar.
-     * NULL means unpinned. Pinned threads sort above unpinned, both groups
-     * keep recency ordering. Per `(user, agent)` because `chat_threads` rows
+     * NULL means unpinned. Pinned threads sort above unpinned; pinOrder controls
+     * their manual order when stable navigation is enabled. Per `(user, agent)` because `chat_threads` rows
      * already carry `user_id` + `agent_id`.
      */
     pinnedAt: timestamp("pinned_at"),
+    /** Fractional order within the pinned group; ties are resolved by thread ID. */
+    pinOrder: text("pin_order"),
     /**
      * Timestamp at which the user manually renamed this thread.
      * NULL means the thread has never been renamed.

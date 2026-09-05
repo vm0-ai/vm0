@@ -56,6 +56,7 @@ export const chatThreadEvents = pgTable(
     kind: chatThreadEventKind("kind").notNull(),
     agentId: uuid("agent_id"),
     title: text("title"),
+    pinOrder: text("pin_order"),
     selectedModel: varchar("selected_model", { length: 255 }),
     serviceTier: varchar("service_tier", {
       length: 20,

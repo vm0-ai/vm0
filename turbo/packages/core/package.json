@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@okouai/api-contracts": "workspace:*",
+    "fractional-indexing": "^3.4.0",
     "yaml": "^2.9.0"
   }
 }

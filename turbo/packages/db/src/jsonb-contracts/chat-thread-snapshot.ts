@@ -6,6 +6,8 @@ export interface ChatThreadSnapshotProjection {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly pinnedAt: string | null;
+  /** Absent in snapshots compacted before manual pin ordering. */
+  readonly pinOrder?: string | null;
   readonly renamedAt: string | null;
   readonly selectedModel: string | null;
   readonly serviceTier: "priority" | null;

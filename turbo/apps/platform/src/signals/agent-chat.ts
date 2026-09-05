@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
+import { comparePinnedThreads } from "@okouai/core/chat-thread-pin-order";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
@@ -133,10 +134,7 @@ const eventDrivenFilteredChatThreads$ = computed(
       if (right.pinnedAt === null) {
         return -1;
       }
-      return (
-        right.pinnedAt.localeCompare(left.pinnedAt) ||
-        right.id.localeCompare(left.id)
-      );
+      return comparePinnedThreads(left, right);
     });
   },
 );

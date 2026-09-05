@@ -1,0 +1,69 @@
+.okou-thread-reorder-row[data-reorderable] > a {
+  transition:
+    padding-left 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.okou-thread-drag-handle {
+  opacity: 0;
+  transform: translateX(-14px);
+  transition:
+    transform 120ms ease-out,
+    opacity 120ms ease-out;
+}
+
+.okou-thread-reorder-row[data-reorderable]:is(
+    :hover,
+    :focus-within,
+    [data-dragging]
+  )
+  > a {
+  padding-left: 32px;
+  transition-duration: 160ms;
+}
+
+.okou-thread-reorder-row:is(:hover, :focus-within, [data-dragging])
+  .okou-thread-drag-handle {
+  opacity: 1;
+  transform: translateX(0);
+  transition-duration: 160ms;
+}
+
+.okou-thread-reorder-row[data-dragging] > a {
+  opacity: 0.45;
+}
+
+.okou-thread-reorder-row[data-drop-side]::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.okou-thread-reorder-row[data-drop-side="before"]::after {
+  top: -3px;
+}
+.okou-thread-reorder-row[data-drop-side="after"]::after {
+  bottom: -3px;
+}
+
+@media (pointer: coarse) {
+  .okou-thread-reorder-row[data-reorderable] > a {
+    padding-left: 32px;
+  }
+  .okou-thread-drag-handle {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .okou-thread-reorder-row[data-reorderable] > a,
+  .okou-thread-drag-handle {
+    transition: none;
+  }
+}

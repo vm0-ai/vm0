@@ -1,36 +1,46 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
-import { chatThreadUnpinContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatThreadPinOrderContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { notFound } from "../../lib/error";
+import { isChatThreadPinOrder } from "@okouai/core/chat-thread-pin-order";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
 import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import type { RouteEntry } from "../route-entry";
 
-const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+const reorderBody$ = bodyResultOf(chatThreadPinOrderContract.reorder);
+
+const reorderInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(chatThreadUnpinContract.unpin));
-  const query = get(queryOf(chatThreadUnpinContract.unpin));
+  const params = get(pathParamsOf(chatThreadPinOrderContract.reorder));
+  const body = await get(reorderBody$);
   signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
 
   const writeDb = set(writeDb$);
+  if (!isChatThreadPinOrder(body.data.pinOrder)) {
+    return badRequestMessage("Invalid pin order");
+  }
 
   const updated = await writeDb.transaction(async (tx) => {
     const [thread] = await tx
       .update(chatThreads)
-      .set({ pinnedAt: null, pinOrder: null })
+      .set({ pinOrder: body.data.pinOrder })
       .where(
         and(
           eq(chatThreads.id, params.id),
           eq(chatThreads.userId, auth.userId),
           chatThreadOrganizationCondition(tx, auth.orgId),
           isNotNull(chatThreads.agentId),
+          isNotNull(chatThreads.pinnedAt),
         ),
       )
       .returning({
@@ -41,12 +51,13 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return false;
     }
     await appendChatThreadEvent(tx, {
-      kind: "unpinned",
+      kind: "sort_touched",
       userId: auth.userId,
       orgId: auth.orgId,
       chatThreadId: thread.id,
       agentId: thread.agentId,
-      eventId: query?.eventId,
+      eventId: body.data.eventId,
+      pinOrder: body.data.pinOrder,
     });
     return true;
   });
@@ -62,12 +73,16 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-export const chatThreadUnpinRoutes: readonly RouteEntry[] = [
+export const chatThreadPinOrderRoutes: readonly RouteEntry[] = [
   {
-    route: chatThreadUnpinContract.unpin,
+    route: chatThreadPinOrderContract.reorder,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      unpinInner$,
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-thread:write",
+      },
+      reorderInner$,
     ),
   },
 ];
