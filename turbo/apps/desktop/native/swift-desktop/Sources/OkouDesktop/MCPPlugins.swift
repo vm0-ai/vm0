@@ -66,11 +66,24 @@ final class MCPPlugins {
       guard name.range(of: "^[a-z0-9_-]{1,64}$", options: .regularExpression) != nil else {
         throw DesktopFailure("invalid_arguments", "MCP names must match [a-z0-9_-]{1,64}")
       }
-      guard input["command"].string?.isEmpty == false || input["url"].string?.isEmpty == false
-      else { throw DesktopFailure("invalid_arguments", "MCP server \(name) needs command or url") }
-      var config = input
-      config["enabled"] = .bool(false)
-      servers[name] = config
+      // Match the existing Desktop import contract before persisting: whitespace
+      // around a command/URL is not part of its identity, and URL takes priority.
+      if let url = input["url"].string?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !url.isEmpty
+      {
+        servers[name] = .object(["enabled": .bool(false), "url": .string(url)])
+      } else if let command = input["command"].string?.trimmingCharacters(
+        in: .whitespacesAndNewlines),
+        !command.isEmpty
+      {
+        servers[name] = .object([
+          "enabled": .bool(false), "command": .string(command),
+          "args": .strings(input["args"].array.compactMap(\.string)),
+          "env": .object((input["env"].object ?? [:]).filter { $0.value.string != nil }),
+        ])
+      } else {
+        throw DesktopFailure("invalid_arguments", "MCP server \(name) needs command or url")
+      }
     }
     try preferences.update { $0["computerUsePlugins"]["mcp"]["servers"] = .object(servers) }
     reconcile()

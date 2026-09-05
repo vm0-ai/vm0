@@ -56,8 +56,11 @@ import Testing
     let config: JSON = .object([
       "mcpServers": .object([
         "fixture": .object([
-          "command": .string("python3"), "args": .strings(["-u", "-c", script]),
-          "env": .object(["OKOU_TEST_VALUE": .string("explicit-server-env")]),
+          "command": .string("  python3\n"), "url": .string(" \t"),
+          "args": .array([.string("-u"), .null, .string("-c"), .string(script)]),
+          "env": .object([
+            "OKOU_TEST_VALUE": .string("explicit-server-env"), "ignored": .bool(true),
+          ]),
         ])
       ])
     ])
@@ -212,7 +215,7 @@ import Testing
     let plugins = MCPPlugins(preferences: preferences)
     defer { plugins.shutdown() }
     try plugins.importJSON(
-      JSON.object(["fixture": .object(["url": .string(origin + "/mcp")])]).text())
+      JSON.object(["fixture": .object(["url": .string(" \(origin)/mcp\n")])]).text())
     plugins.setContext(available: true, online: true)
     try plugins.setEnabled("fixture", true)
     try await waitForState(plugins, "running")
