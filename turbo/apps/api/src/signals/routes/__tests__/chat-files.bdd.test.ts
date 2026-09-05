@@ -49,16 +49,10 @@ describe("CHAT-01 chat thread lifecycle", () => {
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
         draftUserMessage: null,
-        draftVoice: null,
         draftAttachments: null,
       },
     );
 
-    const draftVoice = {
-      version: 1 as const,
-      id: "15874914-6ca6-41eb-ad09-ac64bf0784ea",
-      transcript: "unfinished voice draft",
-    };
     await api.patchThread(actor, created.id, {
       draftUserMessage: {
         version: 1,
@@ -71,7 +65,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
           },
         ],
       },
-      draftVoice,
       draftAttachments: [
         persistedAttachment(
           randomUUID(),
@@ -93,23 +86,22 @@ describe("CHAT-01 chat thread lifecycle", () => {
         },
       ],
     });
-    expect(draft.draftVoice).toStrictEqual(draftVoice);
     expect(draft.draftAttachments).toHaveLength(1);
     await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
     await api.patchThread(actor, created.id, {
       draftUserMessage: null,
-      draftVoice,
       draftAttachments: null,
     });
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
         draftUserMessage: null,
-        draftVoice,
         draftAttachments: null,
       },
     );
-    await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
+    await expect(api.listThreadDrafts(actor)).resolves.not.toContain(
+      created.id,
+    );
 
     await api.renameThread(actor, created.id, "Renamed launch notes");
     detail = await api.readThread(actor, created.id);
@@ -374,7 +366,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const threadId = sent.body.threadId;
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
       draftUserMessage: null,
-      draftVoice: null,
       draftAttachments: null,
     });
 

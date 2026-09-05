@@ -105,7 +105,6 @@ async function validateCanonicalRuntimeCallers(): Promise<void> {
       runtimePathspecs,
     ),
     [
-      "turbo/apps/api/src/signals/routes/__tests__/chat-events.bdd.test.ts",
       "turbo/apps/api/src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
       "turbo/apps/api/src/signals/services/agent-run-create.service.ts",
       "turbo/apps/api/src/signals/services/agent-run-metadata-write.service.ts",

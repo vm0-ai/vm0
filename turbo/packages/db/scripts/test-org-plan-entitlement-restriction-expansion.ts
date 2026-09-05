@@ -221,6 +221,7 @@ function validateExactApplicationCallers(): readonly string[] {
       "turbo/apps/api/src/signals/services/org-plan-entitlement-tier-values.ts",
       "turbo/apps/api/src/signals/services/org-plan-entitlements.service.ts",
       "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
+      "turbo/packages/api-contracts/src/contracts/model-providers.ts",
     ],
   );
   assert.deepEqual(

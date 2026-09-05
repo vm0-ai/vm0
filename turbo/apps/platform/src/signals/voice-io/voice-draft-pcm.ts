@@ -1,13 +1,9 @@
-import { logger } from "../log";
 import {
   bestEffort,
   createDeferredPromise,
   onRejection,
-  settle,
   withCleanup,
 } from "../utils";
-
-const L = logger("VoiceIO:DraftPcm");
 
 export const VOICE_DRAFT_PCM_SAMPLE_RATE = 16_000;
 
@@ -86,23 +82,9 @@ registerProcessor(
 );
 `;
 
-interface WindowWithWebkitAudioContext extends Window {
-  readonly webkitAudioContext?: typeof AudioContext;
-}
-
-export interface VoiceDraftPcmCapture {
+interface VoiceDraftPcmCapture {
   readonly cancel: () => void;
-  readonly finish: (signal: AbortSignal) => Promise<Blob | null>;
-}
-
-function audioContextConstructor(): typeof AudioContext | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-  return (
-    window.AudioContext ??
-    (window as WindowWithWebkitAudioContext).webkitAudioContext
-  );
+  readonly finish: (signal: AbortSignal) => Promise<Blob>;
 }
 
 function writeAscii(bytes: Uint8Array, offset: number, value: string): void {
@@ -221,23 +203,12 @@ function disconnectCaptureGraph(
   source.disconnect(worklet);
 }
 
-// Browser-capability fallback for non-GA VoiceDraft: a null result keeps the
-// encoded MediaRecorder capture usable on browsers without AudioWorklet.
-// Remove with #31710 once the supported-browser baseline guarantees this path.
 export async function startVoiceDraftPcmCapture(
   stream: MediaStream,
   signal: AbortSignal,
-): Promise<VoiceDraftPcmCapture | null> {
-  const AudioContextConstructor = audioContextConstructor();
-  if (
-    !AudioContextConstructor ||
-    typeof AudioWorkletNode === "undefined" ||
-    typeof URL.createObjectURL !== "function"
-  ) {
-    return null;
-  }
-
-  const audioContext = new AudioContextConstructor({
+): Promise<VoiceDraftPcmCapture> {
+  signal.throwIfAborted();
+  const audioContext = new AudioContext({
     sampleRate: VOICE_DRAFT_PCM_SAMPLE_RATE,
   });
   let closePromise: Promise<void> | undefined;
@@ -248,34 +219,19 @@ export async function startVoiceDraftPcmCapture(
   };
 
   return await onRejection(
-    (async (): Promise<VoiceDraftPcmCapture | null> => {
-      const audioWorklet = audioContext.audioWorklet;
-      if (!audioWorklet) {
-        await closeAudioContext();
-        return null;
-      }
-
+    (async (): Promise<VoiceDraftPcmCapture> => {
       const moduleUrl = URL.createObjectURL(
         new Blob([PCM_WORKLET_SOURCE], { type: "text/javascript" }),
       );
-      const loaded = await settle(
-        withCleanup(
-          (async () => {
-            await audioWorklet.addModule(moduleUrl);
-          })(),
-          () => {
-            URL.revokeObjectURL(moduleUrl);
-          },
-        ),
-        signal,
+      await withCleanup(
+        (async () => {
+          await audioContext.audioWorklet.addModule(moduleUrl);
+        })(),
+        () => {
+          URL.revokeObjectURL(moduleUrl);
+        },
       );
-      if (!loaded.ok) {
-        L.warn("AudioWorklet PCM capture unavailable; using encoded fallback", {
-          error: loaded.error,
-        });
-        await closeAudioContext();
-        return null;
-      }
+      signal.throwIfAborted();
 
       await audioContext.resume();
       signal.throwIfAborted();
@@ -323,9 +279,9 @@ export async function startVoiceDraftPcmCapture(
           worklet.port.close();
           closePromise = closeAudioContext();
         },
-        async finish(finishSignal: AbortSignal): Promise<Blob | null> {
+        async finish(finishSignal: AbortSignal): Promise<Blob> {
           if (stopped) {
-            return null;
+            throw new Error("Voice draft PCM capture has already stopped");
           }
           stopped = true;
           return await withCleanup(
@@ -333,11 +289,14 @@ export async function startVoiceDraftPcmCapture(
               worklet.port.postMessage("stop");
               await finished.promise;
               finishSignal.throwIfAborted();
-              return sampleCount > 0
-                ? encodeVoiceDraftPcmWav(
-                    combineSampleBatches(batches, sampleCount),
-                  )
-                : null;
+              if (sampleCount === 0) {
+                throw new Error(
+                  "Voice recording did not contain audio samples",
+                );
+              }
+              return encodeVoiceDraftPcmWav(
+                combineSampleBatches(batches, sampleCount),
+              );
             })(),
             async () => {
               disconnectCaptureGraph(source, worklet);

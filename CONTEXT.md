@@ -2,7 +2,7 @@
 
 ## Voice draft
 
-A transient ComposerSignals-owned voice-input lifecycle. It moves from idle to
+A transient ComposerSignals-owned voice-input lifecycle. It captures 16 kHz PCM through AudioWorklet and moves from idle to
 recording to transcribing, blocks submission while active, and inserts only the
 successful polished text into TipTap at the existing selection before returning
 to idle. Recording data, transcription state, and failures are never TipTap

@@ -83,8 +83,6 @@ function userMessageDraftState(
   threadDraft: ChatThreadDraft,
 ): RestoredDraftState | null {
   const document = threadDraft.draftUserMessage;
-  // Compatibility-only draftVoice responses from old App clients are ignored.
-  // Remove the API/DB field with #31612 after the two-day client-skew window.
   if (draftToEditorDoc(document) === null) {
     return null;
   }

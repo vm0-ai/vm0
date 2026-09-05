@@ -51,7 +51,10 @@ function captureVoiceTranscriptionErrors(): unknown[][] {
   }
   const errors: unknown[][] = [];
   errorSpy.mockImplementation((...args: unknown[]) => {
-    if (args[0] === "[E][Composer:VoiceDraft]") {
+    if (
+      args[0] === "[E][Composer:VoiceDraft]" ||
+      args[0] === "[E][VoiceIO:STT]"
+    ) {
       errors.push(args);
       return;
     }
@@ -227,13 +230,16 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   const transcriptionStarted = context.mocks.deferred<void>();
   const transcriptionReady = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({ rms: 0.12 });
+  vi.stubGlobal("MediaRecorder", undefined);
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
     const body = await request.formData();
     expect(body.get("lastAssistantMessage")).toBe(
       "Use LaunchPad for the rollout.",
     );
-    expect(body.getAll("file")).toHaveLength(1);
+    const files = body.getAll("file");
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ type: "audio/wav", size: 32_044 });
     transcriptionStarted.resolve(undefined);
     await transcriptionReady.promise;
     return HttpResponse.json({
@@ -379,11 +385,9 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   click(stop);
 
   await waitFor(() => {
-    expect(recorderStops).toBe(1);
-  });
-  await waitFor(() => {
     expect(normalizedComposerText()).toBe("Extended voice draft.");
   });
+  expect(recorderStops).toBe(0);
   expect(multimodalCalls).toBe(1);
   expect(legacySttCalls).toBe(0);
   expectNoVoiceDraftNode();
@@ -503,67 +507,6 @@ test.each([
   ]);
 });
 
-test("Recover voice input when the recorder fails to start", async () => {
-  let stoppedTracks = 0;
-  const consoleErrors = captureVoiceTranscriptionErrors();
-  context.mocks.browser.voiceInput({
-    rms: 0.12,
-    onTrackStop() {
-      stoppedTracks += 1;
-    },
-  });
-  vi.spyOn(MediaRecorder.prototype, "start").mockImplementationOnce(() => {
-    throw new DOMException(
-      "The audio encoder is unavailable",
-      "NotSupportedError",
-    );
-  });
-  installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
-    return HttpResponse.json({
-      transcript: "new voice note",
-      polishedText: "New voice note.",
-      language: "en-US",
-    });
-  });
-  installRunChat();
-
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
-  });
-
-  const voiceInput = await readyVoiceInput();
-  await fill(currentComposer(), "Keep these notes. ");
-  click(voiceInput);
-
-  await expect(
-    screen.findByText("Voice transcription failed. Try again."),
-  ).resolves.toBeVisible();
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
-  await expect(findButton("Send")).resolves.toBeEnabled();
-  expect(normalizedComposerText()).toBe("Keep these notes.");
-  expect(stoppedTracks).toBe(1);
-  expectNoVoiceDraftNode();
-
-  click(await findButton("Voice input"));
-  click(await activeVoiceDraftStopButton());
-
-  await waitFor(() => {
-    expect(normalizedComposerText()).toBe("Keep these notes. New voice note.");
-  });
-  await expect(findButton("Send")).resolves.toBeEnabled();
-  expectNoVoiceDraftNode();
-  expect(consoleErrors).toStrictEqual([
-    [
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({ message: "Voice draft recording failed" }),
-    ],
-  ]);
-});
-
 test("Release a late microphone stream after navigating away during voice startup", async () => {
   const microphoneReady = context.mocks.deferred<void>();
   const tracksStopped = context.mocks.deferred<void>();
@@ -599,6 +542,136 @@ test("Release a late microphone stream after navigating away during voice startu
   expect(
     screen.queryByText("Voice transcription failed. Try again."),
   ).toBeNull();
+});
+
+test("Release the microphone and allow retry when PCM startup fails", async () => {
+  const consoleErrors = captureVoiceTranscriptionErrors();
+  const workletReady = context.mocks.deferred<void>();
+  const pcmWorkletReady = vi
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined)
+    .mockImplementationOnce(() => {
+      return workletReady.promise;
+    });
+  let microphoneStops = 0;
+  let audioContextCloses = 0;
+  context.mocks.browser.voiceInput({
+    pcmWorkletReady,
+    onTrackStop() {
+      microphoneStops += 1;
+    },
+    onAudioContextClose() {
+      audioContextCloses += 1;
+    },
+    rms: 0.12,
+  });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    return HttpResponse.json({
+      transcript: "new voice note",
+      polishedText: "New voice note.",
+      language: "en-US",
+    });
+  });
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), "Keep these typed notes. ");
+  click(voiceInput);
+  await expect(findButton("Stop recording")).resolves.toBeDisabled();
+  await waitFor(() => {
+    expect(pcmWorkletReady).toHaveBeenCalledOnce();
+  });
+  workletReady.reject(new Error("PCM worklet could not load"));
+
+  await expect(
+    screen.findByText("Voice transcription failed. Try again."),
+  ).resolves.toBeVisible();
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(normalizedComposerText()).toBe("Keep these typed notes.");
+  expect(microphoneStops).toBe(1);
+  expect(audioContextCloses).toBe(1);
+  await expect(findButton("Send")).resolves.toBeEnabled();
+
+  click(await findButton("Voice input"));
+  click(await activeVoiceDraftStopButton());
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe(
+      "Keep these typed notes. New voice note.",
+    );
+  });
+  await expect(findButton("Send")).resolves.toBeEnabled();
+  expectNoVoiceDraftNode();
+  expect(consoleErrors).toStrictEqual([
+    [
+      "[E][VoiceIO:STT]",
+      "Voice recording failed to start",
+      expect.objectContaining({ message: "PCM worklet could not load" }),
+    ],
+    [
+      "[E][Composer:VoiceDraft]",
+      "Voice draft transcription failed",
+      expect.objectContaining({ message: "Voice draft recording failed" }),
+    ],
+  ]);
+});
+
+test("Restore the composer when PCM capture finishes without audio", async () => {
+  const consoleErrors = captureVoiceTranscriptionErrors();
+  let microphoneStops = 0;
+  let audioContextCloses = 0;
+  context.mocks.browser.voiceInput({
+    durationSeconds: 0,
+    onTrackStop() {
+      microphoneStops += 1;
+    },
+    onAudioContextClose() {
+      audioContextCloses += 1;
+    },
+    rms: 0.12,
+  });
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), "Keep the existing draft");
+  click(voiceInput);
+  click(await activeVoiceDraftStopButton());
+
+  await expect(
+    screen.findByText("Voice transcription failed. Try again."),
+  ).resolves.toBeVisible();
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(normalizedComposerText()).toBe("Keep the existing draft");
+  expect(microphoneStops).toBe(1);
+  expect(audioContextCloses).toBe(2);
+  await expect(findButton("Send")).resolves.toBeEnabled();
+  expect(consoleErrors).toStrictEqual([
+    [
+      "[E][VoiceIO:STT]",
+      "Voice recording failed to finish",
+      expect.objectContaining({
+        message: "Voice recording did not contain audio samples",
+      }),
+    ],
+    [
+      "[E][Composer:VoiceDraft]",
+      "Voice draft transcription failed",
+      expect.objectContaining({ message: "Voice draft recording failed" }),
+    ],
+  ]);
 });
 
 test("Make voice-input startup and silent cancellation clear", async () => {
