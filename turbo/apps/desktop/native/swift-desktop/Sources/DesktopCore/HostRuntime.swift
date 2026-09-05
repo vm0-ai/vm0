@@ -135,7 +135,16 @@ public final class HostRuntime {
           commands.insert(log, at: 0)
           commands = Array(commands.prefix(20))
           onChange()
-          let result = await execute(command, try await permissions())
+          let result: JSON
+          do {
+            let currentPermissions =
+              command["kind"].string == "plugin.call" ? JSON.object([:]) : try await permissions()
+            result = await execute(command, currentPermissions)
+          } catch let failure as DesktopFailure {
+            result = failure.response
+          } catch {
+            result = DesktopFailure("helper_unavailable", error.localizedDescription).response
+          }
           if let index = commands.firstIndex(where: { $0["id"].string == id }) {
             commands[index]["status"] = result["status"]
             commands[index]["durationMs"] = .number(Date().timeIntervalSince(start) * 1000)

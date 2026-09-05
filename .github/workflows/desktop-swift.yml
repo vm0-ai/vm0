@@ -5,6 +5,7 @@ on:
     paths:
       - "turbo/apps/desktop/native/**"
       - "turbo/apps/desktop/assets/icon.icns"
+      - "turbo/apps/desktop/assets/icon-zero.icns"
       - ".github/workflows/desktop-swift.yml"
   workflow_dispatch:
 
@@ -33,10 +34,11 @@ jobs:
           python3 - <<'PY'
           import pathlib, subprocess
           executable = pathlib.Path("turbo/apps/desktop/native/swift-desktop/out/Okou Dev.app/Contents/MacOS/okou-desktop").resolve()
-          result = subprocess.run([str(executable), "--smoke-test"], capture_output=True, text=True, timeout=45)
+          screenshot = executable.parents[3] / "Okou-Swift-Desktop.png"
+          result = subprocess.run([str(executable), "--smoke-test", "--smoke-screenshot", str(screenshot)], capture_output=True, text=True, timeout=45)
           print(result.stdout)
           print(result.stderr)
-          if result.returncode != 0 or "OKOU_SWIFT_DESKTOP_READY" not in result.stdout:
+          if result.returncode != 0 or "OKOU_SWIFT_DESKTOP_READY" not in result.stdout or not screenshot.is_file():
               raise SystemExit("Packaged native desktop smoke test failed")
           PY
       - name: Archive self-contained Swift project
@@ -49,6 +51,7 @@ jobs:
           path: |
             turbo/apps/desktop/native/swift-desktop/out/Okou-Swift-macos-arm64.zip
             turbo/apps/desktop/native/swift-desktop/out/Okou-Swift-Project.zip
+            turbo/apps/desktop/native/swift-desktop/out/Okou-Swift-Desktop.png
           if-no-files-found: error
           retention-days: 30
       - name: Link downloads from the PR check

@@ -4,7 +4,7 @@ set -euo pipefail
 package_dir="$(cd "$(dirname "$0")/.." && pwd)"
 desktop_dir="$(cd "$package_dir/../.." && pwd)"
 output_dir="$package_dir/out"
-platform_url="https://app.okou.ai"
+platform_url=""
 product=okou
 preview=true
 version=""
@@ -25,6 +25,9 @@ fi
 if [[ "$product" != okou && "$product" != zero ]]; then
   echo "--product must be okou or zero" >&2
   exit 1
+fi
+if [[ -z "$platform_url" ]]; then
+  if [[ "$product" == zero ]]; then platform_url="https://app.vm0.ai"; else platform_url="https://app.okou.ai"; fi
 fi
 if [[ -z "$version" ]]; then
   if [[ -f "$desktop_dir/VERSION" ]]; then
@@ -59,7 +62,8 @@ mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/native"
 cp "$app_bin/okou-desktop" "$app_dir/Contents/MacOS/okou-desktop"
 cp "$helper_bin/computer-use-helper" "$helper_bin/screen-recorder-helper" "$app_dir/Contents/Resources/native/"
 cp "$app_bin/okou-desktop-updater" "$app_dir/Contents/Resources/native/"
-cp "$desktop_dir/assets/icon.icns" "$app_dir/Contents/Resources/icon.icns"
+if [[ "$product" == zero ]]; then icon=icon-zero.icns; else icon=icon.icns; fi
+cp "$desktop_dir/assets/$icon" "$app_dir/Contents/Resources/icon.icns"
 # SwiftPM resource bundles retain their module names inside Resources.
 for bundle in "$app_bin"/*.bundle "$helper_bin"/*.bundle; do
   if [[ -d "$bundle" ]]; then cp -R "$bundle" "$app_dir/Contents/Resources/"; fi

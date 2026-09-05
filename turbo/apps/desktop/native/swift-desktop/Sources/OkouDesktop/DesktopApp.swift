@@ -69,6 +69,20 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         showWindow()
         model.run {
           _ = try await model.helper.request("permissions.state")
+          if let index = CommandLine.arguments.firstIndex(of: "--smoke-screenshot"),
+            CommandLine.arguments.indices.contains(index + 1),
+            let view = self.mainWindow?.contentView
+          {
+            view.layoutSubtreeIfNeeded()
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+              throw DesktopFailure("smoke_test", "Could not render the native settings window")
+            }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+              throw DesktopFailure("smoke_test", "Could not encode the native settings window")
+            }
+            try png.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+          }
           FileHandle.standardOutput.write(Data("OKOU_SWIFT_DESKTOP_READY\n".utf8))
           model.helper.close()
           NSApp.terminate(nil)

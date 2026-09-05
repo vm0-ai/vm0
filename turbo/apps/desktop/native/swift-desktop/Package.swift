@@ -26,6 +26,8 @@ var targets: [Target] = [
         .product(name: "Sentry", package: "sentry-cocoa"),
       ]
     ))
+  targets.append(
+    .testTarget(name: "NativeIntegrationTests", dependencies: ["OkouDesktop", "DesktopCore"]))
 #endif
 
 let package = Package(

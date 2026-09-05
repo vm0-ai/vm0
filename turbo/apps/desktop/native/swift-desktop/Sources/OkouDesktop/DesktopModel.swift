@@ -155,6 +155,9 @@ final class DesktopModel: ObservableObject {
       pluginsAvailable = false
       debugAvailable = false
       debugEnabled = false
+      if recorder.available {
+        do { try await recorder.shutdown() } catch { report(error) }
+      }
       recorder.available = false
       mcp.setContext(available: false, online: false)
       throw error
@@ -251,6 +254,8 @@ final class DesktopModel: ObservableObject {
   }
 
   func shutdown() async throws {
+    // Drain claimed work before cancelling permission probes that share its helper.
+    await host.stop()
     permissionTask?.cancel()
     featuresTask?.cancel()
     await permissionTask?.value
@@ -259,7 +264,6 @@ final class DesktopModel: ObservableObject {
     featuresTask = nil
     areaSelector.cancel()
     try await recorder.shutdown()
-    await host.stop()
     mcp.shutdown()
     helper.close()
     if keepAwakeActive {

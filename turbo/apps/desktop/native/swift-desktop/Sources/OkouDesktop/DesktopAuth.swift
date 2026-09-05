@@ -11,6 +11,8 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   private let configuration: DesktopConfiguration
   private let preferences: DesktopPreferences
   private var token: String?
+  private var tokenRevision = 0
+  private var windowID: UUID?
   private var refreshTask: Task<String?, any Error>?
   private var window: NSWindow?
   private var webView: WKWebView?
@@ -33,10 +35,11 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     if preferences.value["nativeSignedOut"].bool { return nil }
     if !force, let token { return token }
     if let refreshTask { return try await refreshTask.value }
-    let before = token
+    let before = tokenRevision
     let task = Task<String?, any Error> {
       try await runWindow(configuration.webPath("desktop-auth/token"), interactive: false)
-      return token == before ? nil : token
+      if tokenRevision == before { token = nil }
+      return token
     }
     refreshTask = task
     defer { refreshTask = nil }
@@ -140,25 +143,31 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     self.window = window
     webView = view
     let currentEpoch = epoch
+    let operationID = UUID()
+    windowID = operationID
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         completion = continuation
         deadline = Task { [weak self] in
           do { try await Task.sleep(for: .seconds(interactive ? 180 : 30)) } catch { return }
-          guard let self, self.epoch == currentEpoch else { return }
+          guard let self, self.epoch == currentEpoch, self.windowID == operationID else { return }
           self.finish(
             .failure(DesktopFailure("auth_timeout", "Sign-in timed out. Please try again.")))
         }
         view.load(URLRequest(url: url))
       }
     } onCancel: {
-      Task { @MainActor [weak self] in self?.finish(.failure(CancellationError())) }
+      Task { @MainActor [weak self] in
+        guard let self, self.windowID == operationID else { return }
+        self.finish(.failure(CancellationError()))
+      }
     }
   }
 
   private func finish(_ result: Result<Void, any Error>) {
     let continuation = completion
     completion = nil
+    windowID = nil
     deadline?.cancel()
     deadline = nil
     webView?.configuration.userContentController.removeScriptMessageHandler(
@@ -177,7 +186,8 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     _ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
     replyHandler: @escaping @MainActor (Any?, String?) -> Void
   ) {
-    guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url,
+    guard userContentController === webView?.configuration.userContentController,
+      message.frameInfo.isMainFrame, let url = message.frameInfo.request.url,
       configuration.allowsAuthPage(url), completion != nil,
       let body = message.body as? [String: Any], let token = body["token"] as? String,
       !token.isEmpty
@@ -186,6 +196,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
       return
     }
     self.token = token
+    tokenRevision += 1
     replyHandler(nil, nil)
     finish(.success(()))
   }
@@ -193,7 +204,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async
     -> WKNavigationActionPolicy
   {
-    guard let url = navigationAction.request.url else { return .cancel }
+    guard webView === self.webView, let url = navigationAction.request.url else { return .cancel }
     guard configuration.allowsAuthPage(url) else {
       if ["https", "http", "mailto"].contains(url.scheme), interactive {
         NSWorkspace.shared.open(url)
@@ -218,7 +229,9 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    guard let url = webView.url, configuration.allowsAuthPage(url) else { return }
+    guard webView === self.webView, let url = webView.url, configuration.allowsAuthPage(url) else {
+      return
+    }
     if url.path == "/"
       || url.path.range(of: "^/(en|de|ja|es)/?$", options: .regularExpression) != nil
     {
@@ -227,11 +240,11 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   }
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error)
-  { navigationFailed(error) }
+  { if webView === self.webView { navigationFailed(error) } }
   func webView(
     _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
     withError error: any Error
-  ) { navigationFailed(error) }
+  ) { if webView === self.webView { navigationFailed(error) } }
   private func navigationFailed(_ error: any Error) {
     if (error as NSError).code != NSURLErrorCancelled { finish(.failure(error)) }
   }

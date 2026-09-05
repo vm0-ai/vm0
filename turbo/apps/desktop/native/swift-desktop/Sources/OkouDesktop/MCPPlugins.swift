@@ -8,10 +8,15 @@ final class MCPPlugins {
   @MainActor private final class Slot {
     let id = UUID()
     let configuration: JSON
-    let client = Client(name: "okou-desktop-mcp-plugin", version: "1.0.0")
+    var client = Client(name: "okou-desktop-mcp-plugin", version: "1.0.0")
     var process: Process?
     var pipes: [Pipe] = []
     var start: Task<Void, Never>?
+    var restart: Task<Void, Never>?
+    var health: Task<Void, Never>?
+    var runtimeID = UUID()
+    var attempts = 0
+    var startedAt: Date?
     var status = "starting"
     var error: String?
     var tools: [MCP.Tool] = []
@@ -104,6 +109,13 @@ final class MCPPlugins {
   }
 
   private func connect(name: String, slot: Slot) async {
+    slot.runtimeID = UUID()
+    let runtimeID = slot.runtimeID
+    let client = Client(name: "okou-desktop-mcp-plugin", version: "1.0.0")
+    slot.client = client
+    slot.tools = []
+    slot.status = "starting"
+    onChange()
     do {
       let transport: any Transport
       if let raw = slot.configuration["url"].string {
@@ -126,7 +138,9 @@ final class MCPPlugins {
           "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
           "SHELL": ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         ]
-        if let path = try await loginShellPath() { environment["PATH"] = path }
+        if let path = try? await loginShellPath() { environment["PATH"] = path }
+        try Task.checkCancellation()
+        guard slots[name]?.id == slot.id else { return }
         for (key, value) in slot.configuration["env"].object ?? [:] {
           if let value = value.string { environment[key] = value }
         }
@@ -139,9 +153,9 @@ final class MCPPlugins {
           let status = process.terminationStatus
           Task { @MainActor in
             guard let self, let current = self.slots[name], current.id == slotID else { return }
-            current.status = "error"
-            current.error = "MCP process exited (\(status))"
-            self.onChange()
+            self.failed(
+              name: name, slot: current, runtimeID: runtimeID,
+              message: "MCP process exited (\(status))")
           }
         }
         try process.run()
@@ -153,32 +167,89 @@ final class MCPPlugins {
       }
       let timeout = Task {
         do { try await Task.sleep(for: .seconds(30)) } catch { return }
-        await slot.client.disconnect()
+        await client.disconnect()
       }
       defer { timeout.cancel() }
-      _ = try await slot.client.connect(transport: transport)
-      var cursor: String?
-      repeat {
-        let page = try await slot.client.listTools(cursor: cursor)
-        slot.tools += page.tools
-        cursor = page.nextCursor
-        guard slot.tools.count <= 10000 else {
-          throw DesktopFailure("result_too_large", "MCP server advertised too many tools")
-        }
-      } while cursor != nil
-      guard slots[name]?.id == slot.id, !Task.isCancelled else {
-        await slot.client.disconnect()
+      _ = try await client.connect(transport: transport)
+      slot.tools = try await listTools(client)
+      guard slots[name]?.id == slot.id, slot.runtimeID == runtimeID, !Task.isCancelled else {
+        await client.disconnect()
         return
       }
       slot.status = "running"
       slot.error = nil
+      slot.startedAt = Date()
+      slot.health = Task { [weak self] in
+        while !Task.isCancelled {
+          do {
+            try await Task.sleep(for: .seconds(30))
+            let deadline = Task {
+              do { try await Task.sleep(for: .seconds(15)) } catch { return }
+              await client.disconnect()
+            }
+            defer { deadline.cancel() }
+            try await client.ping()
+          } catch {
+            guard !Task.isCancelled else { return }
+            self?.failed(
+              name: name, slot: slot, runtimeID: runtimeID, message: error.localizedDescription)
+            return
+          }
+        }
+      }
       onChange()
     } catch {
-      guard slots[name]?.id == slot.id else { return }
+      failed(name: name, slot: slot, runtimeID: runtimeID, message: error.localizedDescription)
+    }
+  }
+
+  private func listTools(_ client: Client) async throws -> [MCP.Tool] {
+    var tools: [MCP.Tool] = []
+    var cursor: String?
+    var cursors: Set<String> = []
+    repeat {
+      let page = try await client.listTools(cursor: cursor)
+      tools += page.tools
+      cursor = page.nextCursor
+      guard tools.count <= 10000, cursor == nil || cursors.insert(cursor!).inserted else {
+        throw DesktopFailure(
+          "result_too_large", "MCP server advertised too many tools or repeated its cursor")
+      }
+    } while cursor != nil
+    return tools
+  }
+
+  private func failed(name: String, slot: Slot, runtimeID: UUID, message: String) {
+    guard slots[name]?.id == slot.id, slot.runtimeID == runtimeID, slot.restart == nil else {
+      return
+    }
+    slot.runtimeID = UUID()
+    slot.health?.cancel()
+    slot.health = nil
+    slot.process?.terminationHandler = nil
+    if let process = slot.process, process.isRunning { process.terminate() }
+    slot.process = nil
+    let client = slot.client
+    Task { await client.disconnect() }
+    if let started = slot.startedAt, Date().timeIntervalSince(started) >= 60 { slot.attempts = 0 }
+    slot.startedAt = nil
+    slot.error = message
+    let delays: [Double] = [1, 5, 30]
+    guard slot.attempts < delays.count else {
       slot.status = "error"
-      slot.error = error.localizedDescription
-      if let process = slot.process, process.isRunning { process.terminate() }
       onChange()
+      return
+    }
+    let delay = delays[slot.attempts]
+    slot.attempts += 1
+    slot.status = "restarting"
+    onChange()
+    slot.restart = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+      guard let self, self.slots[name]?.id == slot.id else { return }
+      await slot.start?.value
+      slot.restart = nil
+      slot.start = Task { await self.connect(name: name, slot: slot) }
     }
   }
 
@@ -195,27 +266,39 @@ final class MCPPlugins {
       guard configs[name]?["enabled"].bool == true else {
         throw DesktopFailure("plugin_disabled", "MCP server is disabled")
       }
+      if let slot = slots[name], ["starting", "restarting"].contains(slot.status) {
+        throw DesktopFailure("plugin_restarting", "MCP server is restarting")
+      }
       guard let slot = slots[name], slot.status == "running" else {
         throw DesktopFailure("plugin_unavailable", "MCP server is not running")
       }
       let context: JSON = .object([
         "plugin": .string("mcp"), "server": .string(name), "tool": .string(tool),
       ])
+      let client = slot.client
+      let runtimeID = slot.runtimeID
+      let timeout = Task {
+        do { try await Task.sleep(for: .seconds(60)) } catch { return }
+        self.failed(name: name, slot: slot, runtimeID: runtimeID, message: "MCP request timed out")
+        await client.disconnect()
+      }
+      defer { timeout.cancel() }
+      if tool == "tools/list" || !slot.tools.contains(where: { $0.name == tool }) {
+        slot.tools = try await listTools(client)
+      }
       if tool == "tools/list" {
         let data = try JSONEncoder().encode(slot.tools)
-        return try PluginResult.text(JSON.decode(data).text(pretty: true), context: context)
+        let value: JSON = .object(["server": .string(name), "tools": try JSON.decode(data)])
+        return try PluginResult.text(value.text(pretty: true), context: context)
       }
       guard slot.tools.contains(where: { $0.name == tool }) else {
         throw DesktopFailure("unknown_tool", "MCP server does not advertise \(tool)")
       }
       let arguments = try JSONDecoder().decode(
-        [String: MCP.Value].self, from: payload["arguments"].encoded())
-      let timeout = Task {
-        do { try await Task.sleep(for: .seconds(60)) } catch { return }
-        await slot.client.disconnect()
-      }
-      defer { timeout.cancel() }
-      let result = try await slot.client.callTool(name: tool, arguments: arguments)
+        [String: MCP.Value].self,
+        from: (payload["arguments"].object == nil ? JSON.object([:]) : payload["arguments"])
+          .encoded())
+      let result = try await client.callTool(name: tool, arguments: arguments)
       let content = try JSON.decode(JSONEncoder().encode(result.content))
       return try PluginResult.normalize(
         .object(["content": content, "isError": .bool(result.isError == true)]), context: context)
@@ -227,9 +310,12 @@ final class MCPPlugins {
   private func stop(_ name: String) {
     guard let slot = slots.removeValue(forKey: name) else { return }
     slot.start?.cancel()
+    slot.restart?.cancel()
+    slot.health?.cancel()
     slot.process?.terminationHandler = nil
     if let process = slot.process, process.isRunning { process.terminate() }
-    Task { await slot.client.disconnect() }
+    let client = slot.client
+    Task { await client.disconnect() }
   }
 
   func shutdown() { for name in Array(slots.keys) { stop(name) } }

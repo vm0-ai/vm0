@@ -65,6 +65,7 @@ final class ScreenRecorder: ObservableObject {
     guard auth.signedIn, auth.organization["id"].string != nil else {
       throw DesktopFailure("signed_out", "Sign in and select a workspace before recording")
     }
+    recording = nil
     status = "preparing"
     error = nil
     onChange()
