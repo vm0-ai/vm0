@@ -18,6 +18,7 @@ import { db } from "../../../lib/db";
 import { withMockNowForTest } from "../../../lib/time";
 import { seedBuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
 import { DEFAULT_AGENT_NAME } from "../default-agent-profile";
+import { failPiMemoryPhase2Job } from "../pi-memory-phase2-job.service";
 import { handlePiMemoryPhase2MaintenanceCallback } from "../pi-memory-phase2-maintenance.service";
 import { executePiMemoryPhase2Work$ } from "../pi-memory-phase2-worker.service";
 import { computeContentHashFromHashes } from "../storage-content-hash.service";
@@ -193,6 +194,21 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     const leaseToken = activeJob.leaseToken;
     const claimedRevision = activeJob.claimedRevision;
     const selectionDigest = activeJob.claimedSelectionDigest;
+    await expect(
+      failPiMemoryPhase2Job(db(), {
+        ...scope,
+        leaseToken,
+        claimedRevision,
+        claimedBaseVersionId: scope.baseVersion.versionId,
+        currentTime: new Date(now.getTime() + 1),
+        expectedMaintenanceRunId: null,
+        errorClass: "post_commit_dispatch_error",
+      }),
+    ).resolves.toBeFalsy();
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "leased",
+      maintenanceRunId: result.runId,
+    });
     await db()
       .update(agentRuns)
       .set({ status: "running" })
@@ -319,6 +335,19 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
       status: "completed" as const,
       payload: callback.payload,
     };
+    await expect(
+      handlePiMemoryPhase2MaintenanceCallback(db(), {
+        ...completion,
+        payload: null,
+      }),
+    ).resolves.toStrictEqual({
+      success: false,
+      error: "Invalid Pi memory maintenance callback",
+    });
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "leased",
+      maintenanceRunId: result.runId,
+    });
     await expect(
       handlePiMemoryPhase2MaintenanceCallback(db(), completion),
     ).resolves.toStrictEqual({ success: true });

@@ -1204,7 +1204,7 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let mut event_pipeline = if pi_rpc_execution {
+    let mut event_pipeline = if pi_execution {
         None
     } else {
         Some(CliEventPipeline::start(

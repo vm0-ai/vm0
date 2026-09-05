@@ -279,6 +279,35 @@ describe("Pi memory Phase 2 job transitions", () => {
     expect(independent).toMatchObject(secondScope);
   });
 
+  it("drains a live legacy lease before claiming it for the sandbox path", async () => {
+    const scope = await createPhase2TestScope("legacy-lease-drain");
+    const legacyLeaseToken = randomUUID();
+    const leaseExpiresAt = new Date(NOW.getTime() + 60_000);
+    await insertPendingPhase2Job(scope, {
+      status: "leased",
+      claimedRevision: 1,
+      leaseToken: legacyLeaseToken,
+      legacyLeaseToken,
+      leaseExpiresAt,
+    });
+
+    await expect(
+      claimPiMemoryPhase2Job(db(), { currentTime: NOW, scope }),
+    ).resolves.toBeNull();
+    const claimed = await claimPiMemoryPhase2Job(db(), {
+      currentTime: leaseExpiresAt,
+      scope,
+    });
+
+    expect(claimed?.leaseToken).not.toBe(legacyLeaseToken);
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "leased",
+      legacyLeaseToken: null,
+      sandboxLeaseToken: claimed?.leaseToken,
+      maintenanceRunId: null,
+    });
+  });
+
   it("enforces lease fences, retry boundaries, attempt limits, and new-input reset", async () => {
     const scope = await createPhase2TestScope("fences");
     await insertPendingPhase2Job(scope);

@@ -56,6 +56,7 @@ async function failClaim(
 ): Promise<PiMemoryPhase2WorkerResult> {
   const transitioned = await failPiMemoryPhase2Job(db, {
     ...claimFence(claim, currentTime),
+    expectedMaintenanceRunId: null,
     errorClass,
   });
   return transitioned
@@ -127,6 +128,7 @@ async function recoverMaintenanceRun(
       claimedRevision: job.claimedRevision,
       claimedBaseVersionId: job.claimedBaseVersionId,
       currentTime: input.currentTime,
+      expectedMaintenanceRunId: job.maintenanceRunId,
       errorClass: "maintenance_run_missing",
     });
     return { outcome: "failed", errorClass: "maintenance_run_missing" };
@@ -306,7 +308,6 @@ export const executePiMemoryPhase2Work$ = command(
     }
     log.error("Pi memory maintenance run dispatch failed", {
       memoryStorageId: claim.memoryStorageId,
-      error: dispatched.error,
     });
     return await failClaim(db, claim, nowDate(), "maintenance_dispatch_failed");
   },

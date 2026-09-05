@@ -213,11 +213,21 @@ async function transitionMaintenanceFailure(
   }
 }
 
-function callbackErrorClass(envelope: InternalRunCallbackEnvelope): string {
-  if (envelope.status === "failed") {
-    return "maintenance_run_failed";
+function callbackErrorClass(
+  run:
+    | Readonly<{
+        status: typeof agentRuns.$inferSelect.status;
+        failureReason: string | null;
+      }>
+    | undefined,
+): string {
+  if (run?.status === "cancelled") {
+    return "maintenance_run_cancelled";
   }
-  return "maintenance_checkpoint_invalid";
+  if (run?.failureReason) {
+    return `maintenance_${run.failureReason}`;
+  }
+  return "maintenance_run_failed";
 }
 
 interface ExactMaintenanceCheckpoint {
@@ -359,7 +369,10 @@ async function observeTerminalMaintenance(
   }
 
   const [run] = await tx
-    .select({ status: agentRuns.status })
+    .select({
+      status: agentRuns.status,
+      failureReason: agentRuns.failureReason,
+    })
     .from(agentRuns)
     .where(
       and(
@@ -386,7 +399,7 @@ async function observeTerminalMaintenance(
     await transitionMaintenanceFailure(tx, {
       payload,
       runId: envelope.runId,
-      errorClass: callbackErrorClass(envelope),
+      errorClass: callbackErrorClass(run),
       inputRevision: job.inputRevision,
       retryCount: job.retryCount,
     });

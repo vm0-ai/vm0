@@ -82,6 +82,7 @@ export interface PiMemoryPhase2LeaseFence extends PiMemoryPhase2OwnerScope {
   readonly claimedRevision: number;
   readonly claimedBaseVersionId: string;
   readonly currentTime: Date;
+  readonly expectedMaintenanceRunId?: string | null;
 }
 
 interface PiMemoryPhase2SelectionMetadata {
@@ -750,9 +751,20 @@ function exactLeaseCondition(args: PiMemoryPhase2LeaseFence) {
     eq(piMemoryPhase2Jobs.userId, args.userId),
     eq(piMemoryPhase2Jobs.status, "leased"),
     eq(piMemoryPhase2Jobs.leaseToken, args.leaseToken),
+    eq(piMemoryPhase2Jobs.sandboxLeaseToken, args.leaseToken),
     eq(piMemoryPhase2Jobs.claimedRevision, args.claimedRevision),
     eq(piMemoryPhase2Jobs.claimedBaseVersionId, args.claimedBaseVersionId),
     gt(piMemoryPhase2Jobs.leaseExpiresAt, args.currentTime),
+    ...(args.expectedMaintenanceRunId === undefined
+      ? []
+      : [
+          args.expectedMaintenanceRunId === null
+            ? isNull(piMemoryPhase2Jobs.maintenanceRunId)
+            : eq(
+                piMemoryPhase2Jobs.maintenanceRunId,
+                args.expectedMaintenanceRunId,
+              ),
+        ]),
   );
 }
 

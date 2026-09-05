@@ -337,6 +337,11 @@ export async function insertPendingPhase2Job(
             lastObservedHeadVersionId:
               overrides.lastObservedHeadVersionId ??
               scope.baseVersion.versionId,
+            ...(overrides.legacyLeaseToken === undefined &&
+            overrides.sandboxLeaseToken === undefined &&
+            overrides.leaseToken !== undefined
+              ? { sandboxLeaseToken: overrides.leaseToken }
+              : {}),
           }
         : {}),
       ...overrides,
