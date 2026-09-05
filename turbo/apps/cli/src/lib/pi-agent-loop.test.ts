@@ -26,22 +26,6 @@ import {
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
-const runtimeMocks = vi.hoisted(() => {
-  return {
-    runPiMemoryPhase2MountedConsolidation: vi.fn(),
-  };
-});
-
-vi.mock("@okouai/pi-agent-runtime/node", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("@okouai/pi-agent-runtime/node")>();
-  return {
-    ...original,
-    runPiMemoryPhase2MountedConsolidation:
-      runtimeMocks.runPiMemoryPhase2MountedConsolidation,
-  };
-});
-
 const RUN_ID = "00000000-0000-4000-8000-000000000123";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const RPC_FIXTURE = fileURLToPath(
@@ -379,7 +363,6 @@ class RpcHost {
 }
 
 beforeEach(async () => {
-  runtimeMocks.runPiMemoryPhase2MountedConsolidation.mockReset();
   launchPayloadDirectory = await mkdtemp(join(tmpdir(), "okou-pi-launch-"));
   launchPayloadFile = join(launchPayloadDirectory, "payload.json");
   await writeFile(launchPayloadFile, JSON.stringify(CONFIG.launchPayload));
@@ -634,30 +617,46 @@ describe("sandbox Pi agent loop", () => {
       launchPayloadDirectory,
       "maintenance-validation.json",
     );
-    const validatedVersionId = "c".repeat(64);
+    const memoryRoot = join(launchPayloadDirectory, "memory");
+    const storageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+    const memory = "# Durable memory\n";
+    const summary = "v1\nDurable memory\n";
+    await mkdir(memoryRoot, { recursive: true });
+    await writeFile(join(memoryRoot, "MEMORY.md"), memory);
+    await writeFile(join(memoryRoot, "memory_summary.md"), summary);
+    const versionEntries = [
+      `MEMORY.md:${createHash("sha256").update(memory).digest("hex")}`,
+      `memory_summary.md:${createHash("sha256").update(summary).digest("hex")}`,
+    ].sort();
+    const validatedVersionId = createHash("sha256")
+      .update(`storage:${storageId}\n${versionEntries.join("\n")}`)
+      .digest("hex");
+    const selectionEncoding = Buffer.from(
+      "vm0.pi-memory.phase2.selection.v1",
+      "utf8",
+    );
+    const selectionEncodingLength = Buffer.alloc(4);
+    selectionEncodingLength.writeUInt32BE(selectionEncoding.length);
+    const emptySelectionLength = Buffer.alloc(4);
+    emptySelectionLength.writeUInt32BE(0);
+    const selectionDigest = createHash("sha256")
+      .update(
+        Buffer.concat([
+          selectionEncodingLength,
+          selectionEncoding,
+          emptySelectionLength,
+        ]),
+      )
+      .digest("hex");
     const maintenance = {
       schemaVersion: 1 as const,
-      memoryStorageId: "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63",
+      memoryStorageId: storageId,
       claimedRevision: 7,
-      claimedBaseVersionId: "a".repeat(64),
+      claimedBaseVersionId: validatedVersionId,
       leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
-      selectionDigest: "b".repeat(64),
-      selected: [
-        {
-          piSessionId: SESSION_ID,
-          sourceRunId: "22222222-2222-4222-8222-222222222222",
-          sourceHistoryHash: "d".repeat(64),
-          sourceCompletedAt: "2026-09-05T02:00:00.000Z",
-          rawMemory: "private memory",
-          rolloutSummary: "private evidence",
-          rolloutSlug: null,
-        },
-      ],
+      selectionDigest,
+      selected: [],
     };
-    runtimeMocks.runPiMemoryPhase2MountedConsolidation.mockResolvedValue({
-      status: "prepared",
-      validatedVersionId,
-    });
     await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
 
     await runPiSandboxAgentLoop({
@@ -671,27 +670,16 @@ describe("sandbox Pi agent loop", () => {
           },
         },
       },
+      memoryRoot,
       maintenanceValidationFile: validationFile,
     });
 
-    expect(
-      runtimeMocks.runPiMemoryPhase2MountedConsolidation,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        memoryStorageId: maintenance.memoryStorageId,
-        claimedRevision: maintenance.claimedRevision,
-        claimedBaseVersionId: maintenance.claimedBaseVersionId,
-        leaseToken: maintenance.leaseToken,
-        selectionDigest: maintenance.selectionDigest,
-        selected: [
-          expect.objectContaining({
-            rawMemory: "private memory",
-            sourceCompletedAt: new Date("2026-09-05T02:00:00.000Z"),
-          }),
-        ],
-      }),
-      expect.any(AbortSignal),
+    await expect(readFile(join(memoryRoot, "MEMORY.md"), "utf8")).resolves.toBe(
+      memory,
     );
+    await expect(
+      readFile(join(memoryRoot, "memory_summary.md"), "utf8"),
+    ).resolves.toBe(summary);
     await expect(readFile(validationFile, "utf8")).resolves.toBe(
       JSON.stringify({
         schemaVersion: 1,
@@ -712,10 +700,10 @@ describe("sandbox Pi agent loop", () => {
       launchPayloadDirectory,
       "maintenance-validation.json",
     );
+    const memoryRoot = join(launchPayloadDirectory, "memory");
+    await mkdir(memoryRoot, { recursive: true });
+    await writeFile(join(memoryRoot, "MEMORY.md"), "# Partial memory\n");
     await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
-    runtimeMocks.runPiMemoryPhase2MountedConsolidation.mockRejectedValue(
-      new Error("provider failed"),
-    );
 
     await expect(
       runPiSandboxAgentLoop({
@@ -737,9 +725,10 @@ describe("sandbox Pi agent loop", () => {
             },
           },
         },
+        memoryRoot,
         maintenanceValidationFile: validationFile,
       }),
-    ).rejects.toThrow("provider failed");
+    ).rejects.toThrow("Pi memory Phase 2 input was invalid");
     await expect(readFile(validationFile)).rejects.toMatchObject({
       code: "ENOENT",
     });

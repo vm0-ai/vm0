@@ -157,6 +157,7 @@ export async function runPiSandboxAgentLoop(args: {
   readonly cwd?: string;
   readonly agentDir?: string;
   readonly sessionDir?: string;
+  readonly memoryRoot?: string;
   readonly maintenanceValidationFile?: string;
 }): Promise<void> {
   const maintenance = args.config.launchPayload.launchConfig.maintenance;
@@ -174,7 +175,7 @@ export async function runPiSandboxAgentLoop(args: {
     });
     const result = await runPiMemoryPhase2MountedConsolidation(
       {
-        memoryRoot: PI_MEMORY_ROOT,
+        memoryRoot: args.memoryRoot ?? PI_MEMORY_ROOT,
         memoryStorageId: maintenance.memoryStorageId,
         claimedRevision: maintenance.claimedRevision,
         claimedBaseVersionId: maintenance.claimedBaseVersionId,
