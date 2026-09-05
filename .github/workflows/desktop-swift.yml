@@ -1,0 +1,68 @@
+name: Desktop Swift
+
+on:
+  pull_request:
+    paths:
+      - "turbo/apps/desktop/native/**"
+      - "turbo/apps/desktop/assets/icon.icns"
+      - ".github/workflows/desktop-swift.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-swift-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: swift-macos-arm64
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Verify Swift core and existing native helpers
+        run: |
+          swift test --package-path turbo/apps/desktop/native/swift-desktop
+          swift test --package-path turbo/apps/desktop/native/computer-use-helper
+      - name: Build native macOS app
+        run: bash turbo/apps/desktop/native/swift-desktop/scripts/build.sh
+      - name: Smoke test packaged native app
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess
+          executable = pathlib.Path("turbo/apps/desktop/native/swift-desktop/out/Okou Dev.app/Contents/MacOS/okou-desktop").resolve()
+          result = subprocess.run([str(executable), "--smoke-test"], capture_output=True, text=True, timeout=45)
+          print(result.stdout)
+          print(result.stderr)
+          if result.returncode != 0 or "OKOU_SWIFT_DESKTOP_READY" not in result.stdout:
+              raise SystemExit("Packaged native desktop smoke test failed")
+          PY
+      - name: Archive self-contained Swift project
+        run: bash turbo/apps/desktop/native/swift-desktop/scripts/archive-source.sh
+      - name: Upload native app and Swift project
+        id: artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: okou-swift-desktop-macos-arm64
+          path: |
+            turbo/apps/desktop/native/swift-desktop/out/Okou-Swift-macos-arm64.zip
+            turbo/apps/desktop/native/swift-desktop/out/Okou-Swift-Project.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Link downloads from the PR check
+        env:
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          {
+            echo '## Swift macOS Desktop'
+            echo
+            echo "[Download the native app and self-contained Swift project]($ARTIFACT_URL)"
+            echo
+            echo "Source commit: \`$HEAD_SHA\`"
+            echo
+            echo 'The app is built for Apple silicon, ad-hoc signed, and uses the development app identity against app.okou.ai.'
+            echo 'Open native/swift-desktop/Package.swift in Xcode, or run native/swift-desktop/scripts/build.sh on macOS.'
+          } >> "$GITHUB_STEP_SUMMARY"
