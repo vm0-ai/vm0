@@ -105,15 +105,16 @@ function mockViewportResize(): (target: HTMLElement) => void {
       if (!this.targets.has(target)) {
         return;
       }
+      const contentRect = target.getBoundingClientRect();
       const size = {
-        inlineSize: target.clientWidth,
-        blockSize: target.clientHeight,
+        inlineSize: contentRect.width,
+        blockSize: contentRect.height,
       };
       this.callback(
         [
           {
             target,
-            contentRect: target.getBoundingClientRect(),
+            contentRect,
             borderBoxSize: [size],
             contentBoxSize: [size],
             devicePixelContentBoxSize: [size],
@@ -129,6 +130,29 @@ function mockViewportResize(): (target: HTMLElement) => void {
     act(() => {
       for (const observer of observers) {
         observer.resize(target);
+      }
+    });
+  };
+}
+
+function queueAnimationFrames(): () => void {
+  let nextFrameId = 0;
+  let callbacks = new Map<number, FrameRequestCallback>();
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    nextFrameId += 1;
+    callbacks.set(nextFrameId, callback);
+    return nextFrameId;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((frameId) => {
+    callbacks.delete(frameId);
+  });
+
+  return () => {
+    act(() => {
+      const scheduled = Array.from(callbacks.values());
+      callbacks = new Map();
+      for (const callback of scheduled) {
+        callback(performance.now());
       }
     });
   };
@@ -215,3 +239,59 @@ test.each([
     expect(rows()).toHaveLength(18);
   },
 );
+
+test("Coalesce sidebar resize bursts and cancel pending measurements when hidden", async () => {
+  mockThreads(120);
+  const resize = mockViewportResize();
+  await setupPage({
+    context,
+    path: `/chats/${threadId(0)}`,
+    featureSwitches: {
+      [FeatureSwitchKey.BaseUiSidebarScrollArea]: false,
+    },
+  });
+
+  const sidebar = screen.getByTestId("chat-list-column");
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    expect(rows()).toHaveLength(100);
+  });
+
+  const viewport = within(sidebar).getByTestId("sidebar-scroll-area");
+  let viewportHeight = 120 * ROW_HEIGHT;
+  let heightReads = 0;
+  vi.spyOn(viewport, "clientHeight", "get").mockImplementation(() => {
+    heightReads += 1;
+    return viewportHeight;
+  });
+  vi.spyOn(viewport, "scrollHeight", "get").mockReturnValue(120 * ROW_HEIGHT);
+  const flushFrame = queueAnimationFrames();
+
+  resize(viewport);
+  viewportHeight = 900;
+  resize(viewport);
+  viewportHeight = 360;
+  resize(viewport);
+
+  // Intermediate layouts must not force repeated geometry reads. The single
+  // frame measurement must use the latest height and update the visible rows.
+  expect(heightReads).toBe(0);
+  flushFrame();
+  expect(heightReads).toBe(1);
+  await waitFor(() => {
+    expect(rows()).toHaveLength(18);
+  });
+
+  heightReads = 0;
+  viewportHeight = 900;
+  resize(viewport);
+  click(within(sidebar).getByLabelText("Hide chat list"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  });
+  resize(viewport);
+  flushFrame();
+  expect(heightReads).toBe(0);
+});

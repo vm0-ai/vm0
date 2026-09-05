@@ -101,13 +101,24 @@ function createSidebarChatThreadDomSignals() {
     return getScrollThumbStyle(get(internalScrollMetrics$));
   });
 
-  const measureScrollViewport$ = command(({ set }, viewport: HTMLElement) => {
-    set(internalScrollMetrics$, {
-      scrollTop: viewport.scrollTop,
-      scrollHeight: viewport.scrollHeight,
-      clientHeight: viewport.clientHeight,
-    });
-  });
+  const measureScrollViewport$ = command(
+    ({ get, set }, viewport: HTMLElement) => {
+      const metrics = {
+        scrollTop: viewport.scrollTop,
+        scrollHeight: viewport.scrollHeight,
+        clientHeight: viewport.clientHeight,
+      };
+      const previous = get(internalScrollMetrics$);
+      if (
+        previous.scrollTop === metrics.scrollTop &&
+        previous.scrollHeight === metrics.scrollHeight &&
+        previous.clientHeight === metrics.clientHeight
+      ) {
+        return;
+      }
+      set(internalScrollMetrics$, metrics);
+    },
+  );
   const clearScrollViewport$ = command(
     ({ get, set }, viewport: HTMLElement) => {
       if (get(internalScrollViewport$) !== viewport) {
@@ -122,8 +133,20 @@ function createSidebarChatThreadDomSignals() {
       set(internalScrollViewport$, viewport);
       set(measureScrollViewport$, viewport);
       // Async stylesheet activation can change the viewport without scrolling.
+      // Fold notifications into one frame and measure the latest layout.
+      let resizeScheduled = false;
       const resizeObserver = new ResizeObserver(() => {
-        set(measureScrollViewport$, viewport);
+        if (resizeScheduled) {
+          return;
+        }
+        resizeScheduled = true;
+        animationFrame(
+          () => {
+            resizeScheduled = false;
+            set(measureScrollViewport$, viewport);
+          },
+          { signal },
+        );
       });
       resizeObserver.observe(viewport);
       signal.addEventListener(
