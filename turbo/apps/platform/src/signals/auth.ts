@@ -34,7 +34,7 @@ const clerkVersion$ = state(0);
 
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
-const VM0_ONBOARDING_PATH = "/onboarding";
+const ONBOARDING_PATH = "/onboarding";
 const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
   /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
 const PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS = [
@@ -294,10 +294,10 @@ function setCurrentLandingContext(params: URLSearchParams): void {
   }
 }
 
-function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
+function buildOnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   const params = new URLSearchParams(paramsInit);
   setCurrentLandingContext(params);
-  const url = new URL(VM0_ONBOARDING_PATH, resolveAppOrigin());
+  const url = new URL(ONBOARDING_PATH, resolveAppOrigin());
   url.search = params.toString();
   appendCapturedPreviewBypassToUrl(url);
   return url.toString();
@@ -396,12 +396,12 @@ export function buildSignupRedirectUrl(
   }
 
   if (!hasAdTraffic(params)) {
-    return new URL(VM0_ONBOARDING_PATH, appUrl).toString();
+    return new URL(ONBOARDING_PATH, appUrl).toString();
   }
 
   const redirectParams = new URLSearchParams();
   appendHomepageAttributionParams(redirectParams, params.toString());
-  return buildVm0OnboardingEntryUrl(redirectParams);
+  return buildOnboardingEntryUrl(redirectParams);
 }
 
 export function buildSignInRedirectUrl(

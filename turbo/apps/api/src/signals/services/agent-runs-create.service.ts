@@ -633,7 +633,7 @@ async function inferAgentIdFromSession(
   return session?.agentId ?? null;
 }
 
-async function loadZeroAgent(
+async function loadAgent(
   db: Db,
   agentId: string,
 ): Promise<AgentRunRecord | null> {
@@ -821,7 +821,7 @@ function createRunBody(args: {
   };
 }
 
-function measureZeroPreCreate<T>(
+function measureAgentRunPreCreate<T>(
   timing: ApiDispatchTimingCollector | undefined,
   actionType: ApiDispatchTimingActionType,
   operation: () => T | Promise<T>,
@@ -879,7 +879,7 @@ async function loadAgentRunPostAuthorizationContext(
   signal: AbortSignal,
 ) {
   let measuredSnapshotRows: RunBootstrapSnapshotRows | undefined;
-  const snapshotRows = await measureZeroPreCreate(
+  const snapshotRows = await measureAgentRunPreCreate(
     args.timing,
     "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
     async () => {
@@ -899,7 +899,7 @@ async function loadAgentRunPostAuthorizationContext(
   signal.throwIfAborted();
 
   let measuredBootstrapContext: RunBootstrapContext | undefined;
-  const bootstrapContext = await measureZeroPreCreate(
+  const bootstrapContext = await measureAgentRunPreCreate(
     args.timing,
     "api_dispatch_pre_create_agent_materialize_bootstrap_context",
     () => {
@@ -932,7 +932,7 @@ async function loadAgentRunPostAuthorizationContext(
           }),
         };
   signal.throwIfAborted();
-  const runPermissionPolicies = await measureZeroPreCreate(
+  const runPermissionPolicies = await measureAgentRunPreCreate(
     args.timing,
     "api_dispatch_pre_create_agent_resolve_firewall_metadata",
     async () => {
@@ -958,7 +958,7 @@ async function loadAgentRunPostAuthorizationContext(
   };
 }
 
-function buildZeroCreateAgentRunArgs(args: {
+function buildCreateAgentRunArgs(args: {
   readonly command: AnyCreateAgentRunCommandArgs;
   readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
@@ -1176,7 +1176,7 @@ async function resolveThreadSessionForAgentRun(
   if (!threadSessionRoute) {
     throw new Error("Thread-bound agent run is missing its model route");
   }
-  const resolution = await measureZeroPreCreate(
+  const resolution = await measureAgentRunPreCreate(
     input.timing,
     "api_dispatch_pre_create_agent_resolve_thread_session",
     () => {
@@ -1196,7 +1196,7 @@ async function resolveThreadSessionForAgentRun(
   });
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
   const sessionPrompt = webChatSessionPromptContext
-    ? await measureZeroPreCreate(
+    ? await measureAgentRunPreCreate(
         input.timing,
         "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context",
         () => {
@@ -1235,7 +1235,7 @@ async function resolveThreadSessionForAgentRun(
 
 const THREAD_SESSION_PREPARATION_ATTEMPTS = 3;
 
-const createAgentRunAfterZeroPreCreate$ = command(
+const createAgentRunAfterPreCreate$ = command(
   async ({ set }, input: AgentRunAfterPreCreate, signal: AbortSignal) => {
     const db = set(writeDb$);
     const capturedInput = await captureCodexSubscriptionAccount(db, input);
@@ -1250,11 +1250,11 @@ const createAgentRunAfterZeroPreCreate$ = command(
         capturedInput,
       );
       signal.throwIfAborted();
-      const baseCreateAgentRunArgs = await measureZeroPreCreate(
+      const baseCreateAgentRunArgs = await measureAgentRunPreCreate(
         capturedInput.timing,
         "api_dispatch_pre_create_agent_build_create_run_args",
         () => {
-          return buildZeroCreateAgentRunArgs(attemptInput);
+          return buildCreateAgentRunArgs(attemptInput);
         },
       );
       signal.throwIfAborted();
@@ -1324,7 +1324,7 @@ const createAgentRunInternal$ = command(
     });
     const db = set(writeDb$);
 
-    const agentId = await measureZeroPreCreate(
+    const agentId = await measureAgentRunPreCreate(
       timing,
       "api_dispatch_pre_create_agent_resolve_agent_id",
       async () => {
@@ -1339,11 +1339,11 @@ const createAgentRunInternal$ = command(
         : badRequestMessage("Missing agentId or sessionId");
     }
 
-    const agent = await measureZeroPreCreate(
+    const agent = await measureAgentRunPreCreate(
       timing,
       "api_dispatch_pre_create_agent_load_agent",
       async () => {
-        return await loadZeroAgent(db, agentId);
+        return await loadAgent(db, agentId);
       },
     );
     signal.throwIfAborted();
@@ -1399,7 +1399,7 @@ const createAgentRunInternal$ = command(
     );
 
     return await set(
-      createAgentRunAfterZeroPreCreate$,
+      createAgentRunAfterPreCreate$,
       {
         command: args,
         agent,

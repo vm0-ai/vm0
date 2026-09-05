@@ -453,7 +453,7 @@ function withOkouTokenSecret(
   return {
     ...body,
     secrets: {
-      ...withoutLegacyZeroEntries(body.secrets),
+      ...withoutLegacyAgentRunEnvironmentEntries(body.secrets),
       OKOU_TOKEN: okouToken,
     },
   };
@@ -3101,7 +3101,7 @@ function mergeRecords<T>(
   return compactRecord(merged);
 }
 
-function withoutLegacyZeroEntries<T>(
+function withoutLegacyAgentRunEnvironmentEntries<T>(
   values: Readonly<Record<string, T>> | undefined,
 ): Record<string, T> | undefined {
   if (!values) {
@@ -6494,7 +6494,7 @@ function buildStoredPlatformEnvironment(args: {
     CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
   };
   return args.canonicalOkouRuntime
-    ? (withoutLegacyZeroEntries(platformEnvironment) ?? {})
+    ? (withoutLegacyAgentRunEnvironmentEntries(platformEnvironment) ?? {})
     : platformEnvironment;
 }
 
@@ -6506,7 +6506,9 @@ function buildStoredUntrustedEnvironment(args: {
     return args.expandedEnvironment;
   }
   return (
-    withoutLegacyZeroEntries(args.expandedEnvironment ?? undefined) ?? null
+    withoutLegacyAgentRunEnvironmentEntries(
+      args.expandedEnvironment ?? undefined,
+    ) ?? null
   );
 }
 
@@ -8817,7 +8819,7 @@ async function buildResolvedRunBody(
     runVars,
   });
   const vars = args.canonicalOkouRuntime
-    ? withoutLegacyZeroEntries(mergedVars)
+    ? withoutLegacyAgentRunEnvironmentEntries(mergedVars)
     : mergedVars;
   signal.throwIfAborted();
 
@@ -8840,7 +8842,7 @@ async function buildResolvedRunBody(
   return {
     ...body,
     secrets: args.canonicalOkouRuntime
-      ? withoutLegacyZeroEntries(mergedSecrets)
+      ? withoutLegacyAgentRunEnvironmentEntries(mergedSecrets)
       : mergedSecrets,
   };
 }

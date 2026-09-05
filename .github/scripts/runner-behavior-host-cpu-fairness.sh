@@ -32,7 +32,7 @@ fi
 
 REMOTE="${METAL_USER}@${HOST}"
 EXECUTION_KEY="${JOB_REF}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-REMOTE_BIN="/tmp/vm0-host-cpu-fairness-${EXECUTION_KEY}"
+REMOTE_BIN="/tmp/runner-host-cpu-fairness-${EXECUTION_KEY}"
 
 cleanup_remote_binary() {
   ssh "$REMOTE" bash -s -- "$REMOTE_BIN" 2>/dev/null <<'REMOTE_CLEANUP' || true
@@ -52,8 +52,8 @@ TEST_BIN=$1
 ROOTFS_HASH=$2
 EXECUTION_KEY=$3
 BASE_DIR="/var/lib/vm0-runner/host-cpu-fairness/${EXECUTION_KEY}"
-UNIT="vm0-host-cpu-managed-${EXECUTION_KEY}"
-LOCK_DIR="/run/lock/vm0-host-cpu-fairness"
+UNIT="runner-host-cpu-managed-${EXECUTION_KEY}"
+LOCK_DIR="/run/lock/runner-host-cpu-fairness"
 LOCK_FD=""
 
 case "$EXECUTION_KEY" in
