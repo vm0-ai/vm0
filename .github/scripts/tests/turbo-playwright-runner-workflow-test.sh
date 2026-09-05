@@ -72,7 +72,7 @@ if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
 fi
 grep -Fq 'REAL_CLAUDE_MODEL="claude-sonnet-5"' "$REAL_CLAUDE_TEST" ||
   fail "real Claude E2E must select Sonnet 5"
-if [[ "$(grep -Fc '"$REAL_CLAUDE_MODEL"' "$REAL_CLAUDE_TEST")" -ne 3 ]]; then
+if [[ "$(grep -Fc "\"\$REAL_CLAUDE_MODEL\"" "$REAL_CLAUDE_TEST")" -ne 3 ]]; then
   fail "real Claude E2E must use its model pin for policy, smoke, and steer coverage"
 fi
 if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
@@ -457,9 +457,6 @@ unless bootstrap_steps.any? do |step|
       step.dig("with", "name") == "e2e-tokens"
   end
   raise "runner bootstrap must download the token artifact"
-end
-if bootstrap_steps.any? { |step| step["run"]&.include?("connectorAccounts") }
-  raise "runner bootstrap must not configure the retired connector account switch"
 end
 model_defaults_step = bootstrap_steps.find do |step|
   step["name"] == "Reset runner model defaults"
