@@ -560,10 +560,11 @@ describe("Usage Allowance", () => {
       }),
       [200],
     );
+    const after = Math.floor(now() / 1000);
 
     expect(leased.body.expiresAt).not.toBeNull();
     expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 4);
-    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 6);
+    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(after + 6);
   });
 
   it("does not let built-in credit admission bypass workspace suspension", async () => {
