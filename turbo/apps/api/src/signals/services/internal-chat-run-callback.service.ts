@@ -974,11 +974,6 @@ function buildQueuedCreateAgentRunArgs(
       : {}),
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
-      modelProvider: input.effectiveModelProvider ?? null,
-      modelProviderId: input.modelPin.modelProviderId,
-      modelRuntimeProvider:
-        input.builtInModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: input.builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: input.cliAgentType,
     },
     body: {
@@ -2747,12 +2742,6 @@ function loadQueuedMessageSessionState(
         agentId: args.agent.id,
         route: {
           selectedModel: modelRoute.modelPin.selectedModel,
-          modelProvider: modelRoute.effectiveModelProvider ?? null,
-          modelProviderId: modelRoute.modelPin.modelProviderId,
-          modelRuntimeProvider:
-            modelRoute.builtInModelRuntimeRoute?.providerType ?? null,
-          modelRuntimeModel:
-            modelRoute.builtInModelRuntimeRoute?.upstreamModel ?? null,
           cliAgentType: modelRoute.cliAgentType,
         },
       });

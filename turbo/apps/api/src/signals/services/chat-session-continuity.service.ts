@@ -1,37 +1,20 @@
-import {
-  MODEL_PROVIDER_TYPES,
-  areProvidersCompatible,
-  isCustomGatewayProviderType,
-  normalizeRunModelId,
-  type ModelProviderType,
-} from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { conversations } from "@okouai/db/schema/conversation";
-import { modelProviders } from "@okouai/db/schema/model-provider";
-import {
-  modelProviderConnections,
-  modelProviderSurfaces,
-} from "@okouai/db/schema/model-provider-gateway";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import {
   nullableDriverValueDecoder,
   pgBooleanDecoder,
 } from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
-import { hasIncompatibleBuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
-import { isStandardTerraApiKeyPiProviderType } from "./pi-sandbox-config";
+import {
+  canReuseSession,
+  type SessionExecutionIdentity,
+} from "./session-compatibility";
 
-export interface ChatThreadSessionRoute {
-  readonly selectedModel: string | null;
-  readonly modelProvider: string | null;
-  readonly modelProviderId: string | null;
-  readonly modelRuntimeProvider: string | null;
-  readonly modelRuntimeModel: string | null;
-  readonly cliAgentType: string | null;
-}
+export type ChatThreadSessionRoute = SessionExecutionIdentity;
 
 export type ChatThreadSessionResolutionAction =
   | "initialized"
@@ -58,16 +41,10 @@ interface HistoricalThreadSession {
   readonly conversationId: string | null;
   readonly historylessConversation: boolean;
   readonly route: ChatThreadSessionRoute;
-  readonly routeRunCreatedAt: Date;
 }
 
 interface SessionRunRoute {
   readonly selectedModel: string | null;
-  readonly modelProvider: string | null;
-  readonly modelProviderId: string | null;
-  readonly modelRuntimeProvider: string | null;
-  readonly modelRuntimeModel: string | null;
-  readonly createdAt: Date;
 }
 
 function historylessConversationSql() {
@@ -76,68 +53,6 @@ function historylessConversationSql() {
     AND ${conversations.cliAgentSessionHistory} IS NULL
     AND ${conversations.cliAgentSessionHistoryHash} IS NULL
   )`.mapWith(pgBooleanDecoder);
-}
-
-function isKnownModelProvider(
-  value: string | null | undefined,
-): value is ModelProviderType {
-  return (
-    value !== null &&
-    value !== undefined &&
-    Object.hasOwn(MODEL_PROVIDER_TYPES, value)
-  );
-}
-
-/**
- * Return the vendor/model stem used for chat session continuity.
- *
- * Model IDs may be provider-qualified (for example, anthropic/claude-opus),
- * while the session family is the first part of the canonical model ID
- * (claude, gpt, glm, ...). This intentionally treats model variants in one
- * family as compatible while keeping different families isolated.
- */
-function chatSessionModelFamily(model: string): string {
-  const normalized = normalizeRunModelId(model.trim()).toLowerCase();
-  const modelName = normalized.includes("/")
-    ? normalized.slice(normalized.lastIndexOf("/") + 1)
-    : normalized;
-  return modelName.split(/[-_.]/, 1)[0] ?? modelName;
-}
-
-function shouldStartNewChatSession(args: {
-  readonly latestModel: string | null | undefined;
-  readonly nextModel: string | null;
-  readonly latestModelProvider?: string | null;
-  readonly nextModelProvider?: string | null;
-  readonly latestCliAgentType?: string | null;
-  readonly nextCliAgentType?: string | null;
-}): boolean {
-  if (
-    args.latestCliAgentType &&
-    args.nextCliAgentType &&
-    args.latestCliAgentType !== args.nextCliAgentType
-  ) {
-    return true;
-  }
-  if (
-    isKnownModelProvider(args.latestModelProvider) &&
-    isKnownModelProvider(args.nextModelProvider) &&
-    !areProvidersCompatible(args.latestModelProvider, args.nextModelProvider)
-  ) {
-    return true;
-  }
-  if (
-    args.latestModel === undefined ||
-    args.latestModel === null ||
-    args.nextModel === null
-  ) {
-    return false;
-  }
-
-  return (
-    chatSessionModelFamily(args.latestModel) !==
-    chatSessionModelFamily(args.nextModel)
-  );
 }
 
 async function latestHistoricalThreadSession(args: {
@@ -152,13 +67,8 @@ async function latestHistoricalThreadSession(args: {
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
       selectedModel: agentRuns.selectedModel,
-      modelProvider: agentRuns.modelProvider,
-      modelProviderId: agentRuns.modelProviderId,
-      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-      modelRuntimeModel: agentRuns.modelRuntimeModel,
       cliAgentType: conversations.cliAgentType,
       historylessConversation: historylessConversationSql(),
-      routeRunCreatedAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
@@ -188,13 +98,8 @@ async function latestHistoricalThreadSession(args: {
     historylessConversation: row.historylessConversation,
     route: {
       selectedModel: row.selectedModel,
-      modelProvider: row.modelProvider,
-      modelProviderId: row.modelProviderId,
-      modelRuntimeProvider: row.modelRuntimeProvider,
-      modelRuntimeModel: row.modelRuntimeModel,
       cliAgentType: row.cliAgentType,
     },
-    routeRunCreatedAt: row.routeRunCreatedAt,
   };
 }
 
@@ -205,11 +110,6 @@ async function latestSessionRunRoute(args: {
   const [row] = await args.db
     .select({
       selectedModel: agentRuns.selectedModel,
-      modelProvider: agentRuns.modelProvider,
-      modelProviderId: agentRuns.modelProviderId,
-      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-      modelRuntimeModel: agentRuns.modelRuntimeModel,
-      createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .where(
@@ -223,215 +123,6 @@ async function latestSessionRunRoute(args: {
   return row ?? null;
 }
 
-async function customSurfaceRouteChanged(args: {
-  readonly db: Db | ReadonlyDb;
-  readonly orgId: string;
-  readonly previousModelProviderId: string | null;
-  readonly nextModelProviderId: string | null;
-  readonly previousRunCreatedAt: Date | null;
-}): Promise<boolean> {
-  const candidateSurfaceIds = [
-    args.previousModelProviderId,
-    args.nextModelProviderId,
-  ].filter((id): id is string => {
-    return id !== null;
-  });
-  if (candidateSurfaceIds.length === 0) {
-    return false;
-  }
-  const surfaces = await args.db
-    .select({
-      surfaceUpdatedAt: modelProviderSurfaces.updatedAt,
-      connectionUpdatedAt: modelProviderConnections.updatedAt,
-    })
-    .from(modelProviderSurfaces)
-    .innerJoin(
-      modelProviderConnections,
-      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
-    )
-    .where(
-      and(
-        inArray(modelProviderSurfaces.id, candidateSurfaceIds),
-        eq(modelProviderConnections.orgId, args.orgId),
-      ),
-    );
-  if (args.previousModelProviderId !== args.nextModelProviderId) {
-    return surfaces.length > 0;
-  }
-  const [surface] = surfaces;
-  return (
-    surface !== undefined &&
-    args.previousRunCreatedAt !== null &&
-    (surface.surfaceUpdatedAt > args.previousRunCreatedAt ||
-      surface.connectionUpdatedAt > args.previousRunCreatedAt)
-  );
-}
-
-/**
- * Whether either side of a route change can be a custom gateway surface.
- *
- * The dedicated `custom-*` types say so directly. The two Vercel adapter types
- * still count because runs recorded before migration `0948` used them for
- * custom surfaces too, and the rows whose surface id no longer resolves were
- * deliberately left unreclassified.
- */
-function customSurfaceRouteMayBeInUse(args: {
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-}): boolean {
-  return [args.previousRoute.modelProvider, args.nextRoute.modelProvider].some(
-    (provider) => {
-      return (
-        provider === "vercel-ai-gateway" ||
-        provider === "vercel-ai-gateway-codex" ||
-        (isKnownModelProvider(provider) &&
-          isCustomGatewayProviderType(provider))
-      );
-    },
-  );
-}
-
-function isStandardTerraApiKeyPiRoute(route: ChatThreadSessionRoute): boolean {
-  return (
-    route.cliAgentType === "pi" &&
-    route.selectedModel === "gpt-5.6-terra" &&
-    isStandardTerraApiKeyPiProviderType(route.modelProvider)
-  );
-}
-
-function standardTerraApiKeyPiRouteIdentityChanged(args: {
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-}): boolean {
-  if (
-    !isStandardTerraApiKeyPiRoute(args.previousRoute) &&
-    !isStandardTerraApiKeyPiRoute(args.nextRoute)
-  ) {
-    return false;
-  }
-  return (
-    args.previousRoute.modelProvider !== args.nextRoute.modelProvider ||
-    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId ||
-    args.previousRoute.modelRuntimeProvider !==
-      args.nextRoute.modelRuntimeProvider ||
-    args.previousRoute.modelRuntimeModel !== args.nextRoute.modelRuntimeModel
-  );
-}
-
-async function standardTerraApiKeyPiRouteRevisionChanged(args: {
-  readonly db: Db | ReadonlyDb;
-  readonly orgId: string;
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-  readonly previousRunCreatedAt: Date | null;
-}): Promise<boolean> {
-  const productProvider = args.nextRoute.modelProvider;
-  if (
-    !isStandardTerraApiKeyPiRoute(args.previousRoute) ||
-    !isStandardTerraApiKeyPiRoute(args.nextRoute) ||
-    !isStandardTerraApiKeyPiProviderType(productProvider) ||
-    args.previousRoute.modelProvider !== args.nextRoute.modelProvider ||
-    args.previousRoute.modelProviderId === null ||
-    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId ||
-    args.previousRunCreatedAt === null
-  ) {
-    return false;
-  }
-  const [provider] = await args.db
-    .select({ updatedAt: modelProviders.updatedAt })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, args.previousRoute.modelProviderId),
-        eq(modelProviders.orgId, args.orgId),
-        eq(modelProviders.type, productProvider),
-      ),
-    )
-    .limit(1);
-  return (
-    provider !== undefined && provider.updatedAt > args.previousRunCreatedAt
-  );
-}
-
-function shouldRotateCanonicalSession(args: {
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-}): boolean {
-  if (
-    hasIncompatibleBuiltInModelRuntimeRoute({
-      previous: args.previousRoute,
-      next: args.nextRoute,
-    })
-  ) {
-    return true;
-  }
-  if (standardTerraApiKeyPiRouteIdentityChanged(args)) {
-    // Public Responses state belongs to the exact product route and captured
-    // provider credential. Never cross that boundary with provider-private
-    // response, cache, or pending-tool state.
-    return true;
-  }
-  const providerIdChanged =
-    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId;
-  if (
-    providerIdChanged &&
-    args.previousRoute.modelProvider === "codex-oauth-token" &&
-    args.nextRoute.modelProvider === "codex-oauth-token"
-  ) {
-    // A ChatGPT account owns provider-private response/cache/tool state. Keep
-    // that state inside the exact account captured for each run admission.
-    return true;
-  }
-  if (providerIdChanged && customSurfaceRouteMayBeInUse(args)) {
-    // Once a custom gateway connection is deleted, the surface row can no
-    // longer prove that the previous route was custom, so the provider
-    // identity must remain part of the canonical continuity boundary.
-    return true;
-  }
-  return shouldStartNewChatSession({
-    latestModel: args.previousRoute.selectedModel,
-    nextModel: args.nextRoute.selectedModel,
-    latestModelProvider: args.previousRoute.modelProvider,
-    nextModelProvider: args.nextRoute.modelProvider,
-    latestCliAgentType: args.previousRoute.cliAgentType,
-    nextCliAgentType: args.nextRoute.cliAgentType,
-  });
-}
-
-async function shouldRotateResolvedSession(args: {
-  readonly db: Db | ReadonlyDb;
-  readonly orgId: string;
-  readonly historylessConversation: boolean;
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-  readonly previousRunCreatedAt: Date | null;
-}): Promise<boolean> {
-  if (args.historylessConversation) {
-    return true;
-  }
-  const routeConfigurationChanged = await customSurfaceRouteChanged({
-    db: args.db,
-    orgId: args.orgId,
-    previousModelProviderId: args.previousRoute.modelProviderId,
-    nextModelProviderId: args.nextRoute.modelProviderId,
-    previousRunCreatedAt: args.previousRunCreatedAt,
-  });
-  const apiKeyRouteRevisionChanged =
-    await standardTerraApiKeyPiRouteRevisionChanged({
-      db: args.db,
-      orgId: args.orgId,
-      previousRoute: args.previousRoute,
-      nextRoute: args.nextRoute,
-      previousRunCreatedAt: args.previousRunCreatedAt,
-    });
-  return routeConfigurationChanged || apiKeyRouteRevisionChanged
-    ? true
-    : shouldRotateCanonicalSession({
-        previousRoute: args.previousRoute,
-        nextRoute: args.nextRoute,
-      });
-}
-
 function boundThreadPreviousRoute(args: {
   readonly thread: ChatThreadSessionRoute;
   readonly latestRoute: SessionRunRoute | null;
@@ -439,16 +130,6 @@ function boundThreadPreviousRoute(args: {
   const { thread, latestRoute } = args;
   return {
     selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
-    modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
-    modelProviderId: latestRoute?.modelProviderId ?? thread.modelProviderId,
-    modelRuntimeProvider:
-      latestRoute === null
-        ? thread.modelRuntimeProvider
-        : latestRoute.modelRuntimeProvider,
-    modelRuntimeModel:
-      latestRoute === null
-        ? thread.modelRuntimeModel
-        : latestRoute.modelRuntimeModel,
     cliAgentType: thread.cliAgentType,
   };
 }
@@ -468,15 +149,10 @@ export async function resolveChatThreadSession(args: {
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
       selectedModel: agentRuns.selectedModel,
-      modelProvider: agentRuns.modelProvider,
-      modelProviderId: agentRuns.modelProviderId,
-      modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-      modelRuntimeModel: agentRuns.modelRuntimeModel,
       routeRunId:
         sql`CASE WHEN ${agentRuns.triggerSource} IS NOT NULL THEN ${agentRuns.id} ELSE NULL END`.mapWith(
           nullableDriverValueDecoder(agentRuns.id),
         ),
-      routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
       historylessConversation: historylessConversationSql(),
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
@@ -523,15 +199,9 @@ export async function resolveChatThreadSession(args: {
       thread,
       latestRoute,
     });
-    const rotate = await shouldRotateResolvedSession({
-      db: args.db,
-      orgId: args.orgId,
-      historylessConversation: thread.historylessConversation,
-      previousRoute,
-      nextRoute: args.route,
-      previousRunCreatedAt:
-        latestRoute?.createdAt ?? thread.routeRunCreatedAt ?? null,
-    });
+    const rotate =
+      thread.historylessConversation ||
+      !canReuseSession(previousRoute, args.route);
     return {
       sessionId: rotate ? undefined : thread.sessionId,
       action: rotate ? "rotated" : "reused",
@@ -555,14 +225,9 @@ export async function resolveChatThreadSession(args: {
     };
   }
 
-  const rotate = await shouldRotateResolvedSession({
-    db: args.db,
-    orgId: args.orgId,
-    historylessConversation: historical.historylessConversation,
-    previousRoute: historical.route,
-    nextRoute: args.route,
-    previousRunCreatedAt: historical.routeRunCreatedAt,
-  });
+  const rotate =
+    historical.historylessConversation ||
+    !canReuseSession(historical.route, args.route);
   return {
     sessionId: rotate ? undefined : historical.sessionId,
     action: rotate ? "rotated" : "adopted",

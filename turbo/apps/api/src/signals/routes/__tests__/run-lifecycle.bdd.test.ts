@@ -5799,7 +5799,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("reuses built-in continuation across provider aliases and isolates runtime changes", async () => {
+  it("reuses direct continuation across provider route changes but discards history across runtimes", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const selectedModel = await seedVm0BuiltInDefaultModelKey();
@@ -5901,26 +5901,41 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       admittableProfiles: [],
     });
 
-    const rotated = await api.createRun(actor, {
+    const rerouted = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "discard a checkpoint from another built-in model provider route",
+      prompt: "reuse a checkpoint after the built-in provider route changes",
       modelProvider: "built-in",
     });
-    expect(rotated.sessionId).toBe(first.sessionId);
-    const rotatedClaim = await api.claimRunnerJob(rotated.runId);
-    expect(rotatedClaim.resumeSession).toBeNull();
-    const rotatedStorageManifest = expectCanonicalStorageManifest(
-      rotatedClaim.storageManifest,
+    expect(rerouted.sessionId).toBe(first.sessionId);
+    const reroutedClaim = await api.claimRunnerJob(rerouted.runId);
+    expect(reroutedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: resumedHistoryHash },
+    });
+    const reroutedStorageManifest = expectCanonicalStorageManifest(
+      reroutedClaim.storageManifest,
     );
-    if (!rotatedStorageManifest) {
-      throw new Error("Expected canonical Storage mounts for the rotated run");
+    if (!reroutedStorageManifest) {
+      throw new Error("Expected canonical Storage mounts for the rerouted run");
     }
-    expect(rotatedStorageManifest.storageMounts).toStrictEqual(
+    expect(reroutedStorageManifest.storageMounts).toStrictEqual(
       initialStorageMounts,
     );
-    await expectBuiltInModelRunRuntimeRoute(rotated.runId, selectedModel);
-    await api.requestCancelRun(actor, rotated.runId, [200]);
+    await expectBuiltInModelRunRuntimeRoute(rerouted.runId, selectedModel);
+    await api.requestCancelRun(actor, rerouted.runId, [200]);
+
+    const changedRuntime = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue on a different native runtime",
+      modelProvider: "anthropic-api-key",
+    });
+    const changedRuntimeClaim = await api.claimRunnerJob(changedRuntime.runId);
+    expect(changedRuntimeClaim.cliAgentType).toBe("claude-code");
+    expect(changedRuntimeClaim.cliAgentType).not.toBe(firstClaim.cliAgentType);
+    expect(changedRuntimeClaim.resumeSession).toBeNull();
+    await api.requestCancelRun(actor, changedRuntime.runId, [200]);
   });
 
   it("validates same-thread reuse heartbeat inventory shapes", async () => {

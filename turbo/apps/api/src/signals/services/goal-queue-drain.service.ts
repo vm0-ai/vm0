@@ -207,10 +207,6 @@ function buildQueueFirstGoalRunInput(args: {
     ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
-      modelProvider: effectiveModelProvider ?? null,
-      modelProviderId: modelPin.modelProviderId,
-      modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType,
     },
     codexServiceTier,
