@@ -392,7 +392,7 @@ function clerkEdgeSessionJson(html) {
 
 function appBootstrapJson(html, path) {
   for (const match of html.matchAll(
-    /<script\b[^>]*data-vm0-api-bootstrap=""[^>]*>([\s\S]*?)<\/script>/giu,
+    /<script\b[^>]*data-okou-api-bootstrap=""[^>]*>([\s\S]*?)<\/script>/giu,
   )) {
     const attributes = parseAttributes(match[0]);
     if (attributes.get("data-path") === encodeURIComponent(path)) {
@@ -439,7 +439,7 @@ function assertNoClerkSecrets(snapshot) {
 
 function clerkBootstrap(html) {
   const bootstrap =
-    /<script\b[^>]*data-vm0-clerk-bootstrap=""[^>]*>[\s\S]*?<\/script>/iu.exec(
+    /<script\b[^>]*data-okou-clerk-bootstrap=""[^>]*>[\s\S]*?<\/script>/iu.exec(
       html,
     )?.[0];
   if (!bootstrap) {
@@ -1029,7 +1029,7 @@ assert.deepEqual(appBootstrapJson(bootstrapped.body, "/api/feature-switches"), {
 });
 assert.doesNotMatch(bootstrapped.body, /<script>alert\(1\)<\/script>/u);
 assert.ok(
-  bootstrapped.body.indexOf("data-vm0-api-bootstrap") <
+  bootstrapped.body.indexOf("data-okou-api-bootstrap") <
     bootstrapped.body.indexOf('id="root"'),
 );
 

@@ -49,6 +49,11 @@ const expectedBindings = [
     direction: "response",
   },
   {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfigV3",
+    direction: "response",
+  },
+  {
     rustModulePath: ["runners", "runs", "active_inputs", "reserve"],
     rustTypeName: "Response",
     direction: "response",
@@ -291,6 +296,10 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub enum PiModelConfigServiceTier {");
     expect(firstRender).toContain("pub enum PiModelConfigApiKeyEnv {");
     expect(firstRender).toContain("pub struct PiModelConfigV2 {");
+    expect(firstRender).toContain("pub enum PiModelConfigV3 {");
+    expect(firstRender).toContain(
+      "pub enum PiModelConfigV3OpenaiCodexResponsesServiceTier {",
+    );
     expect(firstRender).toContain("pub enum PiModelConfigV2Dialect {");
     expect(firstRender).toContain("pub enum PiModelConfigV2Provider {");
     expect(firstRender).toContain(

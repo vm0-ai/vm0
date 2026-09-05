@@ -24,16 +24,9 @@ export interface SidebarChatThreadWindow {
   readonly items: readonly SidebarChatThreadItemSignals[];
 }
 
-export interface SidebarChatThreadScrollMetrics {
+interface SidebarChatThreadScrollMetrics {
   readonly scrollTop: number;
-  readonly scrollHeight: number;
   readonly clientHeight: number;
-}
-
-export interface SidebarChatThreadScrollThumbStyle {
-  readonly top: number;
-  readonly height: number;
-  readonly visible: boolean;
 }
 
 export interface ScrollToThreadRequest {
@@ -43,7 +36,6 @@ export interface ScrollToThreadRequest {
 
 export interface SidebarChatThreadScrollSignals {
   readonly isScrolled$: Computed<boolean>;
-  readonly thumbStyle$: Computed<SidebarChatThreadScrollThumbStyle>;
   readonly window$: Computed<Promise<SidebarChatThreadWindow>>;
   readonly setScrollMetrics$: Command<void, [SidebarChatThreadScrollMetrics]>;
   readonly refreshScrollViewport$: Command<void, []>;
@@ -64,24 +56,8 @@ export interface SidebarChatThreadScrollSignals {
 function emptyScrollMetrics(): SidebarChatThreadScrollMetrics {
   return {
     scrollTop: 0,
-    scrollHeight: 0,
     clientHeight: 0,
   };
-}
-
-function getScrollThumbStyle({
-  scrollTop,
-  scrollHeight,
-  clientHeight,
-}: SidebarChatThreadScrollMetrics): SidebarChatThreadScrollThumbStyle {
-  if (scrollHeight <= clientHeight) {
-    return { top: 0, height: 0, visible: false };
-  }
-  const ratio = clientHeight / scrollHeight;
-  const height = Math.max(ratio * clientHeight, 24);
-  const maxTop = clientHeight - height;
-  const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
-  return { top, height, visible: true };
 }
 
 function createSidebarChatThreadDomSignals() {
@@ -102,21 +78,16 @@ function createSidebarChatThreadDomSignals() {
   const isScrolled$ = computed((get) => {
     return get(internalScrollMetrics$).scrollTop > 0;
   });
-  const thumbStyle$ = computed((get) => {
-    return getScrollThumbStyle(get(internalScrollMetrics$));
-  });
 
   const measureScrollViewport$ = command(
     ({ get, set }, viewport: HTMLElement) => {
       const metrics = {
         scrollTop: viewport.scrollTop,
-        scrollHeight: viewport.scrollHeight,
         clientHeight: viewport.clientHeight,
       };
       const previous = get(internalScrollMetrics$);
       if (
         previous.scrollTop === metrics.scrollTop &&
-        previous.scrollHeight === metrics.scrollHeight &&
         previous.clientHeight === metrics.clientHeight
       ) {
         return;
@@ -181,7 +152,6 @@ function createSidebarChatThreadDomSignals() {
 
   return {
     isScrolled$,
-    thumbStyle$,
     scrollViewport$,
     scrollMetrics$,
     setScrollViewport$,
@@ -321,7 +291,6 @@ function createScrollVirtualListToIndexCommand(
       scrollViewport.scrollTop = nextScrollTop;
       set(dom.setScrollMetrics$, {
         scrollTop: nextScrollTop,
-        scrollHeight: scrollViewport.scrollHeight,
         clientHeight: scrollViewport.clientHeight,
       });
       return true;
@@ -379,7 +348,6 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
 
   return {
     isScrolled$: dom.isScrolled$,
-    thumbStyle$: dom.thumbStyle$,
     window$: createSidebarChatThreadWindowSignal(dom),
     setScrollMetrics$: dom.setScrollMetrics$,
     setScrollViewport$: dom.setScrollViewport$,

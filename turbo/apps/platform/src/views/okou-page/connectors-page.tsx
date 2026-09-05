@@ -1147,11 +1147,15 @@ export function ConnectorsPage() {
   return (
     <div
       ref={scrollContainerRef}
+      data-testid="connectors-scroll-viewport"
       className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
     >
       <ConnectorCatalogHeader connectorCatalogCount={connectorCatalogCount} />
 
-      <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
+      <main
+        data-testid="connectors-scroll-content"
+        className="flex-1 px-4 sm:px-6 pt-3 pb-[max(4rem,var(--sab))]"
+      >
         <div className="relative mx-auto w-full max-w-[900px]">
           {activeTab === "builtin" &&
             filteredCatalogItemsLoadable.state === "hasData" && (

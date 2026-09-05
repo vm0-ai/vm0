@@ -581,22 +581,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       canvasRendering: (): CanvasRenderingMock => {
         return mockCanvasRendering(getSignal());
       },
-      noAnimations: (): void => {
-        const descriptor = defineWindowProperty(
-          HTMLElement.prototype,
-          "getAnimations",
-          () => {
-            return [];
-          },
-        );
-        restoreOnAbort(getSignal(), () => {
-          restoreWindowProperty(
-            HTMLElement.prototype,
-            "getAnimations",
-            descriptor,
-          );
-        });
-      },
       indexedDbUnavailable: (): void => {
         const open = vi
           .spyOn(globalThis.indexedDB, "open")

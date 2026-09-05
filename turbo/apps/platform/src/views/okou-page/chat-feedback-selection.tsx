@@ -372,8 +372,8 @@ function TranslationResult({
 
 // Mounts the selection listeners and the floating Copy / Quote / Forward
 // toolbar anchored to the selected passage. Picking "Quote"
-// drops the quoted passage straight into the composer (see ComposerFeedbackRows
-// in zero-chat-composer.tsx) — there is no separate feedback panel.
+// drops the quoted passage straight into the composer (see the feedback rows in
+// chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection({
   feedback,
   sourceAgentId,

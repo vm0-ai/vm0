@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
+  getBuiltInVendor,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   testSlackStateContract,
@@ -207,12 +207,12 @@ async function seedDefaultAgent(
       });
   });
 
-  await seedVm0BuiltInModelKeys(db, agent.id);
+  await seedBuiltInModelKeys(db, agent.id);
 
   return { agentId: agent.id };
 }
 
-async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
+async function seedBuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await acquireBuiltInModelKeyFixture(
     db,
     agentId,
@@ -223,7 +223,7 @@ async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
 function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
-      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+      vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
       apiKey: `vm0-key-default-${agentId}`,
       label: agentId,
     },
@@ -240,7 +240,7 @@ function vm0BuiltInModelKeyRows(agentId: string) {
   ];
 }
 
-async function deleteVm0BuiltInModelKeysForSeededDefaultAgent(
+async function deleteBuiltInModelKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
@@ -1026,7 +1026,7 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const orgIds = orgIdsForSlackStateDelete(installationRows, orgId);
   for (const seededOrgId of orgIds) {
-    await deleteVm0BuiltInModelKeysForSeededDefaultAgent(db, seededOrgId);
+    await deleteBuiltInModelKeysForSeededDefaultAgent(db, seededOrgId);
     signal.throwIfAborted();
   }
 

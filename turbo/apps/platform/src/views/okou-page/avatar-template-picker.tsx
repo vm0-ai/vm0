@@ -14,6 +14,10 @@ import type {
   AvatarVideoVoice,
   AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import type {
+  IntroVideoVoice,
+  IntroVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 import {
   Button,
   Popover,
@@ -48,6 +52,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isSelectedAvatarTemplate } from "../../signals/okou-page/avatar-template-selection.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
+import { introVideoVoicePickerSignals } from "../../signals/okou-page/intro-video-voice-picker.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const AVATAR_CARD_SHADOW =
@@ -97,13 +102,30 @@ const VOICE_AGE_VALUES = [
   "middle_aged",
   "old",
 ] as const satisfies readonly NonNullable<AvatarVideoVoicesQuery["age"]>[];
+const INTRO_VIDEO_VOICE_GENDER_VALUES = [
+  "female",
+  "male",
+] as const satisfies readonly NonNullable<IntroVideoVoicesQuery["gender"]>[];
+const INTRO_VIDEO_VOICE_LANGUAGE_VALUES = [
+  "English",
+  "Spanish",
+  "French",
+  "German",
+  "Portuguese",
+  "Italian",
+  "Hindi",
+  "Indonesian",
+  "Japanese",
+  "Korean",
+  "Chinese",
+] as const;
 
 interface CatalogFilterOption<T extends string> {
   readonly value: T;
   readonly label: string;
 }
 
-function formatJoggCategoryValue(value: string): string {
+function formatCatalogCategoryValue(value: string): string {
   const words = value.replaceAll("_", " ").replaceAll("-", " ");
   return `${words.charAt(0).toLocaleUpperCase()}${words.slice(1)}`;
 }
@@ -112,7 +134,7 @@ function catalogFilterOptions<T extends string>(
   values: readonly T[],
 ): readonly CatalogFilterOption<T>[] {
   return values.map((value) => {
-    return { value, label: formatJoggCategoryValue(value) };
+    return { value, label: formatCatalogCategoryValue(value) };
   });
 }
 
@@ -792,7 +814,18 @@ function toggleVoicePreview(event: ReactMouseEvent<HTMLButtonElement>): void {
   detach(audio.play(), Reason.DomCallback);
 }
 
-function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
+interface VoiceCardVoice {
+  readonly id: string;
+  readonly name: string;
+  readonly sampleUrl?: string;
+  readonly language?: string;
+  readonly gender?: string;
+  readonly age?: string;
+  readonly accent?: string;
+  readonly useCase?: string;
+}
+
+function VoicePreviewControl({ voice }: { readonly voice: VoiceCardVoice }) {
   const { t } = useTranslation();
   return (
     <>
@@ -841,18 +874,18 @@ function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
   );
 }
 
-function AvatarVoiceCard({
+function AvatarVoiceCard<T extends VoiceCardVoice>({
   voice,
   selected,
   recommended,
   highlightRecommendation,
   onSelect,
 }: {
-  readonly voice: AvatarVideoVoice;
+  readonly voice: T;
   readonly selected: boolean;
   readonly recommended: boolean;
   readonly highlightRecommendation: boolean;
-  readonly onSelect: (voice: AvatarVideoVoice) => void;
+  readonly onSelect: (voice: T) => void;
 }) {
   const { t } = useTranslation();
   const recommendedDescriptionId = `avatar-voice-recommendation-${encodeURIComponent(voice.id)}`;
@@ -862,11 +895,11 @@ function AvatarVoiceCard({
         .filter((value): value is string => {
           return value !== undefined;
         })
-        .map(formatJoggCategoryValue),
+        .map(formatCatalogCategoryValue),
     ),
   );
   const description = voice.useCase
-    ? formatJoggCategoryValue(voice.useCase)
+    ? formatCatalogCategoryValue(voice.useCase)
     : undefined;
   const selectVoice = () => {
     onSelect(voice);
@@ -1332,19 +1365,32 @@ function IntroVideoAvatarCard({
       <div
         className="flex w-full items-end justify-center overflow-hidden bg-gradient-to-b from-card to-muted"
         style={{
-          aspectRatio: `${avatar.cutoutWidth} / ${avatar.cutoutHeight}`,
+          aspectRatio: `${avatar.previewWidth} / ${avatar.previewHeight}`,
         }}
       >
-        <img
-          src={avatar.coverUrl}
-          alt={avatar.name}
-          width={avatar.cutoutWidth}
-          height={avatar.cutoutHeight}
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          className="h-full w-full object-contain"
-        />
+        {avatar.provider === "heygen" ? (
+          <span
+            data-heygen-avatar-placeholder=""
+            aria-hidden="true"
+            className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/70 to-muted"
+          >
+            <User
+              className="size-16 text-muted-foreground/55"
+              strokeWidth={1}
+            />
+          </span>
+        ) : (
+          <img
+            src={avatar.previewUrl}
+            alt={avatar.name}
+            width={avatar.previewWidth}
+            height={avatar.previewHeight}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="h-full w-full object-contain"
+          />
+        )}
       </div>
       <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
         <p className="min-w-0 truncate text-sm font-semibold text-foreground">
@@ -1373,12 +1419,12 @@ function IntroVideoAvatarCard({
  * are framed anywhere between head-and-shoulders and full body.
  */
 export function AvatarLibraryContent({
-  selectedAvatarId,
+  selectedAvatarKey,
   onSelect,
   onClear,
 }: {
-  readonly selectedAvatarId: number | undefined;
-  readonly onSelect: (avatar: AvatarVideoAvatar) => void;
+  readonly selectedAvatarKey: string | undefined;
+  readonly onSelect: (avatar: IntroVideoAvatar) => void;
   readonly onClear: () => void;
 }) {
   return (
@@ -1393,15 +1439,15 @@ export function AvatarLibraryContent({
       */}
       <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
         <NoAvatarCard
-          selected={selectedAvatarId === undefined}
+          selected={selectedAvatarKey === undefined}
           onSelect={onClear}
         />
         {INTRO_VIDEO_AVATARS.map((avatar) => {
           return (
             <IntroVideoAvatarCard
-              key={avatar.id}
+              key={avatar.key}
               avatar={avatar}
-              selected={avatar.id === selectedAvatarId}
+              selected={avatar.key === selectedAvatarKey}
               onSelect={onSelect}
             />
           );
@@ -1411,32 +1457,143 @@ export function AvatarLibraryContent({
   );
 }
 
-export function VoiceLibraryToolbar({
-  signals,
-}: {
-  readonly signals: ComposerSignals;
-}) {
-  return <AvatarVoiceFilters signals={signals} />;
+function IntroVideoVoiceFilters() {
+  const { t } = useTranslation();
+  const filters = useGet(introVideoVoicePickerSignals.filters$);
+  const setFilters = useSet(introVideoVoicePickerSignals.setFilters$);
+  const allLabel = t(($) => {
+    return $.artifacts.templates.filters.all;
+  });
+  const activeCount = [filters.language, filters.gender].filter(Boolean).length;
+
+  return (
+    <CatalogFiltersPopover
+      activeCount={activeCount}
+      onClear={() => {
+        setFilters({ language: undefined, gender: undefined });
+      }}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <CatalogFilterField
+          label={t(($) => {
+            return $.artifacts.templates.filters.language;
+          })}
+          allLabel={allLabel}
+          value={filters.language}
+          options={catalogFilterOptions(INTRO_VIDEO_VOICE_LANGUAGE_VALUES)}
+          onChange={(language) => {
+            setFilters({ ...filters, language });
+          }}
+        />
+        <CatalogFilterField
+          label={t(($) => {
+            return $.artifacts.templates.filters.gender;
+          })}
+          allLabel={allLabel}
+          value={filters.gender}
+          options={catalogFilterOptions(INTRO_VIDEO_VOICE_GENDER_VALUES)}
+          onChange={(gender) => {
+            setFilters({ ...filters, gender });
+          }}
+        />
+      </div>
+    </CatalogFiltersPopover>
+  );
 }
 
-export function VoiceLibraryContent({
-  signals,
+function IntroVideoVoiceCatalog({
   selectionActive,
   selectedVoiceId,
   onSelect,
 }: {
-  readonly signals: ComposerSignals;
   readonly selectionActive: boolean;
   readonly selectedVoiceId: string | undefined;
-  readonly onSelect: (voice: AvatarVideoVoice) => void;
+  readonly onSelect: (voice: IntroVideoVoice) => void;
+}) {
+  const catalog = useLoadable(introVideoVoicePickerSignals.catalogPage$);
+  const lastCatalog = useLastResolved(
+    introVideoVoicePickerSignals.catalogPage$,
+  );
+  const generation = useGet(introVideoVoicePickerSignals.generation$);
+  const loadMore = useSet(introVideoVoicePickerSignals.loadMore$);
+  const loadingMore = useGet(introVideoVoicePickerSignals.loadingMore$);
+  const pageSignal = useGet(pageSignal$);
+  const visibleCatalog =
+    catalog.state === "hasData"
+      ? catalog.data
+      : lastCatalog?.generation === generation
+        ? lastCatalog
+        : undefined;
+  const recommendedVoice = visibleCatalog?.voices[0] ?? null;
+  const handleVoiceScroll = (event: ReactUIEvent<HTMLElement>) => {
+    if (catalog.state !== "hasData" || !catalog.data.hasNext) {
+      return;
+    }
+    const viewport = event.currentTarget;
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom > CATALOG_AUTO_LOAD_THRESHOLD_PX) {
+      return;
+    }
+    detach(loadMore(pageSignal), Reason.DomCallback, "HeyGen voice paging");
+  };
+
+  return (
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        data-avatar-voice-list-scroll=""
+        className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={handleVoiceScroll}
+      >
+        {catalog.state === "hasError" ? (
+          <AvatarTemplateEmpty error />
+        ) : visibleCatalog === undefined ? (
+          <AvatarVoiceSkeletonGrid />
+        ) : visibleCatalog.voices.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2.5">
+            {visibleCatalog.voices.map((voice) => {
+              const recommended = voice.id === recommendedVoice?.id;
+              return (
+                <AvatarVoiceCard
+                  key={voice.id}
+                  voice={voice}
+                  selected={voice.id === selectedVoiceId}
+                  recommended={recommended}
+                  highlightRecommendation={recommended && !selectionActive}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <AvatarTemplateEmpty error={false} />
+        )}
+        {loadingMore ? <CatalogLoadingSpinner /> : null}
+      </div>
+    </section>
+  );
+}
+
+export function VoiceLibraryToolbar() {
+  return <IntroVideoVoiceFilters />;
+}
+
+export function VoiceLibraryContent({
+  selectionActive,
+  selectedVoiceId,
+  onSelect,
+}: {
+  readonly selectionActive: boolean;
+  readonly selectedVoiceId: string | undefined;
+  readonly onSelect: (voice: IntroVideoVoice) => void;
 }) {
   return (
     <div
       data-avatar-voice-picker=""
+      data-intro-video-voice-provider="heygen"
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <AvatarVoiceCatalog
-        signals={signals}
+      <IntroVideoVoiceCatalog
         selectionActive={selectionActive}
         selectedVoiceId={selectedVoiceId}
         onSelect={onSelect}

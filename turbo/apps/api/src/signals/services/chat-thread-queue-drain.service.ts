@@ -145,7 +145,7 @@ export const drainChatThreadQueueForThread$ = command(
     for (let schedulerAttempt = 0; schedulerAttempt < 2; schedulerAttempt++) {
       if (!timingHasPreEntry) {
         goalSchedulerTiming.checkpoint(
-          "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry",
+          "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
           schedulerEnteredAt,
         );
       }
@@ -153,7 +153,7 @@ export const drainChatThreadQueueForThread$ = command(
       // that phase also includes the command handoff. Direct drains emit the
       // same action with zero duration to keep one fixed per-run action set.
       goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup",
+        "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
         schedulerEnteredAt,
       );
       const notifiedRunningRun = await notifyRunningChatRunOfPendingInput(
@@ -162,7 +162,7 @@ export const drainChatThreadQueueForThread$ = command(
       );
       signal.throwIfAborted();
       goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_zero_goal_drain_scheduler_notify_running_run",
+        "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
       );
       if (notifiedRunningRun) {
         return null;
@@ -210,7 +210,7 @@ export const drainChatThreadQueueForThread$ = command(
       );
       signal.throwIfAborted();
       goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
+        "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
       );
       const workflowResult = await set(
         drainWorkflowQueueForThread$,
@@ -227,7 +227,7 @@ export const drainChatThreadQueueForThread$ = command(
       );
       signal.throwIfAborted();
       goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+        "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
       );
       await set(
         drainGoalQueueForThread$,
@@ -265,7 +265,7 @@ export const drainChatThreadQueueForRun$ = command(
       input.goalSchedulerOrigin ?? "run_recovery",
     );
     goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
       lookupStartedAt,
     );
     const db = set(writeDb$);

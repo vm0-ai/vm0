@@ -34,7 +34,7 @@ import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
 
 // ---------------------------------------------------------------------------
-// Attachment types (moved from zero-chat.ts)
+// Attachment types
 // ---------------------------------------------------------------------------
 
 interface FileInfo {

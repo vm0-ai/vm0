@@ -237,7 +237,7 @@ describe("okou mail", () => {
     );
   });
 
-  it("links an existing Gmail draft and prints only the review URL", async () => {
+  it("links an existing Gmail draft and shows a standalone review URL example", async () => {
     server.use(
       http.post(
         "http://localhost:3000/api/mail/drafts/link",
@@ -265,7 +265,9 @@ describe("okou mail", () => {
 
     expect(mockConsoleLog).toHaveBeenCalledOnce();
     expect(mockConsoleLog).toHaveBeenCalledWith(
-      `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+      expect.stringContaining(
+        `Example reply:\n\nYour email draft is ready to review and send.\n\nhttps://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+      ),
     );
   });
 
@@ -291,7 +293,8 @@ describe("okou mail", () => {
       "Confirm the email was sent",
     ]);
 
-    const reviewUrl = new URL(String(mockConsoleLog.mock.calls[0]?.[0]));
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    const reviewUrl = new URL(output.match(/^https:\/\/\S+$/m)?.[0] ?? "");
     expect(reviewUrl.pathname).toBe(`/mail/drafts/${MAIL_DRAFT_ID}`);
     expect(Array.from(reviewUrl.searchParams.entries())).toStrictEqual([
       ["source", "gmail"],
@@ -299,7 +302,6 @@ describe("okou mail", () => {
       ["threadId", THREAD_ID],
       ["callbackPrompt", "Confirm the email was sent"],
     ]);
-    const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("end the current turn");
     expect(output).toContain("exact callback URL above verbatim");
     expect(output).toContain("omitting any query parameters");

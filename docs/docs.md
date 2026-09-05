@@ -39,4 +39,8 @@ surface; the index does not replace their detailed rules.
   verify host-local concurrency and I/O capacity overrides.
 - [Runner multi-architecture rollout](./runner-multi-architecture.md): build,
   deploy, and validate runner artifacts for supported host architectures.
+- [Residual platform brand names](./residual-platform-brand-names.md): which
+  `zero-*` names in the platform and UI packages are safe to rename, which are
+  published asset keys or client-persisted identities, and which are the English
+  word.
 - [Testing catalog](./testing/anti-patterns.md): detailed testing anti-patterns.

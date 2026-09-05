@@ -33,7 +33,7 @@ export const runWorkflowAutomationNow$ = command(
     const timing = args.timing ?? new ApiDispatchTimingCollector();
     if (!args.timing) {
       timing.recordElapsed(
-        "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
+        "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
         "nested",
         args.apiStartTime,
       );
@@ -41,7 +41,7 @@ export const runWorkflowAutomationNow$ = command(
 
     const admission = await measureApiDispatchTiming(
       timing,
-      "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
+      "api_dispatch_pre_create_agent_workflow_automation_queue_admission",
       "nested",
       async () => {
         return await admitWorkflowAutomationEvent(db, {

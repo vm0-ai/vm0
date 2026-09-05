@@ -400,13 +400,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.MarkdownHexColorPreview]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -427,13 +420,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.BaseUiSidebarScrollArea]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Use the Base UI Scroll Area for draggable chat sidebar scrollbars.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

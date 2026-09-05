@@ -3241,8 +3241,7 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Request failed",
-      "sharedDatabaseUnavailable": "The app ran into a problem. Please wait a moment, then refresh the page to try again."
+      "requestFailed": "Request failed"
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page.",

@@ -401,7 +401,7 @@ const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
     activityResult.kind === "upserted" ? activityResult.installation : null;
   const timing = new ApiDispatchTimingCollector();
   timing.recordElapsed(
-    "api_dispatch_pre_create_zero_teams_entrypoint_gap",
+    "api_dispatch_pre_create_agent_teams_entrypoint_gap",
     "nested",
     apiStartTime,
   );

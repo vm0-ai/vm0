@@ -182,12 +182,12 @@ test("Selecting a slide preserves its authored layout", async () => {
       </head>
       <body>
         <div class="slide slide-shell active" aria-hidden="false">
-          <section class="authored-slide active" data-vm0-slide data-slide-id="slide-one">
+          <section class="authored-slide active" data-okou-slide data-slide-id="slide-one">
             <h1>First slide</h1>
           </section>
         </div>
         <div class="slide slide-shell" hidden inert aria-hidden="true" style="display: none">
-          <section class="authored-slide" data-vm0-slide data-slide-id="slide-two" hidden inert aria-hidden="true" style="display: none">
+          <section class="authored-slide" data-okou-slide data-slide-id="slide-two" hidden inert aria-hidden="true" style="display: none">
             <h1>Selected slide</h1>
           </section>
         </div>
@@ -210,7 +210,7 @@ test("Selecting a slide preserves its authored layout", async () => {
   const frameDocument = await hydratePreviewFrame(secondFrame, objectUrls);
 
   expect(frameDocument.querySelector('[data-slide-id="slide-one"]')).toBeNull();
-  expect(frameDocument.querySelectorAll("[data-vm0-slide]")).toHaveLength(1);
+  expect(frameDocument.querySelectorAll("[data-okou-slide]")).toHaveLength(1);
   const wrapper = elementBySelector(frameDocument, ".slide-shell");
   const selectedSlide = elementBySelector(
     frameDocument,
@@ -230,11 +230,56 @@ test("Selecting a slide preserves its authored layout", async () => {
   );
 });
 
+test("A deck authored with the legacy vm0 attributes still previews", async () => {
+  // `div` matches no other slide selector and `strong` matches no fallback
+  // editable selector, so the deck only splits into slides and annotates an
+  // editable block when the legacy `data-vm0-*` readers still apply.
+  const objectUrls = arrangePresentation(`<!doctype html>
+    <html>
+      <body>
+        <script type="application/json" id="vm0-deck-metadata">{"editProtocolVersion":1,"kind":"deck","slides":{"slide-two":{"speakerNotes":"Legacy notes"}}}</script>
+        <div data-vm0-slide data-slide-id="slide-one">
+          <strong data-vm0-editable="text">Legacy first</strong>
+        </div>
+        <div data-vm0-slide data-slide-id="slide-two">
+          <strong data-vm0-editable="text">Legacy second</strong>
+        </div>
+      </body>
+    </html>`);
+  await setupPage({
+    context,
+    host: "app.vm0.ai",
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const firstFrame = await openPresentationDetail();
+  await hydratePreviewFrame(firstFrame, objectUrls);
+  const firstFrameUrl = firstFrame.getAttribute("src");
+  click(await waitForNamedButton("Preview slide 2"));
+  await waitFor(() => {
+    expect(activePreviewFrame().getAttribute("src")).not.toBe(firstFrameUrl);
+  });
+  const frameDocument = await hydratePreviewFrame(
+    activePreviewFrame(),
+    objectUrls,
+  );
+
+  expect(frameDocument.querySelectorAll("[data-vm0-slide]")).toHaveLength(1);
+  expect(frameDocument.querySelector('[data-slide-id="slide-one"]')).toBeNull();
+  const editable = elementBySelector(
+    frameDocument,
+    '[data-vm0-editable="text"]',
+  );
+  expect(editable).toHaveTextContent("Legacy second");
+  expect(editable).toHaveAttribute("data-okou-editor-slide-id", "slide-two");
+  expect(editable).toHaveAttribute("data-okou-editor-edit-id");
+});
+
 test("A presentation slide fills its preview frame cleanly", async () => {
   const objectUrls = arrangePresentation(`<!doctype html>
     <html>
       <body>
-        <section data-vm0-slide data-slide-id="slide-one" style="width: 100vw; height: 100vh; border-radius: 32px; box-shadow: 0 20px 60px #0008">
+        <section data-okou-slide data-slide-id="slide-one" style="width: 100vw; height: 100vh; border-radius: 32px; box-shadow: 0 20px 60px #0008">
           <div class="stage" style="width: 100vw; height: 100vh; max-width: 1440px; max-height: 810px; border-radius: 24px; box-shadow: 0 12px 40px #0006">
             <h1>Nested stage</h1>
           </div>
@@ -248,7 +293,7 @@ test("A presentation slide fills its preview frame cleanly", async () => {
   });
 
   const { document: frameDocument } = await openReadyPresentation(objectUrls);
-  const slide = elementBySelector(frameDocument, "[data-vm0-slide]");
+  const slide = elementBySelector(frameDocument, "[data-okou-slide]");
   const stage = elementBySelector(frameDocument, ".stage");
   const slideStyle = computedStyle(slide);
   const stageStyle = computedStyle(stage);
@@ -269,7 +314,7 @@ test("An unusable generated theme does not break the presentation preview", asyn
   const objectUrls = arrangePresentation(`<!doctype html>
     <html>
       <body>
-        <section data-vm0-slide data-slide-id="slide-one" style="background-color: #fef3c7; color: #1f2937">
+        <section data-okou-slide data-slide-id="slide-one" style="background-color: #fef3c7; color: #1f2937">
           <h1>Authored fallback remains</h1>
         </section>
         <script>
@@ -293,7 +338,7 @@ test("An unusable generated theme does not break the presentation preview", asyn
 
   const { document: frameDocument, frame } =
     await openReadyPresentation(objectUrls);
-  const slide = elementBySelector(frameDocument, "[data-vm0-slide]");
+  const slide = elementBySelector(frameDocument, "[data-okou-slide]");
   const slideStyle = computedStyle(slide);
 
   expect(frame).toHaveAttribute("data-loaded", "true");
@@ -302,7 +347,7 @@ test("An unusable generated theme does not break the presentation preview", asyn
   expectCssColor(slideStyle.color, ["#1f2937", "rgb(31,41,55)"]);
   expect(frameDocument.querySelector("script")).toBeNull();
   expect(
-    frameDocument.querySelector('[data-vm0-materialized-theme="true"]'),
+    frameDocument.querySelector('[data-okou-materialized-theme="true"]'),
   ).toBeNull();
 });
 
@@ -315,7 +360,7 @@ test("Presentation previews preserve the selected theme", async () => {
         </style>
       </head>
       <body>
-        <section class="themed-slide" data-vm0-slide data-slide-id="slide-one">
+        <section class="themed-slide" data-okou-slide data-slide-id="slide-one">
           <h1>Selected generated theme</h1>
         </section>
         <script>
@@ -345,7 +390,7 @@ test("Presentation previews preserve the selected theme", async () => {
   expect(rootStyle.getPropertyValue("--fd")).toContain("Fraunces");
   expect(rootStyle.getPropertyValue("--fb")).toContain("Inter");
   expect(
-    frameDocument.querySelector('[data-vm0-materialized-theme="true"]'),
+    frameDocument.querySelector('[data-okou-materialized-theme="true"]'),
   ).not.toBeNull();
   expect(frameDocument.querySelector("script")).toBeNull();
   expect(elementBySelector(frameDocument, ".themed-slide")).toHaveTextContent(

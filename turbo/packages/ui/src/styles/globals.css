@@ -927,7 +927,7 @@
   }
 
   .okou-dialog-overlay[data-open] {
-    animation: zero-dialog-overlay-in 180ms ease;
+    animation: okou-dialog-overlay-in 180ms ease;
   }
 
   /* Base UI can briefly retain the previous ending style while a controlled
@@ -935,7 +935,7 @@
      is no longer open, otherwise the first frame flashes fully visible before
      the enter animation starts. */
   .okou-dialog-overlay[data-ending-style]:not([data-open]) {
-    animation: zero-dialog-overlay-out 180ms ease;
+    animation: okou-dialog-overlay-out 180ms ease;
   }
 
   /* The scrim carries its blur on a separate layer. A backdrop-filter costs
@@ -952,7 +952,7 @@
   }
 
   .okou-dialog-overlay[data-open]::after {
-    animation: zero-dialog-blur-in 180ms step-end;
+    animation: okou-dialog-blur-in 180ms step-end;
   }
 
   .okou-dialog-overlay[data-ending-style]:not([data-open])::after {
@@ -978,11 +978,11 @@
   }
 
   .okou-dialog-content[data-open] {
-    animation: zero-dialog-content-in 180ms ease;
+    animation: okou-dialog-content-in 180ms ease;
   }
 
   .okou-dialog-content[data-ending-style]:not([data-open]) {
-    animation: zero-dialog-content-out 180ms ease;
+    animation: okou-dialog-content-out 180ms ease;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1042,7 +1042,7 @@
   }
 }
 
-@keyframes zero-dialog-overlay-in {
+@keyframes okou-dialog-overlay-in {
   from {
     opacity: 0;
   }
@@ -1051,7 +1051,7 @@
   }
 }
 
-@keyframes zero-dialog-overlay-out {
+@keyframes okou-dialog-overlay-out {
   from {
     opacity: 1;
   }
@@ -1060,7 +1060,7 @@
   }
 }
 
-@keyframes zero-dialog-blur-in {
+@keyframes okou-dialog-blur-in {
   from {
     visibility: hidden;
   }
@@ -1069,7 +1069,7 @@
   }
 }
 
-@keyframes zero-dialog-content-in {
+@keyframes okou-dialog-content-in {
   from {
     transform: translateY(8px);
   }
@@ -1078,7 +1078,7 @@
   }
 }
 
-@keyframes zero-dialog-content-out {
+@keyframes okou-dialog-content-out {
   from {
     transform: translateY(0);
   }
