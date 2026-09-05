@@ -8,6 +8,8 @@ public final class ComputerCommands {
   ]
   private let helper: HelperProcess
   private var snapshots: [String: JSON] = [:]
+  private var latestByApp: [String: String] = [:]
+  private var snapshotOrder: [String] = []
   private var helperGeneration = 0
 
   public init(helper: HelperProcess) { self.helper = helper }
@@ -24,15 +26,37 @@ public final class ComputerCommands {
       }
       if helper.generation != helperGeneration {
         snapshots.removeAll()
+        latestByApp.removeAll()
+        snapshotOrder.removeAll()
         helperGeneration = helper.generation
       }
       if kind == "apps.list" { return .success(try await helper.request(kind)) }
       guard permissions["screenRecording"].bool else {
         throw DesktopFailure(
-          "permission_denied", "Grant Screen Recording permission in System Settings")
+          "screen_recording_unavailable", "macOS Screen Recording permission is required")
       }
       var payload = command["payload"]
+      for key in [
+        "app", "elementId", "snapshotId", "foregroundRecovery", "text", "key", "value", "action",
+        "direction",
+      ] {
+        if let raw = payload[key].string {
+          payload[key] = .string(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+      }
       let app = try payload.requireString("app")
+      if payload["elementIndex"] != .null {
+        guard let index = payload["elementIndex"].number, index >= 0, index.rounded() == index
+        else {
+          throw DesktopFailure("unsupported_command", "elementIndex must be a non-negative integer")
+        }
+      }
+      let requiredFields = [
+        "keyboard.type_text": "text", "keyboard.press_key": "key", "element.set_value": "value",
+        "element.perform_action": "action", "element.scroll": "direction",
+      ]
+      if let field = requiredFields[kind] { _ = try payload.requireString(field) }
+      if kind == "element.scroll", payload["pages"].number == nil { payload["pages"] = .number(1) }
       if kind == "app.state" { return .success(try await appState(app)) }
       if kind == "element.click" || kind == "element.scroll" || kind == "element.set_value"
         || kind == "element.perform_action"
@@ -55,7 +79,7 @@ public final class ComputerCommands {
             throw DesktopFailure(
               "invalid_arguments", "element.click requires an element or coordinates")
           }
-          if payload["snapshotId"].string == nil && snapshots[app.lowercased()] == nil {
+          if payload["snapshotId"].string == nil && latestByApp[app.lowercased()] == nil {
             _ = try await appState(app)
           }
           let snapshot = try snapshot(app: app, id: payload["snapshotId"].string)
@@ -72,15 +96,51 @@ public final class ComputerCommands {
         payload["foregroundRecovery"] = .string("on-window-unavailable")
       }
       if kind == "element.click" {
-        if payload["button"].string == nil { payload["button"] = .string("left") }
-        if payload["clickCount"].number == nil { payload["clickCount"] = .number(1) }
+        if !["right", "middle"].contains(payload["button"].string ?? "") {
+          payload["button"] = .string("left")
+        }
+        if let count = payload["clickCount"].number, count.rounded() == count,
+          (1...3).contains(count)
+        {
+        } else {
+          payload["clickCount"] = .number(1)
+        }
         if payload["elementId"].string != nil, payload["button"].string != "left" {
           throw DesktopFailure(
             "unsupported_command",
             "Element targets support only left clicks; use coordinates for other buttons")
         }
       }
-      let action = try await helper.request(kind, fields: payload)
+      if let recovery = payload["foregroundRecovery"].string,
+        !["never", "on-window-unavailable", "always"].contains(recovery)
+      {
+        throw DesktopFailure(
+          "unsupported_command",
+          "foregroundRecovery must be never, on-window-unavailable, or always")
+      }
+      var action = try await helper.request(kind, fields: payload)
+      action["app"] = .string(app)
+      if payload["elementIndex"].number != nil {
+        action["elementIndex"] = payload["elementIndex"]
+        action["snapshotId"] = payload["snapshotId"]
+      } else if payload["elementId"].string != nil {
+        action["elementId"] = payload["elementId"]
+      }
+      switch kind {
+      case "app.open": action["summary"] = .string("Opened \(app)")
+      case "keyboard.type_text": action["summary"] = .string("Typed text")
+      case "keyboard.press_key":
+        action["key"] = action["normalizedKey"]
+        action["summary"] = .string("Pressed \(action["key"].string ?? "")")
+      case "element.click":
+        action["button"] = payload["button"]
+        action["clickCount"] = payload["clickCount"]
+      case "element.scroll":
+        action["direction"] = payload["direction"]
+        action["pages"] = payload["pages"]
+      case "element.perform_action": action["action"] = payload["action"]
+      default: break
+      }
       var result = try await appState(app, settle: true)
       result["action"] = action
       return .success(result)
@@ -90,9 +150,9 @@ public final class ComputerCommands {
   }
 
   private func snapshot(app: String, id: String?) throws -> JSON {
-    guard let snapshot = snapshots[app.lowercased()],
-      id == nil || snapshot["snapshotId"].string == id
-    else {
+    let appKey = app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let key = id.map { appKey + "\0" + $0 } ?? latestByApp[appKey]
+    guard let key, let snapshot = snapshots[key] else {
       throw DesktopFailure(
         "unsupported_command", "Snapshot not found for \(app); request app.state again")
     }
@@ -115,59 +175,33 @@ public final class ComputerCommands {
         "screen_recording_unavailable",
         "app.state must return a target-window screenshot with bounds")
     }
-    var ids: [String] = []
-    var lines: [String] = []
-    var reasons = snapshot["truncationReasons"].array.compactMap(\.string)
-    var focused: Int?
-    func visit(_ node: JSON, depth: Int) {
-      if depth > 32 {
-        reasons.append("max_depth")
-        return
-      }
-      if ids.count >= 1200 {
-        reasons.append("max_nodes")
-        return
-      }
-      if depth > 0, node["hidden"].bool, !node["focused"].bool, !node["selected"].bool { return }
-      let index = ids.count
-      ids.append(node["id"].string ?? "")
-      if focused == nil && node["focused"].bool { focused = index }
-      let role = node["roleDescription"].string ?? node["role"].string ?? "element"
-      let labels = [
-        "name", "value", "description", "visibleText", "placeholderValue", "titleElementText",
-      ].compactMap { node[$0].string }.filter { !$0.isEmpty }
-      let text = Array(NSOrderedSet(array: labels)).compactMap { $0 as? String }.joined(
-        separator: " | ")
-      let states = [
-        "focused", "selected", "expanded", "valueSettable", "pressable", "pickable", "selectable",
-      ].filter { node[$0].bool }
-      let actions = node["actions"].array.compactMap(\.string)
-      let suffix = (states + actions).joined(separator: ", ")
-      lines.append(
-        String(repeating: "  ", count: depth) + "[\(index)] \(role) \(String(text.prefix(1000)))"
-          + (suffix.isEmpty ? "" : " (\(suffix))"))
-      let children = node["children"].array
-      if children.count > 120 { reasons.append("max_children_per_node") }
-      for child in children.prefix(120) { visit(child, depth: depth + 1) }
+    func nodeCount(_ elements: [JSON]) -> Int {
+      elements.reduce(0) { $0 + 1 + nodeCount($1["children"].array) }
     }
-    for element in snapshot["elements"].array { visit(element, depth: 0) }
-    snapshot["elementIdsByIndex"] = .strings(ids)
-    if let focused { snapshot["focusedElementIndex"] = .number(Double(focused)) }
-    snapshot["nodeCount"] = .number(Double(ids.count))
-    snapshot["truncated"] = .bool(snapshot["truncated"].bool || !reasons.isEmpty)
-    snapshot["truncationReasons"] = .strings(Array(Set(reasons)).sorted())
-    var heading = "Computer Use state\n<app_state>\nApp=\(snapshot["appPath"].string ?? app)"
-    if let title = snapshot["windowTitle"].string { heading += "\nWindow: \(title)" }
-    snapshot["appState"] = .string(
-      heading + "\n" + lines.joined(separator: "\n") + "\n</app_state>")
+    let rawCount = nodeCount(snapshot["elements"].array)
+    snapshot = AccessibilitySnapshot.transform(snapshot)
     snapshot["metrics"] = .object([
       "helperDurationMs": .number(Date().timeIntervalSince(start) * 1000), "settle": .bool(settle),
-      "nodeCount": .number(Double(ids.count)),
+      "rawNodeCount": .number(Double(rawCount)),
+      "nodeCount": .number(Double(nodeCount(snapshot["elements"].array))),
+      "appStateChars": .number(Double(snapshot["appState"].string?.utf16.count ?? 0)),
     ])
     var fields = snapshot.object!
     fields.removeValue(forKey: "elements")
     snapshot = .object(fields)
-    snapshots[app.lowercased()] = snapshot
+    let appKey = app.lowercased()
+    let key = appKey + "\0" + (snapshot["snapshotId"].string ?? "")
+    var metadata = fields
+    for field in ["screenshot", "appState", "metrics"] { metadata.removeValue(forKey: field) }
+    snapshots[key] = .object(metadata)
+    snapshotOrder.removeAll { $0 == key }
+    snapshotOrder.append(key)
+    latestByApp[appKey] = key
+    while snapshotOrder.count > 50 {
+      let oldest = snapshotOrder.removeFirst()
+      snapshots.removeValue(forKey: oldest)
+      latestByApp = latestByApp.filter { $0.value != oldest }
+    }
     helperGeneration = helper.generation
     return snapshot
   }

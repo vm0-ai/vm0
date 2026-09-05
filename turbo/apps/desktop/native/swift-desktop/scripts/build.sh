@@ -91,6 +91,6 @@ for helper in "$app_dir/Contents/Resources/native/"*; do
 done
 codesign --force --sign - --options runtime --entitlements "$package_dir/Resources/entitlements.plist" "$app_dir"
 codesign --verify --deep --strict "$app_dir"
-lipo -verify_arch arm64 "$app_dir/Contents/MacOS/okou-desktop"
+lipo "$app_dir/Contents/MacOS/okou-desktop" -verify_arch arm64
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$output_dir/Okou-Swift-macos-arm64.zip"
 printf 'Built %s\n' "$app_dir"

@@ -5,7 +5,8 @@ var dependencies: [Package.Dependency] = []
 var products: [Product] = [.library(name: "DesktopCore", targets: ["DesktopCore"])]
 var targets: [Target] = [
   .target(name: "DesktopCore"),
-  .testTarget(name: "DesktopCoreTests", dependencies: ["DesktopCore"]),
+  .testTarget(
+    name: "DesktopCoreTests", dependencies: ["DesktopCore"], resources: [.copy("Fixtures")]),
 ]
 
 #if os(macOS)

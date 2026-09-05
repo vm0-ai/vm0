@@ -1,0 +1,1125 @@
+[
+  {
+    "name": "semantic-compaction",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "elements": [
+        {
+          "id": "window",
+          "role": "AXWindow",
+          "name": "Example",
+          "children": [
+            {
+              "id": "wrapper",
+              "role": "AXGroup",
+              "children": [
+                {
+                  "id": "button",
+                  "role": "AXButton",
+                  "name": "Continue",
+                  "pressable": true,
+                  "clickableKind": "press",
+                  "actions": [
+                    "AXPress",
+                    "AXShowMenu"
+                  ],
+                  "children": [
+                    {
+                      "id": "label",
+                      "role": "AXStaticText",
+                      "value": "Continue"
+                    },
+                    {
+                      "id": "blank",
+                      "role": "AXStaticText"
+                    }
+                  ]
+                },
+                {
+                  "id": "entry",
+                  "role": "AXTextField",
+                  "name": "Title",
+                  "value": "Hello",
+                  "valueSettable": true,
+                  "valueType": "string",
+                  "focused": true,
+                  "placeholderValue": "Untitled"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 standard window Example\n\t1 button Continue\n\t2 text field (settable, string) Title, Value: Hello, Placeholder: Untitled\n\nThe focused UI element is 2 text field (settable, string) Title, Value: Hello, Placeholder: Untitled.\n</app_state>",
+      "elementIdsByIndex": [
+        "window",
+        "button",
+        "entry"
+      ],
+      "focusedElementIndex": 2,
+      "nodeCount": 3,
+      "truncationReasons": null
+    }
+  },
+  {
+    "name": "menu-bar",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "elements": [
+        {
+          "id": "menu",
+          "role": "AXMenuBar",
+          "children": [
+            {
+              "id": "file",
+              "role": "AXMenuBarItem",
+              "name": "File",
+              "actions": [
+                "AXPress",
+                "AXPick",
+                "AXCancel"
+              ],
+              "children": [
+                {
+                  "id": "new",
+                  "role": "AXMenuItem",
+                  "name": "New"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 menu bar\n\t1 menu bar item File\n</app_state>",
+      "elementIdsByIndex": [
+        "menu",
+        "file"
+      ],
+      "focusedElementIndex": null,
+      "nodeCount": 2,
+      "truncationReasons": null
+    }
+  },
+  {
+    "name": "secondary-actions",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "elements": [
+        {
+          "id": "button",
+          "role": "AXButton",
+          "name": "Shared title",
+          "description": "Shared title",
+          "value": "1",
+          "help": "Use this",
+          "selected": true,
+          "expanded": true,
+          "actions": [
+            "AXPress",
+            "AXDelete",
+            "AXShowMenu"
+          ],
+          "children": [
+            {
+              "id": "independent",
+              "role": "AXLink",
+              "name": "Shared title",
+              "url": "https://example.com"
+            },
+            {
+              "id": "disabled",
+              "role": "AXImage",
+              "name": "Shared title",
+              "enabled": false
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 button (selected, expanded) Shared title, Value: 1, Help: Use this, Secondary Actions: Delete\n\t1 link Shared title, URL: https://example.com\n\t2 image (disabled) Shared title\n</app_state>",
+      "elementIdsByIndex": [
+        "button",
+        "independent",
+        "disabled"
+      ],
+      "focusedElementIndex": null,
+      "nodeCount": 3,
+      "truncationReasons": null
+    }
+  },
+  {
+    "name": "text-coverage",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "elements": [
+        {
+          "id": "heading",
+          "role": "AXHeading",
+          "name": "News • Today",
+          "children": [
+            {
+              "id": "group",
+              "role": "AXGroup",
+              "children": [
+                {
+                  "id": "today",
+                  "role": "AXStaticText",
+                  "name": "Today"
+                },
+                {
+                  "id": "news",
+                  "role": "AXStaticText",
+                  "name": "News"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hidden",
+          "role": "AXStaticText",
+          "hidden": true,
+          "name": "Root hidden nodes remain visible"
+        },
+        {
+          "id": "window",
+          "role": "AXWindow",
+          "children": [
+            {
+              "id": "hidden-child",
+              "role": "AXStaticText",
+              "hidden": true,
+              "name": "Hidden"
+            },
+            {
+              "id": "focus-hidden",
+              "role": "AXTextArea",
+              "hidden": true,
+              "focused": true,
+              "value": "Still focused"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 heading News • Today\n1 text Root hidden nodes remain visible\n2 standard window\n\t3 text entry area Still focused\n\nThe focused UI element is 3 text entry area Still focused.\n</app_state>",
+      "elementIdsByIndex": [
+        "heading",
+        "hidden",
+        "window",
+        "focus-hidden"
+      ],
+      "focusedElementIndex": 3,
+      "nodeCount": 4,
+      "truncationReasons": null
+    }
+  },
+  {
+    "name": "roles-and-details",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "elements": [
+        {
+          "id": "dialog",
+          "role": "AXWindow",
+          "subrole": "AXDialog",
+          "name": "Preferences"
+        },
+        {
+          "id": "web",
+          "role": "AXWebArea",
+          "roleDescription": "HTML content",
+          "description": "A web page",
+          "url": "https://example.com",
+          "children": [
+            {
+              "id": "table",
+              "role": "AXTable",
+              "columnTitles": [
+                "Name",
+                "Value"
+              ],
+              "identifier": "settings",
+              "actions": [
+                "AXRaise"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "custom",
+          "role": "AXCustomThing",
+          "name": "Custom",
+          "mouseClickable": true,
+          "clickableKind": "mouse"
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 dialog Preferences\n1 HTML content A web page, URL: https://example.com\n\t2 table settings, Columns: Name, Value, Secondary Actions: Raise\n3 custom thing (clickable) Custom\n</app_state>",
+      "elementIdsByIndex": [
+        "dialog",
+        "web",
+        "table",
+        "custom"
+      ],
+      "focusedElementIndex": null,
+      "nodeCount": 4,
+      "truncationReasons": null
+    }
+  },
+  {
+    "name": "children-budget",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "elements": [
+        {
+          "id": "list",
+          "role": "AXList",
+          "children": [
+            {
+              "id": "item-0",
+              "role": "AXButton",
+              "name": "Item 0"
+            },
+            {
+              "id": "item-1",
+              "role": "AXButton",
+              "name": "Item 1"
+            },
+            {
+              "id": "item-2",
+              "role": "AXButton",
+              "name": "Item 2"
+            },
+            {
+              "id": "item-3",
+              "role": "AXButton",
+              "name": "Item 3"
+            },
+            {
+              "id": "item-4",
+              "role": "AXButton",
+              "name": "Item 4"
+            },
+            {
+              "id": "item-5",
+              "role": "AXButton",
+              "name": "Item 5"
+            },
+            {
+              "id": "item-6",
+              "role": "AXButton",
+              "name": "Item 6"
+            },
+            {
+              "id": "item-7",
+              "role": "AXButton",
+              "name": "Item 7"
+            },
+            {
+              "id": "item-8",
+              "role": "AXButton",
+              "name": "Item 8"
+            },
+            {
+              "id": "item-9",
+              "role": "AXButton",
+              "name": "Item 9"
+            },
+            {
+              "id": "item-10",
+              "role": "AXButton",
+              "name": "Item 10"
+            },
+            {
+              "id": "item-11",
+              "role": "AXButton",
+              "name": "Item 11"
+            },
+            {
+              "id": "item-12",
+              "role": "AXButton",
+              "name": "Item 12"
+            },
+            {
+              "id": "item-13",
+              "role": "AXButton",
+              "name": "Item 13"
+            },
+            {
+              "id": "item-14",
+              "role": "AXButton",
+              "name": "Item 14"
+            },
+            {
+              "id": "item-15",
+              "role": "AXButton",
+              "name": "Item 15"
+            },
+            {
+              "id": "item-16",
+              "role": "AXButton",
+              "name": "Item 16"
+            },
+            {
+              "id": "item-17",
+              "role": "AXButton",
+              "name": "Item 17"
+            },
+            {
+              "id": "item-18",
+              "role": "AXButton",
+              "name": "Item 18"
+            },
+            {
+              "id": "item-19",
+              "role": "AXButton",
+              "name": "Item 19"
+            },
+            {
+              "id": "item-20",
+              "role": "AXButton",
+              "name": "Item 20"
+            },
+            {
+              "id": "item-21",
+              "role": "AXButton",
+              "name": "Item 21"
+            },
+            {
+              "id": "item-22",
+              "role": "AXButton",
+              "name": "Item 22"
+            },
+            {
+              "id": "item-23",
+              "role": "AXButton",
+              "name": "Item 23"
+            },
+            {
+              "id": "item-24",
+              "role": "AXButton",
+              "name": "Item 24"
+            },
+            {
+              "id": "item-25",
+              "role": "AXButton",
+              "name": "Item 25"
+            },
+            {
+              "id": "item-26",
+              "role": "AXButton",
+              "name": "Item 26"
+            },
+            {
+              "id": "item-27",
+              "role": "AXButton",
+              "name": "Item 27"
+            },
+            {
+              "id": "item-28",
+              "role": "AXButton",
+              "name": "Item 28"
+            },
+            {
+              "id": "item-29",
+              "role": "AXButton",
+              "name": "Item 29"
+            },
+            {
+              "id": "item-30",
+              "role": "AXButton",
+              "name": "Item 30"
+            },
+            {
+              "id": "item-31",
+              "role": "AXButton",
+              "name": "Item 31"
+            },
+            {
+              "id": "item-32",
+              "role": "AXButton",
+              "name": "Item 32"
+            },
+            {
+              "id": "item-33",
+              "role": "AXButton",
+              "name": "Item 33"
+            },
+            {
+              "id": "item-34",
+              "role": "AXButton",
+              "name": "Item 34"
+            },
+            {
+              "id": "item-35",
+              "role": "AXButton",
+              "name": "Item 35"
+            },
+            {
+              "id": "item-36",
+              "role": "AXButton",
+              "name": "Item 36"
+            },
+            {
+              "id": "item-37",
+              "role": "AXButton",
+              "name": "Item 37"
+            },
+            {
+              "id": "item-38",
+              "role": "AXButton",
+              "name": "Item 38"
+            },
+            {
+              "id": "item-39",
+              "role": "AXButton",
+              "name": "Item 39"
+            },
+            {
+              "id": "item-40",
+              "role": "AXButton",
+              "name": "Item 40"
+            },
+            {
+              "id": "item-41",
+              "role": "AXButton",
+              "name": "Item 41"
+            },
+            {
+              "id": "item-42",
+              "role": "AXButton",
+              "name": "Item 42"
+            },
+            {
+              "id": "item-43",
+              "role": "AXButton",
+              "name": "Item 43"
+            },
+            {
+              "id": "item-44",
+              "role": "AXButton",
+              "name": "Item 44"
+            },
+            {
+              "id": "item-45",
+              "role": "AXButton",
+              "name": "Item 45"
+            },
+            {
+              "id": "item-46",
+              "role": "AXButton",
+              "name": "Item 46"
+            },
+            {
+              "id": "item-47",
+              "role": "AXButton",
+              "name": "Item 47"
+            },
+            {
+              "id": "item-48",
+              "role": "AXButton",
+              "name": "Item 48"
+            },
+            {
+              "id": "item-49",
+              "role": "AXButton",
+              "name": "Item 49"
+            },
+            {
+              "id": "item-50",
+              "role": "AXButton",
+              "name": "Item 50"
+            },
+            {
+              "id": "item-51",
+              "role": "AXButton",
+              "name": "Item 51"
+            },
+            {
+              "id": "item-52",
+              "role": "AXButton",
+              "name": "Item 52"
+            },
+            {
+              "id": "item-53",
+              "role": "AXButton",
+              "name": "Item 53"
+            },
+            {
+              "id": "item-54",
+              "role": "AXButton",
+              "name": "Item 54"
+            },
+            {
+              "id": "item-55",
+              "role": "AXButton",
+              "name": "Item 55"
+            },
+            {
+              "id": "item-56",
+              "role": "AXButton",
+              "name": "Item 56"
+            },
+            {
+              "id": "item-57",
+              "role": "AXButton",
+              "name": "Item 57"
+            },
+            {
+              "id": "item-58",
+              "role": "AXButton",
+              "name": "Item 58"
+            },
+            {
+              "id": "item-59",
+              "role": "AXButton",
+              "name": "Item 59"
+            },
+            {
+              "id": "item-60",
+              "role": "AXButton",
+              "name": "Item 60"
+            },
+            {
+              "id": "item-61",
+              "role": "AXButton",
+              "name": "Item 61"
+            },
+            {
+              "id": "item-62",
+              "role": "AXButton",
+              "name": "Item 62"
+            },
+            {
+              "id": "item-63",
+              "role": "AXButton",
+              "name": "Item 63"
+            },
+            {
+              "id": "item-64",
+              "role": "AXButton",
+              "name": "Item 64"
+            },
+            {
+              "id": "item-65",
+              "role": "AXButton",
+              "name": "Item 65"
+            },
+            {
+              "id": "item-66",
+              "role": "AXButton",
+              "name": "Item 66"
+            },
+            {
+              "id": "item-67",
+              "role": "AXButton",
+              "name": "Item 67"
+            },
+            {
+              "id": "item-68",
+              "role": "AXButton",
+              "name": "Item 68"
+            },
+            {
+              "id": "item-69",
+              "role": "AXButton",
+              "name": "Item 69"
+            },
+            {
+              "id": "item-70",
+              "role": "AXButton",
+              "name": "Item 70"
+            },
+            {
+              "id": "item-71",
+              "role": "AXButton",
+              "name": "Item 71"
+            },
+            {
+              "id": "item-72",
+              "role": "AXButton",
+              "name": "Item 72"
+            },
+            {
+              "id": "item-73",
+              "role": "AXButton",
+              "name": "Item 73"
+            },
+            {
+              "id": "item-74",
+              "role": "AXButton",
+              "name": "Item 74"
+            },
+            {
+              "id": "item-75",
+              "role": "AXButton",
+              "name": "Item 75"
+            },
+            {
+              "id": "item-76",
+              "role": "AXButton",
+              "name": "Item 76"
+            },
+            {
+              "id": "item-77",
+              "role": "AXButton",
+              "name": "Item 77"
+            },
+            {
+              "id": "item-78",
+              "role": "AXButton",
+              "name": "Item 78"
+            },
+            {
+              "id": "item-79",
+              "role": "AXButton",
+              "name": "Item 79"
+            },
+            {
+              "id": "item-80",
+              "role": "AXButton",
+              "name": "Item 80"
+            },
+            {
+              "id": "item-81",
+              "role": "AXButton",
+              "name": "Item 81"
+            },
+            {
+              "id": "item-82",
+              "role": "AXButton",
+              "name": "Item 82"
+            },
+            {
+              "id": "item-83",
+              "role": "AXButton",
+              "name": "Item 83"
+            },
+            {
+              "id": "item-84",
+              "role": "AXButton",
+              "name": "Item 84"
+            },
+            {
+              "id": "item-85",
+              "role": "AXButton",
+              "name": "Item 85"
+            },
+            {
+              "id": "item-86",
+              "role": "AXButton",
+              "name": "Item 86"
+            },
+            {
+              "id": "item-87",
+              "role": "AXButton",
+              "name": "Item 87"
+            },
+            {
+              "id": "item-88",
+              "role": "AXButton",
+              "name": "Item 88"
+            },
+            {
+              "id": "item-89",
+              "role": "AXButton",
+              "name": "Item 89"
+            },
+            {
+              "id": "item-90",
+              "role": "AXButton",
+              "name": "Item 90"
+            },
+            {
+              "id": "item-91",
+              "role": "AXButton",
+              "name": "Item 91"
+            },
+            {
+              "id": "item-92",
+              "role": "AXButton",
+              "name": "Item 92"
+            },
+            {
+              "id": "item-93",
+              "role": "AXButton",
+              "name": "Item 93"
+            },
+            {
+              "id": "item-94",
+              "role": "AXButton",
+              "name": "Item 94"
+            },
+            {
+              "id": "item-95",
+              "role": "AXButton",
+              "name": "Item 95"
+            },
+            {
+              "id": "item-96",
+              "role": "AXButton",
+              "name": "Item 96"
+            },
+            {
+              "id": "item-97",
+              "role": "AXButton",
+              "name": "Item 97"
+            },
+            {
+              "id": "item-98",
+              "role": "AXButton",
+              "name": "Item 98"
+            },
+            {
+              "id": "item-99",
+              "role": "AXButton",
+              "name": "Item 99"
+            },
+            {
+              "id": "item-100",
+              "role": "AXButton",
+              "name": "Item 100"
+            },
+            {
+              "id": "item-101",
+              "role": "AXButton",
+              "name": "Item 101"
+            },
+            {
+              "id": "item-102",
+              "role": "AXButton",
+              "name": "Item 102"
+            },
+            {
+              "id": "item-103",
+              "role": "AXButton",
+              "name": "Item 103"
+            },
+            {
+              "id": "item-104",
+              "role": "AXButton",
+              "name": "Item 104"
+            },
+            {
+              "id": "item-105",
+              "role": "AXButton",
+              "name": "Item 105"
+            },
+            {
+              "id": "item-106",
+              "role": "AXButton",
+              "name": "Item 106"
+            },
+            {
+              "id": "item-107",
+              "role": "AXButton",
+              "name": "Item 107"
+            },
+            {
+              "id": "item-108",
+              "role": "AXButton",
+              "name": "Item 108"
+            },
+            {
+              "id": "item-109",
+              "role": "AXButton",
+              "name": "Item 109"
+            },
+            {
+              "id": "item-110",
+              "role": "AXButton",
+              "name": "Item 110"
+            },
+            {
+              "id": "item-111",
+              "role": "AXButton",
+              "name": "Item 111"
+            },
+            {
+              "id": "item-112",
+              "role": "AXButton",
+              "name": "Item 112"
+            },
+            {
+              "id": "item-113",
+              "role": "AXButton",
+              "name": "Item 113"
+            },
+            {
+              "id": "item-114",
+              "role": "AXButton",
+              "name": "Item 114"
+            },
+            {
+              "id": "item-115",
+              "role": "AXButton",
+              "name": "Item 115"
+            },
+            {
+              "id": "item-116",
+              "role": "AXButton",
+              "name": "Item 116"
+            },
+            {
+              "id": "item-117",
+              "role": "AXButton",
+              "name": "Item 117"
+            },
+            {
+              "id": "item-118",
+              "role": "AXButton",
+              "name": "Item 118"
+            },
+            {
+              "id": "item-119",
+              "role": "AXButton",
+              "name": "Item 119"
+            },
+            {
+              "id": "item-120",
+              "role": "AXButton",
+              "name": "Item 120"
+            },
+            {
+              "id": "item-121",
+              "role": "AXButton",
+              "name": "Item 121"
+            },
+            {
+              "id": "item-122",
+              "role": "AXButton",
+              "name": "Item 122"
+            },
+            {
+              "id": "item-123",
+              "role": "AXButton",
+              "name": "Item 123"
+            },
+            {
+              "id": "item-124",
+              "role": "AXButton",
+              "name": "Item 124"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 list\n\t1 button Item 0\n\t2 button Item 1\n\t3 button Item 2\n\t4 button Item 3\n\t5 button Item 4\n\t6 button Item 5\n\t7 button Item 6\n\t8 button Item 7\n\t9 button Item 8\n\t10 button Item 9\n\t11 button Item 10\n\t12 button Item 11\n\t13 button Item 12\n\t14 button Item 13\n\t15 button Item 14\n\t16 button Item 15\n\t17 button Item 16\n\t18 button Item 17\n\t19 button Item 18\n\t20 button Item 19\n\t21 button Item 20\n\t22 button Item 21\n\t23 button Item 22\n\t24 button Item 23\n\t25 button Item 24\n\t26 button Item 25\n\t27 button Item 26\n\t28 button Item 27\n\t29 button Item 28\n\t30 button Item 29\n\t31 button Item 30\n\t32 button Item 31\n\t33 button Item 32\n\t34 button Item 33\n\t35 button Item 34\n\t36 button Item 35\n\t37 button Item 36\n\t38 button Item 37\n\t39 button Item 38\n\t40 button Item 39\n\t41 button Item 40\n\t42 button Item 41\n\t43 button Item 42\n\t44 button Item 43\n\t45 button Item 44\n\t46 button Item 45\n\t47 button Item 46\n\t48 button Item 47\n\t49 button Item 48\n\t50 button Item 49\n\t51 button Item 50\n\t52 button Item 51\n\t53 button Item 52\n\t54 button Item 53\n\t55 button Item 54\n\t56 button Item 55\n\t57 button Item 56\n\t58 button Item 57\n\t59 button Item 58\n\t60 button Item 59\n\t61 button Item 60\n\t62 button Item 61\n\t63 button Item 62\n\t64 button Item 63\n\t65 button Item 64\n\t66 button Item 65\n\t67 button Item 66\n\t68 button Item 67\n\t69 button Item 68\n\t70 button Item 69\n\t71 button Item 70\n\t72 button Item 71\n\t73 button Item 72\n\t74 button Item 73\n\t75 button Item 74\n\t76 button Item 75\n\t77 button Item 76\n\t78 button Item 77\n\t79 button Item 78\n\t80 button Item 79\n\t81 button Item 80\n\t82 button Item 81\n\t83 button Item 82\n\t84 button Item 83\n\t85 button Item 84\n\t86 button Item 85\n\t87 button Item 86\n\t88 button Item 87\n\t89 button Item 88\n\t90 button Item 89\n\t91 button Item 90\n\t92 button Item 91\n\t93 button Item 92\n\t94 button Item 93\n\t95 button Item 94\n\t96 button Item 95\n\t97 button Item 96\n\t98 button Item 97\n\t99 button Item 98\n\t100 button Item 99\n\t101 button Item 100\n\t102 button Item 101\n\t103 button Item 102\n\t104 button Item 103\n\t105 button Item 104\n\t106 button Item 105\n\t107 button Item 106\n\t108 button Item 107\n\t109 button Item 108\n\t110 button Item 109\n\t111 button Item 110\n\t112 button Item 111\n\t113 button Item 112\n\t114 button Item 113\n\t115 button Item 114\n\t116 button Item 115\n\t117 button Item 116\n\t118 button Item 117\n\t119 button Item 118\n\t120 button Item 119\n</app_state>",
+      "elementIdsByIndex": [
+        "list",
+        "item-0",
+        "item-1",
+        "item-2",
+        "item-3",
+        "item-4",
+        "item-5",
+        "item-6",
+        "item-7",
+        "item-8",
+        "item-9",
+        "item-10",
+        "item-11",
+        "item-12",
+        "item-13",
+        "item-14",
+        "item-15",
+        "item-16",
+        "item-17",
+        "item-18",
+        "item-19",
+        "item-20",
+        "item-21",
+        "item-22",
+        "item-23",
+        "item-24",
+        "item-25",
+        "item-26",
+        "item-27",
+        "item-28",
+        "item-29",
+        "item-30",
+        "item-31",
+        "item-32",
+        "item-33",
+        "item-34",
+        "item-35",
+        "item-36",
+        "item-37",
+        "item-38",
+        "item-39",
+        "item-40",
+        "item-41",
+        "item-42",
+        "item-43",
+        "item-44",
+        "item-45",
+        "item-46",
+        "item-47",
+        "item-48",
+        "item-49",
+        "item-50",
+        "item-51",
+        "item-52",
+        "item-53",
+        "item-54",
+        "item-55",
+        "item-56",
+        "item-57",
+        "item-58",
+        "item-59",
+        "item-60",
+        "item-61",
+        "item-62",
+        "item-63",
+        "item-64",
+        "item-65",
+        "item-66",
+        "item-67",
+        "item-68",
+        "item-69",
+        "item-70",
+        "item-71",
+        "item-72",
+        "item-73",
+        "item-74",
+        "item-75",
+        "item-76",
+        "item-77",
+        "item-78",
+        "item-79",
+        "item-80",
+        "item-81",
+        "item-82",
+        "item-83",
+        "item-84",
+        "item-85",
+        "item-86",
+        "item-87",
+        "item-88",
+        "item-89",
+        "item-90",
+        "item-91",
+        "item-92",
+        "item-93",
+        "item-94",
+        "item-95",
+        "item-96",
+        "item-97",
+        "item-98",
+        "item-99",
+        "item-100",
+        "item-101",
+        "item-102",
+        "item-103",
+        "item-104",
+        "item-105",
+        "item-106",
+        "item-107",
+        "item-108",
+        "item-109",
+        "item-110",
+        "item-111",
+        "item-112",
+        "item-113",
+        "item-114",
+        "item-115",
+        "item-116",
+        "item-117",
+        "item-118",
+        "item-119"
+      ],
+      "focusedElementIndex": null,
+      "nodeCount": 121,
+      "truncationReasons": [
+        "max_children_per_node"
+      ]
+    }
+  },
+  {
+    "name": "other-space",
+    "input": {
+      "app": "Notes",
+      "appDisplayName": "Notes",
+      "bundleId": "com.apple.Notes",
+      "pid": 42,
+      "appPath": "/System/Applications/Notes.app",
+      "windowTitle": "Example",
+      "snapshotId": "fixture",
+      "windowOnCurrentSpace": false,
+      "currentSpaceId": 1,
+      "windowSpaceIds": [
+        2,
+        3
+      ],
+      "elements": [
+        {
+          "id": "window",
+          "role": "AXWindow",
+          "name": "Elsewhere",
+          "children": [
+            {
+              "id": "text",
+              "role": "AXStaticText",
+              "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\nWindow is on another macOS Space (current Space 1, window Spaces 2, 3). Screenshot capture can still work, but macOS may expose only a reduced Accessibility tree until the window is moved to the current Space.\n0 standard window Elsewhere\n\t1 text xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...\n</app_state>",
+      "elementIdsByIndex": [
+        "window",
+        "text"
+      ],
+      "focusedElementIndex": null,
+      "nodeCount": 2,
+      "truncationReasons": null
+    }
+  }
+]
