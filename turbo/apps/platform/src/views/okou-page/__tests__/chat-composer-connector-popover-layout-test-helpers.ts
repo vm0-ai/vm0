@@ -21,7 +21,7 @@ interface ConnectorPopoverLayoutOptions {
   };
 }
 
-export interface ConnectorPopoverLayout {
+interface ConnectorPopoverLayout {
   readonly notifyResize: () => void;
 }
 

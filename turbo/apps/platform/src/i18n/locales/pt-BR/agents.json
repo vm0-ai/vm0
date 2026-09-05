@@ -36,6 +36,8 @@
     },
     "create": "Criar avatar personalizado",
     "description": "Escolha um estilo ou embaralhe para ter uma surpresa.",
+    "editDescription": "Ajuste qualquer detalhe ou embaralhe para um novo visual.",
+    "editTitle": "Editar avatar",
     "intensity": {
       "chill": "Tranquilo",
       "hyped": "Animado",

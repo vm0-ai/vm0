@@ -85,7 +85,7 @@ const MAX_URL_PORT = 65_535;
 // port: https://app.vm7.ai:8443 + "www" -> https://www.vm7.ai:8443. No
 // environment fallback — a wrong-environment URL is silent and sticks, while
 // an error here surfaces the actual bug.
-export function deriveServiceOrigin(
+function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
   primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain(),
@@ -99,15 +99,6 @@ export function deriveServiceOrigin(
     return currentUrl.origin;
   }
   return derivePlatformServiceOrigin(currentOrigin, service);
-}
-
-// The WWW origin sibling of the current host.
-export function resolveWebOrigin(): string {
-  const origin = location.origin;
-  if (!origin || origin === "null") {
-    throw new Error("Cannot resolve the www origin without a browser origin");
-  }
-  return deriveServiceOrigin(origin, "www");
 }
 
 function resolveAppOrigin(): string {
@@ -158,24 +149,8 @@ function parseUrl(value: string): URL | null {
   return new URL(trimmed);
 }
 
-export function resolveAppUrl(): string {
+function resolveAppUrl(): string {
   return resolveAppOrigin();
-}
-
-export function resolveWebAuthUrl(
-  path: `/sign-${string}`,
-  options: { redirectUrl?: string } = {},
-): string {
-  const webOrigin = resolveWebOrigin();
-  if (!webOrigin) {
-    return path;
-  }
-  const url = new URL(path, webOrigin);
-  if (options.redirectUrl) {
-    url.searchParams.set("redirect_url", options.redirectUrl);
-  }
-  appendCapturedPreviewBypassToUrl(url);
-  return url.toString();
 }
 
 export function resolveAppAuthUrl(
@@ -265,7 +240,7 @@ function resolveSatelliteAuthRouteNavigation(
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
 // and api siblings. Production also includes the satellite domain family and
 // primary app so Clerk can safely return between app.vm0.ai and *.okou.ai.
-export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
+function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   const self = resolveAppOrigin();
   if (!self) {
     return [];

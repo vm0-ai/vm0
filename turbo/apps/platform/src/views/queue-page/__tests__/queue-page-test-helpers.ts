@@ -42,7 +42,7 @@ export function billingStatus(
   };
 }
 
-export interface QueuePageFixture {
+interface QueuePageFixture {
   readonly setBillingStatus: (status: BillingStatusResponse) => void;
   readonly setQueueResponse: (response: QueueResponse) => void;
 }

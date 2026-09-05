@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.46.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.10...desktop-v0.46.11) (2026-09-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.403.0
+
+## [0.46.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.9...desktop-v0.46.10) (2026-09-04)
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.2
+
 ## [0.46.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.8...desktop-v0.46.9) (2026-09-04)
 
 

@@ -17,6 +17,8 @@ import {
   mockOrgModelRoutes,
 } from "../../views/okou-page/__tests__/chat-composer-test-helpers.ts";
 
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+
 test("A signed-in workspace receives its enabled features", async () => {
   mockOrgModelRoutes("claude-sonnet-4-6");
   mockAgent();
@@ -36,6 +38,63 @@ test("A signed-in workspace receives its enabled features", async () => {
   await expect(
     screen.findByTestId("intro-video-start-card"),
   ).resolves.toBeVisible();
+});
+
+async function setupIntroVideoRolloutPage(args: {
+  readonly email: string;
+  readonly fullName: string;
+  readonly userId: string;
+}) {
+  mockOrgModelRoutes("claude-sonnet-4-6");
+  mockAgent();
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    return respond(200, {
+      switches: {},
+      effectiveSwitches: {
+        [FeatureSwitchKey.BaseUiSidebarScrollArea]: false,
+        [FeatureSwitchKey.IntroVideo]: false,
+      },
+    });
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: { id: args.userId, fullName: args.fullName, email: args.email },
+      organization: {
+        activeOrg: { id: STAFF_ORG_ID, name: "Staff" },
+        memberships: [{ id: STAFF_ORG_ID }],
+      },
+    },
+    cachedFeatureSwitches: {
+      [FeatureSwitchKey.IntroVideo]: false,
+    },
+  });
+
+  await screen.findByRole("textbox", { name: "Message" });
+}
+
+test("Bingjie retains the intro video rollout after hydration", async () => {
+  await setupIntroVideoRolloutPage({
+    email: "BINGJIE@VM0.AI",
+    fullName: "Bingjie",
+    userId: "user_bingjie",
+  });
+
+  await expect(
+    screen.findByTestId("intro-video-start-card"),
+  ).resolves.toBeVisible();
+});
+
+test("another staff member does not receive the intro video rollout", async () => {
+  await setupIntroVideoRolloutPage({
+    email: "ethan@vm0.ai",
+    fullName: "Another staff member",
+    userId: "user_other_staff",
+  });
+
+  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
 });
 
 test("Image recognition remains available by default", async () => {

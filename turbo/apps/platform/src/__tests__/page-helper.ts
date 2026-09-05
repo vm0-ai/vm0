@@ -4,7 +4,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
-import { mockedClerk, type mockOrganization, type mockUser } from "./mock-auth";
+import type { mockOrganization, mockUser } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
@@ -34,7 +34,7 @@ import {
 } from "../i18n/resources.ts";
 import { initializeI18n } from "../i18n/index.ts";
 
-export const TEST_APP_VERSION = "0.540.0";
+const TEST_APP_VERSION = "0.540.0";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -96,7 +96,7 @@ export type SetupPageAuth = null | {
   readonly session?: MockedSession | null;
 };
 
-export interface SetupPageOptions {
+interface SetupPageOptions {
   readonly appVersion?: string;
   readonly context: TestContext;
   readonly path: string;
@@ -266,7 +266,6 @@ async function setupPageAsync(
     setupSharedWorkerTestBootstrap$,
     {
       appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
-      clerk: Promise.resolve(mockedClerk),
       workerStore: options.context.workerStore,
       identity:
         auth.user && activeOrgId
@@ -370,7 +369,7 @@ function waitForFirstPageContent(signal: AbortSignal): {
   };
 }
 
-export interface StartedPage {
+interface StartedPage {
   readonly ready: Promise<void>;
 }
 

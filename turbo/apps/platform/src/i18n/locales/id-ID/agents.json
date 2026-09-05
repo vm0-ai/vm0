@@ -36,6 +36,8 @@
     },
     "create": "Buat avatar kustom",
     "description": "Pilih gaya atau tekan acak untuk kejutan.",
+    "editDescription": "Ubah bagian mana pun, atau tekan acak untuk tampilan baru.",
+    "editTitle": "Edit avatar",
     "intensity": {
       "chill": "Santai",
       "hyped": "Semangat",

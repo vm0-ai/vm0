@@ -287,15 +287,19 @@ pub struct SupervisedExecRequest<'a> {
     /// `Some` is valid only when stdout or stderr streams; zero and oversized
     /// capacities are rejected.
     pub stream_queue_capacity: Option<usize>,
-    /// Maximum total host-side time to write the start frame and wait for the
-    /// guest `exec_started` acknowledgement.
+    /// Maximum total host-side time to write the start frame and wait for
+    /// `MSG_EXEC_STARTED` for Workloads or `MSG_EXEC_AGENT_READY` for Agents.
+    ///
+    /// An Agent first sends `MSG_EXEC_STARTED`, but that PID acknowledgement
+    /// does not complete the start or restart the original deadline. The Agent
+    /// must send `MSG_EXEC_AGENT_READY` before that deadline expires.
     ///
     /// If this elapses before the complete start frame is written, no cancel
-    /// frame is sent. If it elapses while waiting for the acknowledgement after
-    /// a complete write, the host sends `MSG_EXEC_CANCEL` for the operation
-    /// before returning a timeout error. If that cancel frame cannot be written
-    /// within the bounded fallback window, the connection is poisoned because
-    /// the guest process state is no longer known.
+    /// frame is sent. If it elapses while waiting for the role-specific start
+    /// event after a complete write, the host sends `MSG_EXEC_CANCEL` for the
+    /// operation before returning a timeout error. If that cancel frame cannot
+    /// be written within the bounded fallback window, the connection is
+    /// poisoned because the guest process state is no longer known.
     ///
     /// A successful start-timeout cancellation still abandons terminal proof
     /// for this operation, so the connection should not be reused for later

@@ -13,6 +13,7 @@ import {
   type LegacyAvatarSvgConfig,
   type ResolvedAvatarSvgConfig,
 } from "../../../views/okou-page/avatar-svg-utils.ts";
+import { resolveAvatarSvgConfig } from "../../../views/okou-page/avatar-utils.ts";
 import {
   avatarNeckSweaterEnabled$,
   featureSwitch$,
@@ -134,6 +135,12 @@ export const avatarMakerStep$ = computed((get) => {
   return get(internalStep$);
 });
 
+/** True when the maker was opened on an avatar that already exists. */
+const internalEditing$ = state(false);
+export const avatarMakerEditing$ = computed((get) => {
+  return get(internalEditing$);
+});
+
 export const avatarMakerSteps$ = computed((get) => {
   return stepsForConfig(get(internalConfig$), get(avatarNeckSweaterEnabled$));
 });
@@ -182,19 +189,34 @@ export const shuffleAvatar$ = command(
   },
 );
 
-export const openAvatarMaker$ = command(({ get, set }) => {
-  const composerEnabled =
-    get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2];
-  set(
-    internalConfig$,
-    composerEnabled ? randomAvatarSvgConfig() : randomLegacyAvatarSvgConfig(),
-  );
-  set(internalStep$, composerEnabled ? "face" : "rotation");
-  set(internalJustPicked$, null);
-  set(internalShowSparkles$, false);
-  set(internalShuffling$, false);
-  set(internalOpen$, true);
-});
+/**
+ * Opens the maker on the avatar the caller currently shows. An avatar that can
+ * be resolved is loaded as-is so it can be fine-tuned; only callers without one
+ * start from a random config. The steps follow the loaded config, so a legacy
+ * avatar keeps being edited in the legacy steps even once the composer ships.
+ */
+export const openAvatarMaker$ = command(
+  ({ get, set }, avatarUrl: string | null) => {
+    const composerEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2];
+    const current = resolveAvatarSvgConfig(avatarUrl);
+    const config =
+      current ??
+      (composerEnabled
+        ? randomAvatarSvgConfig()
+        : randomLegacyAvatarSvgConfig());
+    set(internalConfig$, config);
+    set(
+      internalStep$,
+      stepsForConfig(config, get(avatarNeckSweaterEnabled$))[0]!,
+    );
+    set(internalEditing$, current !== null);
+    set(internalJustPicked$, null);
+    set(internalShowSparkles$, false);
+    set(internalShuffling$, false);
+    set(internalOpen$, true);
+  },
+);
 
 export const selectAvatarOption$ = command(
   async (

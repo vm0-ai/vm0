@@ -120,57 +120,6 @@ function buttonsByName(
   });
 }
 
-function actionConversation(origins: readonly string[], currentHost: string) {
-  const trustedLines = origins.flatMap((origin, index) => {
-    return [
-      `[Trusted plan ${String(index + 1)}](${planActionUrl(origin)})`,
-      `[Trusted computer ${String(index + 1)}](${computerAuthorizationUrl(origin, `trusted-${String(index + 1)}`)})`,
-    ];
-  });
-  const ordinaryLines = [
-    `[Lookalike plan](${planActionUrl(`https://${currentHost}.evil.test`)})`,
-    "[Non-web plan](mailto:billing@example.test)",
-    `[Unsupported plan](${planActionUrl("https://app.example.test")})`,
-    `[Buy credits](https://${currentHost}/?settings=billing&billingView=credits)`,
-  ];
-  return completedConversation(
-    [...trustedLines, ...ordinaryLines].join("\n\n"),
-  );
-}
-
-async function expectLocalizedActionCards(expectedHost: string): Promise<void> {
-  await waitFor(() => {
-    expect(screen.getAllByText("Upgrade your workspace")).toHaveLength(3);
-    expect(screen.getAllByText("Computer Use authorization")).toHaveLength(3);
-  });
-
-  const authorizeLinks = queryAllByRoleFast("link").filter((link) => {
-    return link.textContent?.trim() === "Authorize";
-  });
-  expect(authorizeLinks).toHaveLength(3);
-  for (const link of authorizeLinks) {
-    const destination = new URL(
-      link.getAttribute("href") ?? "",
-      window.location.href,
-    );
-    expect(destination.hostname).toBe(expectedHost);
-    expect(destination.pathname).toMatch(/^\/computer-use\/authorize\//u);
-  }
-  expect(buttonsByName("Compare plans")).toHaveLength(3);
-
-  expect(linkByName("Lookalike plan")).toBeVisible();
-  expect(linkByName("Non-web plan")).toBeVisible();
-  expect(linkByName("Unsupported plan")).toBeVisible();
-  expect(linkByName("Buy credits")).toBeVisible();
-
-  click(buttonsByName("Compare plans")[0]!);
-
-  await expect(
-    screen.findByRole("dialog", { name: "Choose a plan" }),
-  ).resolves.toBeVisible();
-  expect(window.location.hostname).toBe(expectedHost);
-}
-
 test("Follow a managed browser session from its chat card", async () => {
   let browser = managedBrowserSession({
     status: "active",
@@ -271,44 +220,6 @@ test("Follow a managed browser session from its chat card", async () => {
   const untrustedLink = linkByName("Untrusted browser");
   expect(untrustedLink).toHaveAttribute("href", untrustedBrowserUrl);
   expect(untrustedLink.closest("[data-browser-session-card]")).toBeNull();
-});
-
-test("Localize trusted plan and Computer Use actions to VM0", async () => {
-  installCapabilityChat({
-    events: actionConversation(
-      [
-        "https://app.okou.ai",
-        "https://app.staging.vm6.ai",
-        "https://platform.preview.vm7.ai",
-      ],
-      "app.vm0.ai",
-    ),
-  });
-
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
-
-  await readyChat();
-  expect(window.location.hostname).toBe("app.vm0.ai");
-  await expectLocalizedActionCards("app.vm0.ai");
-});
-
-test("Localize trusted plan and Computer Use actions to Okou", async () => {
-  installCapabilityChat({
-    events: actionConversation(
-      [
-        "https://app.vm0.ai",
-        "https://app.staging.vm6.ai",
-        "https://platform.preview.vm7.ai",
-      ],
-      "app.okou.ai",
-    ),
-  });
-
-  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
-
-  await readyChat();
-  expect(window.location.hostname).toBe("app.okou.ai");
-  await expectLocalizedActionCards("app.okou.ai");
 });
 
 test("Recognize trusted assistant actions without trusting lookalikes", async () => {

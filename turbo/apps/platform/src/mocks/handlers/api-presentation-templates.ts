@@ -1,13 +1,10 @@
 import {
   presentationTemplatesContract,
-  PRESENTATION_TEMPLATE_URL_TTL_SECONDS,
   type PresentationTemplateCatalogEntry,
   type PresentationTemplateDetail,
-  type PresentationTemplatePreviewAsset,
   type PresentationTemplateSummary,
 } from "@okouai/api-contracts/contracts/presentation-templates";
 
-import { now } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
 
 /**
@@ -15,33 +12,6 @@ import { mockApi } from "../msw-contract.ts";
  * also what the picker shows for everyone who has never used the feature.
  */
 let mockPresentationTemplates: PresentationTemplateDetail[] = [];
-
-type MockPresentationTemplateDetail = Omit<
-  PresentationTemplateDetail,
-  "previewAssets"
-> & {
-  readonly previewAssets?: readonly PresentationTemplatePreviewAsset[];
-};
-
-function detail(
-  template: MockPresentationTemplateDetail,
-): PresentationTemplateDetail {
-  return {
-    ...template,
-    previewAssets:
-      template.previewAssets === undefined
-        ? template.pageUrls.map((url, index) => {
-            return {
-              previewAssetId: `ptp:${template.id}:mock-${index.toString()}`,
-              url,
-              expiresAt: new Date(
-                now() + PRESENTATION_TEMPLATE_URL_TTL_SECONDS * 1000,
-              ).toISOString(),
-            };
-          })
-        : [...template.previewAssets],
-  };
-}
 
 function summary(
   template: PresentationTemplateDetail,
@@ -72,12 +42,6 @@ function notFound(templateId: string) {
 
 export function resetMockPresentationTemplates(): void {
   mockPresentationTemplates = [];
-}
-
-export function setMockPresentationTemplates(
-  templates: readonly MockPresentationTemplateDetail[],
-): void {
-  mockPresentationTemplates = templates.map(detail);
 }
 
 export const apiPresentationTemplatesHandlers = [

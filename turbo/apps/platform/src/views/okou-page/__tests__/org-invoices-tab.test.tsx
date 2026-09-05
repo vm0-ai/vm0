@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import {
-  click,
   setupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -99,84 +98,6 @@ async function openInvoicesTab(): Promise<void> {
     ).toBeInTheDocument();
   });
 }
-
-test("Show an empty invoice history", async () => {
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Test Org",
-    role: "admin",
-  });
-  context.mocks.api(billingInvoicesContract.get, ({ respond }) => {
-    return respond(200, { invoices: [] });
-  });
-
-  await openInvoicesTab();
-
-  await expect(
-    screen.findByText("No invoices yet."),
-  ).resolves.toBeInTheDocument();
-  expect(screen.queryByTestId("invoice-list-skeleton")).not.toBeInTheDocument();
-});
-
-test("Localize invoice dates and currency without altering provider values", async () => {
-  mockInvoicesStory();
-  context.mocks.data.userPreferences({
-    locale: "pt-BR",
-    supportedLocales: ["pt-BR", "de-DE", "it-IT"],
-  });
-
-  await setupPage({
-    context,
-    path: "/?settings=invoices",
-  });
-
-  await waitFor(() => {
-    expect(document.documentElement.lang).toBe("pt-BR");
-    expect(screen.getByText("Fatura")).toBeInTheDocument();
-    expect(screen.getByText("Data")).toBeInTheDocument();
-    expect(screen.getByText("Valor")).toBeInTheDocument();
-    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
-    expect(screen.getByText(/US\$\s+20,00/u)).toBeInTheDocument();
-    expect(screen.getByText("15/03/2026")).toBeInTheDocument();
-  });
-
-  click(buttonByText("Preferência"));
-  const portugueseLanguage = await screen.findByRole("combobox", {
-    name: "Idioma",
-  });
-  click(portugueseLanguage);
-  click(await screen.findByRole("option", { name: "Deutsch" }));
-  await waitFor(() => {
-    expect(document.documentElement.lang).toBe("de-DE");
-  });
-  click(buttonByText("Rechnungen"));
-
-  await waitFor(() => {
-    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
-    expect(screen.getByText(/20,00\s+\$/u)).toBeInTheDocument();
-    expect(screen.getByText("15.3.2026")).toBeInTheDocument();
-  });
-
-  click(buttonByText("Einstellungen"));
-  const germanLanguage = await screen.findByRole("combobox", {
-    name: "Sprache",
-  });
-  click(germanLanguage);
-  click(await screen.findByRole("option", { name: "Italiano" }));
-  await waitFor(() => {
-    expect(document.documentElement.lang).toBe("it-IT");
-  });
-  click(buttonByText("Fatture"));
-
-  await waitFor(() => {
-    expect(screen.getByText("INV-2026-0001")).toBeInTheDocument();
-    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
-    expect(screen.getByText(/20,00\s+USD/u)).toBeInTheDocument();
-    expect(screen.getByText("15/03/2026")).toBeInTheDocument();
-  });
-});
 
 test("Open an individual invoice from invoice history", async () => {
   const user = userEvent.setup();

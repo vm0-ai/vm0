@@ -9,7 +9,6 @@ import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 
 import {
   escapeHtmlTags,
-  markdownCardKey,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
 import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
@@ -240,7 +239,7 @@ const PLAIN_MARKDOWN_COMPONENTS = {
   div: MarkdownDivRenderer,
 } as const;
 
-export const MEDIA_MARKDOWN_COMPONENTS = {
+const MEDIA_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
@@ -336,4 +335,3 @@ export function Markdown({
 // The signal layer loads this module as the single rich-content boundary, so
 // parsing and rendering arrive together instead of creating a second network
 // waterfall after a rich tree has been prepared.
-export { markdownCardKey, parseMarkdownTree };

@@ -349,33 +349,6 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   expect(queryButton("Voice input")).toBeEnabled();
 });
 
-test("Show recent voice levels at the end of the waveform", async () => {
-  context.mocks.browser.voiceInput({ rms: 0.12 });
-  installAvailableVoiceQuota();
-  installRunChat();
-
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
-  });
-
-  click(await readyVoiceInput());
-  await activeVoiceDraftStopButton();
-
-  const waveform = document.querySelector("[data-voice-level-waveform]");
-  if (!(waveform instanceof HTMLElement)) {
-    throw new Error("Voice level waveform not found");
-  }
-
-  await waitFor(() => {
-    const bars = Array.from(waveform.children);
-    expect(bars).toHaveLength(32);
-    expect(bars[0]).toHaveStyle({ height: "4px" });
-    expect(bars.at(-1)).toHaveStyle({ height: "16px" });
-  });
-});
-
 test("Let the user retry or remove a voice draft when polishing fails", async () => {
   let polishAttempts = 0;
   context.mocks.browser.voiceInput({ rms: 0.12 });

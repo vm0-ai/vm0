@@ -357,6 +357,9 @@ interface CalendarWatchRecorder {
   baselineCalls: number;
   incrementalCalls: number;
   readonly channelIds: string[];
+  readonly eventListRequests: {
+    readonly syncToken: string | null;
+  }[];
 }
 
 interface CalendarWatchRegistration {
@@ -413,6 +416,7 @@ function configureGoogleCalendarWatchMock(args?: {
     baselineCalls: 0,
     incrementalCalls: 0,
     channelIds: [],
+    eventListRequests: [],
   };
   const calendarId = args?.calendarId ?? "primary";
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
@@ -467,9 +471,9 @@ function configureGoogleCalendarWatchMock(args?: {
         expect(url.searchParams.get("showDeleted")).toBe("true");
         expect(url.searchParams.get("maxResults")).toBe("2500");
         const syncToken = url.searchParams.get("syncToken");
+        recorder.eventListRequests.push({ syncToken });
         if (syncToken) {
           recorder.incrementalCalls += 1;
-          expect(syncToken).toBe("calendar-sync-baseline");
           return HttpResponse.json({
             items: args?.incrementalItems ?? [],
             nextSyncToken: "calendar-sync-incremental",
@@ -1177,14 +1181,36 @@ describe("okou workflow automations", () => {
       ),
     ]);
 
-    if (created.status === 201) {
-      await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+    const readBack =
+      created.status === 201
+        ? await wf.readAutomation(created.body.id)
+        : undefined;
+    if (
+      readBack !== undefined &&
+      (readBack.kind !== "event" || readBack.eventType !== "webhook-received")
+    ) {
+      throw new Error("Expected a webhook automation");
+    }
+    const outcome = {
+      status: created.status,
+      enabled: readBack?.enabled,
+      disabledReason: readBack?.disabledReason,
+      errorCode: created.status === 402 ? created.body.error.code : undefined,
+    };
+    expect([
+      {
+        status: 201,
         enabled: false,
         disabledReason: "paid_plan_required",
-      });
-    } else {
-      expect(created.body.error.code).toBe("TEAM_REQUIRED");
-    }
+        errorCode: undefined,
+      },
+      {
+        status: 402,
+        enabled: undefined,
+        disabledReason: undefined,
+        errorCode: "TEAM_REQUIRED",
+      },
+    ]).toContainEqual(outcome);
   });
 
   it("lists owned workflow automations across visible workflows", async () => {
@@ -1476,14 +1502,29 @@ describe("okou workflow automations", () => {
     ]);
 
     const after = await wf.readAutomation(created.body.id);
-    expect(after.enabled).toBeFalsy();
-    if (enabled.status === 200) {
-      expect(after).toMatchObject({
-        disabledReason: "paid_plan_required",
-      });
-    } else {
-      expect(enabled.body.error.code).toBe("TEAM_REQUIRED");
+    if (after.kind !== "event" || after.eventType !== "webhook-received") {
+      throw new Error("Expected a webhook automation");
     }
+    const outcome = {
+      status: enabled.status,
+      enabled: after.enabled,
+      disabledReason: enabled.status === 200 ? after.disabledReason : undefined,
+      errorCode: enabled.status === 402 ? enabled.body.error.code : undefined,
+    };
+    expect([
+      {
+        status: 200,
+        enabled: false,
+        disabledReason: "paid_plan_required",
+        errorCode: undefined,
+      },
+      {
+        status: 402,
+        enabled: false,
+        disabledReason: undefined,
+        errorCode: "TEAM_REQUIRED",
+      },
+    ]).toContainEqual(outcome);
   });
 
   it("clears the plan-disabled reason without rotating webhook credentials", async () => {
@@ -2792,11 +2833,15 @@ describe("okou workflow automations", () => {
     expect(created.body.chatThreadId).toBeTruthy();
 
     // The provider watch was registered once and the baseline event snapshot
-    // sync ran once (the mock asserts calendar id, token, and sync params).
+    // sync ran once. The mock asserts the calendar id and shared sync params;
+    // this test owns the recorded sync-token assertion below.
     // Baseline semantics — pre-existing events never dispatch runs — are
     // covered by webhooks-google-calendar.test.ts.
     expect(watchRecorder.watchCalls).toBe(1);
     expect(watchRecorder.baselineCalls).toBe(1);
+    expect(watchRecorder.eventListRequests).toStrictEqual([
+      { syncToken: null },
+    ]);
   });
 
   it("catches up Calendar changes from the channel startup sync", async () => {
@@ -2863,6 +2908,10 @@ describe("okou workflow automations", () => {
     ]);
     expect(watch.baselineCalls).toBe(1);
     expect(watch.incrementalCalls).toBe(1);
+    expect(watch.eventListRequests).toStrictEqual([
+      { syncToken: null },
+      { syncToken: "calendar-sync-baseline" },
+    ]);
     await runs.heartbeatRunner(runnerGroup);
     const job = await runs.pollRunner(runnerGroup);
     expect(job.body.job?.runId).toStrictEqual(expect.any(String));

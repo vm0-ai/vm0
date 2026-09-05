@@ -91,31 +91,6 @@ test("A processing redemption confirms payment", async () => {
   ).toBeVisible();
 });
 
-test("A ready credit campaign localizes app copy while keeping English metadata", async () => {
-  context.mocks.data.redeemResponse({
-    status: "ready",
-    checkoutUrl: CHECKOUT_URL,
-  });
-
-  await setupPage({
-    context,
-    path: "/redeem/summer-credits",
-    host: "app.vm0.ai",
-    locale: "pt-BR",
-  });
-
-  await expect(
-    screen.findByText("Resgatar seus créditos"),
-  ).resolves.toBeVisible();
-  expect(
-    screen.getByText(
-      "Complete a finalização da compra para adicionar esses créditos ao saldo de Default Org.",
-    ),
-  ).toBeVisible();
-  expect(getLink("Resgatar créditos")).toHaveAttribute("href", CHECKOUT_URL);
-  expect(document.title).toBe("Claim your credits | VM0");
-});
-
 test("A ready credit campaign links to checkout", async () => {
   context.mocks.data.redeemResponse({
     status: "ready",

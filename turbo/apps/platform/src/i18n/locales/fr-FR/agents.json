@@ -36,6 +36,8 @@
     },
     "create": "Créer un avatar personnalisé",
     "description": "Choisissez un style ou appuyez sur mélanger pour une surprise.",
+    "editDescription": "Ajustez chaque détail ou appuyez sur mélanger pour un nouveau look.",
+    "editTitle": "Modifier l’avatar",
     "intensity": {
       "chill": "Calme",
       "hyped": "Excité",

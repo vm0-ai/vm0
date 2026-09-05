@@ -47,6 +47,7 @@ import {
   type Step,
   avatarMakerOpen$,
   avatarMakerConfig$,
+  avatarMakerEditing$,
   avatarMakerStep$,
   avatarMakerSteps$,
   avatarMakerStepIdx$,
@@ -537,6 +538,7 @@ function AvatarMakerDialogBody({
 }) {
   const { t } = useTranslation("agents");
   const config = useGet(avatarMakerConfig$);
+  const editing = useGet(avatarMakerEditing$);
   const step = useGet(avatarMakerStep$);
   const justPicked = useGet(avatarMakerJustPicked$);
   const saving = useGet(avatarMakerSaving$);
@@ -545,6 +547,21 @@ function AvatarMakerDialogBody({
   const pageSignal = useGet(pageSignal$);
   const closeMaker = useSet(closeAvatarMaker$);
   const setSaving = useSet(setAvatarMakerSaving$);
+
+  const title = editing
+    ? t(($) => {
+        return $.avatar.editTitle;
+      })
+    : t(($) => {
+        return $.avatar.title;
+      });
+  const description = editing
+    ? t(($) => {
+        return $.avatar.editDescription;
+      })
+    : t(($) => {
+        return $.avatar.description;
+      });
 
   const handleConfirm = onDomEventFn(async () => {
     setSaving(true);
@@ -565,11 +582,7 @@ function AvatarMakerDialogBody({
       className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden"
     >
       <DialogHeader className="sr-only">
-        <DialogTitle>
-          {t(($) => {
-            return $.avatar.title;
-          })}
-        </DialogTitle>
+        <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
           {t(($) => {
             return $.avatar.accessibilityDescription;
@@ -585,16 +598,8 @@ function AvatarMakerDialogBody({
       {/* Controls section */}
       <div className="flex flex-col items-center gap-4 px-6 py-5">
         <div className="text-center">
-          <h2 className="text-base font-semibold">
-            {t(($) => {
-              return $.avatar.title;
-            })}
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {t(($) => {
-              return $.avatar.description;
-            })}
-          </p>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         </div>
         <StepNavigator />
         <div className="h-48 w-full overflow-y-auto px-1 py-1">
@@ -634,15 +639,24 @@ function AvatarMakerDialogBody({
 
 interface AvatarMakerProps {
   onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
+  /** Avatar to load for editing. Omit to start from a random avatar. */
+  avatarUrl?: string | null;
   /** Custom trigger element. Receives `openMaker` as `onClick`. When omitted, the default wand button is rendered. */
   trigger?: (openMaker: () => void) => React.ReactNode;
 }
 
-export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
+export function AvatarMaker({
+  onConfirm,
+  avatarUrl = null,
+  trigger,
+}: AvatarMakerProps) {
   const { t } = useTranslation("agents");
   const open = useGet(avatarMakerOpen$);
-  const openMaker = useSet(openAvatarMaker$);
+  const setOpenMaker = useSet(openAvatarMaker$);
   const closeMaker = useSet(closeAvatarMaker$);
+  const openMaker = () => {
+    setOpenMaker(avatarUrl);
+  };
 
   return (
     <>
@@ -670,9 +684,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={() => {
-                  return openMaker();
-                }}
+                onClick={openMaker}
                 className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 aria-label={t(($) => {
                   return $.avatar.create;
@@ -684,7 +696,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
             <TooltipContent side="bottom">
               <p className="text-xs">
                 {t(($) => {
-                  return $.avatar.actions.customize;
+                  return $.avatar.create;
                 })}
               </p>
             </TooltipContent>

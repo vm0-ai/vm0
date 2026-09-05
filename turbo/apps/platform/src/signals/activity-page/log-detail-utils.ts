@@ -1236,7 +1236,7 @@ function processUserEvent(
  * - TodoWrite operations create standalone "todo" type cards
  * - System and Result events remain independent
  */
-export function groupEventsIntoGroups(
+function groupEventsIntoGroups(
   events: AgentEvent[],
   options: GroupEventsIntoGroupsOptions = {},
 ): EventGroup[] {

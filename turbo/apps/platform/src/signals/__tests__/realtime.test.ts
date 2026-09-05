@@ -15,6 +15,7 @@ import {
 } from "../realtime.ts";
 import { clerk$, setupClerk$ } from "../auth.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
+import { readClerkToken } from "../clerk-token.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { setApiClientRuntime$ } from "../api-client-runtime.ts";
@@ -31,11 +32,15 @@ beforeEach(() => {
   context.mocks.clerk();
   context.store.set(initializeAppVersion$, __OKOU_APP_VERSION__);
   context.store.set(setRootSignal$, context.signal);
+  const clerk = context.store.get(clerk$);
   context.store.set(setApiClientRuntime$, {
-    environment: "app",
     apiBaseUrl: location.origin,
     oauthApiBaseUrl: location.origin,
-    clerk: context.store.get(clerk$),
+    getToken: async (signal) => {
+      const resolvedClerk = await clerk;
+      signal.throwIfAborted();
+      return await readClerkToken(resolvedClerk, signal);
+    },
   });
   context.store.set(setRealtimeDegradedNotifier$, () => {
     toast.error("Realtime connection degraded");

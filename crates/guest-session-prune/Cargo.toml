@@ -1,6 +1,6 @@
 [package]
 name = "guest-session-prune"
-version = "0.3.70"
+version = "0.3.71"
 edition.workspace = true
 description = "Bounded native session-history pruning for vm0 guest checkpoints"
 

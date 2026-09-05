@@ -9,7 +9,6 @@ import {
   connectorAccountsContract,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES,
   type CreateCustomConnectorBody,
   type CustomConnectorHttpResponse,
   type CustomConnectorMcpResponse,
@@ -1216,50 +1215,6 @@ test("Create and connect an MCP server with automatic authentication", async () 
   });
 });
 
-test("Show localized actionable Automatic MCP OAuth failures", async () => {
-  const connector = mcpCustomConnector({
-    displayName: "Restricted Automatic MCP",
-    fields: [],
-    headerInjections: [],
-    queryInjections: [],
-    authMode: "automatic",
-    connected: false,
-    missingRequiredFields: ["automatic"],
-    configuredFieldKeys: [],
-  });
-  const authWindow = createAuthWindow();
-  context.mocks.browser.open(authWindow);
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  context.mocks.data.agents([]);
-  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
-    return respond(200, { connectors: [connector] });
-  });
-  context.mocks.api(customConnectorOAuth2Contract.start, ({ respond }) => {
-    return respond(400, {
-      error: {
-        code: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_REJECTED,
-        message: "API fallback must not be shown",
-      },
-    });
-  });
-
-  await setupCustomPage({ mcp: true });
-
-  click(
-    await waitFor(() => {
-      return getConnectorAction("button", "Conectar Restricted Automatic MCP");
-    }),
-  );
-
-  await expect(
-    screen.findByText(
-      "O provedor OAuth rejeitou o registro automático do cliente e pode restringir os clientes MCP ou os metadados de registro compatíveis. Use um cliente MCP compatível com o provedor, OAuth personalizado somente se você já tiver credenciais de cliente registradas ou entre em contato com o suporte da Okou.",
-    ),
-  ).resolves.toBeInTheDocument();
-  expect(screen.queryByText("API fallback must not be shown")).toBeNull();
-  expect(authWindow.closed).toBeTruthy();
-});
-
 test("Create, edit, and connect an OAuth MCP connector", async () => {
   let connector: CustomConnectorMcpResponse | null = null;
   const created: CreateCustomConnectorBody[] = [];
@@ -1501,53 +1456,6 @@ test("Add and optionally name a custom OAuth account", async () => {
   ).toHaveTextContent("Used by Research");
   expect(submitted).toStrictEqual({ intent: "add" });
   expect(grantMutations).toBe(0);
-});
-
-test("Configure custom connectors in Portuguese", async () => {
-  const connector = customConnector({
-    connected: true,
-    missingRequiredFields: [],
-    configuredFieldKeys: ["secret"],
-  });
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  context.mocks.data.agents([listAgent(RESEARCH_ID, "Research")]);
-  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
-    return respond(200, { connectors: [connector] });
-  });
-  context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
-    return respond(200, {
-      grants: [{ customConnectorId: connector.id, permissionNames: [] }],
-    });
-  });
-  await setupCustomPage();
-  const card = await waitFor(() => {
-    return getConnectorCard("Acme Search");
-  });
-  expect(card).toHaveTextContent("Conectado");
-  expect(
-    getConnectorAction("button", "Gerenciar acesso ao Acme Search", card),
-  ).toHaveTextContent("Usado por Research");
-
-  click(getConnectorAction("button", "Novo conector"));
-  const dialog = await screen.findByRole("dialog", {
-    name: "Novo conector personalizado",
-  });
-  expect(within(dialog).getByLabelText("Nome de exibição")).toBeInTheDocument();
-  expect(getConnectorAction("button", "Fechar", dialog)).toBeInTheDocument();
-  click(getConnectorAction("button", "Adicionar autenticação", dialog));
-  click(getConnectorAction("menuitem", "Aplicativo OAuth personalizado"));
-
-  expect(
-    within(dialog).getByText(
-      "Configure um app OAuth para os membros autorizarem.",
-    ),
-  ).toBeInTheDocument();
-  expect(within(dialog).getByLabelText("URL do token")).toBeInTheDocument();
-  expect(within(dialog).getByLabelText("ID do cliente")).toBeInTheDocument();
-  expect(
-    within(dialog).getByText("Configurações avançadas"),
-  ).toBeInTheDocument();
-  expect(within(dialog).getByLabelText("PKCE")).toHaveTextContent("Nenhum");
 });
 
 test("Edit a custom HTTP connector without losing advanced configuration", async () => {

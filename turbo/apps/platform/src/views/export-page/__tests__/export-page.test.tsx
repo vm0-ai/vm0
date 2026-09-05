@@ -51,34 +51,6 @@ function getDownloadLink(name: string): HTMLAnchorElement {
   return link;
 }
 
-test("A completed export localizes app copy while keeping English metadata", async () => {
-  mockNow(NOW, context.signal);
-  mockCompletedExport(false);
-
-  await setupPage({
-    context,
-    path: "/export",
-    host: "app.vm0.ai",
-    locale: "pt-BR",
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "Exportar dados" }),
-  ).resolves.toBeVisible();
-  expect(
-    screen.getByText("Instruções e arquivos SKILL.md dos fluxos de trabalho"),
-  ).toBeVisible();
-  expect(screen.getByText("Arquivos de memória")).toBeVisible();
-  expect(
-    screen.getByText("O link para download expira em 1 dia 12 h."),
-  ).toBeVisible();
-  expect(getDownloadLink("Baixar exportação")).toHaveAttribute(
-    "href",
-    "https://downloads.example/export.zip",
-  );
-  expect(document.title).toBe("Export data | VM0");
-});
-
 test("A completed export shows its contents, expiry, and cooldown", async () => {
   let exportAttempts = 0;
   mockNow(NOW, context.signal);

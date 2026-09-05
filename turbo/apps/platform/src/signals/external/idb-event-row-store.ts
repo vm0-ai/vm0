@@ -131,6 +131,7 @@ function createRowReadStore(
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.readCursors,
+          transaction_mode: "readonly",
         },
         () => {
           return db.transaction(cursorStoreName, "readonly");
@@ -163,6 +164,7 @@ function createRowReadStore(
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.readCursor,
+          transaction_mode: "readonly",
         },
         () => {
           return db.transaction(cursorStoreName, "readonly");
@@ -182,6 +184,7 @@ function createRowReadStore(
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.readRowsAfter,
+          transaction_mode: "readonly",
         },
         () => {
           return db.transaction([storeName, cursorStoreName], "readonly");
@@ -229,6 +232,7 @@ function createUpsertRowsAndCursors(
       {
         database: "chat",
         template: TRANSACTION_TEMPLATES.upsertRowsAndCursors,
+        transaction_mode: "readwrite",
       },
       () => {
         return db.transaction([storeName, cursorStoreName], "readwrite");
@@ -283,6 +287,7 @@ function createRowWriteStore(
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.upsertRowsAndCursor,
+          transaction_mode: "readwrite",
         },
         () => {
           return db.transaction([storeName, cursorStoreName], "readwrite");
@@ -316,6 +321,7 @@ function createRowWriteStore(
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.replaceRowsAndCursor,
+          transaction_mode: "readwrite",
         },
         () => {
           return db.transaction([storeName, cursorStoreName], "readwrite");
@@ -363,6 +369,7 @@ function createRowWriteStore(
         {
           database: "chat",
           template: TRANSACTION_TEMPLATES.clearThread,
+          transaction_mode: "readwrite",
         },
         () => {
           return db.transaction([storeName, cursorStoreName], "readwrite");

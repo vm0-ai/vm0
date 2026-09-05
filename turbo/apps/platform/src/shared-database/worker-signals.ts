@@ -20,7 +20,6 @@ import {
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "../signals/connection-diagnostics.ts";
-import type { ClerkTokenSource } from "../signals/clerk-token.ts";
 import {
   computerUseHosts$,
   reloadComputerUseHosts$,
@@ -38,12 +37,12 @@ import {
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
 import { settle, withCleanup } from "../signals/utils.ts";
-import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
 import {
   chatThreadIndicators$,
   reloadChatThreadIndicators$,
 } from "../signals/chat-page/chat-thread-indicators.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
+import type { SharedDatabaseTokenProvider } from "./bridge.ts";
 import {
   sharedDatabaseIdentitySchema,
   type ChatThreadIndicators,
@@ -66,11 +65,11 @@ import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
-export interface BootstrapSharedDatabaseWorkerOptions {
+interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
-  readonly clerk: Promise<ClerkTokenSource>;
+  readonly getToken: SharedDatabaseTokenProvider;
   readonly oauthApiBaseUrl: string;
   readonly onForceUpgrade: () => void;
   readonly vercelProtectionBypass?: string;
@@ -230,7 +229,7 @@ const runTrailingCatchUpChatEvent$ = command(
 );
 
 /** Globally serialize ChatEvent catch-up with leading and trailing throttle. */
-export const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
+const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
   const signal = get(rootSignal$);
   signal.throwIfAborted();
   const throttle = get(catchUpChatEventThrottle$);
@@ -339,7 +338,7 @@ export const initializeSharedDatabaseWorker$ = command(
     set(initializeAppVersion$, options.appVersion);
     set(setRootSignal$, signal);
     set(setApiClientRuntime$, {
-      clerk: options.clerk,
+      getToken: options.getToken,
       apiBaseUrl: options.apiBaseUrl,
       oauthApiBaseUrl: options.oauthApiBaseUrl,
       ...(options.vercelProtectionBypass
@@ -362,17 +361,6 @@ export const initializeSharedDatabaseWorker$ = command(
   },
 );
 
-export const bootstrapSharedDatabaseWorkerStore$ = command(
-  (
-    { set },
-    options: BootstrapSharedDatabaseWorkerOptions,
-    signal: AbortSignal,
-  ): Promise<void> | null => {
-    set(initializeSharedDatabaseWorker$, options, signal);
-    return set(startSharedDatabaseWorkerDaemons$);
-  },
-);
-
 function resolveWorkerIdentity(): SharedDatabaseIdentity {
   const params = new URL(location.href).searchParams;
   return sharedDatabaseIdentitySchema.parse({
@@ -382,7 +370,11 @@ function resolveWorkerIdentity(): SharedDatabaseIdentity {
 }
 
 export const bootstrapWorker$ = command(
-  ({ get, set }, signal: AbortSignal): Promise<void> | null => {
+  (
+    { set },
+    getToken: SharedDatabaseTokenProvider,
+    signal: AbortSignal,
+  ): void => {
     const params = new URL(location.href).searchParams;
     const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
     const vercelProtectionBypass = params.get(VERCEL_PROTECTION_BYPASS_NAME);
@@ -397,13 +389,13 @@ export const bootstrapWorker$ = command(
       resolvePlatformEnvironment() === "production"
         ? derivePlatformServiceOrigin(location.origin, "www")
         : apiBaseUrl;
-    return set(
-      bootstrapSharedDatabaseWorkerStore$,
+    set(
+      initializeSharedDatabaseWorker$,
       {
         appVersion: __OKOU_APP_VERSION__,
         identity: resolveWorkerIdentity(),
         apiBaseUrl,
-        clerk: get(workerClerk$),
+        getToken,
         oauthApiBaseUrl,
         onForceUpgrade: () => {
           set(reportWorkerUnavailableForConnections$, "force-upgrade-required");
@@ -496,7 +488,7 @@ const refreshWorkerChatIndicators$ = command(
   },
 );
 
-export const reloadWorkerChatIndicatorsFromRealtime$ = command(
+const reloadWorkerChatIndicatorsFromRealtime$ = command(
   async ({ set }, signal: AbortSignal): Promise<boolean> => {
     await set(refreshWorkerChatIndicators$, signal);
     set(reloadComputedForConnections$, "chat-thread-indicators");
@@ -504,7 +496,7 @@ export const reloadWorkerChatIndicatorsFromRealtime$ = command(
   },
 );
 
-export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
+const reloadWorkerChatIndicatorsFromReadCursor$ = command(
   async ({ set }, payload: unknown, signal: AbortSignal): Promise<boolean> => {
     await set(refreshWorkerChatIndicators$, signal);
     set(forwardChatThreadReadCursorUpdated$, payload);
@@ -513,7 +505,7 @@ export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
   },
 );
 
-export const reloadWorkerComputerUseHostsFromRealtime$ = command(
+const reloadWorkerComputerUseHostsFromRealtime$ = command(
   ({ set }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "computer-use-hosts");
@@ -522,7 +514,7 @@ export const reloadWorkerComputerUseHostsFromRealtime$ = command(
   },
 );
 
-export const reloadWorkerQueueDataFromRealtime$ = command(
+const reloadWorkerQueueDataFromRealtime$ = command(
   ({ set }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "queue-data");

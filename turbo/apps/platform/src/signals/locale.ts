@@ -43,7 +43,7 @@ export const initLocale$ = command(
   },
 );
 
-export const setLocale$ = command(
+const setLocale$ = command(
   async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
     const [resources, clerkLocalization] = await Promise.all([
       loadI18nLanguageResources(locale, signal),

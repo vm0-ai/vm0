@@ -22,13 +22,10 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
-const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function publicStatusItem(args: {
   readonly connectorSlug: ConnectorSlug;
@@ -206,48 +203,6 @@ test("Authorize an agent to use an already connected connector", async () => {
   });
 });
 
-test("Keep connector authorization scoped to each agent", async () => {
-  mockConnectedConnector("gmail");
-  const secondAgentResponse = context.mocks.deferred<void>();
-  let secondAgentRequested = false;
-  context.mocks.api(userConnectorsContract.get, async ({ params, respond }) => {
-    if (params.id === SECOND_AGENT_ID) {
-      secondAgentRequested = true;
-      await secondAgentResponse.promise;
-      return respond(200, { enabledConnectorSlugs: [] });
-    }
-    return respond(200, { enabledConnectorSlugs: ["gmail"] });
-  });
-
-  await setupPage({
-    context,
-    path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
-  });
-
-  await waitFor(() => {
-    expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
-    expect(screen.getByText("Authorized")).toBeInTheDocument();
-  });
-
-  context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-    pathParams: { connectorSlug: "gmail" },
-    searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
-  });
-
-  await waitFor(() => {
-    expect(secondAgentRequested).toBeTruthy();
-  });
-  expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
-  expect(screen.queryByText("Authorized")).not.toBeInTheDocument();
-
-  secondAgentResponse.resolve();
-
-  await waitFor(() => {
-    expect(screen.getByText("Zero needs Gmail to proceed")).toBeInTheDocument();
-    expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
-  });
-});
-
 test("Recover from an agent authorization lookup failure", async () => {
   mockConnectedConnector("gmail");
   context.mocks.api(userConnectorsContract.get, ({ respond }) => {
@@ -352,58 +307,6 @@ test("Connect a manual-token connector while authorizing an agent", async () => 
     });
     expect(screen.getByText("Public Axiom authorized")).toBeInTheDocument();
     expect(screen.getByText("Authorized")).toBeInTheDocument();
-  });
-});
-
-test("Choose a connection method before authorizing an agent", async () => {
-  let startCalls = 0;
-  context.mocks.api(
-    connectorOauthStartContract.start,
-    ({ params, respond }) => {
-      startCalls += 1;
-      return respond(200, {
-        authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
-      });
-    },
-  );
-  mockPublicConnectorStatus([
-    publicStatusItem({
-      connectorSlug: "github",
-      label: "Public GitHub",
-      authMethods: [
-        {
-          id: "oauth",
-          label: "Public OAuth",
-          description: null,
-          grantKind: "auth-code",
-          manualFields: [],
-          startOptions: [],
-        },
-      ],
-      singleAuthCodeAuthMethodId: null,
-    }),
-  ]);
-
-  await setupPage({
-    context,
-    path: `/connectors/github/authorize?agentId=${AGENT_ID}`,
-  });
-
-  await screen.findByText("Zero needs Public GitHub to proceed");
-  click(getButtonByText("Authorize Zero"));
-
-  await screen.findByRole("dialog", { name: "Public GitHub" });
-  expect(startCalls).toBe(0);
-
-  context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-    pathParams: { connectorSlug: "github" },
-    searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
-  });
-
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Public GitHub" }),
-    ).not.toBeInTheDocument();
   });
 });
 

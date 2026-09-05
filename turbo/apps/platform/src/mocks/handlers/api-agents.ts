@@ -45,9 +45,7 @@ let mockAgents: AgentResponse[] = [...DEFAULT_AGENTS];
 type MockAgentResponse = Pick<AgentResponse, "agentId"> &
   Partial<Omit<AgentResponse, "agentId">>;
 
-export function createMockAgentResponse(
-  agent: MockAgentResponse,
-): AgentResponse {
+function createMockAgentResponse(agent: MockAgentResponse): AgentResponse {
   return {
     ownerId: "user_mock",
     displayName: null,

@@ -406,6 +406,66 @@ class TestModelProviderWebSocketUsageAggregation:
             [("gpt-5.5", "tokens.output", 12)],
         )
 
+    def test_model_websocket_late_priority_output_commits_fast_tier(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_late_priority",
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 0},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_late_priority",
+                        "model": "gpt-5.5",
+                        "service_tier": "priority",
+                        "usage": {"output_tokens": 12},
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_late_priority",
+                        "model": "gpt-5.5",
+                        "service_tier": "default",
+                        "usage": {"output_tokens": 7},
+                    },
+                }
+            ).encode(),
+        )
+
+        assert_usage_event_rows(
+            webhook.usage_events(),
+            "provider",
+            [("gpt-5.5", "tokens.output.fast", 12)],
+        )
+        output_entries = [
+            entry
+            for entry in model_usage_source_entries(flow)
+            if entry["usage"].get("tokens.output") in (12, 7)
+        ]
+        assert len(output_entries) == 2
+        for entry in output_entries:
+            [event] = entry["usage_events"]
+            assert event["category"] == "tokens.output.fast"
+            assert event["buffer_accepted"] is (entry["usage"]["tokens.output"] == 12)
+
     def test_model_websocket_output_without_input_uses_conservative_billing_fallback(
         self,
         tmp_path,

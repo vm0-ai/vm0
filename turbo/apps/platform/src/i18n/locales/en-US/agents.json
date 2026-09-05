@@ -36,6 +36,8 @@
     },
     "create": "Create custom avatar",
     "description": "Pick a style or hit shuffle for a surprise.",
+    "editDescription": "Tweak any part, or shuffle for a new look.",
+    "editTitle": "Edit avatar",
     "intensity": {
       "chill": "Chill",
       "hyped": "Hyped",

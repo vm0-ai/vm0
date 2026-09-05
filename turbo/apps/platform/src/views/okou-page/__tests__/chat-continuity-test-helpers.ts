@@ -25,7 +25,7 @@ import {
   sidebarThreadLinks,
 } from "./chat-list-test-helpers.ts";
 
-export interface ContinuityDraftPatch {
+interface ContinuityDraftPatch {
   readonly threadId: string;
   readonly draftUserMessage: UserMessageInputDocument | null;
   readonly draftAttachments: PersistedAttachment[] | null;
@@ -44,7 +44,7 @@ interface ContinuityWorkspaceOptions {
   ) => "available" | "missing" | Promise<"available" | "missing">;
 }
 
-export interface ContinuityWorkspace {
+interface ContinuityWorkspace {
   readonly auth: Exclude<SetupPageAuth, null>;
   readonly draftPatches: ContinuityDraftPatch[];
   readonly eventRowQueries: ContinuityEventRowQuery[];
@@ -52,7 +52,7 @@ export interface ContinuityWorkspace {
   readonly setChatEventRows: (rows: readonly ChatEventRow[]) => void;
 }
 
-export interface ContinuityEventRowQuery {
+interface ContinuityEventRowQuery {
   readonly threadId: string;
   readonly sinceSeqId: number;
   readonly sinceEventId: string | null;

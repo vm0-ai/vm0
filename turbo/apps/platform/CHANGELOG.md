@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.842.1](https://github.com/vm0-ai/vm0/compare/app-v0.842.0...app-v0.842.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** derive run work folding from output events ([#31779](https://github.com/vm0-ai/vm0/issues/31779)) ([2c7c890](https://github.com/vm0-ai/vm0/commit/2c7c8906aa780b246974b5af4e25a7b537eb3c8a))
+
+## [0.842.0](https://github.com/vm0-ai/vm0/compare/app-v0.841.1...app-v0.842.0) (2026-09-04)
+
+
+### Features
+
+* add heygen intro video foundations ([#31648](https://github.com/vm0-ai/vm0/issues/31648)) ([87394e8](https://github.com/vm0-ai/vm0/commit/87394e8f07d62d1394742db09f0cfd206b1b3ff8))
+* add intro video heygen renderer and voice services ([#31658](https://github.com/vm0-ai/vm0/issues/31658)) ([1917a5f](https://github.com/vm0-ai/vm0/commit/1917a5fa59ee61fdb44f0d1822804a256009ef88))
+* **platform:** report indexeddb setup telemetry ([#31772](https://github.com/vm0-ai/vm0/issues/31772)) ([cd13281](https://github.com/vm0-ai/vm0/commit/cd13281ca93050178ff59aeb56b374017a009fd2))
+
+
+### Bug Fixes
+
+* **platform:** load the current avatar when opening the avatar maker ([#31742](https://github.com/vm0-ai/vm0/issues/31742)) ([f2b6d9c](https://github.com/vm0-ai/vm0/commit/f2b6d9c2d4982bea26e4a615cb461880d1123681))
+* **platform:** request worker tokens from the first tab ([#31748](https://github.com/vm0-ai/vm0/issues/31748)) ([67405db](https://github.com/vm0-ai/vm0/commit/67405db486e677be320b95e99a87774a98de04c1))
+* **platform:** show standalone upgrade as one dialog ([#31737](https://github.com/vm0-ai/vm0/issues/31737)) ([edefd23](https://github.com/vm0-ai/vm0/commit/edefd23804f274d81440a1566edc8ac1a78bac09))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.403.0
+    * @okouai/core bumped to 8.622.0
+
+## [0.841.1](https://github.com/vm0-ai/vm0/compare/app-v0.841.0...app-v0.841.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **agent:** align avatar edits with visibility permissions ([#31731](https://github.com/vm0-ai/vm0/issues/31731)) ([8cf8b09](https://github.com/vm0-ai/vm0/commit/8cf8b094a80ea861fbb366df0cc33323e1cf9846))
+* **platform:** hide composer placeholder after a newline ([#31752](https://github.com/vm0-ai/vm0/issues/31752)) ([0ebbb7c](https://github.com/vm0-ai/vm0/commit/0ebbb7c0c163503d8888be22b0d4a13ca8acd3e9))
+* **platform:** restore clerk satellite auth navigation ([#31741](https://github.com/vm0-ai/vm0/issues/31741)) ([ed45e20](https://github.com/vm0-ai/vm0/commit/ed45e20e93af40f4ced60816506bdf79f9f9df75))
+* **platform:** stabilize pinned agent label transition ([#31736](https://github.com/vm0-ai/vm0/issues/31736)) ([c8de880](https://github.com/vm0-ai/vm0/commit/c8de880b88d153eb559f656e1daa01b16fe924fa))
+* **ui:** deduplicate slash workflow suggestions ([#31757](https://github.com/vm0-ai/vm0/issues/31757)) ([c1aafce](https://github.com/vm0-ai/vm0/commit/c1aafce488fc22601ff67249c0b5a0bbec27510c))
+* **ui:** lift new-ui track and bubble off the page and neutralise body copy ([#31640](https://github.com/vm0-ai/vm0/issues/31640)) ([024c27b](https://github.com/vm0-ai/vm0/commit/024c27b2ea5a5dce6a43747e1ee4049bc3a2bc56))
+
+
+### Refactoring
+
+* **api:** remove legacy custom connector oauth readers ([#31751](https://github.com/vm0-ai/vm0/issues/31751)) ([3a13b3a](https://github.com/vm0-ai/vm0/commit/3a13b3ad6564d96d6a721287ed2e816c5b1a60f6))
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.2
+    * @okouai/connectors bumped to 3.3.3
+    * @okouai/core bumped to 8.621.2
+    * @okouai/ui bumped to 1.5.1
+
 ## [0.841.0](https://github.com/vm0-ai/vm0/compare/app-v0.840.0...app-v0.841.0) (2026-09-04)
 
 

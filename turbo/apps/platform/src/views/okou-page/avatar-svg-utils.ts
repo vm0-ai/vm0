@@ -101,7 +101,7 @@ const AVATAR_CHIN_BASELINE_Y = 327.6;
 /** The face pivot (190, 116) of the 380px canvas, as a CSS transform origin. */
 export const AVATAR_HEAD_TRANSFORM_ORIGIN = "50% 30.5263%";
 
-export interface AvatarSvgComposition {
+interface AvatarSvgComposition {
   /** Drawn behind the head, and never scaled with it. */
   readonly behind: readonly string[];
   /** Head layers, scaled about `AVATAR_HEAD_TRANSFORM_ORIGIN`. */

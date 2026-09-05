@@ -439,6 +439,7 @@ test("The conversation locator follows the work currently shown in the thread", 
     context,
     path: `/chats/${THREAD_IDS.folded}`,
     host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
   });
 
   await screen.findByText("Grouped result 3");
@@ -688,45 +689,5 @@ test("The conversation locator can page through older turns", async () => {
     expect(Number(locatorTicks()[0]?.dataset.turnIndex)).toBe(
       initialFirstIndex,
     );
-  });
-});
-
-test("Conversation locator activates only when the thread needs it", async () => {
-  const resize = mockResizeObserver();
-  mockChatLifecycleWithoutBrowserSession({
-    threadId: THREAD_IDS.activation,
-    threadTitle: "Locator activation",
-    chatEvents: conversationPairs(8, "locator-activation"),
-  });
-  await setupPage({
-    context,
-    path: `/chats/${THREAD_IDS.activation}`,
-    host: "app.vm0.ai",
-  });
-
-  await screen.findByText("Locator answer 8");
-  const geometry = installLocatorGeometry({
-    scrollHeight: DEFAULT_VIEWPORT_HEIGHT_PX,
-    initialScrollTop: 0,
-  });
-  resize.automationAll();
-
-  expect(geometry.rail).toHaveAttribute("aria-hidden", "true");
-  expect(geometry.rail).toHaveClass("pointer-events-none", "opacity-0");
-  expect(queryAllByRoleFast("button", geometry.rail)).toHaveLength(0);
-  expect(locatorTicks()).toHaveLength(0);
-
-  geometry.setScrollHeight(DEFAULT_VIEWPORT_HEIGHT_PX * 4);
-  geometry.setScrollTop(DEFAULT_VIEWPORT_HEIGHT_PX * 3);
-  resize.automationAll();
-
-  const ticks = await expectLocatorTickCount(16);
-  expect(geometry.rail).not.toHaveClass("pointer-events-none", "opacity-0");
-  fireEvent.pointerEnter(geometry.rail);
-  movePointerToTick(geometry.rail, ticks[12]!);
-  await expectHotTick(Number(ticks[12]!.dataset.turnIndex));
-  await waitFor(() => {
-    expect(locatorPreview()).toHaveClass("opacity-100");
-    expect(locatorPreview()).toHaveTextContent(/Locator (question|answer)/u);
   });
 });

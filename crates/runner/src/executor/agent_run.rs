@@ -1998,6 +1998,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 outcome = outcome.unwrap_or("write_failed"),
                 "connector account context unavailable"
             );
+            return Err(error);
         }
     }
     let env_build_started = Instant::now();
