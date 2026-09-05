@@ -14,13 +14,13 @@ networking/processes, IOKit power assertions, and the official Swift MCP SDK.
 
 ## Verified automated evidence
 
-- [macOS run 33965482461](https://github.com/vm0-ai/vm0/actions/runs/33965482461)
-  for `f578ebd` passed 31 app/core tests and all 118 unchanged helper tests,
+- [macOS run 33970705573](https://github.com/vm0-ai/vm0/actions/runs/33970705573)
+  for `c6b5c4a12` passed 31 app/core tests and all 121 helper tests,
   release compilation, bundle signature/architecture checks, packaged launch,
   a native permission probe, and a settings-window screenshot. The PR check
   records the commit and download URL for each later successful build.
 - Its app and independent project ZIPs were downloaded and integrity-checked.
-  Desktop 0.46.18 contains four arm64 Mach-O executables and eleven notices;
+  Desktop 0.46.19 contains four arm64 Mach-O executables and eleven notices;
   the project includes both pinned Swift packages and matches the tested source.
 - A real HTTP regression reproduces an old claimed command completing after
   host revocation. The replacement registers only after that work drains; an
@@ -194,9 +194,19 @@ record the baseline and candidate attribution.
 This establishes integer page scrolling through the real helper, not a new
 packaged Desktop/server round trip. Fractional pages currently return an explicit
 unsupported error; preserving that accepted API input still requires work.
-Horizontal scrolling and apps without native scrollbar page buttons also require
-implementation/acceptance. The old installed `f0b3b92` Desktop remains unchanged;
+Apps without native scrollbar page buttons also require implementation/acceptance.
+The old installed `f0b3b92` Desktop remains unchanged;
 do not mark all nine authenticated Desktop command kinds accepted from this test.
+
+The same repaired helper also scrolled an owned 3200-by-2400 grid in Preview at
+Actual Size (window 1245). A right page reached the horizontal boundary; a left
+page moved 1129 points. A down page reached the vertical boundary; an up page
+moved 840 points. AX image bounds and window images agree. The first right command
+observed an unrelated frontmost-app change from the acceptance app to Safari;
+its cause is not established, so that command is not foreground-preservation
+evidence. The subsequent left/down/up commands preserved Safari as frontmost.
+[Preview command/state evidence](https://cdn.vm0.io/artifacts/f2x9wj7mnq.json)
+records this separate application test. Broader target coverage remains open.
 
 A second shared staging deployment (run `33965940210`, job `101306017261`)
 reset `preview/staging` at 12:25:32 UTC. The native poll received 401 and returned
@@ -212,24 +222,24 @@ Sleep behavior, quit cleanup, and the remaining menu/Dock interactions are open.
 
 ## Feature inventory and evidence
 
-| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                 |
-| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity               |
-| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes       |
-| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                            |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Packaged scroll round trip, fractional/horizontal pages, cold launch, foreground recovery, broader targets |
-| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                    |
-| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges              |
-| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load        |
-| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                 |
-| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                     |
-| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                   |
-| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                  |
-| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                |
-| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                           |
-| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents) |
-| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration            |
-| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                        |
+| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                       |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                     |
+| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes             |
+| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                                  |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Packaged scroll round trip, fractional pages, cold launch, foreground recovery, broader targets |
+| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                          |
+| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges                    |
+| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load              |
+| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                       |
+| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                           |
+| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                         |
+| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                        |
+| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                      |
+| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                                 |
+| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents)       |
+| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration                  |
+| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                              |
 
 ## Remaining implementation review
 
