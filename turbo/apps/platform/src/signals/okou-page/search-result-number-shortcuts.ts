@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { matchShortcut } from "@okouai/ui";
-import { searchResultNumberShortcutsEnabled$ } from "../external/feature-switch.ts";
+import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
 
 type ShortcutModifiers = Pick<
@@ -13,7 +13,7 @@ type ShortcutModifiers = Pick<
 const internalSearchResultShortcutModifiersHeld$ = state(false);
 export const searchResultShortcutHintsVisible$ = computed((get) => {
   return (
-    get(searchResultNumberShortcutsEnabled$) &&
+    get(stableChatThreadNavigationEnabled$) &&
     get(internalSearchResultShortcutModifiersHeld$)
   );
 });
@@ -60,7 +60,7 @@ export const setSearchResultShortcutElement$ = onRef(
 export const searchResultShortcutIndex$ = command(
   ({ get }, event: KeyboardEvent): number | undefined => {
     if (
-      !get(searchResultNumberShortcutsEnabled$) ||
+      !get(stableChatThreadNavigationEnabled$) ||
       event.defaultPrevented ||
       event.repeat ||
       event.isComposing ||

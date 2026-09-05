@@ -423,17 +423,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PinnedChatThreadSort]: {
+  [FeatureSwitchKey.StableChatThreadNavigation]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Keep pinned chats ordered by pin time, newest first, instead of recent activity.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SearchResultNumberShortcuts]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Show current chats in empty workspace search and use numbered shortcuts inside the search dialog.",
+      "Keep pinned chats ordered by pin time, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

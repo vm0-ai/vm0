@@ -65,7 +65,7 @@ import {
   type WorkspaceSearchChatThread,
 } from "../../signals/okou-page/workspace-chat-search.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { searchResultNumberShortcutsEnabled$ } from "../../signals/external/feature-switch.ts";
+import { stableChatThreadNavigationEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   searchResultShortcutHintsVisible$,
   searchResultShortcutIndex$,
@@ -1008,7 +1008,7 @@ function SpotlightSearchResults({
   onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
-  const numberShortcutsEnabled = useGet(searchResultNumberShortcutsEnabled$);
+  const numberShortcutsEnabled = useGet(stableChatThreadNavigationEnabled$);
   const shortcutNumber = (index: number) => {
     return numberShortcutsEnabled && index < 9 ? index + 1 : undefined;
   };

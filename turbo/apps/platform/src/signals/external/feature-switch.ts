@@ -139,9 +139,9 @@ export const composerVoiceInputShortcutEnabled$ = computed((get): boolean => {
   );
 });
 
-export const searchResultNumberShortcutsEnabled$ = computed((get): boolean => {
+export const stableChatThreadNavigationEnabled$ = computed((get): boolean => {
   return (
-    get(featureSwitch$)[FeatureSwitchKey.SearchResultNumberShortcuts] ?? false
+    get(featureSwitch$)[FeatureSwitchKey.StableChatThreadNavigation] ?? false
   );
 });
 

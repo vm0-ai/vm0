@@ -129,7 +129,7 @@ test("Add, replace, or remove the focused chat icon", async () => {
     context,
     path: `/chats/${current.id}?sidebar=${emojiOnlySide.id}`,
     auth: workspace.auth,
-    featureSwitches: { [FeatureSwitchKey.SearchResultNumberShortcuts]: true },
+    featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
   });
 
   await waitFor(() => {

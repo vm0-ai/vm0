@@ -141,7 +141,9 @@ test.each([true, false])(
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
       auth,
-      featureSwitches: { [FeatureSwitchKey.PinnedChatThreadSort]: enabled },
+      featureSwitches: {
+        [FeatureSwitchKey.StableChatThreadNavigation]: enabled,
+      },
     });
 
     await waitFor(() => {
@@ -193,7 +195,7 @@ test("Unpinning restores activity order and repinning uses the new pin time", as
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
-    featureSwitches: { [FeatureSwitchKey.PinnedChatThreadSort]: true },
+    featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
   });
 
   await waitFor(() => {

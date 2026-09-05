@@ -34,8 +34,7 @@ import {
 
 const context = testContext();
 const featureSwitches = {
-  [FeatureSwitchKey.PinnedChatThreadSort]: true,
-  [FeatureSwitchKey.SearchResultNumberShortcuts]: true,
+  [FeatureSwitchKey.StableChatThreadNavigation]: true,
 } as const;
 const SEARCH_LABEL = "Search chats, messages, workflows, and artifacts...";
 
@@ -469,29 +468,40 @@ test.each([
   },
 );
 
-test("Disabling search shortcuts preserves the original workspace-wide empty search", async () => {
-  const current = chatListThread(1, "Current chat");
-  const foreign = chatListThread(2, "Another agent's chat", {
+test("Disabling stable navigation restores activity order and workspace-wide search without shortcuts", async () => {
+  const firstPin = chatListThread(1, "Latest pin", {
+    pinnedAt: "2026-08-01T00:52:00.000Z",
+  });
+  const secondPin = chatListThread(2, "Recently active pin", {
+    pinnedAt: "2026-08-01T00:51:00.000Z",
+  });
+  const foreign = chatListThread(3, "Another agent's chat", {
     agentId: "c7000000-0000-4000-a000-000000000002",
   });
   const workspace = await installContinuityWorkspace(context, {
     caseId: 28,
-    threads: [current, foreign],
+    threads: [firstPin, secondPin, foreign],
   });
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth: workspace.auth,
     featureSwitches: {
-      ...featureSwitches,
-      [FeatureSwitchKey.SearchResultNumberShortcuts]: false,
+      [FeatureSwitchKey.StableChatThreadNavigation]: false,
     },
+  });
+  await waitFor(() => {
+    expect(sidebarThreadTitles()).toStrictEqual([
+      "Recently active pin",
+      "Latest pin",
+    ]);
   });
   const { dialog, search } = await openSearch();
   await waitFor(() => {
     expect(searchResultTitles(dialog)).toStrictEqual([
+      "Recently active pin",
+      "Latest pin",
       "Another agent's chat",
-      "Current chat",
     ]);
   });
   expect(numberedHints(dialog)).toStrictEqual([]);

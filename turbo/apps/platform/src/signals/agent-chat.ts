@@ -1,13 +1,12 @@
 import { command, computed, state } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
+import { stableChatThreadNavigationEnabled$ } from "./external/feature-switch.ts";
 import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
@@ -124,7 +123,7 @@ const eventDrivenFilteredChatThreads$ = computed(
         (filteredThreadIds === null || filteredThreadIds.has(thread.id))
       );
     });
-    if (!get(featureSwitch$)[FeatureSwitchKey.PinnedChatThreadSort]) {
+    if (!get(stableChatThreadNavigationEnabled$)) {
       return threads;
     }
     return threads.sort((left, right) => {
