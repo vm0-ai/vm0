@@ -82,6 +82,10 @@ export function IntroVideoAvatarGroupCard({
   if (!avatar) {
     return null;
   }
+  const namePrefix = `${group.name} in `;
+  const lookName = avatar.name.startsWith(namePrefix)
+    ? avatar.name.slice(namePrefix.length)
+    : avatar.name;
   return (
     <div
       data-intro-video-avatar-group={group.id}
@@ -115,7 +119,7 @@ export function IntroVideoAvatarGroupCard({
             className="mt-0.5 block truncate text-xs text-muted-foreground"
             title={avatar.name}
           >
-            {avatar.name}
+            {lookName}
           </span>
         </div>
         <Button
