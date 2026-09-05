@@ -46,11 +46,11 @@ export const piMemoryPhase2MaintenanceCallbackPayloadSchema = z
   .strict()
   .readonly();
 
-export type PiMemoryPhase2MaintenanceCallbackPayload = z.infer<
+type PiMemoryPhase2MaintenanceCallbackPayload = z.infer<
   typeof piMemoryPhase2MaintenanceCallbackPayloadSchema
 >;
 
-export interface PiMemoryPhase2MaintenanceRunBinding {
+interface PiMemoryPhase2MaintenanceRunBinding {
   readonly memoryStorageId: string;
   readonly orgId: string;
   readonly userId: string;

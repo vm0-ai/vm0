@@ -13,7 +13,7 @@ import { db } from "../../../lib/db";
 
 const fixtureHashes = Symbol("fixtureHashes");
 
-export interface Phase2TestScope {
+interface Phase2TestScope {
   readonly memoryStorageId: string;
   readonly orgId: string;
   readonly userId: string;
@@ -21,7 +21,7 @@ export interface Phase2TestScope {
   readonly [fixtureHashes]: Set<string>;
 }
 
-export interface Phase2TestVersion {
+interface Phase2TestVersion {
   readonly storageId: string;
   readonly versionId: string;
   readonly s3Key: string;
@@ -360,47 +360,4 @@ export async function readPhase2Job(scope: Phase2TestScope) {
       ),
     );
   return job;
-}
-
-export async function replacePhase2CandidateSource(args: {
-  readonly scope: Phase2TestScope;
-  readonly piSessionId: string;
-  readonly sourceCompletedAt: Date;
-}): Promise<string> {
-  const hash = candidateHash(args.scope, `${args.piSessionId}-replacement`);
-  await insertFixtureBlobs(args.scope, [hash]);
-  await db()
-    .update(piMemoryStage1Candidates)
-    .set({
-      sourceRunId: randomUUID(),
-      sourceHistoryHash: hash,
-      sourceCompletedAt: args.sourceCompletedAt,
-      eligibleAt: args.sourceCompletedAt,
-      status: "pending",
-      leaseToken: null,
-      leaseExpiresAt: null,
-      retryAt: null,
-      retryCount: 0,
-      lastErrorClass: null,
-      rawMemory: null,
-      rolloutSummary: null,
-      rolloutSlug: null,
-      generatedAt: null,
-      lastSelectedSourceHistoryHash: null,
-      usageCount: 0,
-      lastUsedAt: null,
-      updatedAt: args.sourceCompletedAt,
-    })
-    .where(
-      and(
-        eq(
-          piMemoryStage1Candidates.memoryStorageId,
-          args.scope.memoryStorageId,
-        ),
-        eq(piMemoryStage1Candidates.orgId, args.scope.orgId),
-        eq(piMemoryStage1Candidates.userId, args.scope.userId),
-        eq(piMemoryStage1Candidates.piSessionId, args.piSessionId),
-      ),
-    );
-  return hash;
 }

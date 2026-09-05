@@ -77,7 +77,7 @@ interface ClaimPiMemoryPhase2JobArgs {
   readonly scope?: PiMemoryPhase2OwnerScope;
 }
 
-export interface PiMemoryPhase2LeaseFence extends PiMemoryPhase2OwnerScope {
+interface PiMemoryPhase2LeaseFence extends PiMemoryPhase2OwnerScope {
   readonly leaseToken: string;
   readonly claimedRevision: number;
   readonly claimedBaseVersionId: string;

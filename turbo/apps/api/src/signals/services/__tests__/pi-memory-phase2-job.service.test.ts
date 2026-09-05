@@ -289,6 +289,9 @@ describe("Pi memory Phase 2 job transitions", () => {
       leaseToken: legacyLeaseToken,
       legacyLeaseToken,
       leaseExpiresAt,
+      claimedSelectionDigest: "0".repeat(64),
+      claimedSelectedCount: 0,
+      claimedSelectedUtf8Bytes: 0,
     });
 
     await expect(

@@ -77,11 +77,5 @@ function consolidatePiMemoryPhase2Routes(
   ];
 }
 
-export function cronConsolidatePiMemoryPhase2RoutesForTest(
-  scope: PiMemoryPhase2RouteScope,
-): readonly RouteEntry[] {
-  return consolidatePiMemoryPhase2Routes(scope);
-}
-
 export const cronConsolidatePiMemoryPhase2Routes =
   consolidatePiMemoryPhase2Routes(undefined);

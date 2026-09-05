@@ -428,9 +428,7 @@ export default [
       // constructs or inspects exact job and Storage state matrices. These
       // focused tests pin the finite job, archive, usage, worker composition,
       // publication, Storage notification, and concurrency contracts.
-      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
@@ -589,9 +587,7 @@ export default [
       // construct or inspect the exact archive, usage, worker, PostgreSQL
       // concurrency, publication, Storage notification, and selection state
       // matrices covered by these focused tests.
-      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
