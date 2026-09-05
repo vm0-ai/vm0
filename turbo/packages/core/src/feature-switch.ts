@@ -413,7 +413,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.StableChatThreadNavigation]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Keep pinned chats ordered by pin time, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
+      "Keep pinned chats in a stable, manually adjustable order, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

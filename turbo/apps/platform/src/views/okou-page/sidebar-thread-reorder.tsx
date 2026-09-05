@@ -44,7 +44,16 @@ function ThreadDragHandle({
   const picked = drag?.threadId === signals.threadId;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger
+        asChild
+        // Open on click, leaving pointer presses available for native dragging.
+        onPointerDown={(event) => {
+          event.preventBaseUIHandler();
+        }}
+        onMouseDown={(event) => {
+          event.preventBaseUIHandler();
+        }}
+      >
         <Button
           className="okou-thread-drag-handle pointer-events-auto absolute left-1 top-1 z-10 cursor-grab active:cursor-grabbing"
           variant="quiet"
@@ -209,15 +218,19 @@ export function PinnedThreadDragAnnouncement({
   return (
     <span ref={mount} className="sr-only" aria-live="polite" aria-atomic="true">
       {announcement
-        ? t(
-            ($) => {
-              return $.chat.sidebar.pinDropPosition;
-            },
-            {
-              side: announcement.side,
-              title: announcement.title,
-            },
-          )
+        ? announcement.side === "before"
+          ? t(
+              ($) => {
+                return $.chat.sidebar.pinDropBefore;
+              },
+              { title: announcement.title },
+            )
+          : t(
+              ($) => {
+                return $.chat.sidebar.pinDropAfter;
+              },
+              { title: announcement.title },
+            )
         : ""}
     </span>
   );

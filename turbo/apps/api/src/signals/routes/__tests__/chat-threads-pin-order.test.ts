@@ -147,7 +147,7 @@ describe("pinned thread ordering", () => {
       }),
       [200],
     );
-    expect(after.body).toEqual(before.body);
+    expect(after.body).toStrictEqual(before.body);
     const events = await chat.requestThreadEvents(fixture.actor, {}, [200]);
     if (events.status !== 200) {
       throw new Error("Missing events");
@@ -168,7 +168,7 @@ describe("pinned thread ordering", () => {
         .map((thread) => {
           return thread.id;
         }),
-    ).toEqual([fixture.threadId, second.id]);
+    ).toStrictEqual([fixture.threadId, second.id]);
     const compact = setupApp({
       context,
       routes: cronCompactChatThreadSnapshotsRoutes,
@@ -180,9 +180,9 @@ describe("pinned thread ordering", () => {
       [200],
     );
     const snapshot = await chat.getThreadSnapshot(fixture.actor);
-    const compactedPin = snapshot.chatThreads.find(
-      (thread) => thread.id === fixture.threadId,
-    );
+    const compactedPin = snapshot.chatThreads.find((thread) => {
+      return thread.id === fixture.threadId;
+    });
     expect(Date.parse(compactedPin?.pinnedAt ?? "")).toBe(
       Date.parse(before.body.pinnedAt ?? ""),
     );
@@ -226,13 +226,16 @@ describe("pinned thread ordering", () => {
       order.map((thread) => {
         return thread.id;
       }),
-    ).toEqual([third.id, ...[fixture.threadId, second.id].sort().reverse()]);
-    expect(order[0]?.pinOrder! < "a0").toBe(true);
+    ).toStrictEqual([
+      third.id,
+      ...[fixture.threadId, second.id].sort().reverse(),
+    ]);
+    expect(order[0]!.pinOrder! < "a0").toBeTruthy();
   });
 
   it("does not reorder an unpinned or other-org thread", async () => {
     const fixture = await seedChatThread("Unpinned");
-    await accept(
+    const missing = await accept(
       reorderClient().reorder({
         headers: headers(fixture),
         params: { id: fixture.threadId },
@@ -240,6 +243,7 @@ describe("pinned thread ordering", () => {
       }),
       [404],
     );
+    expect(missing.status).toBe(404);
     await chat.pinThread(fixture.actor, fixture.threadId);
     const orgId = `org_${randomUUID()}`;
     await store.set(
@@ -260,7 +264,7 @@ describe("pinned thread ordering", () => {
   it("validates fractional rank keys and requires write capability", async () => {
     const fixture = await seedChatThread("Pinned");
     await chat.pinThread(fixture.actor, fixture.threadId);
-    await accept(
+    const invalid = await accept(
       reorderClient().reorder({
         headers: headers(fixture),
         params: { id: fixture.threadId },
@@ -268,6 +272,7 @@ describe("pinned thread ordering", () => {
       }),
       [400],
     );
+    expect(invalid.status).toBe(400);
     await accept(
       pinClient().pin({
         headers: pinHeaders(fixture),

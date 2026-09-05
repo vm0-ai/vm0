@@ -55,7 +55,7 @@ export function isChatThreadPinOrder(value: string): boolean {
     generateKeyBetween(null, value);
     return true;
   } catch {
-    // The library validates integer length, reserved keys and trailing zeroes.
+    // The library validates integer length, reserved keys and a trailing 0.
     return false;
   }
 }

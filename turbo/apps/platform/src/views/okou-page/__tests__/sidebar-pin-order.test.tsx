@@ -51,7 +51,7 @@ async function prepare(caseId: number, enabled = true, tied = false) {
     featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: enabled },
   });
   await waitFor(() => {
-    return expect(sidebarThreadTitles()).toEqual([
+    return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",
       "Second pin",
       "Last pin",
@@ -95,7 +95,7 @@ test("keyboard reorder is optimistic and survives the matching persisted event",
   const event = await requested.promise;
   expect(event.chatThreadId).toBe(snapshot[2]?.id);
   await waitFor(() => {
-    return expect(sidebarThreadTitles()).toEqual([
+    return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",
       "Last pin",
       "Second pin",
@@ -112,7 +112,7 @@ test("keyboard reorder is optimistic and survives the matching persisted event",
   changeChatThreadList();
   await stream.eventsServed;
   await waitFor(() => {
-    return expect(sidebarThreadTitles()).toEqual([
+    return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",
       "Persisted last pin",
       "Second pin",
@@ -133,13 +133,13 @@ test("keyboard cancel leaves the order intact without writing an event", async (
   fireEvent.keyDown(grip, { key: "ArrowUp" });
   expect(screen.getByText("Drop before Second pin")).toBeInTheDocument();
   fireEvent.keyDown(grip, { key: "Escape" });
-  expect(sidebarThreadTitles()).toEqual([
+  expect(sidebarThreadTitles()).toStrictEqual([
     "First pin",
     "Second pin",
     "Last pin",
     "Regular thread",
   ]);
-  expect(requests).toEqual([]);
+  expect(requests).toStrictEqual([]);
   expect(grip).toHaveAttribute("aria-pressed", "false");
 });
 
@@ -163,6 +163,9 @@ test("dragging between equal ranks updates the tied suffix optimistically", asyn
   if (!target) {
     throw new Error("Missing target row");
   }
+  fireEvent.pointerDown(grip, { pointerType: "mouse", button: 0 });
+  fireEvent.mouseDown(grip, { button: 0 });
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   fireEvent.dragStart(grip, { dataTransfer: transfer });
   expect(grip).toHaveAttribute("aria-pressed", "true");
   fireEvent(
@@ -179,7 +182,7 @@ test("dragging between equal ranks updates the tied suffix optimistically", asyn
   expect(target).toHaveAttribute("data-drop-side", "before");
   fireEvent.drop(target, { dataTransfer: transfer });
   await waitFor(() => {
-    return expect(sidebarThreadTitles()).toEqual([
+    return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",
       "Last pin",
       "Second pin",
@@ -219,9 +222,9 @@ test("new pins receive a rank ahead of all existing pins", async () => {
     throw new Error("Missing pin menu item");
   }
   await click(pinItem);
-  expect((await requested.promise)! < "a0").toBe(true);
+  expect((await requested.promise)! < "a0").toBeTruthy();
   await waitFor(() => {
-    return expect(sidebarThreadTitles()).toEqual([
+    return expect(sidebarThreadTitles()).toStrictEqual([
       "Regular thread",
       "First pin",
       "Second pin",
@@ -237,5 +240,31 @@ test("the switch hides reordering and preserves activity sorting", async () => {
     queryAllByRoleFast("button").filter((item) => {
       return item.getAttribute("aria-label")?.startsWith("Reorder ");
     }),
-  ).toEqual([]);
+  ).toStrictEqual([]);
+});
+
+test("touch users can move a pin through the handle menu", async () => {
+  await prepare(66);
+  context.mocks.api(chatThreadPinOrderContract.reorder, ({ respond }) => {
+    return respond(204);
+  });
+  const grip = handle("Last pin");
+  fireEvent.pointerDown(grip, { pointerType: "touch" });
+  fireEvent.pointerUp(grip, { pointerType: "touch" });
+  fireEvent.click(grip);
+  const moveUp = queryAllByRoleFast("menuitem").find((item) => {
+    return item.textContent?.trim() === "Move up";
+  });
+  if (!moveUp) {
+    throw new Error("Missing move up menu item");
+  }
+  await click(moveUp);
+  await waitFor(() => {
+    expect(sidebarThreadTitles()).toStrictEqual([
+      "First pin",
+      "Last pin",
+      "Second pin",
+      "Regular thread",
+    ]);
+  });
 });

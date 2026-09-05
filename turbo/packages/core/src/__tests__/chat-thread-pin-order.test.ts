@@ -45,14 +45,14 @@ describe("pinned thread fractional ordering", () => {
       [...threads, first].sort(comparePinnedThreads).map((item) => {
         return item.id;
       }),
-    ).toEqual(["first", "newer", "old"]);
+    ).toStrictEqual(["first", "newer", "old"]);
     expect(
       [pin("a", "a0"), pin("b", "a0")]
         .sort(comparePinnedThreads)
         .map((item) => {
           return item.id;
         }),
-    ).toEqual(["b", "a"]);
+    ).toStrictEqual(["b", "a"]);
   });
 
   it("uses byte order across upper and lower case rank digits", () => {
@@ -62,7 +62,7 @@ describe("pinned thread fractional ordering", () => {
         .map((item) => {
           return item.id;
         }),
-    ).toEqual(["upper", "lower"]);
+    ).toStrictEqual(["upper", "lower"]);
   });
 
   it("inserts at either end and in the middle without rewriting neighbors", () => {
@@ -71,19 +71,21 @@ describe("pinned thread fractional ordering", () => {
       moved(threads, "c", "a", "after").map((item) => {
         return item.id;
       }),
-    ).toEqual(["a", "c", "b"]);
+    ).toStrictEqual(["a", "c", "b"]);
     expect(
       moved(threads, "c", "a", "before").map((item) => {
         return item.id;
       }),
-    ).toEqual(["c", "a", "b"]);
+    ).toStrictEqual(["c", "a", "b"]);
     expect(
       moved(threads, "a", "c", "after").map((item) => {
         return item.id;
       }),
-    ).toEqual(["b", "c", "a"]);
+    ).toStrictEqual(["b", "c", "a"]);
     expect(moveChatThreadPinOrder(threads, "c", "a", "after")).toHaveLength(1);
-    expect(moveChatThreadPinOrder(threads, "b", "a", "after")).toEqual([]);
+    expect(moveChatThreadPinOrder(threads, "b", "a", "after")).toStrictEqual(
+      [],
+    );
   });
 
   it("opens a zero-width gap by moving only the tied suffix", () => {
@@ -99,7 +101,7 @@ describe("pinned thread fractional ordering", () => {
       result.map((item) => {
         return item.id;
       }),
-    ).toEqual(["z", "moved", "y", "x", "next"]);
+    ).toStrictEqual(["z", "moved", "y", "x", "next"]);
     expect(result[0]?.pinOrder).toBe("a0");
     expect(result.at(-1)?.pinOrder).toBe("a1");
     expect(
@@ -111,7 +113,7 @@ describe("pinned thread fractional ordering", () => {
       ).map((item) => {
         return item.id;
       }),
-    ).toEqual(["z", "moved", "y", "x"]);
+    ).toStrictEqual(["z", "moved", "y", "x"]);
   });
 
   it("supports repeated insertion without floating point exhaustion", () => {
@@ -123,18 +125,18 @@ describe("pinned thread fractional ordering", () => {
       threads.map((thread) => {
         return thread.id;
       }),
-    ).toEqual(["a", "b", "c"]);
+    ).toStrictEqual(["a", "b", "c"]);
     expect(
       threads.every((thread) => {
         return isChatThreadPinOrder(thread.pinOrder!);
       }),
-    ).toBe(true);
+    ).toBeTruthy();
   });
 
   it.each(["", "a", "a00", "b0", "a0!", "0a", "A00000000000000000000000000"])(
     "rejects invalid rank %s",
     (rank) => {
-      expect(isChatThreadPinOrder(rank)).toBe(false);
+      expect(isChatThreadPinOrder(rank)).toBeFalsy();
     },
   );
 });
