@@ -1959,6 +1959,10 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match a public HeyGen presenter to the request",
+        "label": "Avatar",
+        "noneDescription": "Create the video without a presenter",
         "heading": "अवतार चुनें",
         "help": "प्रस्तुतकर्ता चुनें या बिना अवतार के आगे बढ़ें",
         "none": "कोई अवतार नहीं",
@@ -1967,8 +1971,19 @@
         "placementOverlay": "स्लाइड के ऊपर — स्लाइड पूरा फ़्रेम भरती है",
         "placementRight": "दाएँ — स्लाइड बाईं ओर रहती है"
       },
-      "cardDescription": "फ़ाइल या स्क्रीन रिकॉर्डिंग को तैयार वीडियो में बदलें",
-      "description": "स्रोत जोड़ें, वैकल्पिक अवतार और आवाज़ चुनें, फिर चैट थ्रेड में वीडियो बनाएँ।",
+      "cardDescription": "Turn an idea or material into a finished video",
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "catalog": {
+        "empty": "No public HeyGen options are available.",
+        "error": "The HeyGen catalog could not be loaded.",
+        "loadMore": "Load more"
+      },
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+      },
       "desktop": {
         "checkingCompatibility": "अनुकूलता की जाँच हो रही है",
         "description": "स्क्रीन रिकॉर्डिंग {{desktopProductName}} डेस्कटॉप ऐप में होती है, जो कोई भी विंडो कैप्चर करता है और आपके क्लिक भी रिकॉर्ड करता है।",
@@ -1988,6 +2003,9 @@
         "uploadFailed": "स्रोत अपलोड नहीं हो सका। यह अभी भी स्थानीय रूप से सुरक्षित है और बैकअप के रूप में डाउनलोड किया गया है।"
       },
       "footer": {
+        "cancel": "Cancel",
+        "create": "Create video",
+        "hint": "Add a prompt, files, or both",
         "back": "वापस",
         "createInChat": "चैट में बनाएँ",
         "download": "स्रोत डाउनलोड करें",
@@ -2002,6 +2020,9 @@
         "voice": "आवाज़"
       },
       "source": {
+        "browse": "Browse files",
+        "drop": "Drop files here or browse",
+        "remove": "Remove {{filename}}",
         "documentDescription": "अपनी स्लाइड को नैरेशन वाले इंट्रो वीडियो में बदलें",
         "documentFormats": "PPTX, PPT, PDF, HTML",
         "documentTitle": "स्लाइड अपलोड करें",
@@ -2030,7 +2051,21 @@
         "voice": "आवाज़"
       },
       "title": "इंट्रो वीडियो बनाएँ",
+      "style": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match the style to your goal and material",
+        "heading": "Choose a video style",
+        "help": "Pick a public HeyGen Video Agent style, use no style, or let Okou decide.",
+        "label": "Video style",
+        "none": "No template",
+        "noneDescription": "Use a clean composition without a HeyGen style"
+      },
       "voice": {
+        "default": "Default · Follows avatar",
+        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "label": "Voice",
         "heading": "आवाज़ चुनें",
         "help": "आगे बढ़ने से पहले नमूना सुनें",
         "none": "बिना वॉइसओवर",

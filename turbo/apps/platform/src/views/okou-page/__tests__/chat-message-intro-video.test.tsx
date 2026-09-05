@@ -13,10 +13,13 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import {
   context,
-  findFastControl,
   installMessageExperienceChat,
   MESSAGE_EXPERIENCE_AGENT_ID,
 } from "./chat-message-experience-test-helpers.ts";
+
+const INTRO_VIDEO_SWITCHES = {
+  [FeatureSwitchKey.IntroVideo]: true,
+} as const;
 
 const DESKTOP_HANDOFF_PARAMS = {
   "intro-video-recording": "video-upload-id",
@@ -26,10 +29,6 @@ const DESKTOP_HANDOFF_PARAMS = {
   "intro-video-clicks-name": "demo.clicks.json",
   "intro-video-clicks-size": "512",
   "intro-video-user": "test-user-123",
-} as const;
-
-const INTRO_VIDEO_SWITCHES = {
-  [FeatureSwitchKey.IntroVideo]: true,
 } as const;
 
 type MessageExperienceOptions = NonNullable<
@@ -63,6 +62,50 @@ function installIntroVideoFixture(
     });
   });
   context.mocks.api(
+    introVideoPresenterContract.styles,
+    ({ query, respond }) => {
+      expect(query).toStrictEqual({ pageSize: 24 });
+      return respond(200, {
+        styles: [
+          {
+            id: "349d91e1ad2444eabab2672a9057f298",
+            name: "Thriller",
+            thumbnailUrl: "https://files.heygen.test/thriller.jpg",
+            previewVideoUrl: "https://files.heygen.test/thriller.mp4",
+            tags: ["cinematic"],
+            aspectRatio: "16:9",
+          },
+        ],
+        hasMore: false,
+        nextToken: null,
+      });
+    },
+  );
+  context.mocks.api(
+    introVideoPresenterContract.avatars,
+    ({ query, respond }) => {
+      expect(query).toStrictEqual({ pageSize: 24 });
+      return respond(200, {
+        avatars: [
+          {
+            id: "Daphne_public_1",
+            groupId: "c1926d821b4d43d6a5f07f2985bb5cd1",
+            name: "Daphne in Grey blazer",
+            defaultVoiceId: "812d4eea4a8442a382dcaf2dbaddbd93",
+            previewImageUrl: "https://files.heygen.test/daphne.webp",
+            previewVideoUrl: "https://files.heygen.test/daphne.mp4",
+            gender: "female",
+            imageWidth: 1080,
+            imageHeight: 1080,
+            preferredOrientation: "portrait",
+          },
+        ],
+        hasMore: false,
+        nextToken: null,
+      });
+    },
+  );
+  context.mocks.api(
     introVideoPresenterContract.voices,
     ({ query, respond }) => {
       expect(query).toStrictEqual({ pageSize: 24 });
@@ -83,6 +126,14 @@ function installIntroVideoFixture(
   );
 }
 
+async function setupIntroVideoPage(path?: string): Promise<void> {
+  await setupPage({
+    context,
+    path: path ?? `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: INTRO_VIDEO_SWITCHES,
+  });
+}
+
 async function openIntroVideoDialog(): Promise<HTMLElement> {
   click(await screen.findByTestId("intro-video-start-card"));
   return await screen.findByRole("dialog", {
@@ -90,162 +141,71 @@ async function openIntroVideoDialog(): Promise<HTMLElement> {
   });
 }
 
-async function uploadLaunchPresentation(
-  user: ReturnType<typeof userEvent.setup>,
-  dialog: HTMLElement,
-): Promise<void> {
-  const input = dialog.querySelector<HTMLInputElement>(
-    '[data-intro-video-presentation-input=""]',
-  );
-  if (!input) {
-    throw new Error("Intro-video presentation input not found");
-  }
-  await user.upload(
-    input,
-    new File(["launch source"], "launch.pdf", {
-      type: "application/pdf",
-    }),
-  );
-  await expect(
-    within(dialog).findByText("Choose an avatar"),
-  ).resolves.toBeVisible();
-  expect(within(dialog).queryByText("Your source is ready")).toBeNull();
-}
-
-async function clickDialogButton(
-  dialog: HTMLElement,
+function requiredButtonNamed(
   name: string,
-): Promise<void> {
-  click(await findFastControl("button", name, dialog));
-}
-
-async function reviewWithoutAvatar(
-  user: ReturnType<typeof userEvent.setup>,
-  dialog: HTMLElement,
-): Promise<void> {
-  await uploadLaunchPresentation(user, dialog);
-  await reviewSourceWithoutAvatar(dialog, "No voiceover");
-}
-
-async function reviewSourceWithoutAvatar(
-  dialog: HTMLElement,
-  voice: "No voiceover" | "Original audio",
-): Promise<void> {
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Choose a voice"),
-  ).resolves.toBeVisible();
-  click(buttonContaining(dialog, voice));
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Review your intro video"),
-  ).resolves.toBeVisible();
-}
-
-function resolveDesktopRecordingFiles(): void {
-  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
-    return respond(200, {
-      url: `https://resolved.example/${query.file_id}`,
-      publicUrl: `https://cdn.vm7.io/artifacts/tests/intro-video/${query.file_id}`,
-    });
-  });
-}
-
-function buttonContaining(container: ParentNode, text: string): HTMLElement {
+  container: ParentNode = document.body,
+): HTMLElement {
   const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.includes(text);
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
   });
   if (!button) {
-    throw new Error(`Button containing ${text} not found`);
+    throw new Error(`Button not found: ${name}`);
   }
   return button;
 }
 
-test("An uploaded deck opens at the presenter without requiring source review", async () => {
-  const user = userEvent.setup({ delay: null });
+async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(requiredButtonNamed("Video style: Auto · Okou decides"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a video style",
+  });
+  await user.click(within(picker).getByLabelText("Select style Thriller"));
+}
+
+async function chooseAvatar(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(requiredButtonNamed("Avatar: Auto · Okou decides"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose an avatar",
+  });
+  await user.click(
+    within(picker).getByLabelText("Select avatar Daphne in Grey blazer"),
+  );
+}
+
+test("Intro Video remains behind the introVideo feature switch", async () => {
   installIntroVideoFixture();
 
   await setupPage({
     context,
     path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
   });
 
-  const dialog = await openIntroVideoDialog();
-  await uploadLaunchPresentation(user, dialog);
-  expect(
-    within(dialog).queryByText("Where should the presenter stand?"),
-  ).toBeNull();
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Choose a voice"),
-  ).resolves.toBeVisible();
-  expect(
-    within(dialog).queryByText("Where should the presenter stand?"),
-  ).toBeNull();
-  click(buttonContaining(dialog, "No voiceover"));
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Review your intro video"),
-  ).resolves.toBeVisible();
-  await expect(within(dialog).findByText("No avatar")).resolves.toBeVisible();
-  expect(within(dialog).queryByText(/Presenter on the left/u)).toBeNull();
-  expect(within(dialog).queryByText(/Presenter on the right/u)).toBeNull();
+  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
 });
 
-test("Leaving the presenter step discards an uploaded deck", async () => {
-  const user = userEvent.setup({ delay: null });
+test("Intro Video opens as one unrestricted multi-file form", async () => {
   installIntroVideoFixture();
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
-  });
+  await setupIntroVideoPage();
 
   const dialog = await openIntroVideoDialog();
-  await uploadLaunchPresentation(user, dialog);
-  await clickDialogButton(dialog, "Back");
-
-  await expect(
-    within(dialog).findByText("How do you want to start?"),
-  ).resolves.toBeVisible();
-  expect(buttonContaining(dialog, "Avatar")).toBeDisabled();
-  expect(buttonContaining(dialog, "Voice")).toBeDisabled();
-  expect(within(dialog).queryByText("launch.pdf")).toBeNull();
-});
-
-test("A generic source file opens at the presenter", async () => {
-  const user = userEvent.setup({ delay: null });
-  installIntroVideoFixture();
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
-  });
-
-  const dialog = await openIntroVideoDialog();
+  expect(within(dialog).getByText("Create your intro video")).toBeVisible();
+  expect(within(dialog).queryByText("How do you want to start?")).toBeNull();
+  expect(within(dialog).queryByText("Record your screen")).toBeNull();
+  expect(within(dialog).queryByText("Review your intro video")).toBeNull();
   const input = dialog.querySelector<HTMLInputElement>(
     '[data-intro-video-file-input=""]',
   );
-  if (!input) {
-    throw new Error("Intro-video file input not found");
-  }
-  await user.upload(
-    input,
-    new File(["speaker notes"], "speaker-notes.txt", {
-      type: "text/plain",
-    }),
-  );
-
-  await expect(
-    within(dialog).findByText("Choose an avatar"),
-  ).resolves.toBeVisible();
-  expect(within(dialog).queryByText("Your source is ready")).toBeNull();
+  expect(input).not.toBeNull();
+  expect(input).toHaveAttribute("multiple");
+  expect(input).not.toHaveAttribute("accept");
+  expect(requiredButtonNamed("Create video", dialog)).toBeDisabled();
 });
 
-test("A presentation video request does not invent editing direction, opening, or ending", async () => {
+test("A prompt alone creates an Intro Video chat", async () => {
   const user = userEvent.setup({ delay: null });
   let submittedPrompt: string | undefined;
   installIntroVideoFixture({
@@ -253,41 +213,62 @@ test("A presentation video request does not invent editing direction, opening, o
       submittedPrompt = body.prompt;
     },
   });
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
-  });
-
+  await setupIntroVideoPage();
   const dialog = await openIntroVideoDialog();
-  await reviewWithoutAvatar(user, dialog);
-  expect(within(dialog).getByLabelText("Editing instructions")).toHaveValue("");
 
-  await clickDialogButton(dialog, "Create in chat");
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Create a concise launch video for non-technical business users.",
+  );
+  await user.click(requiredButtonNamed("Create video", dialog));
 
   await waitFor(() => {
-    expect(submittedPrompt).toBeDefined();
+    expect(submittedPrompt).toContain(
+      "Use the $intro-video skill to create one polished intro video.",
+    );
   });
   expect(submittedPrompt).toContain(
-    "Create a polished video from the attached source.",
+    "- Sources: none; research or create supporting material as needed",
   );
   expect(submittedPrompt).toContain(
-    "Do not add an opening or ending unless the user explicitly requests them.",
+    "Create a concise launch video for non-technical business users.",
   );
-  expect(submittedPrompt).not.toContain(
-    "Create a polished intro video from the attached source.",
+  expect(submittedPrompt).toContain(
+    "- HeyGen style: Auto — choose the best visual direction",
   );
-  expect(submittedPrompt).not.toContain("Editing direction:");
-  expect(submittedPrompt).not.toContain("<intro_video_workflow>");
-  expect(submittedPrompt).not.toContain("okou presentation screenshot");
-  expect(submittedPrompt).not.toContain("<user_request>");
+  expect(submittedPrompt).toContain(
+    "- Voice: Default — follow the chosen avatar",
+  );
   await waitFor(() => {
     expect(dialog).not.toBeInTheDocument();
   });
 });
 
-test("A selected Intro Video voice comes from HeyGen and is reused for lip sync", async () => {
+test("The form accepts multiple unrelated source types", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  const input = dialog.querySelector<HTMLInputElement>(
+    '[data-intro-video-file-input=""]',
+  );
+  if (!input) {
+    throw new Error("Intro Video file input not found");
+  }
+
+  await user.upload(input, [
+    new File(["deck"], "launch.pptx"),
+    new File(["notes"], "notes.docx"),
+    new File(["video"], "walkthrough.mp4", { type: "video/mp4" }),
+  ]);
+
+  expect(within(dialog).getByText("launch.pptx")).toBeVisible();
+  expect(within(dialog).getByText("notes.docx")).toBeVisible();
+  expect(within(dialog).getByText("walkthrough.mp4")).toBeVisible();
+  expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
+});
+
+test("A selected public avatar uses its HeyGen default voice", async () => {
   const user = userEvent.setup({ delay: null });
   let submittedPrompt: string | undefined;
   installIntroVideoFixture({
@@ -295,35 +276,59 @@ test("A selected Intro Video voice comes from HeyGen and is reused for lip sync"
       submittedPrompt = body.prompt;
     },
   });
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: INTRO_VIDEO_SWITCHES,
-  });
-
+  await setupIntroVideoPage();
   const dialog = await openIntroVideoDialog();
-  await uploadLaunchPresentation(user, dialog);
-  click(
-    await within(dialog).findByLabelText(
-      "Select template Abigail Office Front",
-    ),
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Explain the product in 45 seconds.",
   );
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Choose a voice"),
-  ).resolves.toBeVisible();
-  expect(
-    dialog.querySelector('[data-intro-video-voice-provider="heygen"]'),
-  ).not.toBeNull();
-  click(await within(dialog).findByLabelText("Select voice Annie - Lifelike"));
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Review your intro video"),
-  ).resolves.toBeVisible();
-  expect(within(dialog).getByText("Annie - Lifelike")).toBeVisible();
+  await chooseStyle(user);
+  await chooseAvatar(user);
 
-  await clickDialogButton(dialog, "Create in chat");
+  expect(
+    requiredButtonNamed("Voice: Default · Daphne in Grey blazer", dialog),
+  ).toBeVisible();
+  await user.click(requiredButtonNamed("Create video", dialog));
+
+  await waitFor(() => {
+    expect(submittedPrompt).toContain(
+      "- HeyGen style: Thriller (349d91e1ad2444eabab2672a9057f298)",
+    );
+  });
+  expect(submittedPrompt).toContain(
+    "- HeyGen avatar group ID: c1926d821b4d43d6a5f07f2985bb5cd1",
+  );
+  expect(submittedPrompt).toContain(
+    "- HeyGen avatar default voice ID: 812d4eea4a8442a382dcaf2dbaddbd93",
+  );
+  expect(submittedPrompt).toContain(
+    "- Voice: Default — follow Daphne in Grey blazer (812d4eea4a8442a382dcaf2dbaddbd93)",
+  );
+});
+
+test("A public HeyGen voice overrides the avatar default", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Create a short product introduction.",
+  );
+  await chooseAvatar(user);
+  await user.click(
+    requiredButtonNamed("Voice: Default · Daphne in Grey blazer", dialog),
+  );
+  const picker = await screen.findByRole("dialog", { name: "Choose a voice" });
+  await user.click(
+    await within(picker).findByLabelText("Select voice Annie - Lifelike"),
+  );
+  await user.click(requiredButtonNamed("Create video", dialog));
 
   await waitFor(() => {
     expect(submittedPrompt).toContain(
@@ -331,173 +336,25 @@ test("A selected Intro Video voice comes from HeyGen and is reused for lip sync"
     );
   });
   expect(submittedPrompt).toContain(
-    "okou __intro-video-voice --voice-id 330290724a1b470fb63153f34d4c0183 --text <final-narration-script> --json",
-  );
-  expect(submittedPrompt).toContain(
-    "use the command's returned permanent audio URL for presenter lip sync and reuse that exact audio in the final mix",
-  );
-  expect(submittedPrompt).toContain(
-    "okou __intro-video-presenter --avatar-id Abigail_standing_office_front --audio-url <resolved-audio-url> --json",
-  );
-  expect(submittedPrompt).toContain("- Avatar provider: heygen");
-  expect(submittedPrompt).toContain("output_format webm and Avatar III");
-  expect(submittedPrompt).not.toContain("Avatar IV");
-  expect(submittedPrompt).not.toContain("voice's owning provider");
-  expect(submittedPrompt).not.toContain(
-    "never send the catalog voice ID as a HeyGen voice_id",
+    "- HeyGen avatar default voice ID: 812d4eea4a8442a382dcaf2dbaddbd93",
   );
 });
 
-test("Pass the user's intro-video editing direction to the new chat", async () => {
-  const user = userEvent.setup({ delay: null });
-  let submittedPrompt: string | undefined;
-  installIntroVideoFixture({
-    onSendRequest(body) {
-      submittedPrompt = body.prompt;
-    },
-  });
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
-  });
-
-  const dialog = await openIntroVideoDialog();
-  await reviewWithoutAvatar(user, dialog);
-  await user.type(
-    within(dialog).getByLabelText("Editing instructions"),
-    "Keep the pacing brisk and end on the launch date.",
-  );
-
-  await clickDialogButton(dialog, "Create in chat");
-
-  await waitFor(() => {
-    expect(submittedPrompt).toContain("Editing direction:");
-    expect(submittedPrompt).toContain(
-      "Keep the pacing brisk and end on the launch date.",
-    );
-  });
-  await waitFor(() => {
-    expect(dialog).not.toBeInTheDocument();
-  });
-});
-
-test("Screen recording hands the user off to the desktop app", async () => {
+test("An existing desktop recording handoff still opens in the simple form", async () => {
   installIntroVideoFixture();
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
-    featureSwitches: INTRO_VIDEO_SWITCHES,
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    return respond(200, {
+      url: `https://resolved.example/${query.file_id}`,
+      publicUrl: `https://cdn.vm7.io/artifacts/tests/intro-video/${query.file_id}`,
+    });
   });
-
-  const dialog = await openIntroVideoDialog();
-  click(buttonContaining(dialog, "Record your screen"));
-
-  await expect(
-    within(dialog).findByText("Start a recording from the menu bar"),
-  ).resolves.toBeVisible();
-  expect(
-    within(dialog).getByText("Come back to this wizard automatically"),
-  ).toBeVisible();
-  const download = await findFastControl("link", "Download for macOS", dialog);
-  expect(download).toHaveAttribute(
-    "href",
-    expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
+  await setupIntroVideoPage(
+    `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
   );
-
-  await clickDialogButton(dialog, "Back");
-  await expect(
-    within(dialog).findByText("How do you want to start?"),
-  ).resolves.toBeVisible();
-});
-
-test("A desktop recording video request does not invent an opening or ending", async () => {
-  let submittedPrompt: string | undefined;
-  installIntroVideoFixture({
-    onSendRequest(body) {
-      submittedPrompt = body.prompt;
-    },
-  });
-  resolveDesktopRecordingFiles();
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
-    featureSwitches: INTRO_VIDEO_SWITCHES,
-  });
 
   const dialog = await screen.findByRole("dialog", {
     name: "Create an intro video",
   });
-  await expect(
-    within(dialog).findByText("Your source is ready"),
-  ).resolves.toBeVisible();
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Choose an avatar"),
-  ).resolves.toBeVisible();
-  await reviewSourceWithoutAvatar(dialog, "Original audio");
-
-  await clickDialogButton(dialog, "Create in chat");
-
-  await waitFor(() => {
-    expect(submittedPrompt).toBeDefined();
-  });
-  expect(submittedPrompt).toContain(
-    "Create a polished video from the attached source.",
-  );
-  expect(submittedPrompt).toContain(
-    "Do not add an opening or ending unless the user explicitly requests them.",
-  );
-  expect(submittedPrompt).not.toContain(
-    "Create a polished intro video from the attached source.",
-  );
-  expect(submittedPrompt).toContain("- Source: demo.mp4");
-  expect(submittedPrompt).not.toContain("<intro_video_workflow>");
-  expect(submittedPrompt).not.toContain("okou video camera");
-  expect(submittedPrompt).not.toContain("<user_request>");
-  await waitFor(() => {
-    expect(dialog).not.toBeInTheDocument();
-  });
-});
-
-test("A desktop recording survives leaving the presenter step", async () => {
-  installIntroVideoFixture();
-  resolveDesktopRecordingFiles();
-
-  await setupPage({
-    context,
-    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
-    featureSwitches: INTRO_VIDEO_SWITCHES,
-  });
-
-  const dialog = await screen.findByRole("dialog", {
-    name: "Create an intro video",
-  });
-  await expect(
-    within(dialog).findByText("Your source is ready"),
-  ).resolves.toBeVisible();
   expect(within(dialog).getByText("demo.mp4")).toBeVisible();
-  await clickDialogButton(dialog, "Next");
-  await expect(
-    within(dialog).findByText("Choose an avatar"),
-  ).resolves.toBeVisible();
-
-  await clickDialogButton(dialog, "Back");
-  await expect(
-    within(dialog).findByText("Your source is ready"),
-  ).resolves.toBeVisible();
-  expect(within(dialog).getByText("demo.mp4")).toBeVisible();
-
-  click(buttonContaining(dialog, "Replace source"));
-  await expect(
-    within(dialog).findByText("How do you want to start?"),
-  ).resolves.toBeVisible();
-  click(buttonContaining(dialog, "Source"));
-  await expect(
-    within(dialog).findByText("Your source is ready"),
-  ).resolves.toBeVisible();
-  expect(within(dialog).getByText("demo.mp4")).toBeVisible();
+  expect(within(dialog).queryByText("Record your screen")).toBeNull();
 });

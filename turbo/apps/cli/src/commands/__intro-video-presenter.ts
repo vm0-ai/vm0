@@ -6,6 +6,7 @@ import { withErrorHandler } from "../lib/command/with-error-handler";
 
 interface IntroVideoPresenterCommandOptions {
   readonly avatarId: string;
+  readonly avatarGroupId?: string;
   readonly audioUrl: string;
   readonly videoName?: string;
   readonly json?: boolean;
@@ -24,6 +25,7 @@ async function runIntroVideoPresenterCommand(
 ): Promise<void> {
   const result = await generateWebIntroVideoPresenter({
     avatarId: options.avatarId,
+    ...(options.avatarGroupId ? { avatarGroupId: options.avatarGroupId } : {}),
     audioUrl: options.audioUrl,
     ...(options.videoName ? { videoName: options.videoName } : {}),
   });
@@ -44,6 +46,11 @@ export const introVideoPresenterCommand = new Command()
   .requiredOption(
     "--avatar-id <id>",
     "Curated Intro Video avatar ID",
+    parseAvatarId,
+  )
+  .option(
+    "--avatar-group-id <id>",
+    "Public HeyGen avatar group ID",
     parseAvatarId,
   )
   .requiredOption("--audio-url <url>", "Resolved narration or silent audio URL")

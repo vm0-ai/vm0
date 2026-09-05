@@ -28,7 +28,7 @@ import type {
 } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { SEED_SKILLS } from "@okouai/core/seed-skills";
+import { INTRO_VIDEO_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -1697,13 +1697,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
-  it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
+  it("advertises the intro-video skill and camera tooling only while its rollout switch is on", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor({
       email: "BINGJIE@VM0.AI",
     });
+    const skillHint = "read and follow the `intro-video` skill";
     const toolHint = "Click-driven intro-video camera moves:";
     await bdd.readMe(actor);
 
@@ -1714,10 +1715,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.heartbeatRunner(runnerGroup);
     const enabledByEmailClaim = await api.claimRunnerJob(enabledByEmail.runId);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(skillHint);
     expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(toolHint);
     expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(
       "okou video camera --help",
     );
+    expect(
+      expectCanonicalStorageManifest(
+        enabledByEmailClaim.storageManifest,
+      )?.storageMounts.map((mount) => {
+        return mount.mountPath;
+      }),
+    ).toContain(`/home/user/.claude/skills/${INTRO_VIDEO_SKILL_NAME}`);
 
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.IntroVideo]: false,
@@ -1736,8 +1745,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "# Agent Tools",
     );
     expect(disabledByOverrideClaim.appendSystemPrompt ?? "").not.toContain(
+      skillHint,
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").not.toContain(
       toolHint,
     );
+    expect(
+      expectCanonicalStorageManifest(
+        disabledByOverrideClaim.storageManifest,
+      )?.storageMounts.map((mount) => {
+        return mount.mountPath;
+      }),
+    ).not.toContain(`/home/user/.claude/skills/${INTRO_VIDEO_SKILL_NAME}`);
   });
 
   it("advertises presentation screenshots only while their rollout switch is on", async () => {

@@ -93,6 +93,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
+    name: "__intro-video-catalog",
+    description: "Internal public HeyGen catalog discovery for Intro Video",
+    load: async () => {
+      return (await import("./commands/__intro-video-catalog"))
+        .introVideoCatalogCommand;
+    },
+  },
+  {
     name: "__intro-video-presenter",
     description: "Internal Intro Video presenter renderer",
     load: async () => {

@@ -1991,6 +1991,10 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match a public HeyGen presenter to the request",
+        "label": "Avatar",
+        "noneDescription": "Create the video without a presenter",
         "heading": "Escolha um avatar",
         "help": "Escolha um apresentador ou continue sem um",
         "none": "Sem avatar",
@@ -1999,8 +2003,19 @@
         "placementOverlay": "Sobre o slide — o slide preenche o quadro",
         "placementRight": "À direita — o slide fica à esquerda"
       },
-      "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
-      "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",
+      "cardDescription": "Turn an idea or material into a finished video",
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "catalog": {
+        "empty": "No public HeyGen options are available.",
+        "error": "The HeyGen catalog could not be loaded.",
+        "loadMore": "Load more"
+      },
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+      },
       "desktop": {
         "checkingCompatibility": "Verificando compatibilidade",
         "description": "A gravação de tela fica no aplicativo {{desktopProductName}} para desktop, que captura qualquer janela e registra onde você clica.",
@@ -2020,6 +2035,9 @@
         "uploadFailed": "Não foi possível enviar a fonte. Ela continua salva localmente e foi baixada como backup."
       },
       "footer": {
+        "cancel": "Cancel",
+        "create": "Create video",
+        "hint": "Add a prompt, files, or both",
         "back": "Voltar",
         "createInChat": "Criar na conversa",
         "download": "Baixar fonte",
@@ -2034,6 +2052,9 @@
         "voice": "Voz"
       },
       "source": {
+        "browse": "Browse files",
+        "drop": "Drop files here or browse",
+        "remove": "Remove {{filename}}",
         "documentDescription": "Transforme seus slides em um vídeo de introdução narrado",
         "documentFormats": "PPTX, PPT, PDF, HTML",
         "documentTitle": "Enviar slides",
@@ -2062,7 +2083,21 @@
         "voice": "Voz"
       },
       "title": "Criar um vídeo de introdução",
+      "style": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match the style to your goal and material",
+        "heading": "Choose a video style",
+        "help": "Pick a public HeyGen Video Agent style, use no style, or let Okou decide.",
+        "label": "Video style",
+        "none": "No template",
+        "noneDescription": "Use a clean composition without a HeyGen style"
+      },
       "voice": {
+        "default": "Default · Follows avatar",
+        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "label": "Voice",
         "heading": "Escolha uma voz",
         "help": "Ouça uma amostra antes de continuar",
         "none": "Sem narração",

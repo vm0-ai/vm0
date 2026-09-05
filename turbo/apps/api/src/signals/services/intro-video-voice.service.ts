@@ -59,6 +59,10 @@ function badRequest(message: string): IntroVideoVoiceErrorResponse {
   return { status: 400, body: errorBody(message, "BAD_REQUEST") };
 }
 
+export function introVideoVoiceUnavailable(): IntroVideoVoiceErrorResponse {
+  return badRequest("HeyGen voice is not available in Intro Video");
+}
+
 export function introVideoVoiceServiceUnavailable(
   message: string,
 ): IntroVideoVoiceErrorResponse {

@@ -314,7 +314,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
+      "Show the prompt, file, HeyGen style, avatar, and voice intro-video flow in new chat.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },

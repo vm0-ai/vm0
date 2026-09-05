@@ -1956,6 +1956,10 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match a public HeyGen presenter to the request",
+        "label": "Avatar",
+        "noneDescription": "Create the video without a presenter",
         "heading": "아바타 선택",
         "help": "발표자를 선택하거나 아바타 없이 계속하세요",
         "none": "아바타 없음",
@@ -1964,8 +1968,19 @@
         "placementOverlay": "슬라이드 위 — 슬라이드가 화면을 가득 채움",
         "placementRight": "오른쪽 — 슬라이드는 왼쪽에 배치"
       },
-      "cardDescription": "파일이나 화면 녹화를 완성된 영상으로 변환",
-      "description": "소스를 추가하고 선택적으로 아바타와 음성을 고른 뒤 채팅 스레드에서 영상을 만드세요.",
+      "cardDescription": "Turn an idea or material into a finished video",
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "catalog": {
+        "empty": "No public HeyGen options are available.",
+        "error": "The HeyGen catalog could not be loaded.",
+        "loadMore": "Load more"
+      },
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+      },
       "desktop": {
         "checkingCompatibility": "호환성 확인 중",
         "description": "화면 녹화는 {{desktopProductName}} 데스크톱 앱에서 이루어지며, 모든 창을 캡처하고 클릭한 위치까지 기록합니다.",
@@ -1985,6 +2000,9 @@
         "uploadFailed": "소스를 업로드할 수 없습니다. 로컬에 저장되어 있으며 백업으로 다운로드되었습니다."
       },
       "footer": {
+        "cancel": "Cancel",
+        "create": "Create video",
+        "hint": "Add a prompt, files, or both",
         "back": "뒤로",
         "createInChat": "채팅에서 만들기",
         "download": "소스 다운로드",
@@ -1999,6 +2017,9 @@
         "voice": "음성"
       },
       "source": {
+        "browse": "Browse files",
+        "drop": "Drop files here or browse",
+        "remove": "Remove {{filename}}",
         "documentDescription": "슬라이드를 내레이션이 있는 인트로 영상으로 만듭니다",
         "documentFormats": "PPTX, PPT, PDF, HTML",
         "documentTitle": "슬라이드 업로드",
@@ -2027,7 +2048,21 @@
         "voice": "음성"
       },
       "title": "인트로 영상 만들기",
+      "style": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match the style to your goal and material",
+        "heading": "Choose a video style",
+        "help": "Pick a public HeyGen Video Agent style, use no style, or let Okou decide.",
+        "label": "Video style",
+        "none": "No template",
+        "noneDescription": "Use a clean composition without a HeyGen style"
+      },
       "voice": {
+        "default": "Default · Follows avatar",
+        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "label": "Voice",
         "heading": "음성 선택",
         "help": "계속하기 전에 샘플을 미리 들어보세요",
         "none": "내레이션 없음",

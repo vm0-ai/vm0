@@ -38,6 +38,8 @@ const store = createStore();
 const mocks = createRouteMocks(context);
 
 const HEYGEN_CREATE_URL = "https://api.heygen.com/v3/videos";
+const HEYGEN_AVATARS_URL = "https://api.heygen.com/v3/avatars/looks";
+const HEYGEN_STYLES_URL = "https://api.heygen.com/v3/video-agents/styles";
 const HEYGEN_VOICES_URL = "https://api.heygen.com/v3/voices";
 const HEYGEN_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
 const HEYGEN_VIDEO_ID = "heygen-video-123";
@@ -377,6 +379,176 @@ describe("Intro Video HeyGen presenter route", () => {
     });
   });
 
+  it("lists public HeyGen styles and Avatar III looks for the simple form", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    server.use(
+      http.get(HEYGEN_STYLES_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          limit: "24",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              style_id: "349d91e1ad2444eabab2672a9057f298",
+              name: "Thriller",
+              thumbnail_url: "https://files.heygen.test/thriller.jpg",
+              preview_video_url: "https://files.heygen.test/thriller.mp4",
+              tags: ["cinematic"],
+              aspect_ratio: "16:9",
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+      http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          ownership: "public",
+          avatar_type: "studio_avatar",
+          limit: "24",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              id: "Daphne_public_1",
+              group_id: "c1926d821b4d43d6a5f07f2985bb5cd1",
+              name: "Daphne in Grey blazer",
+              default_voice_id: "812d4eea4a8442a382dcaf2dbaddbd93",
+              preview_image_url: "https://files.heygen.test/daphne.webp",
+              preview_video_url: "https://files.heygen.test/daphne.mp4",
+              gender: "female",
+              image_width: 1080,
+              image_height: 1080,
+              preferred_orientation: "portrait",
+              status: "completed",
+              supported_api_engines: ["avatar_iii"],
+            },
+            {
+              id: "Legacy_public_1",
+              group_id: "legacy-group",
+              name: "Legacy",
+              default_voice_id: "legacy-voice",
+              status: "completed",
+              supported_api_engines: ["avatar_iv"],
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const app = createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    );
+
+    const [stylesResponse, avatarsResponse] = await Promise.all([
+      app.request("/api/intro-video/styles?pageSize=24", {
+        headers: authHeaders(),
+      }),
+      app.request("/api/intro-video/avatars?pageSize=24", {
+        headers: authHeaders(),
+      }),
+    ]);
+
+    expect(stylesResponse.status).toBe(200);
+    await expect(stylesResponse.json()).resolves.toStrictEqual({
+      styles: [
+        {
+          id: "349d91e1ad2444eabab2672a9057f298",
+          name: "Thriller",
+          thumbnailUrl: "https://files.heygen.test/thriller.jpg",
+          previewVideoUrl: "https://files.heygen.test/thriller.mp4",
+          tags: ["cinematic"],
+          aspectRatio: "16:9",
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+    expect(avatarsResponse.status).toBe(200);
+    await expect(avatarsResponse.json()).resolves.toStrictEqual({
+      avatars: [
+        {
+          id: "Daphne_public_1",
+          groupId: "c1926d821b4d43d6a5f07f2985bb5cd1",
+          name: "Daphne in Grey blazer",
+          defaultVoiceId: "812d4eea4a8442a382dcaf2dbaddbd93",
+          previewImageUrl: "https://files.heygen.test/daphne.webp",
+          previewVideoUrl: "https://files.heygen.test/daphne.mp4",
+          gender: "female",
+          imageWidth: 1080,
+          imageHeight: 1080,
+          preferredOrientation: "portrait",
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+
+  it("rejects a dynamically selected avatar that is not public", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    server.use(
+      http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          ownership: "public",
+          avatar_type: "studio_avatar",
+          limit: "100",
+          group_id: "private-group",
+        });
+        return HttpResponse.json({
+          data: [],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/presenter/generate", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${okouToken({ ...fixture, runId })}`,
+      },
+      body: JSON.stringify({
+        avatarId: "Private_avatar_1",
+        avatarGroupId: "private-group",
+        audioUrl: "https://example.com/narration.mp3",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "HeyGen avatar is not available in Intro Video",
+      },
+    });
+  });
+
   it("generates the selected HeyGen voice once for presenter and mix", async () => {
     const fixture = await seedFixture();
     await enableIntroVideo(fixture);
@@ -399,6 +571,26 @@ describe("Intro Video HeyGen presenter route", () => {
     let speechRequests = 0;
     let audioDownloads = 0;
     server.use(
+      http.get(HEYGEN_VOICES_URL, ({ request }) => {
+        expect(
+          Object.fromEntries(new URL(request.url).searchParams),
+        ).toStrictEqual({
+          type: "public",
+          engine: "starfish",
+          limit: "100",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              voice_id: voiceId,
+              name: "Annie - Lifelike",
+              type: "public",
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
       http.post(HEYGEN_SPEECH_URL, async ({ request }) => {
         speechRequests += 1;
         expect(request.headers.get("x-api-key")).toBe("test-heygen-key");

@@ -459,6 +459,7 @@ function buildAgentToolsPrompt(args: {
       : []),
     ...(args.introVideoEnabled
       ? [
+          "- Intro-video creation: read and follow the `intro-video` skill for requests from the Create an intro video flow.",
           "- Click-driven intro-video camera moves: when a screen recording includes a synchronized same-stem `.clicks.json` sidecar, run `okou video camera --help` and follow its plan/review workflow.",
         ]
       : []),

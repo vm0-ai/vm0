@@ -1956,6 +1956,10 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match a public HeyGen presenter to the request",
+        "label": "Avatar",
+        "noneDescription": "Create the video without a presenter",
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
         "none": "Tanpa avatar",
@@ -1964,8 +1968,19 @@
         "placementOverlay": "Di atas slide — slide memenuhi bingkai",
         "placementRight": "Kanan — slide berada di kiri"
       },
-      "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
-      "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
+      "cardDescription": "Turn an idea or material into a finished video",
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "catalog": {
+        "empty": "No public HeyGen options are available.",
+        "error": "The HeyGen catalog could not be loaded.",
+        "loadMore": "Load more"
+      },
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+      },
       "desktop": {
         "checkingCompatibility": "Memeriksa kompatibilitas",
         "description": "Perekaman layar ada di aplikasi desktop {{desktopProductName}}, yang menangkap jendela apa pun dan merekam tempat Anda mengeklik.",
@@ -1985,6 +2000,9 @@
         "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
       },
       "footer": {
+        "cancel": "Cancel",
+        "create": "Create video",
+        "hint": "Add a prompt, files, or both",
         "back": "Kembali",
         "createInChat": "Buat di chat",
         "download": "Unduh sumber",
@@ -1999,6 +2017,9 @@
         "voice": "Suara"
       },
       "source": {
+        "browse": "Browse files",
+        "drop": "Drop files here or browse",
+        "remove": "Remove {{filename}}",
         "documentDescription": "Ubah slide Anda menjadi video intro bernarasi",
         "documentFormats": "PPTX, PPT, PDF, HTML",
         "documentTitle": "Unggah slide",
@@ -2027,7 +2048,21 @@
         "voice": "Suara"
       },
       "title": "Buat video intro",
+      "style": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match the style to your goal and material",
+        "heading": "Choose a video style",
+        "help": "Pick a public HeyGen Video Agent style, use no style, or let Okou decide.",
+        "label": "Video style",
+        "none": "No template",
+        "noneDescription": "Use a clean composition without a HeyGen style"
+      },
       "voice": {
+        "default": "Default · Follows avatar",
+        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "label": "Voice",
         "heading": "Pilih suara",
         "help": "Dengarkan sampel sebelum melanjutkan",
         "none": "Tanpa narasi",

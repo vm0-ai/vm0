@@ -1959,6 +1959,10 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match a public HeyGen presenter to the request",
+        "label": "Avatar",
+        "noneDescription": "Create the video without a presenter",
         "heading": "Avatar auswählen",
         "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
         "none": "Kein Avatar",
@@ -1967,8 +1971,19 @@
         "placementOverlay": "Über der Folie — die Folie füllt das Bild",
         "placementRight": "Rechts — die Folie steht links"
       },
-      "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
-      "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",
+      "cardDescription": "Turn an idea or material into a finished video",
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "catalog": {
+        "empty": "No public HeyGen options are available.",
+        "error": "The HeyGen catalog could not be loaded.",
+        "loadMore": "Load more"
+      },
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+      },
       "desktop": {
         "checkingCompatibility": "Kompatibilität prüfen",
         "description": "Die Bildschirmaufnahme läuft in der {{desktopProductName}}-Desktop-App, die jedes Fenster aufnimmt und deine Klicks mitschneidet.",
@@ -1988,6 +2003,9 @@
         "uploadFailed": "Die Quelle konnte nicht hochgeladen werden. Sie ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen."
       },
       "footer": {
+        "cancel": "Cancel",
+        "create": "Create video",
+        "hint": "Add a prompt, files, or both",
         "back": "Zurück",
         "createInChat": "Im Chat erstellen",
         "download": "Quelle herunterladen",
@@ -2002,6 +2020,9 @@
         "voice": "Stimme"
       },
       "source": {
+        "browse": "Browse files",
+        "drop": "Drop files here or browse",
+        "remove": "Remove {{filename}}",
         "documentDescription": "Verwandle deine Folien in ein vertontes Intro-Video",
         "documentFormats": "PPTX, PPT, PDF, HTML",
         "documentTitle": "Folien hochladen",
@@ -2030,7 +2051,21 @@
         "voice": "Stimme"
       },
       "title": "Intro-Video erstellen",
+      "style": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match the style to your goal and material",
+        "heading": "Choose a video style",
+        "help": "Pick a public HeyGen Video Agent style, use no style, or let Okou decide.",
+        "label": "Video style",
+        "none": "No template",
+        "noneDescription": "Use a clean composition without a HeyGen style"
+      },
       "voice": {
+        "default": "Default · Follows avatar",
+        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "label": "Voice",
         "heading": "Stimme auswählen",
         "help": "Höre dir vor dem Fortfahren eine Probe an",
         "none": "Kein Voiceover",

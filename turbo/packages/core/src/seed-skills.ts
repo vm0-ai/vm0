@@ -17,3 +17,6 @@ export const SEED_SKILLS: readonly string[] = [
  * other skill in the repo, so run creation can mount it without listing it here.
  */
 export const GOAL_SKILL_NAME = "goal";
+
+/** Mounted only for runs whose organization or user has Intro Video enabled. */
+export const INTRO_VIDEO_SKILL_NAME = "intro-video";

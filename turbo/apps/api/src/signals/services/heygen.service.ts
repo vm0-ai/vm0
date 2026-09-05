@@ -10,7 +10,9 @@ import { safeJsonParse } from "../utils";
 const L = logger("HeyGen");
 
 const HEYGEN_API_BASE_URL = "https://api.heygen.com/v3";
+const HEYGEN_AVATAR_LOOKS_URL = `${HEYGEN_API_BASE_URL}/avatars/looks`;
 const HEYGEN_VIDEOS_URL = `${HEYGEN_API_BASE_URL}/videos`;
+const HEYGEN_VIDEO_AGENT_STYLES_URL = `${HEYGEN_API_BASE_URL}/video-agents/styles`;
 const HEYGEN_VOICES_URL = `${HEYGEN_API_BASE_URL}/voices`;
 const HEYGEN_VOICE_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
 const HEYGEN_RATE_LIMIT_RETRY_MAX_MS = 30_000;
@@ -78,6 +80,51 @@ interface HeyGenPublicVoice {
 
 interface HeyGenPublicVoicePage {
   readonly voices: readonly HeyGenPublicVoice[];
+  readonly hasMore: boolean;
+  readonly nextToken: string | null;
+}
+
+interface HeyGenAvatarCatalogOptions {
+  readonly token: string | undefined;
+  readonly pageSize: number;
+  readonly groupId?: string;
+}
+
+interface HeyGenPublicAvatar {
+  readonly id: string;
+  readonly groupId: string;
+  readonly name: string;
+  readonly defaultVoiceId: string;
+  readonly previewImageUrl?: string;
+  readonly previewVideoUrl?: string;
+  readonly gender?: "female" | "male";
+  readonly imageWidth?: number;
+  readonly imageHeight?: number;
+  readonly preferredOrientation?: "landscape" | "portrait" | "square";
+}
+
+interface HeyGenPublicAvatarPage {
+  readonly avatars: readonly HeyGenPublicAvatar[];
+  readonly hasMore: boolean;
+  readonly nextToken: string | null;
+}
+
+interface HeyGenStyleCatalogOptions {
+  readonly token: string | undefined;
+  readonly pageSize: number;
+}
+
+interface HeyGenPublicStyle {
+  readonly id: string;
+  readonly name: string;
+  readonly thumbnailUrl?: string;
+  readonly previewVideoUrl?: string;
+  readonly tags: readonly string[];
+  readonly aspectRatio?: "16:9" | "9:16" | "1:1";
+}
+
+interface HeyGenPublicStylePage {
+  readonly styles: readonly HeyGenPublicStyle[];
   readonly hasMore: boolean;
   readonly nextToken: string | null;
 }
@@ -300,6 +347,281 @@ function parseHeyGenVoice(value: unknown): HeyGenPublicVoice | null {
     ...(language ? { language } : {}),
     ...(gender ? { gender } : {}),
   };
+}
+
+function parseHeyGenGender(value: unknown): "female" | "male" | undefined {
+  const normalized = optionalString(value)?.toLowerCase();
+  return normalized === "female" || normalized === "male"
+    ? normalized
+    : undefined;
+}
+
+function parseHeyGenOrientation(
+  value: unknown,
+): "landscape" | "portrait" | "square" | undefined {
+  const normalized = optionalString(value);
+  return normalized === "landscape" ||
+    normalized === "portrait" ||
+    normalized === "square"
+    ? normalized
+    : undefined;
+}
+
+function parsePositiveInteger(value: unknown): number | undefined {
+  const parsed = optionalNumber(value);
+  return parsed && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = optionalString(value.id)?.trim();
+  const groupId = optionalString(value.group_id)?.trim();
+  const name = optionalString(value.name)?.trim();
+  const defaultVoiceId = optionalString(value.default_voice_id)?.trim();
+  const engines = Array.isArray(value.supported_api_engines)
+    ? value.supported_api_engines
+    : [];
+  if (
+    !id ||
+    !groupId ||
+    !name ||
+    !defaultVoiceId ||
+    value.status !== "completed" ||
+    !engines.includes("avatar_iii")
+  ) {
+    return null;
+  }
+  const previewImageUrl = optionalUrl(value.preview_image_url);
+  const previewVideoUrl = optionalUrl(value.preview_video_url);
+  const gender = parseHeyGenGender(value.gender);
+  const imageWidth = parsePositiveInteger(value.image_width);
+  const imageHeight = parsePositiveInteger(value.image_height);
+  const preferredOrientation = parseHeyGenOrientation(
+    value.preferred_orientation,
+  );
+  return {
+    id,
+    groupId,
+    name,
+    defaultVoiceId,
+    ...(previewImageUrl ? { previewImageUrl } : {}),
+    ...(previewVideoUrl ? { previewVideoUrl } : {}),
+    ...(gender ? { gender } : {}),
+    ...(imageWidth ? { imageWidth } : {}),
+    ...(imageHeight ? { imageHeight } : {}),
+    ...(preferredOrientation ? { preferredOrientation } : {}),
+  };
+}
+
+function parseHeyGenStyle(value: unknown): HeyGenPublicStyle | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = optionalString(value.style_id)?.trim();
+  const name = optionalString(value.name)?.trim();
+  if (!id || !name) {
+    return null;
+  }
+  const thumbnailUrl = optionalUrl(value.thumbnail_url);
+  const previewVideoUrl = optionalUrl(value.preview_video_url);
+  const tags = Array.isArray(value.tags)
+    ? value.tags.flatMap((tag) => {
+        const parsed = optionalString(tag)?.trim();
+        return parsed ? [parsed] : [];
+      })
+    : [];
+  const rawAspectRatio = optionalString(value.aspect_ratio);
+  const aspectRatio =
+    rawAspectRatio === "16:9" ||
+    rawAspectRatio === "9:16" ||
+    rawAspectRatio === "1:1"
+      ? rawAspectRatio
+      : undefined;
+  return {
+    id,
+    name,
+    ...(thumbnailUrl ? { thumbnailUrl } : {}),
+    ...(previewVideoUrl ? { previewVideoUrl } : {}),
+    tags,
+    ...(aspectRatio ? { aspectRatio } : {}),
+  };
+}
+
+function parseHeyGenPage(value: unknown):
+  | {
+      readonly data: readonly unknown[];
+      readonly hasMore: boolean;
+      readonly nextToken: string | null;
+    }
+  | HeyGenErrorResponse {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.data) ||
+    typeof value.has_more !== "boolean"
+  ) {
+    return badGateway(
+      "HeyGen returned an invalid catalog page",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const nextToken = optionalString(value.next_token) ?? null;
+  if (value.has_more && !nextToken) {
+    return badGateway(
+      "HeyGen returned an incomplete catalog page",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  return { data: value.data, hasMore: value.has_more, nextToken };
+}
+
+export async function listHeyGenPublicAvatars(
+  options: HeyGenAvatarCatalogOptions,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenPublicAvatarPage | HeyGenErrorResponse> {
+  const url = new URL(HEYGEN_AVATAR_LOOKS_URL);
+  url.searchParams.set("ownership", "public");
+  url.searchParams.set("avatar_type", "studio_avatar");
+  url.searchParams.set("limit", String(options.pageSize));
+  if (options.token) {
+    url.searchParams.set("token", options.token);
+  }
+  if (options.groupId) {
+    url.searchParams.set("group_id", options.groupId);
+  }
+  const response = await requestHeyGen(
+    { method: "GET", url, retryRateLimit: true },
+    apiKey,
+    signal,
+  );
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  const page = parseHeyGenPage(body);
+  if (isHeyGenErrorResponse(page)) {
+    return page;
+  }
+  return {
+    avatars: page.data.flatMap((value) => {
+      const avatar = parseHeyGenAvatar(value);
+      return avatar ? [avatar] : [];
+    }),
+    hasMore: page.hasMore,
+    nextToken: page.nextToken,
+  };
+}
+
+export async function listHeyGenPublicStyles(
+  options: HeyGenStyleCatalogOptions,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenPublicStylePage | HeyGenErrorResponse> {
+  const url = new URL(HEYGEN_VIDEO_AGENT_STYLES_URL);
+  url.searchParams.set("limit", String(options.pageSize));
+  if (options.token) {
+    url.searchParams.set("token", options.token);
+  }
+  const response = await requestHeyGen(
+    { method: "GET", url, retryRateLimit: true },
+    apiKey,
+    signal,
+  );
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  const page = parseHeyGenPage(body);
+  if (isHeyGenErrorResponse(page)) {
+    return page;
+  }
+  return {
+    styles: page.data.flatMap((value) => {
+      const style = parseHeyGenStyle(value);
+      return style ? [style] : [];
+    }),
+    hasMore: page.hasMore,
+    nextToken: page.nextToken,
+  };
+}
+
+export async function verifyHeyGenPublicAvatar(
+  avatarId: string,
+  groupId: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<boolean | HeyGenErrorResponse> {
+  let token: string | undefined;
+  const seenTokens = new Set<string>();
+  do {
+    const page = await listHeyGenPublicAvatars(
+      { groupId, token, pageSize: 100 },
+      apiKey,
+      signal,
+    );
+    if (isHeyGenErrorResponse(page)) {
+      return page;
+    }
+    if (
+      page.avatars.some((avatar) => {
+        return avatar.id === avatarId && avatar.groupId === groupId;
+      })
+    ) {
+      return true;
+    }
+    const nextToken = page.hasMore ? (page.nextToken ?? undefined) : undefined;
+    if (nextToken && seenTokens.has(nextToken)) {
+      return badGateway(
+        "HeyGen returned a repeated avatar catalog token",
+        "HEYGEN_BAD_RESPONSE",
+      );
+    }
+    if (nextToken) {
+      seenTokens.add(nextToken);
+    }
+    token = nextToken;
+  } while (token);
+  return false;
+}
+
+export async function verifyHeyGenPublicVoice(
+  voiceId: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<boolean | HeyGenErrorResponse> {
+  let token: string | undefined;
+  const seenTokens = new Set<string>();
+  do {
+    const page = await listHeyGenPublicVoices(
+      { token, pageSize: 100, language: undefined, gender: undefined },
+      apiKey,
+      signal,
+    );
+    if (isHeyGenErrorResponse(page)) {
+      return page;
+    }
+    if (
+      page.voices.some((voice) => {
+        return voice.id === voiceId;
+      })
+    ) {
+      return true;
+    }
+    const nextToken = page.hasMore ? (page.nextToken ?? undefined) : undefined;
+    if (nextToken && seenTokens.has(nextToken)) {
+      return badGateway(
+        "HeyGen returned a repeated voice catalog token",
+        "HEYGEN_BAD_RESPONSE",
+      );
+    }
+    if (nextToken) {
+      seenTokens.add(nextToken);
+    }
+    token = nextToken;
+  } while (token);
+  return false;
 }
 
 export async function listHeyGenPublicVoices(

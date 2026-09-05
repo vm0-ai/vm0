@@ -106,7 +106,11 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/seed-skills";
+import {
+  GOAL_SKILL_NAME,
+  INTRO_VIDEO_SKILL_NAME,
+  SEED_SKILLS,
+} from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -1342,6 +1346,7 @@ function buildCustomConnectorSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
+    readonly introVideoEnabled: boolean;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSelection: RunConnectorCatalogSelection;
     readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
@@ -1364,6 +1369,12 @@ function buildInjectedSkillVolumes(
       buildLegacySystemSkillVolumes([GOAL_SKILL_NAME], skillsRoot),
       "system_skill",
     ) ?? []),
+    ...(args.introVideoEnabled
+      ? (prepareAdditionalVolumesWithSource(
+          buildLegacySystemSkillVolumes([INTRO_VIDEO_SKILL_NAME], skillsRoot),
+          "system_skill",
+        ) ?? [])
+      : []),
     ...(args.connectorCatalogSelection.kind === "scoped"
       ? buildConnectorSkillVolumes(
           args.allowedConnectorSlugs,
@@ -8929,6 +8940,10 @@ function preparedRunAdditionalVolumes(args: {
   const injectedSkillVolumes = buildInjectedSkillVolumes(
     {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
+      introVideoEnabled: isFeatureEnabled(
+        FeatureSwitchKey.IntroVideo,
+        args.featureSwitchContext,
+      ),
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSelection: args.connectorCatalogSelection,
       officialWorkflowRun: args.officialWorkflowRun,
