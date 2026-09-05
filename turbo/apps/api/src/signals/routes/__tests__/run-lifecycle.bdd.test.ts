@@ -19056,12 +19056,19 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       const api = createRunsApi(context);
       const webhooks = createWebhookCallbackApi(context);
       const { actor, agentId } = await entitledRunActor();
+      const modelProvider =
+        cliAgentType === "codex" ? "openai-api-key" : "anthropic-api-key";
+      await api.createOrgModelProvider(actor, {
+        type: modelProvider,
+        secret: `bdd-${cliAgentType}-key`,
+      });
       const run = await api.createRun(actor, {
         agentId,
         prompt: `complete with ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const claim = await api.claimRunnerJob(run.runId);
+      expect(claim.cliAgentType).toBe(cliAgentType);
       const history = `bdd combined ${cliAgentType} history ${run.runId}`;
       const historyHash = createHash("sha256").update(history).digest("hex");
       const cliAgentSessionId = `bdd-combined-${cliAgentType}-${run.runId}`;
@@ -19157,7 +19164,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentId,
         sessionId: run.sessionId,
         prompt: `resume combined ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const continuedClaim = await api.claimRunnerJob(continued.runId);
       expect(continuedClaim.resumeSession).toMatchObject({
@@ -19195,7 +19202,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentId,
         sessionId: run.sessionId,
         prompt: `resume successor ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
       expect(afterRetryClaim.resumeSession).toMatchObject({

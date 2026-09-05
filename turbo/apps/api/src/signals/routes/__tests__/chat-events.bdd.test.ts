@@ -2765,7 +2765,8 @@ describe("CHAT-02: interrupting active chat runs", () => {
       "clientEventId is already in use",
     );
 
-    // Both cancelled rounds surface as incomplete context for the next run.
+    // Neither cancelled round saved native history, so the next run replays
+    // both rounds in a fresh session.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -2773,10 +2774,13 @@ describe("CHAT-02: interrupting active chat runs", () => {
     });
     const thirdRun = await api.readRun(actor, third.runId);
     const appended = thirdRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Incomplete Rounds Context");
+    expect(appended).toContain("# Web Chat Run Context");
     expect(appended).toContain("RUN_STATUS: cancelled");
     expect(appended).toContain("User: long task to interrupt");
-    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).toContain("User: cancelled through the cancel api");
+    expect(appended).not.toContain("# Incomplete Rounds Context");
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
@@ -14532,8 +14536,16 @@ describe("CHAT-02: incomplete-round context", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish native session history",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+
     const first = await sendChatRun(actor, {
       agentId,
+      threadId: anchor.threadId,
       prompt: "first incomplete",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -14585,6 +14597,10 @@ describe("CHAT-02: incomplete-round context", () => {
     );
     expect(appended).toContain("...[truncated]");
     expect(appended).not.toContain("retry after two failures");
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${anchor.runId}`,
+    );
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 });
@@ -15849,9 +15865,11 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(workflowPrompt).not.toContain("Before creating anything");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
-    // The illustration run was cancelled, so only its message text is replayed
-    // via "# Incomplete Rounds Context"; the style id is not.
-    expect(workflowPrompt).toContain("# Incomplete Rounds Context");
+    // The illustration run saved no native history, so its message text is
+    // replayed in the new session without the style id.
+    expect(workflowPrompt).toContain("# Web Chat Run Context");
+    expect(workflowPrompt).toContain("User: draw a labeled inbox");
+    expect(workflowPrompt).not.toContain("# Incomplete Rounds Context");
     expect(workflowPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, workflow.runId);
 
@@ -15862,14 +15880,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const followUpPrompt = (await api.readRun(actor, followUp.runId))
       .appendSystemPrompt;
-    // No explicit selection this turn, so there is no live block for either
-    // type. Both earlier runs were cancelled, so the general "# Web Chat Run
-    // Context" replay is suppressed in favor of resuming the existing session
-    // (see prepareRecentChatContext).
+    // Neither cancelled run saved native history. Replay their message text
+    // without carrying either prior template selection into the new session.
     expect(followUpPrompt).not.toContain("# Inline Templates");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
-    expect(followUpPrompt).not.toContain("# Web Chat Run Context");
-    expect(followUpPrompt).toContain("# Incomplete Rounds Context");
+    expect(followUpPrompt).toContain("# Web Chat Run Context");
+    expect(followUpPrompt).toContain("User: draw a labeled inbox");
+    expect(followUpPrompt).toContain("User: create the workflow version");
+    expect(followUpPrompt).not.toContain("# Incomplete Rounds Context");
     expect(followUpPrompt).not.toContain("Selected a template");
     expect(followUpPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
@@ -18729,14 +18747,15 @@ describe("CHAT-02: shared user message queue", () => {
       context.signal,
     );
     expect(incompleteState.zero_run).toMatchObject({ triggerSource: "agent" });
-    expect(incompleteSystemPrompt).toContain("# Incomplete Rounds Context");
+    expect(incompleteSystemPrompt).toContain("# Web Chat Run Context");
     expect(incompleteSystemPrompt).toContain(incompletePrompt);
-    expect(incompleteSystemPrompt).not.toContain("# Web Chat Run Context");
+    expect(incompleteSystemPrompt).not.toContain("# Incomplete Rounds Context");
     expect(incompleteSystemPrompt).toContain("Web chat files: use");
     const promotedIncompleteClaim = await claimChatRun(
       runnerGroup,
       incompleteRunId,
     );
+    expect(promotedIncompleteClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(
       actor,
       incompleteRunId,
