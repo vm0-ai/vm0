@@ -25,17 +25,30 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   private var hotKeyAttempted = false
   private var quitting = false
   private var pendingURLs: [URL] = []
+  private var startupFailure: (DesktopConfiguration, any Error)?
+
+  private struct BundledConfiguration: Decodable {
+    let platformUrl: String
+    let product: String
+    let preview: Bool
+    let sentryDsn: String?
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     do {
       let resources = Bundle.main.resourceURL!
-      let raw = try JSON.decode(
-        Data(contentsOf: resources.appendingPathComponent("desktop-runtime-config.json")))
+      let raw = try JSONDecoder().decode(
+        BundledConfiguration.self,
+        from:
+          Data(contentsOf: resources.appendingPathComponent("desktop-runtime-config.json")))
+      guard
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+          as? String,
+        !version.isEmpty
+      else { throw DesktopFailure("configuration", "The app bundle has no desktop version") }
       let config = try DesktopConfiguration(
-        platformURL: raw.requireString("platformUrl"), product: raw["product"].string ?? "okou",
-        version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-          ?? "0.0.0", preview: raw["preview"].bool)
-      if let dsn = raw["sentryDsn"].string, !dsn.isEmpty {
+        platformURL: raw.platformUrl, product: raw.product, version: version, preview: raw.preview)
+      if let dsn = raw.sentryDsn, !dsn.isEmpty {
         SentrySDK.start { options in
           options.dsn = dsn
           options.releaseName = "desktop@\(config.version)"
@@ -49,13 +62,21 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       let directory = FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(
           config.name)
-      let model = try DesktopModel(
-        configuration: config, directory: directory,
-        helperDirectory: resources.appendingPathComponent("native"))
-      self.model = model
-      updater = DesktopUpdater(model: model) { [weak self] in
-        self?.quitting = true
-        NSApp.terminate(nil)
+      let line = config.product == "okou" ? "ai-okou-desktop" : "zero"
+      let feed = DesktopUpdateFeed(
+        url: config.apiURL.appendingPathComponent(
+          "api/desktop/updates/\(line)/stable/darwin/arm64/RELEASES.json"))
+      let model: DesktopModel
+      do {
+        model = try loadRuntime(
+          configuration: config, directory: directory,
+          helperDirectory: resources.appendingPathComponent("native"), feed: feed)
+      } catch {
+        startupFailure = (config, error)
+        reportBootstrapFailure(error, directory: directory)
+        installDegradedMenu(config)
+        showWindow()
+        return
       }
       model.onChange = { [weak self] in self?.refreshStatus() }
       installMenus()
@@ -91,7 +112,6 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       }
       Task {
         await model.launch()
-        updater?.start()
         if !model.ready { showWindow() }
         for url in pendingURLs { model.run { try await model.consume(url) } }
         pendingURLs = []
@@ -101,6 +121,73 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       alert.runModal()
       NSApp.terminate(nil)
     }
+  }
+
+  /// Bootstrap owns update polling before touching preferences or runtime state.
+  /// Missing runtime activity is an intentional idle state after startup fails.
+  func loadRuntime(
+    configuration: DesktopConfiguration, directory: URL,
+    helperDirectory: URL, feed: DesktopUpdateFeed
+  ) throws -> DesktopModel {
+    updater = DesktopUpdater(
+      configuration: configuration, directory: directory, feed: feed,
+      activity: { [weak self] in
+        guard let model = self?.model else { return .idle }
+        return DesktopUpdateActivity(
+          executing: model.host.executing, recording: model.recorder.busy,
+          lastCommand: model.host.lastCommand)
+      },
+      prepareForUpdate: { [weak self] in
+        if let model = self?.model { try await model.shutdown() }
+      },
+      report: { [weak self] error in
+        if let model = self?.model {
+          model.report(error)
+        } else {
+          self?.reportBootstrapFailure(error, directory: directory)
+        }
+      },
+      quitForUpdate: { [weak self] in
+        self?.quitting = true
+        NSApp.terminate(nil)
+      })
+    updater?.start()
+    let model = try DesktopModel(
+      configuration: configuration, directory: directory, helperDirectory: helperDirectory)
+    self.model = model
+    return model
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    updater?.stop()
+    updateShortcut(recording: false)
+  }
+
+  private func reportBootstrapFailure(_ error: any Error, directory: URL) {
+    SentrySDK.capture(error: error)
+    FileHandle.standardError.write(Data("Desktop startup: \(error.localizedDescription)\n".utf8))
+    do {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let file = directory.appendingPathComponent("desktop-bootstrap-failure.log")
+      try Data("\(Date()) \(error.localizedDescription)\n".utf8).write(to: file, options: .atomic)
+      try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    } catch {
+      FileHandle.standardError.write(
+        Data("Could not save desktop startup diagnostic: \(error.localizedDescription)\n".utf8))
+    }
+  }
+
+  private func installDegradedMenu(_ configuration: DesktopConfiguration) {
+    let main = NSMenu()
+    let appItem = NSMenuItem()
+    main.addItem(appItem)
+    let app = NSMenu(title: configuration.name)
+    app.addItem(item("Show Startup Error", #selector(showWindow)))
+    app.addItem(item("Check for Updates…", #selector(checkUpdates)))
+    app.addItem(.separator())
+    app.addItem(item("Quit \(configuration.name)", #selector(quit), key: "q"))
+    appItem.submenu = app
+    NSApp.mainMenu = main
   }
 
   func application(_ application: NSApplication, open urls: [URL]) {
@@ -118,7 +205,19 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
   @objc func showWindow() {
-    guard let model else { return }
+    guard let model else {
+      if let (config, error) = startupFailure {
+        NSApp.setActivationPolicy(.regular)
+        let alert = NSAlert(error: error)
+        alert.messageText = "\(config.name) hit an error during startup."
+        alert.informativeText =
+          config.production
+          ? "Keep the app running: a fixed update will be downloaded and installed automatically as soon as it is available."
+          : "Download the latest development build and reinstall the app."
+        alert.runModal()
+      }
+      return
+    }
     if mainWindow == nil {
       let window = NSWindow(
         contentRect: NSRect(x: 0, y: 0, width: 680, height: 760),
@@ -368,7 +467,9 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   @objc private func revealRecording() { model?.recorder.revealRecording() }
   @objc private func quit() { NSApp.terminate(nil) }
   @objc private func checkUpdates() {
-    guard let model, let updater else { return }
-    model.run { try await updater.check(manual: true) }
+    guard let updater else { return }
+    Task {
+      do { try await updater.check(manual: true) } catch { NSAlert(error: error).runModal() }
+    }
   }
 }

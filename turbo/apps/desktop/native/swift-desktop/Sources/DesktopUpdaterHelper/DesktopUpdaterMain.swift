@@ -27,11 +27,11 @@ enum Installer {
         }
         try await Task.sleep(for: .milliseconds(200))
       }
-      let backup = installed.lastPathComponent + ".backup-" + UUID().uuidString
-      _ = try FileManager.default.replaceItemAt(
-        installed, withItemAt: candidate, backupItemName: backup, options: [])
-      let configuration = NSWorkspace.OpenConfiguration()
-      _ = try await NSWorkspace.shared.openApplication(at: installed, configuration: configuration)
+      try await DesktopBundleReplacement.install(candidate: candidate, installed: installed) {
+        app in
+        _ = try await NSWorkspace.shared.openApplication(
+          at: app, configuration: NSWorkspace.OpenConfiguration())
+      }
     } catch {
       let app = NSApplication.shared
       app.setActivationPolicy(.accessory)
