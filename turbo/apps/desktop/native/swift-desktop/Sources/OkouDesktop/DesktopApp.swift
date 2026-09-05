@@ -41,7 +41,6 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
           options.releaseName = "desktop@\(config.version)"
           options.environment = config.production ? "production" : "development"
           options.sendDefaultPii = false
-          options.attachScreenshot = false
           options.tracesSampleRate = 0
         }
       }

@@ -1,7 +1,7 @@
 import AppKit
 import DesktopCore
 import MCP
-import SystemPackage
+import System
 
 @MainActor
 final class MCPPlugins {

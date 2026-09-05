@@ -11,7 +11,6 @@ var targets: [Target] = [
 #if os(macOS)
   dependencies = [
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
-    .package(url: "https://github.com/apple/swift-system.git", from: "1.4.0"),
     .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.17.1"),
   ]
   products.append(.executable(name: "okou-desktop", targets: ["OkouDesktop"]))
@@ -23,7 +22,6 @@ var targets: [Target] = [
       dependencies: [
         "DesktopCore",
         .product(name: "MCP", package: "swift-sdk"),
-        .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ]
     ))
