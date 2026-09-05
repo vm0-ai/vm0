@@ -13,7 +13,10 @@ import {
   readyChat,
   RUN_PATH,
 } from "./chat-capability-test-helpers.ts";
-import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
+import {
+  queryMessageBody,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 import {
   installRunChat,
   publishRunUpdate,
@@ -187,9 +190,9 @@ test("Project all workflow run outputs through one run-group history", async () 
   });
 
   await readyChat();
-  expect(screen.queryByText("Earlier workflow evidence 1")).toBeNull();
-  expect(screen.queryByText("Earlier workflow result 1")).toBeNull();
-  expect(screen.queryByText("Earlier workflow evidence 2")).toBeNull();
+  expect(queryMessageBody("Earlier workflow evidence 1")).toBeNull();
+  expect(queryMessageBody("Earlier workflow result 1")).toBeNull();
+  expect(queryMessageBody("Earlier workflow evidence 2")).toBeNull();
   const main = screen.getByText("Earlier workflow result 2");
   expect(main).toBeVisible();
   expect(queryButton("Expand grouped run history")).toBeNull();
@@ -227,7 +230,7 @@ test("Project all workflow run outputs through one run-group history", async () 
 
   click(await findButton("Collapse work history"));
   await waitFor(() => {
-    expect(screen.queryByText("Earlier workflow result 1")).toBeNull();
+    expect(queryMessageBody("Earlier workflow result 1")).toBeNull();
   });
   events.push(
     assistantOutput({
@@ -244,7 +247,7 @@ test("Project all workflow run outputs through one run-group history", async () 
 
   const currentMain = await screen.findByText("Current workflow result");
   expect(currentMain).toBeVisible();
-  expect(screen.queryByText("Earlier workflow result 2")).toBeNull();
+  expect(queryMessageBody("Earlier workflow result 2")).toBeNull();
   expect(currentMain.closest('[data-role="assistant"]')).toBe(assistantGroup);
   expect(queryButton("Expand grouped run history")).toBeNull();
   await expect(findButton("Expand work history")).resolves.toBeVisible();
@@ -438,7 +441,7 @@ test("Keep the prior goal result as main while the next run has no output", asyn
     "The current launch evidence is ready.",
   );
   expect(
-    screen.queryByText("The earlier launch evidence is complete."),
+    queryMessageBody("The earlier launch evidence is complete."),
   ).toBeNull();
   const currentFold = await findButton("Expand work history");
   const answeringAssistant = answer.closest<HTMLElement>(

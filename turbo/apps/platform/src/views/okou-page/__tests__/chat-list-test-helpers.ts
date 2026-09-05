@@ -146,9 +146,11 @@ export function installChatListStream(
   options: ChatListStreamOptions,
 ): {
   readonly setEvents: (events: readonly ChatThreadEvent[]) => void;
+  readonly eventsRequested: Promise<void>;
   readonly eventsServed: Promise<void>;
 } {
   let currentEvents = [...(options.events ?? [])];
+  const eventsRequested = context.mocks.deferred<void>();
   const eventsServed = context.mocks.deferred<void>();
   context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
     await options.remoteGate;
@@ -159,6 +161,9 @@ export function installChatListStream(
     });
   });
   context.mocks.api(chatThreadsContract.events, async ({ query, respond }) => {
+    if (!eventsRequested.settled()) {
+      eventsRequested.resolve();
+    }
     await options.remoteGate;
     const sinceSeqId = query.sinceSeqId ?? 0;
     const events = currentEvents.filter((event) => {
@@ -182,6 +187,7 @@ export function installChatListStream(
     setEvents(events) {
       currentEvents = [...events];
     },
+    eventsRequested: eventsRequested.promise,
     eventsServed: eventsServed.promise,
   };
 }

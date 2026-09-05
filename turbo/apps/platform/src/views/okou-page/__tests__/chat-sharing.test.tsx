@@ -1,3 +1,4 @@
+import { queryMessageBody } from "./chat-event-test-helpers.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -198,8 +199,8 @@ test("A folded multi-message answer counts as one shared selection", async () =>
   });
 
   await screen.findByText("Launch answer 3");
-  expect(screen.queryByText("Launch answer 1")).toBeNull();
-  expect(screen.queryByText("Launch answer 2")).toBeNull();
+  expect(queryMessageBody("Launch answer 1")).toBeNull();
+  expect(queryMessageBody("Launch answer 2")).toBeNull();
   await waitFor(() => {
     expect(buttonsNamed("Share messages").length).toBeGreaterThan(0);
   });
