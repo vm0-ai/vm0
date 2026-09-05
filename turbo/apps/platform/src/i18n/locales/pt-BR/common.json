@@ -5050,6 +5050,7 @@
         "remaining_many": "{{value}} redefinições restantes",
         "remaining_other": "{{value}} redefinições restantes",
         "remainingUnavailable": "Redefinições restantes indisponíveis",
+        "remainingUnknown": "Redefinições —",
         "remainingWithExpiry_one": "{{value}} redefinição restante · expira {{expiry}}",
         "remainingWithExpiry_many": "{{value}} redefinições restantes · expiram {{expiry}}",
         "remainingWithExpiry_other": "{{value}} redefinições restantes · expiram {{expiry}}",

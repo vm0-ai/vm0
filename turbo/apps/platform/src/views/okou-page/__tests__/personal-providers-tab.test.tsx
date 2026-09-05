@@ -265,14 +265,27 @@ test("Review and explicitly switch personal subscription accounts", async () => 
       createdAt: "2026-03-01T00:00:00Z",
     }),
     workspaceName: "Account A Organization",
+    subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:48:00.000Z",
   };
-  const accountB = connectedPersonalCodexAccount({
-    id: "00000000-0000-4000-a000-000000000312",
-    email: "account-b@example.com",
-    isActive: false,
-    createdAt: "2026-03-02T00:00:00Z",
-  });
-  context.mocks.data.personalModelProviders([accountA, accountB]);
+  const accountB = {
+    ...connectedPersonalCodexAccount({
+      id: "00000000-0000-4000-a000-000000000312",
+      email: "account-b@example.com",
+      isActive: false,
+      createdAt: "2026-03-02T00:00:00Z",
+    }),
+    subscriptionResetCredits: 0,
+  };
+  const accountC = {
+    ...connectedPersonalCodexAccount({
+      id: "00000000-0000-4000-a000-000000000313",
+      email: "account-c@example.com",
+      isActive: false,
+      createdAt: "2026-03-03T00:00:00Z",
+    }),
+    subscriptionResetCredits: null,
+  };
+  context.mocks.data.personalModelProviders([accountA, accountB, accountC]);
 
   await openModelSettings("Models", {
     [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
@@ -280,8 +293,15 @@ test("Review and explicitly switch personal subscription accounts", async () => 
 
   const rowA = await screen.findByTestId(`oauth-account-${accountA.id}`);
   const rowB = await screen.findByTestId(`oauth-account-${accountB.id}`);
+  const rowC = await screen.findByTestId(`oauth-account-${accountC.id}`);
   expect(within(rowA).getByText("account-a@example.com")).toBeInTheDocument();
   expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
+  expect(within(rowA).getByText("2 resets left")).toBeVisible();
+  expect(within(rowB).getByText("0 resets left")).toBeVisible();
+  expect(within(rowC).getByText("Resets —")).toBeVisible();
+  expect(
+    within(rowC).getByLabelText("Resets left unavailable"),
+  ).toBeInTheDocument();
   expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
   expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
   expect(within(rowB).queryByText("Use")).not.toBeInTheDocument();
@@ -302,6 +322,11 @@ test("Review and explicitly switch personal subscription accounts", async () => 
   await user.hover(accountIdentity);
   await expect(
     screen.findAllByText("Account A Organization"),
+  ).resolves.not.toHaveLength(0);
+
+  await user.hover(within(rowA).getByLabelText("2 resets left"));
+  await expect(
+    screen.findAllByText("2 resets left · expires in 3d"),
   ).resolves.not.toHaveLength(0);
 
   usageRings[0].focus();

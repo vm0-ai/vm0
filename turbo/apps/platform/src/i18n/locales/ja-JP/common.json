@@ -4987,6 +4987,7 @@
         "remaining_one": "リセット残り{{value}}回",
         "remaining_other": "リセット残り{{value}}回",
         "remainingUnavailable": "残りのリセット回数を取得できません",
+        "remainingUnknown": "リセット —",
         "remainingWithExpiry_other": "リセット残り{{value}}回 · 有効期限{{expiry}}",
         "title": "Codexの使用量をリセットしますか？"
       },

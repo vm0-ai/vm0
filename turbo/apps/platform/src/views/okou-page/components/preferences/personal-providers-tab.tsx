@@ -1,6 +1,6 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { EllipsisVertical, Plus } from "lucide-react";
+import { EllipsisVertical, Plus, RotateCcw } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Button,
@@ -345,7 +345,7 @@ function OAuthAccountRow({
           className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-foreground"
         />
       ) : null}
-      <div className="flex items-center gap-3">
+      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 sm:flex sm:gap-3">
         <Button
           showTooltip
           type="button"
@@ -401,19 +401,70 @@ function OAuthAccountRow({
                 return $.settings.models.personal.status.stale;
               })}
             </span>
-          ) : (
-            <SubscriptionUsageRings identity={identity} usage={usage} />
-          )}
+          ) : null}
         </div>
-        <OAuthAccountMenu
-          account={account}
-          actionPending={actionPending}
-          onReconnect={onReconnect}
-          onRemove={onRemove}
-          onReset={onReset}
-        />
+        <div className="col-start-2 flex min-w-0 items-center justify-end gap-3 sm:ml-auto sm:shrink-0">
+          {account.type === "codex-oauth-token" ? (
+            <OAuthAccountResetCredits account={account} />
+          ) : null}
+          {!account.needsReconnect ? (
+            <SubscriptionUsageRings identity={identity} usage={usage} />
+          ) : null}
+          <OAuthAccountMenu
+            account={account}
+            actionPending={actionPending}
+            onReconnect={onReconnect}
+            onRemove={onRemove}
+            onReset={onReset}
+          />
+        </div>
       </div>
     </div>
+  );
+}
+
+function OAuthAccountResetCredits({
+  account,
+}: {
+  readonly account: ModelProviderResponse;
+}) {
+  const { t } = useTranslation();
+  const resetCredits = account.subscriptionResetCredits ?? null;
+  const label = formatCodexResetCredits(resetCredits);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          aria-label={label}
+          className="mr-auto flex h-7 min-w-0 cursor-default items-center gap-1.5 rounded-md px-1 text-xs tabular-nums text-muted-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover sm:mr-0"
+        >
+          <RotateCcw size={14} className="shrink-0" aria-hidden />
+          <span className="truncate">
+            {resetCredits === null
+              ? t(($) => {
+                  return $.settings.models.reset.remainingUnknown;
+                })
+              : label}
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="end"
+        sideOffset={8}
+        className="border shadow-md"
+        style={{
+          backgroundColor: "hsl(var(--popover))",
+          color: "hsl(var(--popover-foreground))",
+        }}
+      >
+        {formatCodexResetCredits(
+          resetCredits,
+          account.subscriptionResetCreditsNextExpiresAt,
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -964,7 +1015,7 @@ function SubscriptionUsageRings({
   }
 
   return (
-    <span className="flex shrink-0 items-center gap-1.5">
+    <span className="ml-auto flex min-w-16 shrink-0 items-center justify-end gap-1.5">
       {windows.map(({ kind, window }) => {
         return (
           <SubscriptionUsageRing
