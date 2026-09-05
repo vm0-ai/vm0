@@ -20,6 +20,8 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   private var mainWindow: NSWindow?
   private var statusItem: NSStatusItem?
   private var updater: DesktopUpdater?
+  private var activation: DesktopActivation?
+  private var activationRequested = false
   private var hotKey: EventHotKeyRef?
   private var hotKeyHandler: EventHandlerRef?
   private var hotKeyAttempted = false
@@ -62,6 +64,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       let directory = FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(
           config.name)
+      guard try claimInstance(config, directory: directory) else { return }
       let line = config.product == "okou" ? "ai-okou-desktop" : "zero"
       let feed = DesktopUpdateFeed(
         url: config.apiURL.appendingPathComponent(
@@ -87,38 +90,75 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       NSApp.setActivationPolicy(.accessory)
       refreshStatus()
       if CommandLine.arguments.contains("--smoke-test") {
-        showWindow()
-        model.run {
-          _ = try await model.helper.request("permissions.state")
-          if let index = CommandLine.arguments.firstIndex(of: "--smoke-screenshot"),
-            CommandLine.arguments.indices.contains(index + 1),
-            let view = self.mainWindow?.contentView
-          {
-            view.layoutSubtreeIfNeeded()
-            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-              throw DesktopFailure("smoke_test", "Could not render the native settings window")
-            }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            guard let png = bitmap.representation(using: .png, properties: [:]) else {
-              throw DesktopFailure("smoke_test", "Could not encode the native settings window")
-            }
-            try png.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
-          }
-          FileHandle.standardOutput.write(Data("OKOU_SWIFT_DESKTOP_READY\n".utf8))
-          await model.helper.stop()
-          NSApp.terminate(nil)
-        }
+        runSmokeTest(model)
         return
       }
       Task {
         await model.launch()
-        if !model.ready { showWindow() }
+        if !model.ready || activationRequested { showWindow() }
         for url in pendingURLs { model.run { try await model.consume(url) } }
         pendingURLs = []
       }
     } catch {
       let alert = NSAlert(error: error)
       alert.runModal()
+      NSApp.terminate(nil)
+    }
+  }
+
+  private func claimInstance(_ config: DesktopConfiguration, directory: URL) throws -> Bool {
+    let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent(config.bundleID).appendingPathComponent("NativeActivation")
+    let activation = try DesktopActivation(
+      directory: cache, identity: config.bundleID,
+      receive: { [weak self] urls in
+        guard let self else { return }
+        let callbacks = urls.filter { config.callback($0) != nil }
+        if !callbacks.isEmpty {
+          self.application(NSApp, open: callbacks)
+        } else if self.model != nil || self.startupFailure != nil {
+          self.showWindow()
+        } else {
+          self.activationRequested = true
+        }
+      },
+      report: { [weak self] error in self?.reportBootstrapFailure(error, directory: directory) })
+    self.activation = activation
+    let callbacks = CommandLine.arguments.compactMap(URL.init(string:)).filter {
+      config.callback($0) != nil
+    }
+    guard try activation.claim() else {
+      try activation.forward(callbacks + pendingURLs.filter { config.callback($0) != nil })
+      NSRunningApplication.runningApplications(withBundleIdentifier: config.bundleID)
+        .first { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }?
+        .activate(options: [.activateAllWindows])
+      NSApp.terminate(nil)
+      return false
+    }
+    pendingURLs += callbacks
+    return true
+  }
+
+  private func runSmokeTest(_ model: DesktopModel) {
+    showWindow()
+    model.run {
+      _ = try await model.helper.request("permissions.state")
+      if let index = CommandLine.arguments.firstIndex(of: "--smoke-screenshot"),
+        CommandLine.arguments.indices.contains(index + 1),
+        let view = self.mainWindow?.contentView
+      {
+        view.layoutSubtreeIfNeeded()
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+          throw DesktopFailure("smoke_test", "Could not render the native settings window")
+        }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+          throw DesktopFailure("smoke_test", "Could not encode the native settings window")
+        }
+        try png.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+      }
+      FileHandle.standardOutput.write(Data("OKOU_SWIFT_DESKTOP_READY\n".utf8))
+      await model.helper.stop()
       NSApp.terminate(nil)
     }
   }
@@ -160,6 +200,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
 
   func applicationWillTerminate(_ notification: Notification) {
     updater?.stop()
+    activation?.stop()
     updateShortcut(recording: false)
   }
 
