@@ -44,8 +44,12 @@ a handled API request.
 The shared database Worker reports the same response to its connected tabs as
 a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
 that event through the same update dialog instead of reloading automatically.
-Other Worker-unavailable reasons continue to use the bounded automatic reload
-recovery and raise an error so the failure remains visible in Sentry.
+Worker load and transport failures reject pending requests with their original
+error and mark the connection disconnected. Queries and computed reads have no
+time limit and remain cancellable through their owning lifecycle. An IndexedDB
+version change closes the affected connection and reports it as unavailable.
+These failures propagate through the normal error handling without reloading
+the page.
 
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
