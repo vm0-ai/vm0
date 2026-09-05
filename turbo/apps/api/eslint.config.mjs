@@ -426,11 +426,9 @@ export default [
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       // The production cron exposes aggregate Phase 2 outcomes, but no API
       // constructs or inspects exact job and Storage state matrices. These
-      // focused tests pin the finite job, archive, usage, worker composition,
-      // publication, Storage notification, and concurrency contracts.
-      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
+      // focused tests pin the finite job, usage, worker composition, generic
+      // Storage publication guard, notification, and concurrency contracts.
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
@@ -453,22 +451,6 @@ export default [
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
-    },
-  },
-  {
-    // Dedicated PostgreSQL race tests own explicit transactions and clients.
-    // Their try/finally blocks guarantee lock release when an assertion fails;
-    // they do not catch or transform product errors.
-    files: [
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
-    ],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...restrictedSyntax.filter((restriction) => {
-          return restriction.selector !== "TryStatement";
-        }),
-      ],
     },
   },
   {
@@ -586,12 +568,10 @@ export default [
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       // The production cron exposes aggregate Phase 2 outcomes, but cannot
-      // construct or inspect the exact archive, usage, worker, PostgreSQL
-      // concurrency, publication, Storage notification, and selection state
+      // construct or inspect the exact usage, worker, PostgreSQL concurrency,
+      // generic Storage publication guard, notification, and selection state
       // matrices covered by these focused tests.
-      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",

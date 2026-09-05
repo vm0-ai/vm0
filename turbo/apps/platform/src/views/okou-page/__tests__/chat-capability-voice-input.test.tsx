@@ -1,4 +1,5 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { voiceIoTranscribeContract } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -658,7 +659,7 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   ]);
 });
 
-test("Restore the composer when PCM capture finishes without audio", async () => {
+test("Silently finish an empty recording without changing the composer", async () => {
   const consoleErrors = captureVoiceTranscriptionErrors();
   let microphoneStops = 0;
   let audioContextCloses = 0;
@@ -686,29 +687,54 @@ test("Restore the composer when PCM capture finishes without audio", async () =>
   click(voiceInput);
   click(await activeVoiceDraftStopButton());
 
-  await expect(
-    screen.findByText("Voice transcription failed. Try again."),
-  ).resolves.toBeVisible();
   await expect(findButton("Voice input")).resolves.toBeEnabled();
   expect(normalizedComposerText()).toBe("Keep the existing draft");
   expect(microphoneStops).toBe(1);
   expect(audioContextCloses).toBe(2);
   await expect(findButton("Send")).resolves.toBeEnabled();
-  expect(consoleErrors).toStrictEqual([
-    [
-      "[E][VoiceIO:STT]",
-      "Voice recording failed to finish",
-      expect.objectContaining({
-        message: "Voice recording did not contain audio samples",
-      }),
-    ],
-    [
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({ message: "Voice draft recording failed" }),
-    ],
-  ]);
+  expect(consoleErrors).toStrictEqual([]);
+  expect(
+    screen.queryByText("Voice transcription failed. Try again."),
+  ).toBeNull();
 });
+
+test.each(["", "Keep the existing draft"])(
+  "Silently finish a recording with no speech and preserve the input %j",
+  async (initialText) => {
+    const consoleErrors = captureVoiceTranscriptionErrors();
+    context.mocks.browser.voiceInput({ rms: 0 });
+    installAvailableVoiceQuota();
+    installRunChat();
+    context.mocks.http.post(`*${voiceIoTranscribeContract.post.path}`, () => {
+      return new HttpResponse(null, { status: 204 });
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+    });
+
+    const voiceInput = await readyVoiceInput();
+    await fill(currentComposer(), initialText);
+    await userEvent.keyboard("{Control>}a{/Control}");
+    click(voiceInput);
+    const stop = await activeVoiceDraftStopButton();
+    click(stop);
+
+    await expect(findButton("Voice input")).resolves.toBeEnabled();
+    expect(normalizedComposerText()).toBe(initialText);
+    expect(queryButton("Attach")).toBeVisible();
+    expect(queryButton("Send")).toHaveProperty("disabled", !initialText);
+    expect(consoleErrors).toStrictEqual([]);
+    expect(
+      screen.queryByText("Voice transcription failed. Try again."),
+    ).toBeNull();
+
+    await userEvent.type(currentComposer(), "New words", { skipClick: true });
+    expect(normalizedComposerText()).toBe("New words");
+  },
+);
 
 test("Make voice-input startup and silent cancellation clear", async () => {
   const microphoneReady = context.mocks.deferred<void>();

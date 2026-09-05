@@ -22,8 +22,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { presentationCommand } from "../index";
 
 const state = {
-  /** Boxes the fake browser reports for the slide selector. */
+  /** Nodes the fake browser reports for the slide selector. */
   slides: [] as unknown[],
+  activeSlide: 0,
   installed: new Set(["soffice", "pdftocairo"]),
   deckPages: 3,
   size: { width: 1600, height: 900 },
@@ -190,8 +191,12 @@ function fakeBrowser(args: readonly string[]): string {
       }
       return "1";
     }
+    if (expression.includes("scrollIntoView")) {
+      state.activeSlide = Number(/const index=(\d+)/u.exec(expression)?.[1]);
+      return state.activeSlide.toString();
+    }
     return expression.includes("querySelectorAll")
-      ? JSON.stringify(JSON.stringify(state.slides))
+      ? state.slides.length.toString()
       : "1";
   }
   if (verb === "screenshot" && args[4] !== undefined) {
@@ -199,7 +204,7 @@ function fakeBrowser(args: readonly string[]): string {
       args[4],
       Buffer.concat([
         png(state.size.width, state.size.height),
-        Buffer.from([state.backgroundReady ? 1 : 0]),
+        Buffer.from([state.activeSlide, state.backgroundReady ? 1 : 0]),
       ]),
     );
   }
@@ -266,6 +271,7 @@ describe("okou presentation screenshot", () => {
     workDir = mkdtempSync(join(tmpdir(), "okou-shot-"));
     outDir = join(workDir, "pages");
     state.slides = [];
+    state.activeSlide = 0;
     state.installed = new Set(["soffice", "pdftocairo"]);
     state.deckPages = 3;
     state.size = { width: 1600, height: 900 };
@@ -442,7 +448,7 @@ describe("okou presentation screenshot", () => {
     ).toBe(false);
   });
 
-  it("captures one page per slide in an HTML deck", async () => {
+  it("captures distinct pages inside a nested HTML deck scroller", async () => {
     state.slides = [
       { top: 0, left: 0 },
       { top: 900, left: 0 },
@@ -452,7 +458,13 @@ describe("okou presentation screenshot", () => {
 
     await run("--input", join(workDir, "deck.html"), "--out", outDir);
 
-    expect(readdirSync(outDir)).toHaveLength(3);
+    const pages = readdirSync(outDir).sort();
+    expect(pages).toHaveLength(3);
+    expect([
+      readFileSync(join(outDir, "page-001.png")).at(-2),
+      readFileSync(join(outDir, "page-002.png")).at(-2),
+      readFileSync(join(outDir, "page-003.png")).at(-2),
+    ]).toEqual([0, 1, 2]);
   });
 
   it("waits for CSS background images before keeping a capture", async () => {

@@ -40,7 +40,7 @@ const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TENANT_NAME = "E2E Test Tenant";
 const DEFAULT_TEAM_NAME = "E2E Test Team";
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
-const DEFAULT_BOT_ID = "28:e2e-zero-bot";
+const DEFAULT_BOT_ID = "28:e2e-test-bot";
 const DEFAULT_BOT_NAME = "Zero";
 const DEFAULT_AGENT_NAME = "e2e-teams-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
@@ -265,17 +265,17 @@ function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      apiKey: `vm0-key-default-${agentId}`,
+      apiKey: `built-in-key-default-${agentId}`,
       label: agentId,
     },
     {
       vendor: "anthropic",
-      apiKey: `vm0-key-anthropic-${agentId}`,
+      apiKey: `built-in-key-anthropic-${agentId}`,
       label: agentId,
     },
     {
       vendor: "moonshot",
-      apiKey: `vm0-key-moonshot-${agentId}`,
+      apiKey: `built-in-key-moonshot-${agentId}`,
       label: agentId,
     },
   ];

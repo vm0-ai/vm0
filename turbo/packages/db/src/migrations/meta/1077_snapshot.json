@@ -1,6 +1,6 @@
 {
-  "id": "238e2aa8-5789-47fe-b951-656b58993c6c",
-  "prevId": "71a6a83a-27b1-4f87-b652-e17808bf8a60",
+  "id": "bbfbed7d-0692-4758-ad48-f7f49519968f",
+  "prevId": "238e2aa8-5789-47fe-b951-656b58993c6c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -18871,9 +18871,27 @@
           "primaryKey": false,
           "notNull": false
         },
+        "legacy_lease_token": {
+          "name": "legacy_lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sandbox_lease_token": {
+          "name": "sandbox_lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "lease_expires_at": {
           "name": "lease_expires_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "maintenance_run_id": {
+          "name": "maintenance_run_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -18954,6 +18972,48 @@
         "last_published_at": {
           "name": "last_published_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_run_id": {
+          "name": "last_maintenance_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_revision": {
+          "name": "last_maintenance_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_base_version_id": {
+          "name": "last_maintenance_base_version_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_selection_digest": {
+          "name": "last_maintenance_selection_digest",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_checkpoint_id": {
+          "name": "last_maintenance_checkpoint_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_checkpoint_version_id": {
+          "name": "last_maintenance_checkpoint_version_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_maintenance_outcome": {
+          "name": "last_maintenance_outcome",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false
         },
@@ -19045,6 +19105,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_pi_memory_phase2_jobs_maintenance_run": {
+          "name": "idx_pi_memory_phase2_jobs_maintenance_run",
+          "columns": [
+            {
+              "expression": "maintenance_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"pi_memory_phase2_jobs\".\"maintenance_run_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -19095,7 +19171,15 @@
         },
         "pi_memory_phase2_jobs_version_ids_check": {
           "name": "pi_memory_phase2_jobs_version_ids_check",
-          "value": "(\"pi_memory_phase2_jobs\".\"claimed_base_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"claimed_base_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_observed_head_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_observed_head_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_conflicting_head_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_conflicting_head_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_published_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_published_version_id\" ~ '^[0-9a-f]{64}$')"
+          "value": "(\"pi_memory_phase2_jobs\".\"claimed_base_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"claimed_base_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_observed_head_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_observed_head_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_conflicting_head_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_conflicting_head_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_published_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_published_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_maintenance_base_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_maintenance_base_version_id\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_maintenance_selection_digest\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_maintenance_selection_digest\" ~ '^[0-9a-f]{64}$') AND\n          (\"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_version_id\" IS NULL OR \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_version_id\" ~ '^[0-9a-f]{64}$')"
+        },
+        "pi_memory_phase2_jobs_execution_fence_check": {
+          "name": "pi_memory_phase2_jobs_execution_fence_check",
+          "value": "(\n          \"pi_memory_phase2_jobs\".\"status\" = 'leased' AND (\n            (\n              \"pi_memory_phase2_jobs\".\"legacy_lease_token\" = \"pi_memory_phase2_jobs\".\"lease_token\" AND\n              \"pi_memory_phase2_jobs\".\"sandbox_lease_token\" IS NULL AND\n              \"pi_memory_phase2_jobs\".\"maintenance_run_id\" IS NULL\n            ) OR (\n              \"pi_memory_phase2_jobs\".\"legacy_lease_token\" IS NULL AND\n              \"pi_memory_phase2_jobs\".\"sandbox_lease_token\" = \"pi_memory_phase2_jobs\".\"lease_token\"\n            )\n          )\n        ) OR (\n          \"pi_memory_phase2_jobs\".\"status\" <> 'leased' AND\n          \"pi_memory_phase2_jobs\".\"sandbox_lease_token\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"maintenance_run_id\" IS NULL\n        )"
+        },
+        "pi_memory_phase2_jobs_maintenance_history_check": {
+          "name": "pi_memory_phase2_jobs_maintenance_history_check",
+          "value": "(\n          \"pi_memory_phase2_jobs\".\"last_maintenance_run_id\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_revision\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_base_version_id\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_selection_digest\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_id\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_version_id\" IS NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_outcome\" IS NULL\n        ) OR (\n          \"pi_memory_phase2_jobs\".\"last_maintenance_run_id\" IS NOT NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_revision\" IS NOT NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_revision\" > 0 AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_base_version_id\" IS NOT NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_selection_digest\" IS NOT NULL AND\n          \"pi_memory_phase2_jobs\".\"last_maintenance_outcome\" IN ('published', 'no_diff', 'failed') AND\n          (\n            (\n              \"pi_memory_phase2_jobs\".\"last_maintenance_outcome\" = 'failed' AND\n              \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_id\" IS NULL AND\n              \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_version_id\" IS NULL\n            ) OR (\n              \"pi_memory_phase2_jobs\".\"last_maintenance_outcome\" IN ('published', 'no_diff') AND\n              \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_id\" IS NOT NULL AND\n              \"pi_memory_phase2_jobs\".\"last_maintenance_checkpoint_version_id\" IS NOT NULL\n            )\n          )\n        )"
         },
         "pi_memory_phase2_jobs_conflict_check": {
           "name": "pi_memory_phase2_jobs_conflict_check",

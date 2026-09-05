@@ -195,7 +195,7 @@ function installClerkBootstrap(
   signal: AbortSignal,
 ): void {
   // A test that installs its own bootstrap owns the whole object.
-  if (requestedPrimaryAppDomain === null || window.__vm0ClerkBootstrap) {
+  if (requestedPrimaryAppDomain === null || window.__okouClerkBootstrap) {
     return;
   }
   const primaryAppDomain = requestedPrimaryAppDomain ?? "app.vm0.ai";
@@ -206,7 +206,7 @@ function installClerkBootstrap(
   const authOrigin = satelliteDomain
     ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
     : pageUrl.origin;
-  window.__vm0ClerkBootstrap = {
+  window.__okouClerkBootstrap = {
     domain: satelliteDomain ?? undefined,
     loadOptions: {
       afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
@@ -224,7 +224,7 @@ function installClerkBootstrap(
   signal.addEventListener(
     "abort",
     () => {
-      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+      Reflect.deleteProperty(window, "__okouClerkBootstrap");
     },
     { once: true },
   );

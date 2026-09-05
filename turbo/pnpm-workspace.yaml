@@ -106,6 +106,7 @@ overrides:
   zod: 4.3.6
 
 patchedDependencies:
+  "@earendil-works/pi-agent-core@0.84.1": patches/@earendil-works__pi-agent-core@0.84.1.patch
   "@earendil-works/pi-ai@0.84.1": patches/@earendil-works__pi-ai@0.84.1.patch
   "@earendil-works/pi-coding-agent@0.84.1": patches/@earendil-works__pi-coding-agent@0.84.1.patch
 

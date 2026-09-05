@@ -3,8 +3,8 @@
 --
 
 
--- Dumped from database version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
--- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
+-- Dumped from database version 17.10 (Debian 17.10-1.pgdg12+1)
+-- Dumped by pg_dump version 17.10 (Debian 17.10-1.pgdg12+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -2147,7 +2147,7 @@ CREATE TABLE public.custom_connector_account_oauth_bindings (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_custom_connector_account_oauth_binding_identity CHECK (((btrim(issuer) <> ''::text) AND (btrim(resource) <> ''::text) AND (btrim(token_endpoint) <> ''::text) AND (btrim((client_id)::text) <> ''::text) AND ((resource_metadata_url IS NULL) OR (btrim(resource_metadata_url) <> ''::text)))),
     CONSTRAINT chk_custom_connector_account_oauth_binding_registration CHECK (((((registration_method)::text = 'cimd'::text) AND (dcr_registration_id IS NULL) AND ((token_endpoint_auth_method)::text = 'none'::text)) OR (((registration_method)::text = 'dcr'::text) AND (dcr_registration_id IS NOT NULL)))),
-    CONSTRAINT chk_custom_connector_account_oauth_binding_token_auth_method CHECK ((token_endpoint_auth_method IN ('none', 'client_secret_basic', 'client_secret_post')))
+    CONSTRAINT chk_custom_connector_account_oauth_binding_token_auth_method CHECK (((token_endpoint_auth_method)::text = ANY ((ARRAY['none'::character varying, 'client_secret_basic'::character varying, 'client_secret_post'::character varying])::text[])))
 );
 
 
@@ -2723,7 +2723,7 @@ CREATE TABLE public.memory_summary_projections (
     CONSTRAINT memory_summary_projections_content_check CHECK (((((status)::text = 'ready'::text) AND (content IS NOT NULL) AND (source_hash IS NOT NULL) AND (source_size IS NOT NULL) AND (token_count IS NOT NULL)) OR (((status)::text <> 'ready'::text) AND (content IS NULL) AND (source_hash IS NULL) AND (source_size IS NULL) AND (token_count IS NULL)))),
     CONSTRAINT memory_summary_projections_lease_check CHECK (((((status)::text = 'running'::text) AND (lease_id IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR (((status)::text <> 'running'::text) AND (lease_id IS NULL) AND (lease_expires_at IS NULL)))),
     CONSTRAINT memory_summary_projections_source_size_check CHECK (((source_size IS NULL) OR (source_size >= 0))),
-    CONSTRAINT memory_summary_projections_status_check CHECK ((status IN ('pending', 'running', 'ready', 'missing', 'invalid', 'over_limit'))),
+    CONSTRAINT memory_summary_projections_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'running'::character varying, 'ready'::character varying, 'missing'::character varying, 'invalid'::character varying, 'over_limit'::character varying])::text[]))),
     CONSTRAINT memory_summary_projections_token_count_check CHECK (((token_count IS NULL) OR (token_count >= 0)))
 );
 
@@ -2937,7 +2937,7 @@ CREATE TABLE public.official_workflow_automation_identities (
     retained_applied_fingerprint character varying(64),
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT official_workflow_automation_identities_state_check CHECK (((((state)::text = 'active'::text) AND (automation_id IS NOT NULL) AND (retained_parameter_bindings IS NULL) AND (retained_intended_enabled IS NULL) AND (retained_applied_fingerprint IS NULL)) OR ((state IN ('reconciling', 'needs_reconfiguration', 'failed', 'removed')) AND (automation_id IS NULL) AND (jsonb_typeof(retained_parameter_bindings) = 'array'::text) AND (retained_intended_enabled IS NOT NULL) AND ((retained_applied_fingerprint IS NULL) OR ((retained_applied_fingerprint)::text ~ '^[0-9a-f]{64}$'::text)))))
+    CONSTRAINT official_workflow_automation_identities_state_check CHECK (((((state)::text = 'active'::text) AND (automation_id IS NOT NULL) AND (retained_parameter_bindings IS NULL) AND (retained_intended_enabled IS NULL) AND (retained_applied_fingerprint IS NULL)) OR (((state)::text = ANY ((ARRAY['reconciling'::character varying, 'needs_reconfiguration'::character varying, 'failed'::character varying, 'removed'::character varying])::text[])) AND (automation_id IS NULL) AND (jsonb_typeof(retained_parameter_bindings) = 'array'::text) AND (retained_intended_enabled IS NOT NULL) AND ((retained_applied_fingerprint IS NULL) OR ((retained_applied_fingerprint)::text ~ '^[0-9a-f]{64}$'::text)))))
 );
 
 
@@ -3075,7 +3075,7 @@ CREATE TABLE public.org_custom_connector_dcr_registrations (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_org_custom_connector_dcr_registration_expiry CHECK (((expires_at IS NULL) OR (expires_at > issued_at))),
     CONSTRAINT chk_org_custom_connector_dcr_registration_identity CHECK (((btrim(issuer) <> ''::text) AND (btrim((client_id)::text) <> ''::text) AND (btrim(redirect_uri) <> ''::text))),
-    CONSTRAINT chk_org_custom_connector_dcr_registration_token_auth_method CHECK (((((token_endpoint_auth_method)::text = 'none'::text) AND (encrypted_client_secret IS NULL)) OR ((token_endpoint_auth_method IN ('client_secret_basic', 'client_secret_post')) AND (encrypted_client_secret IS NOT NULL))))
+    CONSTRAINT chk_org_custom_connector_dcr_registration_token_auth_method CHECK (((((token_endpoint_auth_method)::text = 'none'::text) AND (encrypted_client_secret IS NULL)) OR (((token_endpoint_auth_method)::text = ANY ((ARRAY['client_secret_basic'::character varying, 'client_secret_post'::character varying])::text[])) AND (encrypted_client_secret IS NOT NULL))))
 );
 
 
@@ -3127,9 +3127,9 @@ CREATE TABLE public.org_custom_connectors (
     skill_markdown text,
     storage_version bigint DEFAULT 1 NOT NULL,
     skill_storage_version_id character varying(64),
-    CONSTRAINT chk_org_custom_connectors_auth_mode CHECK ((auth_mode IN ('none', 'manual', 'oauth', 'automatic'))),
+    CONSTRAINT chk_org_custom_connectors_auth_mode CHECK (((auth_mode)::text = ANY ((ARRAY['none'::character varying, 'manual'::character varying, 'oauth'::character varying, 'automatic'::character varying])::text[]))),
     CONSTRAINT chk_org_custom_connectors_automatic_oauth_mcp CHECK ((((auth_mode)::text <> 'automatic'::text) OR ((mcp_endpoint IS NOT NULL) AND ((mcp_transport)::text = 'streamable-http'::text)))),
-    CONSTRAINT chk_org_custom_connectors_mcp CHECK (((jsonb_typeof(prefix_templates) = 'array'::text) AND (jsonb_typeof(fields) = 'array'::text) AND (jsonb_typeof(header_injections) = 'array'::text) AND (jsonb_typeof(query_injections) = 'array'::text) AND (((mcp_endpoint IS NULL) AND (mcp_transport IS NULL) AND (prefix_templates <> '[]'::jsonb) AND ((((auth_mode)::text = 'none'::text) AND (NOT jsonb_path_exists(fields, '$[*]?(@."kind" == "secret")'::jsonpath)) AND (header_injections = '[]'::jsonb) AND (query_injections = '[]'::jsonb)) OR ((auth_mode IN ('manual', 'oauth')) AND ((header_injections <> '[]'::jsonb) OR (query_injections <> '[]'::jsonb))))) OR ((mcp_endpoint IS NOT NULL) AND (btrim(mcp_endpoint) <> ''::text) AND (mcp_transport IS NOT NULL) AND ((mcp_transport)::text = 'streamable-http'::text) AND (prefix_templates = '[]'::jsonb) AND (((auth_mode IN ('none', 'automatic')) AND (fields = '[]'::jsonb) AND (header_injections = '[]'::jsonb) AND (query_injections = '[]'::jsonb)) OR ((auth_mode IN ('manual', 'oauth')) AND ((header_injections <> '[]'::jsonb) OR (query_injections <> '[]'::jsonb)))) AND (permission_bundle_ref IS NULL))))),
+    CONSTRAINT chk_org_custom_connectors_mcp CHECK (((jsonb_typeof(prefix_templates) = 'array'::text) AND (jsonb_typeof(fields) = 'array'::text) AND (jsonb_typeof(header_injections) = 'array'::text) AND (jsonb_typeof(query_injections) = 'array'::text) AND (((mcp_endpoint IS NULL) AND (mcp_transport IS NULL) AND (prefix_templates <> '[]'::jsonb) AND ((((auth_mode)::text = 'none'::text) AND (NOT jsonb_path_exists(fields, '$[*]?(@."kind" == "secret")'::jsonpath)) AND (header_injections = '[]'::jsonb) AND (query_injections = '[]'::jsonb)) OR (((auth_mode)::text = ANY ((ARRAY['manual'::character varying, 'oauth'::character varying])::text[])) AND ((header_injections <> '[]'::jsonb) OR (query_injections <> '[]'::jsonb))))) OR ((mcp_endpoint IS NOT NULL) AND (btrim(mcp_endpoint) <> ''::text) AND (mcp_transport IS NOT NULL) AND ((mcp_transport)::text = 'streamable-http'::text) AND (prefix_templates = '[]'::jsonb) AND ((((auth_mode)::text = ANY ((ARRAY['none'::character varying, 'automatic'::character varying])::text[])) AND (fields = '[]'::jsonb) AND (header_injections = '[]'::jsonb) AND (query_injections = '[]'::jsonb)) OR (((auth_mode)::text = ANY ((ARRAY['manual'::character varying, 'oauth'::character varying])::text[])) AND ((header_injections <> '[]'::jsonb) OR (query_injections <> '[]'::jsonb)))) AND (permission_bundle_ref IS NULL))))),
     CONSTRAINT chk_org_custom_connectors_skill_size CHECK (((skill_markdown IS NULL) OR (octet_length(skill_markdown) <= 65536))),
     CONSTRAINT chk_org_custom_connectors_skill_version_pair CHECK ((((skill_markdown IS NULL) AND (skill_storage_version_id IS NULL)) OR ((skill_markdown IS NOT NULL) AND (skill_storage_version_id IS NOT NULL)))),
     CONSTRAINT chk_org_custom_connectors_slug CHECK (("left"((slug)::text, 1) = '_'::text)),
@@ -3388,15 +3388,27 @@ CREATE TABLE public.pi_memory_phase2_jobs (
     last_conflicting_head_version_id character varying(64),
     last_published_version_id character varying(64),
     last_published_at timestamp without time zone,
+    legacy_lease_token uuid,
+    sandbox_lease_token uuid,
+    maintenance_run_id uuid,
+    last_maintenance_run_id uuid,
+    last_maintenance_revision integer,
+    last_maintenance_base_version_id character varying(64),
+    last_maintenance_selection_digest character varying(64),
+    last_maintenance_checkpoint_id uuid,
+    last_maintenance_checkpoint_version_id character varying(64),
+    last_maintenance_outcome character varying(32),
     CONSTRAINT pi_memory_phase2_jobs_conflict_check CHECK ((((conflict_count = 0) AND (last_conflict_at IS NULL) AND (last_conflicting_head_version_id IS NULL)) OR ((conflict_count > 0) AND (last_conflict_at IS NOT NULL) AND (last_conflicting_head_version_id IS NOT NULL)))),
     CONSTRAINT pi_memory_phase2_jobs_error_class_check CHECK (((last_error_class IS NULL) OR ((last_error_class)::text ~ '^[a-z][a-z0-9_]{0,127}$'::text))),
+    CONSTRAINT pi_memory_phase2_jobs_execution_fence_check CHECK (((((status)::text = 'leased'::text) AND (((legacy_lease_token = lease_token) AND (sandbox_lease_token IS NULL) AND (maintenance_run_id IS NULL)) OR ((legacy_lease_token IS NULL) AND (sandbox_lease_token = lease_token)))) OR (((status)::text <> 'leased'::text) AND (sandbox_lease_token IS NULL) AND (maintenance_run_id IS NULL)))),
+    CONSTRAINT pi_memory_phase2_jobs_maintenance_history_check CHECK ((((last_maintenance_run_id IS NULL) AND (last_maintenance_revision IS NULL) AND (last_maintenance_base_version_id IS NULL) AND (last_maintenance_selection_digest IS NULL) AND (last_maintenance_checkpoint_id IS NULL) AND (last_maintenance_checkpoint_version_id IS NULL) AND (last_maintenance_outcome IS NULL)) OR ((last_maintenance_run_id IS NOT NULL) AND (last_maintenance_revision IS NOT NULL) AND (last_maintenance_revision > 0) AND (last_maintenance_base_version_id IS NOT NULL) AND (last_maintenance_selection_digest IS NOT NULL) AND ((last_maintenance_outcome)::text = ANY ((ARRAY['published'::character varying, 'no_diff'::character varying, 'failed'::character varying])::text[])) AND ((((last_maintenance_outcome)::text = 'failed'::text) AND (last_maintenance_checkpoint_id IS NULL) AND (last_maintenance_checkpoint_version_id IS NULL)) OR (((last_maintenance_outcome)::text = ANY ((ARRAY['published'::character varying, 'no_diff'::character varying])::text[])) AND (last_maintenance_checkpoint_id IS NOT NULL) AND (last_maintenance_checkpoint_version_id IS NOT NULL)))))),
     CONSTRAINT pi_memory_phase2_jobs_publication_check CHECK ((((last_published_version_id IS NULL) AND (last_published_at IS NULL)) OR ((last_published_version_id IS NOT NULL) AND (last_published_at IS NOT NULL)))),
     CONSTRAINT pi_memory_phase2_jobs_retry_count_check CHECK (((retry_count >= 0) AND (retry_count <= 3))),
     CONSTRAINT pi_memory_phase2_jobs_revisions_check CHECK (((input_revision > 0) AND (completed_revision >= 0) AND (completed_revision <= input_revision) AND (reconciliation_revision >= 0) AND (reconciliation_revision <= input_revision) AND ((claimed_revision IS NULL) OR ((completed_revision < claimed_revision) AND (claimed_revision <= input_revision))))),
     CONSTRAINT pi_memory_phase2_jobs_selection_check CHECK ((((claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR ((claimed_selection_digest IS NOT NULL) AND (claimed_selected_count IS NOT NULL) AND (claimed_selected_utf8_bytes IS NOT NULL) AND ((claimed_selection_digest)::text ~ '^[0-9a-f]{64}$'::text) AND (claimed_selected_count >= 0) AND (claimed_selected_count <= 256) AND (claimed_selected_utf8_bytes >= 0) AND (claimed_selected_utf8_bytes <= 21036800)))),
     CONSTRAINT pi_memory_phase2_jobs_state_check CHECK (((((status)::text = 'idle'::text) AND (completed_revision = input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count = 0) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR (((status)::text = 'pending'::text) AND (completed_revision < input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count = 0) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR (((status)::text = 'leased'::text) AND (claimed_revision IS NOT NULL) AND (claimed_base_version_id IS NOT NULL) AND (completed_revision < claimed_revision) AND (claimed_revision <= input_revision) AND (lease_token IS NOT NULL) AND (lease_expires_at IS NOT NULL) AND (retry_count >= 0) AND (retry_count < 3) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (claimed_selection_digest IS NOT NULL) AND (claimed_selected_count IS NOT NULL) AND (claimed_selected_utf8_bytes IS NOT NULL)) OR (((status)::text = 'retryable_failure'::text) AND (completed_revision < input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count > 0) AND (retry_count < 3) AND (retry_at IS NOT NULL) AND (last_error_class IS NOT NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)) OR (((status)::text = 'terminal_failure'::text) AND (completed_revision < input_revision) AND (claimed_revision IS NULL) AND (claimed_base_version_id IS NULL) AND (lease_token IS NULL) AND (lease_expires_at IS NULL) AND (retry_count = 3) AND (retry_at IS NULL) AND (last_error_class IS NOT NULL) AND (claimed_selection_digest IS NULL) AND (claimed_selected_count IS NULL) AND (claimed_selected_utf8_bytes IS NULL)))),
-    CONSTRAINT pi_memory_phase2_jobs_status_check CHECK ((status IN ('idle', 'pending', 'leased', 'retryable_failure', 'terminal_failure'))),
-    CONSTRAINT pi_memory_phase2_jobs_version_ids_check CHECK ((((claimed_base_version_id IS NULL) OR ((claimed_base_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_observed_head_version_id IS NULL) OR ((last_observed_head_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_conflicting_head_version_id IS NULL) OR ((last_conflicting_head_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_published_version_id IS NULL) OR ((last_published_version_id)::text ~ '^[0-9a-f]{64}$'::text))))
+    CONSTRAINT pi_memory_phase2_jobs_status_check CHECK (((status)::text = ANY ((ARRAY['idle'::character varying, 'pending'::character varying, 'leased'::character varying, 'retryable_failure'::character varying, 'terminal_failure'::character varying])::text[]))),
+    CONSTRAINT pi_memory_phase2_jobs_version_ids_check CHECK ((((claimed_base_version_id IS NULL) OR ((claimed_base_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_observed_head_version_id IS NULL) OR ((last_observed_head_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_conflicting_head_version_id IS NULL) OR ((last_conflicting_head_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_published_version_id IS NULL) OR ((last_published_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_maintenance_base_version_id IS NULL) OR ((last_maintenance_base_version_id)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_maintenance_selection_digest IS NULL) OR ((last_maintenance_selection_digest)::text ~ '^[0-9a-f]{64}$'::text)) AND ((last_maintenance_checkpoint_version_id IS NULL) OR ((last_maintenance_checkpoint_version_id)::text ~ '^[0-9a-f]{64}$'::text))))
 );
 
 
@@ -3425,11 +3437,11 @@ CREATE TABLE public.pi_memory_publication_provenance (
     file_count integer NOT NULL,
     created_at timestamp without time zone NOT NULL,
     CONSTRAINT pi_memory_publication_provenance_counts_check CHECK (((size >= 0) AND (archive_size >= 0) AND (file_count >= 0))),
-    CONSTRAINT pi_memory_publication_provenance_outcome_check CHECK (((outcome IN ('published', 'conflicted')) AND (((outcome)::text <> 'published'::text) OR ((observed_head_version_id)::text = (prepared_version_id)::text)))),
+    CONSTRAINT pi_memory_publication_provenance_outcome_check CHECK ((((outcome)::text = ANY ((ARRAY['published'::character varying, 'conflicted'::character varying])::text[])) AND (((outcome)::text <> 'published'::text) OR ((observed_head_version_id)::text = (prepared_version_id)::text)))),
     CONSTRAINT pi_memory_publication_provenance_revisions_check CHECK (((claimed_revision > 0) AND (input_revision >= claimed_revision) AND (reconciliation_revision >= 0) AND (reconciliation_revision <= input_revision))),
     CONSTRAINT pi_memory_publication_provenance_selection_check CHECK ((((selection_digest)::text ~ '^[0-9a-f]{64}$'::text) AND (selected_count >= 0) AND (selected_count <= 256) AND (selected_utf8_bytes >= 0) AND (selected_utf8_bytes <= 21036800))),
     CONSTRAINT pi_memory_publication_provenance_versions_check CHECK ((((base_version_id)::text ~ '^[0-9a-f]{64}$'::text) AND ((prepared_version_id)::text ~ '^[0-9a-f]{64}$'::text) AND ((observed_head_version_id)::text ~ '^[0-9a-f]{64}$'::text) AND ((base_version_id)::text <> (prepared_version_id)::text))),
-    CONSTRAINT pi_memory_publication_provenance_writer_check CHECK ((writer IN ('pi', 'reconciler')))
+    CONSTRAINT pi_memory_publication_provenance_writer_check CHECK (((writer)::text = ANY ((ARRAY['pi'::character varying, 'reconciler'::character varying])::text[])))
 );
 
 
@@ -3465,8 +3477,8 @@ CREATE TABLE public.pi_memory_stage1_candidates (
     CONSTRAINT pi_memory_stage1_candidates_lease_check CHECK (((((status)::text = 'leased'::text) AND (lease_token IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR (((status)::text <> 'leased'::text) AND (lease_token IS NULL) AND (lease_expires_at IS NULL)))),
     CONSTRAINT pi_memory_stage1_candidates_selected_hash_check CHECK (((last_selected_source_history_hash IS NULL) OR ((last_selected_source_history_hash)::text = (source_history_hash)::text))),
     CONSTRAINT pi_memory_stage1_candidates_source_hash_check CHECK (((source_history_hash)::text ~ '^[0-9a-f]{64}$'::text)),
-    CONSTRAINT pi_memory_stage1_candidates_state_check CHECK ((((status IN ('pending', 'leased')) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)) OR (((status)::text = 'succeeded'::text) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NOT NULL) AND (rollout_summary IS NOT NULL) AND (generated_at IS NOT NULL)) OR (((status)::text = 'succeeded_no_output'::text) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NOT NULL)) OR (((status)::text = 'retryable_failure'::text) AND (retry_at IS NOT NULL) AND (last_error_class IS NOT NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)) OR (((status)::text = 'terminal_failure'::text) AND (retry_at IS NULL) AND (last_error_class IS NOT NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)))),
-    CONSTRAINT pi_memory_stage1_candidates_status_check CHECK ((status IN ('pending', 'leased', 'succeeded', 'succeeded_no_output', 'retryable_failure', 'terminal_failure')))
+    CONSTRAINT pi_memory_stage1_candidates_state_check CHECK (((((status)::text = ANY ((ARRAY['pending'::character varying, 'leased'::character varying])::text[])) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)) OR (((status)::text = 'succeeded'::text) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NOT NULL) AND (rollout_summary IS NOT NULL) AND (generated_at IS NOT NULL)) OR (((status)::text = 'succeeded_no_output'::text) AND (retry_at IS NULL) AND (last_error_class IS NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NOT NULL)) OR (((status)::text = 'retryable_failure'::text) AND (retry_at IS NOT NULL) AND (last_error_class IS NOT NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)) OR (((status)::text = 'terminal_failure'::text) AND (retry_at IS NULL) AND (last_error_class IS NOT NULL) AND (raw_memory IS NULL) AND (rollout_summary IS NULL) AND (rollout_slug IS NULL) AND (generated_at IS NULL) AND (last_selected_source_history_hash IS NULL)))),
+    CONSTRAINT pi_memory_stage1_candidates_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'leased'::character varying, 'succeeded'::character varying, 'succeeded_no_output'::character varying, 'retryable_failure'::character varying, 'terminal_failure'::character varying])::text[])))
 );
 
 
@@ -3512,7 +3524,7 @@ CREATE TABLE public.presentation_templates (
     updated_by text NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chk_presentation_templates_visibility CHECK ((visibility IN ('private', 'public')))
+    CONSTRAINT chk_presentation_templates_visibility CHECK (((visibility)::text = ANY ((ARRAY['private'::character varying, 'public'::character varying])::text[])))
 );
 
 
@@ -4206,9 +4218,9 @@ CREATE TABLE public.usage_pack_allocation_changes (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     subscription_change_id uuid,
     CONSTRAINT chk_usage_pack_changes_amounts CHECK ((((immediate_amount_cents IS NULL) OR (immediate_amount_cents >= 0)) AND ((next_recurring_amount_cents IS NULL) OR (next_recurring_amount_cents >= 0)))),
-    CONSTRAINT chk_usage_pack_changes_kind CHECK ((kind IN ('addition', 'upgrade', 'downgrade', 'removal'))),
+    CONSTRAINT chk_usage_pack_changes_kind CHECK (((kind)::text = ANY ((ARRAY['addition'::character varying, 'upgrade'::character varying, 'downgrade'::character varying, 'removal'::character varying])::text[]))),
     CONSTRAINT chk_usage_pack_changes_source CHECK (((((kind)::text = 'addition'::text) AND (source_allocation_id IS NULL) AND (source_usage_pack_usd IS NULL) AND (source_stripe_price_id IS NULL)) OR (((kind)::text <> 'addition'::text) AND (source_allocation_id IS NOT NULL) AND (source_usage_pack_usd = ANY (ARRAY[20, 50, 100, 200])) AND (source_stripe_price_id IS NOT NULL)))),
-    CONSTRAINT chk_usage_pack_changes_status CHECK ((status IN ('previewed', 'applying', 'pending_payment', 'scheduled', 'applied', 'completed', 'failed'))),
+    CONSTRAINT chk_usage_pack_changes_status CHECK (((status)::text = ANY ((ARRAY['previewed'::character varying, 'applying'::character varying, 'pending_payment'::character varying, 'scheduled'::character varying, 'applied'::character varying, 'completed'::character varying, 'failed'::character varying])::text[]))),
     CONSTRAINT chk_usage_pack_changes_target_package CHECK (((((kind)::text = 'removal'::text) AND (target_usage_pack_usd IS NULL) AND (target_stripe_price_id IS NULL)) OR (((kind)::text <> 'removal'::text) AND (target_usage_pack_usd = ANY (ARRAY[20, 50, 100, 200])) AND (target_stripe_price_id IS NOT NULL))))
 );
 
@@ -4233,7 +4245,7 @@ CREATE TABLE public.usage_pack_allocations (
     CONSTRAINT chk_usage_pack_allocations_owner CHECK ((((user_id IS NOT NULL) AND (invitation_id IS NULL)) OR ((user_id IS NULL) AND (invitation_id IS NOT NULL)))),
     CONSTRAINT chk_usage_pack_allocations_package CHECK ((usage_pack_usd = ANY (ARRAY[20, 50, 100, 200]))),
     CONSTRAINT chk_usage_pack_allocations_period CHECK ((((current_period_start IS NULL) AND (current_period_end IS NULL)) OR ((current_period_start IS NOT NULL) AND (current_period_end IS NOT NULL) AND (current_period_end > current_period_start)))),
-    CONSTRAINT chk_usage_pack_allocations_status CHECK ((status IN ('pending_payment', 'active', 'pending_invitation', 'paid_pending_invitation', 'inactive')))
+    CONSTRAINT chk_usage_pack_allocations_status CHECK (((status)::text = ANY ((ARRAY['pending_payment'::character varying, 'active'::character varying, 'pending_invitation'::character varying, 'paid_pending_invitation'::character varying, 'inactive'::character varying])::text[])))
 );
 
 
@@ -4253,7 +4265,7 @@ CREATE TABLE public.usage_pack_credit_grants (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_usage_pack_credit_grants_original_amount CHECK ((original_amount > 0)),
     CONSTRAINT chk_usage_pack_credit_grants_remaining_amount CHECK (((remaining_amount >= 0) AND (remaining_amount <= original_amount))),
-    CONSTRAINT chk_usage_pack_credit_grants_type CHECK ((grant_type IN ('purchased', 'bonus')))
+    CONSTRAINT chk_usage_pack_credit_grants_type CHECK (((grant_type)::text = ANY ((ARRAY['purchased'::character varying, 'bonus'::character varying])::text[])))
 );
 
 
@@ -4286,7 +4298,7 @@ CREATE TABLE public.usage_pack_credit_refunds (
     CONSTRAINT chk_usage_pack_credit_refunds_snapshot CHECK (((((status)::text = 'available'::text) AND (refund_credits IS NULL) AND (requested_amount_cents IS NULL)) OR (((status)::text <> 'available'::text) AND (refund_credits > 0) AND (requested_amount_cents > 0)))),
     CONSTRAINT chk_usage_pack_credit_refunds_source CHECK (((((source_type)::text = 'invoice'::text) AND (stripe_invoice_id IS NOT NULL) AND (stripe_payment_intent_id IS NULL)) OR (((source_type)::text = 'payment_intent'::text) AND (stripe_invoice_id IS NULL) AND (stripe_invoice_line_id IS NULL) AND (stripe_payment_intent_id IS NOT NULL)))),
     CONSTRAINT chk_usage_pack_credit_refunds_source_amount CHECK ((source_amount_cents >= 0)),
-    CONSTRAINT chk_usage_pack_credit_refunds_status CHECK ((status IN ('available', 'pending', 'processing', 'succeeded', 'failed')))
+    CONSTRAINT chk_usage_pack_credit_refunds_status CHECK (((status)::text = ANY ((ARRAY['available'::character varying, 'pending'::character varying, 'processing'::character varying, 'succeeded'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -4331,8 +4343,8 @@ CREATE TABLE public.usage_pack_invitation_purchases (
     CONSTRAINT chk_usage_pack_invitation_purchases_amounts CHECK (((unit_amount_cents > 0) AND (expected_amount_cents >= 0) AND ((amount_paid_cents IS NULL) OR (amount_paid_cents >= 0)) AND (purchased_credits >= 0) AND (bonus_credits >= 0) AND (refund_attempt > 0))),
     CONSTRAINT chk_usage_pack_invitation_purchases_package CHECK ((usage_pack_usd = ANY (ARRAY[20, 50, 100, 200]))),
     CONSTRAINT chk_usage_pack_invitation_purchases_period CHECK ((current_period_end > current_period_start)),
-    CONSTRAINT chk_usage_pack_invitation_purchases_role CHECK ((role IN ('admin', 'member'))),
-    CONSTRAINT chk_usage_pack_invitation_purchases_status CHECK ((status IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating', 'accepted', 'refund_pending', 'refunding', 'refunded', 'failed')))
+    CONSTRAINT chk_usage_pack_invitation_purchases_role CHECK (((role)::text = ANY ((ARRAY['admin'::character varying, 'member'::character varying])::text[]))),
+    CONSTRAINT chk_usage_pack_invitation_purchases_status CHECK (((status)::text = ANY ((ARRAY['checkout_pending'::character varying, 'payment_succeeded'::character varying, 'creating_invitation'::character varying, 'invitation_pending'::character varying, 'accepted_pending_activation'::character varying, 'activating'::character varying, 'accepted'::character varying, 'refund_pending'::character varying, 'refunding'::character varying, 'refunded'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -4385,8 +4397,8 @@ CREATE TABLE public.usage_pack_subscription_changes (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_usage_pack_subscription_changes_amounts CHECK (((immediate_amount_cents >= 0) AND (next_recurring_amount_cents >= 0))),
-    CONSTRAINT chk_usage_pack_subscription_changes_status CHECK ((status IN ('previewed', 'applying', 'pending_payment', 'completed', 'failed'))),
-    CONSTRAINT chk_usage_pack_subscription_changes_tiers CHECK (((source_tier IN ('pro', 'team')) AND (target_tier IN ('pro', 'team'))))
+    CONSTRAINT chk_usage_pack_subscription_changes_status CHECK (((status)::text = ANY ((ARRAY['previewed'::character varying, 'applying'::character varying, 'pending_payment'::character varying, 'completed'::character varying, 'failed'::character varying])::text[]))),
+    CONSTRAINT chk_usage_pack_subscription_changes_tiers CHECK ((((source_tier)::text = ANY ((ARRAY['pro'::character varying, 'team'::character varying])::text[])) AND ((target_tier)::text = ANY ((ARRAY['pro'::character varying, 'team'::character varying])::text[]))))
 );
 
 
@@ -4411,7 +4423,7 @@ CREATE TABLE public.usage_pack_subscription_migration_selections (
     CONSTRAINT chk_usage_pack_migration_selections_amounts CHECK (((unit_amount_cents > 0) AND (purchased_credits > 0) AND (bonus_credits > 0))),
     CONSTRAINT chk_usage_pack_migration_selections_owner CHECK ((((user_id IS NOT NULL) AND (invitation_id IS NULL) AND (normalized_email IS NULL) AND (role IS NULL) AND (inviter_user_id IS NULL)) OR ((user_id IS NULL) AND (invitation_id IS NOT NULL) AND (normalized_email IS NOT NULL) AND (role IS NOT NULL) AND (inviter_user_id IS NOT NULL)))),
     CONSTRAINT chk_usage_pack_migration_selections_package CHECK ((usage_pack_usd = ANY (ARRAY[20, 50, 100, 200]))),
-    CONSTRAINT chk_usage_pack_migration_selections_role CHECK (((role IS NULL) OR (role IN ('admin', 'member'))))
+    CONSTRAINT chk_usage_pack_migration_selections_role CHECK (((role IS NULL) OR ((role)::text = ANY ((ARRAY['admin'::character varying, 'member'::character varying])::text[]))))
 );
 
 
@@ -4445,8 +4457,8 @@ CREATE TABLE public.usage_pack_subscription_migrations (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_usage_pack_subscription_migrations_amounts CHECK (((current_recurring_amount_cents >= 0) AND (next_recurring_amount_cents >= 0) AND (recurring_difference_cents = (next_recurring_amount_cents - current_recurring_amount_cents)))),
-    CONSTRAINT chk_usage_pack_subscription_migrations_status CHECK ((status IN ('previewed', 'applying', 'revising', 'scheduled', 'completed', 'failed'))),
-    CONSTRAINT chk_usage_pack_subscription_migrations_tiers CHECK (((source_tier IN ('pro', 'team')) AND (target_tier IN ('pro', 'team'))))
+    CONSTRAINT chk_usage_pack_subscription_migrations_status CHECK (((status)::text = ANY ((ARRAY['previewed'::character varying, 'applying'::character varying, 'revising'::character varying, 'scheduled'::character varying, 'completed'::character varying, 'failed'::character varying])::text[]))),
+    CONSTRAINT chk_usage_pack_subscription_migrations_tiers CHECK ((((source_tier)::text = ANY ((ARRAY['pro'::character varying, 'team'::character varying])::text[])) AND ((target_tier)::text = ANY ((ARRAY['pro'::character varying, 'team'::character varying])::text[]))))
 );
 
 
@@ -4469,7 +4481,7 @@ CREATE TABLE public.usage_pack_subscriptions (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_usage_pack_subscriptions_period CHECK ((((current_period_start IS NULL) AND (current_period_end IS NULL)) OR ((current_period_start IS NOT NULL) AND (current_period_end IS NOT NULL) AND (current_period_end > current_period_start)))),
-    CONSTRAINT chk_usage_pack_subscriptions_tier CHECK ((tier IN ('pro', 'team')))
+    CONSTRAINT chk_usage_pack_subscriptions_tier CHECK (((tier)::text = ANY ((ARRAY['pro'::character varying, 'team'::character varying])::text[])))
 );
 
 
@@ -4667,8 +4679,8 @@ CREATE TABLE public.workflow_automations (
     official_result_email_enabled boolean,
     event_connector_id uuid,
     CONSTRAINT workflow_automations_autonomy_budget_check CHECK (((autonomy_budget >= 0) AND (autonomy_budget <= 10))),
-    CONSTRAINT workflow_automations_official_binding_check CHECK ((((official_blueprint_key IS NULL) AND (official_applied_fingerprint IS NULL) AND (official_reconciliation_status IS NULL) AND (official_parameter_bindings IS NULL) AND (official_intended_enabled IS NULL) AND (official_result_email_enabled IS NULL)) OR ((official_blueprint_key IS NOT NULL) AND ((official_applied_fingerprint)::text ~ '^[0-9a-f]{64}$'::text) AND (official_reconciliation_status IN ('current', 'reconciling', 'needs_reconfiguration', 'failed')) AND (jsonb_typeof(official_parameter_bindings) = 'array'::text) AND (official_intended_enabled IS NOT NULL) AND (official_result_email_enabled IS NOT NULL)))),
-    CONSTRAINT workflow_automations_schedule_config_check CHECK (((((kind)::text = 'schedule'::text) AND (event_type IS NULL) AND (event_config IS NULL) AND ((((schedule_type)::text = 'cron'::text) AND (cron_expression IS NOT NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'loop'::text) AND (interval_seconds IS NOT NULL) AND (cron_expression IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'once'::text) AND (at_time IS NOT NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL)))) OR (((kind)::text = 'event'::text) AND (event_type IN ('chat-run-finished', 'gmail-new-message', 'gmail-label-applied', 'github-deployment-status-created', 'github-issue-comment-created', 'github-pull-request', 'github-pull-request-review-submitted', 'github-workflow-job-completed', 'github-workflow-run-completed', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-forms-response-submitted', 'google-meet-transcript-generated', 'notion-child-page-created', 'notion-database-item-created', 'notion-page-content-updated', 'stripe-invoice-paid', 'webhook-received')) AND (event_config IS NOT NULL) AND (schedule_type IS NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL))))
+    CONSTRAINT workflow_automations_official_binding_check CHECK ((((official_blueprint_key IS NULL) AND (official_applied_fingerprint IS NULL) AND (official_reconciliation_status IS NULL) AND (official_parameter_bindings IS NULL) AND (official_intended_enabled IS NULL) AND (official_result_email_enabled IS NULL)) OR ((official_blueprint_key IS NOT NULL) AND ((official_applied_fingerprint)::text ~ '^[0-9a-f]{64}$'::text) AND ((official_reconciliation_status)::text = ANY ((ARRAY['current'::character varying, 'reconciling'::character varying, 'needs_reconfiguration'::character varying, 'failed'::character varying])::text[])) AND (jsonb_typeof(official_parameter_bindings) = 'array'::text) AND (official_intended_enabled IS NOT NULL) AND (official_result_email_enabled IS NOT NULL)))),
+    CONSTRAINT workflow_automations_schedule_config_check CHECK (((((kind)::text = 'schedule'::text) AND (event_type IS NULL) AND (event_config IS NULL) AND ((((schedule_type)::text = 'cron'::text) AND (cron_expression IS NOT NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'loop'::text) AND (interval_seconds IS NOT NULL) AND (cron_expression IS NULL) AND (at_time IS NULL)) OR (((schedule_type)::text = 'once'::text) AND (at_time IS NOT NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL)))) OR (((kind)::text = 'event'::text) AND ((event_type)::text = ANY ((ARRAY['chat-run-finished'::character varying, 'gmail-new-message'::character varying, 'gmail-label-applied'::character varying, 'github-deployment-status-created'::character varying, 'github-issue-comment-created'::character varying, 'github-pull-request'::character varying, 'github-pull-request-review-submitted'::character varying, 'github-workflow-job-completed'::character varying, 'github-workflow-run-completed'::character varying, 'google-calendar-event-created'::character varying, 'google-calendar-event-updated'::character varying, 'google-calendar-event-cancelled'::character varying, 'google-forms-response-submitted'::character varying, 'google-meet-transcript-generated'::character varying, 'notion-child-page-created'::character varying, 'notion-database-item-created'::character varying, 'notion-page-content-updated'::character varying, 'stripe-invoice-paid'::character varying, 'webhook-received'::character varying])::text[])) AND (event_config IS NOT NULL) AND (schedule_type IS NULL) AND (cron_expression IS NULL) AND (interval_seconds IS NULL) AND (at_time IS NULL))))
 );
 
 
@@ -4758,7 +4770,7 @@ CREATE TABLE public.workflows (
     updated_by text NOT NULL,
     official_definition_name character varying(64),
     official_installation_state character varying(32),
-    CONSTRAINT workflows_official_installation_check CHECK ((((official_definition_name IS NULL) AND (official_installation_state IS NULL)) OR ((official_definition_name IS NOT NULL) AND (official_installation_state IN ('installing', 'installed')) AND ((official_definition_name)::text = (name)::text) AND ((visibility)::text = 'private'::text) AND (instruction IS NULL) AND (display_name IS NULL) AND (description IS NULL))))
+    CONSTRAINT workflows_official_installation_check CHECK ((((official_definition_name IS NULL) AND (official_installation_state IS NULL)) OR ((official_definition_name IS NOT NULL) AND ((official_installation_state)::text = ANY ((ARRAY['installing'::character varying, 'installed'::character varying])::text[])) AND ((official_definition_name)::text = (name)::text) AND ((visibility)::text = 'private'::text) AND (instruction IS NULL) AND (display_name IS NULL) AND (description IS NULL))))
 );
 
 
@@ -7197,7 +7209,7 @@ CREATE INDEX idx_compose_jobs_created ON public.compose_jobs USING btree (create
 -- Name: idx_compose_jobs_user_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_compose_jobs_user_active ON public.compose_jobs USING btree (user_id) WHERE (status IN ('pending', 'running'));
+CREATE UNIQUE INDEX idx_compose_jobs_user_active ON public.compose_jobs USING btree (user_id) WHERE status IN ('pending', 'running');
 
 
 --
@@ -7449,7 +7461,7 @@ CREATE INDEX idx_export_jobs_created ON public.export_jobs USING btree (created_
 -- Name: idx_export_jobs_user_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_export_jobs_user_active ON public.export_jobs USING btree (user_id) WHERE (status IN ('pending', 'running'));
+CREATE UNIQUE INDEX idx_export_jobs_user_active ON public.export_jobs USING btree (user_id) WHERE status IN ('pending', 'running');
 
 
 --
@@ -7939,7 +7951,7 @@ CREATE INDEX idx_model_providers_secret ON public.model_providers USING btree (s
 -- Name: idx_notion_pending_events_automation_page_family_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_notion_pending_events_automation_page_family_active ON public.notion_workflow_pending_events USING btree (automation_id, page_id, event_family) WHERE (status IN ('pending', 'running'));
+CREATE UNIQUE INDEX idx_notion_pending_events_automation_page_family_active ON public.notion_workflow_pending_events USING btree (automation_id, page_id, event_family) WHERE status IN ('pending', 'running');
 
 
 --
@@ -8170,7 +8182,14 @@ CREATE INDEX idx_org_usage_allowance_windows_org_kind_starts ON public.org_usage
 -- Name: idx_pi_memory_phase2_jobs_claimable; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pi_memory_phase2_jobs_claimable ON public.pi_memory_phase2_jobs USING btree (status, retry_at, lease_expires_at, last_succeeded_at, updated_at, memory_storage_id) WHERE ((completed_revision < input_revision) AND (status IN ('pending', 'leased', 'retryable_failure')));
+CREATE INDEX idx_pi_memory_phase2_jobs_claimable ON public.pi_memory_phase2_jobs USING btree (status, retry_at, lease_expires_at, last_succeeded_at, updated_at, memory_storage_id) WHERE completed_revision < input_revision AND status IN ('pending', 'leased', 'retryable_failure');
+
+
+--
+-- Name: idx_pi_memory_phase2_jobs_maintenance_run; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pi_memory_phase2_jobs_maintenance_run ON public.pi_memory_phase2_jobs USING btree (maintenance_run_id) WHERE (maintenance_run_id IS NOT NULL);
 
 
 --
@@ -8198,7 +8217,7 @@ CREATE INDEX idx_pi_memory_publication_provenance_user_export ON public.pi_memor
 -- Name: idx_pi_memory_stage1_candidates_eligible; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pi_memory_stage1_candidates_eligible ON public.pi_memory_stage1_candidates USING btree (eligible_at, retry_at) WHERE (status IN ('pending', 'retryable_failure'));
+CREATE INDEX idx_pi_memory_stage1_candidates_eligible ON public.pi_memory_stage1_candidates USING btree (eligible_at, retry_at) WHERE status IN ('pending', 'retryable_failure');
 
 
 --
@@ -8212,7 +8231,7 @@ CREATE INDEX idx_pi_memory_stage1_candidates_expired_lease ON public.pi_memory_s
 -- Name: idx_pi_memory_stage1_candidates_phase2; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pi_memory_stage1_candidates_phase2 ON public.pi_memory_stage1_candidates USING btree (memory_storage_id, generated_at, pi_session_id) WHERE (status IN ('succeeded', 'succeeded_no_output'));
+CREATE INDEX idx_pi_memory_stage1_candidates_phase2 ON public.pi_memory_stage1_candidates USING btree (memory_storage_id, generated_at, pi_session_id) WHERE status IN ('succeeded', 'succeeded_no_output');
 
 
 --
@@ -9234,14 +9253,14 @@ CREATE UNIQUE INDEX uq_browser_profiles_provider_profile ON public.browser_profi
 -- Name: uq_browser_session_instances_thread_owned; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_browser_session_instances_thread_owned ON public.browser_session_instances USING btree (chat_thread_id) WHERE (status IN ('active', 'stopping'));
+CREATE UNIQUE INDEX uq_browser_session_instances_thread_owned ON public.browser_session_instances USING btree (chat_thread_id) WHERE status IN ('active', 'stopping');
 
 
 --
 -- Name: uq_browser_sessions_thread_owned; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_browser_sessions_thread_owned ON public.browser_sessions USING btree (chat_thread_id) WHERE (status IN ('creating', 'active', 'resuming', 'stopping'));
+CREATE UNIQUE INDEX uq_browser_sessions_thread_owned ON public.browser_sessions USING btree (chat_thread_id) WHERE status IN ('creating', 'active', 'resuming', 'stopping');
 
 
 --
@@ -9318,7 +9337,7 @@ CREATE UNIQUE INDEX uq_socialkit_download_jobs_provider_job ON public.socialkit_
 -- Name: uq_socialkit_download_jobs_user_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_socialkit_download_jobs_user_active ON public.socialkit_download_jobs USING btree (user_id) WHERE (status IN ('submitting', 'processing', 'materializing', 'artifact_failed'));
+CREATE UNIQUE INDEX uq_socialkit_download_jobs_user_active ON public.socialkit_download_jobs USING btree (user_id) WHERE status IN ('submitting', 'processing', 'materializing', 'artifact_failed');
 
 
 --
@@ -9353,14 +9372,14 @@ CREATE UNIQUE INDEX uq_usage_pack_allocations_current_user ON public.usage_pack_
 -- Name: uq_usage_pack_changes_active_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_usage_pack_changes_active_org ON public.usage_pack_allocation_changes USING btree (org_id) WHERE ((subscription_change_id IS NULL) AND (status IN ('previewed', 'applying', 'pending_payment')));
+CREATE UNIQUE INDEX uq_usage_pack_changes_active_org ON public.usage_pack_allocation_changes USING btree (org_id) WHERE subscription_change_id IS NULL AND status IN ('previewed', 'applying', 'pending_payment');
 
 
 --
 -- Name: uq_usage_pack_changes_current_user; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_usage_pack_changes_current_user ON public.usage_pack_allocation_changes USING btree (org_id, user_id) WHERE (((subscription_change_id IS NULL) AND (status IN ('previewed', 'applying', 'pending_payment'))) OR (status IN ('scheduled', 'applied')));
+CREATE UNIQUE INDEX uq_usage_pack_changes_current_user ON public.usage_pack_allocation_changes USING btree (org_id, user_id) WHERE (subscription_change_id IS NULL AND status IN ('previewed', 'applying', 'pending_payment')) OR status IN ('scheduled', 'applied');
 
 
 --
@@ -9416,7 +9435,7 @@ CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_clerk_invitation ON publi
 -- Name: uq_usage_pack_invitation_purchases_current_email; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_current_email ON public.usage_pack_invitation_purchases USING btree (org_id, normalized_email) WHERE (status IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating'));
+CREATE UNIQUE INDEX uq_usage_pack_invitation_purchases_current_email ON public.usage_pack_invitation_purchases USING btree (org_id, normalized_email) WHERE status IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating');
 
 
 --
@@ -9444,7 +9463,7 @@ CREATE UNIQUE INDEX uq_usage_pack_migration_selections_user ON public.usage_pack
 -- Name: uq_usage_pack_subscription_changes_active_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_usage_pack_subscription_changes_active_org ON public.usage_pack_subscription_changes USING btree (org_id) WHERE (status IN ('previewed', 'applying', 'pending_payment'));
+CREATE UNIQUE INDEX uq_usage_pack_subscription_changes_active_org ON public.usage_pack_subscription_changes USING btree (org_id) WHERE status IN ('previewed', 'applying', 'pending_payment');
 
 
 --
@@ -9465,14 +9484,14 @@ CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_invoice ON public.usag
 -- Name: uq_usage_pack_subscription_migrations_open_org; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_open_org ON public.usage_pack_subscription_migrations USING btree (org_id) WHERE (status IN ('previewed', 'applying', 'revising', 'scheduled'));
+CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_open_org ON public.usage_pack_subscription_migrations USING btree (org_id) WHERE status IN ('previewed', 'applying', 'revising', 'scheduled');
 
 
 --
 -- Name: uq_usage_pack_subscription_migrations_open_subscription; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_open_subscription ON public.usage_pack_subscription_migrations USING btree (stripe_subscription_id) WHERE (status IN ('previewed', 'applying', 'revising', 'scheduled'));
+CREATE UNIQUE INDEX uq_usage_pack_subscription_migrations_open_subscription ON public.usage_pack_subscription_migrations USING btree (stripe_subscription_id) WHERE status IN ('previewed', 'applying', 'revising', 'scheduled');
 
 
 --
@@ -11340,7 +11359,6 @@ VALUES
     ('website', 'gpt-5.5', 'tokens.output', 30000, 1000000);
 
 RESET ALL;
-
 
 --
 -- PostgreSQL database dump complete

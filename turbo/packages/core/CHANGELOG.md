@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.625.4](https://github.com/vm0-ai/vm0/compare/core-v8.625.3...core-v8.625.4) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+
+## [8.625.3](https://github.com/vm0-ai/vm0/compare/core-v8.625.2...core-v8.625.3) (2026-09-05)
+
+
+### Refactoring
+
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+
 ## [8.625.2](https://github.com/vm0-ai/vm0/compare/core-v8.625.1...core-v8.625.2) (2026-09-05)
 
 

@@ -328,8 +328,8 @@ describe("Pi API first-turn sandbox resume", () => {
     expect(execute).toHaveBeenCalledExactlyOnceWith(
       TOOL_CALL_ID,
       { path: "/home/user/.pi/agent/skills/example/SKILL.md" },
-      undefined,
-      undefined,
+      expect.any(AbortSignal),
+      expect.any(Function),
       expect.anything(),
     );
     expect(session.messages.at(-1)).toMatchObject({
@@ -431,8 +431,8 @@ describe("Pi API first-turn sandbox resume", () => {
     expect(execute).toHaveBeenCalledExactlyOnceWith(
       TOOL_CALL_ID,
       { command },
-      undefined,
-      undefined,
+      expect.any(AbortSignal),
+      expect.any(Function),
       expect.anything(),
     );
     expect(faux.state.callCount).toBe(1);

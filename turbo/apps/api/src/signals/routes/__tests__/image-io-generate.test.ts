@@ -6,13 +6,15 @@ import {
   PutObjectCommand,
   type PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { apiTestS3PresignedUrl } from "../../../__tests__/mocks";
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
   buildArtifactKeyV2,
@@ -1050,8 +1052,8 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(-50);
   });
 
-  it("keeps a legacy generation job on VM0 when allowance remains", async () => {
-    const fixture = await seedImageFixture({ credits: 0 });
+  it("uses allowance for a legacy runless generation under shared debt", async () => {
+    const fixture = await seedImageFixture({ credits: -100 });
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
     });
@@ -1060,7 +1062,7 @@ describe("POST /api/image-io/generate", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       customerId: generatedStripeCustomerId(),
-      subscriptionId: `sub_image_allowance_${randomUUID()}`,
+      subscriptionId: `sub_image_debt_allowance_${randomUUID()}`,
       effectiveAt,
       expiresAt: new Date(effectiveAt.getTime() + 365 * 24 * 60 * 60 * 1000),
       shortWindowSeconds: 5 * 60 * 60,
@@ -1142,7 +1144,21 @@ describe("POST /api/image-io/generate", () => {
     expect(putObjectInput().Metadata).toMatchObject({
       "public-brand": "vm0",
     });
-    await expect(orgCredits(fixture)).resolves.toBe(0);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const billingStatus = await accept(
+      setupApp({ context, routes: billingStatusRoutes })(
+        billingStatusContract,
+      ).get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(billingStatus.body.credits).toBe(-100);
+    expect(
+      Object.fromEntries(
+        billingStatus.body.usageAllowance?.windows.map((window) => {
+          return [window.kind, window.consumedUnits];
+        }) ?? [],
+      ),
+    ).toStrictEqual({ short: 50, weekly: 50 });
   });
 
   it("returns 503 when image pricing is not configured", async () => {

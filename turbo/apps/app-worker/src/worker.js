@@ -444,7 +444,7 @@ function rewriteAppPage(
             });
           }
           element.append(
-            `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
+            `<script type="application/json" id="okou-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
             { html: true },
           );
         },

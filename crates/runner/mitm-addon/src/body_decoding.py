@@ -36,9 +36,13 @@ _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
 # zstd's Python decompression object has no zlib-style max_length argument.
 # Keep validation input chunks small so the discarded decoded output is bounded.
 _ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
+# Preserve ordinary concatenation with substantial headroom while capping
+# per-frame decoder construction independently of compressed and decoded bytes.
+_ZSTD_VALIDATE_MAX_FRAMES = 64
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
+COMPRESSED_FRAME_LIMIT_EXCEEDED = "compressed frame limit exceeded"
 _STREAM_ZLIB_WBITS_BY_ENCODING = {
     "gzip": 16 + zlib.MAX_WBITS,
     "deflate": zlib.MAX_WBITS,
@@ -472,7 +476,8 @@ def decode_response_body_for_network_log_capture(
     - ``br`` rejects invalid or incomplete input, except that reaching the
       decoded-output bound returns the bounded prefix.
     - ``zstd`` reads concatenated frames up to ``max_output`` bytes and rejects
-      malformed or incomplete frames unless the decoded-output bound is reached.
+      malformed, incomplete, or strict-frame-budget-exceeding input unless the
+      decoded-output bound is reached.
 
     This is stricter than the best-effort ``decompress_body()`` path used for
     retained streaming buffers, which can preserve original wire bytes or
@@ -675,7 +680,11 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
     source_offset = 0
     pending_input = b""
     decoded_size = 0
+    validated_frames = 0
     while source_offset < len(source) or pending_input:
+        if validated_frames >= _ZSTD_VALIDATE_MAX_FRAMES:
+            return COMPRESSED_FRAME_LIMIT_EXCEEDED
+        validated_frames += 1
         obj = zstandard.ZstdDecompressor().decompressobj()
 
         while source_offset < len(source) or pending_input:
@@ -788,7 +797,8 @@ def decompress_json_usage_body(
     empty body because body capture can still mark those responses truncated
     from stream metadata. JSON usage fallback only has the final buffer, so it
     needs to distinguish a valid compressed empty response from an incomplete
-    compressed frame that produced no JSON bytes.
+    compressed frame that produced no JSON bytes. Strict zstd validation also
+    rejects bodies that exceed its per-body frame budget.
 
     """
     encoding = headers.get("content-encoding", "").strip().lower()

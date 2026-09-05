@@ -714,7 +714,7 @@ jobs:
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          MIGRATION_BASELINE=1076
+          MIGRATION_BASELINE=1077
           # The squashed baseline and its history may be removed. Migrations after
           # the baseline must not be deleted once they land on main.
           DELETED=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
@@ -1493,7 +1493,7 @@ jobs:
       - name: Prepare standalone app Worker preview
         id: worker-preview
         env:
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
+          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}

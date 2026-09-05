@@ -289,11 +289,6 @@ export async function startVoiceDraftPcmCapture(
               worklet.port.postMessage("stop");
               await finished.promise;
               finishSignal.throwIfAborted();
-              if (sampleCount === 0) {
-                throw new Error(
-                  "Voice recording did not contain audio samples",
-                );
-              }
               return encodeVoiceDraftPcmWav(
                 combineSampleBatches(batches, sampleCount),
               );

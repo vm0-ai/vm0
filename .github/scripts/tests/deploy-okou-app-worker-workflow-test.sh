@@ -9,7 +9,8 @@ python3 - \
   "${repo_root}/.github/workflows/release-please.yml" \
   "${repo_root}/.github/workflows/rollback-production.yml" \
   "${repo_root}/.github/scripts/verify-okou-production-domains.sh" \
-  "${repo_root}/turbo/apps/app-worker/wrangler.jsonc" <<'PY'
+  "${repo_root}/turbo/apps/app-worker/wrangler.jsonc" \
+  "${repo_root}/.github/workflows/turbo.yml" << 'PY'
 from pathlib import Path
 import sys
 
@@ -47,6 +48,7 @@ release, _release_source = load_workflow(sys.argv[1])
 rollback, _rollback_source = load_workflow(sys.argv[2])
 production_verifier_source = Path(sys.argv[3]).read_text()
 worker_config_source = Path(sys.argv[4]).read_text()
+turbo, _turbo_source = load_workflow(sys.argv[5])
 
 release_jobs = release["jobs"]
 rollback_jobs = rollback["jobs"]
@@ -85,12 +87,22 @@ start_step = find_step(worker_release_job, "Start GitHub Deployment")
 finish_step = find_step(worker_release_job, "Finish GitHub Deployment")
 
 primary_app_domain_expression = (
-    "${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}"
+    "${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}"
 )
-if prepare_step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != (
-    primary_app_domain_expression
-):
-    raise RuntimeError("Worker shell preparation must inject the Clerk primary domain")
+preview_prepare_step = find_step(
+    turbo["jobs"]["deploy-app"], "Prepare standalone app Worker preview"
+)
+for shell_prepare_step in (prepare_step, preview_prepare_step):
+    if shell_prepare_step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != (
+        primary_app_domain_expression
+    ):
+        raise RuntimeError(
+            f"{shell_prepare_step['name']} must retain the configured Clerk primary "
+            "domain with an app.okou.ai default"
+        )
+    require_fragments(
+        shell_prepare_step, ["bash .github/scripts/prepare-okou-app-worker-shell.sh"]
+    )
 require_fragments(
     prepare_step,
     [

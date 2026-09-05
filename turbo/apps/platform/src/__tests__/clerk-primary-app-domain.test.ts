@@ -101,7 +101,8 @@ test("An explicitly requested app.vm0.ai keeps Okou a satellite", async () => {
 });
 
 const BOOTSTRAP_SCRIPT_SELECTOR = "[data-okou-clerk-bootstrap]";
-const PRIMARY_APP_DOMAIN_MARKER = "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";
+const PRIMARY_APP_DOMAIN_MARKER =
+  "__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";
 
 interface InlineBootstrapLoadOptions {
   readonly isSatellite?: true;
@@ -115,7 +116,7 @@ interface InlineBootstrapConfiguration {
 }
 
 interface InlineBootstrapWindow {
-  __vm0ClerkBootstrap?: InlineBootstrapConfiguration;
+  __okouClerkBootstrap?: InlineBootstrapConfiguration;
 }
 
 interface InlineBootstrapScript {
@@ -174,7 +175,7 @@ function runInlineBootstrap(
     },
     { hostname, origin: `https://${hostname}` },
   );
-  const bootstrap = bootstrapWindow.__vm0ClerkBootstrap;
+  const bootstrap = bootstrapWindow.__okouClerkBootstrap;
   if (!bootstrap) {
     throw new Error("The inline Clerk bootstrap published no configuration");
   }

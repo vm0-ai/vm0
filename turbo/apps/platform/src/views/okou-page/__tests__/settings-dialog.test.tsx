@@ -545,9 +545,13 @@ test("Inspect empty IndexedDB storage before the first snapshot arrives", async 
 });
 
 test("Measure the threads inside a singleton snapshot on demand", async () => {
+  const snapshotRequested = context.mocks.deferred<void>();
   const agentId = crypto.randomUUID();
   context.mocks.data.agents([{ agentId }]);
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    if (!snapshotRequested.settled()) {
+      snapshotRequested.resolve();
+    }
     return respond(200, {
       chatThreads: ["Snapshot 文 😀", "Second thread", "Third thread"].map(
         (title) => {
@@ -579,6 +583,9 @@ test("Measure the threads inside a singleton snapshot on demand", async () => {
     featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     sharedWorkerTestTransport: "message-port",
   });
+  // Page content can render before the message-port bootstrap reaches the
+  // snapshot fixture. Start the DOM wait after that network boundary.
+  await snapshotRequested.promise;
   await screen.findByText("Snapshot 文 😀");
   const rail = await screen.findByTestId("labeled-nav-rail");
   click(within(rail).getByLabelText("Test User"));
