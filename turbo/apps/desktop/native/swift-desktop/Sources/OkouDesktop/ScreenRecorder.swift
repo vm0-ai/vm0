@@ -161,6 +161,9 @@ final class ScreenRecorder: ObservableObject {
   }
 
   func start(source: JSON, systemAudio: Bool, microphone: Bool, area: JSON? = nil) async throws {
+    guard control == nil, teardown == nil else {
+      throw DesktopFailure("capture_busy", "Wait for the current recording operation to finish")
+    }
     try await performControl {
       try await self.startCapture(
         source: source, systemAudio: systemAudio, microphone: microphone, area: area)
