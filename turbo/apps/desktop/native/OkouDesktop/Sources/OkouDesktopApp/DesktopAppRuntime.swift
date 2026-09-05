@@ -81,7 +81,7 @@ final class DesktopAppRuntime {
             $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
         }
         guard let other = others.first else { return false }
-        other.activate(options: [.activateIgnoringOtherApps])
+        other.activate()
         return true
     }
 
@@ -160,10 +160,15 @@ final class DesktopAppRuntime {
         }
         if let window = mainWindow?.window, window.isVisible {
             let response = await alert.beginSheetModal(for: window)
-            return DesktopQuitConfirmationOptions.isConfirmed(response: response.buttonIndex)
+            return DesktopQuitConfirmationOptions.isConfirmed(response: Self.buttonIndex(response))
         }
-        NSApp.activate(ignoringOtherApps: true)
-        return DesktopQuitConfirmationOptions.isConfirmed(response: alert.runModal().buttonIndex)
+        NSApp.activate()
+        return DesktopQuitConfirmationOptions.isConfirmed(response: Self.buttonIndex(alert.runModal()))
+    }
+
+    /// `NSAlert` numbers its buttons from `alertFirstButtonReturn`.
+    private static func buttonIndex(_ response: NSApplication.ModalResponse) -> Int {
+        Int(response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue)
     }
 
     // MARK: Windows

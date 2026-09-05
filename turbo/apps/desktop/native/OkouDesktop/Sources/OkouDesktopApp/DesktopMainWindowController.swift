@@ -40,7 +40,7 @@ final class DesktopMainWindowController: NSObject, NSWindowDelegate {
             window.deminiaturize(nil)
         }
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
