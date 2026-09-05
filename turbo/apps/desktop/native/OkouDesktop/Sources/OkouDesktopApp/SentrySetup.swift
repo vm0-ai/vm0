@@ -61,4 +61,13 @@ enum SentrySetup {
         }
     }
 }
+/// Startup failures reported with the bootstrap component tag.
+enum SentrySDKBridge {
+    static func captureStartupFailure(_ error: Error) {
+        guard SentrySDK.isEnabled else { return }
+        SentrySDK.capture(message: "Desktop main module failed to load: \(error)") { scope in
+            scope.setTag(value: "swift-bootstrap", key: "component")
+        }
+    }
+}
 #endif

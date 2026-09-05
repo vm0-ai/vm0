@@ -30,10 +30,14 @@ final class OkouAppDelegate: NSObject, NSApplicationDelegate {
             runtime.start(launchArguments: CommandLine.arguments + pendingOpenURLs)
             pendingOpenURLs.removeAll()
         } catch {
-            DesktopDegradedMode.report(error: error)
-            NSApp.terminate(nil)
+            // Mirrors the Electron bootstrap: a broken main module must not
+            // strand the install, so the updater keeps running while the
+            // user is told what happened.
+            degradedMode = DesktopDegradedMode.enter(error: error)
         }
     }
+
+    private var degradedMode: DesktopDegradedMode? = nil
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
         guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue else {

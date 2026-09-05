@@ -996,15 +996,62 @@ extension DesktopAppRuntime: RecorderWindowBridge {
     }
 }
 
-enum DesktopDegradedMode {
-    static func report(error: Error) {
+/// Port of `bootstrap-degraded.ts`: when the runtime cannot start, keep the
+/// auto-updater alive so a fixed build can still arrive, log the failure, and
+/// show the startup dialog. Exits when updates cannot be installed.
+@MainActor
+final class DesktopDegradedMode {
+    private var updater: DesktopUpdater? = nil
+
+    static func enter(error: Error) -> DesktopDegradedMode? {
         NSLog("Desktop main module failed to load: \(error)")
+        let mode = DesktopDegradedMode()
+        let resources = Bundle.main.resourceURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.0.0"
+        var displayName = ProcessInfo.processInfo.processName
+        if let runtimeConfig = try? DesktopRuntimeConfig.read(at: resources.appendingPathComponent(DesktopRuntimeConfig.fileName)),
+            let config = try? resolveDesktopConfig(runtimeConfig: runtimeConfig)
+        {
+            displayName = config.identity.displayName
+            SentrySetup.start(resources: resources, version: version)
+            SentrySDKBridge.captureStartupFailure(error)
+            mode.updater = DesktopUpdater.install(
+                config: config, appVersion: version, http: URLSessionHTTPClient(),
+                getComputerUseHostState: { .offline },
+                prepareForQuitAndInstall: {}
+            )
+        }
+        mode.writeFailureLog(error)
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "Startup Error"
-        alert.informativeText = "\(ProcessInfo.processInfo.processName) hit an error during startup.\n\n\(error)"
+        alert.messageText = "\(displayName) hit an error during startup."
+        alert.informativeText = mode.updater != nil
+            ? "Keep the app running: a fixed update will be downloaded and installed automatically as soon as it is available."
+            : "Please reinstall the latest version of \(displayName)."
         alert.addButton(withTitle: "OK")
+        NSApp.activate()
         alert.runModal()
+        if mode.updater == nil {
+            NSApp.terminate(nil)
+            return nil
+        }
+        return mode
+    }
+
+    private func writeFailureLog(_ error: Error) {
+        let logs = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Logs").appendingPathComponent(Bundle.main.bundleIdentifier ?? "okou-desktop")
+        guard let logs else { return }
+        try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        let line = "\(ISOTimestamp.now()) \(error)\n"
+        let file = logs.appendingPathComponent("desktop-bootstrap-failure.log")
+        if let handle = try? FileHandle(forWritingTo: file) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: file)
+        }
     }
 }
 
