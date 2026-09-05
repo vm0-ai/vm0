@@ -5,6 +5,7 @@ use crate::error::AgentError;
 use crate::session_history;
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
+use guest_contracts::env::CliFramework;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
@@ -57,11 +58,7 @@ fn session_id_hash(framework: env::Framework, session_id: &str) -> Option<String
 }
 
 fn final_framework(framework: env::Framework) -> SessionHistoryFramework {
-    match framework {
-        env::Framework::ClaudeCode => SessionHistoryFramework::ClaudeCode,
-        env::Framework::Codex => SessionHistoryFramework::Codex,
-        env::Framework::Pi => SessionHistoryFramework::Pi,
-    }
+    SessionHistoryFramework::from(CliFramework::from(framework))
 }
 
 /// Verify the current guest session history matches final identity metadata.

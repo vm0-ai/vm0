@@ -44,7 +44,7 @@ import {
 
 const L = logger("AuthV2SignUp");
 
-export const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS = 30;
+const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS =
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS * 1000;
 const signUpResendCooldownStorage = createAuthV2ResendCooldownStorage(
@@ -142,7 +142,7 @@ export interface AuthV2SignUpError {
   readonly message?: string;
 }
 
-export interface AuthV2SignUpFlowDependencies {
+interface AuthV2SignUpFlowDependencies {
   readonly continuation: Pick<
     AuthV2ContinuationFlowHandoff,
     "completeSession$"
@@ -810,7 +810,7 @@ function createSignUpFlowRuntime(): SignUpFlowRuntime {
   };
 }
 
-export const clerkSignUpResource$ = computed(async (get) => {
+const clerkSignUpResource$ = computed(async (get) => {
   const clerk = await get(clerk$);
   if (!clerk.client) {
     throw new Error("Loaded Clerk instance did not provide a client resource");

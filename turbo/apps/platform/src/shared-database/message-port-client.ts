@@ -13,13 +13,22 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
   SharedDatabasePortLike,
+  SharedDatabaseTokenProvider,
 } from "./bridge.ts";
 import {
+  deserializeSharedDatabaseError,
+  redactSharedDatabaseClientMessageForLog,
+  serializeSharedDatabaseError,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
+  type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 import { logger } from "../signals/log.ts";
-import { createDeferredPromise, onDomEventFn } from "../signals/utils.ts";
+import {
+  createDeferredPromise,
+  onDomEventFn,
+  settle,
+} from "../signals/utils.ts";
 
 const L = logger("SharedWorkerBridge");
 
@@ -40,6 +49,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     private readonly port: SharedDatabasePortLike,
     private readonly events: SharedDatabaseBridgeEvents,
     private readonly bridgeSignal: AbortSignal,
+    private readonly getToken: SharedDatabaseTokenProvider,
   ) {
     bridgeSignal.throwIfAborted();
     this.handleBridgeAbort = () => {
@@ -48,6 +58,10 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     this.handleMessage = onDomEventFn(async (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
       L.debug("got message from worker", message);
+      if (message.type === "get-token") {
+        await this.respondToTokenRequest(message);
+        return;
+      }
       if (message.type === "invalidate") {
         await this.events.databaseInvalidated(message.dataKey);
         return;
@@ -78,9 +92,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       }
       this.pendingRequests.delete(message.requestId);
       if (message.type === "error") {
-        const error = new Error(message.error.message);
-        error.name = message.error.name;
-        pending.reject(error);
+        pending.reject(deserializeSharedDatabaseError(message.error));
         return;
       }
       pending.resolve(message.value);
@@ -174,8 +186,39 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     }
   }
 
+  private async respondToTokenRequest(
+    message: Extract<
+      SharedDatabaseWorkerMessage,
+      { readonly type: "get-token" }
+    >,
+  ): Promise<void> {
+    const result = await settle(
+      this.getToken(this.bridgeSignal),
+      this.bridgeSignal,
+    );
+    if (this.closed) {
+      return;
+    }
+    if (result.ok) {
+      this.emit({
+        type: "token-result",
+        requestId: message.requestId,
+        token: result.value,
+      });
+      return;
+    }
+    this.emit({
+      type: "token-error",
+      requestId: message.requestId,
+      error: serializeSharedDatabaseError(result.error),
+    });
+  }
+
   private emit(message: SharedDatabaseClientMessage): void {
-    L.debug("send message to worker", message);
+    L.debug(
+      "send message to worker",
+      redactSharedDatabaseClientMessageForLog(message),
+    );
     this.port.postMessage(message);
   }
 

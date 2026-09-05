@@ -422,6 +422,7 @@ export function materializeRunBootstrapContext(
   const featureSwitchContext: FeatureSwitchContext = {
     orgId: args.orgId,
     userId: args.userId,
+    email: userInfo.email ?? undefined,
     overrides: userFeatureSwitchOverridesFromRows(
       featureSwitchRows,
       args.userId,

@@ -228,20 +228,21 @@ export async function tapError<T>(
 }
 
 /**
- * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
- * Use as a `.catch(handler)` replacement when the caller needs to run a
- * cleanup side effect before the rejection propagates. `fn` runs on abort by
- * design so cleanup still happens when the page is cancelled, which is why
- * `ccstate/no-catch-abort` cannot apply to this file.
+ * Await a promise or invoke a factory and call `fn` on any rejection (including
+ * synchronous throws and abort), then re-throw. Use as a `.catch(handler)`
+ * replacement when the caller needs to run a side effect before the rejection
+ * propagates. `fn` runs on abort by design so cleanup still happens when the
+ * page is cancelled, which is why `ccstate/no-catch-abort` cannot apply to this
+ * file.
  */
 export async function onRejection<T>(
-  p: Promise<T>,
+  operation: Promise<T> | (() => Promise<T> | T),
   fn: (error: unknown) => unknown,
 ): Promise<T> {
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
-    return await p;
+    return await (typeof operation === "function" ? operation() : operation);
   } catch (error) {
     await fn(error);
     throw error;

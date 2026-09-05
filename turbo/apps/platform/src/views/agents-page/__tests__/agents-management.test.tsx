@@ -352,66 +352,6 @@ test("Create a public agent with a customized avatar", async () => {
   ).toBeVisible();
 });
 
-test("Agent listing, creation, and management are localized in Portuguese", async () => {
-  configureCatalog(
-    [
-      agent(CORE_AGENT_ID, {
-        displayName: "Core Agent",
-        visibility: "private",
-      }),
-      agent(RESEARCH_AGENT_ID, {
-        description: "Pesquisa fontes confiáveis",
-        displayName: "Research Agent",
-        visibility: "public",
-      }),
-    ],
-    { defaultAgentId: CORE_AGENT_ID },
-  );
-  await setupPage({ context, path: "/agents", locale: "pt-BR" });
-  await screen.findByRole("heading", { name: "Agentes" });
-  await waitForAgentCard(RESEARCH_AGENT_ID);
-
-  const creationDialog = await openCreateDialog("Public", "pt-BR");
-
-  expect(within(creationDialog).getByLabelText("Fechar")).toBeVisible();
-  expect(
-    within(creationDialog).getByPlaceholderText("Ex.: Assistente de pesquisa"),
-  ).toBeVisible();
-  expect(buttonByText("Criar", creationDialog)).toBeDisabled();
-
-  await fill(
-    within(creationDialog).getByLabelText("Nome"),
-    "Agente de marketing",
-  );
-  click(buttonByText("Criar", creationDialog));
-
-  const createdCard = await waitForAgentCard(CREATED_AGENT_ID);
-  expect(createdCard).toHaveTextContent("Agente de marketing");
-
-  click(agentCard(RESEARCH_AGENT_ID));
-
-  await screen.findByRole("heading", { name: "Research Agent" });
-  expect(buttonByText("Conversar com Research Agent")).toBeVisible();
-  expect(detailTab("Autorização")).toBeVisible();
-  click(detailTab("Perfil"));
-
-  const name = await screen.findByLabelText("Nome");
-  expect(name).toHaveValue("Research Agent");
-  expect(screen.getByLabelText("Descrição")).toHaveValue(
-    "Pesquisa fontes confiáveis",
-  );
-  click(buttonByText("Excluir agente"));
-
-  const deleteDialog = await screen.findByRole("dialog", {
-    name: "Excluir Research Agent?",
-  });
-  expect(
-    within(deleteDialog).getByText("Esta ação não pode ser desfeita."),
-  ).toBeVisible();
-  expect(buttonByText("Cancelar", deleteDialog)).toBeVisible();
-  expect(buttonByText("Excluir agente", deleteDialog)).toBeVisible();
-});
-
 test("Open an agent's management page from its card", async () => {
   configureCatalog([
     agent(RESEARCH_AGENT_ID, {

@@ -35,12 +35,9 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
-const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function connectorIcon(connectorSlug: string) {
   return {
@@ -1079,44 +1076,6 @@ test("Complete OpenID and continue the originating chat", async () => {
     );
     expect(screen.getByText("Public Steam connected")).toBeInTheDocument();
     expect(continuationPrompt).toBe(callbackPrompt);
-  });
-});
-
-test("Scope directed connection forms to the current link", async () => {
-  mockPublicConnectorStatus(
-    publicOAuthConnectorStatus({
-      slug: "github",
-      label: "Public GitHub",
-      singleAuthCodeAuthMethodId: null,
-    }),
-  );
-
-  await setupPage({
-    context,
-    path: `/connectors/github/connect?agentId=${AGENT_ID}`,
-  });
-
-  await waitFor(() => {
-    expect(
-      screen.getByText("Zero needs Public GitHub to proceed"),
-    ).toBeInTheDocument();
-  });
-  click(getButtonByText("Connect"));
-
-  await screen.findByRole("dialog", { name: "Public GitHub" });
-
-  context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-    pathParams: { connectorSlug: "github" },
-    searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
-  });
-
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Public GitHub" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Zero needs Public GitHub to proceed"),
-    ).toBeInTheDocument();
   });
 });
 

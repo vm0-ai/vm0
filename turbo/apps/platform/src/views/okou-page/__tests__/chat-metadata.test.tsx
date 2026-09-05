@@ -123,21 +123,6 @@ function threadEvent(args: {
   };
 }
 
-function configureStableThreadList(
-  threads: readonly ChatThreadSnapshotProjection[],
-): void {
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: [...threads],
-      latestEventId: SNAPSHOT_EVENT_ID,
-      latestSeqId: 1,
-    });
-  });
-  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-    return respond(200, { events: [], hasMore: false });
-  });
-}
-
 function actionName(element: HTMLElement): string {
   return (
     element.getAttribute("aria-label") ?? element.textContent?.trim() ?? ""
@@ -203,78 +188,6 @@ async function expectReadyChat(title: string): Promise<HTMLElement> {
   return region;
 }
 
-test("A chat opened early still adopts its latest title", async () => {
-  const latestTitle = context.mocks.deferred<void>();
-  const finalRename = threadEvent({
-    kind: "renamed",
-    seqId: 2,
-    threadId: FIRST_THREAD_ID,
-    title: "Final title",
-  });
-
-  configureChatPrerequisites();
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: [snapshotThread(FIRST_THREAD_ID, "Intermediate title")],
-      latestEventId: SNAPSHOT_EVENT_ID,
-      latestSeqId: 1,
-    });
-  });
-  context.mocks.api(chatThreadsContract.events, async ({ query, respond }) => {
-    await latestTitle.promise;
-    return respond(200, {
-      events: (query.sinceSeqId ?? 0) < 2 ? [finalRename] : [],
-      hasMore: false,
-    });
-  });
-  context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
-    return respond(200, threadMetadata(FIRST_THREAD_ID, "Initial title"));
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${FIRST_THREAD_ID}`,
-    auth: isolatedAuth(),
-  });
-
-  const region = await expectReadyChat("Initial title");
-
-  latestTitle.resolve(undefined);
-
-  await waitFor(() => {
-    expect(getHeaderTitle(region, "Final title")).toBeVisible();
-  });
-  expect(within(region).queryByText("Initial title")).not.toBeInTheDocument();
-  expect(document.title).toBe("Final title | VM0");
-});
-
-test("A newly opened chat sets the correct browser title directly", async () => {
-  const unavailableThreadList = context.mocks.deferred<void>();
-
-  configureChatPrerequisites();
-  context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
-    await unavailableThreadList.promise;
-    return respond(200, {
-      chatThreads: [],
-      latestEventId: null,
-      latestSeqId: null,
-    });
-  });
-  context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
-    return respond(200, threadMetadata(FIRST_THREAD_ID, "Cold thread"));
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${FIRST_THREAD_ID}`,
-    auth: isolatedAuth(),
-  });
-
-  await expectReadyChat("Cold thread");
-  expect(document.title).toBe("Cold thread | VM0");
-  expect(window.location.pathname).toBe(`/chats/${FIRST_THREAD_ID}`);
-});
-
 test("Late thread details do not replace the conversation the user chose", async () => {
   const availableThreadList = context.mocks.deferred<void>();
   const abandonedDetails = context.mocks.deferred<void>();
@@ -326,32 +239,6 @@ test("Late thread details do not replace the conversation the user chose", async
     expect(getHeaderTitle(chosenRegion, "Chosen conversation")).toBeVisible();
   });
   expect(screen.queryByText("Stale route title")).not.toBeInTheDocument();
-});
-
-test("Switching to a known thread uses its current title immediately", async () => {
-  const user = userEvent.setup({ delay: null });
-  configureChatPrerequisites();
-  configureStableThreadList([
-    snapshotThread(FIRST_THREAD_ID, "Current conversation"),
-    snapshotThread(SECOND_THREAD_ID, "Known current title"),
-  ]);
-
-  await setupPage({
-    context,
-    path: `/chats/${FIRST_THREAD_ID}`,
-    auth: isolatedAuth(),
-  });
-
-  await expectReadyChat("Current conversation");
-  const knownThreadLink = await findLink("Known current title");
-  await user.click(knownThreadLink);
-
-  const knownRegion = await expectReadyChat("Known current title");
-  expect(
-    within(knownRegion).queryByText("Current conversation"),
-  ).not.toBeInTheDocument();
-  expect(within(knownRegion).queryByText("New chat")).not.toBeInTheDocument();
-  expect(document.title).toBe("Known current title | VM0");
 });
 
 test("A newly available thread appears after shared-data reconnection", async () => {

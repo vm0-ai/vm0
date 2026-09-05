@@ -13,18 +13,18 @@ import {
 
 export const AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH = "/sso-callback";
 
-export interface AuthV2SignUpExternalCapabilities {
+interface AuthV2SignUpExternalCapabilities {
   readonly oauthStrategies: readonly AuthV2OAuthStrategy[];
 }
 
-export type AuthV2SignUpTransferState =
+type AuthV2SignUpTransferState =
   | { readonly sessionId: string; readonly status: "complete" }
   | {
       readonly status: "sign-in";
       readonly stepPath: AuthV2StepPath | null;
     };
 
-export type AuthV2SignUpOAuthRecovery =
+type AuthV2SignUpOAuthRecovery =
   | {
       readonly resource: SignUpResource;
       readonly status: "sign-up";
@@ -58,7 +58,7 @@ function transferSignInStepPath(
   return status === "needs_second_factor" ? "/factor-two" : null;
 }
 
-export function resolveAuthV2SignUpTransferState(
+function resolveAuthV2SignUpTransferState(
   resource: Pick<SignInResource, "createdSessionId" | "status">,
 ): AuthV2SignUpTransferState {
   if (resource.status === "complete" && resource.createdSessionId) {

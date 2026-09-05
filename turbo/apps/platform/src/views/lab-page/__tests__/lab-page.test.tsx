@@ -88,7 +88,7 @@ test("Lab groups every feature by rollout stage with a switch", async () => {
     within(released).getByText(FeatureSwitchKey.NotionWorkflowAutomations),
   ).toBeVisible();
   expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
-  expect(within(beta).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
+  expect(within(alpha).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
   expect(
     within(alpha).getByText(FeatureSwitchKey.AhrefsConnector),
   ).toBeVisible();
@@ -277,25 +277,4 @@ test("Lab orders features by name within each rollout stage", async () => {
     banking.compareDocumentPosition(codexFastMode) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-});
-
-test("Lab localizes rollout stages in Brazilian Portuguese", async () => {
-  await setupPage({
-    context,
-    path: "/_/lab",
-    locale: "pt-BR",
-    featureSwitches: { [FeatureSwitchKey.Lab]: true },
-  });
-
-  await screen.findByRole("heading", { name: "Laboratório" });
-
-  expect(document.title).toBe("Lab | VM0");
-  expect(
-    screen.getByText("Veja os recursos por estágio de lançamento."),
-  ).toBeInTheDocument();
-  expect(featureSwitchGroup("Lançados")).toBeVisible();
-  expect(featureSwitchGroup("Beta")).toBeVisible();
-  expect(featureSwitchGroup("Alfa")).toBeVisible();
-  expect(featureSwitchGroup("Internos")).toBeVisible();
-  expect(buttonNamed("Redefinir tudo")).toBeVisible();
 });

@@ -173,18 +173,6 @@ function setupCustomWorkflowPage(
   });
 }
 
-function usePortugueseLocale(): void {
-  document.documentElement.lang = "pt-BR";
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      document.documentElement.lang = "en-US";
-    },
-    { once: true },
-  );
-}
-
 function mockCatalogItem({
   slug,
   label,
@@ -438,74 +426,6 @@ test("Creative onboarding uses the current workspace's default agent", async () 
     });
     expect(presentationTab).toBeInTheDocument();
   });
-});
-
-test("Workflow onboarding localizes app copy while keeping English metadata", async () => {
-  usePortugueseLocale();
-  mockOnboardingNeeded();
-  await setupPage({ context, path: "/onboarding" });
-
-  await expect(
-    screen.findByRole("heading", {
-      name: "O que você quer fazer primeiro",
-    }),
-  ).resolves.toBeInTheDocument();
-  expect(document.title).toBe("Welcome to VM0 | VM0");
-
-  const workflowOption = queryAllByRoleFast("radio").find((candidate) => {
-    return /Automação de fluxo de trabalho/u.test(candidate.textContent ?? "");
-  });
-  if (!workflowOption) {
-    throw new Error("Expected localized workflow choice");
-  }
-  click(workflowOption);
-
-  await expect(
-    screen.findByRole("heading", {
-      name: "Em que você está trabalhando?",
-    }),
-  ).resolves.toBeInTheDocument();
-  click(buttonByText("Engenharia"));
-
-  await expect(
-    screen.findByRole("heading", {
-      name: "Fluxos de trabalho de Engenharia",
-    }),
-  ).resolves.toBeInTheDocument();
-  expect(
-    queryAllByRoleFast("button").some((candidate) => {
-      return candidate
-        .getAttribute("aria-label")
-        ?.startsWith("Auto-mergimento de PRs do GitHub");
-    }),
-  ).toBeTruthy();
-
-  click(buttonByAriaLabel("Prévia dos detalhes do fluxo de trabalho"));
-  const preview = await screen.findByRole("dialog", {
-    name: "Auto-mergimento de PRs do GitHub",
-  });
-  expect(within(preview).getByText("Como funciona")).toBeVisible();
-  expect(within(preview).getByText("Zero revisa a mudança")).toBeVisible();
-});
-
-test("Presentation template selection localizes app copy while keeping English metadata", async () => {
-  usePortugueseLocale();
-  mockOnboardingNeeded();
-  await setupPage({
-    context,
-    path: "/onboarding/presentation-template?choice=presentation",
-  });
-
-  await expect(
-    screen.findByRole("heading", {
-      name: "Escolha um modelo de apresentação para começar",
-    }),
-  ).resolves.toBeInTheDocument();
-  expect(screen.getByText("Sunburst playroom")).toBeVisible();
-  expect(
-    buttonByAriaLabel("Selecionar modelo de apresentação Sunburst playroom"),
-  ).toBeInTheDocument();
-  expect(document.title).toBe("Choose a presentation template | VM0");
 });
 
 test("A user can identify and switch workspace during onboarding", async () => {

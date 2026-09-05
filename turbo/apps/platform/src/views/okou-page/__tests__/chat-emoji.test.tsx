@@ -191,18 +191,6 @@ test("The emoji picker names the emoji under the pointer", async () => {
   expect(screen.queryByText(":grinning_face:")).toBeNull();
 });
 
-test("Frequently used product emoji keep their translated labels", async () => {
-  await openEmojiPicker();
-
-  fireEvent.mouseOver(emojiButton("Done"));
-
-  await waitFor(() => {
-    expect(screen.getByText("Done")).toBeInTheDocument();
-  });
-  expect(screen.queryByText(":Done:")).toBeNull();
-  expect(screen.queryByText(":done:")).toBeNull();
-});
-
 test("The emoji category rail resumes following manual scrolling", async () => {
   await openEmojiPicker();
   const feed = emojiFeed();

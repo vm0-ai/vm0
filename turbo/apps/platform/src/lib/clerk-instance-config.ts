@@ -6,13 +6,13 @@ import {
 } from "./clerk-production-topology.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
-export interface ClerkSatelliteConfig {
+interface ClerkSatelliteConfig {
   readonly domain: ClerkProductionDomain;
   readonly isSatellite: true;
   readonly satelliteAutoSync: true;
 }
 
-export interface ClerkInstanceConfig {
+interface ClerkInstanceConfig {
   readonly publishableKey: string;
   readonly satelliteConfig: ClerkSatelliteConfig | null;
 }

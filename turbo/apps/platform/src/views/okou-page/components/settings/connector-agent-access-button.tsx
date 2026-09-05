@@ -3,7 +3,7 @@ import type { LoadableState } from "ccstate-react";
 import { Button } from "@okouai/ui";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 
-export type ConnectorAgentAccessStatus = "loading" | "unavailable" | "ready";
+type ConnectorAgentAccessStatus = "loading" | "unavailable" | "ready";
 
 export function connectorAgentAccessStatus(
   state: LoadableState,

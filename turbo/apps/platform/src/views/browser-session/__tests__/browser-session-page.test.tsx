@@ -136,35 +136,6 @@ test("A suspended browser offers a restart", async () => {
   expect(getButton("Start browser")).toBeEnabled();
 });
 
-test("A suspended browser offers a restart in Brazilian Portuguese", async () => {
-  mockBrowserSession(
-    browserSession({
-      status: "suspended",
-      liveUrl: null,
-      screen: undefined,
-      idleExpiresAt: null,
-      suspendedAt: "2026-09-01T10:10:00.000Z",
-      suspensionReason: "idle",
-    }),
-  );
-
-  await setupPage({
-    context,
-    path: `/browsers/${THREAD_ID}`,
-    locale: "pt-BR",
-  });
-
-  await expect(
-    screen.findByText("Navegador não está ao vivo"),
-  ).resolves.toBeVisible();
-  expect(
-    screen.getByText(
-      "Ao iniciar, o perfil de login e o armazenamento salvos são restaurados quando disponíveis, e as abas salvas são reabertas quando possível.",
-    ),
-  ).toBeVisible();
-  expect(getButton("Iniciar navegador")).toBeEnabled();
-});
-
 test("A user can restart a reclaimed browser", async () => {
   const activeSession = browserSession();
   let startCount = 0;

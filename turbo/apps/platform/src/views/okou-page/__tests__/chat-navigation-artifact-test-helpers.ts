@@ -29,8 +29,7 @@ export const NAVIGATION_ARTIFACT_THREAD_ID =
 export const NAVIGATION_ARTIFACT_AGENT_ID =
   "c0000000-0000-4000-a000-000000000001";
 export const NAVIGATION_ARTIFACT_RUN_ID = "navigation-artifact-run";
-export const GOOGLE_DRIVE_CONNECTION_ID =
-  "d0000000-0000-4000-a000-000000000921";
+const GOOGLE_DRIVE_CONNECTION_ID = "d0000000-0000-4000-a000-000000000921";
 
 const CREATED_AT = "2026-09-01T12:00:00.000Z";
 const UPDATED_AT = "2026-09-01T12:01:00.000Z";
@@ -306,7 +305,7 @@ export function googleDriveCatalogItem(
   };
 }
 
-export function queryButtonNamed(
+function queryButtonNamed(
   name: string,
   container: ParentNode = document.body,
 ): HTMLElement | null {

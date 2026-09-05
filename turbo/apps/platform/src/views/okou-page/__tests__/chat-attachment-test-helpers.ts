@@ -33,7 +33,7 @@ type AnnotatedPersistedAttachment = PersistedAttachment & {
   readonly annotations?: ImageAnnotation;
 };
 
-export const ATTACHMENT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const ATTACHMENT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 export const ATTACHMENT_THREAD_ID = "b0000000-0000-4000-a000-000000000081";
 export const SECOND_ATTACHMENT_THREAD_ID =
   "b0000000-0000-4000-a000-000000000082";
@@ -353,7 +353,7 @@ export function findNamedLink(
   });
 }
 
-export function getNamedMenuItem(
+function getNamedMenuItem(
   name: string,
   container: ParentNode = document.body,
 ): HTMLElement {
@@ -385,18 +385,6 @@ export function queryNamedButtons(
   container: ParentNode = document.body,
 ): HTMLElement[] {
   return queryAllByRoleFast("button", container).filter((candidate) => {
-    return (
-      candidate.getAttribute("aria-label") === name ||
-      candidate.textContent?.trim() === name
-    );
-  });
-}
-
-export function queryNamedLinks(
-  name: string,
-  container: ParentNode = document.body,
-): HTMLElement[] {
-  return queryAllByRoleFast("link", container).filter((candidate) => {
     return (
       candidate.getAttribute("aria-label") === name ||
       candidate.textContent?.trim() === name

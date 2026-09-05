@@ -235,7 +235,7 @@ async function uploadPartWithRetry(
  * a second, subtly different uploader. The file body never travels through the
  * app runtime in either case.
  */
-export const uploadFileToStorage$ = command(
+const uploadFileToStorage$ = command(
   async ({ get, set }, file: File, signal: AbortSignal): Promise<FileInfo> => {
     const createClient = get(apiClient$);
     const client = createClient(uploadsContract);

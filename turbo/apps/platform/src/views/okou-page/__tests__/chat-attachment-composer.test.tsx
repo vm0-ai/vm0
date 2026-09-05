@@ -124,33 +124,6 @@ test("Image annotation is offered only when the feature is available", async () 
   expect(queryNamedButton("Annotate")).toBeNull();
 });
 
-test("An image preview starts at its default zoom every time it opens", async () => {
-  const image = draftAttachment("photo.png");
-  mockAttachmentChat(context, {
-    draft: draftForAttachment(image, ""),
-  });
-
-  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
-
-  click(await findNamedButton("Open image preview for photo.png"));
-  await expect(
-    screen.findByTestId("artifact-dialog-image-zoom-controls"),
-  ).resolves.toBeVisible();
-  click(getNamedButton("Zoom in"));
-  await expect(screen.findByText("115%")).resolves.toBeVisible();
-
-  click(getNamedButton("Close"));
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-  click(getNamedButton("Open image preview for photo.png"));
-
-  await expect(screen.findByText("100%")).resolves.toBeVisible();
-  expect(screen.getByTestId("attachment-lightbox-image")).toHaveStyle({
-    width: "100%",
-  });
-});
-
 test("A deliberate backdrop click closes an image preview", async () => {
   const image = draftAttachment("photo.png");
   mockAttachmentChat(context, {

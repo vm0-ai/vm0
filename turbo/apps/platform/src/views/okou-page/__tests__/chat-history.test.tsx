@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import {
@@ -27,6 +28,7 @@ function setupHistory(events: readonly MockChatEventInput[]): Promise<void> {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
   });
 }
 
