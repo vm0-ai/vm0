@@ -14,8 +14,8 @@ networking/processes, IOKit power assertions, and the official Swift MCP SDK.
 
 ## Verified automated evidence
 
-- [macOS run 33954326712](https://github.com/vm0-ai/vm0/actions/runs/33954326712)
-  for `e958e0d` passed 26 app/core tests and all 118 unchanged helper tests,
+- [macOS run 33956078461](https://github.com/vm0-ai/vm0/actions/runs/33956078461)
+  for `94bc81e` passed 28 app/core tests and all 118 unchanged helper tests,
   release compilation, bundle signature/architecture checks, packaged launch,
   a native permission probe, and a settings-window screenshot. The PR check
   records the commit and download URL for each later successful build.
@@ -80,24 +80,24 @@ authenticated Clerk walkthrough on the packaged native build.
 
 ## Feature inventory and evidence
 
-| Existing behavior                                                                                | Native implementation                                        | Acceptance still required                                                           |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                     | Both product bundles, URL scheme registration, icon and permission identity         |
-| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                  | Live Clerk handoff and renewal after long captures; concurrent live account changes    |
-| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                | Live command round trip, competing hosts, and prolonged network recovery            |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, unchanged native helper                  | Live app action/foreground recovery acceptance and broader snapshot fixtures        |
-| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                              | TCC onboarding, grant changes while running, denied browser automation              |
-| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                           | Concurrent filesystem changes and remaining platform-specific matching edges        |
-| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`         | Transport loss during calls, exhausted restart budget, and cancellation under load  |
-| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                               | Live account changes and rapid feature withdrawal during capture/delivery        |
-| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                       | Packaged second-launch UI walkthrough and complete menu/Dock behavior               |
-| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                        | Sleep/display behavior and quit cleanup                                             |
-| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper  | Multi-display/Retina capture and area picker walkthrough                            |
-| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI |
-| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                               | End-to-end delivery and account/workspace changes during upload                     |
-| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                  | Native diagnostics walkthrough and actual Sentry event context (without capture contents)        |
-| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                           | Developer ID signed native upgrade and rollback; release promotion integration      |
-| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                   | Verified; keep the PR download link on the newest successful build                  |
+| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                 |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity               |
+| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes       |
+| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Live command round trip, competing hosts, and prolonged network recovery                  |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, unchanged native helper                                         | Live app action/foreground recovery acceptance and broader snapshot fixtures              |
+| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                    |
+| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges              |
+| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load        |
+| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                 |
+| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                     |
+| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                   |
+| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                  |
+| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                |
+| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                           |
+| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents) |
+| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration            |
+| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                        |
 
 ## Remaining implementation review
 
