@@ -234,6 +234,17 @@ export function randomAvatarComposerConfig(): AvatarComposerConfig {
  * Deriving one from the rest of the configuration keeps each of those avatars
  * on the same colour across reloads, and spreads the palette over the existing
  * population instead of dressing everybody in the same sweater.
+ *
+ * Fallback declaration, per `docs/fallback.md` §6.4 and §7:
+ * - Surface: persisted `agents.avatarUrl` values written by `avatarComposerV2`,
+ *   which is already GA. This is permanent legacy data, so none of the rollout
+ *   gates apply — not DB/API skew, not the runner drain, not the old-client
+ *   window.
+ * - Removal gate: a backfill that writes an explicit `sweater` into every
+ *   pre-existing composer URL. None is planned, so this branch is expected to
+ *   stay.
+ * - Why it is allowed: a sweater colour carries no identity, so this is a
+ *   presentational default rather than a fabricated identity.
  */
 function inheritedSweaterColor(
   config: Omit<AvatarComposerConfig, "sweater">,
