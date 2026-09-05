@@ -569,8 +569,10 @@ body {
   filter: invert(1);
 }
 
-/* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"]) .zero-app [role="switch"][data-unchecked] {
+/* Keep the legacy dark track visible without overriding the new UI's own step. */
+:where([data-theme="dark"]:not([data-new-ui]))
+  .zero-app
+  [role="switch"][data-unchecked] {
   background-color: hsl(var(--gray-400));
 }
 
