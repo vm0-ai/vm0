@@ -59,7 +59,6 @@ export enum FeatureSwitchKey {
   MarkdownHexColorPreview = "markdownHexColorPreview",
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
-  BaseUiSidebarScrollArea = "baseUiSidebarScrollArea",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   ComposerConnectorPopoverPlacement = "composerConnectorPopoverPlacement",
