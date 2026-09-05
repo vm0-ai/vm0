@@ -8,6 +8,8 @@ public final class HelperProcess {
   private let arguments: [String]
   private let cancelStopsProcess: Bool
   private var process: Process?
+  private var termination: Task<Void, Never>?
+  private var lifecycle = 0
   private var input: FileHandle?
   private var output: FileHandle?
   private var buffer = Data()
@@ -54,7 +56,7 @@ public final class HelperProcess {
     async throws -> JSON
   {
     try Task.checkCancellation()
-    try start()
+    try await start()
     let id = UUID().uuidString
     var request = fields
     request["id"] = .string(id)
@@ -82,8 +84,13 @@ public final class HelperProcess {
     }
   }
 
-  private func start() throws {
+  private func start() async throws {
+    let lifecycle = self.lifecycle
+    await termination?.value
+    try Task.checkCancellation()
+    guard lifecycle == self.lifecycle else { throw CancellationError() }
     if process != nil { return }
+    termination = nil
     let child = Process()
     let stdin = Pipe()
     let stdout = Pipe()
@@ -147,7 +154,13 @@ public final class HelperProcess {
     }
   }
 
+  public func stop() async {
+    close()
+    await termination?.value
+  }
+
   public func close(error: any Error = CancellationError()) {
+    lifecycle += 1
     let child = process
     if child != nil { generation += 1 }
     process = nil
@@ -163,6 +176,9 @@ public final class HelperProcess {
       request.deadline.cancel()
       request.continuation.resume(throwing: error)
     }
-    if let child, child.isRunning { child.terminate() }
+    if let child {
+      child.terminationHandler = nil
+      termination = Task { await ProcessTermination.stop(child) }
+    }
   }
 }

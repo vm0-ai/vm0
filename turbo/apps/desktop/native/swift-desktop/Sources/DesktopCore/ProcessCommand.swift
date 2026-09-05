@@ -18,6 +18,7 @@ public final class ProcessCommand {
   public func run(_ executable: String, _ arguments: [String], timeout: Double = 30) async throws
     -> Data
   {
+    try Task.checkCancellation()
     guard process == nil else { throw DesktopFailure("process_busy", "Command is already running") }
     _ = FileManager.default.createFile(
       atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600])
@@ -27,6 +28,7 @@ public final class ProcessCommand {
       handle.closeFile()
       self.handle = nil
       try? FileManager.default.removeItem(at: output)
+      process = nil
     }
     let child = Process()
     child.executableURL = URL(fileURLWithPath: executable)
@@ -37,7 +39,7 @@ public final class ProcessCommand {
     child.terminationHandler = { [weak self] child in
       let status = child.terminationStatus
       Task { @MainActor in
-        guard let self, self.completion != nil else { return }
+        guard let self, self.process === child, self.completion != nil else { return }
         do {
           guard status == 0 else {
             throw DesktopFailure(
@@ -59,23 +61,31 @@ public final class ProcessCommand {
         process = child
         deadline = Task { [weak self] in
           do { try await Task.sleep(for: .seconds(timeout)) } catch { return }
-          self?.finish(.failure(DesktopFailure("command_timeout", "System command timed out")))
+          guard let self, self.process === child else { return }
+          self.finish(.failure(DesktopFailure("command_timeout", "System command timed out")))
         }
-        do { try child.run() } catch { finish(.failure(error)) }
+        do {
+          try Task.checkCancellation()
+          try child.run()
+        } catch { finish(.failure(error)) }
       }
     } onCancel: {
-      Task { @MainActor [weak self] in self?.finish(.failure(CancellationError())) }
+      Task { @MainActor [weak self] in
+        guard let self, self.process === child else { return }
+        self.finish(.failure(CancellationError()))
+      }
     }
   }
 
   private func finish(_ result: Result<Data, any Error>) {
+    guard let continuation = completion, let child = process else { return }
+    completion = nil
     deadline?.cancel()
     deadline = nil
-    let continuation = completion
-    completion = nil
-    process?.terminationHandler = nil
-    if let process, process.isRunning { process.terminate() }
-    process = nil
-    continuation?.resume(with: result)
+    child.terminationHandler = nil
+    Task {
+      await ProcessTermination.stop(child)
+      continuation.resume(with: result)
+    }
   }
 }

@@ -105,7 +105,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
             try png.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
           }
           FileHandle.standardOutput.write(Data("OKOU_SWIFT_DESKTOP_READY\n".utf8))
-          model.helper.close()
+          await model.helper.stop()
           NSApp.terminate(nil)
         }
         return

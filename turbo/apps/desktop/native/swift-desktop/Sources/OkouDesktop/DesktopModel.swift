@@ -269,7 +269,7 @@ final class DesktopModel: ObservableObject {
     areaSelector.cancel()
     try await recorder.shutdown()
     mcp.shutdown()
-    helper.close()
+    await helper.stop()
     if keepAwakeActive {
       IOPMAssertionRelease(keepAwakeAssertion)
       keepAwakeActive = false

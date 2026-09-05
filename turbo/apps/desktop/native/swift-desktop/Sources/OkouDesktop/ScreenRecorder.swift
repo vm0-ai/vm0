@@ -248,6 +248,6 @@ final class ScreenRecorder: ObservableObject {
     await pollTask?.value
     pollTask = nil
     if let sessionID, capturing { try await collect(sessionID, deliver: false) }
-    helper.close()
+    await helper.stop()
   }
 }
