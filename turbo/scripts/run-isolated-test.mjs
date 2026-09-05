@@ -8,8 +8,7 @@ import { expect, onTestFinished } from "vitest";
 
 /**
  * Return true after the owned child has executed this test's assertions.
- * @param {string} testFileUrl
- * @returns {Promise<boolean>}
+ * @type {typeof import("./run-isolated-test.d.mts").runInIsolatedProcess}
  */
 export async function runInIsolatedProcess(testFileUrl) {
   const fullName = expect.getState().currentTestName;
@@ -58,7 +57,7 @@ export async function runInIsolatedProcess(testFileUrl) {
       maxBuffer: 10 * 1024 * 1024,
     },
   );
-  // Nonzero exits/timeouts throw; a zero-test probe cannot pass either.
+  // Nonzero exits/timeouts throw; a probe that selects no tests fails too.
   expect(stdout).toContain("OKOU_ISOLATED_TEST_COMPLETED");
   return true;
 }
