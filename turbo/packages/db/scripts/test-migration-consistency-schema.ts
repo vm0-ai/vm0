@@ -946,23 +946,6 @@ async function addPgVectorExtensionPreludeToGeneratedMigrations(): Promise<void>
   );
 }
 
-async function installRetainedDraftVoiceColumns(dbUrl: string): Promise<void> {
-  // The runtime ORM no longer selects these columns. Keep the physical columns
-  // until the preceding API drains, including when comparing a fresh schema.
-  const client = new Client({ connectionString: dbUrl });
-  await client.connect();
-  try {
-    await client.query(
-      await fs.readFile(
-        path.join(BACKUP_DIR, "1071_amazing_famine.sql"),
-        "utf8",
-      ),
-    );
-  } finally {
-    await client.end();
-  }
-}
-
 async function generateFreshMigrations(): Promise<void> {
   console.log("🔨 Generating fresh migrations from schema...");
 
@@ -11305,7 +11288,6 @@ async function main(): Promise<void> {
     await createDatabase(TEST_DB_2);
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
-    await installRetainedDraftVoiceColumns(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
     await installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema(
       dbUrl2,
