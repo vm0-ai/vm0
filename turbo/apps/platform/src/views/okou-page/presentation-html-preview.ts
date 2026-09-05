@@ -1,8 +1,11 @@
 import { i18n } from "../../i18n/index.ts";
 
-// Deck HTML is authored outside this repository, so the reader keeps accepting
-// the pre-rename `data-vm0-*` edit protocol alongside `data-okou-*`. Drop the
-// legacy halves once no stored or user-supplied deck still carries them.
+// Surface: stored and externally authored deck HTML, not a deploy skew, so it
+// has no rollout window. The deck generator lives outside this repository and
+// decks are persisted, so the reader keeps accepting the pre-rename
+// `data-vm0-*` edit protocol alongside `data-okou-*`. Drop the legacy halves
+// once stored decks are migrated or regenerated and the generator emits only
+// `data-okou-*`; follow-up #31824.
 const EDITABLE_SELECTOR =
   '[data-okou-editable="text"],[data-vm0-editable="text"]';
 const METADATA_SCRIPT_IDS = [
@@ -770,8 +773,8 @@ function materializePresentationThemeSwitcherDefaults(doc: Document): void {
 }
 
 // The stage layout rules keep matching the legacy `[data-vm0-slide]` spelling so
-// decks authored before the okou rename still fill the stage. Drop those halves
-// together with the legacy deck-protocol readers above.
+// decks authored before the okou rename still fill the stage. Same surface and
+// removal condition as the deck-protocol readers above; follow-up #31824.
 function appendPresentationPreviewStyle(previewDoc: Document): void {
   const style = previewDoc.createElement("style");
   style.textContent = `

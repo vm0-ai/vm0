@@ -13,10 +13,10 @@ import {
 } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-okou-chat-message";
-// Clipboard content outlives the session that produced it, so a paste can still
-// carry the pre-rename attribute. Drop this once no clipboard written before the
-// okou rename can realistically be pasted back, which is at most a few days of
-// system clipboard lifetime after the rename ships.
+// Surface: content copied by a pre-rename app client and held in the system
+// clipboard, which outlives the session that produced it. The window is
+// clipboard lifetime rather than an API contract, so it closes about a week
+// after the rename reaches production; follow-up #31824.
 const LEGACY_CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
 
 export interface ChatClipboardAttachment {
