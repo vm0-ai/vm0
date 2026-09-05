@@ -997,6 +997,8 @@ export interface CreateAgentRunArgs {
   readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
+  /** Immutable Intro Video eligibility captured with the caller's switch context. */
+  readonly introVideoEnabled?: boolean;
   readonly platformEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -8940,10 +8942,12 @@ function preparedRunAdditionalVolumes(args: {
   const injectedSkillVolumes = buildInjectedSkillVolumes(
     {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
-      introVideoEnabled: isFeatureEnabled(
-        FeatureSwitchKey.IntroVideo,
-        args.featureSwitchContext,
-      ),
+      introVideoEnabled:
+        args.createArgs.introVideoEnabled ??
+        isFeatureEnabled(
+          FeatureSwitchKey.IntroVideo,
+          args.featureSwitchContext,
+        ),
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSelection: args.connectorCatalogSelection,
       officialWorkflowRun: args.officialWorkflowRun,

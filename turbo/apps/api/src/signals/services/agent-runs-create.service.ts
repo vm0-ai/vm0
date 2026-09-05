@@ -976,6 +976,10 @@ function buildZeroCreateAgentRunArgs(args: {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
+  const introVideoEnabled = isFeatureEnabled(
+    FeatureSwitchKey.IntroVideo,
+    args.featureSwitchContext,
+  );
   const productAgentExecutionPlan = {
     content: buildAgentExecutionConfig(args.agent.name),
   };
@@ -995,10 +999,7 @@ function buildZeroCreateAgentRunArgs(args: {
         FeatureSwitchKey.Banking,
         args.featureSwitchContext,
       ),
-      introVideoEnabled: isFeatureEnabled(
-        FeatureSwitchKey.IntroVideo,
-        args.featureSwitchContext,
-      ),
+      introVideoEnabled,
       presentationScreenshotEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationScreenshot,
         args.featureSwitchContext,
@@ -1042,6 +1043,7 @@ function buildZeroCreateAgentRunArgs(args: {
     okouTokenPublicBrand: command.publicBrand,
     okouTokenComputerUseHostId: command.computerUseHostId,
     okouTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
+    introVideoEnabled,
     enforceBuiltInCredits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
