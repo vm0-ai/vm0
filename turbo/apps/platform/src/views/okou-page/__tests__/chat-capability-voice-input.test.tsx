@@ -99,7 +99,7 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
   expect(
     screen.getByText(/^\d{2}:\d{2}$/u, { selector: "time" }),
   ).toBeVisible();
-  expect(screen.queryByLabelText("Attach files")).not.toBeInTheDocument();
+  expect(queryButton("Attach")).toBeNull();
   return stop;
 }
 
@@ -227,6 +227,7 @@ test("Toggle voice input from the focused composer shortcut", async () => {
 });
 
 test("Transcribe a voice draft using the latest assistant reference", async () => {
+  const user = userEvent.setup({ delay: null });
   const transcriptionStarted = context.mocks.deferred<void>();
   const transcriptionReady = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({ rms: 0.12 });
@@ -292,42 +293,63 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
       "Opening Send the launch update tomorrow. closing",
     );
   });
-  expect(window.getSelection()?.toString()).toBe(
-    "Send the launch update tomorrow.",
+  expect(window.getSelection()?.isCollapsed).toBeTruthy();
+  expect(currentComposer()).toHaveFocus();
+  await user.keyboard(" Additional note.");
+  expect(normalizedComposerText()).toBe(
+    "Opening Send the launch update tomorrow. Additional note. closing",
   );
   expectNoVoiceDraftNode();
   await expect(findButton("Send")).resolves.toBeEnabled();
   expect(queryButton("Finish")).toBeNull();
 });
 
-test("Keep voice-draft recording outside TipTap while the microphone starts", async () => {
-  const microphoneReady = context.mocks.deferred<void>();
-  context.mocks.browser.voiceInput({
-    getUserMediaReady: microphoneReady.promise,
-    rms: 0,
-  });
-  installAvailableVoiceQuota();
-  installRunChat();
+test.each(["button", "keyboard"])(
+  "Show microphone startup before the voice-draft waveform via %s",
+  async (trigger) => {
+    const user = userEvent.setup({ delay: null });
+    const microphoneReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      rms: 0,
+    });
+    installAvailableVoiceQuota();
+    installRunChat();
 
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
-  });
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.VoiceDraft]: true,
+        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      },
+    });
 
-  click(await readyVoiceInput());
+    const voiceInput = await readyVoiceInput();
+    if (trigger === "button") {
+      click(voiceInput);
+    } else {
+      currentComposer().focus();
+      await user.keyboard("{Control>}{Shift>}e{/Shift}{/Control}");
+    }
 
-  await expect(findButton("Stop recording")).resolves.toBeDisabled();
-  expectNoVoiceDraftNode();
+    const starting = await findButton("Starting voice input");
+    expect(starting).toBeDisabled();
+    expect(starting).toHaveAttribute("aria-busy", "true");
+    expect(queryButton("Stop recording")).toBeNull();
+    expect(queryButton("Attach")).toBeVisible();
+    expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
+    expectNoVoiceDraftNode();
 
-  microphoneReady.resolve(undefined);
+    microphoneReady.resolve(undefined);
 
-  await activeVoiceDraftStopButton();
-  expectNoVoiceDraftNode();
-  expect(
-    document.querySelector("[data-voice-level-waveform]"),
-  ).toBeInTheDocument();
-});
+    await activeVoiceDraftStopButton();
+    expectNoVoiceDraftNode();
+    expect(
+      document.querySelector("[data-voice-level-waveform]"),
+    ).toBeInTheDocument();
+  },
+);
 
 test("Keep a silent voice draft recording until the user stops it", async () => {
   const voiceActivityObserved = context.mocks.deferred<void>();
@@ -528,7 +550,7 @@ test("Release a late microphone stream after navigating away during voice startu
   });
 
   click(await readyVoiceInput());
-  await expect(findButton("Stop recording")).resolves.toBeDisabled();
+  await expect(findButton("Starting voice input")).resolves.toBeDisabled();
   await waitFor(() => {
     expect(microphoneRequest).toHaveBeenCalledOnce();
   });
@@ -584,7 +606,8 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   const voiceInput = await readyVoiceInput();
   await fill(currentComposer(), "Keep these typed notes. ");
   click(voiceInput);
-  await expect(findButton("Stop recording")).resolves.toBeDisabled();
+  await expect(findButton("Starting voice input")).resolves.toBeDisabled();
+  expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
   await waitFor(() => {
     expect(pcmWorkletReady).toHaveBeenCalledOnce();
   });
@@ -593,7 +616,11 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   await expect(
     screen.findByText("Voice transcription failed. Try again."),
   ).resolves.toBeVisible();
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  const restoredVoiceInput = await findButton("Voice input");
+  expect(restoredVoiceInput).toBeEnabled();
+  expect(restoredVoiceInput).toHaveAttribute("aria-busy", "false");
+  expect(queryButton("Attach")).toBeVisible();
+  expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
   expect(normalizedComposerText()).toBe("Keep these typed notes.");
   expect(microphoneStops).toBe(1);
   expect(audioContextCloses).toBe(1);
