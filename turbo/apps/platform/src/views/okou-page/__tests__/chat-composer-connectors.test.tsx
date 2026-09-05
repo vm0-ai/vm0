@@ -169,9 +169,6 @@ test("Keep searchable connector menu above while filtering on desktop", async ()
   await setupPage({
     context,
     path: `/agents/${SCOUT_AGENT_ID}/chat`,
-    featureSwitches: {
-      [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: true,
-    },
   });
 
   await loadComposer();
@@ -179,6 +176,7 @@ test("Keep searchable connector menu above while filtering on desktop", async ()
   await openConnectors(user);
   const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
   const popover = await screen.findByRole("dialog", { name: "Connectors" });
+  act(layout.notifyResize);
   const connectorList = await screen.findByRole("list", {
     name: "Connectors",
   });
@@ -193,7 +191,7 @@ test("Keep searchable connector menu above while filtering on desktop", async ()
   await filterConnectorMenu(user, searchInput, layout.notifyResize);
   await waitFor(() => {
     expect(popoverSide(popover, trigger)).toBe("top");
-    expect(connectorList.clientHeight).toBeLessThan(expandedListHeight);
+    expect(connectorList.clientHeight).toBe(expandedListHeight);
     expect(connectorList.scrollHeight).toBe(connectorList.clientHeight);
     expect(screen.getByText("Add connectors")).toBeInTheDocument();
   });
@@ -221,9 +219,6 @@ test("Keep collision-selected connector menu below while filtering on mobile", a
   await setupPage({
     context,
     path: `/agents/${SCOUT_AGENT_ID}/chat`,
-    featureSwitches: {
-      [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: true,
-    },
   });
 
   await loadComposer();
@@ -231,6 +226,7 @@ test("Keep collision-selected connector menu below while filtering on mobile", a
   await openConnectors(user);
   const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
   const popover = await screen.findByRole("dialog", { name: "Connectors" });
+  act(layout.notifyResize);
   await waitFor(() => {
     expect(popoverSide(popover, trigger)).toBe("bottom");
   });
@@ -246,7 +242,7 @@ test("Keep collision-selected connector menu below while filtering on mobile", a
   });
 });
 
-test("Keep connector filtering usable when stable placement is disabled", async () => {
+test("Keep connector actions available when search has no matches", async () => {
   const user = userEvent.setup({ delay: null });
   installComposerConnectorFixture({
     catalog: searchableConnectorCatalog(),
@@ -258,12 +254,19 @@ test("Keep connector filtering usable when stable placement is disabled", async 
   await loadComposer();
   await openConnectors(user);
   const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
-  await user.type(searchInput, "gmail");
+  await user.type(searchInput, "nonexistent connector");
   await waitFor(() => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
-    expect(screen.getByText("Gmail")).toBeVisible();
+    expect(screen.queryByText("Gmail")).not.toBeInTheDocument();
     expect(screen.getByText("Add connectors")).toBeVisible();
   });
+  await user.click(await findFastControl("button", "Add connectors"));
+  const catalog = await screen.findByRole("dialog", {
+    name: /Available connectors/u,
+  });
+  expect(
+    within(catalog).getByPlaceholderText("Find connectors..."),
+  ).toBeVisible();
 });
 
 test("Configure connector permissions from the composer", async () => {
