@@ -11292,6 +11292,7 @@ describe("CHAT-02: model-first provider policies", () => {
           cliAgentType: "pi",
           cliAgentSessionId: run.threadId,
           cliAgentSessionHistoryHash: h2Hash,
+          artifactSnapshots: memoryArtifactSnapshots,
         },
       },
       claimed.sandboxHeaders,
