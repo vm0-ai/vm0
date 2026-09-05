@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.546.0](https://github.com/vm0-ai/vm0/compare/api-v1.545.2...api-v1.546.0) (2026-09-04)
+
+
+### Features
+
+* add intro video heygen renderer and voice services ([#31658](https://github.com/vm0-ai/vm0/issues/31658)) ([1917a5f](https://github.com/vm0-ai/vm0/commit/1917a5fa59ee61fdb44f0d1822804a256009ef88))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31781](https://github.com/vm0-ai/vm0/issues/31781)) ([fe72e06](https://github.com/vm0-ai/vm0/commit/fe72e065718d2caeea5b45dd71008b0ad777459e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.403.0
+    * @okouai/core bumped to 8.622.0
+    * @okouai/db bumped to 1.241.0
+    * @okouai/pi-agent-runtime bumped to 1.16.4
+
 ## [1.545.2](https://github.com/vm0-ai/vm0/compare/api-v1.545.1...api-v1.545.2) (2026-09-04)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.85.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.1...guest-agent-v0.85.2) (2026-09-04)
+
+
+### Refactoring
+
+* **agent:** centralize cli framework selector parsing ([#31768](https://github.com/vm0-ai/vm0/issues/31768)) ([b98056f](https://github.com/vm0-ai/vm0/commit/b98056feab6c029fc4de1e61e4dcaf6e4d9fda94))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound pi rpc response buffering ([#31769](https://github.com/vm0-ai/vm0/issues/31769)) ([121d13d](https://github.com/vm0-ai/vm0/commit/121d13dd8de271c03168f93a18a2c522d6e7d567))
+
 ## [0.85.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.0...guest-agent-v0.85.1) (2026-09-04)
 
 ## [0.85.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.12...guest-agent-v0.85.0) (2026-09-04)

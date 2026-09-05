@@ -439,6 +439,7 @@ test("The conversation locator follows the work currently shown in the thread", 
     context,
     path: `/chats/${THREAD_IDS.folded}`,
     host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
   });
 
   await screen.findByText("Grouped result 3");
