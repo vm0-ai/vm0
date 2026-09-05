@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.845.3](https://github.com/vm0-ai/vm0/compare/app-v0.845.2...app-v0.845.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** fail closed to the okou clerk primary domain ([#31894](https://github.com/vm0-ai/vm0/issues/31894)) ([596394f](https://github.com/vm0-ai/vm0/commit/596394facaf413a41fd850ac441df020c905edb3))
+
+
+### Refactoring
+
+* **platform:** fully roll out batch chat event catch-up ([#31890](https://github.com/vm0-ai/vm0/issues/31890)) ([523f917](https://github.com/vm0-ai/vm0/commit/523f917203f26c95e91ef1e94df04d439a82f1f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.625.2
+
 ## [0.845.2](https://github.com/vm0-ai/vm0/compare/app-v0.845.1...app-v0.845.2) (2026-09-05)
 
 
