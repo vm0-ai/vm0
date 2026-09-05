@@ -14,7 +14,7 @@
  * Based on Figma: https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud
  *
  * Typography: Noto Sans
- * Primary Color: #3363d3 (Cobalt); Amber #ffa500 stays the identity mark
+ * Primary Color: #ffa500 (Amber)
  *
  * The two primitive scales below are derived from the published palette:
  * https://zero-design-color.sites.vm0.io
@@ -32,16 +32,12 @@
  * Surface steps are intentionally quieter: WCAG does not require decorative
  * surface fills to contrast with one another.
  *
- * `--primary-*` carries Cobalt, whose brand stop is `--primary-300` (#3363d3)
- * rather than the 700 the old orange used. Amber's scale held the same
- * position, and Cobalt inherits it so the semantic tokens did not have to move.
+ * `--primary-*` carries Amber, whose brand stop is `--primary-300` (#ffa500)
+ * rather than the 700 the old orange used, because that scale is adopted
+ * stop-for-stop from the palette.
  *
- * Amber is a light fill and cannot carry a label: white on it is 1.97:1 and Ink
- * is 7.95:1, so a filled control had to choose between a brand colour and a
- * readable one. Cobalt resolves it -- the palette already spends it on markdown
- * links and the usage charts, and it takes white at 5.43:1. So Amber keeps
- * identity (the mark, the app icon) and Cobalt takes action: `--primary` and
- * everything derived from it. `--primary-foreground` is white in both themes.
+ * Amber is a light fill: it takes Ink text, never white (7.95:1 vs 1.97:1).
+ * That is why `--primary-foreground` is Ink in both themes.
  */
 
 /* Define theme colors and typography for Tailwind v4 */
@@ -135,7 +131,7 @@
   /* ===================================
    * Brand Tint / Brand Text
    *
-   * The brand scale is no longer mirrored between themes, so a raw stop like
+   * The Amber scale is no longer mirrored between themes, so a raw stop like
    * `primary-100` is a pale tint in light and still a pale tint in dark, where
    * it would blow out. These two are theme-aware: reach for them wherever the
    * brand appears as a wash behind text or as text itself, and keep the raw
@@ -235,20 +231,15 @@
     hsl(var(--secondary)),
     hsl(var(--state-layer)) var(--state-pressed-alpha)
   );
-  /* Primary reads its own alphas rather than the shared on-filled pair. In dark
-     `--black` inverts to white, so a filled control *lightens* on hover -- which
-     is right for a fill that carries Ink text and wrong for one that carries
-     white. The aliases below default to the shared ladder; only the scope that
-     needs a shorter step overrides them. */
   --color-primary-hover: color-mix(
     in srgb,
     hsl(var(--primary)),
-    hsl(var(--black)) var(--state-primary-hover-alpha)
+    hsl(var(--black)) var(--state-on-filled-hover-alpha)
   );
   --color-primary-pressed: color-mix(
     in srgb,
     hsl(var(--primary)),
-    hsl(var(--black)) var(--state-primary-pressed-alpha)
+    hsl(var(--black)) var(--state-on-filled-pressed-alpha)
   );
   --color-destructive-hover: color-mix(
     in srgb,
@@ -405,11 +396,6 @@
     --state-on-filled-hover-alpha: 10%;
     --state-on-filled-pressed-alpha: 16%;
 
-    /* Declared once here, on the same <html> every theme block targets, so the
-       reference resolves against whichever on-filled pair is in effect. */
-    --state-primary-hover-alpha: var(--state-on-filled-hover-alpha);
-    --state-primary-pressed-alpha: var(--state-on-filled-pressed-alpha);
-
     /* Segment control (light): white lifts off the track. */
     --segment-selected: 0 0% 100%;
     --segment-track: var(--muted);
@@ -561,7 +547,7 @@
   }
 
   /* ===================================
-   * Neutral / Cobalt, behind the `newUi` switch
+   * Neutral / Amber, behind the `newUi` switch
    *
    * Both selectors match the same <html> the blocks above do, and win on
    * specificity, so every `@theme` alias -- which is a lazy `hsl(var(--x))`
@@ -579,24 +565,21 @@
      * Base Color Palette (Tailwind Style)
      * =================================== */
 
-    /* Primary Color Scale (Cobalt). The brand stop is 300, the position Amber
-       held, and the scale darkens monotonically from there. The stop itself is
-       the palette's existing Cobalt -- already spent on markdown links and the
-       usage-chart series -- so this promotes a colour the product ships rather
-       than introducing one. Every stop sits at hue 222; only 300 is published,
-       and the rest are generated along it. */
-    --primary-0: 222 100% 98.5%; /* #F7FAFF */
-    --primary-50: 222 85% 94.5%; /* #E5ECFD */
-    --primary-100: 222 80% 88%; /* #C8D7F9 */
-    --primary-200: 222 72% 70%; /* #7B9CEA */
-    --primary-300: 222 64.5% 51.4%; /* #3363D3 - brand */
-    --primary-400: 222 64% 45%; /* #2955BC */
-    --primary-500: 222 65% 39%; /* #234AA4 */
-    --primary-600: 222 66% 33%; /* #1D3E8C */
-    --primary-700: 222 67% 28%; /* #183477 */
-    --primary-800: 222 68% 23%; /* #132B63 */
-    --primary-900: 222 60% 18%; /* #122349 */
-    --primary-950: 222 55% 12%; /* #0E182F */
+    /* Primary Color Scale (Amber). Adopted stop-for-stop from the palette, so
+       the brand colour is 300 and the scale darkens monotonically from there.
+       Only `--primary-0` is generated, above the published 50. */
+    --primary-0: 31.4 100% 97.5%; /* #FFF9F2 */
+    --primary-50: 31.4 100% 91.4%; /* #FFEAD3 */
+    --primary-100: 31.6 100% 85.5%; /* #FFDCB5 */
+    --primary-200: 32.6 100% 75.1%; /* #FFC580 */
+    --primary-300: 38.8 100% 50%; /* #FFA500 - brand */
+    --primary-400: 38.7 100% 44.1%; /* #E19100 */
+    --primary-500: 38.5 100% 38.2%; /* #C37D00 */
+    --primary-600: 38.3 100% 32.5%; /* #A66A00 */
+    --primary-700: 37.9 100% 26.7%; /* #885600 */
+    --primary-800: 37.2 100% 21.2%; /* #6C4300 */
+    --primary-900: 35.5 81.6% 17.1%; /* #4F3208 */
+    --primary-950: 33.2 63.3% 11.8%; /* #31200B */
 
     /* Neutral Gray Color Scale (Light). Linen is exact at 100, Ink at 950;
        intermediate chroma tapers toward zero in OKLab. */
@@ -654,9 +637,9 @@
     --popover-foreground: var(--foreground); /* tracks body copy */
 
     --primary: var(--primary-300); /* primary-300 - brand */
-    /* Cobalt is a mid fill and takes white at 5.43:1, the same in both themes
-       because the fill is too. */
-    --primary-foreground: var(--on-filled); /* on-filled - white on brand */
+    /* Amber is a light fill and cannot carry white text (1.97:1). Ink clears
+       7.95:1 and is the same in both themes, because the fill is too. */
+    --primary-foreground: 40 4.3% 13.5%; /* #242321 - Ink */
 
     --secondary: 17.1 41.2% 96.7%; /* #FAF5F3 - Linen, tracking gray-100 */
     --secondary-foreground: var(--foreground); /* tracks body copy */
@@ -684,12 +667,10 @@
     --input: var(--white); /* white - same as card */
     --ring: var(--primary-400); /* primary-400 - 6.73:1 on the canvas */
 
-    /* Brand as a wash and as text. Amber only became legible at 700; Cobalt
-       clears 4.5:1 by 400, so text stops there and keeps the hue readable as
-       blue rather than as near-black. */
-    --brand-subtle: var(--primary-50); /* #E5ECFD */
-    --brand-text: var(--primary-400); /* #2955BC - 6.73:1 on white */
-    --brand-text-hover: var(--primary-500); /* #234AA4 - 8.12:1 */
+    /* Brand as a wash and as text (published brand-subtle / brand-text). */
+    --brand-subtle: var(--primary-50); /* #FFEAD3 */
+    --brand-text: var(--primary-700); /* #885600 */
+    --brand-text-hover: var(--primary-800); /* #6C4300 */
 
     /* Text on filled/colored backgrounds (buttons, tooltips, badges) */
     --on-filled: 0 0% 100%; /* Pure white for text on colored backgrounds */
@@ -748,23 +729,22 @@
      * Base Color Palette (Dark Theme)
      * =================================== */
 
-    /* Primary Color Scale (Cobalt - Dark). The brand fill is the same #3363D3 in
-       both themes, so the scale is not reversed here. Dark only reaches for
-       different stops: the brand solid stays 300, text and the ring rise to 200
-       because 300 is only 2.89:1 against the Ink page, and 950 is the subtle
-       fill. */
-    --primary-0: 222 100% 98.5%; /* #F7FAFF */
-    --primary-50: 222 85% 94.5%; /* #E5ECFD */
-    --primary-100: 222 80% 88%; /* #C8D7F9 */
-    --primary-200: 222 72% 70%; /* #7B9CEA */
-    --primary-300: 222 64.5% 51.4%; /* #3363D3 - brand */
-    --primary-400: 222 64% 45%; /* #2955BC */
-    --primary-500: 222 65% 39%; /* #234AA4 */
-    --primary-600: 222 66% 33%; /* #1D3E8C */
-    --primary-700: 222 67% 28%; /* #183477 */
-    --primary-800: 222 68% 23%; /* #132B63 */
-    --primary-900: 222 60% 18%; /* #122349 */
-    --primary-950: 222 55% 12%; /* #0E182F */
+    /* Primary Color Scale (Amber - Dark). The palette publishes one Amber, and
+       the brand fill is the same #FFA500 in both themes, so the scale is not
+       reversed here. Dark only reaches for different stops: the brand solid
+       stays 300, its hover steps *up* to 200, and 950 becomes the subtle fill. */
+    --primary-0: 31.4 100% 97.5%; /* #FFF9F2 */
+    --primary-50: 31.4 100% 91.4%; /* #FFEAD3 */
+    --primary-100: 31.6 100% 85.5%; /* #FFDCB5 */
+    --primary-200: 32.6 100% 75.1%; /* #FFC580 */
+    --primary-300: 38.8 100% 50%; /* #FFA500 - brand */
+    --primary-400: 38.7 100% 44.1%; /* #E19100 */
+    --primary-500: 38.5 100% 38.2%; /* #C37D00 */
+    --primary-600: 38.3 100% 32.5%; /* #A66A00 */
+    --primary-700: 37.9 100% 26.7%; /* #885600 */
+    --primary-800: 37.2 100% 21.2%; /* #6C4300 */
+    --primary-900: 35.5 81.6% 17.1%; /* #4F3208 */
+    --primary-950: 33.2 63.3% 11.8%; /* #31200B */
 
     /* Neutral Gray Color Scale (Dark). The existing shell and Ink canvas stay
        fixed at 0 and 50; Linen is exact at 950. Text stops are measured against
@@ -802,8 +782,8 @@
     --popover-foreground: var(--gray-950); /* gray-950 */
 
     --primary: var(--primary-300); /* primary-300 - brand */
-    /* Same Cobalt fill as light, so the same white text (5.43:1). */
-    --primary-foreground: var(--on-filled); /* on-filled - white on brand */
+    /* Same Amber fill as light, so the same Ink text (7.95:1). */
+    --primary-foreground: 40 4.3% 13.5%; /* #242321 - Ink */
 
     --secondary: 30 1.9% 20.8%; /* #363534 */
     --secondary-foreground: var(--gray-950); /* gray-950 */
@@ -834,13 +814,13 @@
     --input: var(
       --gray-200
     ); /* gray-200 - lighter than card for visible input surfaces */
-    --ring: var(--primary-200); /* primary-200 - 5.82:1 against the Ink page */
+    --ring: var(--primary-300); /* primary-300 - the brand stop reads on Ink */
 
     /* Brand as a wash and as text. Dark takes the opposite end of the same
        scale: the wash drops to 950 and the text rises to the brand stop. */
-    --brand-subtle: var(--primary-950); /* #0E182F */
-    --brand-text: var(--primary-200); /* #7B9CEA - 5.82:1 on the Ink page */
-    --brand-text-hover: var(--primary-100); /* #C8D7F9 - 10.87:1 */
+    --brand-subtle: var(--primary-950); /* #31200B */
+    --brand-text: var(--primary-300); /* #FFA500 */
+    --brand-text-hover: var(--primary-200); /* #FFC580 */
 
     /* Text on filled/colored backgrounds (buttons, tooltips, badges) */
     --on-filled: 0 0% 100%; /* Pure white for text on colored backgrounds */
@@ -872,16 +852,6 @@
     --state-pressed-alpha: 19%;
     --state-on-filled-hover-alpha: 12%;
     --state-on-filled-pressed-alpha: 20%;
-
-    /* Primary keeps the direction -- dark lifts a fill rather than deepening it
-       -- but not the distance. `--black` is white here, so the shared 12% / 20%
-       would carry Cobalt to 4.30:1 and 3.70:1 under its white label, under the
-       4.5:1 that label needs. 5% and 9% are the widest steps that hold it at
-       4.93:1 and 4.57:1, and they lift the button's own separation from the Ink
-       page past 3:1 on the way. Amber never needed this: it carried Ink, which
-       only gets easier as the fill brightens. */
-    --state-primary-hover-alpha: 5%;
-    --state-primary-pressed-alpha: 9%;
 
     /* Segment control (dark): the selection steps *up* the grey ramp from the
        gray-200 track, and the veil turns black so it still reads as a lift. */
