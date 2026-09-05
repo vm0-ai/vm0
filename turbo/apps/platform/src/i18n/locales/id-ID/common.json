@@ -1958,43 +1958,19 @@
       "avatar": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
-        "label": "Avatar",
-        "noneDescription": "Create the video without a presenter",
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
+        "label": "Avatar",
         "none": "Tanpa avatar",
-        "placementHeading": "Di mana presenter sebaiknya berdiri?",
-        "placementLeft": "Kiri — slide berada di kanan",
-        "placementOverlay": "Di atas slide — slide memenuhi bingkai",
-        "placementRight": "Kanan — slide berada di kiri"
+        "noneDescription": "Create the video without a presenter"
       },
       "cardDescription": "Turn an idea or material into a finished video",
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "catalog": {
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loadMore": "Load more"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
-      "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
-      },
-      "desktop": {
-        "checkingCompatibility": "Memeriksa kompatibilitas",
-        "description": "Perekaman layar ada di aplikasi desktop {{desktopProductName}}, yang menangkap jendela apa pun dan merekam tempat Anda mengeklik.",
-        "download": "Unduh untuk macOS",
-        "handoffDetail": "Hasil rekaman terbuka di sini, siap diberi presenter dan suara.",
-        "handoffTitle": "Kembali ke wizard ini secara otomatis",
-        "heading": "Rekam dengan {{desktopProductName}} Desktop",
-        "illustration": "Perekaman berlangsung di {{desktopProductName}} Desktop",
-        "installDetail": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-        "installTitle": "Unduh dan pasang {{desktopProductName}} Desktop",
-        "recordDetail": "Hentikan dari menu yang sama setelah selesai.",
-        "recordTitle": "Mulai perekaman dari bilah menu",
-        "unsupportedIntelMac": "Memerlukan Mac Apple silicon"
-      },
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
         "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
         "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
@@ -2002,52 +1978,19 @@
       "footer": {
         "cancel": "Cancel",
         "create": "Create video",
-        "hint": "Add a prompt, files, or both",
-        "back": "Kembali",
-        "createInChat": "Buat di chat",
-        "download": "Unduh sumber",
-        "next": "Berikutnya"
+        "hint": "Add a prompt, files, or both"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Tinjau video intro Anda",
-        "help": "Konfirmasikan pilihan yang akan diterima {{assistantName}} di utas chat baru",
-        "instructions": "Petunjuk pengeditan",
-        "source": "Sumber",
-        "voice": "Suara"
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
         "browse": "Browse files",
         "drop": "Drop files here or browse",
-        "remove": "Remove {{filename}}",
-        "documentDescription": "Ubah slide Anda menjadi video intro bernarasi",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Unggah slide",
-        "heading": "Bagaimana Anda ingin memulai?",
-        "help": "Unggah slide yang sudah Anda miliki, atau rekam layar dengan {{desktopProductName}} Desktop",
-        "recordDescription": "Rekam demo dengan aplikasi desktop",
-        "recordDetail": "Perlu {{desktopProductName}} Desktop di macOS",
-        "recordTitle": "Rekam layar Anda",
-        "uploadDescription": "Pilih berkas dari komputer Anda",
-        "uploadTitle": "Unggah sumber"
+        "remove": "Remove {{filename}}"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Sumber Anda sudah siap",
-        "help": "Periksa file sebelum melanjutkan",
-        "inAccount": "Di akun Anda",
-        "replace": "Ganti sumber",
-        "saved": "Tersimpan",
-        "source": "Sumber"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Langkah video intro",
-        "review": "Tinjau",
-        "source": "Sumber",
-        "voice": "Suara"
-      },
-      "title": "Buat video intro",
       "style": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match the style to your goal and material",
@@ -2057,14 +2000,15 @@
         "none": "No template",
         "noneDescription": "Use a clean composition without a HeyGen style"
       },
+      "title": "Buat video intro",
       "voice": {
         "default": "Default · Follows avatar",
         "defaultDescription": "Use the chosen avatar's default voice",
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
-        "label": "Voice",
         "heading": "Pilih suara",
         "help": "Dengarkan sampel sebelum melanjutkan",
+        "label": "Voice",
         "none": "Tanpa narasi",
         "noneDescription": "Buat video berbasis teks tanpa narasi",
         "original": "Audio asli",

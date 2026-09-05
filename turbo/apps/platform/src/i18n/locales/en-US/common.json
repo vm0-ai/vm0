@@ -1965,11 +1965,7 @@
         "help": "Choose a public HeyGen presenter, hide the presenter, or let Okou decide.",
         "label": "Avatar",
         "none": "No avatar",
-        "noneDescription": "Create the video without a presenter",
-        "placementHeading": "Where should the presenter stand?",
-        "placementLeft": "Left — the slide sits to the right",
-        "placementOverlay": "Over the slide — the slide fills the frame",
-        "placementRight": "Right — the slide sits to the left"
+        "noneDescription": "Create the video without a presenter"
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {
@@ -1978,32 +1974,14 @@
         "loadMore": "Load more"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
-      "desktop": {
-        "checkingCompatibility": "Checking compatibility",
-        "description": "Screen recording lives in the {{desktopProductName}} desktop app, which captures any window and records where you click.",
-        "download": "Download for macOS",
-        "handoffDetail": "Your take opens here, ready for a presenter and a voice.",
-        "handoffTitle": "Come back to this wizard automatically",
-        "heading": "Record with {{desktopProductName}} Desktop",
-        "illustration": "Recording happens in {{desktopProductName}} Desktop",
-        "installDetail": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-        "installTitle": "Download and install {{desktopProductName}} Desktop",
-        "recordDetail": "Stop it from the same menu when you are done.",
-        "recordTitle": "Start a recording from the menu bar",
-        "unsupportedIntelMac": "Requires an Apple silicon Mac"
-      },
       "errors": {
         "sendFailed": "The chat thread could not be created. Your request is still here so you can try again.",
         "uploadFailed": "One or more files could not be uploaded. Remove them or try again."
       },
       "footer": {
-        "back": "Back",
         "cancel": "Cancel",
         "create": "Create video",
-        "createInChat": "Create in chat",
-        "download": "Download source",
-        "hint": "Add a prompt, files, or both",
-        "next": "Next"
+        "hint": "Add a prompt, files, or both"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2011,44 +1989,10 @@
         "label": "What should the video do?",
         "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Review your intro video",
-        "help": "Confirm the choices {{assistantName}} will receive in the new chat thread",
-        "instructions": "Editing instructions",
-        "source": "Source",
-        "voice": "Voice"
-      },
       "source": {
         "browse": "Browse files",
-        "documentDescription": "Turn your slides into a narrated intro video",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Upload slides",
         "drop": "Drop files here or browse",
-        "heading": "How do you want to start?",
-        "help": "Upload the slides you already have, or record your screen with {{desktopProductName}} Desktop",
-        "recordDescription": "Capture a demo with the desktop app",
-        "recordDetail": "Needs {{desktopProductName}} Desktop on macOS",
-        "recordTitle": "Record your screen",
-        "remove": "Remove {{filename}}",
-        "uploadDescription": "Choose a file from your computer",
-        "uploadTitle": "Upload source"
-      },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Your source is ready",
-        "help": "Check the file before you continue",
-        "inAccount": "In your account",
-        "replace": "Replace source",
-        "saved": "Saved",
-        "source": "Source"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Intro video steps",
-        "review": "Review",
-        "source": "Source",
-        "voice": "Voice"
+        "remove": "Remove {{filename}}"
       },
       "style": {
         "auto": "Auto · Okou decides",

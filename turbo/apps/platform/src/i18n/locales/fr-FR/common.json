@@ -1993,43 +1993,19 @@
       "avatar": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
-        "label": "Avatar",
-        "noneDescription": "Create the video without a presenter",
         "heading": "Choisir un avatar",
         "help": "Choisissez un présentateur ou continuez sans avatar",
+        "label": "Avatar",
         "none": "Aucun avatar",
-        "placementHeading": "Où placer le présentateur ?",
-        "placementLeft": "À gauche — la diapositive est à droite",
-        "placementOverlay": "Sur la diapositive — la diapositive remplit le cadre",
-        "placementRight": "À droite — la diapositive est à gauche"
+        "noneDescription": "Create the video without a presenter"
       },
       "cardDescription": "Turn an idea or material into a finished video",
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "catalog": {
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loadMore": "Load more"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
-      "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
-      },
-      "desktop": {
-        "checkingCompatibility": "Vérification de la compatibilité",
-        "description": "L'enregistrement d'écran se fait dans l'application de bureau {{desktopProductName}}, qui capture n'importe quelle fenêtre et note vos clics.",
-        "download": "Télécharger pour macOS",
-        "handoffDetail": "Votre prise s'ouvre ici, prête pour un présentateur et une voix.",
-        "handoffTitle": "Revenez automatiquement à cet assistant",
-        "heading": "Enregistrer avec {{desktopProductName}} Desktop",
-        "illustration": "L'enregistrement a lieu dans {{desktopProductName}} Desktop",
-        "installDetail": "Nécessite un Mac avec puce Apple et macOS 14 ou version ultérieure. Les Mac Intel ne sont pas pris en charge.",
-        "installTitle": "Téléchargez et installez {{desktopProductName}} Desktop",
-        "recordDetail": "Arrêtez-le depuis le même menu une fois terminé.",
-        "recordTitle": "Lancez un enregistrement depuis la barre de menus",
-        "unsupportedIntelMac": "Nécessite un Mac avec puce Apple"
-      },
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
         "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre source reste enregistrée localement et a été téléchargée comme sauvegarde.",
         "uploadFailed": "La source n'a pas pu être importée. Elle reste enregistrée localement et a été téléchargée comme sauvegarde."
@@ -2037,52 +2013,19 @@
       "footer": {
         "cancel": "Cancel",
         "create": "Create video",
-        "hint": "Add a prompt, files, or both",
-        "back": "Retour",
-        "createInChat": "Créer dans le chat",
-        "download": "Télécharger la source",
-        "next": "Suivant"
+        "hint": "Add a prompt, files, or both"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Vérifier votre vidéo d'introduction",
-        "help": "Confirmez les choix que {{assistantName}} recevra dans le nouveau fil de discussion",
-        "instructions": "Instructions de montage",
-        "source": "Source",
-        "voice": "Voix"
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
         "browse": "Browse files",
         "drop": "Drop files here or browse",
-        "remove": "Remove {{filename}}",
-        "documentDescription": "Transformez vos diapositives en vidéo d'introduction commentée",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Importer des diapositives",
-        "heading": "Comment souhaitez-vous commencer ?",
-        "help": "Importez les diapositives dont vous disposez ou enregistrez votre écran avec {{desktopProductName}} Desktop",
-        "recordDescription": "Capturez une démo avec l'application de bureau",
-        "recordDetail": "Nécessite {{desktopProductName}} Desktop sur macOS",
-        "recordTitle": "Enregistrer votre écran",
-        "uploadDescription": "Choisissez un fichier sur votre ordinateur",
-        "uploadTitle": "Importer une source"
+        "remove": "Remove {{filename}}"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Votre source est prête",
-        "help": "Vérifiez le fichier avant de continuer",
-        "inAccount": "Dans votre compte",
-        "replace": "Remplacer la source",
-        "saved": "Enregistrée",
-        "source": "Source"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Étapes de la vidéo d'introduction",
-        "review": "Vérification",
-        "source": "Source",
-        "voice": "Voix"
-      },
-      "title": "Créer une vidéo d'introduction",
       "style": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match the style to your goal and material",
@@ -2092,14 +2035,15 @@
         "none": "No template",
         "noneDescription": "Use a clean composition without a HeyGen style"
       },
+      "title": "Créer une vidéo d'introduction",
       "voice": {
         "default": "Default · Follows avatar",
         "defaultDescription": "Use the chosen avatar's default voice",
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
-        "label": "Voice",
         "heading": "Choisir une voix",
         "help": "Écoutez un extrait avant de continuer",
+        "label": "Voice",
         "none": "Sans voix off",
         "noneDescription": "Créez une vidéo guidée par les sous-titres sans narration",
         "original": "Audio d'origine",

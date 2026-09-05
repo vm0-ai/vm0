@@ -1958,43 +1958,19 @@
       "avatar": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
-        "label": "Avatar",
-        "noneDescription": "Create the video without a presenter",
         "heading": "アバターを選択",
         "help": "プレゼンターを選ぶか、アバターなしで続行します",
+        "label": "Avatar",
         "none": "アバターなし",
-        "placementHeading": "発表者をどこに配置しますか？",
-        "placementLeft": "左 — スライドは右側に配置",
-        "placementOverlay": "スライドの上 — スライドが画面全体に広がる",
-        "placementRight": "右 — スライドは左側に配置"
+        "noneDescription": "Create the video without a presenter"
       },
       "cardDescription": "Turn an idea or material into a finished video",
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "catalog": {
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loadMore": "Load more"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
-      "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
-      },
-      "desktop": {
-        "checkingCompatibility": "互換性の確認",
-        "description": "画面録画は {{desktopProductName}} デスクトップアプリで行います。任意のウィンドウをキャプチャし、クリックした位置も記録します。",
-        "download": "macOS をダウンロード",
-        "handoffDetail": "録画はここで開き、アバターと音声を選べる状態になります。",
-        "handoffTitle": "自動的にこのウィザードに戻ります",
-        "heading": "{{desktopProductName}} Desktop で録画",
-        "illustration": "録画は {{desktopProductName}} Desktop で行います",
-        "installDetail": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
-        "installTitle": "{{desktopProductName}} Desktop をダウンロードしてインストール",
-        "recordDetail": "終わったら同じメニューから停止します。",
-        "recordTitle": "メニューバーから録画を開始",
-        "unsupportedIntelMac": "AppleシリコンMacが必要です"
-      },
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
         "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
         "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
@@ -2002,52 +1978,19 @@
       "footer": {
         "cancel": "Cancel",
         "create": "Create video",
-        "hint": "Add a prompt, files, or both",
-        "back": "戻る",
-        "createInChat": "チャットで作成",
-        "download": "素材をダウンロード",
-        "next": "次へ"
+        "hint": "Add a prompt, files, or both"
       },
-      "review": {
-        "avatar": "アバター",
-        "heading": "イントロビデオを確認",
-        "help": "{{assistantName}} が新しいチャットスレッドで受け取る設定を確認してください",
-        "instructions": "編集指示",
-        "source": "素材",
-        "voice": "音声"
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
         "browse": "Browse files",
         "drop": "Drop files here or browse",
-        "remove": "Remove {{filename}}",
-        "documentDescription": "スライドをナレーション付きイントロビデオに変換",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "スライドをアップロード",
-        "heading": "どのように始めますか？",
-        "help": "手元のスライドをアップロードするか、{{desktopProductName}} Desktop で画面を録画してください",
-        "recordDescription": "デスクトップアプリでデモを録画",
-        "recordDetail": "macOS 版 {{desktopProductName}} Desktop が必要です",
-        "recordTitle": "画面を録画",
-        "uploadDescription": "コンピュータからファイルを選択",
-        "uploadTitle": "ソースをアップロード"
+        "remove": "Remove {{filename}}"
       },
-      "sourceReview": {
-        "format": "形式",
-        "heading": "素材の準備ができました",
-        "help": "続行する前にファイルを確認してください",
-        "inAccount": "アカウント内",
-        "replace": "素材を置き換える",
-        "saved": "保存先",
-        "source": "素材"
-      },
-      "steps": {
-        "avatar": "アバター",
-        "label": "イントロビデオの手順",
-        "review": "確認",
-        "source": "素材",
-        "voice": "音声"
-      },
-      "title": "イントロビデオを作成",
       "style": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match the style to your goal and material",
@@ -2057,14 +2000,15 @@
         "none": "No template",
         "noneDescription": "Use a clean composition without a HeyGen style"
       },
+      "title": "イントロビデオを作成",
       "voice": {
         "default": "Default · Follows avatar",
         "defaultDescription": "Use the chosen avatar's default voice",
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
-        "label": "Voice",
         "heading": "音声を選択",
         "help": "続行する前にサンプルを再生できます",
+        "label": "Voice",
         "none": "ナレーションなし",
         "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
         "original": "元の音声",

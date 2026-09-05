@@ -1961,43 +1961,19 @@
       "avatar": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
-        "label": "Avatar",
-        "noneDescription": "Create the video without a presenter",
         "heading": "अवतार चुनें",
         "help": "प्रस्तुतकर्ता चुनें या बिना अवतार के आगे बढ़ें",
+        "label": "Avatar",
         "none": "कोई अवतार नहीं",
-        "placementHeading": "प्रस्तुतकर्ता कहाँ खड़ा हो?",
-        "placementLeft": "बाएँ — स्लाइड दाईं ओर रहती है",
-        "placementOverlay": "स्लाइड के ऊपर — स्लाइड पूरा फ़्रेम भरती है",
-        "placementRight": "दाएँ — स्लाइड बाईं ओर रहती है"
+        "noneDescription": "Create the video without a presenter"
       },
       "cardDescription": "Turn an idea or material into a finished video",
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "catalog": {
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loadMore": "Load more"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
-      "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
-      },
-      "desktop": {
-        "checkingCompatibility": "अनुकूलता की जाँच हो रही है",
-        "description": "स्क्रीन रिकॉर्डिंग {{desktopProductName}} डेस्कटॉप ऐप में होती है, जो कोई भी विंडो कैप्चर करता है और आपके क्लिक भी रिकॉर्ड करता है।",
-        "download": "macOS के लिए डाउनलोड करें",
-        "handoffDetail": "आपकी रिकॉर्डिंग यहाँ खुलती है, प्रस्तुतकर्ता और आवाज़ चुनने के लिए तैयार।",
-        "handoffTitle": "अपने आप इस विज़ार्ड पर लौटें",
-        "heading": "{{desktopProductName}} Desktop से रिकॉर्ड करें",
-        "illustration": "रिकॉर्डिंग {{desktopProductName}} Desktop में होती है",
-        "installDetail": "macOS 14 या नए संस्करण वाला Apple सिलिकॉन Mac आवश्यक है। Intel Mac समर्थित नहीं हैं.",
-        "installTitle": "{{desktopProductName}} Desktop डाउनलोड और इंस्टॉल करें",
-        "recordDetail": "काम पूरा होने पर उसी मेन्यू से रोकें।",
-        "recordTitle": "मेन्यू बार से रिकॉर्डिंग शुरू करें",
-        "unsupportedIntelMac": "Apple सिलिकॉन Mac की आवश्यकता है"
-      },
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
         "sendFailed": "चैट थ्रेड नहीं बन सका। आपका स्रोत अभी भी स्थानीय रूप से सुरक्षित है और बैकअप के रूप में डाउनलोड किया गया है।",
         "uploadFailed": "स्रोत अपलोड नहीं हो सका। यह अभी भी स्थानीय रूप से सुरक्षित है और बैकअप के रूप में डाउनलोड किया गया है।"
@@ -2005,52 +1981,19 @@
       "footer": {
         "cancel": "Cancel",
         "create": "Create video",
-        "hint": "Add a prompt, files, or both",
-        "back": "वापस",
-        "createInChat": "चैट में बनाएँ",
-        "download": "स्रोत डाउनलोड करें",
-        "next": "आगे"
+        "hint": "Add a prompt, files, or both"
       },
-      "review": {
-        "avatar": "अवतार",
-        "heading": "अपने इंट्रो वीडियो की समीक्षा करें",
-        "help": "नई चैट थ्रेड में {{assistantName}} को मिलने वाले विकल्पों की पुष्टि करें",
-        "instructions": "संपादन निर्देश",
-        "source": "स्रोत",
-        "voice": "आवाज़"
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
         "browse": "Browse files",
         "drop": "Drop files here or browse",
-        "remove": "Remove {{filename}}",
-        "documentDescription": "अपनी स्लाइड को नैरेशन वाले इंट्रो वीडियो में बदलें",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "स्लाइड अपलोड करें",
-        "heading": "आप कैसे शुरू करना चाहते हैं?",
-        "help": "अपनी मौजूदा स्लाइड अपलोड करें, या {{desktopProductName}} Desktop से स्क्रीन रिकॉर्ड करें",
-        "recordDescription": "डेस्कटॉप ऐप से डेमो कैप्चर करें",
-        "recordDetail": "macOS पर {{desktopProductName}} Desktop चाहिए",
-        "recordTitle": "अपनी स्क्रीन रिकॉर्ड करें",
-        "uploadDescription": "अपने कंप्यूटर से फ़ाइल चुनें",
-        "uploadTitle": "स्रोत अपलोड करें"
+        "remove": "Remove {{filename}}"
       },
-      "sourceReview": {
-        "format": "फ़ॉर्मैट",
-        "heading": "आपका स्रोत तैयार है",
-        "help": "आगे बढ़ने से पहले फ़ाइल जाँचें",
-        "inAccount": "आपके खाते में",
-        "replace": "स्रोत बदलें",
-        "saved": "सुरक्षित",
-        "source": "स्रोत"
-      },
-      "steps": {
-        "avatar": "अवतार",
-        "label": "इंट्रो वीडियो के चरण",
-        "review": "समीक्षा",
-        "source": "स्रोत",
-        "voice": "आवाज़"
-      },
-      "title": "इंट्रो वीडियो बनाएँ",
       "style": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match the style to your goal and material",
@@ -2060,14 +2003,15 @@
         "none": "No template",
         "noneDescription": "Use a clean composition without a HeyGen style"
       },
+      "title": "इंट्रो वीडियो बनाएँ",
       "voice": {
         "default": "Default · Follows avatar",
         "defaultDescription": "Use the chosen avatar's default voice",
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
-        "label": "Voice",
         "heading": "आवाज़ चुनें",
         "help": "आगे बढ़ने से पहले नमूना सुनें",
+        "label": "Voice",
         "none": "बिना वॉइसओवर",
         "noneDescription": "बिना वर्णन के कैप्शन-केंद्रित वीडियो बनाएँ",
         "original": "मूल ऑडियो",

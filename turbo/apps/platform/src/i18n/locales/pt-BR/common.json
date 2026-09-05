@@ -1993,43 +1993,19 @@
       "avatar": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
-        "label": "Avatar",
-        "noneDescription": "Create the video without a presenter",
         "heading": "Escolha um avatar",
         "help": "Escolha um apresentador ou continue sem um",
+        "label": "Avatar",
         "none": "Sem avatar",
-        "placementHeading": "Onde o apresentador deve ficar?",
-        "placementLeft": "À esquerda — o slide fica à direita",
-        "placementOverlay": "Sobre o slide — o slide preenche o quadro",
-        "placementRight": "À direita — o slide fica à esquerda"
+        "noneDescription": "Create the video without a presenter"
       },
       "cardDescription": "Turn an idea or material into a finished video",
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "catalog": {
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loadMore": "Load more"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
-      "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
-      },
-      "desktop": {
-        "checkingCompatibility": "Verificando compatibilidade",
-        "description": "A gravação de tela fica no aplicativo {{desktopProductName}} para desktop, que captura qualquer janela e registra onde você clica.",
-        "download": "Baixar para macOS",
-        "handoffDetail": "Sua gravação abre aqui, pronta para um apresentador e uma voz.",
-        "handoffTitle": "Volte para este assistente automaticamente",
-        "heading": "Grave com o {{desktopProductName}} Desktop",
-        "illustration": "A gravação acontece no {{desktopProductName}} Desktop",
-        "installDetail": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
-        "installTitle": "Baixe e instale o {{desktopProductName}} Desktop",
-        "recordDetail": "Pare pelo mesmo menu quando terminar.",
-        "recordTitle": "Inicie uma gravação pela barra de menus",
-        "unsupportedIntelMac": "Requer um Mac com Apple silicon"
-      },
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
         "sendFailed": "Não foi possível criar a conversa. Sua fonte continua salva localmente e foi baixada como backup.",
         "uploadFailed": "Não foi possível enviar a fonte. Ela continua salva localmente e foi baixada como backup."
@@ -2037,52 +2013,19 @@
       "footer": {
         "cancel": "Cancel",
         "create": "Create video",
-        "hint": "Add a prompt, files, or both",
-        "back": "Voltar",
-        "createInChat": "Criar na conversa",
-        "download": "Baixar fonte",
-        "next": "Avançar"
+        "hint": "Add a prompt, files, or both"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Revise seu vídeo de introdução",
-        "help": "Confirme as escolhas que o {{assistantName}} receberá na nova conversa",
-        "instructions": "Instruções de edição",
-        "source": "Fonte",
-        "voice": "Voz"
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
         "browse": "Browse files",
         "drop": "Drop files here or browse",
-        "remove": "Remove {{filename}}",
-        "documentDescription": "Transforme seus slides em um vídeo de introdução narrado",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Enviar slides",
-        "heading": "Como você quer começar?",
-        "help": "Envie os slides que você já tem ou grave sua tela com o {{desktopProductName}} Desktop",
-        "recordDescription": "Capture uma demonstração com o app para desktop",
-        "recordDetail": "Precisa do {{desktopProductName}} Desktop no macOS",
-        "recordTitle": "Gravar sua tela",
-        "uploadDescription": "Escolha um arquivo do seu computador",
-        "uploadTitle": "Enviar fonte"
+        "remove": "Remove {{filename}}"
       },
-      "sourceReview": {
-        "format": "Formato",
-        "heading": "Sua fonte está pronta",
-        "help": "Confira o arquivo antes de continuar",
-        "inAccount": "Na sua conta",
-        "replace": "Substituir fonte",
-        "saved": "Salvo",
-        "source": "Fonte"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Etapas do vídeo de introdução",
-        "review": "Revisar",
-        "source": "Fonte",
-        "voice": "Voz"
-      },
-      "title": "Criar um vídeo de introdução",
       "style": {
         "auto": "Auto · Okou decides",
         "autoDescription": "Match the style to your goal and material",
@@ -2092,14 +2035,15 @@
         "none": "No template",
         "noneDescription": "Use a clean composition without a HeyGen style"
       },
+      "title": "Criar um vídeo de introdução",
       "voice": {
         "default": "Default · Follows avatar",
         "defaultDescription": "Use the chosen avatar's default voice",
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
-        "label": "Voice",
         "heading": "Escolha uma voz",
         "help": "Ouça uma amostra antes de continuar",
+        "label": "Voice",
         "none": "Sem narração",
         "noneDescription": "Crie um vídeo guiado por legendas sem narração",
         "original": "Áudio original",
