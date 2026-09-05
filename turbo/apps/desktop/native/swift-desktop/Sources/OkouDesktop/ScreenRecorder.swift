@@ -15,6 +15,7 @@ final class ScreenRecorder: ObservableObject {
   private let auth: DesktopAuth
   private var sessionID: String?
   private var recording: JSON?
+  private var recordingIdentity: DesktopAuth.Identity?
   private var pollTask: Task<Void, Never>?
   private var control: (id: UUID, task: Task<Void, any Error>)?
   private var teardown: (id: UUID, task: Task<Void, any Error>)?
@@ -114,6 +115,7 @@ final class ScreenRecorder: ObservableObject {
       guard auth.signedIn, auth.organization["id"].string != nil else {
         throw DesktopFailure("signed_out", "Sign in and select a workspace before recording")
       }
+      recordingIdentity = try auth.identity()
       var payload: JSON = .object([
         "sourceId": source["id"], "sourceKind": area == nil ? source["kind"] : .string("area"),
         "systemAudio": .bool(systemAudio), "microphone": .bool(microphone && microphoneSupported),
@@ -209,6 +211,7 @@ final class ScreenRecorder: ObservableObject {
       _ = try await request("discard", .object(["sessionId": .string(sessionID)]))
       self.sessionID = nil
       recording = nil
+      recordingIdentity = nil
       status = "idle"
       elapsed = 0
       error = nil
@@ -225,16 +228,18 @@ final class ScreenRecorder: ObservableObject {
   func deliver() async throws { try await performControl { try await self.uploadRecording() } }
 
   private func uploadRecording() async throws {
-    guard let recording else { return }
+    guard let recording, let recordingIdentity else { return }
     status = "delivering"
     error = nil
     onChange()
     do {
-      try await auth.refreshIdentity(api: api)
-      let userID = try auth.user.requireString("userId")
-      let video = try await api.upload(
+      let delivery = DesktopAPI(configuration: api.configuration)
+      delivery.tokenProvider = { [auth] force in
+        try await auth.token(for: recordingIdentity, force: force)
+      }
+      let video = try await delivery.upload(
         file: URL(fileURLWithPath: recording.requireString("videoPath")), contentType: "video/mp4")
-      let clicks = try await api.upload(
+      let clicks = try await delivery.upload(
         file: URL(fileURLWithPath: recording.requireString("clickTrackPath")),
         contentType: "application/json")
       var url = URLComponents(url: api.configuration.platformURL, resolvingAgainstBaseURL: false)!
@@ -246,10 +251,11 @@ final class ScreenRecorder: ObservableObject {
         .init(name: "intro-video-clicks", value: clicks.id),
         .init(name: "intro-video-clicks-name", value: clicks.name),
         .init(name: "intro-video-clicks-size", value: String(clicks.size)),
-        .init(name: "intro-video-user", value: userID),
+        .init(name: "intro-video-user", value: recordingIdentity.userID),
       ]
       NSWorkspace.shared.open(url.url!)
       self.recording = nil
+      self.recordingIdentity = nil
       status = "idle"
       onChange()
     } catch {

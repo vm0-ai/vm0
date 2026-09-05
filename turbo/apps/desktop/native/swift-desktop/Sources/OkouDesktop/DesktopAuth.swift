@@ -13,18 +13,59 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   private var token: String?
   private var tokenRevision = 0
   private var windowID: UUID?
-  private var refreshTask: Task<String?, any Error>?
+  private var refresh: (id: UUID, task: Task<String?, any Error>)?
   private var window: NSWindow?
   private var webView: WKWebView?
   private var completion: CheckedContinuation<Void, any Error>?
   private var deadline: Task<Void, Never>?
   private var interactive = false
   private var epoch = 0
+  private var signingOut = false
+  private var interactionID: UUID?
   var onChange: @MainActor () -> Void = {}
   private(set) var signingIn = false
   private(set) var user: JSON = .null
   private(set) var organization: JSON = .null
   var signedIn: Bool { user["userId"].string != nil }
+
+  struct Identity: Equatable {
+    let userID: String
+    let organizationID: String
+  }
+
+  func identity() throws -> Identity {
+    try Identity(
+      userID: user.requireString("userId"), organizationID: organization.requireString("id"))
+  }
+
+  /// Validate the exact bearer against the server before it can own a recording
+  /// upload. A refreshed WebKit session may belong to a different workspace.
+  func token(for identity: Identity, force: Bool) async throws -> String? {
+    let currentEpoch = epoch
+    guard let token = try await getToken(force: force) else {
+      throw DesktopFailure("signed_out", "Sign in to the recording's workspace to upload it")
+    }
+    do {
+      let verification = DesktopAPI(configuration: configuration)
+      let user = try await verification.request("api/auth/me", hostToken: token)
+      let organization = try await verification.request("api/org", hostToken: token)
+      try Task.checkCancellation()
+      guard epoch == currentEpoch else { throw CancellationError() }
+      guard
+        try Identity(
+          userID: user.requireString("userId"), organizationID: organization.requireString("id"))
+          == identity
+      else {
+        throw DesktopFailure(
+          "recording_account_changed",
+          "Switch back to the recording's account and workspace to upload it")
+      }
+      return token
+    } catch let error as DesktopHTTPError where error.status == 401 && !force {
+      guard epoch == currentEpoch else { throw CancellationError() }
+      return try await self.token(for: identity, force: true)
+    }
+  }
 
   init(configuration: DesktopConfiguration, preferences: DesktopPreferences) {
     self.configuration = configuration
@@ -32,18 +73,34 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   }
 
   func getToken(force: Bool) async throws -> String? {
-    if preferences.value["nativeSignedOut"].bool { return nil }
+    try Task.checkCancellation()
+    if signingOut || preferences.value["nativeSignedOut"].bool { return nil }
+    guard !signingIn else {
+      throw DesktopFailure("auth_busy", "Finish signing in before continuing")
+    }
     if !force, let token { return token }
-    if let refreshTask { return try await refreshTask.value }
+    if let refresh {
+      let value = try await refresh.task.value
+      try Task.checkCancellation()
+      return value
+    }
     let before = tokenRevision
+    let currentEpoch = epoch
+    let id = UUID()
     let task = Task<String?, any Error> {
+      try Task.checkCancellation()
+      guard epoch == currentEpoch else { throw CancellationError() }
       try await runWindow(configuration.webPath("desktop-auth/token"), interactive: false)
+      try Task.checkCancellation()
+      guard epoch == currentEpoch else { throw CancellationError() }
       if tokenRevision == before { token = nil }
       return token
     }
-    refreshTask = task
-    defer { refreshTask = nil }
-    return try await task.value
+    refresh = (id, task)
+    defer { if refresh?.id == id { refresh = nil } }
+    let value = try await task.value
+    try Task.checkCancellation()
+    return value
   }
 
   func refreshIdentity(api: DesktopAPI) async throws {
@@ -56,11 +113,12 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
       {
         // Signed in without an active organization.
       }
-      guard epoch == currentEpoch else { return }
+      try Task.checkCancellation()
+      guard epoch == currentEpoch else { throw CancellationError() }
       self.user = user
       self.organization = org
     } catch let error as DesktopHTTPError where error.status == 401 {
-      guard epoch == currentEpoch else { return }
+      guard epoch == currentEpoch else { throw CancellationError() }
       user = .null
       organization = .null
       token = nil
@@ -69,49 +127,77 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   }
 
   func signIn() throws {
+    guard !signingOut else { throw DesktopFailure("auth_busy", "Sign-out is still in progress") }
     try preferences.update { $0["nativeSignedOut"] = .bool(false) }
     NSWorkspace.shared.open(configuration.signInURL)
   }
 
   func consume(_ url: URL) async throws -> Bool {
     guard let callback = configuration.callback(url) else { return false }
-    try preferences.update { $0["nativeSignedOut"] = .bool(false) }
+    let operationID = try beginInteractive()
+    defer { endInteractive(operationID) }
     var query = [URLQueryItem(name: "code", value: callback.code)]
     if let handoff = callback.handoffID { query.append(.init(name: "handoffId", value: handoff)) }
-    signingIn = true
-    onChange()
-    defer {
-      signingIn = false
-      onChange()
-    }
     try await runWindow(
       configuration.webPath("desktop-auth/consume", query: query), interactive: true)
     return true
   }
 
   func selectOrganization() async throws {
+    let operationID = try beginInteractive()
+    defer { endInteractive(operationID) }
     try await runWindow(
       configuration.webPath(
         "desktop-auth/select-org", query: [.init(name: "force", value: "true")]), interactive: true)
   }
 
   func signOut() async throws {
+    guard !signingOut else { throw DesktopFailure("auth_busy", "Sign-out is still in progress") }
+    try preferences.update { $0["nativeSignedOut"] = .bool(true) }
+    signingOut = true
     epoch += 1
-    refreshTask?.cancel()
-    refreshTask = nil
+    refresh?.task.cancel()
+    refresh = nil
     finish(.failure(CancellationError()))
     token = nil
     user = .null
     organization = .null
     signingIn = false
-    try preferences.update { $0["nativeSignedOut"] = .bool(true) }
+    interactionID = nil
     let store = WKWebsiteDataStore.default()
     await store.removeData(
       ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+    signingOut = false
+    onChange()
+  }
+
+  private func beginInteractive() throws -> UUID {
+    try Task.checkCancellation()
+    guard !signingIn, !signingOut else {
+      throw DesktopFailure("auth_busy", "Another sign-in operation is already in progress")
+    }
+    try preferences.update { $0["nativeSignedOut"] = .bool(false) }
+    epoch += 1
+    refresh?.task.cancel()
+    refresh = nil
+    finish(.failure(CancellationError()))
+    token = nil
+    let id = UUID()
+    interactionID = id
+    signingIn = true
+    onChange()
+    return id
+  }
+
+  private func endInteractive(_ id: UUID) {
+    guard interactionID == id else { return }
+    interactionID = nil
+    signingIn = false
     onChange()
   }
 
   private func runWindow(_ url: URL, interactive: Bool) async throws {
+    try Task.checkCancellation()
     if completion != nil {
       throw DesktopFailure("auth_busy", "Another sign-in operation is already in progress")
     }
@@ -248,5 +334,8 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   private func navigationFailed(_ error: any Error) {
     if (error as NSError).code != NSURLErrorCancelled { finish(.failure(error)) }
   }
-  func windowWillClose(_ notification: Notification) { finish(.failure(CancellationError())) }
+  func windowWillClose(_ notification: Notification) {
+    guard notification.object as? NSWindow === window else { return }
+    finish(.failure(CancellationError()))
+  }
 }

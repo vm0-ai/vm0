@@ -137,6 +137,8 @@ import Testing
       from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
       from socketserver import TCPServer
       features_valid=True
+      organization="fixture-org"
+      preparations=0
       class Handler(BaseHTTPRequestHandler):
           def log_message(self,*args): pass
           def reply(self,data,status=200,content_type='application/json'):
@@ -146,11 +148,14 @@ import Testing
               self.end_headers()
               self.wfile.write(data)
           def do_GET(self):
-              global features_valid
+              global features_valid,organization
               if self.path.startswith('/desktop-auth/'):
                   self.reply(b'<html><body><script>window.vm0DesktopAuth.completeSignIn({token:"fixture-same-token"});</script></body></html>',content_type='text/html')
               elif self.path=='/api/auth/me': self.reply(b'{"userId":"fixture-user"}')
-              elif self.path=='/api/org': self.reply(b'{"id":"fixture-org","name":"Fixture"}')
+              elif self.path=='/api/org': self.reply(json.dumps({"id":organization,"name":"Fixture"}).encode())
+              elif self.path=='/api/test/switch-org': organization="changed-org"; self.reply(b'{}')
+              elif self.path=='/api/test/restore-org': organization="fixture-org"; self.reply(b'{}')
+              elif self.path=='/api/test/preparations': self.reply(json.dumps({"count":preparations}).encode())
               elif self.path=='/api/test/malformed-features': features_valid=False; self.reply(b'{}')
               elif self.path=='/api/feature-switches':
                   flags={'_debug':True,'computerUseDesktopPlugins':True,'introVideo':True}
@@ -158,7 +163,8 @@ import Testing
               else: self.reply(b'',405)
           def do_DELETE(self): self.reply(b'',204)
           def do_POST(self):
-              if self.path=='/api/uploads/prepare': self.reply(b'{"error":"offline fixture"}',503); return
+              global preparations
+              if self.path=='/api/uploads/prepare': preparations+=1; self.reply(b'{"error":"offline fixture"}',503); return
               request=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
               if 'id' not in request: self.reply(b'',202); return
               method=request['method']
@@ -278,8 +284,17 @@ import Testing
       at: directory.appendingPathComponent("recordings"), includingPropertiesForKeys: nil)
     #expect(recordings.filter { $0.pathExtension == "mp4" }.count == 1)
     #expect(recordings.filter { $0.pathExtension == "json" }.count == 1)
+    let uploadsBeforeSwitch = try await api.request("api/test/preparations")
+    _ = try await api.request("api/test/switch-org")
     try await recorder.deliver()
     #expect(recorder.status == "ready")
+    #expect(recorder.error?.contains("recording's account and workspace") == true)
+    let uploadsAfterSwitch = try await api.request("api/test/preparations")
+    #expect(uploadsAfterSwitch == uploadsBeforeSwitch)
+    _ = try await api.request("api/test/restore-org")
+    try await recorder.deliver()
+    #expect(recorder.status == "ready")
+    #expect(recorder.error?.contains("503") == true)
     try await recorder.start(source: source, systemAudio: true, microphone: true)
     let identity = try await recorderHelper.request(
       "test.identity", fields: .object(["payload": .object([:])]))
