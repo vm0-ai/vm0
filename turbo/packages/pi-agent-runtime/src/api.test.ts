@@ -196,8 +196,11 @@ describe("Pi API facade", () => {
         );
         responsesToolSse(response, {
           callId: "memory-call-1",
-          name: "memories_read",
-          arguments: { path: "MEMORY.md" },
+          name: "add_ad_hoc_note",
+          arguments: {
+            filename: "2026-09-05T16-05-00-api-handoff.md",
+            note: "API-first must hand this write to the sandbox.",
+          },
         });
       })().catch((error: unknown) => {
         response.destroy(
@@ -222,7 +225,7 @@ describe("Pi API facade", () => {
         cwd: "/home/user/workspace",
         agentDir: "/home/user/.pi/agent",
         sessionId: SESSION_ID,
-        prompt: "read the frozen memory index",
+        prompt: "remember this through the sandbox",
         appendSystemPrompt: null,
         model: {
           provider: "openai",
@@ -254,16 +257,50 @@ describe("Pi API facade", () => {
             return tool.name;
           })
           .filter((name) => {
-            return name?.startsWith("memories_");
+            return name?.startsWith("memories_") || name === "add_ad_hoc_note";
           }),
-      ).toStrictEqual(["memories_list", "memories_search", "memories_read"]);
+      ).toStrictEqual([
+        "memories_list",
+        "memories_search",
+        "memories_read",
+        "add_ad_hoc_note",
+      ]);
+      expect(
+        (
+          requestTools as Array<{
+            name?: string;
+            parameters?: unknown;
+          }>
+        ).find((tool) => {
+          return tool.name === "add_ad_hoc_note";
+        }),
+      ).toMatchObject({
+        parameters: {
+          additionalProperties: false,
+          properties: {
+            filename: {
+              maxLength: 128,
+              minLength: 24,
+              pattern:
+                "^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-[a-z0-9][a-z0-9-]{0,79}\\.md$",
+              type: "string",
+            },
+            note: { maxLength: 65_536, minLength: 1, type: "string" },
+          },
+          required: ["filename", "note"],
+          type: "object",
+        },
+      });
       expect(result.handoffRequired).toBe(true);
       expect(result.assistantMessage.content).toStrictEqual([
         {
           type: "toolCall",
           id: "memory-call-1|fc_pi_memory_tool",
-          name: "memories_read",
-          arguments: { path: "MEMORY.md" },
+          name: "add_ad_hoc_note",
+          arguments: {
+            filename: "2026-09-05T16-05-00-api-handoff.md",
+            note: "API-first must hand this write to the sandbox.",
+          },
         },
       ]);
       expect(inspectPiSessionJsonl(result.sessionJsonl)).toMatchObject({
