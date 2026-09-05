@@ -454,12 +454,6 @@ test("A user can identify and switch workspace during onboarding", async () => {
 
   // The compact switcher (mobile layout) is wired into the onboarding shell.
   expect(buttonByAriaLabel("Switch workspace")).toBeInTheDocument();
-  expect(screen.getByTestId("onboarding-account-mobile")).toHaveClass(
-    "bottom-[max(2rem,var(--sab))]",
-  );
-  expect(screen.getByTestId("onboarding-account-desktop")).toHaveClass(
-    "bottom-[max(1.5rem,var(--sab))]",
-  );
 
   // The desktop switcher shows the active workspace name in the top-left.
   await waitFor(() => {

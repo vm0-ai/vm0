@@ -58,7 +58,7 @@ test("mobile pages assign the bottom safe area to content and controls", async (
   });
   await page.getByRole("button", { name: "Open menu" }).click();
 
-  const drawer = page.locator("aside.zero-mobile-sidebar");
+  const drawer = page.getByRole("complementary", { name: "Sidebar" });
   await expect(drawer).toBeVisible();
   const drawerMetrics = await drawer.evaluate((element) => {
     if (!(element instanceof HTMLElement)) {

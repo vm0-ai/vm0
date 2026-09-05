@@ -216,16 +216,10 @@ export function OnboardingShell({
       <div className="fixed left-4 top-4 z-20 sm:hidden">
         <OrgSwitcherCompact />
       </div>
-      <div
-        className="fixed bottom-[max(1.5rem,var(--sab))] left-4 z-20 hidden w-60 sm:block"
-        data-testid="onboarding-account-desktop"
-      >
+      <div className="fixed bottom-[max(1.5rem,var(--sab))] left-4 z-20 hidden w-60 sm:block">
         <OnboardingAccount collapsed={false} />
       </div>
-      <div
-        className="fixed bottom-[max(2rem,var(--sab))] left-6 z-20 sm:hidden"
-        data-testid="onboarding-account-mobile"
-      >
+      <div className="fixed bottom-[max(2rem,var(--sab))] left-6 z-20 sm:hidden">
         <OnboardingAccount collapsed />
       </div>
 

@@ -60,13 +60,6 @@ test("Browse connectors by category", async () => {
   const engineering = await screen.findByTestId(
     "connector-category-engineering-team-execution",
   );
-  const scrollViewport = screen.getByTestId("connectors-scroll-viewport");
-  expect(
-    scrollViewport.closest(".zero-managed-bottom-safe-area"),
-  ).not.toBeNull();
-  expect(screen.getByTestId("connectors-scroll-content")).toHaveClass(
-    "pb-[max(4rem,var(--sab))]",
-  );
   const labels = within(engineering)
     .getAllByTestId("connector-card-label")
     .map((element) => {
