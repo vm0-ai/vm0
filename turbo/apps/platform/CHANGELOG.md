@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.844.1](https://github.com/vm0-ai/vm0/compare/app-v0.844.0...app-v0.844.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **app:** unify chat response layout and status lifecycle ([#31791](https://github.com/vm0-ai/vm0/issues/31791)) ([796dcb7](https://github.com/vm0-ai/vm0/commit/796dcb7b4e3d00a9066b78cd2c1c7a022cf4dbfd))
+
 ## [0.844.0](https://github.com/vm0-ai/vm0/compare/app-v0.843.2...app-v0.844.0) (2026-09-05)
 
 
