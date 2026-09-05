@@ -248,10 +248,6 @@ function useGoogleDriveAvailability(
       ? null
       : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
   const accountReady = syncTarget?.accountReady === true;
-  // Remove the default-connector fallback after pre-accountReady APIs are
-  // outside the serving and rollback window.
-  const legacyDefaultAccountReady =
-    googleDriveConnected && syncTarget?.disconnected !== true;
 
   return {
     connectorListLoaded:
@@ -261,7 +257,7 @@ function useGoogleDriveAvailability(
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,
-    googleDriveReady: accountReady || legacyDefaultAccountReady,
+    googleDriveReady: accountReady,
   };
 }
 

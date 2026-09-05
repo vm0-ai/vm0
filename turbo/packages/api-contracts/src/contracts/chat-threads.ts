@@ -237,10 +237,11 @@ const chatThreadArtifactGoogleDriveRecoverySchema = z.discriminatedUnion(
 );
 
 const chatThreadArtifactGoogleDriveAccountReadyShape = {
-  // New App -> old API fallback. Current APIs always emit this marker after
-  // resolving the thread account, credentials, and agent authorization.
-  // Keep it optional while pre-marker APIs remain available for rollback.
-  accountReady: z.literal(true).optional(),
+  /**
+   * Emitted after the thread account, credentials, and agent authorization
+   * resolve. The disconnected variant carries no readiness marker.
+   */
+  accountReady: z.literal(true),
 };
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
