@@ -27,8 +27,9 @@ pub async fn report_for_runtime(runtime: &GuestRuntime) -> Result<(), AgentError
     let metadata = match std::fs::symlink_metadata(&path) {
         Ok(metadata) => metadata,
         // No provider response is incurred on the engine's early no-diff path.
-        // Old pinned CLIs also omit this journal during their two-hour drain.
-        // Remove the old-CLI allowance under #31067 after pinned Guests drain.
+        // Old commit-pinned CLIs can also omit it through queue residence, the
+        // two-hour execution budget, and bounded finalization. Remove that
+        // allowance under #31067 once old queued and active contexts drain.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(_) => return Err(invalid_usage()),
     };

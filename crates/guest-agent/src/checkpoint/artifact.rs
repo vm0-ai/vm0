@@ -728,7 +728,7 @@ mod tests {
             std::iter::once(("MEMORY.md", file_hash.as_str())),
         );
         let expected_attestation = json!({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "leaseToken": lease_token,
             "claimedRevision": 7,
             "claimedBaseVersionId": base_version,

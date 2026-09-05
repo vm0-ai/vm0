@@ -29,6 +29,11 @@ import {
 
 const expectedBindings = [
   {
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustTypeName: "Request",
+    direction: "request",
+  },
+  {
     rustModulePath: ["runners", "runs"],
     rustTypeName: "CodexRuntimeConfig",
     direction: "response",

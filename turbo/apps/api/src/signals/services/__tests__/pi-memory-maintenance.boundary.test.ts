@@ -1,9 +1,13 @@
 import { spawn, execFileSync } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { tmpdir } from "node:os";
-import { resolve, join } from "node:path";
+import { dirname, resolve, join } from "node:path";
 import { once } from "node:events";
 import { promisify } from "node:util";
 import { Readable } from "node:stream";
@@ -58,6 +62,10 @@ import {
   setPhase2StorageHead,
 } from "./pi-memory-phase2-job.test-fixture";
 
+// #31937 requires infrastructure-only fault injection and exact control/usage
+// evidence. Public APIs cannot create lost ACKs, revoked in-flight claims, or
+// historical leases, and must not expose these private rows. Real routes still
+// own authentication, generic publication, usage ingestion, and completion.
 const context = testContext();
 const guestEnvironment = guestBoundaryEnvironment();
 const repo = resolve(
@@ -170,6 +178,7 @@ function sse(response: ServerResponse, index: number, failure: boolean) {
 
 type Fault =
   | "none"
+  | "represented_no_diff"
   | "commit_ack"
   | "complete_transaction"
   | "complete_ack"
@@ -184,6 +193,14 @@ async function launch(fault: Fault, noDiff = false) {
   const scope = await createPhase2TestScope(`boundary-${fault}`, {
     emptyBase: true,
   });
+  const candidate = {
+    piSessionId: randomUUID(),
+    sourceRunId: randomUUID(),
+    sourceHistoryHash: createHash("sha256").update(randomUUID()).digest("hex"),
+    sourceCompletedAt: new Date("2026-09-03T04:00:00.000Z"),
+    rawMemory: secretCandidate,
+    rolloutSummary: "private evidence",
+  };
   const baseFiles = noDiff
     ? [
         { path: "MEMORY.md", content: "# Task Group: boundary\n" },
@@ -193,6 +210,25 @@ async function launch(fault: Fault, noDiff = false) {
         },
       ]
     : [];
+  if (fault === "represented_no_diff") {
+    // A selected candidate already represented by the valid mounted base
+    // takes the real early no-diff path without incurring provider usage.
+    const sessionHash = createHash("sha256")
+      .update(candidate.piSessionId)
+      .digest("hex");
+    baseFiles.push({
+      path: `rollout_summaries/pi/${sessionHash}.md`,
+      content: [
+        `pi_session_id: ${JSON.stringify(candidate.piSessionId)}`,
+        `source_run_id: ${JSON.stringify(candidate.sourceRunId)}`,
+        `source_history_hash: ${JSON.stringify(candidate.sourceHistoryHash)}`,
+        `source_completed_at: ${JSON.stringify(candidate.sourceCompletedAt.toISOString())}`,
+        "",
+        candidate.rolloutSummary,
+        "",
+      ].join("\n"),
+    });
+  }
   const files = baseFiles.map((file) => {
     return {
       path: file.path,
@@ -243,14 +279,8 @@ async function launch(fault: Fault, noDiff = false) {
   context.mocks.s3.getSignedUrl.mockResolvedValue(
     "https://objects.example.test/private-first-turn",
   );
-  if (!noDiff) {
-    await insertPhase2Candidates(scope, [
-      {
-        piSessionId: randomUUID(),
-        rawMemory: secretCandidate,
-        rolloutSummary: "private evidence",
-      },
-    ]);
+  if (!noDiff || fault === "represented_no_diff") {
+    await insertPhase2Candidates(scope, [candidate]);
   }
   await insertPendingPhase2Job(scope, { updatedAt: nowDate() });
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
@@ -321,8 +351,10 @@ async function launch(fault: Fault, noDiff = false) {
     ),
   );
   await Promise.all(
-    baseFiles.map((file) => {
-      return writeFile(join(memory, file.path), file.content);
+    baseFiles.map(async (file) => {
+      const path = join(memory, file.path);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file.content);
     }),
   );
   const [mountedRun] = await db()
@@ -382,7 +414,10 @@ async function launch(fault: Fault, noDiff = false) {
     sse(response, providerCount++, fault === "provider");
     return;
   }
-  const server = createServer(async (request, response) => {
+  async function serveRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
     const served = await settle(
       (async () => {
         const chunks: Buffer[] = [];
@@ -469,6 +504,12 @@ async function launch(fault: Fault, noDiff = false) {
       response.writeHead(500);
       response.end(String(served.error));
     }
+  }
+  // Own every request promise until teardown; Node's HTTP listener ignores
+  // returned promises and cannot propagate a rejected handler to the test.
+  const requestTasks: Promise<PromiseSettledResult<void>[]>[] = [];
+  const server = createServer((request, response) => {
+    requestTasks.push(Promise.allSettled([serveRequest(request, response)]));
   });
   const listening = once(server, "listening", { signal: context.signal });
   server.listen(0, "127.0.0.1");
@@ -481,6 +522,12 @@ async function launch(fault: Fault, noDiff = false) {
   onTestFinished(async () => {
     server.closeAllConnections();
     await promisify(server.close.bind(server))();
+    const results = (await Promise.all(requestTasks)).flat();
+    expect(
+      results.filter((result) => {
+        return result.status === "rejected";
+      }),
+    ).toStrictEqual([]);
   });
   context.mocks.s3.getSignedUrl.mockImplementation((_client, command) => {
     const input = (command as { input: { Key: string } }).input;
@@ -625,6 +672,76 @@ async function launch(fault: Fault, noDiff = false) {
   };
 }
 
+async function assertUsageReplay(
+  run: Awaited<ReturnType<typeof launch>>,
+  billedResponses: number,
+) {
+  expect(run.usage).toHaveLength(billedResponses * 3);
+  for (const [category, quantity] of [
+    ["tokens.input", 8],
+    ["tokens.output", 5],
+    ["tokens.cache_read", 2],
+  ] as const) {
+    expect(
+      run.usage.filter((entry) => {
+        return entry.category === category;
+      }),
+    ).toHaveLength(billedResponses);
+    expect(
+      run.usage
+        .filter((entry) => {
+          return entry.category === category;
+        })
+        .every((entry) => {
+          return (
+            entry.quantity === quantity &&
+            entry.runId === null &&
+            entry.provider === "gpt-5.6-terra"
+          );
+        }),
+    ).toBeTruthy();
+  }
+  const usage = run.requests.find((request) => {
+    return request.path.endsWith("/pi-memory-phase2/usage");
+  });
+  if (!usage) {
+    throw new Error("Missing actual private usage report");
+  }
+  for (let retry = 0; retry < 2; retry++) {
+    expect(
+      (
+        await run.app.request(usage.path, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${run.token}`,
+            "content-type": "application/json",
+          },
+          body: usage.body,
+        })
+      ).status,
+    ).toBe(200);
+  }
+  const replayUsage = await db()
+    .select()
+    .from(usageEvent)
+    .where(eq(usageEvent.orgId, run.scope.orgId));
+  const accounting = (rows: typeof replayUsage) => {
+    return rows
+      .map(({ idempotencyKey, quantity, category, runId }) => {
+        return {
+          idempotencyKey,
+          quantity,
+          category,
+          runId,
+        };
+      })
+      .sort((left, right) => {
+        return left.idempotencyKey.localeCompare(right.idempotencyKey);
+      });
+  };
+  expect(accounting(replayUsage)).toStrictEqual(accounting(run.usage));
+}
+
 describe("private maintenance across CLI, Guest, generic checkpoint and real PostgreSQL", () => {
   it.each([
     "none",
@@ -746,42 +863,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
           })
         ).status,
       ).toBe(404);
-      const usage = run.requests.find((request) => {
-        return request.path.endsWith("/pi-memory-phase2/usage");
-      });
-      if (!usage) {
-        throw new Error("Missing actual private usage report");
-      }
-      for (let retry = 0; retry < 2; retry++) {
-        expect(
-          (
-            await run.app.request(usage.path, {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${run.token}`,
-                "content-type": "application/json",
-              },
-              body: usage.body,
-            })
-          ).status,
-        ).toBe(200);
-      }
-      const replayUsage = await db()
-        .select()
-        .from(usageEvent)
-        .where(eq(usageEvent.orgId, run.scope.orgId));
-      const accounting = (rows: typeof replayUsage) =>
-        {return rows
-          .map(({ idempotencyKey, quantity, category, runId }) => {return {
-            idempotencyKey,
-            quantity,
-            category,
-            runId,
-          }})
-          .sort((left, right) =>
-            {return left.idempotencyKey.localeCompare(right.idempotencyKey)},
-          )};
-      expect(accounting(replayUsage)).toStrictEqual(accounting(run.usage));
+      await assertUsageReplay(run, 3);
 
       await expect(
         db()
@@ -792,18 +874,54 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
     },
   );
 
-  it("settles real early no-diff without public session events or a provider", async () => {
-    const run = await launch("none", true);
-    expect(run.job, run.output).toMatchObject({
-      completedRevision: 1,
-      lastMaintenanceOutcome: "no_diff",
-    });
-    expect(run.providerCount).toBe(0);
-    expect(run.usage).toHaveLength(0);
-    expect(run.receipts).toHaveLength(1);
-    expect(run.lineage).toHaveLength(0);
-    expect(run.checkpointRows).toHaveLength(1);
-  });
+  it.each(["none", "represented_no_diff"] as const)(
+    "settles real no-diff with %s selection and no provider charge",
+    async (fault) => {
+      const run = await launch(fault, true);
+      expect(run.job, run.output).toMatchObject({
+        completedRevision: 1,
+        lastMaintenanceOutcome: "no_diff",
+      });
+      expect(run.providerCount).toBe(0);
+      expect(run.usage).toHaveLength(0);
+      expect(run.receipts).toHaveLength(1);
+      expect(run.lineage).toHaveLength(0);
+      expect(run.checkpointRows).toHaveLength(1);
+      const commit = run.requests.find((request) => {
+        return request.path.endsWith("/storages/commit");
+      });
+      if (!commit) {
+        throw new Error("Missing actual no-diff checkpoint commit");
+      }
+      for (let retry = 0; retry < 2; retry++) {
+        const response = await run.app.request(commit.path, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${run.token}`,
+            "content-type": "application/json",
+          },
+          body: commit.body,
+        });
+        expect(response.status).toBe(200);
+        await handlePiMemoryPhase2MaintenanceCallback(db(), {
+          runId: run.runId,
+          payload: run.binding,
+          status: "completed",
+        });
+      }
+      await expect(readPhase2Job(run.scope)).resolves.toMatchObject({
+        completedRevision: 1,
+        retryCount: 0,
+        lastMaintenanceOutcome: "no_diff",
+      });
+      await expect(
+        db()
+          .select()
+          .from(storageVersionLineage)
+          .where(eq(storageVersionLineage.runId, run.runId)),
+      ).resolves.toHaveLength(0);
+    },
+  );
 
   it.each(["provider", "abrupt", "revoked", "invalid_marker"] as const)(
     "recovers the exact parent without publishing after %s",
@@ -830,7 +948,10 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
       }
       expect(run.receipts).toHaveLength(0);
       expect(run.lineage).toHaveLength(0);
-      expect(run.usage.length).toBeGreaterThan(0);
+      await assertUsageReplay(
+        run,
+        fault === "provider" || fault === "abrupt" ? 1 : 3,
+      );
       expect(
         run.usage.every((entry) => {
           return entry.runId === null;
