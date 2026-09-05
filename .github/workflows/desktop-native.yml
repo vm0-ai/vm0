@@ -25,6 +25,9 @@ concurrency:
   group: desktop-native-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  npm_config_audit: "false"
+
 permissions:
   contents: read
 
@@ -43,7 +46,7 @@ jobs:
           swift --version
 
       - name: Cache SwiftPM build products
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             turbo/apps/desktop/native/OkouDesktop/.build
