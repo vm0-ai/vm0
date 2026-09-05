@@ -28,6 +28,12 @@ import {
   type SharedWorkerTestTransport,
 } from "../shared-database/test-bridge.ts";
 import {
+  resolveClerkProductionSatelliteDomain,
+  resolveClerkProductionTopology,
+  type ClerkProductionPrimaryAppDomain,
+} from "../lib/clerk-production-topology.ts";
+import { resolvePlatformRuntimeConfig } from "../lib/platform-host.ts";
+import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
   type SupportedLocale,
@@ -104,6 +110,14 @@ interface SetupPageOptions {
   readonly context: TestContext;
   readonly path: string;
   readonly host?: string;
+  /**
+   * Clerk primary app domain, injected the way the deployed HTML injects it.
+   * Defaults to the primary app domain these page tests were written against,
+   * where `app.vm0.ai` owns primary authentication and `app.okou.ai` is the
+   * satellite. Pass `null` to omit the bootstrap object entirely, which is
+   * what a build that lost the injected value produces.
+   */
+  readonly primaryAppDomain?: ClerkProductionPrimaryAppDomain | null;
   readonly locale?: SupportedLocale;
   readonly auth?: SetupPageAuth;
   readonly debugLoggers?: string[];
@@ -172,6 +186,50 @@ function initialPageUrl(path: string, host: string): URL {
   return new URL(path, `${protocol}://${host}`);
 }
 
+// Mirrors the inline Clerk bootstrap in index.html, which publishes the
+// injected primary app domain and the load options derived from it before the
+// app module runs.
+function installClerkBootstrap(
+  pageUrl: URL,
+  requestedPrimaryAppDomain: ClerkProductionPrimaryAppDomain | null | undefined,
+  signal: AbortSignal,
+): void {
+  // A test that installs its own bootstrap owns the whole object.
+  if (requestedPrimaryAppDomain === null || window.__vm0ClerkBootstrap) {
+    return;
+  }
+  const primaryAppDomain = requestedPrimaryAppDomain ?? "app.vm0.ai";
+  const satelliteDomain = resolveClerkProductionSatelliteDomain(
+    pageUrl.hostname,
+    primaryAppDomain,
+  );
+  const authOrigin = satelliteDomain
+    ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
+    : pageUrl.origin;
+  window.__vm0ClerkBootstrap = {
+    domain: satelliteDomain ?? undefined,
+    loadOptions: {
+      afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
+      ...(satelliteDomain
+        ? { isSatellite: true, satelliteAutoSync: true }
+        : {}),
+      signInUrl: new URL("/sign-in", authOrigin).toString(),
+      signUpUrl: new URL("/sign-up", authOrigin).toString(),
+    },
+    productionPrimaryAppDomain: primaryAppDomain,
+    // The page selects the publishable key by hostname. Read the same source
+    // the app reads so the two never disagree for a preview host.
+    publishableKey: resolvePlatformRuntimeConfig().clerkPublishableKey,
+  };
+  signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+    },
+    { once: true },
+  );
+}
+
 function resolveAuth(options: SetupPageOptions): {
   readonly organization: MockedOrganization;
   readonly session: MockedSession | null;
@@ -220,6 +278,11 @@ async function setupPageAsync(
   const initialUrl = initialPageUrl(options.path, options.host ?? "localhost");
   options.context.mocks.browser.url(initialUrl.toString());
   createPushStateMock(options.context.signal, initialUrl);
+  installClerkBootstrap(
+    initialUrl,
+    options.primaryAppDomain,
+    options.context.signal,
+  );
 
   if (options.debugLoggers) {
     options.context.store.set(
