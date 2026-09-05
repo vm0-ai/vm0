@@ -5,11 +5,14 @@ import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/int
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
+import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
@@ -83,12 +86,42 @@ const introVideoDisabled = Object.freeze({
 
 const introVideoEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  const clerk = get(clerk$);
   const context = await loadUserFeatureSwitchContext(
-    get(db$),
+    db,
     auth.orgId,
     auth.userId,
   );
-  return isFeatureEnabled(FeatureSwitchKey.IntroVideo, context);
+  if (isFeatureEnabled(FeatureSwitchKey.IntroVideo, context)) {
+    return true;
+  }
+
+  const [user] = await db
+    .select({ email: userCache.email })
+    .from(userCache)
+    .where(eq(userCache.userId, auth.userId))
+    .limit(1);
+  if (user?.email) {
+    return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
+      ...context,
+      email: user.email,
+    });
+  }
+
+  const users = await clerk.users.getUserList({
+    userId: [auth.userId],
+    limit: 1,
+  });
+  const profile = users.data[0];
+  const email =
+    profile?.emailAddresses.find((candidate) => {
+      return candidate.id === profile.primaryEmailAddressId;
+    })?.emailAddress ?? profile?.emailAddresses[0]?.emailAddress;
+  return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
+    ...context,
+    email,
+  });
 });
 
 function acceptedIntroVideoPresenterResponse(
