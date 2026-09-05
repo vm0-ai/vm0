@@ -9,14 +9,14 @@ import Foundation
 /// Retains the child until it actually exits, escalating an ignored termination.
 /// Callers keep this operation alive even when their original request is cancelled.
 @MainActor
-final class ProcessTermination {
+package final class ProcessTermination {
   private let process: Process
   private var completion: CheckedContinuation<Void, Never>?
   private var escalation: Task<Void, Never>?
 
   private init(_ process: Process) { self.process = process }
 
-  static func stop(_ process: Process) async {
+  package static func stop(_ process: Process) async {
     guard process.processIdentifier > 0 else { return }
     let owner = ProcessTermination(process)
     if process.isRunning {

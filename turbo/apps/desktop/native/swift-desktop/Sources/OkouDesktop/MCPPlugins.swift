@@ -13,6 +13,7 @@ final class MCPPlugins {
     var pipes: [Pipe] = []
     var start: Task<Void, Never>?
     var restart: Task<Void, Never>?
+    var teardown: Task<Void, Never>?
     var health: Task<Void, Never>?
     var runtimeID = UUID()
     var attempts = 0
@@ -24,6 +25,7 @@ final class MCPPlugins {
   }
   private let preferences: DesktopPreferences
   private var slots: [String: Slot] = [:]
+  private var retirements: [String: (id: UUID, task: Task<Void, Never>)] = [:]
   private var available = false
   private var online = false
   var onChange: @MainActor () -> Void = {}
@@ -109,6 +111,9 @@ final class MCPPlugins {
   }
 
   private func connect(name: String, slot: Slot) async {
+    guard !Task.isCancelled, slots[name]?.id == slot.id else { return }
+    await retirements[name]?.task.value
+    guard !Task.isCancelled, slots[name]?.id == slot.id else { return }
     slot.runtimeID = UUID()
     let runtimeID = slot.runtimeID
     let client = Client(name: "okou-desktop-mcp-plugin", version: "1.0.0")
@@ -125,45 +130,7 @@ final class MCPPlugins {
         configuration.httpCookieStorage = nil
         transport = HTTPClientTransport(endpoint: url, configuration: configuration)
       } else {
-        let process = Process()
-        let stdin = Pipe()
-        let stdout = Pipe()
-        let command = try slot.configuration.requireString("command")
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [command] + slot.configuration["args"].array.compactMap(\.string)
-        // launchd has a restricted PATH. Resolve the login shell's PATH
-        // once per process launch, while explicit server env wins last.
-        var environment = [
-          "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-          "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-          "SHELL": ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
-        ]
-        if let path = try? await loginShellPath() { environment["PATH"] = path }
-        try Task.checkCancellation()
-        guard slots[name]?.id == slot.id else { return }
-        for (key, value) in slot.configuration["env"].object ?? [:] {
-          if let value = value.string { environment[key] = value }
-        }
-        process.environment = environment
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = FileHandle.standardError
-        let slotID = slot.id
-        process.terminationHandler = { [weak self] process in
-          let status = process.terminationStatus
-          Task { @MainActor in
-            guard let self, let current = self.slots[name], current.id == slotID else { return }
-            self.failed(
-              name: name, slot: current, runtimeID: runtimeID,
-              message: "MCP process exited (\(status))")
-          }
-        }
-        try process.run()
-        slot.process = process
-        slot.pipes = [stdin, stdout]
-        transport = StdioTransport(
-          input: FileDescriptor(rawValue: stdout.fileHandleForReading.fileDescriptor),
-          output: FileDescriptor(rawValue: stdin.fileHandleForWriting.fileDescriptor))
+        transport = try await stdioTransport(name: name, slot: slot, runtimeID: runtimeID)
       }
       let timeout = Task {
         do { try await Task.sleep(for: .seconds(30)) } catch { return }
@@ -203,6 +170,50 @@ final class MCPPlugins {
     }
   }
 
+  private func stdioTransport(name: String, slot: Slot, runtimeID: UUID) async throws
+    -> any Transport
+  {
+    let process = Process()
+    let stdin = Pipe()
+    let stdout = Pipe()
+    let command = try slot.configuration.requireString("command")
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = [command] + slot.configuration["args"].array.compactMap(\.string)
+    // launchd has a restricted PATH. Resolve the login shell's PATH
+    // once per process launch, while explicit server env wins last.
+    var environment = [
+      "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
+      "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+      "SHELL": ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
+    ]
+    if let path = try? await loginShellPath() { environment["PATH"] = path }
+    try Task.checkCancellation()
+    guard slots[name]?.id == slot.id else { throw CancellationError() }
+    for (key, value) in slot.configuration["env"].object ?? [:] {
+      if let value = value.string { environment[key] = value }
+    }
+    process.environment = environment
+    process.standardInput = stdin
+    process.standardOutput = stdout
+    process.standardError = FileHandle.standardError
+    let slotID = slot.id
+    process.terminationHandler = { [weak self] process in
+      let status = process.terminationStatus
+      Task { @MainActor in
+        guard let self, let current = self.slots[name], current.id == slotID else { return }
+        self.failed(
+          name: name, slot: current, runtimeID: runtimeID,
+          message: "MCP process exited (\(status))")
+      }
+    }
+    try process.run()
+    slot.process = process
+    slot.pipes = [stdin, stdout]
+    return StdioTransport(
+      input: FileDescriptor(rawValue: stdout.fileHandleForReading.fileDescriptor),
+      output: FileDescriptor(rawValue: stdin.fileHandleForWriting.fileDescriptor))
+  }
+
   private func listTools(_ client: Client) async throws -> [MCP.Tool] {
     var tools: [MCP.Tool] = []
     var cursor: String?
@@ -226,11 +237,7 @@ final class MCPPlugins {
     slot.runtimeID = UUID()
     slot.health?.cancel()
     slot.health = nil
-    slot.process?.terminationHandler = nil
-    if let process = slot.process, process.isRunning { process.terminate() }
-    slot.process = nil
-    let client = slot.client
-    Task { await client.disconnect() }
+    beginTeardown(slot)
     if let started = slot.startedAt, Date().timeIntervalSince(started) >= 60 { slot.attempts = 0 }
     slot.startedAt = nil
     slot.error = message
@@ -248,6 +255,8 @@ final class MCPPlugins {
       do { try await Task.sleep(for: .seconds(delay)) } catch { return }
       guard let self, self.slots[name]?.id == slot.id else { return }
       await slot.start?.value
+      await slot.teardown?.value
+      guard !Task.isCancelled, self.slots[name]?.id == slot.id else { return }
       slot.restart = nil
       slot.start = Task { await self.connect(name: name, slot: slot) }
     }
@@ -307,18 +316,51 @@ final class MCPPlugins {
     }
   }
 
+  @discardableResult
+  private func beginTeardown(_ slot: Slot) -> Task<Void, Never> {
+    let previous = slot.teardown
+    let process = slot.process
+    process?.terminationHandler = nil
+    slot.process = nil
+    let pipes = slot.pipes
+    slot.pipes = []
+    let client = slot.client
+    let teardown = Task {
+      await previous?.value
+      await client.disconnect()
+      for pipe in pipes {
+        pipe.fileHandleForWriting.closeFile()
+        pipe.fileHandleForReading.closeFile()
+      }
+      if let process { await ProcessTermination.stop(process) }
+    }
+    slot.teardown = teardown
+    return teardown
+  }
+
   private func stop(_ name: String) {
     guard let slot = slots.removeValue(forKey: name) else { return }
+    slot.runtimeID = UUID()
     slot.start?.cancel()
     slot.restart?.cancel()
     slot.health?.cancel()
-    slot.process?.terminationHandler = nil
-    if let process = slot.process, process.isRunning { process.terminate() }
-    let client = slot.client
-    Task { await client.disconnect() }
+    let teardown = beginTeardown(slot)
+    let retirement = Task { [weak self] in
+      await teardown.value
+      await slot.start?.value
+      await slot.restart?.value
+      await slot.health?.value
+      if self?.retirements[name]?.id == slot.id { self?.retirements.removeValue(forKey: name) }
+    }
+    retirements[name] = (slot.id, retirement)
   }
 
   func shutdown() { for name in Array(slots.keys) { stop(name) } }
+
+  func shutdownAndWait() async {
+    shutdown()
+    for retirement in retirements.values { await retirement.task.value }
+  }
 
   private func loginShellPath() async throws -> String? {
     let mark = UUID().uuidString

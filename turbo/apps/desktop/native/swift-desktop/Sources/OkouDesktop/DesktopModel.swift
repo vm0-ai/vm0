@@ -189,7 +189,7 @@ final class DesktopModel: ObservableObject {
 
   func signOut() async throws {
     await host.stop()
-    mcp.shutdown()
+    await mcp.shutdownAndWait()
     try await recorder.shutdown()
     try await auth.signOut()
     pluginsAvailable = false
@@ -268,7 +268,7 @@ final class DesktopModel: ObservableObject {
     featuresTask = nil
     areaSelector.cancel()
     try await recorder.shutdown()
-    mcp.shutdown()
+    await mcp.shutdownAndWait()
     await helper.stop()
     if keepAwakeActive {
       IOPMAssertionRelease(keepAwakeAssertion)

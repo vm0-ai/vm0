@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import DesktopCore
 import Foundation
 import Testing
@@ -30,8 +31,13 @@ import Testing
     let preferences = try DesktopPreferences(directory: directory)
     defer { try? FileManager.default.removeItem(at: directory) }
     let script = """
-      import json,os,sys
-      for line in sys.stdin:
+      import json,os,signal,sys
+      signal.signal(signal.SIGTERM,signal.SIG_IGN)
+      while True:
+          line=sys.stdin.readline()
+          if not line:
+              signal.pause()
+              continue
           request=json.loads(line)
           if 'id' not in request: continue
           method=request['method']
@@ -41,7 +47,7 @@ import Testing
               result={'tools':[{'name':name,'description':name,'inputSchema':{'type':'object'}} for name in ['echo','crash']]}
           elif method=='tools/call':
               if request['params']['name']=='crash': sys.exit(7)
-              result={'content':[{'type':'text','text':json.dumps({'message':request['params']['arguments']['message'],'env':os.environ.get('OKOU_TEST_VALUE'),'privateTokenInherited':'GH_TOKEN' in os.environ})}]}
+              result={'content':[{'type':'text','text':json.dumps({'message':request['params']['arguments']['message'],'env':os.environ.get('OKOU_TEST_VALUE'),'privateTokenInherited':'GH_TOKEN' in os.environ,'pid':os.getpid()})}]}
           else: result={}
           print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}),flush=True)
       """
@@ -84,6 +90,23 @@ import Testing
     #expect(plugins.capabilities.isEmpty)
     let disabled = await plugins.execute(command)
     #expect(disabled["error"]["code"].string == "feature_disabled")
+    let retired = try JSON.decode(Data(try recovered["result"].requireString("content").utf8))
+    let retiredPID = pid_t(try #require(retired["pid"].number))
+    plugins.setContext(available: true, online: true)
+    try await waitForState(plugins, "running")
+    #expect(kill(retiredPID, 0) == -1)
+    #expect(errno == ESRCH)
+    let restarted = await plugins.execute(command)
+    let current = try JSON.decode(Data(try restarted["result"].requireString("content").utf8))
+    let currentPID = pid_t(try #require(current["pid"].number))
+    #expect(currentPID != retiredPID)
+    await plugins.shutdownAndWait()
+    #expect(kill(currentPID, 0) == -1)
+    #expect(errno == ESRCH)
+    // Stop again before the newly scheduled connect task gets an actor turn.
+    plugins.setContext(available: true, online: true)
+    await plugins.shutdownAndWait()
+    #expect(plugins.capabilities.isEmpty)
   }
 
   @Test @MainActor func httpMcpAndWebKitTokenRefreshUseRealBoundaries() async throws {
