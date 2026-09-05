@@ -14,7 +14,12 @@ function chatThreadPinOrder(thread: PinnedThreadOrder): string {
   if (thread.pinnedAt === null) {
     throw new Error("Cannot rank an unpinned thread");
   }
-  const reverseTimestamp = 8640000000000000 - Date.parse(thread.pinnedAt);
+  // SQL snapshots omit the timezone suffix; those timestamps are still UTC.
+  // Normalize them before generating ranks so devices in different zones agree.
+  const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(thread.pinnedAt)
+    ? thread.pinnedAt
+    : `${thread.pinnedAt}Z`;
+  const reverseTimestamp = 8640000000000000 - Date.parse(timestamp);
   // A valid fractional key: fixed-width digits preserve timestamp order, and
   // the nonzero suffix leaves space on either side of every historical pin.
   return `a0${reverseTimestamp.toString().padStart(17, "0")}1`;

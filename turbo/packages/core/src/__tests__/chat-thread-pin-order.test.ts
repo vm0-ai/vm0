@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   comparePinnedThreads,
   firstChatThreadPinOrder,
@@ -36,6 +36,22 @@ function moved(
 }
 
 describe("pinned thread fractional ordering", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(["UTC", "Asia/Shanghai", "America/New_York"])(
+    "assigns the same legacy rank to event and SQL timestamps in %s",
+    (timezone) => {
+      vi.stubEnv("TZ", timezone);
+      const timestamp = "2026-09-01T00:00:00.000";
+      const snapshotPin = { ...pin("a"), pinnedAt: timestamp };
+      const eventPin = { ...pin("a"), pinnedAt: `${timestamp}Z` };
+      expect(firstChatThreadPinOrder([snapshotPin])).toBe(
+        firstChatThreadPinOrder([eventPin]),
+      );
+    },
+  );
   it("preserves historical pin time and ID order, and inserts new pins first", () => {
     const old = pin("old");
     const newer = { ...pin("newer"), pinnedAt: "2026-09-02T00:00:00.000Z" };
