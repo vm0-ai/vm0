@@ -94,7 +94,7 @@ extension NativeIntegrationTests {
       for line in sys.stdin:
           command=json.loads(line)
           kind=command['kind']
-          if kind=='hold': hold_identity=True
+          if kind=='hold': hold_identity=True;identity_started=False;release.clear()
           elif kind=='wait':
               with condition: condition.wait_for(lambda:identity_started,timeout=20)
           elif kind=='release': hold_identity=False;release.set()
@@ -191,5 +191,19 @@ extension NativeIntegrationTests {
     await #expect(throws: CancellationError.self) { try await oldFeatures.value }
     #expect(!desktop.pluginsAvailable && !desktop.recorder.available && !desktop.debugAvailable)
     #expect(try await auth.getToken(force: true) == nil)
+    try desktop.preferences.update { $0["nativeSignedOut"] = .bool(false) }
+    _ = try await server.request("hold")
+    let startup = Task { await desktop.launch(startHost: false) }
+    let starting = try await server.request("wait")
+    #expect(starting["identityStarted"].bool)
+    // A live callback may supersede restoration immediately after launch.
+    // The retired bootstrap must not show a cancellation banner or report it.
+    try await auth.selectOrganization()
+    _ = try await server.request("release")
+    await startup.value
+    #expect(desktop.error == nil)
+    try await desktop.refresh()
+    #expect(desktop.pluginsAvailable && desktop.recorder.available && desktop.debugAvailable)
+    try await desktop.shutdown()
   }
 }

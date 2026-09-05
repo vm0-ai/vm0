@@ -127,7 +127,7 @@ final class DesktopModel: ObservableObject {
       try applyKeepAwake()
       try await refresh()
       if startHost && ready { host.start() }
-    } catch { report(error) }
+    } catch is CancellationError {} catch { report(error) }
     permissionTask = Task { [weak self] in
       while !Task.isCancelled {
         do {
