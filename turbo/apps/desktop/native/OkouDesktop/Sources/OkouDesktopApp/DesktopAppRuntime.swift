@@ -29,7 +29,17 @@ final class DesktopAppRuntime {
     private(set) var autoStart: DesktopComputerUseAutoStartSupervisor!
     private(set) var developerTools: DesktopDeveloperToolsController!
     private(set) var automationPrompt: AutomationPermissionPrompt!
+    private(set) var screenRecorder: DesktopRecorderController!
     let snapshotStore = ComputerUseSnapshotStore()
+    let recorderUIState = RecorderUIState()
+    private var recorderWindows: DesktopRecorderWindows? = nil
+    private var pendingAreaAudio: DesktopRecorderAudioChoice? = nil
+    private var recordingPollTimer: Timer? = nil
+    private var stopRecordingHotKey: GlobalHotKey? = nil
+    private var lastLoggedRecorderError: DesktopRecorderError? = nil
+    private var deliverabilityCheck: (at: Double, task: Task<Bool, Error>)? = nil
+    static let deliverabilityCheckLifetimeMs: Double = 5 * 60 * 1000
+    static let screenRecordingPollIntervalSeconds: Double = 1
 
     private var tray: DesktopTrayController?
     private var mainWindow: DesktopMainWindowController?
@@ -110,9 +120,23 @@ final class DesktopAppRuntime {
                 return try await self.authSession.fetchWithSessionAuth(URL(string: apiBaseUrl + DesktopDeveloperToolsController.featureSwitchesPath)!)
             },
             setPluginsFeatureEnabled: { _ in },
-            setScreenRecordingFeatureEnabled: { _ in },
+            setScreenRecordingFeatureEnabled: { [weak self] enabled in self?.screenRecorder.setFeatureEnabled(enabled) },
             onChange: { [weak self] in self?.notifyDeveloperToolsChanged() },
             logRefreshError: { error in NSLog("Unable to refresh desktop developer tools state: \(error)") }
+        )
+        let recordingsDirectory = userDataDirectory.appendingPathComponent("recordings")
+        self.screenRecorder = DesktopRecorderController(
+            createBackend: {
+                RecorderHelperProcessClient(helperPath: NativeHelperProcessClient.resolveHelperPath(name: "screen-recorder-helper"))
+            },
+            createOutputPath: {
+                recordingsDirectory.appendingPathComponent("screen-recording-\(Int64(Date().timeIntervalSince1970 * 1000)).mp4").path
+            },
+            canDeliver: { [unowned self] in try await self.checkDeliverability() },
+            deliver: { [unowned self] recording in try await self.deliverRecording(recording) },
+            openReview: { [weak self] url in self?.openExternal(url) },
+            onChange: { [weak self] in self?.notifyScreenRecorderChanged() },
+            logError: { error in NSLog("Desktop screen recording teardown failed: \(error)") }
         )
         self.computerUseController = ComputerUseRuntimeController(
             createRuntime: { [unowned self] in self.createHostRuntime() },
@@ -587,7 +611,7 @@ final class DesktopAppRuntime {
     private func trayMenuState() -> DesktopTrayMenuState {
         DesktopTrayMenuState(
             brandName: config.identity.brandName, computerUse: computerUseState(), auth: trayAuthState,
-            authLoading: trayAuthLoading, authError: trayAuthError, recorder: nil
+            authLoading: trayAuthLoading, authError: trayAuthError, recorder: screenRecorder.state
         )
     }
 
@@ -619,11 +643,229 @@ final class DesktopAppRuntime {
             openAccessibilitySettings: { DesktopSystemSettings.open(.accessibility) },
             openScreenRecordingSettings: { DesktopSystemSettings.open(.screenRecording) },
             setKeepAwakeEnabled: { [weak self] enabled in self?.setKeepAwakeEnabled(enabled) },
-            startScreenRecording: {},
-            stopScreenRecording: {},
-            retryScreenRecordingDelivery: {},
+            startScreenRecording: trayAction("start screen recording") { [weak self] in self?.startScreenRecordingFromTray() },
+            stopScreenRecording: trayAction("stop screen recording") { [weak self] in await self?.stopScreenRecording() },
+            retryScreenRecordingDelivery: trayAction("retry screen recording delivery") { [weak self] in await self?.retryScreenRecordingDelivery() },
             quit: { [weak self] in self?.requestQuit() }
         )
+    }
+}
+
+// MARK: - Screen recorder
+
+extension DesktopAppRuntime: RecorderWindowBridge {
+    var uiState: RecorderUIState { recorderUIState }
+
+    private func windows() -> DesktopRecorderWindows {
+        if let recorderWindows { return recorderWindows }
+        let created = DesktopRecorderWindows(bridge: self)
+        recorderWindows = created
+        return created
+    }
+
+    /// Whether a finished recording could be handed back, memoized for five
+    /// minutes so Start does not pay for two API round trips.
+    private func checkDeliverability() async throws -> Bool {
+        let now = Date().timeIntervalSince1970 * 1000
+        if let check = deliverabilityCheck, now - check.at < Self.deliverabilityCheckLifetimeMs {
+            return try await check.task.value
+        }
+        let task = Task<Bool, Error> { @MainActor in
+            let auth = try await self.authSession.getAuthState()
+            return auth.isReady
+        }
+        deliverabilityCheck = (now, task)
+        do {
+            return try await task.value
+        } catch {
+            if deliverabilityCheck?.task == task {
+                deliverabilityCheck = nil
+            }
+            throw error
+        }
+    }
+
+    private func deliverRecording(_ recording: DesktopRecorderRecording) async throws -> DeliveredRecording {
+        let auth = try await authSession.getAuthState()
+        guard let user = auth.user else {
+            throw DesktopRecorderDeliveryError("Sign in to Okou to upload the recording")
+        }
+        let http = self.http
+        let delivery = RecorderDelivery(
+            apiBaseUrl: config.apiBaseUrl,
+            appUrl: config.platformUrl.absoluteString,
+            userId: user.userId,
+            fetchWithSessionAuth: { [unowned self] url, method, headers, body in
+                try await self.authSession.fetchWithSessionAuth(url, method: method, headers: headers, body: body)
+            },
+            fetchUpload: { request in try await http.send(request) }
+        )
+        return try await delivery.deliver(recording)
+    }
+
+    func startScreenRecordingFromTray() {
+        windows().showBar()
+        Task { _ = try? await self.checkDeliverability() }
+    }
+
+    func stopScreenRecording() async {
+        do {
+            try await screenRecorder.stop()
+        } catch {
+            NSLog("Desktop screen recording stop failed: \(error)")
+        }
+    }
+
+    func retryScreenRecordingDelivery() async {
+        do {
+            try await screenRecorder.retryDelivery()
+        } catch {
+            NSLog("Desktop screen recording retry failed: \(error)")
+        }
+    }
+
+    private func notifyScreenRecorderChanged() {
+        let state = screenRecorder.state
+        recorderUIState.state = state
+        tray?.refresh()
+        if let error = state.error, error != lastLoggedRecorderError {
+            NSLog("Desktop screen recording \(error.code.rawValue): \(error.message)")
+        }
+        lastLoggedRecorderError = state.error
+        let isCapturing = state.status == .recording || state.status == .paused
+        let showsController = isCapturing || state.status == .finalizing || state.status == .delivering
+        if !showsController {
+            recorderWindows?.hideController()
+        }
+        if isCapturing == (recordingPollTimer != nil) {
+            return
+        }
+        if isCapturing {
+            recordingPollTimer = Timer.scheduledTimer(withTimeInterval: Self.screenRecordingPollIntervalSeconds, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    do {
+                        try await self?.screenRecorder.refreshRecordingStatus()
+                    } catch {
+                        NSLog("Desktop screen recording status refresh failed: \(error)")
+                    }
+                }
+            }
+            stopRecordingHotKey = GlobalHotKey.stopRecording { [weak self] in
+                Task { @MainActor in await self?.stopScreenRecording() }
+            }
+            if stopRecordingHotKey == nil {
+                NSLog("Unable to register the screen recording stop shortcut")
+            }
+            return
+        }
+        recordingPollTimer?.invalidate()
+        recordingPollTimer = nil
+        stopRecordingHotKey?.unregister()
+        stopRecordingHotKey = nil
+    }
+
+    private func startRecorderCapture(_ request: DesktopRecorderPrepareRequest, captured: DesktopRecorderArea?) async throws {
+        let windows = self.windows()
+        let startedAt = Date()
+        try await screenRecorder.ensureScreenRecordingPermission()
+        try await screenRecorder.prepare(request)
+        try await screenRecorder.start()
+        windows.hideBar()
+        windows.showController(captured: captured)
+        NSLog("Desktop screen recording started in %d ms", Int(Date().timeIntervalSince(startedAt) * 1000))
+    }
+
+    func getCapabilities() async throws -> DesktopRecorderCapabilities {
+        try await screenRecorder.getCapabilities()
+    }
+
+    func startCapture(_ request: DesktopRecorderCaptureRequest) async throws {
+        let windows = self.windows()
+        let sourceId: String
+        let kind: DesktopRecorderCaptureKind
+        switch request.target {
+        case .display:
+            sourceId = windows.displaySourceId(windows.barDisplayId())
+            kind = .display
+        case let .window(id):
+            sourceId = id
+            kind = .window
+        }
+        try await startRecorderCapture(
+            DesktopRecorderPrepareRequest(sourceId: sourceId, sourceKind: kind, systemAudio: request.audio.systemAudio, microphone: request.audio.microphone, area: nil),
+            captured: nil
+        )
+    }
+
+    func beginAreaSelection(_ audio: DesktopRecorderAudioChoice) {
+        pendingAreaAudio = audio
+        windows().openAreaSelectors()
+    }
+
+    func completeAreaSelection(_ selection: DesktopRecorderAreaSelection?) {
+        let windows = self.windows()
+        let audio = pendingAreaAudio
+        pendingAreaAudio = nil
+        windows.closeAreaSelectors()
+        guard let selection, let audio else { return }
+        guard let display = windows.displayBounds(selection.displayId) else {
+            NSLog("The screen that region was drawn on is gone")
+            return
+        }
+        let area = RecorderOverlayGeometry.areaToGlobal(selection.area, display: display)
+        Task { @MainActor in
+            do {
+                try await self.startRecorderCapture(
+                    DesktopRecorderPrepareRequest(
+                        sourceId: windows.displaySourceId(selection.displayId), sourceKind: .area,
+                        systemAudio: audio.systemAudio, microphone: audio.microphone, area: area
+                    ),
+                    captured: area
+                )
+            } catch {
+                NSLog("Desktop screen recording start failed: \(error)")
+                windows.showBar()
+            }
+        }
+    }
+
+    func selectWindow() async -> DesktopRecorderWindowChoice? {
+        await windows().selectWindow()
+    }
+
+    func listWindowOptions() async throws -> [DesktopRecorderWindowOption] {
+        try await screenRecorder.ensureScreenRecordingPermission()
+        async let sources = screenRecorder.listSources()
+        async let previews = screenRecorder.listWindowPreviews()
+        return RecorderWindowOptions.build(sources: try await sources, previews: try await previews)
+    }
+
+    func completeWindowSelection(_ choice: DesktopRecorderWindowChoice?) {
+        windows().completeWindowSelection(choice)
+    }
+
+    func pause() async throws {
+        try await screenRecorder.pause()
+    }
+
+    func resume() async throws {
+        try await screenRecorder.resume()
+    }
+
+    func discard() async throws {
+        try await screenRecorder.discard()
+    }
+
+    func stop() async throws {
+        try await screenRecorder.stop()
+    }
+
+    func cancel() {
+        windows().hideBar()
+    }
+
+    func openScreenRecordingSettings() {
+        DesktopSystemSettings.open(.screenRecording)
     }
 }
 
