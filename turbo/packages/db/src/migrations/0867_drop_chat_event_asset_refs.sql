@@ -1,1 +1,0 @@
-DROP TABLE "chat_event_asset_refs";

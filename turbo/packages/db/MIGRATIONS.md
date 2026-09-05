@@ -32,60 +32,57 @@ expired transition validator must be deleted.
 
 ### Active transition validators
 
-The repository inventory below is machine-checked. The removal owner must
-delete the workflow, probe, focused validator, and this entry together.
-
-| Issue                             | Validator                                                   | Removal owner   |
-| --------------------------------- | ----------------------------------------------------------- | --------------- |
-| #27613 / #27656 / #27671 / #27792 | Agent/Compose consolidation production preflight            | #26938 Stage 8  |
-| #27896                            | Legacy execution-plan preflight classifier                  | #26938 Stage 8  |
-| #27997                            | Framework-fallback preflight partition                      | #26938 Stage 8  |
-| #28056                            | Historical product-builder preflight fixture and classifier | #26938 Stage 8  |
-| #28056                            | Historical product-builder preflight partition              | #26938 Stage 8  |
-| #28070                            | Historical builder v6 authority-lineage partition           | #26938 Stage 8  |
-| #28080                            | Checkpoint configuration-independence manifest              | #26938 Stage 8  |
-| #28080                            | Checkpoint v7 protected partition                           | #26938 Stage 8  |
-| #28304                            | Usage-pack pending snapshot dirty upgrade                   | #28372          |
-| #28795                            | Official Slack installation Okou brand finalization         | #28937          |
-| #29378 / #29429                   | Agent Draft relation compatibility and physical switch      | #28368 Phase D3 |
-| #29910                            | Built-in provider writer/backfill and rollback bridge       | #28368          |
-| #30162                            | Built-in model restriction entitlement expand/mirror bridge | #28368          |
-| #30379                            | Acquisition first-party source expand/mirror bridge         | #28368 Phase D4 |
-
-<!-- vm0-transition-validator:#27613+#27656+#27671+#27792|agent-compose-consolidation-preflight|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#27896|legacy-execution-plan-preflight-classifier|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#27997|framework-fallback-preflight-partition|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#28056|historical-product-builder-preflight-fixture-and-classifier|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#28056|historical-product-builder-preflight-partition|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#28070|historical-product-builder-v6-authority-lineage-partition|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#28080|checkpoint-configuration-independence-runtime-manifest|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#28080|checkpoint-v7-protected-partition|removal-owner:#26938-stage-8 -->
-<!-- vm0-transition-validator:#28304|usage-pack-pending-snapshot-dirty-upgrade|removal-owner:#28372 -->
-<!-- vm0-transition-validator:#28795|official-slack-installation-okou-brand-finalization|removal-owner:#28937 -->
-<!-- vm0-transition-validator:#29378+#29429|agent-draft-relation-compatibility-and-physical-switch|removal-owner:#28368-phase-d3 -->
-<!-- vm0-transition-validator:#29910|built-in-provider-writer-backfill-and-rollback-bridge|removal-owner:#28368 -->
-<!-- vm0-transition-validator:#30162|built-in-model-restriction-entitlement-expand-mirror-bridge|removal-owner:#28368 -->
-<!-- vm0-transition-validator:#30379|acquisition-first-party-source-expand-mirror-bridge|removal-owner:#28368-phase-d4 -->
-<!-- vm0-transition-validator:#30453|chat-search-old-api-delete-compatibility-bridge|removal-owner:#30468 -->
+There are currently no active transition validators.
 
 ## Migration patterns
 
-[`0811_clear_non_goal_run_groups.sql`](./src/migrations/0811_clear_non_goal_run_groups.sql)
-and
-[`1034_org_metadata_acquisition_first_party_source_backfill.sql`](./src/migrations/1034_org_metadata_acquisition_first_party_source_backfill.sql)
-are the surviving examples of online backfill migrations. They demonstrate:
+The following patterns no longer have a surviving migration example, so keep
+the complete SQL here.
 
-- the `-- vm0:non-transactional` marker;
-- batching with `FOR UPDATE ... SKIP LOCKED` and explicit `COMMIT`, without
-  taking a `LOCK TABLE`.
+### Run a batched backfill without blocking writers
 
-Migration 0811 narrowly relaxes the append-only trigger function and restores
-its original body byte-for-byte in the same migration. Migration 1034 keeps its
-accepted mirror bridge byte-identical, fails closed on catalog or data drift,
-and proves exact post-backfill parity.
+Use the non-transactional marker so the procedure can commit each batch. Lock
+only the selected rows, skip rows held by concurrent writers, and never take a
+table lock. If the backfill temporarily relaxes a trigger function, restore its
+accepted body byte-for-byte before the migration completes.
 
-The following patterns no longer have a surviving migration example, so keep the
-complete SQL here.
+```sql
+-- vm0:non-transactional
+SET lock_timeout = '1s';
+--> statement-breakpoint
+SET statement_timeout = '10s';
+--> statement-breakpoint
+CREATE OR REPLACE PROCEDURE "backfill_example"()
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  affected_rows integer;
+BEGIN
+  LOOP
+    WITH "batch" AS (
+      SELECT "id"
+      FROM "example_table"
+      WHERE "canonical_value" IS NULL
+      ORDER BY "id"
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    )
+    UPDATE "example_table" AS "target"
+    SET "canonical_value" = "target"."legacy_value"
+    FROM "batch"
+    WHERE "target"."id" = "batch"."id";
+
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    COMMIT;
+    EXIT WHEN affected_rows = 0;
+  END LOOP;
+END;
+$$;
+--> statement-breakpoint
+CALL "backfill_example"();
+--> statement-breakpoint
+DROP PROCEDURE "backfill_example"();
+```
 
 ### Add and validate a constraint online
 

@@ -1,1 +1,0 @@
-ALTER TABLE "org_members_metadata" ADD COLUMN "morning_brief_default_eligible_at" timestamp;
