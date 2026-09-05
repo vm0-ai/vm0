@@ -1977,8 +1977,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Quelle ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen.",
-        "uploadFailed": "Die Quelle konnte nicht hochgeladen werden. Sie ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen."
+        "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Anfrage ist noch hier. Du kannst es erneut versuchen.",
+        "uploadFailed": "Eine oder mehrere Dateien konnten nicht hochgeladen werden. Entferne sie oder versuche es erneut."
       },
       "footer": {
         "cancel": "Cancel",

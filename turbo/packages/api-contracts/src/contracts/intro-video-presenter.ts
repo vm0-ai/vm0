@@ -180,6 +180,7 @@ export const introVideoPresenterContract = c.router({
     query: introVideoAvatarsQuerySchema,
     responses: {
       200: introVideoAvatarsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       502: apiErrorSchema,
@@ -194,6 +195,7 @@ export const introVideoPresenterContract = c.router({
     query: introVideoStylesQuerySchema,
     responses: {
       200: introVideoStylesResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       502: apiErrorSchema,

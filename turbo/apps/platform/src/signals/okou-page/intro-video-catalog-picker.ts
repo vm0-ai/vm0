@@ -29,12 +29,19 @@ type CatalogLoader<T> = (
 function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
   const internalPages$ = state<readonly CatalogPage<T>[]>([]);
   const internalRequestedTokens$ = state<readonly string[]>([]);
-  const internalLoadingMore$ = state(false);
-  const internalLoadMoreError$ = state(false);
   const internalGeneration$ = state(0);
 
   const firstPage$ = computed((get) => {
+    get(internalGeneration$);
     return get(loadPage$)(undefined);
+  });
+
+  const reload$ = command(({ set }) => {
+    set(internalPages$, []);
+    set(internalRequestedTokens$, []);
+    set(internalGeneration$, (generation) => {
+      return generation + 1;
+    });
   });
 
   const catalogPage$ = computed(
@@ -74,15 +81,11 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
       set(internalRequestedTokens$, (tokens) => {
         return [...tokens, token];
       });
-      set(internalLoadingMore$, true);
-      set(internalLoadMoreError$, false);
       const loadPage = get(loadPage$);
       const next = await onRejection(loadPage(token, signal), () => {
         if (get(internalGeneration$) !== generation) {
           return;
         }
-        set(internalLoadingMore$, false);
-        set(internalLoadMoreError$, true);
         set(internalRequestedTokens$, (tokens) => {
           return tokens.filter((candidate) => {
             return candidate !== token;
@@ -96,7 +99,8 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
       set(internalPages$, (pages) => {
         return [...pages, next];
       });
-      set(internalLoadingMore$, false);
+      await get(catalogPage$);
+      signal.throwIfAborted();
     },
   );
 
@@ -105,13 +109,8 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
     generation$: computed((get) => {
       return get(internalGeneration$);
     }),
-    loadingMore$: computed((get) => {
-      return get(internalLoadingMore$);
-    }),
-    loadMoreError$: computed((get) => {
-      return get(internalLoadMoreError$);
-    }),
     loadMore$,
+    reload$,
   };
 }
 

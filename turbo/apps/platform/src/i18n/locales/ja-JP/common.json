@@ -1974,8 +1974,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
-        "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
+        "sendFailed": "チャットスレッドを作成できませんでした。リクエストはこの画面に残っているので、もう一度お試しください。",
+        "uploadFailed": "一部のファイルをアップロードできませんでした。削除するか、もう一度お試しください。"
       },
       "footer": {
         "cancel": "Cancel",

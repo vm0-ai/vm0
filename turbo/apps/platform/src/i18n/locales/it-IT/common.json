@@ -2009,8 +2009,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "Impossibile creare la chat. La fonte è ancora salvata in locale ed è stata scaricata come backup.",
-        "uploadFailed": "Impossibile caricare la fonte. È ancora salvata in locale ed è stata scaricata come backup."
+        "sendFailed": "Impossibile creare la chat. La tua richiesta è ancora qui, puoi riprovare.",
+        "uploadFailed": "Impossibile caricare uno o più file. Rimuovili o riprova."
       },
       "footer": {
         "cancel": "Cancel",

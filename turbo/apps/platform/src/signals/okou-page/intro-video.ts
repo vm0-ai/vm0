@@ -274,6 +274,17 @@ function createResetDraftCommand(internal: IntroVideoInternalState) {
   });
 }
 
+function createCloseWizardCommand(
+  internal: IntroVideoInternalState,
+  resetDraft$: Command<void, []>,
+) {
+  return command(({ get, set }): void => {
+    if (!get(internal.busy$)) {
+      set(resetDraft$);
+    }
+  });
+}
+
 function createCommands(
   internal: IntroVideoInternalState,
   resetDraft$: Command<void, []>,
@@ -289,23 +300,22 @@ function createCommands(
     set(internal.error$, null);
     set(internal.open$, true);
   });
-  const closeWizard$ = command(({ set }): void => {
-    set(resetDraft$);
-  });
   const setPicker$ = command(
     ({ set }, picker: IntroVideoPicker | null): void => {
       set(internal.picker$, picker);
     },
   );
-  const addSourceFiles$ = command(({ set }, files: readonly File[]): void => {
-    if (files.length === 0) {
-      return;
-    }
-    set(internal.sources$, (sources) => {
-      return [...sources, ...files.map(localSource)];
-    });
-    set(internal.error$, null);
-  });
+  const addSourceFiles$ = command(
+    ({ get, set }, files: readonly File[]): void => {
+      if (get(internal.busy$) || files.length === 0) {
+        return;
+      }
+      set(internal.sources$, (sources) => {
+        return [...sources, ...files.map(localSource)];
+      });
+      set(internal.error$, null);
+    },
+  );
   const removeSource$ = command(
     async (
       { get, set },
@@ -381,7 +391,7 @@ function createCommands(
   return {
     addSourceFiles$,
     adoptUploadedRecording$,
-    closeWizard$,
+    closeWizard$: createCloseWizardCommand(internal, resetDraft$),
     openWizard$,
     removeSource$,
     setAvatar$: command(({ set }, avatar: IntroVideoAvatarSelection): void => {
@@ -400,11 +410,8 @@ function createCommands(
   };
 }
 
-function createSubmissionCommand(
-  internal: IntroVideoInternalState,
-  resetDraft$: Command<void, []>,
-) {
-  const uploadSources$ = command(
+function createUploadSourcesCommand(internal: IntroVideoInternalState) {
+  return command(
     async (
       { get, set },
       composer: ComposerSignals,
@@ -444,6 +451,13 @@ function createSubmissionCommand(
       return true;
     },
   );
+}
+
+function createSubmissionCommand(
+  internal: IntroVideoInternalState,
+  resetDraft$: Command<void, []>,
+) {
+  const uploadSources$ = createUploadSourcesCommand(internal);
   const submitComposer$ = command(
     async (
       { get, set },
@@ -463,7 +477,10 @@ function createSubmissionCommand(
     ): Promise<boolean> => {
       const sources = get(internal.sources$);
       const instructions = get(internal.instructions$);
-      if (sources.length === 0 && !instructions.trim()) {
+      if (
+        get(internal.busy$) ||
+        (sources.length === 0 && !instructions.trim())
+      ) {
         return false;
       }
       set(internal.busy$, true);

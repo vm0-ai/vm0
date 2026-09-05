@@ -1974,8 +1974,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
-        "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
+        "sendFailed": "Utas chat tidak dapat dibuat. Permintaan Anda masih ada di sini agar Anda dapat mencoba lagi.",
+        "uploadFailed": "Satu atau beberapa file tidak dapat diunggah. Hapus file tersebut atau coba lagi."
       },
       "footer": {
         "cancel": "Cancel",

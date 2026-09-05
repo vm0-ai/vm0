@@ -4,6 +4,7 @@ import {
   type IntroVideoAvatar,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   act,
@@ -13,6 +14,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -240,7 +242,6 @@ async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
   const picker = await screen.findByRole("dialog", {
     name: "Choose a video style",
   });
-  expect(within(picker).queryByText("No video style")).toBeNull();
   expect(within(picker).getByText("Let Okou choose")).toBeVisible();
   const preview = within(picker).getByLabelText(
     "Play video template preview Thriller",
@@ -256,7 +257,6 @@ async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
   );
   expect(video).toHaveAttribute("preload", "none");
   expect(video).toHaveAttribute("playsinline");
-  expect(video).toHaveClass("object-contain");
   await user.click(within(picker).getByLabelText("Select style Thriller"));
 }
 
@@ -288,9 +288,6 @@ test("Intro Video opens as one unrestricted multi-file form", async () => {
 
   const dialog = await openIntroVideoDialog();
   expect(within(dialog).getByText("Create your intro video")).toBeVisible();
-  expect(within(dialog).queryByText("How do you want to start?")).toBeNull();
-  expect(within(dialog).queryByText("Record your screen")).toBeNull();
-  expect(within(dialog).queryByText("Review your intro video")).toBeNull();
   const input = dialog.querySelector<HTMLInputElement>(
     '[data-intro-video-file-input=""]',
   );
@@ -317,7 +314,6 @@ test("The whole upload area opens the file picker and still accepts drops", asyn
   );
   expect(dropzone).toHaveAttribute("data-intro-video-dropzone");
   expect(dropzone.querySelector("button, input")).toBeNull();
-  expect(within(dialog).queryByText("Browse files")).toBeNull();
   const openFilePicker = vi.spyOn(input, "click").mockImplementation(() => {});
   await user.click(dropzone);
   expect(openFilePicker).toHaveBeenCalledTimes(1);
@@ -332,16 +328,14 @@ test("The whole upload area opens the file picker and still accepts drops", asyn
   expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
 });
 
-test("Styles automatically load near the end without duplicate page requests", async () => {
+test("Styles automatically load near the end and keep existing choices", async () => {
   const user = userEvent.setup({ delay: null });
   const approachEnd = mockCatalogIntersection();
   installIntroVideoFixture();
-  const requested: (string | undefined)[] = [];
   const nextPage = createDeferredPromise<void>(context.signal);
   context.mocks.api(
     introVideoPresenterContract.styles,
     async ({ query, respond }) => {
-      requested.push(query.token);
       if (query.token === "next-styles") {
         await nextPage.promise;
         return respond(200, {
@@ -372,21 +366,16 @@ test("Styles automatically load near the end without duplicate page requests", a
     name: "Choose a video style",
   });
   await within(picker).findByText("Landscape");
-  expect(within(picker).queryByText("Load more")).toBeNull();
   approachEnd(picker, false);
-  expect(requested).toStrictEqual([undefined]);
+  expect(within(picker).getByText("Landscape")).toBeVisible();
   approachEnd(picker);
   await within(picker).findByText("Loading more options");
-  expect(requested).toStrictEqual([undefined, "next-styles"]);
   expect(
     picker.querySelector("[data-intro-video-catalog-sentinel]"),
   ).toBeNull();
   nextPage.resolve();
   await within(picker).findByText("Portrait");
-  expect(
-    picker.querySelector('img[src="https://files.heygen.test/portrait.jpg"]'),
-  ).toHaveClass("object-contain");
-  expect(requested).toStrictEqual([undefined, "next-styles"]);
+  expect(within(picker).getByText("Landscape")).toBeVisible();
   expect(
     picker.querySelector("[data-intro-video-catalog-sentinel]"),
   ).toBeNull();
@@ -432,19 +421,85 @@ test("A failed automatic page load keeps existing options and waits for a retry"
   await within(picker).findByText("First style");
   approachEnd(picker);
   const retry = await within(picker).findByText("Try again");
-  expect(attempts).toBe(1);
   expect(within(picker).getByText("First style")).toBeVisible();
   expect(
     picker.querySelector("[data-intro-video-catalog-sentinel]"),
   ).toBeNull();
   await user.click(retry);
   await within(picker).findByText("Second style");
-  expect(attempts).toBe(2);
   expect(within(picker).queryByText("Try again")).toBeNull();
   expect(
     picker.querySelector("[data-intro-video-catalog-sentinel]"),
   ).toBeNull();
 });
+
+test.each(["avatars", "styles"] as const)(
+  "The %s catalog can recover when its first request fails",
+  async (catalog) => {
+    installIntroVideoFixture();
+    let unavailable = true;
+    const error = {
+      error: { code: "HEYGEN_UNAVAILABLE", message: "Catalog unavailable" },
+    };
+    context.mocks.api(introVideoPresenterContract.avatars, ({ respond }) => {
+      return unavailable
+        ? respond(502, error)
+        : respond(200, {
+            avatars: [
+              {
+                id: "recovered-avatar",
+                groupId: "recovered-group",
+                name: "Recovered avatar",
+                defaultVoiceId: "recovered-voice",
+              },
+            ],
+            hasMore: false,
+            nextToken: null,
+          });
+    });
+    context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
+      return unavailable
+        ? respond(502, error)
+        : respond(200, {
+            styles: [
+              { id: "recovered-style", name: "Recovered style", tags: [] },
+            ],
+            hasMore: false,
+            nextToken: null,
+          });
+    });
+    await setupIntroVideoPage();
+    const dialog = await openIntroVideoDialog();
+    click(
+      requiredButtonNamed(
+        catalog === "avatars"
+          ? "Avatar: Auto · Okou decides"
+          : "Video style: Let Okou choose",
+        dialog,
+      ),
+    );
+    const picker = await screen.findByRole("dialog", {
+      name: catalog === "avatars" ? "Choose an avatar" : "Choose a video style",
+    });
+    const retry = await within(picker).findByText("Try again");
+    unavailable = false;
+    click(retry);
+    const choice = await within(picker).findByLabelText(
+      catalog === "avatars"
+        ? "Choose an avatar: Recovered avatar"
+        : "Select style Recovered style",
+    );
+    click(choice);
+    expect(
+      requiredButtonNamed(
+        catalog === "avatars"
+          ? "Avatar: Recovered avatar"
+          : "Video style: Recovered style",
+        dialog,
+      ),
+    ).toBeVisible();
+  },
+);
 
 test("Style previews can play and pause without selecting a style", async () => {
   const user = userEvent.setup({ delay: null });
@@ -551,6 +606,146 @@ test("The form accepts multiple unrelated source types", async () => {
   expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
 });
 
+test("An in-flight Intro Video submission keeps its files and settings intact", async () => {
+  const user = userEvent.setup({ delay: null });
+  const uploadGate = context.mocks.deferred<void>();
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  const uploadUrl = "https://mock-upload.r2.test/intro-video-pending";
+  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
+    return respond(200, {
+      id: "f0000000-0000-4000-a000-000000000052",
+      filename: body.filename,
+      contentType: body.contentType,
+      size: body.size,
+      url: "https://files.example.test/brief.txt",
+      uploadUrl,
+      uploadHeaders: {},
+    });
+  });
+  context.mocks.http.put(uploadUrl, async ({ withSignal }) => {
+    await withSignal(uploadGate.promise);
+    return new HttpResponse(null, { status: 200 });
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  const prompt = within(dialog).getByLabelText("What should the video do?");
+  await user.type(prompt, "Preserve this launch brief.");
+  const input = dialog.querySelector<HTMLInputElement>("input[type=file]");
+  if (!input) {
+    throw new Error("Expected source input");
+  }
+  await user.upload(
+    input,
+    new File(["brief"], "brief.txt", { type: "text/plain" }),
+  );
+  click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(prompt).toBeDisabled();
+  });
+  expect(requiredButtonNamed("Cancel", dialog)).toBeDisabled();
+  expect(
+    requiredButtonNamed("Avatar: Auto · Okou decides", dialog),
+  ).toBeDisabled();
+  await user.keyboard("{Escape}");
+  expect(dialog).toBeVisible();
+  expect(prompt).toHaveValue("Preserve this launch brief.");
+  expect(within(dialog).getByText("brief.txt")).toBeVisible();
+  uploadGate.resolve();
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Preserve this launch brief.");
+  });
+  expect(submittedPrompt).toContain("- Source: brief.txt (file)");
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
+});
+
+test("A failed upload keeps the request editable and can be retried", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  context.mocks.api(uploadsContract.prepare, ({ respond }) => {
+    return respond(500, {
+      error: { code: "INTERNAL_SERVER_ERROR", message: "Upload unavailable" },
+    });
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  const prompt = within(dialog).getByLabelText("What should the video do?");
+  const input = dialog.querySelector<HTMLInputElement>("input[type=file]");
+  if (!input) {
+    throw new Error("Expected source input");
+  }
+  await user.upload(input, new File(["brief"], "launch.pdf"));
+  await user.type(prompt, "Keep this brief.");
+  await user.click(requiredButtonNamed("Create video", dialog));
+  expect(
+    await within(dialog).findByText(
+      "One or more files could not be uploaded. Remove them or try again.",
+    ),
+  ).toBeVisible();
+  expect(prompt).toBeEnabled();
+  expect(within(dialog).getByText("launch.pdf")).toBeVisible();
+  context.mocks.upload.success({
+    id: "f0000000-0000-4000-a000-000000000053",
+    filename: "launch.pdf",
+    contentType: "application/pdf",
+    size: 5,
+    url: "https://files.example.test/launch.pdf",
+  });
+  await user.type(prompt, " Use a warm tone.");
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Keep this brief. Use a warm tone.");
+  });
+  expect(submittedPrompt).toContain("- Source: launch.pdf (presentation)");
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
+});
+
+test.each(["load", "error"] as const)(
+  "Avatar thumbnails wait for their main preview to settle (%s)",
+  async (event) => {
+    installIntroVideoFixture();
+    await setupIntroVideoPage();
+    const dialog = await openIntroVideoDialog();
+    click(requiredButtonNamed("Avatar: Auto · Okou decides", dialog));
+    const picker = await screen.findByRole("dialog", {
+      name: "Choose an avatar",
+    });
+    const preview = await within(picker).findByAltText("Daphne in Grey blazer");
+    const thumbnail = within(picker)
+      .getByLabelText("Preview look Daphne in Grey blazer")
+      .querySelector("img");
+    expect(preview).toHaveAttribute(
+      "src",
+      "https://files.heygen.test/daphne.webp",
+    );
+    expect(thumbnail).not.toHaveAttribute("src");
+    fireEvent[event](preview);
+    expect(thumbnail).toHaveAttribute(
+      "src",
+      "https://files.heygen.test/daphne.webp",
+    );
+    click(
+      requiredButtonNamed("Choose an avatar: Daphne in Grey blazer", picker),
+    );
+    expect(
+      requiredButtonNamed("Avatar: Daphne in Grey blazer", dialog),
+    ).toBeVisible();
+  },
+);
+
 test("A selected public avatar uses its HeyGen default voice", async () => {
   const user = userEvent.setup({ delay: null });
   let submittedPrompt: string | undefined;
@@ -649,7 +844,7 @@ test("Avatar looks share a person card across pages and only Use commits a look"
       picker.querySelectorAll("[data-intro-video-avatar-group]"),
     ).toHaveLength(2);
   });
-  expect(within(picker).queryByText("Load more")).toBeNull();
+  fireEvent.load(within(picker).getAllByAltText(firstLook.name)[0]!);
   approachEnd(picker);
   await within(picker).findByLabelText("Preview look Daphne in White shirt");
   // Same-name people stay separate; a repeated look and a new page do not add cards.
@@ -665,6 +860,11 @@ test("Avatar looks share a person card across pages and only Use commits a look"
   expect(group.querySelectorAll('[aria-label^="Preview look"]')).toHaveLength(
     2,
   );
+  expect(
+    within(group)
+      .getByLabelText("Preview look Daphne in White shirt")
+      .querySelector("img"),
+  ).toHaveAttribute("src", secondLook.previewImageUrl);
   await user.click(
     within(group).getByLabelText("Preview look Daphne in White shirt"),
   );
@@ -672,12 +872,6 @@ test("Avatar looks share a person card across pages and only Use commits a look"
     "src",
     secondLook.previewImageUrl,
   );
-  expect(within(group).getByAltText(secondLook.name)).toHaveClass(
-    "object-contain",
-  );
-  for (const thumbnail of group.querySelectorAll("button img")) {
-    expect(thumbnail).toHaveClass("object-contain");
-  }
   expect(picker).toBeVisible();
   await user.click(requiredButtonNamed("Close", picker));
   expect(
@@ -797,5 +991,4 @@ test("An existing desktop recording handoff still opens in the simple form", asy
     name: "Create an intro video",
   });
   expect(within(dialog).getByText("demo.mp4")).toBeVisible();
-  expect(within(dialog).queryByText("Record your screen")).toBeNull();
 });

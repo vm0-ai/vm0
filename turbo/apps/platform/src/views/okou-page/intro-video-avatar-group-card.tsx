@@ -8,6 +8,10 @@ import {
   introVideoAvatarGroupSignals,
   type IntroVideoAvatarGroup,
 } from "../../signals/okou-page/intro-video-avatar-groups.ts";
+import {
+  setIntroVideoAvatarThumbnailRef$,
+  settleIntroVideoAvatarPreview$,
+} from "../../signals/okou-page/intro-video-avatar-media.ts";
 
 function LookThumbnails({
   group,
@@ -18,6 +22,7 @@ function LookThumbnails({
 }) {
   const { t } = useTranslation();
   const previewLook = useSet(introVideoAvatarGroupSignals.previewLook$);
+  const setThumbnailRef = useSet(setIntroVideoAvatarThumbnailRef$);
   return (
     <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain p-2.5 sm:p-3">
       {group.looks.map((look) => {
@@ -45,10 +50,13 @@ function LookThumbnails({
           >
             {look.previewImageUrl ? (
               <img
-                src={look.previewImageUrl}
+                ref={setThumbnailRef}
+                data-src={look.previewImageUrl}
+                data-intro-video-avatar-thumbnail=""
                 alt=""
                 loading="lazy"
                 decoding="async"
+                fetchPriority="low"
                 className="h-full w-full object-contain"
               />
             ) : (
@@ -71,6 +79,7 @@ export function IntroVideoAvatarGroupCard({
   readonly onSelect: (avatar: IntroVideoAvatar) => void;
 }) {
   const { t } = useTranslation();
+  const settlePreview = useSet(settleIntroVideoAvatarPreview$);
   const previews = useGet(introVideoAvatarGroupSignals.previewLookIds$);
   const selectedLook = selected?.groupId === group.id ? selected : undefined;
   const avatar =
@@ -97,11 +106,20 @@ export function IntroVideoAvatarGroupCard({
       <div className="aspect-[4/3] overflow-hidden bg-muted">
         {avatar.previewImageUrl ? (
           <img
+            key={avatar.id}
             src={avatar.previewImageUrl}
+            data-intro-video-avatar-preview=""
             alt={avatar.name}
             loading="lazy"
             decoding="async"
+            fetchPriority="high"
             className="h-full w-full object-contain"
+            onLoad={(event) => {
+              settlePreview(event.currentTarget);
+            }}
+            onError={(event) => {
+              settlePreview(event.currentTarget);
+            }}
           />
         ) : (
           <span className="grid h-full place-items-center text-muted-foreground">

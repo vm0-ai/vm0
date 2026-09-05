@@ -2009,8 +2009,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "No se pudo crear el hilo de chat. La fuente sigue guardada localmente y se ha descargado como copia de seguridad.",
-        "uploadFailed": "No se pudo subir la fuente. Sigue guardada localmente y se ha descargado como copia de seguridad."
+        "sendFailed": "No se pudo crear el hilo de chat. Tu solicitud sigue aquí para que puedas volver a intentarlo.",
+        "uploadFailed": "No se pudieron subir uno o varios archivos. Elimínalos o vuelve a intentarlo."
       },
       "footer": {
         "cancel": "Cancel",

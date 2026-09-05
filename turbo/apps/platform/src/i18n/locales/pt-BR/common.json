@@ -2009,8 +2009,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "Não foi possível criar a conversa. Sua fonte continua salva localmente e foi baixada como backup.",
-        "uploadFailed": "Não foi possível enviar a fonte. Ela continua salva localmente e foi baixada como backup."
+        "sendFailed": "Não foi possível criar a conversa. Sua solicitação continua aqui para você tentar novamente.",
+        "uploadFailed": "Não foi possível enviar um ou mais arquivos. Remova-os ou tente novamente."
       },
       "footer": {
         "cancel": "Cancel",

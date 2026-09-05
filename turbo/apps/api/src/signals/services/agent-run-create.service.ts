@@ -1372,10 +1372,11 @@ function buildInjectedSkillVolumes(
       "system_skill",
     ) ?? []),
     ...(args.introVideoEnabled
-      ? (prepareAdditionalVolumesWithSource(
-          buildLegacySystemSkillVolumes([INTRO_VIDEO_SKILL_NAME], skillsRoot),
-          "system_skill",
-        ) ?? [])
+      ? buildLegacySystemSkillVolumes([INTRO_VIDEO_SKILL_NAME], skillsRoot).map(
+          (volume) => {
+            return { volume, source: "system_skill" as const };
+          },
+        )
       : []),
     ...(args.connectorCatalogSelection.kind === "scoped"
       ? buildConnectorSkillVolumes(

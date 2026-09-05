@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 
 import { delay } from "signal-timers";
+import {
+  introVideoAvatarSchema,
+  introVideoStyleSchema,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 
 import { logger } from "../../lib/log";
 import { redactPresignedUrls } from "../../lib/presigned-url-redaction";
@@ -402,7 +406,7 @@ function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
   const preferredOrientation = parseHeyGenOrientation(
     value.preferred_orientation,
   );
-  return {
+  const parsed = introVideoAvatarSchema.safeParse({
     id,
     groupId,
     name,
@@ -413,7 +417,8 @@ function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
     ...(imageWidth ? { imageWidth } : {}),
     ...(imageHeight ? { imageHeight } : {}),
     ...(preferredOrientation ? { preferredOrientation } : {}),
-  };
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 function parseHeyGenStyle(value: unknown): HeyGenPublicStyle | null {
@@ -440,14 +445,15 @@ function parseHeyGenStyle(value: unknown): HeyGenPublicStyle | null {
     rawAspectRatio === "1:1"
       ? rawAspectRatio
       : undefined;
-  return {
+  const parsed = introVideoStyleSchema.safeParse({
     id,
     name,
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
     ...(previewVideoUrl ? { previewVideoUrl } : {}),
     tags,
     ...(aspectRatio ? { aspectRatio } : {}),
-  };
+  });
+  return parsed.success ? parsed.data : null;
 }
 
 function parseHeyGenPage(value: unknown):

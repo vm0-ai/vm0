@@ -33,6 +33,7 @@ import {
   cn,
 } from "@okouai/ui";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -376,6 +377,26 @@ function CatalogMessage({ children }: { readonly children: ReactNode }) {
   );
 }
 
+function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <CatalogMessage>
+      <div className="flex flex-col items-center gap-3" role="status">
+        <span>
+          {t(($) => {
+            return $.chat.introVideo.catalog.error;
+          })}
+        </span>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          {t(($) => {
+            return $.chat.introVideo.catalog.retry;
+          })}
+        </Button>
+      </div>
+    </CatalogMessage>
+  );
+}
+
 function stylePreviewElement(video: HTMLVideoElement): HTMLElement | null {
   return video.closest<HTMLElement>("[data-intro-video-style-preview]");
 }
@@ -580,9 +601,10 @@ function StylePicker() {
     introVideoStylePickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoStylePickerSignals.generation$);
-  const loadMore = useSet(introVideoStylePickerSignals.loadMore$);
-  const loadingMore = useGet(introVideoStylePickerSignals.loadingMore$);
-  const loadMoreError = useGet(introVideoStylePickerSignals.loadMoreError$);
+  const [loadMoreState, loadMore] = useLoadableSet(
+    introVideoStylePickerSignals.loadMore$,
+  );
+  const reload = useSet(introVideoStylePickerSignals.reload$);
   const pageSignal = useGet(pageSignal$);
   const visible =
     catalog.state === "hasData"
@@ -612,11 +634,7 @@ function StylePicker() {
         />
       </div>
       {catalog.state === "hasError" ? (
-        <CatalogMessage>
-          {t(($) => {
-            return $.chat.introVideo.catalog.error;
-          })}
-        </CatalogMessage>
+        <CatalogError onRetry={reload} />
       ) : visible === undefined ? (
         <CatalogSkeleton />
       ) : visible.items.length === 0 ? (
@@ -646,8 +664,8 @@ function StylePicker() {
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}
-        loading={loadingMore}
-        error={loadMoreError}
+        loading={loadMoreState.state === "loading"}
+        error={loadMoreState.state === "hasError"}
         onLoadMore={() => {
           detach(
             loadMore(pageSignal),
@@ -670,9 +688,10 @@ function AvatarPicker() {
     introVideoAvatarPickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoAvatarPickerSignals.generation$);
-  const loadMore = useSet(introVideoAvatarPickerSignals.loadMore$);
-  const loadingMore = useGet(introVideoAvatarPickerSignals.loadingMore$);
-  const loadMoreError = useGet(introVideoAvatarPickerSignals.loadMoreError$);
+  const [loadMoreState, loadMore] = useLoadableSet(
+    introVideoAvatarPickerSignals.loadMore$,
+  );
+  const reload = useSet(introVideoAvatarPickerSignals.reload$);
   const pageSignal = useGet(pageSignal$);
   const visible =
     catalog.state === "hasData"
@@ -715,11 +734,7 @@ function AvatarPicker() {
         />
       </div>
       {catalog.state === "hasError" ? (
-        <CatalogMessage>
-          {t(($) => {
-            return $.chat.introVideo.catalog.error;
-          })}
-        </CatalogMessage>
+        <CatalogError onRetry={reload} />
       ) : visible === undefined ? (
         <CatalogSkeleton />
       ) : visible.items.length === 0 ? (
@@ -748,8 +763,8 @@ function AvatarPicker() {
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}
-        loading={loadingMore}
-        error={loadMoreError}
+        loading={loadMoreState.state === "loading"}
+        error={loadMoreState.state === "hasError"}
         onLoadMore={() => {
           detach(
             loadMore(pageSignal),
@@ -967,6 +982,7 @@ function IntroVideoFormFields({
   readonly composer: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const busy = useGet(introVideoWizardSignals.busy$);
   const sources = useGet(introVideoWizardSignals.sources$);
   const instructions = useGet(introVideoWizardSignals.instructions$);
   const style = useGet(introVideoWizardSignals.style$);
@@ -975,7 +991,10 @@ function IntroVideoFormFields({
   const setInstructions = useSet(introVideoWizardSignals.setInstructions$);
   const setPicker = useSet(introVideoWizardSignals.setPicker$);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-6">
+    <fieldset
+      disabled={busy}
+      className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-6"
+    >
       <div className="mx-auto w-full max-w-3xl">
         <h3 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
           {t(($) => {
@@ -1041,7 +1060,7 @@ function IntroVideoFormFields({
           />
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -1112,6 +1131,7 @@ export function IntroVideoWizard({
 }) {
   const { t } = useTranslation();
   const open = useGet(introVideoWizardSignals.open$);
+  const busy = useGet(introVideoWizardSignals.busy$);
   const picker = useGet(introVideoWizardSignals.picker$);
   const sources = useGet(introVideoWizardSignals.sources$);
   const avatar = useGet(introVideoWizardSignals.avatar$);
@@ -1128,6 +1148,7 @@ export function IntroVideoWizard({
         }}
       >
         <DialogContent
+          showCloseButton={!busy}
           aria-describedby="intro-video-description"
           className="okou-app flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:h-[min(88vh,760px)] sm:w-[calc(100vw-1.5rem)] [&>button]:right-3 [&>button]:top-3 sm:[&>button]:right-4 sm:[&>button]:top-4"
         >

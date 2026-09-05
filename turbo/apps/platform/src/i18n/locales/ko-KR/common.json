@@ -1974,8 +1974,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "채팅 스레드를 만들 수 없습니다. 소스는 로컬에 저장되어 있으며 백업으로 다운로드되었습니다.",
-        "uploadFailed": "소스를 업로드할 수 없습니다. 로컬에 저장되어 있으며 백업으로 다운로드되었습니다."
+        "sendFailed": "채팅 스레드를 만들 수 없습니다. 요청이 이 화면에 남아 있으니 다시 시도해 주세요.",
+        "uploadFailed": "일부 파일을 업로드할 수 없습니다. 해당 파일을 제거하거나 다시 시도해 주세요."
       },
       "footer": {
         "cancel": "Cancel",

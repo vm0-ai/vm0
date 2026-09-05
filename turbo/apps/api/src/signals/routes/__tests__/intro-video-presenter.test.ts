@@ -445,6 +445,7 @@ describe("Intro Video HeyGen presenter route", () => {
               tags: ["cinematic"],
               aspect_ratio: "16:9",
             },
+            { style_id: "invalid/style", name: "Malformed style" },
           ],
           has_more: false,
           next_token: null,
@@ -481,6 +482,14 @@ describe("Intro Video HeyGen presenter route", () => {
               default_voice_id: "legacy-voice",
               status: "completed",
               supported_api_engines: ["avatar_iv"],
+            },
+            {
+              id: "invalid/avatar",
+              group_id: "malformed-group",
+              name: "Malformed avatar",
+              default_voice_id: "malformed-voice",
+              status: "completed",
+              supported_api_engines: ["avatar_iii"],
             },
           ],
           has_more: false,
@@ -537,6 +546,40 @@ describe("Intro Video HeyGen presenter route", () => {
       nextToken: null,
     });
   });
+
+  it.each(["avatars", "styles"] as const)(
+    "preserves the provider's invalid-cursor error for %s",
+    async (catalog) => {
+      const fixture = await seedFixture();
+      await enableIntroVideo(fixture);
+      server.use(
+        http.get(
+          catalog === "avatars" ? HEYGEN_AVATARS_URL : HEYGEN_STYLES_URL,
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Invalid pagination token" } },
+              { status: 400 },
+            );
+          },
+        ),
+      );
+      const client = introVideoPresenterClient(fixture.usagePricingResolution);
+      const request = {
+        headers: authHeaders(),
+        query: { token: "expired-cursor" },
+      };
+      const result =
+        catalog === "avatars"
+          ? await accept(client.avatars(request), [400])
+          : await accept(client.styles(request), [400]);
+      expect(result.body).toStrictEqual({
+        error: {
+          code: "BAD_REQUEST",
+          message: "HeyGen rejected the request: Invalid pagination token",
+        },
+      });
+    },
+  );
 
   it("rejects a dynamically selected avatar that is not public", async () => {
     const fixture = await seedFixture();

@@ -2009,8 +2009,8 @@
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre source reste enregistrée localement et a été téléchargée comme sauvegarde.",
-        "uploadFailed": "La source n'a pas pu être importée. Elle reste enregistrée localement et a été téléchargée comme sauvegarde."
+        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre demande est toujours ici, vous pouvez réessayer.",
+        "uploadFailed": "Un ou plusieurs fichiers n'ont pas pu être importés. Supprimez-les ou réessayez."
       },
       "footer": {
         "cancel": "Cancel",
