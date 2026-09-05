@@ -21,6 +21,7 @@ import {
 } from "../lib/sentry-config.ts";
 import { now } from "../lib/time.ts";
 import { createChatIdbOpener } from "../signals/external/chat-idb-opener.ts";
+import { createIdbDiagnosticsStore } from "../signals/external/idb-diagnostics-store.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
 import { createStrictIdbChatThreadEventStores } from "../signals/external/idb-chat-thread-event-store.ts";
 import type { ApiClientFactory } from "../signals/api-client.ts";
@@ -39,6 +40,10 @@ import {
   type ScopedChatThreadEventDataKey,
   type ScopedSharedDatabaseDataKey,
 } from "./data-key.ts";
+import type {
+  IndexedDbDiagnostics,
+  IndexedDbSnapshotMeasurement,
+} from "./computed-key.ts";
 import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "./event-log-policy.ts";
 import {
   assertChatEventSchemaVersion,
@@ -283,6 +288,30 @@ export class SharedDatabaseWorkerRuntime {
       durationMs: now() - startedAt,
     });
     return result.value;
+  }
+
+  async getIndexedDbDiagnostics(
+    signal: AbortSignal,
+  ): Promise<IndexedDbDiagnostics> {
+    return await this.runChatIdbOperation(
+      createIdbDiagnosticsStore,
+      (store) => {
+        return store.read(signal);
+      },
+      signal,
+    );
+  }
+
+  async measureIndexedDbSnapshot(
+    signal: AbortSignal,
+  ): Promise<IndexedDbSnapshotMeasurement | null> {
+    return await this.runChatIdbOperation(
+      createIdbDiagnosticsStore,
+      (store) => {
+        return store.measureSnapshot(signal);
+      },
+      signal,
+    );
   }
 
   async catchUpChatEvents(

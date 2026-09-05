@@ -7,6 +7,7 @@ import { reloadPersonalModelProviders$ } from "../../external/personal-model-pro
 import { resetSignal } from "../../utils.ts";
 import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
 import { reloadBuiltInModelCooldownDiagnostics$ } from "./built-in-model-cooldown-diagnostics.ts";
+import { reloadIndexedDbDiagnosticsFromWorker$ } from "../../shared-database.ts";
 import {
   billingPlansStandalone$,
   billingSubPage$,
@@ -106,6 +107,7 @@ export const setSettingsActiveSection$ = command(
     if (section === "debug" && get(internalActiveSection$) !== "debug") {
       set(reloadConnectorCatalogDiagnostics$);
       set(reloadBuiltInModelCooldownDiagnostics$);
+      set(reloadIndexedDbDiagnosticsFromWorker$);
     }
     set(internalActiveSection$, section);
     if (section !== "billing") {
@@ -253,6 +255,7 @@ export const setSettingsDialogOpen$ = command(
     if (get(internalActiveSection$) === "debug") {
       set(reloadConnectorCatalogDiagnostics$);
       set(reloadBuiltInModelCooldownDiagnostics$);
+      set(reloadIndexedDbDiagnosticsFromWorker$);
     }
     set(internalSettingsDialogOpen$, true);
     await set(initProfileName$, modalSignal);
