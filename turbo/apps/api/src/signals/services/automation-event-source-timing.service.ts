@@ -16,7 +16,7 @@ type AutomationEventSource =
 
 type AutomationEventSourceTimingActionType = Extract<
   ApiDispatchTimingActionType,
-  `api_dispatch_pre_create_zero_automation_event_${string}`
+  `api_dispatch_pre_create_agent_automation_event_${string}`
 >;
 
 interface AutomationEventSourceTimingRecord {
@@ -126,12 +126,12 @@ export class AutomationEventRunTiming {
     if (!this.finalized) {
       const finishedAt = now();
       this.recordElapsed(
-        "api_dispatch_pre_create_zero_automation_event_handoff_run",
+        "api_dispatch_pre_create_agent_automation_event_handoff_run",
         finishedAt,
         finishedAt,
       );
       this.collector.recordElapsed(
-        "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
+        "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
         "nested",
         this.apiStartTime,
         finishedAt,

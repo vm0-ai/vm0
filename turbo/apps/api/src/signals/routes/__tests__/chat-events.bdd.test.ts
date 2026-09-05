@@ -317,64 +317,64 @@ A normal completion provides a reliable handoff for the next run. The handoff in
 
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
 const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source";
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_agent_run_source";
 const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata";
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_attachment_metadata";
 const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_transaction",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_clear_draft",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_persist_event",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_register_input_assets",
 ] as const;
 const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort";
-const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_touch_thread_sort";
+const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_model_selection",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
   API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_codex_service_tier",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_model_selection",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
   API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue",
   ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
-  "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
-  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
-  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
-  "api_dispatch_pre_create_zero_resolve_thread_session",
+  "api_dispatch_pre_create_agent_web_chat_queue_first_check_dispatchable",
+  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
+  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
+  "api_dispatch_pre_create_agent_resolve_thread_session",
 ] as const;
 const API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_resolve_thread_session";
+  "api_dispatch_pre_create_agent_resolve_thread_session";
 const API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context";
+  "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context";
 const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
 const API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_prepare_recent_chat_context",
 ] as const;
 const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
   API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
   API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
 const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
   API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
 ] as const;
-const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_entrypoint_gap",
+const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_entrypoint_gap",
 ] as const;
 const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
   "api_dispatch_validate_thread_session_snapshot_thread",
@@ -2376,11 +2376,11 @@ describe("CHAT-02: web chat send and client ids", () => {
     const timingEvents = apiDispatchTimingEventsForRun(runId);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
     expectNoApiDispatchActions(timingEvents, [
@@ -2435,7 +2435,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
@@ -4242,7 +4242,7 @@ describe("CHAT-02: org queue markers", () => {
     ]);
     expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
       expect.objectContaining({
-        op_type: "enqueue_zero_run",
+        op_type: "enqueue_agent_run",
         queue_depth: 1,
       }),
     );
@@ -11590,7 +11590,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type:
-          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
         model_resolution_path: "read_only",
       }),
     );
@@ -11679,7 +11679,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(timingEvents).toContainEqual(
       expect.objectContaining({
         op_type:
-          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
         model_resolution_path: "locked_reconciliation",
       }),
     );
@@ -19582,9 +19582,9 @@ describe("CHAT-02: shared user message queue", () => {
           apiDispatchTimingEventsForRun(queuedRunId),
         );
         return [
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
         ].every((actionType) => {
           return actionTypes.has(actionType);
         });
@@ -19593,14 +19593,14 @@ describe("CHAT-02: shared user message queue", () => {
     const timingEvents = apiDispatchTimingEventsForRun(queuedRunId);
     expectApiDispatchSpanKind(
       timingEvents,
-      ["api_dispatch_pre_create_zero_chat_callback_auto_send_build_input"],
+      ["api_dispatch_pre_create_agent_chat_callback_auto_send_build_input"],
       "top_level",
     );
     expectApiDispatchSpanKind(
       timingEvents,
       [
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
       ],
       "nested",
     );

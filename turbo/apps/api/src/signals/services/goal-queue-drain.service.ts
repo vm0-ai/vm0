@@ -249,7 +249,7 @@ async function resolveGoalThreadModelContext(
   args: ResolveGoalModelContextArgs,
 ): Promise<GoalThreadModelContext> {
   const featureSwitchContext = await args.timing.measure(
-    "api_dispatch_pre_create_zero_goal_drain_model_context_load_initial_feature_switches",
+    "api_dispatch_pre_create_agent_goal_drain_model_context_load_initial_feature_switches",
     "nested",
     () => {
       return loadUserFeatureSwitchContext(
@@ -261,7 +261,7 @@ async function resolveGoalThreadModelContext(
     args.timingDimensions,
   );
   return await args.timing.measure(
-    "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_persisted_model_policy",
+    "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_persisted_model_policy",
     "nested",
     async () => {
       const resolved = await resolvePersistedChatThreadModel({
@@ -314,7 +314,7 @@ async function resolveModelContext(
   const builtInModelRuntimeRoute =
     isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await args.timing.measure(
-          "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
+          "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_built_in_route",
           "nested",
           () => {
             return resolveBuiltInModelRuntimeRoute(args.db, selectedModel);
@@ -402,7 +402,7 @@ const launchQueuedGoal$ = command(
       role: "phase",
     });
     const modelContext = await args.timing.measure(
-      "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
+      "api_dispatch_pre_create_agent_goal_drain_resolve_model_context",
       "nested",
       async () => {
         return await resolveModelContext(
@@ -422,7 +422,7 @@ const launchQueuedGoal$ = command(
       return modelContext.failure;
     }
     const runInput = args.timing.measureSync<QueueFirstAgentRunInput>(
-      "api_dispatch_pre_create_zero_goal_drain_build_run_input",
+      "api_dispatch_pre_create_agent_goal_drain_build_run_input",
       "nested",
       () => {
         return buildQueueFirstGoalRunInput({
@@ -438,7 +438,7 @@ const launchQueuedGoal$ = command(
     );
     const handoffAt = now();
     args.timing.recordElapsed(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
       "nested",
       args.apiStartTime,
       handoffAt,
@@ -448,7 +448,7 @@ const launchQueuedGoal$ = command(
       }),
     );
     args.timing.recordElapsed(
-      "api_dispatch_pre_create_zero_goal_drain_handoff_run",
+      "api_dispatch_pre_create_agent_goal_drain_handoff_run",
       "nested",
       handoffAt,
       handoffAt,
@@ -537,14 +537,14 @@ function appendGoalSchedulerTiming(
 ): void {
   if (args.admittedGoalFastPath) {
     args.goalSchedulerTiming.checkpointZero(
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
     );
     args.goalSchedulerTiming.checkpointZero(
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
     );
   }
   args.goalSchedulerTiming.checkpoint(
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_goal_handoff",
     drainStartedAt,
   );
   args.goalSchedulerTiming.appendTo(
@@ -568,7 +568,7 @@ export const drainGoalQueueForThread$ = command(
       schedulerTimingAppended = true;
     }
     timing.recordElapsed(
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
       "nested",
       apiStartTime,
       drainStartedAt,
@@ -586,7 +586,7 @@ export const drainGoalQueueForThread$ = command(
         role: "phase",
       });
       const event = await timing.measure(
-        "api_dispatch_pre_create_zero_goal_drain_load_event",
+        "api_dispatch_pre_create_agent_goal_drain_load_event",
         "nested",
         async () => {
           return await loadNextGoalQueueEvent(db, {
@@ -607,7 +607,7 @@ export const drainGoalQueueForThread$ = command(
         schedulerTimingAppended = true;
       }
       timing.recordElapsed(
-        "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
+        "api_dispatch_pre_create_agent_goal_drain_event_queue_age",
         "nested",
         event.createdAt.getTime(),
         drainStartedAt,
@@ -618,7 +618,7 @@ export const drainGoalQueueForThread$ = command(
       );
 
       const goal = await timing.measure(
-        "api_dispatch_pre_create_zero_goal_drain_load_target",
+        "api_dispatch_pre_create_agent_goal_drain_load_target",
         "nested",
         async () => {
           return await loadGoalQueueTarget(db, event);
@@ -628,7 +628,7 @@ export const drainGoalQueueForThread$ = command(
       signal.throwIfAborted();
       if (!goal) {
         await timing.measure(
-          "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event",
+          "api_dispatch_pre_create_agent_goal_drain_revoke_invalid_event",
           "nested",
           async () => {
             return await revokeGoalEvent(db, event, signal);

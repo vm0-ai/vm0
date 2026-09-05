@@ -564,17 +564,17 @@ describe("workflows", () => {
     });
     expect(actionTypes).toStrictEqual(
       expect.arrayContaining([
-        "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
-        "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
-        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+        "api_dispatch_pre_create_agent_workflow_slash_prepare_normal_send",
+        "api_dispatch_pre_create_agent_workflow_slash_load_thread_mapping",
+        "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+        "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
       ]),
     );
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "api_dispatch_pre_create_agent_workflow_slash_ensure_thread",
     );
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
     );
     const serializedTimingEvents = JSON.stringify(timingEvents);
     for (const sensitiveValue of [

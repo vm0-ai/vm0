@@ -1466,7 +1466,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const timing = new ApiDispatchTimingCollector();
   const mappedChatThreadId = await measureApiDispatchTiming(
     timing,
-    "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
+    "api_dispatch_pre_create_agent_workflow_slash_load_thread_mapping",
     "nested",
     async () => {
       return await loadWorkflowUserAutomationThreadId(writeDb, {
@@ -1481,7 +1481,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     mappedChatThreadId ??
     (await measureApiDispatchTiming(
       timing,
-      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "api_dispatch_pre_create_agent_workflow_slash_ensure_thread",
       "nested",
       async () => {
         return await writeDb.transaction(async (tx) => {
@@ -1508,7 +1508,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     threadId: chatThreadId,
   };
   timing.recordElapsed(
-    "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
+    "api_dispatch_pre_create_agent_workflow_slash_prepare_normal_send",
     "nested",
     apiStartTime,
   );

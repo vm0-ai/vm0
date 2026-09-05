@@ -6720,7 +6720,7 @@ function recordQueuedRunEnqueueTelemetry(args: {
   const result = safeSync(() => {
     recordSandboxOperation({
       sandboxType: "runner",
-      actionType: "enqueue_zero_run",
+      actionType: "enqueue_agent_run",
       durationMs: 0,
       success: true,
       runId: args.runId,
