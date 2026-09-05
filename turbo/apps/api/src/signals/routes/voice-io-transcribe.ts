@@ -42,7 +42,7 @@ const voiceIoTranscribeEnabled$ = computed(async (get) => {
     auth.orgId,
     auth.userId,
   );
-  return isFeatureEnabled(FeatureSwitchKey.VoiceDraft, context);
+  return isFeatureEnabled(FeatureSwitchKey.VoiceInputV2, context);
 });
 
 function isAllowedVoiceDraftMimeType(value: string): boolean {

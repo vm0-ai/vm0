@@ -129,14 +129,8 @@ export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
 
-export const voiceDraftEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.VoiceDraft] ?? false;
-});
-
-export const composerVoiceInputShortcutEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ComposerVoiceInputShortcut] ?? false
-  );
+export const voiceInputV2Enabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.VoiceInputV2] ?? false;
 });
 
 export const stableChatThreadNavigationEnabled$ = computed((get): boolean => {
