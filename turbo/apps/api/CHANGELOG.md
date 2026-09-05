@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.551.5](https://github.com/vm0-ai/vm0/compare/api-v1.551.4...api-v1.551.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* finish voice input silently when no speech is detected ([#31933](https://github.com/vm0-ai/vm0/issues/31933)) ([b37822c](https://github.com/vm0-ai/vm0/commit/b37822c16ec7479dfc1fa1ecdefc85dd8ee53a6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.6
+    * @okouai/core bumped to 8.625.5
+    * @okouai/db bumped to 1.241.10
+    * @okouai/pi-agent-runtime bumped to 1.20.5
+
 ## [1.551.4](https://github.com/vm0-ai/vm0/compare/api-v1.551.3...api-v1.551.4) (2026-09-05)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.85.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.6...guest-agent-v0.85.7) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** reconcile cancellation and input at native settlement ([#31934](https://github.com/vm0-ai/vm0/issues/31934)) ([5784c62](https://github.com/vm0-ai/vm0/commit/5784c629ebac08ffdd4087444e6318b2f857d70c))
+
 ## [0.85.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.5...guest-agent-v0.85.6) (2026-09-05)
 
 
