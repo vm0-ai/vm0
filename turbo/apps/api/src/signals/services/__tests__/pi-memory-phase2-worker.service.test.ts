@@ -15,6 +15,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { db } from "../../../lib/db";
+import { mockOptionalEnv } from "../../../lib/env";
 import { withMockNowForTest } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { seedBuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
@@ -135,6 +136,95 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     });
   });
 
+  it("releases the claim when standard run launch preparation fails", async () => {
+    const now = new Date("2026-09-05T02:00:00.000Z");
+    const scope = await createPhase2TestScope("sandbox-launch-failure", {
+      emptyBase: true,
+    });
+    await seedOrgMetadata({
+      orgId: scope.orgId,
+      tier: "pro",
+      credits: 100_000,
+    });
+    const agentId = randomUUID();
+    await db().insert(agents).values({
+      id: agentId,
+      orgId: scope.orgId,
+      owner: scope.userId,
+      name: DEFAULT_AGENT_NAME,
+      visibility: "public",
+    });
+    onTestFinished(async () => {
+      await db()
+        .delete(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.orgId, scope.orgId),
+            eq(agentRuns.userId, scope.userId),
+          ),
+        );
+      await db().delete(agents).where(eq(agents.id, agentId));
+    });
+    await seedBuiltInModelKey(testContext(), "gpt-5.6-terra");
+    await insertPhase2Candidates(scope, [
+      {
+        piSessionId: randomUUID(),
+        rawMemory: "candidate survives failed standard launch preparation",
+      },
+    ]);
+    await insertPendingPhase2Job(scope, { updatedAt: now });
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    const store = createStore();
+
+    await expect(
+      withMockNowForTest(now, async () => {
+        return await store.set(
+          executePiMemoryPhase2Work$,
+          { scope, currentTime: now },
+          testContext().signal,
+        );
+      }),
+    ).resolves.toStrictEqual({
+      outcome: "failed",
+      errorClass: "maintenance_dispatch_failed",
+    });
+    const [failedRun] = await db()
+      .select({
+        status: agentRuns.status,
+        error: agentRuns.error,
+        storageMounts: agentRuns.storageMounts,
+      })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, scope.orgId),
+          eq(agentRuns.userId, scope.userId),
+        ),
+      );
+    expect(failedRun).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("RUNNER_DEFAULT_GROUP"),
+      storageMounts: null,
+    });
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "retryable_failure",
+      maintenanceRunId: null,
+      leaseToken: null,
+      sandboxLeaseToken: null,
+      retryCount: 1,
+      lastErrorClass: "maintenance_dispatch_failed",
+    });
+    const [candidate] = await db()
+      .select({ rawMemory: piMemoryStage1Candidates.rawMemory })
+      .from(piMemoryStage1Candidates)
+      .where(
+        eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
+      );
+    expect(candidate?.rawMemory).toBe(
+      "candidate survives failed standard launch preparation",
+    );
+  });
+
   it("dispatches one isolated threadless run with the exact private claim", async () => {
     const now = new Date("2026-09-05T02:00:00.000Z");
     const scope = await createPhase2TestScope("sandbox-dispatch", {
@@ -172,6 +262,7 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
       },
     ]);
     await insertPendingPhase2Job(scope, { updatedAt: now });
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const store = createStore();
 
     const result = await withMockNowForTest(now, async () => {
@@ -189,6 +280,8 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     cleanup.maintenanceRunId = result.runId;
     const [run] = await db()
       .select({
+        status: agentRuns.status,
+        error: agentRuns.error,
         triggerSource: agentRuns.triggerSource,
         chatThreadId: agentRuns.chatThreadId,
         prompt: agentRuns.prompt,
@@ -196,6 +289,7 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, result.runId));
+    expect(run).toMatchObject({ status: "pending", error: null });
     expect(run?.triggerSource).toBe("agent");
     expect(run?.chatThreadId).toBeNull();
     expect(run?.prompt).not.toContain("candidate stays inside");

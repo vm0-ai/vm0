@@ -269,10 +269,11 @@ const dispatchClaim$ = command(
       },
       signal,
     );
-    if (result.status !== 201) {
+    if (result.status !== 201 || result.body.status === "failed") {
       log.warn("Pi memory maintenance run dispatch was rejected", {
         memoryStorageId: claim.memoryStorageId,
         status: result.status,
+        runStatus: result.status === 201 ? result.body.status : undefined,
       });
       return await failClaim(
         db,
