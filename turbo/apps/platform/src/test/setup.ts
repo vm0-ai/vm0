@@ -65,7 +65,7 @@ type HappyDomLifecycleCallback = (this: HTMLIFrameElement) => void;
 
 type PatchedHTMLIFrameElementPrototype = HTMLIFrameElement &
   Record<symbol, unknown> & {
-    vm0HappyDomIframeLoadPatched?: true;
+    happyDomIframeLoadPatched?: true;
   };
 
 type StderrWriteArgs = [
@@ -78,8 +78,8 @@ type StderrWrite = (...args: StderrWriteArgs) => boolean;
 
 type PatchedStderr = {
   write: StderrWrite;
-  vm0OriginalWrite?: StderrWrite;
-  vm0HappyDomIframeNoisePatched?: true;
+  originalWrite?: StderrWrite;
+  happyDomIframeNoisePatched?: true;
 };
 
 const nodeProcess = (
@@ -100,7 +100,7 @@ function findPrototypeSymbol(
 function installHappyDomIframeLoadPatch(): void {
   const iframePrototype =
     HTMLIFrameElement.prototype as PatchedHTMLIFrameElementPrototype;
-  if (iframePrototype.vm0HappyDomIframeLoadPatched) {
+  if (iframePrototype.happyDomIframeLoadPatched) {
     return;
   }
 
@@ -126,7 +126,7 @@ function installHappyDomIframeLoadPatch(): void {
     !onRemoveAttributeSymbol ||
     !connectedToDocumentSymbol
   ) {
-    iframePrototype.vm0HappyDomIframeLoadPatched = true;
+    iframePrototype.happyDomIframeLoadPatched = true;
     return;
   }
 
@@ -188,13 +188,13 @@ function installHappyDomIframeLoadPatch(): void {
       originalConnectedToDocument.call(this);
     };
 
-  iframePrototype.vm0HappyDomIframeLoadPatched = true;
+  iframePrototype.happyDomIframeLoadPatched = true;
 }
 
 installHappyDomIframeLoadPatch();
 
 const originalStderrWrite =
-  nodeProcess.stderr.vm0OriginalWrite ??
+  nodeProcess.stderr.originalWrite ??
   nodeProcess.stderr.write.bind(nodeProcess.stderr);
 
 function isDisabledIframePageLoadingLog(chunk: string | Uint8Array): boolean {
@@ -216,10 +216,10 @@ function writeStderrWithoutHappyDomIframeNoise(
   return originalStderrWrite(...args);
 }
 
-if (!nodeProcess.stderr.vm0HappyDomIframeNoisePatched) {
-  nodeProcess.stderr.vm0OriginalWrite = originalStderrWrite;
+if (!nodeProcess.stderr.happyDomIframeNoisePatched) {
+  nodeProcess.stderr.originalWrite = originalStderrWrite;
   nodeProcess.stderr.write = writeStderrWithoutHappyDomIframeNoise;
-  nodeProcess.stderr.vm0HappyDomIframeNoisePatched = true;
+  nodeProcess.stderr.happyDomIframeNoisePatched = true;
 }
 
 function ensureTestLocalStorage(): void {

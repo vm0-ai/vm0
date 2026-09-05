@@ -3,8 +3,6 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -490,103 +488,11 @@ test("Stop pending requests when the bridge lifecycle ends", async () => {
   );
 });
 
-function mockBatchIndicators(threadId: string): void {
-  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-    return respond(200, {
-      switches: {},
-      effectiveSwitches: { [FeatureSwitchKey.BatchChatEventCatchUp]: true },
-    });
-  });
+function mockUnreadIndicators(threadId: string): void {
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, { agents: {}, threads: { [threadId]: "unread" } });
   });
 }
-
-test.each([false, undefined])(
-  "Keep legacy indicator catch-up when the batch switch is %s",
-  async (enabled) => {
-    mockNow(40_000, context.signal);
-    const threadId = crypto.randomUUID();
-    const rows = [row(threadId, 1), row(threadId, 2)];
-    let availableRows = rows.slice(0, 1);
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {},
-        effectiveSwitches:
-          enabled === undefined
-            ? {}
-            : { [FeatureSwitchKey.BatchChatEventCatchUp]: enabled },
-      });
-    });
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, { agents: {}, threads: { [threadId]: "unread" } });
-    });
-    context.mocks.api(chatThreadEventsContract.catchUp, ({ respond }) => {
-      return respond(500, {
-        error: {
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Batch catch-up must remain disabled",
-        },
-      });
-    });
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      ({ params, query, respond }) => {
-        return respond(
-          200,
-          chatEventRowsResponse(
-            availableRows.filter((event) => {
-              return (
-                event.chatThreadId === params.threadId &&
-                event.seqId > query.sinceSeqId
-              );
-            }),
-            query,
-          ),
-        );
-      },
-    );
-    initializeWorker();
-    const { bridge } = connectProtocolTransport(context.signal);
-    await bridge.registerTab(context.signal);
-    await bridge.getComputed("chat-thread-indicators");
-    const initial = await bridge.query(
-      {
-        dataKey: dataKey(threadId),
-        afterSeqId: null,
-        consistency: "cache-only",
-      },
-      context.signal,
-    );
-    expect(initial).toStrictEqual(rows.slice(0, 1));
-
-    availableRows = rows;
-    context.workerStore.set(refreshWorkerComputed$, "chat-thread-indicators");
-    await expect(
-      bridge.getComputed("chat-thread-indicators"),
-    ).resolves.toStrictEqual({
-      agents: {},
-      threads: { [threadId]: "unread" },
-    });
-    const refreshed = await bridge.query(
-      {
-        dataKey: dataKey(threadId),
-        afterSeqId: null,
-        consistency: "cache-only",
-      },
-      context.signal,
-    );
-    expect(refreshed).toStrictEqual(rows);
-  },
-);
 
 test.each([
   { boundary: "before", firstRead: 999, nextRead: 999 },
@@ -601,7 +507,7 @@ test.each([
     const rows = [row(threadId, 1), row(threadId, 2), row(threadId, 3)];
     let availableRows = rows.slice(0, 1);
     let refreshing = false;
-    mockBatchIndicators(threadId);
+    mockUnreadIndicators(threadId);
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       if (refreshing) {
         // Arm the clock after the HTTP request so telemetry cannot consume the
@@ -696,7 +602,7 @@ test("Recover indicator catch-up after a shared trailing request fails", async (
   const recoveredRows = [row(threadId, 1), row(threadId, 2)];
   let availableRows = recoveredRows.slice(0, 1);
   let failCatchUp = false;
-  mockBatchIndicators(threadId);
+  mockUnreadIndicators(threadId);
   context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
     if (failCatchUp) {
       return respond(500, {
@@ -757,7 +663,7 @@ test("Cancel waiting indicator reads when their Worker lifecycle ends", async ()
   const worker = createChildAbortController(context.signal);
   const refreshLoaded = context.mocks.deferred<void>();
   let refreshing = false;
-  mockBatchIndicators(threadId);
+  mockUnreadIndicators(threadId);
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     if (refreshing && !refreshLoaded.settled()) {
       refreshLoaded.resolve();

@@ -277,6 +277,30 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
   },
   {
     category: "external-identity",
+    id: "external-identity/mermaid-lite-published-version",
+    paths: /^turbo\/packages\/mermaid-lite\/package\.json$/u,
+    reason:
+      "11.16.1-vm0.3 identifies the already published Mermaid-derived build. A source-only rename would claim a package version that was never published and break consumers that select the exact version identity.",
+    tokens: ["1-vm0"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/slack-channel-name",
+    paths: /^turbo\/apps\/platform\/src\/views\/okou-page\/ideation-data\.ts$/u,
+    reason:
+      "#all-vm0 is the existing Slack channel named in the workflow prompt. Slack owns that channel identity, so changing the prompt token without renaming the channel makes the generated workflow post to a destination that does not exist.",
+    tokens: ["all-vm0"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/developer-container-hostname",
+    paths: /^turbo\/scripts\/test-rebuild-snapshot\.sh$/u,
+    reason:
+      "vm01 is the developer-container hostname and /workspaces/vm01 mount selected by this operator script, matching the same externally configured hostname used by the root dcvnc and dcpf helpers. Renaming only this reference makes the script change into a directory that is not mounted.",
+    tokens: ["vm01"],
+  },
+  {
+    category: "external-identity",
     id: "external-identity/clerk-production-topology",
     reason:
       "The Clerk production instance origin is registered with Clerk and served to browsers; #31813 records it as an external identity.",
@@ -366,6 +390,23 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
   },
   {
     category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/google-drive-artifact-app-properties",
+    paths:
+      /^turbo\/apps\/api\/src\/signals\/(?:services\/google-drive-artifact-sync\.service\.ts|routes\/__tests__\/(?:chat-threads\.bdd|integrations-slack-upload-complete)\.test\.ts)$/u,
+    reason:
+      "vm0Artifact, vm0ThreadId, vm0RunId, and vm0FileId are appProperties keys written onto files in users' Google Drive accounts. Artifact status lookup queries the first two keys and reads the latter two to recover each run/file pair. Those files live outside every system this repository can migrate, so changing any key makes every previously synced artifact unfindable and causes the sync to upload duplicates; the route tests deliberately spell the persisted keys to prove compatibility with files written by earlier deploys.",
+    tokens: ["vm0Artifact", "vm0FileId", "vm0RunId", "vm0ThreadId"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/design-system-resource-id",
+    paths: /^turbo\/packages\/core\/src\/resource-registry\.ts$/u,
+    reason:
+      "atelier-zero is both the persisted design-system:atelier-zero identifier and its published design-systems/atelier-zero source path. Existing resource selections and the published asset cannot be rewritten by changing this registry, so both identity segments must remain exact.",
+    tokens: ["atelier-zero"],
+  },
+  {
+    category: "wire-and-persisted-value",
     id: "wire-and-persisted-value/billing-status-key",
     paths: /^turbo\/packages\/api-contracts\/src\/contracts\/billing\.ts$/u,
     reason:
@@ -397,6 +438,23 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     tokens: ["VM0", "Vm0", "Zero", "vm0", "zero"],
   },
   {
+    category: "dual-brand-product-contract",
+    id: "dual-brand-product-contract/vm0-brand-mark-component",
+    paths:
+      /^turbo\/apps\/platform\/src\/views\/components\/product-brand-mark\.tsx$/u,
+    reason:
+      "Vm0BrandMark is the VM0 half of ProductBrandMark's live two-brand branch, paired with the Okou wordmark path selected when brandName is not VM0. Its brand discriminator is intentional while VM0 remains supported.",
+    tokens: ["Vm0BrandMark"],
+  },
+  {
+    category: "dual-brand-product-contract",
+    id: "dual-brand-product-contract/vm0-logo-assets",
+    paths: /^turbo\/apps\/platform\/src\//u,
+    reason:
+      "platformVm0LogoImg and platformVm0LogoDarkImg point specifically at the VM0 logo asset files and are selected only for VM0 presentation surfaces. Dropping the discriminator would obscure which live brand asset each constant carries rather than retire a stale prefix.",
+    tokens: ["platformVm0LogoDarkImg", "platformVm0LogoImg"],
+  },
+  {
     category: "protocol-compatibility",
     id: "protocol-compatibility/zero-host-domain",
     line: /ZERO_HOST_DOMAIN/u,
@@ -418,6 +476,22 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     reason:
       "ZERO_* variables are read from deployed environments and Zero-scope tokens; renaming one is a deployment change owned by #26701 and #28278.",
     tokenPattern: /^ZERO_[A-Z0-9_]+$/u,
+  },
+  {
+    category: "protocol-compatibility",
+    id: "protocol-compatibility/retired-zero-scope-payload",
+    paths: /^turbo\/apps\/api\/src\/signals\/auth\/tokens\.ts$/u,
+    reason:
+      "RetiredZeroScopePayload names the exact retired zero token-scope shape that the test signer keeps reachable so verification can reject legacy tokens. #26701 owns removing that protocol compatibility object; renaming it ahead of the scope would hide what compatibility path the type represents.",
+    tokens: ["RetiredZeroScopePayload"],
+  },
+  {
+    category: "protocol-compatibility",
+    id: "protocol-compatibility/zero-host-domain-property",
+    paths: /^turbo\/apps\/platform\/src\/lib\/platform-host\.ts$/u,
+    reason:
+      "zeroHostDomain carries the deployed sites.vm0.io or sites.vm7.io value corresponding to the ZERO_HOST_DOMAIN protocol contract. #26701 and #28278 own retiring that host contract, so the property keeps naming the compatibility value until the protocol is removed.",
+    tokens: ["zeroHostDomain"],
   },
   {
     category: "desktop-identity",
@@ -442,6 +516,20 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
       "The name uses zero as the number, not as the brand, so a brand rename must leave it alone.",
     tokenPattern:
       /^(?:all-zero|leading-zero|near-zero|non-?zero|non_?zero(?:_[a-z0-9_]+)?|zero-(?:amount|based|budget|cost|credit|filled|height|incident|length|lint|padded|price|quantity|row|size|sized|tolerance|width)|zero-usage|zero(?:Count|OrMore|OrOne)|isNegativeZero|zero100)$/iu,
+  },
+  {
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/numeric-zero-identifiers",
+    reason:
+      "zeroBlock tests that every byte in a tar block equals numeric 0, while checkpointZero records a scheduler checkpoint at the unchanged previous boundary so its measured duration is zero. In both identifiers Zero is the number, not the retired product name.",
+    tokens: ["checkpointZero", "zeroBlock"],
+  },
+  {
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/english-zero-phrases",
+    reason:
+      "zero-copy is the established English term for transferring ownership without copying bytes, and brand-from-zero means building a brand from scratch in an image-style description. Neither phrase uses Zero as a product name.",
+    tokens: ["brand-from-zero", "zero-copy"],
   },
   {
     after:
@@ -823,6 +911,14 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
   },
   {
     category: "immutable-history",
+    id: "immutable-history/retired-zero-page-test-path",
+    paths: /^turbo\/packages\/eslint-rules\/src\/ccstate\/__tests__\//u,
+    reason:
+      "The RuleTester filenames quote the retired signals/zero-page and views/zero-page source layout as historical test inputs. They preserve the path shape that existed when the rules were introduced; live views/zero-page asset keys are separately protected by immutable-static-asset-key/platform-static-asset.",
+    tokens: ["zero-page"],
+  },
+  {
+    category: "immutable-history",
     id: "immutable-history/retired-runner-claim-feature-flag",
     paths: TEST_AND_FIXTURE_PATHS,
     reason:
@@ -1188,78 +1284,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
   ),
   ...baselineNames(
     [
-      "1-vm0",
-      "RetiredZeroScopePayload",
-      "SharedWorkerVM0State",
-      "VM0ClerkBootstrap",
-      "VM0ClerkBootstrapLoadOptions",
-      "VM0Global",
-      "Vm0BrandMark",
-      "ZeroChatEventRowsPage",
-      "ZeroChatEventSendResult",
-      "ZeroChatEventSnapshotResult",
-      "ZeroChatThreadCreateResult",
-      "ZeroChatThreadEventsResult",
-      "ZeroConnectorCatalogListResponse",
-      "ZeroConnectorCatalogStatusResponse",
-      "ZeroConnectorListResponse",
-      "__VM0_CLERK_BROWSER_SCRIPT_URL__",
-      "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__",
-      "__VM0_FIREWALL_BASE_URL_VALIDATION",
-      "__vm0-dev-artifact-fetch",
-      "__vm0ClerkBootstrap",
-      "__vm0PlausibleLoadScheduled",
-      "_vm0",
-      "all-vm0",
-      "atelier-zero",
-      "brand-from-zero",
-      "buildVm0OnboardingEntryUrl",
-      "buildZeroCreateAgentRunArgs",
-      "checkpointZero",
-      "createAgentRunAfterZeroPreCreate",
-      "e2e-zero-bot",
-      "isVm0Host",
-      "loadZeroAgent",
-      "measureZeroPreCreate",
-      "platformVm0LogoDarkImg",
-      "platformVm0LogoImg",
-      "reconcileZeroBrowsersWithScope",
-      "talk-to-zero",
-      "vm0-clerk-core-script",
-      "vm0-clerk-edge-session",
-      "vm0-key-anthropic",
-      "vm0-key-default",
-      "vm0-key-moonshot",
-      "vm0-key-runtime-fixture",
-      "vm01",
-      "vm0Artifact",
-      "vm0EditId",
-      "vm0FileId",
-      "vm0HappyDomIframeLoadPatched",
-      "vm0HappyDomIframeNoisePatched",
-      "vm0ImageStyleSource",
-      "vm0NodeId",
-      "vm0OriginalWrite",
-      "vm0Preference",
-      "vm0RunId",
-      "vm0Theme",
-      "vm0ThreadId",
-      "vm0_e2e_bot",
-      "withoutLegacyZeroEntries",
-      "zero-copy",
-      "zero-page",
-      "zeroBlock",
-      "zeroHostDomain",
-    ],
-    {
-      ownerIssue: "#31801",
-      reason:
-        "Production TypeScript identifier or platform browser global that no boundary rule approves; #31867 triaged the infrastructure, wire, and db-script names out of this list and #31880 moved the six that cannot be renamed at all into boundary rules, so the follow-up R5 rename slice renames what remains.",
-      workstream: "R5",
-    },
-  ),
-  ...baselineNames(
-    [
       "ClaimedVm0Run",
       "createClaimedVm0Run",
       "createVm0Run",
@@ -1294,12 +1318,21 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "Bare brand literals and stale prose in comments, documentation, and user-facing copy; #31856 classified all 32 names, so every remaining occurrence is either an approved boundary above or was rewritten because it described something that no longer exists.",
     workstream: "R9",
   }),
-  ...baselineNames(["data-vm0", "data-vm0-edit-id", "data-vm0-node-id"], {
-    ownerIssue: "#31824",
-    reason:
-      "Legacy data-vm0-* edit-protocol reader kept for deck HTML that was stored or externally generated before the okou rename; #31824 drops it once no such deck remains.",
-    workstream: "R7",
-  }),
+  ...baselineNames(
+    [
+      "data-vm0",
+      "data-vm0-edit-id",
+      "data-vm0-node-id",
+      "vm0EditId",
+      "vm0NodeId",
+    ],
+    {
+      ownerIssue: "#31824",
+      reason:
+        "Legacy data-vm0-* edit-protocol readers kept for deck HTML that was stored or externally generated before the okou rename; vm0EditId and vm0NodeId name the values read from those legacy attributes. #31824 drops the complete compatibility path once no such deck remains.",
+      workstream: "R7",
+    },
+  ),
   ...baselineNames(["vm0-deck-metadata"], {
     ownerIssue: "#31824",
     reason:
@@ -1311,38 +1344,5 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
     reason:
       "Fixture id for the row carrying the legacy vm0 built-in-provider discriminator in the provider discriminator migration script, beside vm0Policy and vm0Provider in the same object; R3 renames the Vm0 provider vocabulary in one pass.",
     workstream: "R3",
-  }),
-  ...baselineNames(
-    ["vm0-api-skill", "vm0-api-volume", "vm0-api-volume-validation"],
-    {
-      ownerIssue: "#31801",
-      reason:
-        "#31867 triaged this name and found no boundary: it prefixes a scratch directory the owning service creates under os.tmpdir(), which nothing else reads and which does not outlive the process, so the R5 rename slice renames it with its service.",
-      workstream: "R5",
-    },
-  ),
-  ...baselineNames(["VM0_ONBOARDING_PATH", "vm0-dev-artifact-fetch-proxy"], {
-    ownerIssue: "#31801",
-    reason:
-      "#31867 triaged this name and found no boundary: it is internal to the module declaring it — the onboarding path constant beside buildVm0OnboardingEntryUrl and the dev-only Vite plugin name beside __vm0-dev-artifact-fetch — so the R5 rename slice renames it with the identifier it sits next to.",
-    workstream: "R5",
-  }),
-  ...baselineNames(["vm0-host"], {
-    ownerIssue: "#31801",
-    reason:
-      "#31880 answered the question #31867 left open, and the answer is that the placeholder is never persisted: vm0-host.invalid is substituted into a throwaway URL only so the firewall base-URL parser in packages/connectors can check syntax and read a port off it. urlForCanonicalBaseSyntax builds that URL from the real base with the host replaced, and every caller reads only protocol, search, hash, and — when the base has no raw authority to substitute into — hostname; the canonical base validateAndCanonicalizeBaseUrl returns and a stored firewall policy freezes is built from canonicalizeAuthorityForExecution on the real authority instead. urlForHostPolicyValidation likewise returns a hostname assembled from the real host segments and only the port string parsed out of the placeholder URL. Nothing carries the literal out of the function, so no stored policy can contain it and the R5 rename slice can take it. The identically spelled /tmp, systemd unit, and lock-directory names in .github/scripts/runner-behavior-host-cpu-fairness.sh are created and torn down inside one script run and are a separate, already approved CI boundary.",
-    workstream: "R5",
-  }),
-  ...baselineNames(["_vm0Cursor"], {
-    ownerIssue: "#31801",
-    reason:
-      "#31880 confirmed that nothing outside this repository can select on it, so the R5 rename slice can take it. _vm0Cursor is not an Axiom dataset field: buildTimeCursorProjection appends `| extend _vm0Cursor = cursor_current()` to the APL the log pagination service itself sends, and the same request reads the alias back off the returned rows. The risk #31842 records for the persisted op-log action types — an external saved query silently mismatching a name this repository changed — does not reach it, because a saved query, dashboard, or monitor elsewhere would have to write that same extend itself to produce the field. The pagination cursor handed to clients encodes only order, timestamp, and tie-breaker value and never the field name, so cursors already issued keep working across the rename.",
-    workstream: "R5",
-  }),
-  ...baselineNames(["vm0-user-linked"], {
-    ownerIssue: "#31801",
-    reason:
-      "#31867 triaged this name and found no boundary: the conflict reason never leaves the API process, the Telegram link route turns it into a message before responding, and no contract, client, or stored row carries the literal; the R5 rename slice renames it with its union.",
-    workstream: "R5",
   }),
 ] as const satisfies readonly ResidualBrandNameBaselineEntry[];

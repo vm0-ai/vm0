@@ -21,7 +21,7 @@ interface ClerkBrowserRuntime {
   readonly loaded: Promise<void>;
 }
 
-type EarlyClerkBootstrap = NonNullable<Window["__vm0ClerkBootstrap"]>;
+type EarlyClerkBootstrap = NonNullable<Window["__okouClerkBootstrap"]>;
 
 export type PlatformClerk = BrowserClerk & {
   readonly __internal_environment?: EnvironmentResource;
@@ -72,7 +72,7 @@ function adoptEarlyClerkRuntime(
   clerk: PlatformClerk,
   options: ClerkRuntimeOptions,
 ): ClerkBrowserRuntime | null {
-  const bootstrap = window.__vm0ClerkBootstrap;
+  const bootstrap = window.__okouClerkBootstrap;
   if (!bootstrap?.loaded || bootstrap.clerk !== clerk) {
     return null;
   }

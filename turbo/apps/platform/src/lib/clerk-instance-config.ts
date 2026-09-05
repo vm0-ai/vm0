@@ -18,7 +18,7 @@ interface ClerkInstanceConfig {
 }
 
 export function resolveConfiguredProductionPrimaryAppDomain(): ClerkProductionPrimaryAppDomain {
-  const bootstrap = Reflect.get(globalThis, "__vm0ClerkBootstrap");
+  const bootstrap = Reflect.get(globalThis, "__okouClerkBootstrap");
   const configured =
     typeof bootstrap === "object" &&
     bootstrap !== null &&

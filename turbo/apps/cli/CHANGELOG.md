@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.313.4](https://github.com/vm0-ai/vm0/compare/cli-v9.313.3...cli-v9.313.4) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** normalize native fast requests to priority ([#31895](https://github.com/vm0-ai/vm0/issues/31895)) ([0c910e8](https://github.com/vm0-ai/vm0/commit/0c910e8b80be2c91ead2bb04101b68f3b1d8647e)), closes [#31885](https://github.com/vm0-ai/vm0/issues/31885)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.625.2
+    * @okouai/pi-agent-runtime bumped to 1.20.1
+
 ## [9.313.3](https://github.com/vm0-ai/vm0/compare/cli-v9.313.2...cli-v9.313.3) (2026-09-05)
 
 

@@ -14,12 +14,12 @@ interface SharedWorkerConnectEvent extends Event {
   readonly ports: readonly MessagePort[];
 }
 
-interface SharedWorkerVM0State {
+interface SharedWorkerOkouState {
   readonly loggers: DebugLoggers;
 }
 
 interface SharedWorkerGlobal {
-  _vm0: SharedWorkerVM0State | undefined;
+  _okou: SharedWorkerOkouState | undefined;
   addEventListener(
     type: "connect",
     listener: (event: SharedWorkerConnectEvent) => void,
@@ -30,7 +30,7 @@ const workerGlobal = globalThis as typeof globalThis & SharedWorkerGlobal;
 
 function main(): void {
   initSharedDatabaseWorkerSentry();
-  workerGlobal._vm0 = {
+  workerGlobal._okou = {
     get loggers() {
       return createDebugLoggers();
     },

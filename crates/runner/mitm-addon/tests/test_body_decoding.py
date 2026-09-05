@@ -12,6 +12,7 @@ from body_decoding import (
     can_stream_decode_usage,
     create_stream_decode_session,
     decode_request_body_for_network_log_capture,
+    decode_response_body_for_network_log_capture,
     decompress_body,
     decompress_json_usage_body,
 )
@@ -1055,14 +1056,16 @@ class TestDecompressJsonUsageBody:
         assert decoded == body
         assert error is None
 
-    def test_zstd_validation_carries_bounded_unused_data_without_rebuilding_tail(
+
+class TestStrictZstdFrameBudget:
+    """Structural coverage for strict zstd decoder construction bounds."""
+
+    def test_zstd_validation_bounds_frame_transitions_for_strict_consumers(
         self, headers, monkeypatch
     ):
-        frame_count = 7000
         frame = zstandard.ZstdCompressor().compress(b"")
-        compressed = frame * frame_count
-        assert len(compressed) < STREAM_BUFFER_LIMIT
         hdrs = headers(("Content-Encoding", "zstd"))
+        validation_objects = 0
         validation_input_sizes: list[int] = []
         real_factory = zstandard.ZstdDecompressor
 
@@ -1098,6 +1101,8 @@ class TestDecompressJsonUsageBody:
                 return self._wrapped.stream_reader(*args, **kwargs)
 
             def decompressobj(self, *args, **kwargs):
+                nonlocal validation_objects
+                validation_objects += 1
                 return TrackingDecompressionObj(self._wrapped.decompressobj(*args, **kwargs))
 
         monkeypatch.setattr(
@@ -1105,13 +1110,32 @@ class TestDecompressJsonUsageBody:
             TrackingZstdDecompressor,
         )
 
+        accepted = frame * 64
         decoded, error = decompress_json_usage_body(
-            compressed,
+            accepted,
             hdrs,
             max_output=1,
         )
 
         assert decoded == b""
         assert error is None
+        assert validation_objects == 64
         assert validation_input_sizes
         assert max(validation_input_sizes) <= 32
+
+        over_budget = frame * (STREAM_BUFFER_LIMIT // len(frame))
+        assert len(over_budget) < STREAM_BUFFER_LIMIT
+
+        validation_objects = 0
+        decoded, error = decompress_json_usage_body(over_budget, hdrs, max_output=1)
+        assert decoded == b""
+        assert error == "compressed frame limit exceeded"
+        assert validation_objects == 64
+
+        validation_objects = 0
+        assert decode_request_body_for_network_log_capture(over_budget, hdrs, max_output=1) is None
+        assert validation_objects == 64
+
+        validation_objects = 0
+        assert decode_response_body_for_network_log_capture(over_budget, hdrs, max_output=1) is None
+        assert validation_objects == 64

@@ -105,7 +105,7 @@ function compareArchiveFiles(
 function materializeFiles(
   files: readonly VolumeFileInput[],
 ): readonly MaterializedVolumeFile[] {
-  const validationRoot = resolve(tmpdir(), "vm0-api-volume-validation");
+  const validationRoot = resolve(tmpdir(), "api-volume-validation");
   return files.map((file) => {
     resolveVolumeFilePath(validationRoot, file.path);
     const content = Buffer.isBuffer(file.content)
@@ -183,7 +183,7 @@ async function createVolumeArchive(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const archiveFiles = [...files].sort(compareArchiveFiles);
-  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-volume-"));
+  const tmpDir = await mkdtemp(join(tmpdir(), "api-volume-"));
   const archiveBuffer = await onRejection(
     buildVolumeArchive(tmpDir, archiveFiles, signal),
     () => {

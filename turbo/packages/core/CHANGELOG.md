@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.625.2](https://github.com/vm0-ai/vm0/compare/core-v8.625.1...core-v8.625.2) (2026-09-05)
+
+
+### Refactoring
+
+* **platform:** fully roll out batch chat event catch-up ([#31890](https://github.com/vm0-ai/vm0/issues/31890)) ([523f917](https://github.com/vm0-ai/vm0/commit/523f917203f26c95e91ef1e94df04d439a82f1f7))
+
 ## [8.625.1](https://github.com/vm0-ai/vm0/compare/core-v8.625.0...core-v8.625.1) (2026-09-05)
 
 
