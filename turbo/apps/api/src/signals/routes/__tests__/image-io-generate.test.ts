@@ -1052,7 +1052,7 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(-50);
   });
 
-  it("uses allowance for a runless generation under shared debt", async () => {
+  it("uses allowance for a legacy runless generation under shared debt", async () => {
     const fixture = await seedImageFixture({ credits: -100 });
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
