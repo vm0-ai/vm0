@@ -1965,7 +1965,8 @@
         "help": "Choose a public HeyGen presenter, hide the presenter, or let Okou decide.",
         "label": "Avatar",
         "none": "No avatar",
-        "noneDescription": "Create the video without a presenter"
+        "noneDescription": "Create the video without a presenter",
+        "previewLook": "Preview look {{name}}"
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {

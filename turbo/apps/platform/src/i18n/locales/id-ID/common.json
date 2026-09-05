@@ -1962,7 +1962,8 @@
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
         "label": "Avatar",
         "none": "Tanpa avatar",
-        "noneDescription": "Create the video without a presenter"
+        "noneDescription": "Create the video without a presenter",
+        "previewLook": "Preview look {{name}}"
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {

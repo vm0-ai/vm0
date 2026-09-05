@@ -1997,7 +1997,8 @@
         "help": "Escolha um apresentador ou continue sem um",
         "label": "Avatar",
         "none": "Sem avatar",
-        "noneDescription": "Create the video without a presenter"
+        "noneDescription": "Create the video without a presenter",
+        "previewLook": "Preview look {{name}}"
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {

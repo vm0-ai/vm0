@@ -1962,7 +1962,8 @@
         "help": "プレゼンターを選ぶか、アバターなしで続行します",
         "label": "Avatar",
         "none": "アバターなし",
-        "noneDescription": "Create the video without a presenter"
+        "noneDescription": "Create the video without a presenter",
+        "previewLook": "Preview look {{name}}"
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {

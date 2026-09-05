@@ -1,5 +1,8 @@
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
-import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/intro-video-presenter";
+import {
+  introVideoPresenterContract,
+  type IntroVideoAvatar,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -361,6 +364,113 @@ test("A selected public avatar uses its HeyGen default voice", async () => {
   );
   expect(submittedPrompt).toContain(
     "- Voice: Default — follow Daphne in Grey blazer (812d4eea4a8442a382dcaf2dbaddbd93)",
+  );
+});
+
+test("Avatar looks share a person card across pages and only Use commits a look", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  const firstLook: IntroVideoAvatar = {
+    id: "Daphne_public_1",
+    groupId: "daphne-group",
+    name: "Daphne in Grey blazer",
+    defaultVoiceId: "daphne-default-voice",
+    previewImageUrl: "https://files.heygen.test/daphne-grey.webp",
+  };
+  const secondLook: IntroVideoAvatar = {
+    ...firstLook,
+    id: "Daphne_public_2",
+    name: "Daphne in White shirt",
+    defaultVoiceId: "daphne-white-default-voice",
+    previewImageUrl: "https://files.heygen.test/daphne-white.webp",
+  };
+  context.mocks.api(
+    introVideoPresenterContract.avatars,
+    ({ query, respond }) => {
+      expect(query.pageSize).toBe(24);
+      if (query.token === "next-looks") {
+        return respond(200, {
+          avatars: [firstLook, secondLook],
+          hasMore: false,
+          nextToken: null,
+        });
+      }
+      expect(query.token).toBeUndefined();
+      return respond(200, {
+        avatars: [
+          firstLook,
+          { ...firstLook, id: "Other_Daphne_1", groupId: "other-daphne-group" },
+        ],
+        hasMore: true,
+        nextToken: "next-looks",
+      });
+    },
+  );
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Explain the product.",
+  );
+  await user.click(requiredButtonNamed("Avatar: Auto · Okou decides", dialog));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose an avatar",
+  });
+  await within(picker).findByText("Load more");
+  expect(
+    picker.querySelectorAll("[data-intro-video-avatar-group]"),
+  ).toHaveLength(2);
+  await user.click(requiredButtonNamed("Load more", picker));
+  await within(picker).findByLabelText("Preview look Daphne in White shirt");
+  // Same-name people stay separate; a repeated look and a new page do not add cards.
+  expect(
+    picker.querySelectorAll("[data-intro-video-avatar-group]"),
+  ).toHaveLength(2);
+  const group = picker.querySelector<HTMLElement>(
+    '[data-intro-video-avatar-group="daphne-group"]',
+  );
+  if (!group) {
+    throw new Error("Expected the grouped Daphne card");
+  }
+  expect(group.querySelectorAll('[aria-label^="Preview look"]')).toHaveLength(
+    2,
+  );
+  await user.click(
+    within(group).getByLabelText("Preview look Daphne in White shirt"),
+  );
+  expect(within(group).getByAltText(secondLook.name)).toHaveAttribute(
+    "src",
+    secondLook.previewImageUrl,
+  );
+  expect(picker).toBeVisible();
+  await user.click(requiredButtonNamed("Close", picker));
+  expect(
+    requiredButtonNamed("Avatar: Auto · Okou decides", dialog),
+  ).toBeVisible();
+  await user.click(requiredButtonNamed("Avatar: Auto · Okou decides", dialog));
+  const reopenedPicker = await screen.findByRole("dialog", {
+    name: "Choose an avatar",
+  });
+  await user.click(
+    await within(reopenedPicker).findByLabelText(
+      "Choose an avatar: Daphne in White shirt",
+    ),
+  );
+  expect(
+    requiredButtonNamed("Avatar: Daphne in White shirt", dialog),
+  ).toBeVisible();
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Daphne_public_2");
+  });
+  expect(submittedPrompt).toContain("- HeyGen avatar group ID: daphne-group");
+  expect(submittedPrompt).toContain(
+    "- HeyGen avatar default voice ID: daphne-white-default-voice",
   );
 });
 

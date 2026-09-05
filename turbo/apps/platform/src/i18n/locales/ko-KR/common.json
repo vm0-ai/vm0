@@ -1962,7 +1962,8 @@
         "help": "발표자를 선택하거나 아바타 없이 계속하세요",
         "label": "Avatar",
         "none": "아바타 없음",
-        "noneDescription": "Create the video without a presenter"
+        "noneDescription": "Create the video without a presenter",
+        "previewLook": "Preview look {{name}}"
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {

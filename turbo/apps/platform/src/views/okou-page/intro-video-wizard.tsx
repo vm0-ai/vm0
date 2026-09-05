@@ -3,10 +3,7 @@ import type {
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
-import type {
-  IntroVideoAvatar,
-  IntroVideoStyle,
-} from "@okouai/api-contracts/contracts/intro-video-presenter";
+import type { IntroVideoStyle } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import {
   Ban,
   Check,
@@ -47,6 +44,7 @@ import {
   introVideoStylePickerSignals,
 } from "../../signals/okou-page/intro-video-catalog-picker.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
+import { groupIntroVideoAvatars } from "../../signals/okou-page/intro-video-avatar-groups.ts";
 import {
   introVideoWizardSignals,
   type IntroVideoAvatarSelection,
@@ -61,6 +59,7 @@ import {
   VoiceLibraryContent,
   VoiceLibraryToolbar,
 } from "./avatar-template-picker.tsx";
+import { IntroVideoAvatarGroupCard } from "./intro-video-avatar-group-card.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 
@@ -583,58 +582,6 @@ function StyleCard({
   );
 }
 
-function AvatarCard({
-  avatar,
-  selected,
-  onSelect,
-}: {
-  readonly avatar: IntroVideoAvatar;
-  readonly selected: boolean;
-  readonly onSelect: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      aria-label={`${t(($) => {
-        return $.chat.introVideo.avatar.heading;
-      })}: ${avatar.name}`}
-      className={cn(
-        "group relative min-w-0 overflow-hidden rounded-xl border bg-card text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "border-primary" : "border-border",
-      )}
-      onClick={onSelect}
-    >
-      <div className="aspect-[4/3] overflow-hidden bg-muted">
-        {avatar.previewImageUrl ? (
-          <img
-            src={avatar.previewImageUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-          />
-        ) : (
-          <span className="grid h-full place-items-center text-muted-foreground">
-            <UserRound size={32} />
-          </span>
-        )}
-      </div>
-      <div className="flex min-h-12 items-center gap-2 px-3 py-2.5">
-        <strong className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {avatar.name}
-        </strong>
-        {selected ? (
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-            <Check size={12} />
-          </span>
-        ) : null}
-      </div>
-    </button>
-  );
-}
-
 function StylePicker() {
   const { t } = useTranslation();
   const selection = useGet(introVideoWizardSignals.style$);
@@ -801,16 +748,15 @@ function AvatarPicker() {
         </CatalogMessage>
       ) : (
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-          {visible.items.map((avatar) => {
+          {groupIntroVideoAvatars(visible.items).map((group) => {
             return (
-              <AvatarCard
-                key={avatar.id}
-                avatar={avatar}
+              <IntroVideoAvatarGroupCard
+                key={group.id}
+                group={group}
                 selected={
-                  selection.kind === "catalog" &&
-                  selection.avatar.id === avatar.id
+                  selection.kind === "catalog" ? selection.avatar : undefined
                 }
-                onSelect={() => {
+                onSelect={(avatar) => {
                   choose({ kind: "catalog", avatar });
                 }}
               />
