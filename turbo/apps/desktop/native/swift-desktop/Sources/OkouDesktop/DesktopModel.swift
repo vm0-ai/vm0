@@ -165,6 +165,12 @@ final class DesktopModel: ObservableObject {
 
   private func refreshFeatures(allowAccountChange: Bool = false) async throws {
     guard !shuttingDown, !changingAccount || allowAccountChange else { return }
+    guard auth.signedIn else {
+      featureRequestID = nil
+      try await disableFeatures()
+      changed()
+      return
+    }
     let id = UUID()
     let authRevision = auth.revision
     featureRequestID = id
@@ -188,15 +194,7 @@ final class DesktopModel: ObservableObject {
       guard !shuttingDown, featureRequestID == id, auth.revision == authRevision,
         !(error is CancellationError)
       else { throw CancellationError() }
-      pluginsAvailable = false
-      debugAvailable = false
-      debugEnabled = false
-      let wasRecordingEnabled = recorder.available
-      recorder.available = false
-      if wasRecordingEnabled {
-        do { try await recorder.shutdown(force: true) } catch { report(error) }
-      }
-      mcp.setContext(available: false, online: false)
+      do { try await disableFeatures() } catch { report(error) }
       throw error
     }
     guard !shuttingDown, featureRequestID == id, auth.revision == authRevision else {
@@ -205,6 +203,16 @@ final class DesktopModel: ObservableObject {
     mcp.setContext(
       available: pluginsAvailable, online: ["online", "recovering"].contains(host.status))
     changed()
+  }
+
+  private func disableFeatures() async throws {
+    pluginsAvailable = false
+    debugAvailable = false
+    debugEnabled = false
+    let wasRecordingEnabled = recorder.available
+    recorder.available = false
+    mcp.setContext(available: false, online: false)
+    if wasRecordingEnabled { try await recorder.shutdown(force: true) }
   }
 
   func consume(_ url: URL) async throws {

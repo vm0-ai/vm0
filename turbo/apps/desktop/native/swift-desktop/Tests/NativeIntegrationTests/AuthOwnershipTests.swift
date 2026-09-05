@@ -67,7 +67,7 @@ extension NativeIntegrationTests {
               if self.path=='/': self.reply(b'<html>Done</html>',kind='text/html');return
               token=self.headers.get('Authorization','').removeprefix('Bearer ')
               owner=token.removeprefix('fixture-')
-              if expired: self.reply(b'{}',401); return
+              if expired or anonymous or not token: self.reply(b'{}',401); return
               if self.path=='/api/auth/me':
                   with condition:
                       held=hold_identity and not identity_started
@@ -153,6 +153,9 @@ extension NativeIntegrationTests {
     #expect(try await refresh.value == "fixture-0")
     _ = try await server.request("anonymous")
     #expect(try await auth.getToken(force: true) == nil)
+    try await desktop.refresh()
+    #expect(!auth.signedIn && desktop.error == nil)
+    #expect(!desktop.pluginsAvailable && !desktop.recorder.available && !desktop.debugAvailable)
     _ = try await server.request("authenticated")
     #expect(try await auth.getToken(force: true) == "fixture-0")
     let api = DesktopAPI(configuration: configuration)
