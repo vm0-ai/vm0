@@ -8,7 +8,7 @@ fi
 
 canonical_dist="$1"
 worker_shell="$2"
-production_primary_app_domain="${CLERK_PRODUCTION_PRIMARY_APP_DOMAIN:-app.vm0.ai}"
+production_primary_app_domain="${CLERK_PRODUCTION_PRIMARY_APP_DOMAIN:-app.okou.ai}"
 
 case "$production_primary_app_domain" in
   app.vm0.ai | app.okou.ai) ;;
