@@ -1,6 +1,6 @@
 import {
-  getVm0BuiltInModelRouteCandidates,
-  getVm0Vendor,
+  getBuiltInModelRouteCandidates,
+  getBuiltInVendor,
   MODEL_PROVIDER_TYPES,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { command } from "ccstate";
@@ -85,7 +85,7 @@ import {
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
-const VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
+const BUILT_IN_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
 
 interface OrgAdmissionLockGate {
   holderPid: number | null;
@@ -476,7 +476,7 @@ async function readOfficialWorkflowRunGateState(db: Db, signal: AbortSignal) {
   };
 }
 
-async function seedVm0BuiltInDefaultModelKey(
+async function seedBuiltInDefaultModelKey(
   db: Db,
   fixtureId: string,
   signal: AbortSignal,
@@ -485,34 +485,34 @@ async function seedVm0BuiltInDefaultModelKey(
   if (!selectedModel) {
     throw new Error("Expected vm0 to define a default model");
   }
-  return await seedVm0BuiltInModelKey(db, fixtureId, selectedModel, signal);
+  return await seedBuiltInModelKey(db, fixtureId, selectedModel, signal);
 }
 
-async function seedVm0BuiltInModelKey(
+async function seedBuiltInModelKey(
   db: Db,
   fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
-  const vendor = getVm0Vendor(selectedModel);
+  const vendor = getBuiltInVendor(selectedModel);
   await acquireBuiltInModelKeyFixture(db, fixtureId, [
     {
       vendor,
-      apiKey: `${VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
+      apiKey: `${BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}`,
     },
   ]);
   signal.throwIfAborted();
   return selectedModel;
 }
 
-async function seedVm0BuiltInModelCandidateKeys(
+async function seedBuiltInModelCandidateKeys(
   db: Db,
   fixtureId: string,
   selectedModel: string,
   signal: AbortSignal,
 ): Promise<string> {
   const vendors = new Set(
-    getVm0BuiltInModelRouteCandidates(selectedModel).map((candidate) => {
+    getBuiltInModelRouteCandidates(selectedModel).map((candidate) => {
       return candidate.vendor;
     }),
   );
@@ -522,7 +522,7 @@ async function seedVm0BuiltInModelCandidateKeys(
     [...vendors].map((vendor) => {
       return {
         vendor,
-        apiKey: `${VM0_BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
+        apiKey: `${BUILT_IN_MODEL_KEY_FIXTURE_PREFIX}${fixtureId}-${vendor}`,
       };
     }),
   );
@@ -530,7 +530,7 @@ async function seedVm0BuiltInModelCandidateKeys(
   return selectedModel;
 }
 
-async function deleteVm0BuiltInModelKey(
+async function deleteBuiltInModelKey(
   db: Db,
   fixtureId: string,
   signal: AbortSignal,
@@ -561,7 +561,7 @@ type BuiltInModelAction = Extract<
   }
 >;
 
-function isVm0BuiltInModelAction(
+function isBuiltInModelAction(
   body: TestRuntimeStateActionBody,
 ): body is BuiltInModelAction {
   return [
@@ -575,14 +575,14 @@ function isVm0BuiltInModelAction(
   ].includes(body.action);
 }
 
-type SetVm0BuiltInCandidateCooldownAction = Extract<
+type SetBuiltInCandidateCooldownAction = Extract<
   BuiltInModelAction,
   { action: "set-vm0-built-in-candidate-cooldown" }
 >;
 
-async function setVm0BuiltInCandidateCooldown(
+async function setBuiltInCandidateCooldown(
   db: Db,
-  body: SetVm0BuiltInCandidateCooldownAction,
+  body: SetBuiltInCandidateCooldownAction,
 ): Promise<void> {
   const unavailableUntil = new Date(body.unavailable_until);
   await db
@@ -603,14 +603,14 @@ async function setVm0BuiltInCandidateCooldown(
     });
 }
 
-type DeleteVm0BuiltInCandidateCooldownAction = Extract<
+type DeleteBuiltInCandidateCooldownAction = Extract<
   BuiltInModelAction,
   { action: "delete-vm0-built-in-candidate-cooldown" }
 >;
 
-async function deleteVm0BuiltInCandidateCooldown(
+async function deleteBuiltInCandidateCooldown(
   db: Db,
-  body: DeleteVm0BuiltInCandidateCooldownAction,
+  body: DeleteBuiltInCandidateCooldownAction,
 ): Promise<void> {
   await db
     .delete(builtInModelCandidateCooldown)
@@ -634,7 +634,7 @@ async function vm0BuiltInModelActionResponse(
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0BuiltInDefaultModelKey(
+          selected_model: await seedBuiltInDefaultModelKey(
             db,
             body.fixture_id,
             signal,
@@ -647,7 +647,7 @@ async function vm0BuiltInModelActionResponse(
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0BuiltInModelKey(
+          selected_model: await seedBuiltInModelKey(
             db,
             body.fixture_id,
             body.selected_model,
@@ -661,7 +661,7 @@ async function vm0BuiltInModelActionResponse(
         status: 200 as const,
         body: {
           ok: true as const,
-          selected_model: await seedVm0BuiltInModelCandidateKeys(
+          selected_model: await seedBuiltInModelCandidateKeys(
             db,
             body.fixture_id,
             body.selected_model,
@@ -671,7 +671,7 @@ async function vm0BuiltInModelActionResponse(
       };
     }
     case "delete-vm0-built-in-model-key": {
-      await deleteVm0BuiltInModelKey(db, body.fixture_id, signal);
+      await deleteBuiltInModelKey(db, body.fixture_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "resolve-vm0-built-in-model-route": {
@@ -691,12 +691,12 @@ async function vm0BuiltInModelActionResponse(
       };
     }
     case "set-vm0-built-in-candidate-cooldown": {
-      await setVm0BuiltInCandidateCooldown(db, body);
+      await setBuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "delete-vm0-built-in-candidate-cooldown": {
-      await deleteVm0BuiltInCandidateCooldown(db, body);
+      await deleteBuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
@@ -2613,7 +2613,7 @@ const postRuntimeStateAction$ = command(
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
-    if (isVm0BuiltInModelAction(body)) {
+    if (isBuiltInModelAction(body)) {
       return await vm0BuiltInModelActionResponse(db, body, signal);
     }
     const specializedFixture = await set(

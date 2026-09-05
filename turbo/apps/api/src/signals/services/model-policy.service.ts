@@ -8,7 +8,7 @@ import {
   getCanonicalModelDisplayName,
   getDefaultOrgModelPolicySeed,
   getFrameworkForType,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   isBuiltInModelProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
@@ -101,7 +101,7 @@ function surfaceSupportsModel(
   return (
     providerType !== null &&
     getFrameworkForType(providerType) ===
-      getFrameworkForType(getVm0ConcreteProviderType(model)) &&
+      getFrameworkForType(getBuiltInConcreteProviderType(model)) &&
     typeof surface.modelMappings[model] === "string"
   );
 }

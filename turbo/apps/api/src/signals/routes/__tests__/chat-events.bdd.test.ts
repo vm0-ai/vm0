@@ -158,9 +158,9 @@ import {
   readRunLaunchSnapshotFixture,
   readThreadSessionBinding,
   readThreadSessionConversation,
-  resolveVm0BuiltInModelRouteFixture,
-  seedVm0BuiltInModelCandidateKeys,
-  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
+  resolveBuiltInModelRouteFixture,
+  seedBuiltInModelCandidateKeys,
+  seedBuiltInModelKey as seedBuiltInModelKeyState,
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
@@ -684,7 +684,7 @@ async function expectTerraApiFollowUpUsage(
   });
 }
 
-async function expectNoVm0ModelUsage(runId: string): Promise<void> {
+async function expectNoBuiltInModelUsage(runId: string): Promise<void> {
   // Operational usage rows have no production run-scoped read API. This
   // test-only observation is required to prove the subscription no-charge
   // invariant rather than infer it from the public run status.
@@ -701,8 +701,8 @@ async function createTerraUsagePricingResolution(): Promise<
   return pricing.resolution;
 }
 
-async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
+async function seedBuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedBuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -710,7 +710,7 @@ async function configureBuiltInPiModel(
   actor: ApiTestUser,
   selectedModel: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.6-terra",
 ): Promise<void> {
-  await seedVm0BuiltInModelKey(selectedModel);
+  await seedBuiltInModelKey(selectedModel);
   await api.updateOrgModelPolicies(actor, [
     {
       model: selectedModel,
@@ -726,11 +726,8 @@ async function configureBuiltInPiModelOnOpenRouter(
   actor: ApiTestUser,
   selectedModel: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.6-terra",
 ): Promise<<T>(work: () => Promise<T>) => Promise<T>> {
-  await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
-  const primary = await resolveVm0BuiltInModelRouteFixture(
-    context,
-    selectedModel,
-  );
+  await seedBuiltInModelCandidateKeys(context, selectedModel);
+  const primary = await resolveBuiltInModelRouteFixture(context, selectedModel);
   if (!primary || primary.provider_type === "openrouter-codex") {
     throw new Error(`Expected a primary managed route for ${selectedModel}`);
   }
@@ -742,7 +739,7 @@ async function configureBuiltInPiModelOnOpenRouter(
   await withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
     unavailableCandidate,
     async () => {
-      const fallback = await resolveVm0BuiltInModelRouteFixture(
+      const fallback = await resolveBuiltInModelRouteFixture(
         context,
         selectedModel,
       );
@@ -5554,7 +5551,7 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
-    const insufficientVm0 = await chat.requestSendEvent(
+    const insufficientBuiltIn = await chat.requestSendEvent(
       actor,
       {
         agentId,
@@ -5563,10 +5560,10 @@ describe("CHAT-02: model-first provider policies", () => {
       },
       [201],
     );
-    if (insufficientVm0.status !== 201) {
+    if (insufficientBuiltIn.status !== 201) {
       throw new Error("Expected insufficient-credit send to return 201");
     }
-    expect(insufficientVm0.body.runId).toBeNull();
+    expect(insufficientBuiltIn.body.runId).toBeNull();
 
     // Restore spendable credits before exercising the built-in branch.
     await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
@@ -5593,7 +5590,7 @@ describe("CHAT-02: model-first provider policies", () => {
       hasTextContent: true,
     });
     expect([201, 503]).toContain(vm0Send.status);
-    type Vm0AdmissionObservation =
+    type BuiltInAdmissionObservation =
       | {
           readonly outcome: "route-unavailable";
           readonly response: {
@@ -5610,8 +5607,8 @@ describe("CHAT-02: model-first provider policies", () => {
           };
           readonly cleanup: { readonly status: number } | null;
         };
-    let vm0Observation: Vm0AdmissionObservation;
-    let expectedVm0Observation: Vm0AdmissionObservation;
+    let vm0Observation: BuiltInAdmissionObservation;
+    let expectedBuiltInObservation: BuiltInAdmissionObservation;
     if (vm0Send.status === 503) {
       expectApiError(vm0Send.body);
       vm0Observation = {
@@ -5622,7 +5619,7 @@ describe("CHAT-02: model-first provider policies", () => {
         },
         cleanup: null,
       };
-      expectedVm0Observation = {
+      expectedBuiltInObservation = {
         outcome: "route-unavailable",
         response: {
           status: 503,
@@ -5651,13 +5648,13 @@ describe("CHAT-02: model-first provider policies", () => {
         response: { status: 201, runId },
         cleanup: cancellation === null ? null : { status: cancellation.status },
       };
-      expectedVm0Observation = {
+      expectedBuiltInObservation = {
         outcome: "run-created",
         response: { status: 201, runId },
         cleanup: runId === null ? null : { status: 200 },
       };
     }
-    expect(vm0Observation).toStrictEqual(expectedVm0Observation);
+    expect(vm0Observation).toStrictEqual(expectedBuiltInObservation);
   }, 90_000);
 
   it("preserves persisted external model plan-state outcomes", async () => {
@@ -5746,7 +5743,7 @@ describe("CHAT-02: model-first provider policies", () => {
       supportByok: false,
       restrictedVm0Models: false,
     });
-    await seedVm0BuiltInModelKey("deepseek-v4-flash");
+    await seedBuiltInModelKey("deepseek-v4-flash");
     const byokDisabled = await chat.requestSendEvent(
       actor,
       {
@@ -8199,8 +8196,8 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const piModel = "gpt-5.6-terra";
-    await seedVm0BuiltInModelKey(piModel);
-    await seedVm0BuiltInModelKey("gpt-5.6-sol");
+    await seedBuiltInModelKey(piModel);
+    await seedBuiltInModelKey("gpt-5.6-sol");
     await api.updateOrgModelPolicies(actor, [
       {
         model: piModel,
@@ -11203,7 +11200,7 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(providerRequests[0]?.body).not.toHaveProperty(
         "previous_response_id",
       );
-      await expectNoVm0ModelUsage(first.runId);
+      await expectNoBuiltInModelUsage(first.runId);
 
       await api.heartbeatRunner(runnerGroup);
       const legacyClaim = await api.requestClaimRunnerJob(
@@ -11388,7 +11385,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       await waitForRunStatus(actor, first.runId, "completed");
       await flushWaitUntilForTest();
-      await expectNoVm0ModelUsage(first.runId);
+      await expectNoBuiltInModelUsage(first.runId);
       const firstSession = await readThreadSessionConversation(
         context,
         first.threadId,
@@ -11420,7 +11417,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toMatchObject({
         agent_session_id: firstSession.agent_session_id,
       });
-      await expectNoVm0ModelUsage(followUp.runId);
+      await expectNoBuiltInModelUsage(followUp.runId);
 
       const rotatedSecret = `${route.type}-rotated-secret`;
       const rotatedAt = now() + 1000;
@@ -11458,7 +11455,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.not.toMatchObject({
         agent_session_id: firstSession.agent_session_id,
       });
-      await expectNoVm0ModelUsage(rotated.runId);
+      await expectNoBuiltInModelUsage(rotated.runId);
       expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
         "Pi API first-turn outcome",
         expect.objectContaining({
@@ -11633,7 +11630,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
     await flushWaitUntilForTest();
 
-    await seedVm0BuiltInModelKey("gpt-5.6-terra");
+    await seedBuiltInModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.6-terra",
@@ -11936,7 +11933,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const actorWithOrg = { ...actor, orgId };
-    await seedVm0BuiltInModelKey("gpt-5.6-sol");
+    await seedBuiltInModelKey("gpt-5.6-sol");
 
     await api.updateOrgModelPolicies(actor, [
       {
@@ -12319,7 +12316,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
-    await seedVm0BuiltInModelKey("deepseek-v4-flash");
+    await seedBuiltInModelKey("deepseek-v4-flash");
     const selectedApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
       vendor: "deepseek",
@@ -12409,7 +12406,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
-    await seedVm0BuiltInModelKey("claude-opus-4-8");
+    await seedBuiltInModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
@@ -12821,7 +12818,7 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
     expect(oauth.oauthToken).toHaveLength(2);
     expect(oauth.oauthToken[1]?.get("grant_type")).toBe("refresh_token");
-    await expectNoVm0ModelUsage(run.runId);
+    await expectNoBuiltInModelUsage(run.runId);
 
     await api.heartbeatRunner(runnerGroup);
     const legacyClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
@@ -12990,7 +12987,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await waitForRunStatus(actor, run.runId, "completed");
     await flushWaitUntilForTest();
     expect(providerRequests).toHaveLength(1);
-    await expectNoVm0ModelUsage(run.runId);
+    await expectNoBuiltInModelUsage(run.runId);
 
     const firstSession = await readThreadSessionConversation(
       context,
@@ -13031,7 +13028,7 @@ describe("CHAT-02: run-level model overrides", () => {
     ).resolves.toMatchObject({
       agent_session_id: firstSession.agent_session_id,
     });
-    await expectNoVm0ModelUsage(continued.runId);
+    await expectNoBuiltInModelUsage(continued.runId);
   }, 90_000);
 
   it.each([
@@ -13175,7 +13172,7 @@ describe("CHAT-02: run-level model overrides", () => {
           `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
         ),
       ).toBeFalsy();
-      await expectNoVm0ModelUsage(run.runId);
+      await expectNoBuiltInModelUsage(run.runId);
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.requestClaimRunnerJob(true, run.runId, [404], {
         capabilities: { piModelConfigGenerations: [1, 2] },
@@ -13427,7 +13424,7 @@ describe("CHAT-02: run-level model overrides", () => {
   it("rotates VM0 chat sessions on runtime-model and legacy-route mismatches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const selectedModel = "claude-sonnet-5";
-    await seedVm0BuiltInModelKey(selectedModel);
+    await seedBuiltInModelKey(selectedModel);
     await api.updateOrgModelPolicies(actor, [
       {
         model: selectedModel,
@@ -16768,7 +16765,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       model: "claude-sonnet-5",
     });
 
-    await seedVm0BuiltInModelKey("gpt-5.6-terra");
+    await seedBuiltInModelKey("gpt-5.6-terra");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.6-terra",

@@ -21,7 +21,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   readRunFailureReasonFixture,
-  seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
+  seedBuiltInDefaultModelKey as seedBuiltInDefaultModelKeyState,
 } from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
@@ -44,8 +44,8 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-async function seedVm0BuiltInDefaultModelKey(): Promise<void> {
-  await seedVm0BuiltInDefaultModelKeyState(context);
+async function seedBuiltInDefaultModelKey(): Promise<void> {
+  await seedBuiltInDefaultModelKeyState(context);
 }
 
 interface AllowanceEntitlementArgs {
@@ -68,7 +68,7 @@ async function vm0AllowanceActor(args: {
   readonly orgId: string;
   readonly agentId: string;
 }> {
-  await seedVm0BuiltInDefaultModelKey();
+  await seedBuiltInDefaultModelKey();
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
   const actor = bdd.user();

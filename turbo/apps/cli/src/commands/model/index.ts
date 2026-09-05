@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getVm0ModelPriceTier } from "@okouai/api-contracts/contracts/model-providers";
+import { getBuiltInModelPriceTier } from "@okouai/api-contracts/contracts/model-providers";
 import { listModelPolicies } from "../../lib/api/domains/model-policies";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
@@ -38,7 +38,7 @@ const listCommand = new Command()
 
         if (getModelProviderRouteKind(policy) === "built-in") {
           console.log(
-            `    price tier: ${formatPriceTier(getVm0ModelPriceTier(policy.model))}`,
+            `    price tier: ${formatPriceTier(getBuiltInModelPriceTier(policy.model))}`,
           );
         }
 

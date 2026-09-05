@@ -6,7 +6,7 @@ import {
 } from "@okouai/core/public-brand";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
-  getVm0VisibleModels,
+  getBuiltInVisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -1032,7 +1032,7 @@ const slackModelPickerState$ = command(
     }[];
     readonly currentSelectedModel: string | null;
   }> => {
-    const visibleModels = new Set(getVm0VisibleModels());
+    const visibleModels = new Set(getBuiltInVisibleModels());
     const [policies, preference] = await Promise.all([
       set(listOrgModelPolicies$, { orgId, userId }, signal),
       get(userModelPreference({ orgId, userId })),
