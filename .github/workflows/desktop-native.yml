@@ -60,6 +60,9 @@ jobs:
 
       - name: Build Okou production bundle
         id: bundle
+        env:
+          SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
+          SENTRY_ENVIRONMENT: production
         run: |
           out="$RUNNER_TEMP/okou-desktop-swift"
           mkdir -p "$out"

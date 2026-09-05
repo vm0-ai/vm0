@@ -96,6 +96,12 @@ if [[ -n "$platform_url" ]]; then
     > "$contents/Resources/desktop-runtime-config.json"
 fi
 
+if [[ -n "${SENTRY_DSN_DESKTOP:-}" ]]; then
+  jq -n --arg dsn "$SENTRY_DSN_DESKTOP" --arg environment "${SENTRY_ENVIRONMENT:-production}" \
+    '{dsn: $dsn, environment: $environment}' \
+    > "$contents/Resources/desktop-sentry.json"
+fi
+
 cat > "$contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

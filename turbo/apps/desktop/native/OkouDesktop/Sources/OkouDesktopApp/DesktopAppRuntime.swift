@@ -49,6 +49,7 @@ final class DesktopAppRuntime {
     private var quitPreparation: Task<Void, Never>? = nil
     private var quitPreparationComplete = false
     private var nativeBackendDisposeTask: Task<Void, Never>? = nil
+    private var updater: DesktopUpdater? = nil
     private var trayAuthState: DesktopAuthState? = nil
     private var trayAuthLoading = true
     private var trayAuthError: String? = nil
@@ -86,10 +87,12 @@ final class DesktopAppRuntime {
             confirmQuit: { [weak self] in await self?.confirmQuit() ?? true },
             quit: { NSApp.terminate(nil) }
         )
+        SentrySetup.start(resources: resources, version: appVersion)
         self.nativeBackend = NativeHelperProcessClient(
             helperPath: NativeHelperProcessClient.resolveHelperPath(name: "computer-use-helper"),
             onRuntimeError: { error, context in
                 NSLog("Native Computer Use helper error: \(error.message) \(context)")
+                SentrySetup.captureNativeHelperError(error, context: context)
             }
         )
         self.permissionStore = ComputerUsePermissionStore(backend: nativeBackend)
@@ -191,6 +194,13 @@ final class DesktopAppRuntime {
             runSmokeTest()
             return
         }
+
+        updater = DesktopUpdater.install(
+            config: config, appVersion: appVersion, http: http,
+            getComputerUseHostState: { [unowned self] in self.computerUseController.hostState },
+            prepareForQuitAndInstall: { [unowned self] in await self.prepareForQuitAndInstall() }
+        )
+        installApplicationMenu()
 
         refreshPermissionsForState()
         developerTools.requestRefresh()
@@ -599,6 +609,18 @@ final class DesktopAppRuntime {
         Task { await self.quitConfirmation.requestQuit() }
     }
 
+    /// Update restarts never prompt: allow the quit, stop the host and release
+    /// the helper before the installer swaps the bundle.
+    func prepareForQuitAndInstall() async {
+        quitConfirmation.allowQuitWithoutConfirmation()
+        appIsQuitting = true
+        keepAwake.release()
+        mcpPlugin.stop()
+        await computerUseController.stopForQuit()
+        await disposeNativeBackend(reason: .updateRelaunch)
+        quitPreparationComplete = true
+    }
+
     /// Shared by app quit and update relaunch; the helper is disposed once.
     func disposeNativeBackend(reason: ComputerUseNativeShutdownReason) async {
         if nativeBackendDisposeTask == nil {
@@ -660,8 +682,12 @@ final class DesktopAppRuntime {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: displayName)
         appMenu.addItem(withTitle: "About \(displayName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        let updates = appMenu.addItem(withTitle: "Check for Updates...", action: nil, keyEquivalent: "")
-        updates.isEnabled = false
+        let updates = ClosureMenuItem(title: "Check for Updates...") { [weak self] in
+            guard let updater = self?.updater else { return }
+            Task { await updater.check(interactive: true) }
+        }
+        updates.isEnabled = updater != nil
+        appMenu.addItem(updates)
         appMenu.addItem(.separator())
         let developerToolsState = developerTools?.state ?? DesktopDeveloperToolsState(available: false, enabled: false)
         if developerToolsState.available {

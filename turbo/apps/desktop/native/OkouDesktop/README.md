@@ -55,5 +55,5 @@ open it with right-click → Open or clear quarantine with
 | Filesystem plugin (native tools)                   | Ported, tested |
 | MCP plugin manager (stdio, Streamable HTTP)        | Ported, tested |
 | Screen recorder windows, controller, delivery      | Ported         |
-| Auto-update from the Squirrel JSON feed            | Pending        |
-| Sentry                                             | Pending        |
+| Auto-update from the Squirrel JSON feed            | Ported, tested |
+| Sentry                                             | Ported         |

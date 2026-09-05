@@ -142,3 +142,35 @@ final class DesktopAuthURLsTests: XCTestCase {
         XCTAssertEqual(SemanticVersion("v2.3.4")?.description, "2.3.4")
     }
 }
+
+final class UpdateCheckerTests: XCTestCase {
+    private let feed = #"{"currentRelease":"0.47.0","releases":[{"version":"0.46.12","updateTo":{"name":"Okou 0.46.12","version":"0.46.12","pub_date":"2026-09-01T00:00:00.000Z","url":"https://example.com/old.zip","notes":""}},{"version":"0.47.0","updateTo":{"name":"Okou 0.47.0","version":"0.47.0","pub_date":"2026-09-05T00:00:00.000Z","url":"https://example.com/Okou-darwin-arm64-0.47.0.zip","notes":"fixes"}}]}"#
+
+    func testCandidateSelection() throws {
+        let releases = try SquirrelMacReleases.parse(try JSONValue.parse(feed))
+        XCTAssertEqual(
+            DesktopUpdateChecker.candidate(in: releases, currentVersion: "0.46.12"),
+            DesktopUpdateCandidate(version: "0.47.0", name: "Okou 0.47.0", url: "https://example.com/Okou-darwin-arm64-0.47.0.zip", pubDate: "2026-09-05T00:00:00.000Z", notes: "fixes")
+        )
+        XCTAssertNil(DesktopUpdateChecker.candidate(in: releases, currentVersion: "0.47.0"))
+        XCTAssertNil(DesktopUpdateChecker.candidate(in: releases, currentVersion: "0.48.0"))
+        XCTAssertNil(DesktopUpdateChecker.candidate(in: releases, currentVersion: "dev"))
+        XCTAssertThrowsError(try SquirrelMacReleases.parse(["releases": []]))
+    }
+
+    func testCheckFetchesReleasesJson() async throws {
+        struct Client: DesktopHTTPClient {
+            let feed: String
+            func send(_ request: URLRequest) async throws -> DesktopHTTPResponse {
+                XCTAssertEqual(request.url?.absoluteString, "https://api.vm0.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json")
+                return DesktopHTTPResponse(status: 200, body: Data(feed.utf8))
+            }
+        }
+        let checker = DesktopUpdateChecker(
+            feedBaseUrl: DesktopUpdateFeed.baseUrl(apiBaseUrl: "https://api.vm0.ai", updateLine: .okou)!,
+            currentVersion: "0.46.12", http: Client(feed: feed)
+        )
+        let candidate = try await checker.check()
+        XCTAssertEqual(candidate?.version, "0.47.0")
+    }
+}
