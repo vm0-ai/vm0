@@ -1489,6 +1489,7 @@ class TestFirewallAuthAsyncTransport:
         winner_socket = socket_factory.sockets[0]
         assert winner_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
         assert winner_socket.shutdown_calls == []
+        assert winner_socket.fileno() == -1
 
     async def test_propagates_final_socket_creation_error(self, mitm_ctx):
         final_error = OSError(errno.EMFILE, "file table overflow")
