@@ -75,7 +75,7 @@ const createAgentRunFixture$ = command(
 );
 
 /**
- * Test-only Zero run creation adapter. This route is intentionally omitted
+ * Test-only agent run creation adapter. This route is intentionally omitted
  * from every production and E2E route registry.
  */
 export const runFixtureRoutes: readonly RouteEntry[] = [
