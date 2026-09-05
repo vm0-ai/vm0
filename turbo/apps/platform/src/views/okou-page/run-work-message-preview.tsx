@@ -1,6 +1,8 @@
+import { cn } from "@okouai/ui";
 import type { Element, Root } from "hast";
 import { useTranslation } from "react-i18next";
 import type { EnrichedChatEvent } from "../../signals/chat-page/chat-event.ts";
+import { CHAT_THREAD_RESPONSE_LINE_CLASS } from "./chat-message-surface.tsx";
 
 const blockTags: ReadonlySet<string> = new Set([
   "address",
@@ -68,7 +70,10 @@ export function RunWorkMessagePreview({ event }: { event: EnrichedChatEvent }) {
   return (
     <div
       data-chat-run-work-preview
-      className="flex h-5 min-w-0 max-w-full items-center gap-2 text-[13px] leading-5 text-muted-foreground/60"
+      className={cn(
+        "flex h-5 min-w-0 max-w-full items-center gap-2 text-[13px] leading-5 text-muted-foreground/60",
+        CHAT_THREAD_RESPONSE_LINE_CLASS,
+      )}
     >
       <span aria-hidden className="shrink-0">
         •

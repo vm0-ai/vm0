@@ -7,8 +7,14 @@ export const CHAT_THREAD_CONTENT_MAIN_CLASS =
 export const CHAT_THREAD_MESSAGE_LIST_CLASS =
   "w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible";
 
-// The message list owns spacing between rows; nested assistant stacks use an
-// 8px gap between blocks. Bodies and action rows add no vertical padding.
+// The message list owns the 24px gap between turns. History, main result and
+// status tail each use the same 8px stack gap, without section-specific padding.
+export const CHAT_THREAD_RESPONSE_STACK_CLASS = "flex min-w-0 flex-col gap-2";
+
+// The folding boundary enables one shared line box. Vertical padding centers
+// the original 15px * 1.7 line in 36px; additional lines grow naturally.
+export const CHAT_THREAD_RESPONSE_LINE_CLASS =
+  "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
 
 export const CHAT_THREAD_USER_MESSAGE_ROW_CLASS =
   "flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
@@ -20,7 +26,7 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS =
   "flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
 export const CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS =
-  "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:mt-0.5 @[900px]:h-9 @[900px]:w-9";
+  "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:mt-0.5 @[900px]:h-9 @[900px]:w-9 @[900px]:group-data-[run-work-folding]/chat:mt-0";
 
 export const CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS =
   "h-7 w-7 rounded-full object-cover object-top @[900px]:h-9 @[900px]:w-9";

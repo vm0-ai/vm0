@@ -321,6 +321,8 @@ import {
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_RESPONSE_LINE_CLASS,
+  CHAT_THREAD_RESPONSE_STACK_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "./chat-message-surface.tsx";
@@ -3178,13 +3180,18 @@ function ChatThreadEmptyState({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
+  const runWorkFoldingEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
   const sharingPhase = useGet(thread.sharing.phase$);
 
   return (
-    <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
+    <main
+      data-run-work-folding={runWorkFoldingEnabled || undefined}
+      className={cn(CHAT_THREAD_CONTENT_MAIN_CLASS, "group/chat")}
+    >
       <div
         ref={scrollContentOnRef}
         data-message-container
@@ -3698,6 +3705,7 @@ function RunSectionDivider({
     <div
       className={cn(
         "flex min-h-5 items-center gap-2",
+        CHAT_THREAD_RESPONSE_LINE_CLASS,
         labelPosition === "right" && "flex-row-reverse",
       )}
     >
@@ -3866,8 +3874,10 @@ function RunWorkSectionRow({
       ) : null}
     </>
   );
-  const className =
-    "inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground";
+  const className = cn(
+    "inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground",
+    CHAT_THREAD_RESPONSE_LINE_CLASS,
+  );
   return (
     <div data-chat-run-work className="-mx-2">
       {collapsible ? (
@@ -4741,6 +4751,7 @@ function ShimmerText({
       ref={setRef}
       className={cn(
         "okou-shimmer-text h-5 min-w-0 flex-1 truncate text-[0.8125rem] leading-5",
+        "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:leading-[inherit]",
         className,
       )}
       aria-label={ariaLabel}
@@ -4854,8 +4865,18 @@ function InlineThinkingRow({
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
-    <div className="flex items-center gap-2 h-5">
-      <ThinkingLoader blockStyle={blockStyle} spinnerEnabled={spinnerEnabled} />
+    <div
+      className={cn(
+        "flex items-center gap-2 h-5",
+        CHAT_THREAD_RESPONSE_LINE_CLASS,
+      )}
+    >
+      <span className="inline-flex shrink-0 items-center justify-center group-data-[run-work-folding]/chat:w-3.5">
+        <ThinkingLoader
+          blockStyle={blockStyle}
+          spinnerEnabled={spinnerEnabled}
+        />
+      </span>
       <ThinkingLabel
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -4901,7 +4922,7 @@ function FinishedRunRow({
         : donePhrase;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={CHAT_THREAD_RESPONSE_STACK_CLASS}>
       <RunSectionDivider label={label} />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
@@ -5119,7 +5140,7 @@ function ThinkingIndicator({
     return null;
   }
 
-  // Shared inline row with fixed h-5 to prevent layout jump on transition
+  // Active and finished states share the response line metrics.
   if (thinkingIndicatorUsesStatusRow(mode)) {
     return (
       <AssistantThinkingStatusRow
@@ -7452,7 +7473,7 @@ function visibleRunIndicatorMode(
   return mode;
 }
 
-type PagedAssistantTimelineItem =
+type PagedAssistantHistoryItem =
   | {
       readonly kind: "assistant";
       readonly event: EnrichedChatEvent;
@@ -7463,16 +7484,20 @@ type PagedAssistantTimelineItem =
       readonly change: RunModelChange;
     }
   | {
+      readonly kind: "run-work-preview";
+      readonly event: EnrichedChatEvent;
+    };
+
+type PagedAssistantTimelineItem =
+  | PagedAssistantHistoryItem
+  | {
       readonly kind: "completed-work";
       readonly control: CompletedWorkFoldControl;
     }
   | {
       readonly kind: "run-work";
       readonly control: RunWorkSectionControl;
-    }
-  | {
-      readonly kind: "run-work-preview";
-      readonly event: EnrichedChatEvent;
+      readonly historyItems: readonly PagedAssistantHistoryItem[];
     }
   | {
       readonly kind: "run-work-main";
@@ -7482,7 +7507,7 @@ type PagedAssistantTimelineItem =
 
 function assistantTimelineItems(
   events: readonly EnrichedChatEvent[],
-): PagedAssistantTimelineItem[] {
+): PagedAssistantHistoryItem[] {
   return events.filter(isRenderableAssistantEvent).map((event) => {
     return { kind: "assistant", event };
   });
@@ -7491,9 +7516,9 @@ function assistantTimelineItems(
 function foldedRunWorkTimelineItems(
   groups: readonly ChatEventGroup[],
   modelChanges: ReadonlyMap<string, RunModelChange>,
-): PagedAssistantTimelineItem[] {
+): PagedAssistantHistoryItem[] {
   return groups.flatMap((group) => {
-    return group.events.flatMap((event): PagedAssistantTimelineItem[] => {
+    return group.events.flatMap((event): PagedAssistantHistoryItem[] => {
       const change = modelChanges.get(event.id);
       if (change !== undefined) {
         return [{ kind: "model-change", eventId: event.id, change }];
@@ -7538,21 +7563,24 @@ function buildPagedAssistantTimeline({
     return items;
   }
 
-  items.push({ kind: "run-work", control: runWorkSection });
+  const historyItems: PagedAssistantHistoryItem[] = [];
   if (runWorkSection.expanded) {
-    items.push(
+    historyItems.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
     );
   } else {
-    items.push(
+    historyItems.push(
       ...runWorkSection.previewMessages.map(
-        (event): PagedAssistantTimelineItem => {
+        (event): PagedAssistantHistoryItem => {
           return { kind: "run-work-preview", event };
         },
       ),
     );
   }
-  items.push(...assistantTimelineItems(group.events.slice(0, anchorIndex)));
+  historyItems.push(
+    ...assistantTimelineItems(group.events.slice(0, anchorIndex)),
+  );
+  items.push({ kind: "run-work", control: runWorkSection, historyItems });
   const anchorEvent = group.events[anchorIndex];
   if (anchorEvent !== undefined) {
     items.push({
@@ -7599,14 +7627,20 @@ function PagedAssistantTimeline({
     }
     if (item.kind === "run-work") {
       return (
-        <RunWorkSectionRow
-          key={`run-work:control:${item.control.anchorEventId}`}
-          startTime={item.control.startTime}
-          endTime={item.control.endTime}
-          collapsible={item.control.collapsible}
-          expanded={item.control.expanded}
-          onToggle={item.control.onToggle}
-        />
+        <div
+          key="run-work:history"
+          data-chat-run-work-history
+          className={CHAT_THREAD_RESPONSE_STACK_CLASS}
+        >
+          <RunWorkSectionRow
+            startTime={item.control.startTime}
+            endTime={item.control.endTime}
+            collapsible={item.control.collapsible}
+            expanded={item.control.expanded}
+            onToggle={item.control.onToggle}
+          />
+          <PagedAssistantTimeline items={item.historyItems} thread={thread} />
+        </div>
       );
     }
     if (item.kind === "run-work-preview") {
@@ -7617,13 +7651,13 @@ function PagedAssistantTimeline({
         <div
           key={item.event.id}
           data-chat-run-work-main
-          className="flex min-w-0 flex-col gap-2"
+          className={CHAT_THREAD_RESPONSE_STACK_CLASS}
         >
           <PagedAssistantEventItem event={item.event} thread={thread} />
           {item.artifactCards.length === 0 ? null : (
             <div
               data-chat-run-work-remaining-artifacts
-              className="flex min-w-0 flex-col gap-2"
+              className={CHAT_THREAD_RESPONSE_STACK_CLASS}
             >
               {item.artifactCards.map((card) => {
                 return (
@@ -7709,7 +7743,10 @@ function PagedRunWorkAssistantContent({
       />
       {(statusTailEvents?.length ?? 0) > 0 ||
       visibleIndicatorMode !== undefined ? (
-        <div data-chat-run-status-tail className="flex min-w-0 flex-col gap-2">
+        <div
+          data-chat-run-status-tail
+          className={CHAT_THREAD_RESPONSE_STACK_CLASS}
+        >
           {statusTailEvents?.length ? (
             statusTailEvents.map((event) => {
               return (
@@ -7784,7 +7821,7 @@ function PagedAssistantGroup({
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
-        <div className="relative flex flex-col gap-2">
+        <div className={cn("relative", CHAT_THREAD_RESPONSE_STACK_CLASS)}>
           {runGroupFolds?.map((fold) => {
             return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
           })}
@@ -7853,6 +7890,7 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
+        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
