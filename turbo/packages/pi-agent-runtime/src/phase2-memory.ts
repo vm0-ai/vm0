@@ -480,6 +480,38 @@ async function runMaintenancePrompt(args: {
   let arbiter: Phase2TerminalArbiter | undefined;
   let failure: Phase2CapturedFailure | undefined;
   let provider: Phase2ProviderResult | undefined;
+  let attemptIndex = 0;
+  let usageFailed = false;
+  // The agent awaits subscribers before starting the next tool or request.
+  // Persist incurred usage at that boundary so later failure cannot erase it.
+  const unsubscribeUsage = args.session.agent.subscribe(async (event) => {
+    if (event.type !== "message_end" || event.message.role !== "assistant") {
+      return;
+    }
+    const message = event.message;
+    const index = attemptIndex++;
+    try {
+      await args.input.onUsage?.({
+        orgId: args.input.orgId,
+        userId: args.input.userId,
+        memoryStorageId: args.input.memoryStorageId,
+        claimedRevision: args.input.claimedRevision,
+        selectionDigest: args.input.selectionDigest,
+        responseId:
+          message.responseId ?? `attempt:${args.input.leaseToken}:${index}`,
+        usage: {
+          input: message.usage.input,
+          output: message.usage.output,
+          cacheRead: message.usage.cacheRead,
+          cacheWrite: message.usage.cacheWrite,
+          reasoning: message.usage.reasoning ?? 0,
+        },
+      });
+    } catch (error) {
+      usageFailed = true;
+      throw error;
+    }
+  });
   try {
     await confirmHeartbeat(args.input, args.state, args.startedAt);
     args.input.signal.throwIfAborted();
@@ -512,6 +544,11 @@ async function runMaintenancePrompt(args: {
 
   if (!failure && settlement) {
     failure = settlementFailure(settlement, args.input, args.state);
+  }
+
+  unsubscribeUsage();
+  if (usageFailed) {
+    throw engineError("observer_failed", args.input, args.state);
   }
 
   if (failure) {
@@ -757,19 +794,6 @@ async function executeConsolidation(
     testHooks,
   });
   emitLifecycle(input, state, startedAt, "model_completed");
-  try {
-    await input.onUsage?.({
-      orgId: input.orgId,
-      userId: input.userId,
-      memoryStorageId: input.memoryStorageId,
-      claimedRevision: input.claimedRevision,
-      selectionDigest: input.selectionDigest,
-      responseId: provider.responseId,
-      usage: provider.usage,
-    });
-  } catch {
-    throw engineError("observer_failed", input, state);
-  }
   signal.throwIfAborted();
   await testHooks?.beforeOutputValidation?.(workspace);
   signal.throwIfAborted();
@@ -917,6 +941,7 @@ export interface PiMemoryPhase2MountedConsolidationArgs {
   readonly selectionDigest: string;
   readonly selected: readonly PiMemoryPhase2ConsolidationArgs["selected"][number][];
   readonly model: PiMemoryPhase2ConsolidationArgs["model"];
+  readonly onUsage?: PiMemoryPhase2ConsolidationArgs["onUsage"];
 }
 
 /**
@@ -962,6 +987,7 @@ export async function runPiMemoryPhase2MountedConsolidation(
       baseFiles,
       selected: args.selected,
       model: args.model,
+      onUsage: args.onUsage,
       heartbeat: async () => {
         return true;
       },

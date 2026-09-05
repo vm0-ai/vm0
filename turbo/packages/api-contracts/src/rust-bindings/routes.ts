@@ -17,6 +17,7 @@ import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
+  webhookPiMemoryPhase2UsageContract,
 } from "../contracts/webhooks";
 
 export interface RouteLike {
@@ -32,6 +33,11 @@ export interface RustRouteBinding {
 }
 
 export const rustRouteBindings = [
+  {
+    route: webhookPiMemoryPhase2UsageContract.send,
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustConstName: "SEND",
+  },
   {
     route: runnersPollContract.poll,
     rustModulePath: ["runners", "poll"],

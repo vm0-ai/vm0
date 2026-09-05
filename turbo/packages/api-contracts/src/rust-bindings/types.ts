@@ -21,6 +21,7 @@ import {
   webhookCompleteContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
+  webhookPiMemoryPhase2UsageContract,
 } from "../contracts/webhooks";
 
 export interface RustTypeBinding {
@@ -51,6 +52,14 @@ export const rustTypeRootDoc = [
 ] as const;
 
 export const rustTypeModuleDocs = [
+  {
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2"],
+    rustDoc: ["Private Pi memory maintenance control."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustDoc: ["Bounded provider-attempt accounting."],
+  },
   {
     rustModulePath: ["runners"],
     rustDoc: ["Runner-facing DTOs generated from TypeScript API contracts."],
@@ -120,6 +129,51 @@ export const rustTypeModuleDocs = [
 ] satisfies readonly RustTypeModuleDoc[];
 
 export const rustTypeBindings = [
+  {
+    schema: webhookPiMemoryPhase2UsageContract.send.body,
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustTypeName: "Request",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "Request",
+        rustDoc: [
+          "Private maintenance provider-attempt usage; contains no memory content.",
+        ],
+        fields: {
+          schemaVersion: ["Private journal schema version."],
+          runId: ["Authenticated maintenance run."],
+          memoryStorageId: ["Exact mounted Storage owner."],
+          leaseToken: ["Exact dispatched claim token."],
+          claimedRevision: ["Claimed input revision."],
+          claimedBaseVersionId: ["Pinned mounted base version."],
+          selectionDigest: ["Bounded candidate selection identity."],
+          attempts: ["Provider attempts observed by the private child."],
+        },
+      },
+      {
+        rustTypeName: "RequestAttempt",
+        rustDoc: ["One observed provider attempt."],
+        fields: {
+          responseId: ["Provider response or exact lease-attempt identity."],
+          usage: ["Token quantities incurred by this attempt."],
+        },
+      },
+      {
+        rustTypeName: "RequestAttemptUsage",
+        rustDoc: [
+          "Background token quantities, separate from foreground accounting.",
+        ],
+        fields: {
+          input: ["Uncached input tokens."],
+          output: ["Output tokens."],
+          cacheRead: ["Cached input tokens."],
+          cacheWrite: ["Cache creation tokens."],
+          reasoning: ["Reasoning tokens included in output."],
+        },
+      },
+    ],
+  },
   {
     schema: modelProviderCodexRuntimeConfigSchema,
     rustModulePath: ["runners", "runs"],

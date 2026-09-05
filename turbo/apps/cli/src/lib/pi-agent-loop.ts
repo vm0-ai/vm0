@@ -1,4 +1,4 @@
-import { open, readFile, unlink } from "node:fs/promises";
+import { open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
@@ -173,6 +173,32 @@ export async function runPiSandboxAgentLoop(args: {
         throw error;
       }
     });
+    const usageFile = join(dirname(validationFile), "maintenance-usage.json");
+    const attempts: {
+      readonly responseId: string;
+      readonly usage: {
+        readonly input: number;
+        readonly output: number;
+        readonly cacheRead: number;
+        readonly cacheWrite: number;
+        readonly reasoning: number;
+      };
+    }[] = [];
+    const usageBinding = {
+      schemaVersion: 1,
+      runId: args.config.runId,
+      memoryStorageId: maintenance.memoryStorageId,
+      claimedRevision: maintenance.claimedRevision,
+      claimedBaseVersionId: maintenance.claimedBaseVersionId,
+      leaseToken: maintenance.leaseToken,
+      selectionDigest: maintenance.selectionDigest,
+    } as const;
+    // A reused runtime directory must not attribute an earlier attempt's usage.
+    await unlink(usageFile).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    });
     const result = await runPiMemoryPhase2MountedConsolidation(
       {
         memoryRoot: args.memoryRoot ?? PI_MEMORY_ROOT,
@@ -188,6 +214,24 @@ export async function runPiSandboxAgentLoop(args: {
           };
         }),
         model: args.config.model,
+        async onUsage(event) {
+          if (attempts.length >= 256) {
+            throw new Error("Pi memory maintenance usage bound exceeded");
+          }
+          attempts.push({ responseId: event.responseId, usage: event.usage });
+          const temporary = `${usageFile}.tmp`;
+          const file = await open(temporary, "w", 0o600);
+          try {
+            await file.writeFile(
+              JSON.stringify({ ...usageBinding, attempts }),
+              "utf8",
+            );
+            await file.sync();
+          } finally {
+            await file.close();
+          }
+          await rename(temporary, usageFile);
+        },
       },
       AbortSignal.timeout(2 * 60 * 60 * 1000),
     );

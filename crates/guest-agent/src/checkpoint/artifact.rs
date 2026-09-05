@@ -114,7 +114,8 @@ fn maintenance_checkpoint_guard(
         return Err(maintenance_checkpoint_error());
     }
     let attestation = vas::PiMemoryPhase2CheckpointAttestation {
-        schema_version: marker.schema_version,
+        // v2 requires commit receipts; an old API rejects prepare before upload.
+        schema_version: 2,
         lease_token: marker.lease_token,
         claimed_revision: marker.claimed_revision,
         claimed_base_version_id: marker.claimed_base_version_id,
@@ -218,7 +219,7 @@ async fn snapshot_artifact_plan(
         true,
         None,
     );
-    if local_hash == entry.version_id {
+    if local_hash == entry.version_id && maintenance_attestation.is_none() {
         log_info!(
             LOG_TAG,
             "VAS artifact snapshot skipped (unchanged since mount): {}@{}",

@@ -42,7 +42,10 @@ const sha256HexSchema = z
 
 const piMemoryPhase2CheckpointAttestationSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    // New Guests require receipt-aware prepare/commit. Old APIs reject v2
+    // before upload. Read v1 while pinned Guests drain (up to two hours);
+    // remove v1 under #31067 after that drain and the API rollback window.
+    schemaVersion: z.number().int().min(1).max(2),
     leaseToken: z.uuid(),
     claimedRevision: z.number().int().positive(),
     claimedBaseVersionId: sha256HexSchema,
@@ -1160,3 +1163,70 @@ export const webhookUsageEventContract = c.router({
 });
 
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
+
+/** Private, content-free provider-attempt accounting for mounted maintenance. */
+export const webhookPiMemoryPhase2UsageContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/pi-memory-phase2/usage",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        schemaVersion: z.literal(1),
+        runId: z.uuid(),
+        memoryStorageId: z.uuid(),
+        leaseToken: z.uuid(),
+        claimedRevision: z.number().int().positive(),
+        claimedBaseVersionId: z.string().regex(/^[a-f0-9]{64}$/u),
+        selectionDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+        attempts: z
+          .array(
+            z
+              .object({
+                responseId: z.string().min(1).max(255),
+                usage: z
+                  .object({
+                    input: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    output: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    cacheRead: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    cacheWrite: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    reasoning: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                  })
+                  .strict(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(256),
+      })
+      .strict(),
+    responses: {
+      200: z.object({ success: z.boolean() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Record private memory maintenance provider usage",
+  },
+});

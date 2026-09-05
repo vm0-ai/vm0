@@ -689,11 +689,13 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       role: "developer",
       content: `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory`,
     });
-    expect(usages).toHaveLength(1);
-    expect(usages[0]).toMatchObject({
-      responseId: result.responseId,
-      usage: result.usage,
-    });
+    expect(usages).toHaveLength(4);
+    expect(usages.at(-1)).toMatchObject({ responseId: result.responseId });
+    expect(
+      usages.reduce((total, event) => {
+        return total + event.usage.input;
+      }, 0),
+    ).toBe(result.usage.input);
     expect(
       lifecycle.map((event) => {
         return event.stage;
@@ -1026,7 +1028,8 @@ describe("Pi memory Phase 2 consolidation engine", () => {
 
       expect(heartbeatCount).toBe(2);
       expect(provider.requests).toHaveLength(1);
-      expect(usages).toStrictEqual([]);
+      expect(usages).toHaveLength(1);
+      expect(usages[0]?.usage.input).toBeGreaterThan(0);
       expect(disposedSessions).toBe(1);
       expect(
         lifecycle.some((event) => {

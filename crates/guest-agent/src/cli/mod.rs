@@ -985,6 +985,15 @@ async fn execute_cli_inner(
         session_metadata,
     } = controls;
 
+    let maintenance_execution = is_pi_memory_maintenance(runtime)?;
+    if maintenance_execution
+        && !session_metadata.capture_maintenance_launch(runtime.pi_session_id.as_ref())
+    {
+        return Err(AgentError::Execution(
+            "Invalid private maintenance session identity".into(),
+        ));
+    }
+
     let replay_user_messages =
         active_input.is_enabled() && matches!(runtime.framework, env::Framework::ClaudeCode);
     log_info!(
@@ -1101,7 +1110,7 @@ async fn execute_cli_inner(
 
     let active_input_controller = active_input.controller();
     let pi_execution = matches!(runtime.framework, env::Framework::Pi);
-    let pi_rpc_execution = pi_execution && !is_pi_memory_maintenance(runtime)?;
+    let pi_rpc_execution = pi_execution && !maintenance_execution;
     let (pi_rpc_response_tx, pi_rpc_response_rx) = pi_rpc::response_channel();
     let (pi_rpc_startup_tx, pi_rpc_startup_rx) = tokio::sync::oneshot::channel();
     let mut pi_rpc_startup_tx = pi_rpc_execution.then_some(pi_rpc_startup_tx);

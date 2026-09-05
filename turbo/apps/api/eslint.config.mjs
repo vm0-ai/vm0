@@ -432,6 +432,8 @@ export default [
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
+      // #31937 requires the real Guest/CLI and PostgreSQL control boundary.
+      "src/signals/services/__tests__/pi-memory-maintenance.boundary.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       // Terra route activation is explicitly deferred. This compatibility
       // slice must pin the pre-admission provider/transport contract before a
@@ -575,6 +577,8 @@ export default [
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
+      // #31937 requires the real Guest/CLI and PostgreSQL control boundary.
+      "src/signals/services/__tests__/pi-memory-maintenance.boundary.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.test-fixture.ts",
       // Terra route activation is explicitly deferred, so its pre-admission

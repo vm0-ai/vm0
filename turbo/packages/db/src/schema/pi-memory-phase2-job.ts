@@ -173,11 +173,13 @@ export const piMemoryPhase2Jobs = pgTable(
         sql`(
           ${table.status} = 'leased' AND (
             (
+              ${table.legacyLeaseToken} IS NOT NULL AND
               ${table.legacyLeaseToken} = ${table.leaseToken} AND
               ${table.sandboxLeaseToken} IS NULL AND
               ${table.maintenanceRunId} IS NULL
             ) OR (
               ${table.legacyLeaseToken} IS NULL AND
+              ${table.sandboxLeaseToken} IS NOT NULL AND
               ${table.sandboxLeaseToken} = ${table.leaseToken}
             )
           )
@@ -211,7 +213,6 @@ export const piMemoryPhase2Jobs = pgTable(
               ${table.lastMaintenanceCheckpointVersionId} IS NULL
             ) OR (
               ${table.lastMaintenanceOutcome} IN ('published', 'no_diff') AND
-              ${table.lastMaintenanceCheckpointId} IS NOT NULL AND
               ${table.lastMaintenanceCheckpointVersionId} IS NOT NULL
             )
           )

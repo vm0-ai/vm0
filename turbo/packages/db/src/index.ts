@@ -129,6 +129,7 @@ import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
 import * as memorySummaryProjectionSchema from "./schema/memory-summary-projection";
 import * as piMemoryStage1CandidateSchema from "./schema/pi-memory-stage1-candidate";
 import * as piMemoryPhase2JobSchema from "./schema/pi-memory-phase2-job";
+import * as piMemoryPhase2CheckpointSchema from "./schema/pi-memory-phase2-checkpoint";
 import * as piMemoryPublicationProvenanceSchema from "./schema/pi-memory-publication-provenance";
 
 export const schema = {
@@ -263,6 +264,7 @@ export const schema = {
   ...memorySummaryProjectionSchema,
   ...piMemoryStage1CandidateSchema,
   ...piMemoryPhase2JobSchema,
+  ...piMemoryPhase2CheckpointSchema,
   ...piMemoryPublicationProvenanceSchema,
 };
 

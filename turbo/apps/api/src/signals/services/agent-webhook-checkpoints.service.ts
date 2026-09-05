@@ -15,6 +15,9 @@ import {
   inspectPiSessionJsonl,
   UnsupportedPiSessionVersionError,
 } from "@okouai/pi-agent-runtime/api";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { piMemoryPhase2MaintenanceCallbackPayloadSchema } from "./pi-memory-phase2-maintenance.service";
+import { findPiMemoryPhase2Checkpoint } from "./pi-memory-phase2-checkpoint.service";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
@@ -1026,6 +1029,82 @@ async function standaloneCheckpointAdmissionResponse(
   );
 }
 
+// Private maintenance has no public Pi history. Its session is the authenticated
+// run itself, and only an exact generic commit receipt can advance its snapshot.
+async function privateMaintenanceCheckpoint(
+  db: Db | Tx,
+  input: AgentCheckpointInput,
+  run: CheckpointRunContext,
+): Promise<
+  { memoryStorageId: string; versionId: string } | string | undefined
+> {
+  if (!isPiCheckpointRun(run)) {
+    return undefined;
+  }
+  const [callback] = await db
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, input.body.runId),
+        eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+      ),
+    )
+    .limit(1);
+  if (!callback) {
+    return undefined;
+  }
+  const parsed = piMemoryPhase2MaintenanceCallbackPayloadSchema.safeParse(
+    callback.payload,
+  );
+  if (
+    !parsed.success ||
+    parsed.data.orgId !== input.auth.orgId ||
+    parsed.data.userId !== input.auth.userId ||
+    run.chatThreadId !== null ||
+    !isPiCheckpointRun(run) ||
+    input.body.cliAgentSessionId !== input.body.runId ||
+    input.body.cliAgentSessionHistoryHash !== undefined ||
+    input.body.cliAgentSessionHistoryDisposition !== "unavailable"
+  ) {
+    return "[PI_MAINTENANCE_IDENTITY_INVALID] Private checkpoint identity does not match its launch";
+  }
+  const binding = parsed.data;
+  const receipt = await findPiMemoryPhase2Checkpoint(db, {
+    ...binding,
+    runId: input.body.runId,
+  });
+  const mount = run.storageMounts?.find((entry) => {
+    return entry.storageId === binding.memoryStorageId && entry.writeback;
+  });
+  const snapshot = input.body.artifactSnapshots?.find((entry) => {
+    return entry.name === mount?.name && entry.mountPath === mount.mountPath;
+  });
+  if (
+    !mount ||
+    !snapshot ||
+    (snapshot.version !== binding.claimedBaseVersionId &&
+      snapshot.version !== receipt?.versionId)
+  ) {
+    return "[PI_MAINTENANCE_CHECKPOINT_INVALID] Private checkpoint lacks exact publication or recovery evidence";
+  }
+  return {
+    memoryStorageId: binding.memoryStorageId,
+    versionId: receipt?.versionId ?? binding.claimedBaseVersionId,
+  };
+}
+
+function piValidationMatchesRun(
+  prepared: PreparedAgentCheckpoint,
+  run: CheckpointRunContext,
+): boolean {
+  return (
+    prepared.piValidation !== undefined &&
+    prepared.piValidation.chatThreadId === run.chatThreadId &&
+    prepared.piValidation.runSessionId === run.sessionId
+  );
+}
+
 export async function persistAgentCheckpointInTransaction(
   tx: Tx,
   input: AgentCheckpointInput,
@@ -1041,9 +1120,18 @@ export async function persistAgentCheckpointInTransaction(
     return notFound("Agent run not found");
   }
 
+  const maintenance = await privateMaintenanceCheckpoint(tx, input, run);
+  signal.throwIfAborted();
+  if (typeof maintenance === "string") {
+    return badRequestMessage(maintenance);
+  }
   const storageMounts = checkpointStorageMounts({
     runStorageMounts: run.storageMounts,
     artifactSnapshots: input.body.artifactSnapshots,
+  }).map((mount) => {
+    return maintenance?.memoryStorageId === mount.storageId
+      ? { ...mount, version: maintenance.versionId }
+      : mount;
   });
   const typeError = piCheckpointTypeError(run, input.body);
   if (typeError) {
@@ -1087,7 +1175,7 @@ export async function persistAgentCheckpointInTransaction(
       );
     }
   }
-  if (piRun) {
+  if (piRun && !maintenance) {
     const admission = await admitPiCheckpoint(
       tx,
       run,
@@ -1101,11 +1189,7 @@ export async function persistAgentCheckpointInTransaction(
     if (admission.kind === "response") {
       return admission.response;
     }
-    if (
-      !prepared.piValidation ||
-      prepared.piValidation.chatThreadId !== run.chatThreadId ||
-      prepared.piValidation.runSessionId !== run.sessionId
-    ) {
+    if (!piValidationMatchesRun(prepared, run)) {
       return badRequestMessage(
         "[PI_H2_RUN_STATE_CHANGED] Pi H2 must be retried after the run became active",
       );
@@ -1118,7 +1202,7 @@ export async function persistAgentCheckpointInTransaction(
     input.body,
     {
       storageMounts,
-      deferSessionPromotion: piRun,
+      deferSessionPromotion: piRun && !maintenance,
     },
     signal,
   );
@@ -1156,8 +1240,15 @@ export const prepareAgentCheckpointPersistence$ = command(
         ),
       };
     }
+    const maintenance = await privateMaintenanceCheckpoint(db, input, run);
+    signal.throwIfAborted();
+    if (typeof maintenance === "string") {
+      return { ok: false, response: badRequestMessage(maintenance) };
+    }
     const piNeedsValidation =
-      isPiCheckpointRun(run) && isActivePiCheckpointStatus(run.status);
+      isPiCheckpointRun(run) &&
+      !maintenance &&
+      isActivePiCheckpointStatus(run.status);
     if (piNeedsValidation) {
       const piError = await set(validatePiH2$, db, run, input.body, signal);
       if (piError) {
