@@ -2841,7 +2841,6 @@ async function prepareCustomConnectorValueWrite(args: {
   readonly request: SetCustomConnectorValuesArgs;
   readonly expectedConnector: CustomConnectorRow;
   readonly expectedValues: readonly CustomConnectorValueInput[];
-  readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg>;
 }): Promise<
   | CustomConnectorValueWriteState
   | BadRequestResponse
@@ -2946,7 +2945,6 @@ async function persistCustomConnectorValues(
     readonly expectedConnector: CustomConnectorRow;
     readonly expectedValues: readonly CustomConnectorValueInput[];
     readonly preparedValues: readonly PreparedCustomConnectorValue[];
-    readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg>;
   },
   signal: AbortSignal,
 ): Promise<
@@ -3088,7 +3086,6 @@ export const setCustomConnectorValues$ = command(
           expectedConnector: connector,
           expectedValues: values,
           preparedValues,
-          featureSwitchContext,
         },
         signal,
       );

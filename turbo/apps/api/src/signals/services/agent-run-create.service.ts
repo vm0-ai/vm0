@@ -9288,7 +9288,6 @@ async function resolvePreparedThreadConnectorSelections(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
 ): Promise<ThreadConnectorSelectionIds | CreateRunErrorResult | undefined> {
@@ -9345,7 +9344,6 @@ async function prepareRunRuntimeContext(
         db: args.db,
         createArgs: args.createArgs,
         connectorScope: args.connectorScope,
-        featureSwitchContext,
       },
       signal,
     ),

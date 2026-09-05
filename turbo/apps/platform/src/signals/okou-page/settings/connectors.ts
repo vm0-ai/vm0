@@ -180,7 +180,7 @@ function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
   return grantKind === "none";
 }
 
-export function getConnectorStatusAuthMethod(
+function getConnectorStatusAuthMethod(
   connector: PlatformConnectorCatalogStatusItem,
   authMethod: ConnectorAuthMethodId,
 ): PublicConnectorCatalogAuthMethodDetail | null {
@@ -234,7 +234,7 @@ export function getConnectorStatusConnectLaunchMode(
   return getConnectorStatusDirectConnectMethod(connector)?.kind ?? "modal";
 }
 
-export function getAvailableStatusAuthCodeAuthMethod(
+function getAvailableStatusAuthCodeAuthMethod(
   connector: PlatformConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
