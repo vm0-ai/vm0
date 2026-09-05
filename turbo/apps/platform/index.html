@@ -233,10 +233,14 @@
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
+        // Keep this decision in sync with
+        // src/lib/clerk-production-topology.ts: only an explicit rollback
+        // value selects the pre-cutover topology, and everything else fails
+        // closed to the deployed one.
         var productionPrimaryAppDomain =
-          "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.okou.ai"
-            ? "app.okou.ai"
-            : "app.vm0.ai";
+          "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.vm0.ai"
+            ? "app.vm0.ai"
+            : "app.okou.ai";
         var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
         var satelliteDomain = null;
         if (
