@@ -72,7 +72,7 @@ export interface WorkflowCopyFormState {
   readonly removeOriginal: boolean;
 }
 
-export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 export type GmailTextOperator = "contains" | "containsAny" | "doesNotContain";
 export type GmailMatchField = GmailTextField | "threadId";
 export type GmailMatchOperator = GmailTextOperator | "is";

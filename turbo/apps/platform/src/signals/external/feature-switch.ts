@@ -109,10 +109,6 @@ export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
 });
 
-export const imageRecognitionAvailable$ = computed((): boolean => {
-  return true;
-});
-
 export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
