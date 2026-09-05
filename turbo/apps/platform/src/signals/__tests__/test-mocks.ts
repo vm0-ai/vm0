@@ -1070,6 +1070,7 @@ interface VoiceInputMockOptions {
   readonly onAudioContextClose?: () => void;
   readonly onRecorderStart?: () => void;
   readonly onRecorderStop?: () => void;
+  readonly onTrackStop?: () => void;
   readonly rms?: number | readonly number[] | (() => number);
 }
 
@@ -1085,7 +1086,7 @@ function mockVoiceInput(
       return [
         {
           stop: () => {
-            return undefined;
+            options.onTrackStop?.();
           },
         },
       ];

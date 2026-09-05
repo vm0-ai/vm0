@@ -9,6 +9,7 @@ import {
   OpenRouterRequestError,
 } from "../external/openrouter";
 import {
+  OPENROUTER_VOICE_NO_SPEECH,
   polishLongVoiceTranscript,
   transcribeAndPolishVoice,
   transcribeVoice,
@@ -130,7 +131,9 @@ function stitchTranscripts(
     .map((piece) => {
       return piece.transcript.trim();
     })
-    .filter(Boolean)
+    .filter((text) => {
+      return text !== OPENROUTER_VOICE_NO_SPEECH;
+    })
     .join(" ")
     .trim();
   if (!transcript || transcript.length > VOICE_IO_POLISH_MAX_TEXT_CHARS) {
@@ -213,6 +216,14 @@ export const transcribeVoiceDraft$ = command(
     signal.throwIfAborted();
     if (!generated.ok) {
       return providerError(generated.error);
+    }
+    if (
+      generated.value.transcript === OPENROUTER_VOICE_NO_SPEECH ||
+      generated.value.polishedText === OPENROUTER_VOICE_NO_SPEECH
+    ) {
+      return providerError(
+        new Error("Voice recording contained no intelligible speech"),
+      );
     }
     return { status: 200 as const, body: generated.value };
   },

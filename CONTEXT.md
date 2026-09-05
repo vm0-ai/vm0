@@ -9,6 +9,11 @@ to idle. Recording data, transcription state, and failures are never TipTap
 nodes or persisted draft state. Failures show a toast and return directly to
 idle so the user can record again.
 
+No-speech provider results are not message text: an entirely inaudible recording
+fails without changing the draft, while silent chunks are omitted before the
+remaining spoken content is polished. Recorder startup failures and cancellation
+release microphone resources and the transient submission gate.
+
 _Avoid_: Voice draft block, persisted voice draft, live transcript
 
 ## Archived chat history

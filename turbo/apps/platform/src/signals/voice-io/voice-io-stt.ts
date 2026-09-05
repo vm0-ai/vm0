@@ -796,17 +796,28 @@ async function readSttApiResponse(
 async function openMedia(signal: AbortSignal) {
   const audioConfig = await resolveAudioConfig();
   signal.throwIfAborted();
-  // getUserMedia rejects on permission denied and does not accept a signal, so
-  // settle() supplies the cancellation check the raw rejection cannot.
+  // getUserMedia cannot be cancelled. Release a late stream before propagating
+  // cancellation, and own every acquired track before recorder setup can fail.
   const opened = await settle(
     navigator.mediaDevices.getUserMedia({ audio: audioConfig.constraints }),
-    signal,
   );
   if (!opened.ok) {
+    signal.throwIfAborted();
     L.error("Microphone access denied", opened.error);
     toast.error(microphoneAccessDeniedMessage());
     return;
   }
+  if (signal.aborted) {
+    stopAllTracks(opened.value);
+    signal.throwIfAborted();
+  }
+  signal.addEventListener(
+    "abort",
+    () => {
+      stopAllTracks(opened.value);
+    },
+    { once: true },
+  );
   return opened.value;
 }
 
@@ -1186,7 +1197,6 @@ function createVoiceSegmentSession(
     cancel(): void {
       stopped = true;
       silenceTimer.clear();
-      options.pcmCapture?.cancel();
       if (activeRecorder.state !== "inactive") {
         activeRecorder.stop();
       }
@@ -1280,6 +1290,17 @@ export const startRecording$ = command(
         }
 
         const pcm = await startPcm(stream, !!lifecycle, signal);
+        if (signal.aborted) {
+          pcm?.cancel();
+          signal.throwIfAborted();
+        }
+        signal.addEventListener(
+          "abort",
+          () => {
+            pcm?.cancel();
+          },
+          { once: true },
+        );
         signal.throwIfAborted();
         const recorder = createMediaRecorder(stream);
         const sessionOptions: VoiceSegmentSessionOptions = {
@@ -1317,7 +1338,6 @@ export const startRecording$ = command(
 
         signal.addEventListener("abort", () => {
           session.cancel();
-          stopAllTracks(stream);
           set(resetState$);
         });
 
@@ -1336,7 +1356,18 @@ export const startRecording$ = command(
       },
     );
     set(internalStartingPromise$, starting);
-    const startup = await starting;
+    const started = await settle(starting, parentSignal);
+    if (!started.ok) {
+      const recordingCompletion = get(internalRecordingCompletion$);
+      set(resetRecord$);
+      if (recordingCompletion) {
+        await recordingCompletion.fail();
+      } else {
+        reportMicStartFailure(started.error);
+      }
+      return;
+    }
+    const startup = started.value;
     if (!startup) {
       const recordingCompletion = get(internalRecordingCompletion$);
       set(resetRecord$);

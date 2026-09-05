@@ -616,6 +616,14 @@ function createStartVoiceDraftRecordingCommand(
   transcribe$: VoiceDraftTranscriptionCommand,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const resetOnAbort = () => {
+      set(state$, idleVoiceInputState());
+    };
+    const releaseAbortHandler = () => {
+      signal.removeEventListener("abort", resetOnAbort);
+    };
+    signal.addEventListener("abort", resetOnAbort, { once: true });
     set(state$, { status: "recording", recording: null });
     await set(
       startRecording$,
@@ -627,6 +635,7 @@ function createStartVoiceDraftRecordingCommand(
         },
         finish: (recording) => {
           if (!recording) {
+            releaseAbortHandler();
             set(state$, idleVoiceInputState());
             return Promise.resolve();
           }
@@ -634,9 +643,10 @@ function createStartVoiceDraftRecordingCommand(
             status: "transcribing",
             recording: recording.blob,
           });
-          return set(transcribe$, signal);
+          return withCleanup(set(transcribe$, signal), releaseAbortHandler);
         },
         fail: () => {
+          releaseAbortHandler();
           set(state$, idleVoiceInputState());
           reportVoiceDraftTranscriptionFailure(
             new Error("Voice draft recording failed"),

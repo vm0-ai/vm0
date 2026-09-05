@@ -147,6 +147,132 @@ function requestAudioParts(request: OpenRouterRequest) {
 }
 
 describe("POST /api/voice-io/transcribe", () => {
+  it.each([
+    { label: "short recording", durations: [1] },
+    { label: "long recording", durations: [30, 30, 30, 30] },
+  ])(
+    "rejects a $label containing no intelligible speech",
+    async ({ durations }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const schemaNames: string[] = [];
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          const body = (await request.json()) as OpenRouterRequest;
+          const schemaName = body.response_format.json_schema.name;
+          schemaNames.push(schemaName);
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify(
+                    schemaName === "voice_transcript"
+                      ? { transcript: "[NO_SPEECH]", language: "und" }
+                      : {
+                          transcript: "[NO_SPEECH]",
+                          polishedText: "[NO_SPEECH]",
+                          language: "und",
+                        },
+                  ),
+                },
+              },
+            ],
+          });
+        }),
+      );
+
+      const response = await accept(
+        client().post({
+          headers: { authorization: "Bearer clerk-session" },
+          body: form(
+            durations.map((duration, index) => {
+              return audioFile(index + 1, duration);
+            }),
+          ),
+        }),
+        [502],
+      );
+
+      expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+      expect(schemaNames).toStrictEqual(
+        durations.map(() => {
+          return durations.length === 1
+            ? "voice_transcript_and_polish"
+            : "voice_transcript";
+        }),
+      );
+    },
+  );
+
+  it("omits silent chunks before stitching and globally polishing a long recording", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const files = [audioFile(1, 45), audioFile(2, 45), audioFile(3, 45)];
+    const transcripts = new Map([
+      [Buffer.from(wavBytes(1, 45)).toString("base64"), "First spoken note."],
+      [Buffer.from(wavBytes(2, 45)).toString("base64"), "[NO_SPEECH]"],
+      [Buffer.from(wavBytes(3, 45)).toString("base64"), "Final spoken note."],
+    ]);
+    let globalPolishContent = "";
+    server.use(
+      http.post(OPENROUTER_URL, async ({ request }) => {
+        const body = (await request.json()) as OpenRouterRequest;
+        const schemaName = body.response_format.json_schema.name;
+        let responseBody:
+          | { transcript: string; language: string }
+          | { polishedText: string; language: string };
+        if (schemaName === "polished_voice_transcript") {
+          const content = body.messages[1]?.content;
+          if (typeof content !== "string") {
+            throw new Error("Expected transcript text for global polish");
+          }
+          globalPolishContent = content;
+          responseBody = {
+            polishedText: "First spoken note. Final spoken note.",
+            language: "en-US",
+          };
+        } else {
+          const data = requestAudioParts(body).at(-1)?.input_audio?.data;
+          const transcript = data ? transcripts.get(data) : undefined;
+          if (!transcript) {
+            throw new Error("Expected a known audio chunk");
+          }
+          responseBody = {
+            transcript,
+            language: "en-US",
+          };
+        }
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: JSON.stringify(responseBody) },
+            },
+          ],
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form(files),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      transcript: "First spoken note. Final spoken note.",
+      polishedText: "First spoken note. Final spoken note.",
+      language: "en-US",
+    });
+    expect(globalPolishContent).toContain(
+      "First spoken note. Final spoken note.",
+    );
+    expect(globalPolishContent).not.toContain("[NO_SPEECH]");
+  });
+
   it("transcribes and polishes a short recording in one multimodal request", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
