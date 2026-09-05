@@ -442,7 +442,13 @@ final class ScreenRecorder: ObservableObject {
 
   private func releaseCapture() async throws {
     if let control {
-      if status == "preparing" { control.task.cancel() }
+      if status == "preparing" {
+        control.task.cancel()
+        // Recording queries intentionally do not kill the helper when a
+        // caller is cancelled. Preparation teardown must explicitly stop it
+        // before joining the request, which may otherwise never reply.
+        await helper.stop()
+      }
       do { try await control.task.value } catch { self.error = error.localizedDescription }
       if self.control?.id == control.id { self.control = nil }
     }
