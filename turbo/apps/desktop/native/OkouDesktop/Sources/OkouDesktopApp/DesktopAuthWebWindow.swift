@@ -258,7 +258,8 @@ final class DesktopAuthWebWindow: NSObject, WKNavigationDelegate, WKUIDelegate, 
     private func handleLoadFailure(_ error: Error) {
         let nsError = error as NSError
         // Cancelled loads are the WebKit counterpart of Electron's ERR_ABORTED.
-        if nsError.code == NSURLErrorCancelled || (nsError.domain == WKError.errorDomain && nsError.code == WKError.frameLoadInterruptedByPolicyChange.rawValue) {
+        // WKErrorFrameLoadInterruptedByPolicyChange (102) follows a cancelled policy decision.
+        if nsError.code == NSURLErrorCancelled || (nsError.domain == WKError.errorDomain && nsError.code == 102) {
             return
         }
         reject(DesktopAuthError("Desktop auth consume failed: \(nsError.code) \(nsError.localizedDescription)"))
