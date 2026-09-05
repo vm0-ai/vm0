@@ -165,7 +165,7 @@ final class NativeHelperProcessClient: ComputerUseNativeBackend, @unchecked Send
     // MARK: Process lifecycle
 
     private func ensureRuntime(kind: String) throws -> HelperProcess {
-        let existing: HelperProcess? = lock.withLock { runtime }
+        let existing: HelperProcess? = lock.withLock { self.runtime }
         if let existing {
             return existing
         }
