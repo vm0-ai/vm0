@@ -412,10 +412,11 @@ const CONNECTOR_CATALOG_RAW_SIZE_BUCKETS = [
   "4_8_mib",
   "8_16_mib",
   "16_32_mib",
+  "32_64_mib",
 ] as const;
 const CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS = [
   ...CONNECTOR_CATALOG_RAW_SIZE_BUCKETS,
-  "32_64_mib",
+  "64_128_mib",
 ] as const;
 const CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS = [
   "not_applicable",

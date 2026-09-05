@@ -999,6 +999,44 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     ],
   },
   {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/queued-automation-payload-key-order-field",
+    paths:
+      /^turbo\/apps\/api\/src\/signals\/services\/workflow-automation-context\.service\.ts$/u,
+    reason:
+      "__vm0EventPayloadObjectKeyOrderV1 is the reserved field persistedWorkflowAutomationEventPayload writes into every automation event payload before it is queued, and the payload is stored in chat_automation_context.event_payload while the event waits to be claimed. It is not a read-only compatibility branch: the field is written on admission, parsed back out of the stored row at claim time, and stripped from the payload root so the reproduced agent prompt matches the pre-queue one byte for byte. Renaming the constant makes new code look for a key the queued rows do not carry, so the key-order parse fails, the restore returns null, and the drain consumes each of those events as invalid instead of launching it — every automation admitted before the deploy is discarded. Removal gate, the persisted-state surface of docs/fallback.md section 7: no unrevoked input.automation chat event with a null run_id has a chat_automation_context.event_payload still carrying the old key.",
+    tokens: ["__vm0EventPayloadObjectKeyOrderV1"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/queued-automation-legacy-message-field",
+    paths:
+      /^turbo\/apps\/api\/src\/signals\/services\/(?:workflow-automation-context\.service\.ts|__tests__\/workflow-automation-context\.test\.ts)$/u,
+    reason:
+      "__vm0UserFriendlyAutomationMessageV1 is a reserved field an earlier deploy wrote into automation event payloads, kept only so the payload restore can strip it from the root of a stored payload at claim time; the comment above the constant already states that drain condition. The agent prompt renders the restored payload with JSON.stringify, so renaming the constant stops the old key from being recognised and leaks it into the prompt built from every queued row that still carries it. The rollout test beside it spells the same literal into a payload so the strip has something to strip, the way the verification script does for the renamed feature-switch key above. Removal gate, the persisted-state surface of docs/fallback.md section 7 and the gate the comment names: the constant, its strip, and that test are deleted together once no unrevoked input.automation chat event with a null run_id has a chat_automation_context.event_payload carrying the field.",
+    tokens: ["__vm0UserFriendlyAutomationMessageV1"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/advisory-lock-key",
+    paths: /^turbo\/apps\/api\/src\/signals\/services\/browser\.service\.ts$/u,
+    reason:
+      "zero_browser:<chatThreadId> and zero_browser_profile:<chatThreadId> are the strings the managed browser service hashes with hashtext to derive its pg_advisory_xact_lock keys — the first serialising every transaction that mutates a thread's browser session, the second serialising that thread's profile creation. The lock identity is the hash of the string, so during a rolling deploy instances on the old and the new code compute different keys for the same chat thread, both acquire successfully, and the mutual exclusion the lock exists to provide is absent for the whole rollout window. No test observes it because the defect needs two code versions running at once. Removal condition, and the reason this is not a rename: one release must take both the old and the new lock in the same transaction, and only the release after the instances holding both have finished draining may drop the old one.",
+    tokens: ["zero_browser", "zero_browser_profile"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/model-provider-placeholder-sentinel",
+    paths:
+      /^turbo\/packages\/api-contracts\/src\/contracts\/model-provider-firewalls\.ts$/u,
+    reason:
+      "ws_VM0_PLACEHOLDER_DO_NOT_TRUST and rt_VM0_PLACEHOLDER_DO_NOT_TRUST are the CHATGPT_ACCOUNT_ID and CHATGPT_REFRESH_TOKEN placeholder markers substituted for the real credential on the way to a runner. packages/api-contracts/src/rust-bindings/generate.ts copies the same literals into crates/api-contracts/src/generated/constants.rs, and that crate ships inside runner and sandbox images built and rolled out separately from the API, so a rename has to regenerate the Rust constants and land both halves in one batch while any runner in the mixed-version window still sees a marker value it does not recognise. #31813 enforces nothing on crates/, so this rule approves only the TypeScript half of a literal whose other half is out of scope.",
+    tokens: [
+      "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
+      "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+    ],
+  },
+  {
     category: "dual-brand-product-contract",
     id: "dual-brand-product-contract/supported-brand-word",
     reason:
@@ -1132,14 +1170,10 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
   ...baselineNames(
     [
       "Zero-run",
-      "conflictZeroRunId",
-      "danglingZeroRunId",
-      "goalZeroRunId",
       "zero-run",
       "zero-run-fixture",
       "zeroRunGoalId",
       "zeroRunGroupId",
-      "zeroRunId",
       "zeroRunRows",
       "zeroRuns",
       "zero_runs-only",
@@ -1174,11 +1208,8 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "__VM0_FIREWALL_BASE_URL_VALIDATION",
       "__vm0-dev-artifact-fetch",
       "__vm0ClerkBootstrap",
-      "__vm0EventPayloadObjectKeyOrderV1",
       "__vm0PlausibleLoadScheduled",
-      "__vm0UserFriendlyAutomationMessageV1",
       "_vm0",
-      "_vm0Cursor",
       "all-vm0",
       "atelier-zero",
       "brand-from-zero",
@@ -1193,7 +1224,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "platformVm0LogoDarkImg",
       "platformVm0LogoImg",
       "reconcileZeroBrowsersWithScope",
-      "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
       "talk-to-zero",
       "vm0-clerk-core-script",
       "vm0-clerk-edge-session",
@@ -1216,18 +1246,15 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "vm0ThreadId",
       "vm0_e2e_bot",
       "withoutLegacyZeroEntries",
-      "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
       "zero-copy",
       "zero-page",
       "zeroBlock",
       "zeroHostDomain",
-      "zero_browser",
-      "zero_browser_profile",
     ],
     {
       ownerIssue: "#31801",
       reason:
-        "Production TypeScript identifier or platform browser global that no boundary rule approves; #31867 triaged the infrastructure, wire, and db-script names out of this list, and the follow-up R5 rename slice renames what remains.",
+        "Production TypeScript identifier or platform browser global that no boundary rule approves; #31867 triaged the infrastructure, wire, and db-script names out of this list and #31880 moved the six that cannot be renamed at all into boundary rules, so the follow-up R5 rename slice renames what remains.",
       workstream: "R5",
     },
   ),
@@ -1273,12 +1300,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "Legacy data-vm0-* edit-protocol reader kept for deck HTML that was stored or externally generated before the okou rename; #31824 drops it once no such deck remains.",
     workstream: "R7",
   }),
-  ...baselineNames(["workflow-zero-left", "workflow-zero-size"], {
-    ownerIssue: "#31840",
-    reason:
-      "Dead custom property in the onboarding diagram declaration block that nothing reads; docs/residual-platform-brand-names.md records it as undecided and #31840 can delete rather than rename it.",
-    workstream: "R1",
-  }),
   ...baselineNames(["vm0-deck-metadata"], {
     ownerIssue: "#31824",
     reason:
@@ -1300,15 +1321,24 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       workstream: "R5",
     },
   ),
-  ...baselineNames(
-    ["VM0_ONBOARDING_PATH", "vm0-dev-artifact-fetch-proxy", "vm0-host"],
-    {
-      ownerIssue: "#31801",
-      reason:
-        "#31867 triaged this name and found no boundary: it is internal to the module declaring it — the onboarding path constant beside buildVm0OnboardingEntryUrl, the dev-only Vite plugin name beside __vm0-dev-artifact-fetch, and the reserved .invalid placeholder the firewall base-URL parser substitutes for the real authority — so the R5 rename slice renames it with the identifier it sits next to.",
-      workstream: "R5",
-    },
-  ),
+  ...baselineNames(["VM0_ONBOARDING_PATH", "vm0-dev-artifact-fetch-proxy"], {
+    ownerIssue: "#31801",
+    reason:
+      "#31867 triaged this name and found no boundary: it is internal to the module declaring it — the onboarding path constant beside buildVm0OnboardingEntryUrl and the dev-only Vite plugin name beside __vm0-dev-artifact-fetch — so the R5 rename slice renames it with the identifier it sits next to.",
+    workstream: "R5",
+  }),
+  ...baselineNames(["vm0-host"], {
+    ownerIssue: "#31801",
+    reason:
+      "#31880 answered the question #31867 left open, and the answer is that the placeholder is never persisted: vm0-host.invalid is substituted into a throwaway URL only so the firewall base-URL parser in packages/connectors can check syntax and read a port off it. urlForCanonicalBaseSyntax builds that URL from the real base with the host replaced, and every caller reads only protocol, search, hash, and — when the base has no raw authority to substitute into — hostname; the canonical base validateAndCanonicalizeBaseUrl returns and a stored firewall policy freezes is built from canonicalizeAuthorityForExecution on the real authority instead. urlForHostPolicyValidation likewise returns a hostname assembled from the real host segments and only the port string parsed out of the placeholder URL. Nothing carries the literal out of the function, so no stored policy can contain it and the R5 rename slice can take it. The identically spelled /tmp, systemd unit, and lock-directory names in .github/scripts/runner-behavior-host-cpu-fairness.sh are created and torn down inside one script run and are a separate, already approved CI boundary.",
+    workstream: "R5",
+  }),
+  ...baselineNames(["_vm0Cursor"], {
+    ownerIssue: "#31801",
+    reason:
+      "#31880 confirmed that nothing outside this repository can select on it, so the R5 rename slice can take it. _vm0Cursor is not an Axiom dataset field: buildTimeCursorProjection appends `| extend _vm0Cursor = cursor_current()` to the APL the log pagination service itself sends, and the same request reads the alias back off the returned rows. The risk #31842 records for the persisted op-log action types — an external saved query silently mismatching a name this repository changed — does not reach it, because a saved query, dashboard, or monitor elsewhere would have to write that same extend itself to produce the field. The pagination cursor handed to clients encodes only order, timestamp, and tie-breaker value and never the field name, so cursors already issued keep working across the rename.",
+    workstream: "R5",
+  }),
   ...baselineNames(["vm0-user-linked"], {
     ownerIssue: "#31801",
     reason:

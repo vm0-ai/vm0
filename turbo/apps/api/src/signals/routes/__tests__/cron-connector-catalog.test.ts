@@ -144,7 +144,7 @@ const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
-const LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
+const PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES = 32 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
   "sha256:d93687a2d56312f36c56e3232f93bc928cebbeb626c1de6fa51f0bbf09cb4c97";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -1371,7 +1371,7 @@ function configureSource(): string {
   return bucket;
 }
 
-function legacyConnectorCatalogSourceId(bucket: string): string {
+function previousConnectorCatalogSourceId(bucket: string): string {
   const endpoint =
     env("S3_ENDPOINT") ??
     `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
@@ -1379,6 +1379,8 @@ function legacyConnectorCatalogSourceId(bucket: string): string {
     .update(new URL(endpoint).origin)
     .update("\0")
     .update(bucket)
+    .update("\0connector-catalog-persisted-snapshot-generation:")
+    .update("2")
     .digest("hex");
 }
 
@@ -6141,26 +6143,26 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts 32 MiB in a rollback-isolated source generation and rejects 32 MiB plus one with latest-valid retention", async () => {
+  it("accepts 64 MiB in a rollback-isolated source generation and rejects 64 MiB plus one with latest-valid retention", async () => {
     const bucket = configureSource();
-    const legacySourceId = legacyConnectorCatalogSourceId(bucket);
+    const previousSourceId = previousConnectorCatalogSourceId(bucket);
     await installApiTestConnectorCatalog({
       catalogVersion: "2026-07-14.rollback-compatible",
-      sourceId: legacySourceId,
+      sourceId: previousSourceId,
     });
-    const legacySnapshot =
-      await readApiTestConnectorCatalogSnapshot(legacySourceId);
-    expect(legacySnapshot.catalogRawSize).toBeLessThanOrEqual(
-      LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    const previousSnapshot =
+      await readApiTestConnectorCatalogSnapshot(previousSourceId);
+    expect(previousSnapshot.catalogRawSize).toBeLessThanOrEqual(
+      PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES,
     );
-    const legacyRawBytes = gunzipSync(legacySnapshot.catalogGzip, {
-      maxOutputLength: LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    const previousRawBytes = gunzipSync(previousSnapshot.catalogGzip, {
+      maxOutputLength: PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES,
     });
-    expect(legacyRawBytes.byteLength).toBe(legacySnapshot.catalogRawSize);
-    expect(digest(legacyRawBytes)).toBe(legacySnapshot.catalogDigest);
+    expect(previousRawBytes.byteLength).toBe(previousSnapshot.catalogRawSize);
+    expect(digest(previousRawBytes)).toBe(previousSnapshot.catalogDigest);
 
-    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(32 * 1024 * 1024);
-    const acceptedVersion = "2026-07-15.thirty-two-mib-limit";
+    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(64 * 1024 * 1024);
+    const acceptedVersion = "2026-07-15.sixty-four-mib-limit";
     const unpadded = buildRelease({
       version: acceptedVersion,
       mutateCatalog: (artifact) => {
@@ -6187,11 +6189,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
       active: { catalogVersion: accepted.version },
     });
     await expect(
-      readApiTestConnectorCatalogSnapshot(legacySourceId),
-    ).resolves.toStrictEqual(legacySnapshot);
+      readApiTestConnectorCatalogSnapshot(previousSourceId),
+    ).resolves.toStrictEqual(previousSnapshot);
 
     const rejected = buildRelease({
-      version: "2026-07-15.over-thirty-two-mib-limit",
+      version: "2026-07-15.over-sixty-four-mib-limit",
       catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
@@ -6206,8 +6208,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     });
     await expect(
-      readApiTestConnectorCatalogSnapshot(legacySourceId),
-    ).resolves.toStrictEqual(legacySnapshot);
+      readApiTestConnectorCatalogSnapshot(previousSourceId),
+    ).resolves.toStrictEqual(previousSnapshot);
   });
 
   it("classifies unavailable and oversized objects before acceptance", async () => {
