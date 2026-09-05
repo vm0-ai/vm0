@@ -433,10 +433,6 @@ export default [
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
-      // Terra route activation is explicitly deferred. This compatibility
-      // slice must pin the pre-admission provider/transport contract before a
-      // production endpoint can expose Pi-owned Terra behavior.
-      "src/signals/services/__tests__/pi-sandbox-config.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
       // Preview job-ref aliases are process environment state, and both Stripe
@@ -577,9 +573,6 @@ export default [
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.test-fixture.ts",
-      // Terra route activation is explicitly deferred, so its pre-admission
-      // provider/transport compatibility matrix has no endpoint boundary yet.
-      "src/signals/services/__tests__/pi-sandbox-config.test.ts",
       // Preview job-ref aliases are process environment state, and both Stripe
       // metadata entry points must share one value-free resolution matrix that
       // cannot be observed completely through a single production API route.
