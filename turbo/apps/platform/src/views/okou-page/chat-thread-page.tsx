@@ -322,6 +322,7 @@ import {
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
   CHAT_THREAD_RESPONSE_LINE_CLASS,
+  CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
   CHAT_THREAD_RESPONSE_STACK_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
@@ -4484,7 +4485,7 @@ function RecommendedFollowupList({
               "group flex text-left transition-colors",
               showFollowupCards
                 ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--okou-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover",
+                : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover group-data-[run-work-folding]/chat:min-h-8 group-data-[run-work-folding]/chat:py-1",
             )}
             onClick={() => {
               handleSelect(followup, followupIndex);
@@ -4922,7 +4923,7 @@ function FinishedRunRow({
         : donePhrase;
 
   return (
-    <div className={CHAT_THREAD_RESPONSE_STACK_CLASS}>
+    <div className={CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS}>
       <RunSectionDivider label={label} />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
@@ -7630,7 +7631,7 @@ function PagedAssistantTimeline({
         <div
           key="run-work:history"
           data-chat-run-work-history
-          className={CHAT_THREAD_RESPONSE_STACK_CLASS}
+          className={CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS}
         >
           <RunWorkSectionRow
             startTime={item.control.startTime}

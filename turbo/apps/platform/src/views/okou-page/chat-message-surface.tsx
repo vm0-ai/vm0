@@ -7,12 +7,14 @@ export const CHAT_THREAD_CONTENT_MAIN_CLASS =
 export const CHAT_THREAD_MESSAGE_LIST_CLASS =
   "w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible";
 
-// The message list owns the 24px gap between turns. History, main result and
-// status tail each use the same 8px stack gap, without section-specific padding.
+// Turns use 24px, response sections use 8px, and related items within a section
+// use 4px. Section spacing must not become the density of a history/list row.
 export const CHAT_THREAD_RESPONSE_STACK_CLASS = "flex min-w-0 flex-col gap-2";
+export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
+  "flex min-w-0 flex-col gap-2 group-data-[run-work-folding]/chat:gap-1";
 
-// The folding boundary enables one shared line box. Vertical padding centers
-// the original 15px * 1.7 line in 36px; additional lines grow naturally.
+// Standalone response lines share a 36px frame around the original 15px * 1.7
+// line. Dense history previews and follow-up items keep their own line metrics.
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
 
