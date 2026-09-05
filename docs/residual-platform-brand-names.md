@@ -43,9 +43,9 @@ git grep -nE '(--|\.)zero-[a-z0-9-]+' -- turbo/apps/platform turbo/packages/ui
 
 ## Renamed by #31816
 
-Fifteen names. Each is defined and consumed entirely inside this repository,
-persists nothing, and is not part of any published artifact, so `zero-` became
-`okou-` with the rest of the name unchanged — the same shape as #31802.
+Fifteen names. Each is defined inside this repository, persists nothing, and is
+not part of any published artifact, so `zero-` became `okou-` with the rest of
+the name unchanged — the same shape as #31802.
 
 | Name                          | Kind               | Site                                                 |
 | ----------------------------- | ------------------ | ---------------------------------------------------- |
@@ -69,6 +69,15 @@ A `@keyframes` name and every `animation:` shorthand naming it must move
 together; a half-renamed animation silently stops playing rather than failing a
 build. #31816 renamed each pair in one edit and asserted afterwards that every
 renamed name has both a definition and a reference.
+
+One of the fifteen does leave the repository, and it is the only one that does.
+`logger(name)` in `signals/log.ts` is registered as a Sentry `logger` tag by
+`captureSentryLogError`, so renaming `zero-attachment-url` changes the tag value
+on that module's future error events. Past events keep the old value and a saved
+Sentry search or alert pinned to `logger:zero-attachment-url` stops matching.
+That is an observability discontinuity, not a data or contract boundary: nothing
+reads the tag back, and no in-repo alert definition names it. The rename stands;
+the discontinuity is recorded here so it is not rediscovered as a mystery.
 
 `zero-thinking-spinner-frame` and `zero-nav-recent-label` are marker classes:
 they appear in a `className` and match no CSS rule and no test selector anywhere
