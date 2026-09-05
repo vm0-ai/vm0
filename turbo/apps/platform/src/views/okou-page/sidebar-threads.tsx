@@ -90,7 +90,10 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  threeColumnSearchOpen$,
 } from "../../signals/okou-page/sidebar-state.ts";
+import { setThreadListNumberShortcutRoot$ } from "../../signals/okou-page/thread-list-number-shortcuts.ts";
+import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { equalArrays } from "../../lib/equality.ts";
@@ -333,8 +336,10 @@ function ChatThreadMenu({
 
 function ChatThreadItemLink({
   signals,
+  shortcutNumber,
 }: {
   signals: SidebarChatThreadItemSignals;
+  shortcutNumber: number | undefined;
 }) {
   const { t } = useTranslation();
   const title = useGet(signals.title$);
@@ -380,18 +385,21 @@ function ChatThreadItemLink({
             })}
         </span>
       </span>
+      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
     </Link>
   );
 }
 
 function ChatThreadItem({
   signals,
+  shortcutNumber,
 }: {
   signals: SidebarChatThreadItemSignals;
+  shortcutNumber: number | undefined;
 }) {
   return (
     <div className="group relative">
-      <ChatThreadItemLink signals={signals} />
+      <ChatThreadItemLink signals={signals} shortcutNumber={shortcutNumber} />
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
         <ChatThreadMenu signals={signals} />
       </div>
@@ -602,6 +610,8 @@ function VirtualizedChatThreads({
   scrollSignals: SidebarChatThreadScrollSignals;
   threadCount: number;
 }) {
+  const setShortcutRoot = useSet(setThreadListNumberShortcutRoot$);
+  const searchOpen = useGet(threeColumnSearchOpen$);
   const window = useLastResolved(scrollSignals.window$, {
     equalityFn: equalSidebarChatThreadWindows,
   });
@@ -610,6 +620,7 @@ function VirtualizedChatThreads({
 
   return (
     <div
+      ref={setShortcutRoot}
       className="relative w-full"
       data-testid="sidebar-chat-threads-virtual-list"
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
@@ -628,7 +639,10 @@ function VirtualizedChatThreads({
               }px)`,
             }}
           >
-            <ChatThreadItem signals={signals} />
+            <ChatThreadItem
+              signals={signals}
+              shortcutNumber={!searchOpen && index < 9 ? index + 1 : undefined}
+            />
           </div>
         );
       })}
