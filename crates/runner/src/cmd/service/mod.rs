@@ -1526,15 +1526,24 @@ profiles:
             .map(|arg| arg.to_str().unwrap())
             .collect::<Vec<_>>();
 
-        assert!(args.contains(&"--expand-environment=no"));
-        assert!(args.contains(&"--setenv=LITERAL=${VALUE}"));
-        let executable_index = args
-            .iter()
-            .position(|arg| *arg == "/opt/vm0-${BUILD}/vm0-runner")
-            .unwrap();
         assert_eq!(
-            &args[executable_index..],
+            args,
             [
+                "--unit=vm0-runner-test",
+                "--description=VM0 Runner (vm0-runner-test)",
+                "--expand-environment=no",
+                "--property=Type=exec",
+                "--property=Restart=on-failure",
+                "--property=RestartSec=5",
+                "--property=StandardOutput=journal",
+                "--property=StandardError=journal",
+                "--property=KillSignal=SIGTERM",
+                "--property=TimeoutStopSec=300",
+                "--property=LimitNOFILE=524288:524288",
+                "--property=Delegate=cpu",
+                "--property=DelegateSubgroup=control",
+                "--property=SyslogIdentifier=vm0-runner-test",
+                "--setenv=LITERAL=${VALUE}",
                 "/opt/vm0-${BUILD}/vm0-runner",
                 "start",
                 "--config",
