@@ -1340,6 +1340,35 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
   });
 });
 
+test("Show mark all read in the mobile chat-list menu", async () => {
+  mockMobileLayout();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(INCIDENT_THREAD_ID, "Unread conversation"),
+  ]);
+  mockUnreadAgents(() => {
+    return [AGENT_ID];
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const list = await waitFor(() => {
+    const current = mobileSidebar();
+    expect(
+      within(current).getByText("Unread conversation"),
+    ).toBeInTheDocument();
+    return current;
+  });
+  click(within(list).getByLabelText("Open chat list menu"));
+
+  await waitFor(() => {
+    expect(menuItemByText("Mark all read")).toBeInTheDocument();
+  });
+});
+
 test("Mark all of an agent’s chats read", async () => {
   mockMobileLayout();
   prepareAgents();

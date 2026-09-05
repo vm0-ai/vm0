@@ -366,6 +366,7 @@ function ExpandedSidebarSections() {
       <ChatThreadsSection
         scrollSignals={responsiveSidebarChatThreadScrollSignals}
         contentClassName="px-2"
+        showMarkAllRead
       />
     </div>
   );
