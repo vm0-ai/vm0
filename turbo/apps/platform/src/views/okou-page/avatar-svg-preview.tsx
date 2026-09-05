@@ -11,6 +11,7 @@ interface AvatarSvgPreviewProps {
   config: ResolvedAvatarSvgConfig;
   size?: number;
   className?: string;
+  centerContent?: boolean;
   alt?: string;
   "data-testid"?: string;
 }
@@ -22,13 +23,13 @@ export function AvatarSvgPreview({
   config,
   size,
   className,
+  centerContent = false,
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
   const neckSweater = useGet(avatarNeckSweaterEnabled$);
-  const { behind, head, front, headScale } = avatarSvgComposition(config, {
-    neckSweater,
-  });
+  const { behind, head, front, headScale, contentOffsetY } =
+    avatarSvgComposition(config, { neckSweater });
   const layerClassName = "absolute inset-0 h-full w-full object-cover";
   const layer = (src: string) => {
     return <img key={src} alt="" src={src} className={layerClassName} />;
@@ -43,6 +44,11 @@ export function AvatarSvgPreview({
     >
       <div
         className={`absolute inset-0 ${isLegacyAvatarSvgConfig(config) ? "scale-[1.25]" : ""}`}
+        style={
+          centerContent
+            ? { transform: `translateY(${contentOffsetY}%)` }
+            : undefined
+        }
       >
         {behind.map(layer)}
         <div

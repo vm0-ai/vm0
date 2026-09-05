@@ -102,7 +102,10 @@ function Sparkles({ active }: { active: boolean }) {
 
   const particles = getSparkleParticles();
   return (
-    <div className="pointer-events-none absolute inset-0 z-10">
+    <div
+      className="pointer-events-none absolute inset-0 z-10"
+      data-testid="avatar-sparkles"
+    >
       {particles.map((p) => {
         const key = `${p.x.toFixed(2)}_${p.y.toFixed(2)}_${p.size.toFixed(2)}`;
         return (
@@ -179,16 +182,14 @@ function avatarOptionLabel(value: string): string {
 function ComposerStepOptions({
   step,
   config,
-  justPicked,
   selectOption,
 }: {
   step: ComposerStep;
   config: AvatarSvgConfig;
-  justPicked: string | null;
   selectOption: (selection: AvatarMakerSelection) => void;
 }) {
   return avatarMakerSelections(step).map((selection, index) => {
-    const isPicked = justPicked === `${selection.field}-${selection.value}`;
+    const isPicked = config[selection.field] === selection.value;
     const disabled =
       selection.field === "hair" &&
       !isAvatarComposerCombinationCompatible(
@@ -202,7 +203,7 @@ function ComposerStepOptions({
         type="button"
         disabled={disabled}
         className={cn(
-          "rounded-full transition-all hover:scale-110 disabled:opacity-30 disabled:hover:scale-100",
+          "flex size-14 shrink-0 items-center justify-center rounded-full transition-all hover:scale-110 disabled:opacity-30 disabled:hover:scale-100",
           isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
         )}
         style={{
@@ -212,8 +213,9 @@ function ComposerStepOptions({
           return selectOption(selection);
         }}
         aria-label={avatarOptionLabel(selection.value)}
+        aria-pressed={isPicked}
       >
-        <AvatarSvgPreview config={preview} size={56} />
+        <AvatarSvgPreview config={preview} size={56} centerContent />
       </button>
     );
   });
@@ -373,7 +375,6 @@ function StepOptions({
     <ComposerStepOptions
       step={step}
       config={config}
-      justPicked={justPicked}
       selectOption={selectOption}
     />
   ) : null;

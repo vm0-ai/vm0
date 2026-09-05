@@ -326,116 +326,179 @@ async function startResponsesProvider(): Promise<{
 }
 
 describe("official Pi AgentSession runtime", () => {
-  it("keeps generation-3 native Fast on every Sandbox turn after pending tools", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "pi-subscription-fast-"));
-    onTestFinished(async () => {
-      await rm(cwd, { recursive: true, force: true });
-    });
-    const toolFile = join(cwd, "subscription.txt");
-    await writeFile(toolFile, "subscription tool result", "utf8");
-    const provider = await startResponsesProvider();
-    onTestFinished(async () => {
-      await provider.close();
-    });
-    const sessionManager = SessionManager.inMemory(cwd, {
-      id: randomUUID(),
-    });
-    sessionManager.appendMessage({
-      role: "user",
-      content: "run the pending subscription tool",
-      timestamp: 1,
-    });
-    sessionManager.appendMessage({
-      ...fauxAssistantMessage(fauxToolCall("read", { path: toolFile }), {
-        stopReason: "toolUse",
-        timestamp: 2,
-      }),
-      api: "openai-codex-responses",
+  it.each([
+    {
+      name: "subscription",
       provider: "openai-codex",
+      dialect: "openai-codex-responses",
       model: "gpt-5.6-terra",
-    });
-    const model = await materializePiAgentModelConfig({
-      target: "sandbox-firewall",
-      config: {
-        schemaVersion: 3,
-        dialect: "openai-codex-responses",
-        transport: "sse",
-        provider: "openai-codex",
-        baseUrl: provider.baseUrl.replace(/\/v1$/, "/backend-api"),
-        model: "gpt-5.6-terra",
-        thinkingLevel: "low",
-        serviceTier: "fast",
-        credentialBindings: [
-          {
-            kind: "access-token",
-            environment: "CHATGPT_ACCESS_TOKEN",
-            secretName: "CHATGPT_ACCESS_TOKEN",
-          },
-          {
-            kind: "account-id",
-            environment: "CHATGPT_ACCOUNT_ID",
-            secretName: "CHATGPT_ACCOUNT_ID",
-          },
-        ],
-      },
-      resolveCredential(binding) {
-        return binding.kind === "access-token"
-          ? "opaque-subscription-token"
-          : "opaque-subscription-account";
-      },
-    });
-    const created = await createPiAgentSessionForRuntime({
-      cwd,
-      agentDir: join(cwd, ".pi"),
-      sessionManager,
-      model,
-      appendSystemPrompt: null,
-      resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
-    });
-    try {
-      await resumePiApiFirstTurn(created.session);
-      await created.session.prompt("continue the same Sandbox session");
-      expect(provider.requests).toHaveLength(2);
-      for (const request of provider.requests) {
-        expect(request).toMatchObject({
-          url: "/backend-api/codex/responses",
-          authorization: "Bearer opaque-subscription-token",
-          accountId: "opaque-subscription-account",
-          body: {
-            model: "gpt-5.6-terra",
-            stream: true,
-            store: false,
-            service_tier: "fast",
-            reasoning: { effort: "low" },
-          },
-        });
-        expect(request.body).not.toHaveProperty("previous_response_id");
-        expect(JSON.stringify(request.body)).toContain(
-          "subscription tool result",
-        );
-      }
-      expect(
-        created.session.messages.filter((message) => {
-          return message.role === "toolResult";
-        }),
-      ).toMatchObject([
-        {
-          toolName: "read",
-          isError: false,
-          content: [{ type: "text", text: "subscription tool result" }],
-        },
-      ]);
-      expect(created.session.messages.at(-1)).toMatchObject({
-        role: "assistant",
-        content: [{ type: "text", text: "Sandbox answer" }],
+      basePath: "/backend-api",
+      endpoint: "/backend-api/codex/responses",
+      tier: "fast",
+      secretName: "CHATGPT_ACCESS_TOKEN",
+    },
+    {
+      name: "OpenAI API key",
+      provider: "openai",
+      dialect: "openai-responses",
+      model: "gpt-5.6-terra",
+      basePath: "/v1",
+      endpoint: "/v1/responses",
+      tier: "priority",
+      secretName: "OPENAI_API_KEY",
+    },
+    {
+      name: "OpenRouter API key",
+      provider: "openrouter",
+      dialect: "openai-responses",
+      model: "openai/gpt-5.6-terra",
+      basePath: "/api/v1",
+      endpoint: "/api/v1/responses",
+      tier: "priority",
+      secretName: "OPENROUTER_API_KEY",
+    },
+    {
+      name: "Vercel API key",
+      provider: "openai",
+      dialect: "openai-responses",
+      model: "openai/gpt-5.6-terra",
+      catalogModel: "gpt-5.6-terra",
+      basePath: "/v1",
+      endpoint: "/v1/responses",
+      tier: "priority",
+      secretName: "VERCEL_AI_GATEWAY_API_KEY",
+    },
+  ] as const)(
+    "keeps generation-3 $name Fast on every Sandbox turn after pending tools",
+    async (route) => {
+      const cwd = await mkdtemp(join(tmpdir(), "pi-user-owned-fast-"));
+      onTestFinished(async () => {
+        await rm(cwd, { recursive: true, force: true });
       });
-      expect(JSON.stringify(sessionManager.getEntries())).not.toMatch(
-        /serviceTier|service_tier/,
-      );
-    } finally {
-      created.session.dispose();
-    }
-  });
+      const toolFile = join(cwd, "terra.txt");
+      await writeFile(toolFile, "Terra tool result", "utf8");
+      const provider = await startResponsesProvider();
+      onTestFinished(async () => {
+        await provider.close();
+      });
+      const sessionManager = SessionManager.inMemory(cwd, {
+        id: randomUUID(),
+      });
+      sessionManager.appendMessage({
+        role: "user",
+        content: "run the pending Terra tool",
+        timestamp: 1,
+      });
+      sessionManager.appendMessage({
+        ...fauxAssistantMessage(fauxToolCall("read", { path: toolFile }), {
+          stopReason: "toolUse",
+          timestamp: 2,
+        }),
+        api: route.dialect,
+        provider: route.provider,
+        model: route.model,
+      });
+      const model = await materializePiAgentModelConfig({
+        target: "sandbox-firewall",
+        config: {
+          schemaVersion: 3,
+          transport: "sse",
+          baseUrl: provider.baseUrl.replace(/\/v1$/, route.basePath),
+          thinkingLevel: "low",
+          ...(route.dialect === "openai-codex-responses"
+            ? {
+                dialect: route.dialect,
+                provider: route.provider,
+                model: route.model,
+                serviceTier: route.tier,
+                credentialBindings: [
+                  {
+                    kind: "access-token",
+                    environment: "CHATGPT_ACCESS_TOKEN",
+                    secretName: "CHATGPT_ACCESS_TOKEN",
+                  },
+                  {
+                    kind: "account-id",
+                    environment: "CHATGPT_ACCOUNT_ID",
+                    secretName: "CHATGPT_ACCOUNT_ID",
+                  },
+                ],
+              }
+            : {
+                dialect: route.dialect,
+                provider: route.provider,
+                model: route.model,
+                ...(route.name === "Vercel API key"
+                  ? { catalogModel: route.catalogModel }
+                  : {}),
+                serviceTier: route.tier,
+                credentialBindings: [
+                  {
+                    kind: "api-key",
+                    environment: "OPENAI_API_KEY",
+                    secretName: route.secretName,
+                  },
+                ],
+              }),
+        },
+        resolveCredential(binding) {
+          return `opaque-${binding.secretName}`;
+        },
+      });
+      const created = await createPiAgentSessionForRuntime({
+        cwd,
+        agentDir: join(cwd, ".pi"),
+        sessionManager,
+        model,
+        appendSystemPrompt: null,
+        resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+      });
+      try {
+        await resumePiApiFirstTurn(created.session);
+        await created.session.prompt("continue the same Sandbox session");
+        expect(provider.requests).toHaveLength(2);
+        for (const request of provider.requests) {
+          expect(request).toMatchObject({
+            url: route.endpoint,
+            authorization: `Bearer opaque-${route.secretName}`,
+            accountId:
+              route.dialect === "openai-codex-responses"
+                ? "opaque-CHATGPT_ACCOUNT_ID"
+                : undefined,
+            body: {
+              model: route.model,
+              stream: true,
+              store: false,
+              service_tier: route.tier,
+              reasoning: { effort: "low" },
+            },
+          });
+          expect(request.body).not.toHaveProperty("previous_response_id");
+          expect(JSON.stringify(request.body)).toContain("Terra tool result");
+        }
+        expect(
+          created.session.messages.filter((message) => {
+            return message.role === "toolResult";
+          }),
+        ).toMatchObject([
+          {
+            toolName: "read",
+            isError: false,
+            content: [{ type: "text", text: "Terra tool result" }],
+          },
+        ]);
+        expect(created.session.messages.at(-1)).toMatchObject({
+          role: "assistant",
+          content: [{ type: "text", text: "Sandbox answer" }],
+        });
+        expect(JSON.stringify(sessionManager.getEntries())).not.toMatch(
+          /serviceTier|service_tier/,
+        );
+      } finally {
+        created.session.dispose();
+      }
+    },
+  );
 
   it("registers one stable memory schema fixture only for valid V2 epochs", async () => {
     const content = "# Frozen memory\n\nExact API epoch.";

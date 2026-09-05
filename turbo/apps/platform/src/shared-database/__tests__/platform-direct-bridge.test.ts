@@ -25,7 +25,11 @@ import {
   upgradeChatIdb,
 } from "../../signals/external/chat-idb-schema.ts";
 import { openDB } from "idb";
-import { setSharedDatabaseConnectionStatus$ } from "../../signals/shared-database.ts";
+import {
+  indexedDbSnapshotMeasurementFromWorker$,
+  measureIndexedDbSnapshotFromWorker$,
+  setSharedDatabaseConnectionStatus$,
+} from "../../signals/shared-database.ts";
 import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 const context = testContext();
@@ -85,6 +89,69 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
     db.close();
   }
 }
+
+test("Preserve exact UTF-8 snapshot bytes across the worker protocol", async () => {
+  // The Settings page rounds payload sizes to KB/MB, so it cannot assert the
+  // exact UTF-8 byte contract for non-ASCII text. Keep only that wire-level
+  // invariant here; counts, empty results, measurement, and reset use page tests.
+  const snapshotThread: ChatThreadSnapshotProjection = {
+    id: crypto.randomUUID(),
+    agentId: crypto.randomUUID(),
+    title: "Snapshot 文 😀",
+    sortAt: CREATED_AT,
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+    pinnedAt: null,
+    renamedAt: null,
+    selectedModel: null,
+    serviceTier: null,
+    computerUseHostId: null,
+  };
+  const snapshot = {
+    chatThreads: [snapshotThread],
+    latestEventId: crypto.randomUUID(),
+    latestSeqId: 1,
+  };
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, snapshot);
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+
+  await setupPage({
+    context,
+    path: "/error",
+    sharedWorkerTestTransport: "message-port",
+    auth: {
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      organization: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+    },
+  });
+  await vi.waitFor(() => {
+    expect(
+      context.store.get(eventDrivenChatThreads$).find((thread) => {
+        return thread.id === snapshotThread.id;
+      })?.title,
+    ).toBe(snapshotThread.title);
+  });
+
+  context.store.set(measureIndexedDbSnapshotFromWorker$);
+  const measurement = await context.store.get(
+    indexedDbSnapshotMeasurementFromWorker$,
+  );
+  const serializedSnapshot = JSON.stringify({ id: "current", ...snapshot });
+  const expectedBytes = new Blob([serializedSnapshot]).size;
+  expect(expectedBytes).toBeGreaterThan(serializedSnapshot.length);
+  expect(measurement?.payloadBytes).toBe(expectedBytes);
+});
 
 test("Show cached chat data before catching up live", async () => {
   const threadId = crypto.randomUUID();

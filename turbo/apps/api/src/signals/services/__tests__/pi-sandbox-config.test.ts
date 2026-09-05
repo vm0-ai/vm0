@@ -203,163 +203,124 @@ describe("Pi sandbox model configuration", () => {
     });
   });
 
-  it.each(STANDARD_TERRA_API_KEY_ROUTES)(
-    "emits the strict public Responses carrier for $type",
+  describe.each(STANDARD_TERRA_API_KEY_ROUTES)(
+    "$type Terra carrier",
     (route) => {
-      expect(
-        resolvePiSandboxModelConfig({
-          type: route.type,
+      it.each([
+        {
+          name: "standard",
+          tier: undefined,
+          generation: 2,
+          wireTier: undefined,
+        },
+        { name: "Fast", tier: "fast", generation: 3, wireTier: "priority" },
+      ] as const)(
+        "emits exact $name public Responses policy",
+        ({ tier, generation, wireTier }) => {
+          expect(
+            resolvePiSandboxModelConfig(
+              {
+                type: route.type,
+                environment: {
+                  OPENAI_API_KEY: "opaque-provider-placeholder",
+                  ...(route.type === "openai-api-key"
+                    ? {}
+                    : { OPENAI_BASE_URL: route.baseUrl }),
+                  OPENAI_MODEL: route.model,
+                },
+                selectedModel: "gpt-5.6-terra",
+              },
+              tier,
+            ),
+          ).toStrictEqual({
+            schemaVersion: generation,
+            ...(wireTier === undefined ? {} : { serviceTier: wireTier }),
+            dialect: "openai-responses",
+            transport: "sse",
+            provider: route.provider,
+            baseUrl: route.baseUrl,
+            model: route.model,
+            ...(route.type === "vercel-ai-gateway-codex"
+              ? { catalogModel: route.catalogModel }
+              : {}),
+            thinkingLevel: "low",
+            credentialBindings: [
+              {
+                kind: "api-key",
+                environment: "OPENAI_API_KEY",
+                secretName: route.credentialSecretName,
+              },
+            ],
+          });
+        },
+      );
+
+      it.each<{
+        name: string;
+        override?: Partial<
+          NonNullable<Parameters<typeof resolvePiSandboxModelConfig>[0]>
+        >;
+        environment?: Record<string, string>;
+      }>([
+        {
+          name: "different concrete provider",
+          override: { concreteType: "codex-oauth-token" },
+        },
+        { name: "inline firewall", override: { inlineFirewall: true } },
+        {
+          name: "custom header",
+          override: {
+            credentialHeader: {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secret}}",
+            },
+          },
+        },
+        {
+          name: "different logical model",
+          override: { selectedModel: "gpt-5.6-sol" },
+        },
+        {
+          name: "different endpoint",
+          environment: { OPENAI_BASE_URL: "https://mismatched.example.com/v1" },
+        },
+        {
+          name: "different runtime model",
+          environment: { OPENAI_MODEL: "gpt-5.6-sol" },
+        },
+        { name: "missing runtime model", environment: { OPENAI_MODEL: "" } },
+        { name: "missing key", environment: { OPENAI_API_KEY: "" } },
+        { name: "blank key", environment: { OPENAI_API_KEY: "  " } },
+        {
+          name: "alternate key only",
           environment: {
-            OPENAI_API_KEY: "opaque-provider-placeholder",
-            ...(route.type === "openai-api-key"
-              ? {}
-              : { OPENAI_BASE_URL: route.baseUrl }),
-            OPENAI_MODEL: route.model,
+            OPENAI_API_KEY: "",
+            CHATGPT_ACCESS_TOKEN: "subscription-token",
+            DEEPSEEK_API_KEY: "other-key",
           },
-          selectedModel: "gpt-5.6-terra",
-        }),
-      ).toStrictEqual({
-        schemaVersion: 2,
-        dialect: "openai-responses",
-        transport: "sse",
-        provider: route.provider,
-        baseUrl: route.baseUrl,
-        model: route.model,
-        ...(route.type === "vercel-ai-gateway-codex"
-          ? { catalogModel: route.catalogModel }
-          : {}),
-        thinkingLevel: "low",
-        credentialBindings: [
-          {
-            kind: "api-key",
-            environment: "OPENAI_API_KEY",
-            secretName: route.credentialSecretName,
-          },
-        ],
+        },
+      ])("fails closed for $name in standard and Fast", (scenario) => {
+        for (const tier of [undefined, "fast"] as const) {
+          expect(
+            resolvePiSandboxModelConfig(
+              {
+                type: route.type,
+                selectedModel: "gpt-5.6-terra",
+                ...scenario.override,
+                environment: {
+                  OPENAI_API_KEY: "opaque-provider-placeholder",
+                  OPENAI_BASE_URL: route.baseUrl,
+                  OPENAI_MODEL: route.model,
+                  ...scenario.environment,
+                },
+              },
+              tier,
+            ),
+          ).toBeNull();
+        }
       });
     },
   );
-
-  it.each([
-    {
-      name: "fast tier",
-      type: "openai-api-key",
-      selectedModel: "gpt-5.6-terra",
-      model: "gpt-5.6-terra",
-      tier: "fast" as const,
-    },
-    {
-      name: "other logical model",
-      type: "openai-api-key",
-      selectedModel: "gpt-5.6-sol",
-      model: "gpt-5.6-sol",
-      tier: undefined,
-    },
-    {
-      name: "aliased runtime model",
-      type: "openrouter-codex",
-      selectedModel: "gpt-5.6-terra",
-      model: "gpt-5.6-terra",
-      tier: undefined,
-    },
-  ] as const)("rejects API-key Terra with $name", (testCase) => {
-    expect(
-      resolvePiSandboxModelConfig(
-        {
-          type: testCase.type,
-          environment: {
-            OPENAI_API_KEY: "opaque-provider-placeholder",
-            ...(testCase.type === "openrouter-codex"
-              ? { OPENAI_BASE_URL: "https://openrouter.ai/api/v1" }
-              : {}),
-            OPENAI_MODEL: testCase.model,
-          },
-          selectedModel: testCase.selectedModel,
-        },
-        testCase.tier,
-      ),
-    ).toBeNull();
-  });
-
-  it.each(STANDARD_TERRA_API_KEY_ROUTES)(
-    "keeps $type Fast on Codex before Pi ownership",
-    (route) => {
-      expect(
-        resolvePiSandboxModelConfig(
-          {
-            type: route.type,
-            environment: {
-              OPENAI_API_KEY: "opaque-provider-placeholder",
-              OPENAI_BASE_URL: route.baseUrl,
-              OPENAI_MODEL: route.model,
-            },
-            selectedModel: "gpt-5.6-terra",
-          },
-          "fast",
-        ),
-      ).toBeNull();
-      expect(
-        shouldUsePiExecution({
-          modelProviderType: route.type,
-          selectedModel: "gpt-5.6-terra",
-          codexServiceTier: "fast",
-          triggerSource: "web",
-          chatThreadId: "thread-1",
-          builtInModelRuntimeRoute: undefined,
-          featureSwitchContext: {
-            userId: "user-1",
-            orgId: "org-1",
-            overrides: {
-              [FeatureSwitchKey.PiLoop]: true,
-              [FeatureSwitchKey.CodexFastMode]: true,
-            },
-          },
-        }),
-      ).toBeFalsy();
-    },
-  );
-
-  it("rejects mismatched API-key provider identity and endpoint", () => {
-    expect(
-      resolvePiSandboxModelConfig({
-        type: "vercel-ai-gateway-codex",
-        concreteType: "openrouter-codex",
-        environment: {
-          OPENAI_API_KEY: "opaque-provider-placeholder",
-          OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
-          OPENAI_MODEL: "openai/gpt-5.6-terra",
-        },
-        selectedModel: "gpt-5.6-terra",
-      }),
-    ).toBeNull();
-  });
-
-  it.each(STANDARD_TERRA_API_KEY_ROUTES)(
-    "rejects a base URL mismatch for $type",
-    (route) => {
-      expect(
-        resolvePiSandboxModelConfig({
-          type: route.type,
-          environment: {
-            OPENAI_API_KEY: "opaque-provider-placeholder",
-            OPENAI_BASE_URL: "https://mismatched.example.com/v1",
-            OPENAI_MODEL: route.model,
-          },
-          selectedModel: "gpt-5.6-terra",
-        }),
-      ).toBeNull();
-    },
-  );
-
-  it("rejects a direct route without its captured API-key binding", () => {
-    expect(
-      resolvePiSandboxModelConfig({
-        type: "openai-api-key",
-        environment: { OPENAI_MODEL: "gpt-5.6-terra" },
-        selectedModel: "gpt-5.6-terra",
-      }),
-    ).toBeNull();
-  });
 
   it.each([
     { name: "standard", tier: undefined, generation: 2 },
@@ -468,66 +429,72 @@ describe("Pi sandbox model configuration", () => {
     ).toBeNull();
   });
 
-  it.each(
-    triggerSourceSchema.options.flatMap((triggerSource) => {
-      return [true, false].flatMap((bound) => {
-        return [true, false].flatMap((piLoop) => {
-          return [true, false].map((fastMode) => {
-            return { triggerSource, bound, piLoop, fastMode };
+  describe.each([
+    "codex-oauth-token",
+    ...STANDARD_TERRA_API_KEY_ROUTES.map((route) => {
+      return route.type;
+    }),
+  ])("%s Fast admission", (modelProviderType) => {
+    it.each(
+      triggerSourceSchema.options.flatMap((triggerSource) => {
+        return [true, false].flatMap((bound) => {
+          return [true, false].flatMap((piLoop) => {
+            return [true, false].map((fastMode) => {
+              return { triggerSource, bound, piLoop, fastMode };
+            });
           });
         });
-      });
-    }),
-  )(
-    "routes subscription Fast for $triggerSource bound=$bound Pi=$piLoop Fast=$fastMode",
-    ({ triggerSource, bound, piLoop, fastMode }) => {
+      }),
+    )(
+      "routes $triggerSource bound=$bound Pi=$piLoop Fast=$fastMode",
+      ({ triggerSource, bound, piLoop, fastMode }) => {
+        expect(
+          shouldUsePiExecution({
+            chatThreadId: bound ? "thread-id" : undefined,
+            modelProviderType,
+            selectedModel: "gpt-5.6-terra",
+            codexServiceTier: "fast",
+            builtInModelRuntimeRoute: undefined,
+            triggerSource,
+            featureSwitchContext: {
+              overrides: {
+                [FeatureSwitchKey.PiLoop]: piLoop,
+                [FeatureSwitchKey.CodexFastMode]: fastMode,
+              },
+            },
+          }),
+        ).toBe(
+          bound &&
+            piLoop &&
+            fastMode &&
+            (triggerSource === "web" || triggerSource === "agent"),
+        );
+      },
+    );
+    it.each([
+      "gpt-5.6-sol",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "deepseek-v4-flash",
+      "gpt-5.6-terra-fast",
+    ])("keeps %s outside Pi", (selectedModel) => {
       expect(
         shouldUsePiExecution({
-          chatThreadId: bound ? "thread-id" : undefined,
-          modelProviderType: "codex-oauth-token",
-          selectedModel: "gpt-5.6-terra",
+          chatThreadId: "thread-id",
+          modelProviderType,
+          selectedModel,
           codexServiceTier: "fast",
           builtInModelRuntimeRoute: undefined,
-          triggerSource,
+          triggerSource: "web",
           featureSwitchContext: {
             overrides: {
-              [FeatureSwitchKey.PiLoop]: piLoop,
-              [FeatureSwitchKey.CodexFastMode]: fastMode,
+              [FeatureSwitchKey.PiLoop]: true,
+              [FeatureSwitchKey.CodexFastMode]: true,
             },
           },
         }),
-      ).toBe(
-        bound &&
-          piLoop &&
-          fastMode &&
-          (triggerSource === "web" || triggerSource === "agent"),
-      );
-    },
-  );
-
-  it.each([
-    "gpt-5.6-sol",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "deepseek-v4-flash",
-    "gpt-5.6-terra-fast",
-  ])("keeps subscription Fast %s outside Pi", (selectedModel) => {
-    expect(
-      shouldUsePiExecution({
-        chatThreadId: "thread-id",
-        modelProviderType: "codex-oauth-token",
-        selectedModel,
-        codexServiceTier: "fast",
-        builtInModelRuntimeRoute: undefined,
-        triggerSource: "web",
-        featureSwitchContext: {
-          overrides: {
-            [FeatureSwitchKey.PiLoop]: true,
-            [FeatureSwitchKey.CodexFastMode]: true,
-          },
-        },
-      }),
-    ).toBeFalsy();
+      ).toBeFalsy();
+    });
   });
 
   it("translates built-in OpenRouter Terra fast mode to priority Responses", () => {
@@ -834,17 +801,6 @@ describe("Pi sandbox model configuration", () => {
       triggerSource: "web" as const,
       chatThreadId: "thread-id",
       piLoopEnabled: false,
-      codexFastModeEnabled: true,
-    },
-    {
-      name: "fast Terra BYOK",
-      modelProviderType: "openai-api-key",
-      selectedModel: "gpt-5.6-terra",
-      codexServiceTier: "fast" as const,
-      builtInModelRuntimeRoute: undefined,
-      triggerSource: "web" as const,
-      chatThreadId: "thread-id",
-      piLoopEnabled: true,
       codexFastModeEnabled: true,
     },
     {

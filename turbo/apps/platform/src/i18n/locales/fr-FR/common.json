@@ -5056,6 +5056,7 @@
         "remaining_many": "{{value}} réinitialisations restantes",
         "remaining_other": "{{value}} réinitialisations restantes",
         "remainingUnavailable": "Réinitialisations restantes non disponibles",
+        "remainingUnknown": "Réinitialisations —",
         "remainingWithExpiry_one": "{{value}} réinitialisation restante · expire {{expiry}}",
         "remainingWithExpiry_many": "{{value}} réinitialisations restantes · expirent {{expiry}}",
         "remainingWithExpiry_other": "{{value}} réinitialisations restantes · expirent {{expiry}}",
@@ -5182,6 +5183,26 @@
           "workerLoading": "Chargement",
           "workerTitle": "Diagnostic de connexion du shared worker",
           "workerUnavailable": "Indisponible"
+        },
+        "indexedDb": {
+          "countExplanation": "Le comptage utilise des transactions en lecture seule et ne lit pas le contenu des enregistrements.",
+          "description": "Consultez le nombre d’enregistrements du cache de discussion local géré par le worker partagé.",
+          "loading": "Chargement du stockage IndexedDB...",
+          "measurementUnavailable": "La mesure du snapshot a échoué. Réessayez.",
+          "measureSnapshot": "Mesurer le snapshot",
+          "measuring": "Mesure en cours...",
+          "records": "enregistrements",
+          "refresh": "Actualiser",
+          "schema": "schéma",
+          "snapshotDescription": "Un enregistrement peut contenir de nombreuses conversations. La taille estime le JSON UTF-8 hors surcharge de la base ; le temps de lecture exclut cette estimation.",
+          "snapshotEmpty": "Aucun snapshot des conversations en cache.",
+          "snapshotPayload": "Taille estimée",
+          "snapshotReadDuration": "Temps de lecture IndexedDB",
+          "snapshotThreads": "Conversations dans le snapshot",
+          "snapshotTitle": "Snapshot des conversations",
+          "stores": "magasins d’objets",
+          "title": "Stockage IndexedDB",
+          "unavailable": "Le stockage IndexedDB est indisponible."
         }
       },
       "language": {

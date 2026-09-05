@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.845.0](https://github.com/vm0-ai/vm0/compare/app-v0.844.1...app-v0.845.0) (2026-09-05)
+
+
+### Features
+
+* **platform:** add indexeddb storage diagnostics ([#31794](https://github.com/vm0-ai/vm0/issues/31794)) ([6cc3703](https://github.com/vm0-ai/vm0/commit/6cc370306a9289b3b85c4e5f85fb9527b63869cb))
+* **platform:** stabilize pinned chats and add numbered search navigation ([#31833](https://github.com/vm0-ai/vm0/issues/31833)) ([6040bad](https://github.com/vm0-ai/vm0/commit/6040bada98116cff9254300136962e5080c03021))
+
+
+### Bug Fixes
+
+* **platform:** center avatar options and keep selections on the current step ([#31852](https://github.com/vm0-ai/vm0/issues/31852)) ([c260908](https://github.com/vm0-ai/vm0/commit/c260908955bad080ced59fae9723b26dc639a85b))
+
+
+### Refactoring
+
+* **voice:** remove draft compatibility and encoded audio fallback ([#31792](https://github.com/vm0-ai/vm0/issues/31792)) ([83979d4](https://github.com/vm0-ai/vm0/commit/83979d4a271483500bce0e63f837b5a9db279262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.2
+    * @okouai/core bumped to 8.625.0
+
 ## [0.844.1](https://github.com/vm0-ai/vm0/compare/app-v0.844.0...app-v0.844.1) (2026-09-05)
 
 

@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { setSearchResultShortcutModifiers$ } from "./search-result-number-shortcuts.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
@@ -160,6 +161,9 @@ export const threeColumnSearchOpen$ = computed((get) => {
   return get(internalThreeColumnSearchOpen$);
 });
 export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
+  if (!open) {
+    set(setSearchResultShortcutModifiers$);
+  }
   set(internalThreeColumnSearchOpen$, open);
 });
 
@@ -173,11 +177,17 @@ export const setThreeColumnSearchFilter$ = command(
   },
 );
 
-export const openThreeColumnSearchDialog$ = command(({ set }) => {
-  set(internalChatListQuery$, "");
-  set(internalThreeColumnSearchFilter$, "all");
-  set(internalThreeColumnSearchOpen$, true);
-});
+export const openThreeColumnSearchDialog$ = command(
+  (
+    { set },
+    event?: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
+  ) => {
+    set(setSearchResultShortcutModifiers$, event);
+    set(internalChatListQuery$, "");
+    set(internalThreeColumnSearchFilter$, "all");
+    set(internalThreeColumnSearchOpen$, true);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Pin agent dialog state (pinned agent grid)
