@@ -5050,6 +5050,7 @@
         "remaining_many": "{{value}} réinitialisations restantes",
         "remaining_other": "{{value}} réinitialisations restantes",
         "remainingUnavailable": "Réinitialisations restantes non disponibles",
+        "remainingUnknown": "Réinitialisations —",
         "remainingWithExpiry_one": "{{value}} réinitialisation restante · expire {{expiry}}",
         "remainingWithExpiry_many": "{{value}} réinitialisations restantes · expirent {{expiry}}",
         "remainingWithExpiry_other": "{{value}} réinitialisations restantes · expirent {{expiry}}",

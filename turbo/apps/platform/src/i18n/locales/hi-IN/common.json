@@ -4995,6 +4995,7 @@
         "remaining_one": "{{value}} रीसेट बचे हैं",
         "remaining_other": "{{value}} रीसेट बचे हैं",
         "remainingUnavailable": "रीसेट उपलब्ध नहीं हैं",
+        "remainingUnknown": "रीसेट —",
         "remainingWithExpiry_one": "{{value}} रीसेट बचा है · {{expiry}} समाप्त",
         "remainingWithExpiry_other": "{{value}} रीसेट बचे हैं · {{expiry}} समाप्त",
         "title": "Codex उपयोग रीसेट करें?"

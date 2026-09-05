@@ -5050,6 +5050,7 @@
         "remaining_many": "Quedan {{value}} restablecimientos",
         "remaining_other": "Quedan {{value}} restablecimientos",
         "remainingUnavailable": "Reinicios no disponibles",
+        "remainingUnknown": "Restablecimientos —",
         "remainingWithExpiry_one": "Queda {{value}} restablecimiento · vence {{expiry}}",
         "remainingWithExpiry_many": "Quedan {{value}} restablecimientos · vencen {{expiry}}",
         "remainingWithExpiry_other": "Quedan {{value}} restablecimientos · vencen {{expiry}}",

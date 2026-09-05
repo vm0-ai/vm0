@@ -4987,6 +4987,7 @@
         "remaining_one": "{{value}} reset left",
         "remaining_other": "{{value}} resets left",
         "remainingUnavailable": "Resets left unavailable",
+        "remainingUnknown": "Resets —",
         "remainingWithExpiry_one": "{{value}} reset left · expires {{expiry}}",
         "remainingWithExpiry_other": "{{value}} resets left · expires {{expiry}}",
         "title": "Reset Codex usage?"

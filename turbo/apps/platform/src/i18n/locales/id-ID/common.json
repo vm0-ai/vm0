@@ -4987,6 +4987,7 @@
         "remaining_one": "{{value}} reset tersisa",
         "remaining_other": "{{value}} reset tersisa",
         "remainingUnavailable": "Sisa reset tidak tersedia",
+        "remainingUnknown": "Reset —",
         "remainingWithExpiry_other": "{{value}} reset tersisa · kedaluwarsa {{expiry}}",
         "title": "Reset penggunaan Codex?"
       },
