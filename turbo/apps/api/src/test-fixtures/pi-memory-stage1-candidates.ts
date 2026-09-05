@@ -79,6 +79,7 @@ export async function seedPiMemoryPhase2ExportJobFixture(args: {
       claimedRevision: 1,
       claimedBaseVersionId: storage.headVersionId,
       leaseToken,
+      sandboxLeaseToken: leaseToken,
       leaseExpiresAt: new Date(args.currentTime.getTime() + 60 * 60 * 1000),
       retryCount: 1,
       lastSucceededAt: new Date(

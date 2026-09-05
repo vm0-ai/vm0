@@ -42,9 +42,10 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "pnpm test:migration-runner && tsx scripts/test-migration-consistency-schema.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:pi-memory-checkpoint-settlement && tsx scripts/test-migration-consistency-schema.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
-    "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"
+    "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts",
+    "test:pi-memory-checkpoint-settlement": "tsx scripts/test-pi-memory-checkpoint-settlement.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1116.0",

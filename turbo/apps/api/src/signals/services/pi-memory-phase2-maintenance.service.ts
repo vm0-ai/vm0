@@ -1,4 +1,5 @@
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import {
   PI_MEMORY_PHASE2_MAX_ATTEMPTS,
@@ -11,6 +12,7 @@ import { z } from "zod";
 
 import type { ApiDb, Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
+import { findPiMemoryPhase2Checkpoint } from "./pi-memory-phase2-checkpoint.service";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
@@ -231,7 +233,7 @@ function callbackErrorClass(
 }
 
 interface ExactMaintenanceCheckpoint {
-  readonly id: string;
+  readonly id: string | null;
   readonly versionId: string;
 }
 
@@ -313,7 +315,6 @@ async function completeMaintenanceSuccess(
       claimedSelectionDigest: null,
       claimedSelectedCount: null,
       claimedSelectedUtf8Bytes: null,
-      lastObservedHeadVersionId: args.checkpoint.versionId,
       ...(published
         ? {
             lastPublishedVersionId: args.checkpoint.versionId,
@@ -343,6 +344,42 @@ async function completeMaintenanceSuccess(
   }
 }
 
+/**
+ * Commit validated checkpoint control state in the publisher's transaction.
+ * No completion/observer acknowledgement is needed to make the receipt true.
+ * This also prevents a draining API's failed-run observer from retrying a
+ * publication whose later completion report was lost.
+ */
+export async function settlePiMemoryPhase2Checkpoint(
+  tx: Tx,
+  runId: string,
+  versionId: string,
+): Promise<void> {
+  const [callback] = await tx
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+      ),
+    )
+    .limit(1);
+  const payload = piMemoryPhase2MaintenanceCallbackPayloadSchema.parse(
+    callback?.payload,
+  );
+  if (
+    piMemoryPhase2SelectionDigest(payload.selected) !== payload.selectionDigest
+  ) {
+    throw new Error("Pi memory checkpoint selection mismatch");
+  }
+  await completeMaintenanceSuccess(tx, {
+    payload,
+    runId,
+    checkpoint: { id: null, versionId },
+  });
+}
+
 async function observeTerminalMaintenance(
   tx: Tx,
   envelope: InternalRunCallbackEnvelope,
@@ -364,7 +401,27 @@ async function observeTerminalMaintenance(
     )
     .limit(1)
     .for("update", { of: piMemoryPhase2Jobs });
-  if (!job || job.lastMaintenanceRunId === envelope.runId) {
+  if (!job) {
+    return { success: true, skipped: true };
+  }
+  if (job.lastMaintenanceRunId === envelope.runId) {
+    const [checkpoint] = await tx
+      .select({ id: checkpoints.id })
+      .from(checkpoints)
+      .where(eq(checkpoints.runId, envelope.runId))
+      .limit(1);
+    if (checkpoint) {
+      await tx
+        .update(piMemoryPhase2Jobs)
+        .set({ lastMaintenanceCheckpointId: checkpoint.id })
+        .where(
+          and(
+            eq(piMemoryPhase2Jobs.memoryStorageId, payload.memoryStorageId),
+            eq(piMemoryPhase2Jobs.lastMaintenanceRunId, envelope.runId),
+            sql`${piMemoryPhase2Jobs.lastMaintenanceOutcome} IN ('published', 'no_diff')`,
+          ),
+        );
+    }
     return { success: true, skipped: true };
   }
 
@@ -393,6 +450,24 @@ async function observeTerminalMaintenance(
     .limit(1);
   if (!active) {
     return { success: true, skipped: true };
+  }
+
+  const receipt = await findPiMemoryPhase2Checkpoint(tx, {
+    ...payload,
+    runId: envelope.runId,
+  });
+  if (receipt) {
+    const [checkpoint] = await tx
+      .select({ id: checkpoints.id })
+      .from(checkpoints)
+      .where(eq(checkpoints.runId, envelope.runId))
+      .limit(1);
+    await completeMaintenanceSuccess(tx, {
+      payload,
+      runId: envelope.runId,
+      checkpoint: { id: checkpoint?.id ?? null, versionId: receipt.versionId },
+    });
+    return { success: true };
   }
 
   if (envelope.status !== "completed" || run?.status !== "completed") {

@@ -32,7 +32,12 @@ expired transition validator must be deleted.
 
 ### Active transition validators
 
-There are currently no active transition validators.
+- `scripts/test-pi-memory-checkpoint-settlement.ts` protects migration
+  `1079_pi_memory_checkpoint_settlement` (#31937): real PostgreSQL checks exact
+  live legacy grandfathering, valid sandbox leases, unsafe-shape rollback and
+  rejection of fresh null/null or mismatched claims from `1078_baseline`.
+  Retire it only after the three transition conditions above are met; retain
+  the current claim-shape invariants in permanent coverage.
 
 ## Migration patterns
 

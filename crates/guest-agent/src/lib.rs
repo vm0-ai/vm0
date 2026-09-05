@@ -228,6 +228,7 @@ pub mod failure_diagnostics;
 mod failure_patterns;
 pub mod heartbeat;
 pub mod http;
+pub mod maintenance_usage;
 pub mod masker;
 pub mod metrics;
 mod nofollow_fs;

@@ -8,6 +8,13 @@
       "when": 1788622035564,
       "tag": "1078_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1079,
+      "version": "7",
+      "when": 1788626617812,
+      "tag": "1079_pi_memory_checkpoint_settlement",
+      "breakpoints": true
     }
   ]
 }
