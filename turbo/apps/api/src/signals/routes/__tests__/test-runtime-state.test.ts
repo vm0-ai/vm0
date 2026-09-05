@@ -1030,6 +1030,12 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         retryAfterSeconds: 60,
       }),
     ).resolves.toStrictEqual({ outcome: "recorded" });
+    await expect(
+      resolveBuiltInModelRouteFixture(context, claimed.selectedModel),
+    ).resolves.toMatchObject({
+      provider_type: primary.provider_type,
+      upstream_model: primary.upstream_model,
+    });
   });
 
   it("monotonically extends concurrent bounded reports from receipt time", async () => {
