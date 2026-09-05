@@ -105,6 +105,7 @@ import {
   setPermConnectorSlug$,
   permSearch$,
   setPermSearch$,
+  focusPermSearchRef$,
   permSearchActive$,
   setPermSearchActive$,
   permSavingConnectorSlug$,
@@ -442,6 +443,7 @@ function ConnectedConnectorPermissions({
   onManage: (connectorSlug: ConnectorSlug) => void;
 }) {
   const { t } = useTranslation("agents");
+  const focusSearch = useSet(focusPermSearchRef$);
   return (
     <>
       <div className="zero-card">
@@ -461,9 +463,7 @@ function ConnectedConnectorPermissions({
             <div className="absolute inset-0 flex items-center gap-2 px-5">
               <Search size={14} className="shrink-0 text-muted-foreground" />
               <input
-                ref={(el) => {
-                  return el?.focus();
-                }}
+                ref={focusSearch}
                 type="text"
                 placeholder={t(($) => {
                   return $.authorization.searchPlaceholder;
