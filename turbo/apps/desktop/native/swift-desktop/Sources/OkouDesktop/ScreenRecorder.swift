@@ -19,6 +19,7 @@ final class ScreenRecorder: ObservableObject {
   private var sessionID: String?
   private var recording: JSON?
   private var recordingIdentity: DesktopAuth.Identity?
+  private var captureHelperGeneration: Int?
   private var pollTask: Task<Void, Never>?
   private var control: (id: UUID, task: Task<Void, any Error>)?
   private var teardown: (id: UUID, task: Task<Void, any Error>)?
@@ -143,6 +144,7 @@ final class ScreenRecorder: ObservableObject {
       let output = directory.appendingPathComponent("screen-recording-\(UUID().uuidString).mp4")
       _ = try await request(
         "start", .object(["sessionId": prepared["sessionId"], "outputPath": .string(output.path)]))
+      captureHelperGeneration = helper.generation
       status = "recording"
       elapsed = 0
       onChange()
@@ -289,6 +291,9 @@ final class ScreenRecorder: ObservableObject {
     while !Task.isCancelled, capturing, let sessionID {
       do {
         try await Task.sleep(for: .seconds(1))
+        guard captureHelperGeneration == helper.generation else {
+          throw DesktopFailure("helper_unavailable", "The recording process exited unexpectedly")
+        }
         let response = try await request("state", .object(["sessionId": .string(sessionID)]))
         guard !Task.isCancelled, capturing, self.sessionID == sessionID else { return }
         let state = try JSONDecoder().decode(RecorderState.self, from: response.encoded())
@@ -308,19 +313,35 @@ final class ScreenRecorder: ObservableObject {
           } else {
             failure = nil
           }
-          try await collect(sessionID, deliver: !failed)
-          if let failure { error = failure }
-          onChange()
-          return
+          try await performControl {
+            let previousStatus = self.status
+            self.status = "finalizing"
+            self.onChange()
+            do {
+              try await self.collect(sessionID, deliver: !failed)
+              if let failure { self.error = failure }
+            } catch {
+              self.status = previousStatus
+              throw error
+            }
+            self.onChange()
+          }
+          if self.sessionID == nil { return }
         }
       } catch {
         if Task.isCancelled { return }
         self.error = error.localizedDescription
-        status = "idle"
-        self.sessionID = nil
-        helper.close()
+        // A transient state query or finalization failure does not establish
+        // that the capture ended. Retain its controls and poll again so the
+        // user can stop/discard and existing frames remain recoverable.
         onChange()
-        return
+        if captureHelperGeneration != helper.generation {
+          status = "idle"
+          self.sessionID = nil
+          await helper.stop()
+          onChange()
+          return
+        }
       }
     }
   }

@@ -219,6 +219,7 @@ import Testing
       stop_failed=False
       stop_malformed=False
       ticks=0
+      poll_failed=False
       for line in sys.stdin:
           request=json.loads(line)
           kind=request['kind']
@@ -248,6 +249,10 @@ import Testing
               if not stop_malformed:
                   del result['width']; stop_malformed=True
           elif kind=='recorder.state':
+              if not poll_failed:
+                  poll_failed=True
+                  print(json.dumps({'id':request['id'],'status':'failed','error':{'code':'capture_query','message':'Transient fixture probe failure'}}),flush=True)
+                  continue
               ticks+=1
               result={'status':'recording','elapsedMs':ticks*1000}
           elif kind=='test.identity': result={'pid':os.getpid()}
@@ -286,6 +291,9 @@ import Testing
       y: screen.frame.maxY - area.maxY + display.minY,
       width: area.width, height: area.height)
     #expect(!panel.frame.intersects(capturedInAppKit))
+    try await waitForRecorderTick(recorder, after: 0)
+    #expect(recorder.capturing)
+    #expect(recorder.error?.contains("Transient fixture probe failure") == true)
     try await recorder.pauseOrResume()
     #expect(recorder.status == "paused")
     try await recorder.pauseOrResume()
