@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.843.1](https://github.com/vm0-ai/vm0/compare/app-v0.843.0...app-v0.843.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** measure sidebar virtualization after styles and layout updates ([#31789](https://github.com/vm0-ai/vm0/issues/31789)) ([75a7f8b](https://github.com/vm0-ai/vm0/commit/75a7f8b95007012a618362d0abef063fbaaab2a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.1
+    * @okouai/core bumped to 8.623.1
+
 ## [0.843.0](https://github.com/vm0-ai/vm0/compare/app-v0.842.1...app-v0.843.0) (2026-09-05)
 
 
