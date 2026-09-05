@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.551.7](https://github.com/vm0-ai/vm0/compare/api-v1.551.6...api-v1.551.7) (2026-09-05)
+
+
+### Bug Fixes
+
+* **api:** fail incomplete pi api-first no-tool output ([#31945](https://github.com/vm0-ai/vm0/issues/31945)) ([ea412a3](https://github.com/vm0-ai/vm0/commit/ea412a323b9c31290af23957387c9fd8b1cfebd4))
+
 ## [1.551.6](https://github.com/vm0-ai/vm0/compare/api-v1.551.5...api-v1.551.6) (2026-09-05)
 
 
