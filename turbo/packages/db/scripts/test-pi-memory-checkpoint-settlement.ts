@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import postgres from "postgres";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
-import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { applyPendingMigrations } from "./migration-runner";
 
 // Exercise PostgreSQL three-valued CHECK semantics against the real journal,
-// including the outgoing writer after 1077 and before the repair migration.
+// including the outgoing writer captured by 1078_baseline before the repair.
 const directory = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../src/migrations",
@@ -24,6 +34,38 @@ await admin.connect();
 await admin.query(`CREATE DATABASE "${database}"`);
 const client = new Client({ connectionString: testUrl.toString() });
 await client.connect();
+const migrationSql = postgres(testUrl.toString(), { max: 1 });
+const originalDirectory = process.cwd();
+const fixtureDirectory = await mkdtemp(join(tmpdir(), "pi-memory-migrations-"));
+const fixtureMigrations = join(fixtureDirectory, "src/migrations");
+const journal = JSON.parse(
+  await readFile(join(directory, "meta/_journal.json"), "utf8"),
+) as { entries: { idx: number; tag: string; when: number }[] };
+
+async function applyThrough(tag: string) {
+  const last = journal.entries.find((entry) => {
+    return entry.tag === tag;
+  });
+  assert.ok(last, `Active Phase 2 transition migration is absent: ${tag}`);
+  const entries = journal.entries.filter((entry) => {
+    return entry.idx <= last.idx;
+  });
+  await mkdir(join(fixtureMigrations, "meta"), { recursive: true });
+  for (const entry of entries) {
+    await copyFile(
+      join(directory, `${entry.tag}.sql`),
+      join(fixtureMigrations, `${entry.tag}.sql`),
+    );
+  }
+  await writeFile(
+    join(fixtureMigrations, "meta/_journal.json"),
+    JSON.stringify({ ...journal, entries }),
+  );
+  // Use the production runner, real migration bytes and its transaction/timeout
+  // policy. Only the on-disk journal frontier changes to seed the old DB state.
+  process.chdir(fixtureDirectory);
+  await applyPendingMigrations(migrationSql);
+}
 
 async function seed(shape: "pending" | "legacy" | "sandbox" | "expired") {
   const storageId = randomUUID();
@@ -54,11 +96,7 @@ async function seed(shape: "pending" | "legacy" | "sandbox" | "expired") {
 }
 
 try {
-  await applyMigrationsFromDirectoryUpToTag(
-    client,
-    directory,
-    "1078_delete_single_account_authorization_state",
-  );
+  await applyThrough("1078_baseline");
   // Same order of magnitude as the refreshed 16,393-parent bound. Only the
   // one exact live legacy row is updated; pending rows are classified intact.
   await client.query(`WITH parents AS (
@@ -74,11 +112,7 @@ try {
   // 1077 incorrectly accepts a fresh null/null lease. The repair must classify
   // existing rows and refuse an ambiguous expired lease, atomically.
   await assert.rejects(
-    applyMigrationsFromDirectoryUpToTag(
-      client,
-      directory,
-      "1079_pi_memory_checkpoint_settlement",
-    ),
+    applyThrough("1079_pi_memory_checkpoint_settlement"),
     /requires exact lease classification/,
   );
   assert.equal(
@@ -91,11 +125,7 @@ try {
   );
   // This is a test fixture repair, never a production cleanup prescription.
   await client.query("DELETE FROM storages WHERE id = $1", [expired.storageId]);
-  await applyMigrationsFromDirectoryUpToTag(
-    client,
-    directory,
-    "1079_pi_memory_checkpoint_settlement",
-  );
+  await applyThrough("1079_pi_memory_checkpoint_settlement");
   const rows =
     await client.query(`SELECT memory_storage_id, lease_token, legacy_lease_token, sandbox_lease_token
     FROM pi_memory_phase2_jobs WHERE org_id = 'migration-org' ORDER BY memory_storage_id`);
@@ -174,6 +204,9 @@ try {
     "Phase 2 real migration: unsafe rollout rolls back; live legacy/new claims survive; fresh and mismatched legacy claims fail.",
   );
 } finally {
+  process.chdir(originalDirectory);
+  await migrationSql.end();
+  await rm(fixtureDirectory, { recursive: true, force: true });
   await client.end();
   await admin.query(`DROP DATABASE "${database}" WITH (FORCE)`);
   await admin.end();

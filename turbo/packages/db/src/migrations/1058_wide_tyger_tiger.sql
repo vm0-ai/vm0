@@ -1,2 +1,0 @@
-ALTER TABLE "connector_external_code_sessions" ADD COLUMN "completed_connector_id" uuid;--> statement-breakpoint
-ALTER TABLE "connector_oauth_device_authorization_sessions" ADD COLUMN "completed_connector_id" uuid;

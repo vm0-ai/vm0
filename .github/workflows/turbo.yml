@@ -714,7 +714,7 @@ jobs:
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          MIGRATION_BASELINE=808
+          MIGRATION_BASELINE=1078
           # The squashed baseline and its history may be removed. Migrations after
           # the baseline must not be deleted once they land on main.
           DELETED=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \

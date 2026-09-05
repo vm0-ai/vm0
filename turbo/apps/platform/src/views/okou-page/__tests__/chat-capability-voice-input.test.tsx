@@ -1,23 +1,28 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { voiceIoTranscribeContract } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import {
   assistantEvent,
   context,
   findButton,
+  findEnabledButton,
   findLink,
   installRunChat,
   queryButton,
   readyChat,
   RUN_PATH,
+  NEW_CHAT_PATH,
 } from "./chat-run-test-fixtures.ts";
+
+const refreshedContext = testContext();
 
 interface CapturedVoiceSend {
   readonly prompt: string;
@@ -304,6 +309,7 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
       "Opening Send the launch update tomorrow. closing",
     );
   });
+  await findEnabledButton("Send");
   expect(window.getSelection()?.isCollapsed).toBeTruthy();
   expect(currentComposer()).toHaveFocus();
   await user.keyboard(" Additional note.");
@@ -311,7 +317,6 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
     "Opening Send the launch update tomorrow. Additional note. closing",
   );
   expectNoVoiceDraftNode();
-  await expect(findButton("Send")).resolves.toBeEnabled();
   expect(queryButton("Finish")).toBeNull();
 });
 
@@ -464,16 +469,25 @@ test.each([
     code: "VOICE_TRANSCRIPTION_FAILED",
     message: "Voice draft transcription failed to produce a usable response",
   },
-])("Preserve the draft and return to idle after $code", async (failure) => {
+])("Retry the original recording after $code", async (failure) => {
   const transcriptionFailed = context.mocks.deferred<void>();
   const consoleErrors = captureVoiceTranscriptionErrors();
   let transcriptionAttempts = 0;
+  const recordings: ArrayBuffer[] = [];
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
+    const body = await request.formData();
+    const file = body.get("file");
+    if (!(file instanceof File)) {
+      throw new Error("Expected the original voice recording");
+    }
+    recordings.push(await file.arrayBuffer());
     transcriptionAttempts += 1;
-    if (transcriptionAttempts === 1) {
-      transcriptionFailed.resolve(undefined);
+    if (transcriptionAttempts <= 2) {
+      if (transcriptionAttempts === 1) {
+        transcriptionFailed.resolve(undefined);
+      }
       return HttpResponse.json(
         {
           error: {
@@ -507,27 +521,33 @@ test.each([
   await expect(
     screen.findByText("Voice transcription failed. Try again."),
   ).resolves.toBeVisible();
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await expect(findButton("Retry")).resolves.toBeEnabled();
+  expect(queryButton("Voice input")).toBeNull();
   expect(transcriptionAttempts).toBe(1);
   expectNoVoiceDraftNode();
   expect(queryButton("Finish")).toBeNull();
-  expect(queryButton("Remove voice draft")).toBeNull();
+  expect(queryButton("Remove voice draft")).toBeEnabled();
   expect(normalizedComposerText()).toBe("Keep these notes.");
-  await expect(findButton("Send")).resolves.toBeEnabled();
+  expect(queryButton("Send")).toBeNull();
 
-  click(await findButton("Voice input"));
-  click(await activeVoiceDraftStopButton());
+  click(await findButton("Retry"));
+  await expect(findButton("Retry")).resolves.toBeEnabled();
+  expect(normalizedComposerText()).toBe("Keep these notes.");
+  click(await findButton("Retry"));
 
   await waitFor(() => {
     expect(normalizedComposerText()).toBe(
       "Keep these notes. Polished launch update.",
     );
   });
-  expect(transcriptionAttempts).toBe(2);
+  expect(transcriptionAttempts).toBe(3);
+  expect(recordings[1]).toStrictEqual(recordings[0]);
+  expect(recordings[2]).toStrictEqual(recordings[0]);
   expectNoVoiceDraftNode();
-  await expect(findButton("Send")).resolves.toBeEnabled();
-  expect(consoleErrors).toStrictEqual([
-    [
+  await findEnabledButton("Send");
+  expect(consoleErrors).toHaveLength(2);
+  for (const error of consoleErrors) {
+    expect(error).toStrictEqual([
       "[E][Composer:VoiceDraft]",
       "Voice draft transcription failed",
       expect.objectContaining({
@@ -535,8 +555,181 @@ test.each([
         code: failure.code,
         status: failure.status,
       }),
-    ],
-  ]);
+    ]);
+  }
+  click(await findLink("Agents"));
+  await screen.findByRole("heading", { name: "Agents" });
+  cleanup();
+  await setupPage({
+    context: refreshedContext,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(queryButton("Retry")).toBeNull();
+});
+
+test.each([
+  { path: RUN_PATH, failed: false },
+  { path: RUN_PATH, failed: true },
+  { path: NEW_CHAT_PATH, failed: true },
+])(
+  "Restore a retryable recording at $path after reload (failed: $failed)",
+  async ({ path, failed }) => {
+    const firstRequest = context.mocks.deferred<void>();
+    const firstResponse = context.mocks.deferred<void>();
+    const consoleErrors = captureVoiceTranscriptionErrors();
+    const recordings: ArrayBuffer[] = [];
+    context.mocks.browser.voiceInput({ rms: 0.12 });
+    installAvailableVoiceQuota();
+    context.mocks.http.post(
+      "*/api/voice-io/transcribe",
+      async ({ request }) => {
+        const body = await request.formData();
+        const file = body.get("file");
+        if (!(file instanceof File)) {
+          throw new Error("Expected recorded audio");
+        }
+        recordings.push(await file.arrayBuffer());
+        if (recordings.length === 1) {
+          firstRequest.resolve(undefined);
+          if (!failed) {
+            await firstResponse.promise;
+          }
+          return HttpResponse.json(
+            {
+              error: {
+                code: "PROVIDER_UNAVAILABLE",
+                message: "Transcription unavailable",
+              },
+            },
+            { status: 503 },
+          );
+        }
+        return HttpResponse.json({
+          transcript: "saved voice note",
+          polishedText: "Recovered voice note.",
+          language: "en-US",
+        });
+      },
+    );
+    installRunChat();
+    await setupPage({
+      context,
+      path,
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+    });
+    click(await findButton("Voice input"));
+    click(await activeVoiceDraftStopButton());
+    await firstRequest.promise;
+    const pendingRecording = failed
+      ? findButton("Retry")
+      : screen.findByText("Transcribing...");
+    await expect(pendingRecording).resolves.toBeVisible();
+
+    click(await findLink("Agents"));
+    await screen.findByRole("heading", { name: "Agents" });
+    if (!failed) {
+      firstResponse.resolve(undefined);
+    }
+    cleanup();
+    await setupPage({
+      context: refreshedContext,
+      path,
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+    });
+
+    await screen.findByRole("textbox", { name: "Message" });
+    click(await findButton("Retry"));
+    await waitFor(() => {
+      expect(normalizedComposerText()).toBe("Recovered voice note.");
+    });
+    await findEnabledButton("Send");
+    expect(recordings[1]).toStrictEqual(recordings[0]);
+    expect(consoleErrors).toHaveLength(failed ? 1 : 0);
+  },
+);
+
+test("Keep a saved voice recording isolated from another signed-in user", async () => {
+  const consoleErrors = captureVoiceTranscriptionErrors();
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "PROVIDER_UNAVAILABLE",
+          message: "Transcription unavailable",
+        },
+      },
+      { status: 503 },
+    );
+  });
+  installRunChat();
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  click(await readyVoiceInput());
+  click(await activeVoiceDraftStopButton());
+  await expect(findButton("Retry")).resolves.toBeEnabled();
+
+  click(await findLink("Agents"));
+  await screen.findByRole("heading", { name: "Agents" });
+  cleanup();
+  await setupPage({
+    context: refreshedContext,
+    path: RUN_PATH,
+    auth: { user: { id: "other-voice-user", fullName: "Other User" } },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(queryButton("Retry")).toBeNull();
+  expect(normalizedComposerText()).toBe("");
+  expect(consoleErrors).toHaveLength(1);
+});
+
+test("Discard a failed recording without removing typed notes", async () => {
+  const consoleErrors = captureVoiceTranscriptionErrors();
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "PROVIDER_UNAVAILABLE",
+          message: "Transcription unavailable",
+        },
+      },
+      { status: 503 },
+    );
+  });
+  installRunChat();
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), "Keep typed notes");
+  click(voiceInput);
+  click(await activeVoiceDraftStopButton());
+  click(await findButton("Remove voice draft"));
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(normalizedComposerText()).toBe("Keep typed notes");
+
+  click(await findLink("Agents"));
+  await screen.findByRole("heading", { name: "Agents" });
+  cleanup();
+  await setupPage({
+    context: refreshedContext,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  expect(queryButton("Retry")).toBeNull();
+  expect(consoleErrors).toHaveLength(1);
 });
 
 test("Release a late microphone stream after navigating away during voice startup", async () => {
@@ -643,7 +836,7 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
       "Keep these typed notes. New voice note.",
     );
   });
-  await expect(findButton("Send")).resolves.toBeEnabled();
+  await findEnabledButton("Send");
   expectNoVoiceDraftNode();
   expect(consoleErrors).toStrictEqual([
     [
@@ -873,12 +1066,25 @@ test("Transcribe long voice dictation in ordered segments", async () => {
   type SpeechPhase = "first" | "pause" | "second" | "silence";
   let phase: SpeechPhase = "first";
   let requestNumber = 0;
+  let recorderStarts = 0;
   const firstRequestStarted = context.mocks.deferred<void>();
   const firstTranscriptReady = context.mocks.deferred<void>();
   const secondRequestStarted = context.mocks.deferred<void>();
   const secondTranscriptReady = context.mocks.deferred<void>();
+  const secondSpeechCaptured = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({
+    onRecorderStart: () => {
+      recorderStarts += 1;
+      if (recorderStarts === 2) {
+        // Resume speech at the capture boundary. Waiting for HTTP dispatch
+        // would let the simulated pause reach the real silence-stop timer.
+        phase = "second";
+      }
+    },
     rms: () => {
+      if (phase === "second" && !secondSpeechCaptured.settled()) {
+        secondSpeechCaptured.resolve();
+      }
       return phase === "first" || phase === "second" ? 0.12 : 0;
     },
   });
@@ -903,7 +1109,7 @@ test("Transcribe long voice dictation in ordered segments", async () => {
 
   phase = "pause";
   await firstRequestStarted.promise;
-  phase = "second";
+  await secondSpeechCaptured.promise;
 
   expect(normalizedComposerText()).toBe("");
   await expect(findButton("Stop recording")).resolves.toBeEnabled();

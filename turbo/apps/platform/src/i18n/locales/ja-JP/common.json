@@ -2364,8 +2364,11 @@
       "targetLanguage": "翻訳先の言語"
     },
     "voice": {
+      "busyInAnotherTab": "この会話は別のタブで録音中です。録音が停止した後に再試行してください。",
       "checkingLimit": "音声入力制限を確認する",
+      "cleanupFailed": "テキストは追加されましたが、保存済みの録音を削除できませんでした。",
       "confirmRecording": "OK",
+      "discarding": "音声の下書きを削除中...",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
       "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
@@ -2374,8 +2377,14 @@
       "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
+      "removeDraft": "音声の下書きを削除",
+      "restoreFailed": "音声の下書きを読み込めませんでした。再試行してください。",
+      "restoring": "音声の下書きを復元中...",
+      "retry": "再試行",
+      "retryReady": "録音は保持されています。文字起こしを再試行してください。",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
+      "storageFailed": "音声を保存できませんでした。再試行で復元できるのは、この端末に保存済みの音声のみです。",
       "transcribing": "文字起こし",
       "transcribingProgress": "転記中...",
       "transcriptionFailed": "音声の転写に失敗しました。もう一度やり直してください。"

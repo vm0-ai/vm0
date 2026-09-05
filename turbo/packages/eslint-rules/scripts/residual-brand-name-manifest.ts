@@ -589,13 +589,6 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     tokens: ["vm0-exec", "vm0-runner"],
   },
   {
-    category: "external-identity",
-    id: "external-identity/transition-validator-marker",
-    reason:
-      "The marker prefix is the grep handle the #26938 and #28368 transition checklists use to find outstanding validator entries from outside this repository; the entries are still open, so renaming the prefix silently empties every one of those searches.",
-    tokens: ["vm0-transition-validator"],
-  },
-  {
     category: "wire-and-persisted-value",
     id: "wire-and-persisted-value/addon-event-envelope",
     reason:
@@ -831,6 +824,13 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     tokens: ["ZERO_"],
   },
   {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/connector-scope-source",
+    reason:
+      "zero_agent is an emitted API dispatch telemetry value for connector-scope provenance. Existing traces and operational queries read the stored value, so changing it requires a telemetry-contract migration rather than a source-only rename.",
+    tokens: ["zero_agent"],
+  },
+  {
     category: "immutable-history",
     id: "immutable-history/retired-run-event-name",
     line: /replaces vm0_start\/vm0_result\/vm0_error events/u,
@@ -844,8 +844,14 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     id: "immutable-history/executed-migration-script",
     paths: /^turbo\/packages\/db\/scripts\/migrations\/[^/]+\//u,
     reason:
-      "A one-off migration script that has already been executed against production; its source is the record of what ran, for the same reason the README beside it is one. zeroAgentId is the local name the executed 005 Clerk-metadata backfill gave the default agent id it wrote.",
-    tokens: ["zeroAgentId"],
+      "A one-off migration script that has already been executed against production; its source is the record of what ran, for the same reason the README beside it is one. The named columns and relations were the physical identities those scripts read or wrote when they ran.",
+    tokens: [
+      "acquisition_vm0_source",
+      "zeroAgentId",
+      "zero_agents",
+      "zero_runs",
+      "zero_workflows",
+    ],
   },
   {
     category: "physical-schema-identity",
@@ -868,6 +874,34 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
       "zero_workflow_agents",
       "zero_workflows_archive",
     ],
+  },
+  {
+    category: "physical-schema-identity",
+    id: "physical-schema-identity/retired-database-contract",
+    paths:
+      /^(?:turbo\/packages\/db\/scripts\/(?:test-agent-run-built-in-model-key-permanent|test-migration-consistency-schema|test-org-metadata-acquisition-first-party-source-permanent|test-org-plan-entitlement-restriction-permanent)\.ts|turbo\/packages\/db\/src\/__tests__\/agent-run-schema\.test\.ts)$/u,
+    reason:
+      "Permanent database validators name these retired relations, indexes, triggers, and columns to prove they stay absent from the canonical schema and its live readers. Rewriting an expected historical identity would stop the validator from checking the object that production actually retired.",
+    tokens: [
+      "acquisition_vm0_source",
+      "idx_zero_runs_chat_thread_id",
+      "idx_zero_runs_goal",
+      "idx_zero_runs_workflow_automation",
+      "restricted_vm0_models",
+      "sync_zero_run_metadata_to_agent_runs",
+      "vm0_model_key_id",
+      "zero_runs",
+      "zero_runs_pkey",
+    ],
+  },
+  {
+    category: "physical-schema-identity",
+    id: "physical-schema-identity/retired-relation-source-guard",
+    paths:
+      /^turbo\/apps\/api\/src\/signals\/services\/__tests__\/agent-draft-write\.service\.test\.ts$/u,
+    reason:
+      "The test names the retired zero_agent_drafts relation in a negative source assertion so runtime writers cannot accidentally reintroduce relation-specific compatibility SQL.",
+    tokens: ["zero_agent_drafts"],
   },
   {
     category: "physical-schema-identity",
@@ -1248,9 +1282,8 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "vm0Model",
       "vm0ModelKeyId",
       "vm0ModelProviderEnvironment",
-      "vm0Policy",
+      "vm0_api_keys",
       "vm0PrimaryCandidate",
-      "vm0Provider",
       "vm0UsageCredits",
       "zero-me-model-providers",
       "zero-model-providers",
@@ -1263,25 +1296,12 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       workstream: "R3",
     },
   ),
-  ...baselineNames(
-    [
-      "Zero-run",
-      "zero-run",
-      "zero-run-fixture",
-      "zeroRunGoalId",
-      "zeroRunGroupId",
-      "zeroRunRows",
-      "zeroRuns",
-      "zero_runs-only",
-      "zero_runs_",
-    ],
-    {
-      ownerIssue: "#26877",
-      reason:
-        "Legacy zero run vocabulary in TypeScript identifiers, comments, and fixture strings; #26877 owns replacing it with agent run terminology.",
-      workstream: "R4",
-    },
-  ),
+  ...baselineNames(["zero-run-fixture", "zero_runs_"], {
+    ownerIssue: "#26877",
+    reason:
+      "Legacy zero run vocabulary in TypeScript identifiers, comments, and fixture strings; #26877 owns replacing it with agent run terminology.",
+    workstream: "R4",
+  }),
   ...baselineNames(
     [
       "ClaimedVm0Run",
@@ -1338,11 +1358,5 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
     reason:
       "The legacy deck metadata script id the presentation preview still reads for deck HTML stored or externally generated before the okou rename; #31815 kept it deliberately and #31824 drops it together with the data-vm0-* readers beside it.",
     workstream: "R7",
-  }),
-  ...baselineNames(["vm0Run", "vm0Thread"], {
-    ownerIssue: "#31801",
-    reason:
-      "Fixture id for the row carrying the legacy vm0 built-in-provider discriminator in the provider discriminator migration script, beside vm0Policy and vm0Provider in the same object; R3 renames the Vm0 provider vocabulary in one pass.",
-    workstream: "R3",
   }),
 ] as const satisfies readonly ResidualBrandNameBaselineEntry[];

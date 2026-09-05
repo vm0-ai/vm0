@@ -2368,8 +2368,11 @@
       "targetLanguage": "Translation language"
     },
     "voice": {
+      "busyInAnotherTab": "This conversation has an active recording in another tab. Retry after it stops.",
       "checkingLimit": "Checking voice input limit",
+      "cleanupFailed": "Text was added, but the saved recording could not be removed.",
       "confirmRecording": "OK",
+      "discarding": "Removing voice draft...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
       "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
@@ -2378,8 +2381,14 @@
       "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
+      "removeDraft": "Remove voice draft",
+      "restoreFailed": "Couldn’t load your voice draft. Try again.",
+      "restoring": "Restoring voice draft...",
+      "retry": "Retry",
+      "retryReady": "Your recording is kept. Retry transcription.",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
+      "storageFailed": "Audio could not be saved. Retry can recover only audio already saved on this device.",
       "transcribing": "Transcribing",
       "transcribingProgress": "Transcribing...",
       "transcriptionFailed": "Voice transcription failed. Try again."

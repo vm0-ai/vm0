@@ -2411,8 +2411,11 @@
       "targetLanguage": "Idioma da tradução"
     },
     "voice": {
+      "busyInAnotherTab": "Esta conversa tem uma gravação ativa em outra aba. Tente novamente quando ela parar.",
       "checkingLimit": "Verificando limite da entrada de voz",
+      "cleanupFailed": "O texto foi adicionado, mas não foi possível remover a gravação salva.",
       "confirmRecording": "OK",
+      "discarding": "Removendo rascunho de voz...",
       "input": "Entrada de voz",
       "inputLimitReached": "Limite de entrada de voz atingido. Faça upgrade para Pro ou Team para aumentar os limites.",
       "inputLimitReachedMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade e aumentar os limites.",
@@ -2421,8 +2424,14 @@
       "inputLimitReachedReset": "Limite de entrada de voz atingido. Aguarde até que seu limite seja redefinido.",
       "microphoneAccessDenied": "O acesso ao microfone foi negado. Permita o acesso e tente novamente.",
       "openingMicrophone": "Abrindo microfone...",
+      "removeDraft": "Remover rascunho de voz",
+      "restoreFailed": "Não foi possível carregar seu rascunho de voz. Tente novamente.",
+      "restoring": "Restaurando rascunho de voz...",
+      "retry": "Tentar novamente",
+      "retryReady": "Sua gravação foi mantida. Tente transcrever novamente.",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Parar gravação",
+      "storageFailed": "Não foi possível salvar o áudio. Tentar novamente recupera apenas o áudio já salvo neste dispositivo.",
       "transcribing": "Transcrevendo",
       "transcribingProgress": "Transcrevendo...",
       "transcriptionFailed": "Falha na transcrição de voz. Tente novamente."

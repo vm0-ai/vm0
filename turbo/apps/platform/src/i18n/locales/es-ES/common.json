@@ -2411,8 +2411,11 @@
       "targetLanguage": "Idioma de traducción"
     },
     "voice": {
+      "busyInAnotherTab": "Esta conversación tiene una grabación activa en otra pestaña. Reintenta cuando termine.",
       "checkingLimit": "Comprobando el límite de entrada de voz",
+      "cleanupFailed": "Se añadió el texto, pero no se pudo eliminar la grabación guardada.",
       "confirmRecording": "OK",
+      "discarding": "Eliminando borrador de voz...",
       "input": "Entrada de voz",
       "inputLimitReached": "Límite de entrada de voz alcanzado. Actualiza a Pro o Team para límites más altos.",
       "inputLimitReachedMember": "Límite de entrada de voz alcanzado. Pide a un administrador del espacio de trabajo que actualice el plan para obtener límites más altos.",
@@ -2421,8 +2424,14 @@
       "inputLimitReachedReset": "Límite de entrada de voz alcanzado. Espera a que se restablezca tu límite.",
       "microphoneAccessDenied": "Se ha denegado el acceso al micrófono. Permite el acceso al micrófono e inténtalo de nuevo.",
       "openingMicrophone": "Abriendo el micrófono...",
+      "removeDraft": "Eliminar borrador de voz",
+      "restoreFailed": "No se pudo cargar tu borrador de voz. Inténtalo de nuevo.",
+      "restoring": "Restaurando borrador de voz...",
+      "retry": "Reintentar",
+      "retryReady": "Tu grabación se conserva. Reintenta la transcripción.",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Detener la grabación",
+      "storageFailed": "No se pudo guardar el audio. Reintentar solo recupera el audio ya guardado en este dispositivo.",
       "transcribing": "Transcribiendo",
       "transcribingProgress": "Transcribiendo...",
       "transcriptionFailed": "Falló la transcripción de voz. Inténtalo de nuevo."

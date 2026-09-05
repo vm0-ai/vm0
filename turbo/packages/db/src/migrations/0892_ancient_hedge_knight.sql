@@ -1,7 +1,0 @@
-ALTER TABLE "usage_pack_allocation_changes" DROP CONSTRAINT "chk_usage_pack_changes_source_package";--> statement-breakpoint
-ALTER TABLE "usage_pack_allocation_changes" DROP CONSTRAINT "chk_usage_pack_changes_kind";--> statement-breakpoint
-ALTER TABLE "usage_pack_allocation_changes" ALTER COLUMN "source_allocation_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "usage_pack_allocation_changes" ALTER COLUMN "source_usage_pack_usd" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "usage_pack_allocation_changes" ALTER COLUMN "source_stripe_price_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "usage_pack_allocation_changes" ADD CONSTRAINT "chk_usage_pack_changes_source" CHECK (("usage_pack_allocation_changes"."kind" = 'addition' AND "usage_pack_allocation_changes"."source_allocation_id" IS NULL AND "usage_pack_allocation_changes"."source_usage_pack_usd" IS NULL AND "usage_pack_allocation_changes"."source_stripe_price_id" IS NULL) OR ("usage_pack_allocation_changes"."kind" <> 'addition' AND "usage_pack_allocation_changes"."source_allocation_id" IS NOT NULL AND "usage_pack_allocation_changes"."source_usage_pack_usd" IN (20, 50, 100, 200) AND "usage_pack_allocation_changes"."source_stripe_price_id" IS NOT NULL));--> statement-breakpoint
-ALTER TABLE "usage_pack_allocation_changes" ADD CONSTRAINT "chk_usage_pack_changes_kind" CHECK ("usage_pack_allocation_changes"."kind" IN ('addition', 'upgrade', 'downgrade', 'removal'));

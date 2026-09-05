@@ -1,2 +1,0 @@
--- This migration intentionally advances only the Drizzle schema baseline.
--- Migration 0930 retains the physical compatibility objects until #27602.
