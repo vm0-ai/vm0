@@ -108,8 +108,8 @@ export function parseChatClipboardPayload(html: string): {
   userMessage?: UserMessageDocument;
 } {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const encoded = doc.querySelector<HTMLElement>("[data-vm0-chat-message]")
-    ?.dataset.vm0ChatMessage;
+  const encoded = doc.querySelector<HTMLElement>("[data-okou-chat-message]")
+    ?.dataset.okouChatMessage;
   if (!encoded) {
     throw new Error("chat clipboard payload not found");
   }

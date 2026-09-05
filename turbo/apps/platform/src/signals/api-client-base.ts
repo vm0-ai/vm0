@@ -33,8 +33,12 @@ interface AuthedClientOptions {
   ) => Promise<string> | string;
 }
 
+// The app Worker that injects this script deploys independently from the app
+// bundle that reads it, so the selector also accepts the pre-rename spelling.
+// Drop the legacy half once every deployed Worker emits `data-okou-api-bootstrap`,
+// which the Worker release carrying this change establishes.
 const API_BOOTSTRAP_SELECTOR =
-  'script[type="application/json"][data-vm0-api-bootstrap]';
+  'script[type="application/json"][data-okou-api-bootstrap],script[type="application/json"][data-vm0-api-bootstrap]';
 
 function takeBootstrapResponse(
   method: string,

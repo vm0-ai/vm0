@@ -12,7 +12,12 @@ import {
   withCleanup,
 } from "../utils.ts";
 
-const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
+const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-okou-chat-message";
+// Clipboard content outlives the session that produced it, so a paste can still
+// carry the pre-rename attribute. Drop this once no clipboard written before the
+// okou rename can realistically be pasted back, which is at most a few days of
+// system clipboard lifetime after the rename ships.
+const LEGACY_CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
 
 export interface ChatClipboardAttachment {
   id: string | null;
@@ -137,7 +142,7 @@ function formatMessageHtml(payload: ChatClipboardPayload): string {
     .map((attachment) => {
       const name = escapeHtml(attachment.filename);
       const url = escapeHtml(attachment.url);
-      return `<div><a href="${url}" data-vm0-attachment-id="${escapeHtml(attachment.id ?? "")}">${name}</a></div>`;
+      return `<div><a href="${url}" data-okou-attachment-id="${escapeHtml(attachment.id ?? "")}">${name}</a></div>`;
     })
     .join("");
   const attachmentsHtml = attachmentLinksHtml
@@ -298,6 +303,21 @@ export async function writeChatMessageToClipboard(
   }
 }
 
+function encodedChatMessageFromDocument(doc: Document): string | null {
+  for (const attribute of [
+    CHAT_MESSAGE_CLIPBOARD_ATTR,
+    LEGACY_CHAT_MESSAGE_CLIPBOARD_ATTR,
+  ]) {
+    const encoded = doc
+      .querySelector(`[${attribute}]`)
+      ?.getAttribute(attribute);
+    if (encoded) {
+      return encoded;
+    }
+  }
+  return null;
+}
+
 export function readChatMessageFromClipboard(
   clipboardData: DataTransfer,
 ): ChatClipboardPayload | null {
@@ -306,8 +326,7 @@ export function readChatMessageFromClipboard(
     return null;
   }
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const node = doc.querySelector(`[${CHAT_MESSAGE_CLIPBOARD_ATTR}]`);
-  const encoded = node?.getAttribute(CHAT_MESSAGE_CLIPBOARD_ATTR);
+  const encoded = encodedChatMessageFromDocument(doc);
   if (!encoded) {
     return null;
   }
