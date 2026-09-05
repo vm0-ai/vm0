@@ -153,11 +153,17 @@ final class DesktopUpdater {
     try FileManager.default.copyItem(
       at: Bundle.main.resourceURL!.appendingPathComponent("native/okou-desktop-updater"),
       to: installer)
+    try await launchInstaller(installer, candidate: update.candidate)
+  }
+
+  /// The candidate has already passed archive, signature and version checks.
+  /// Keep startup failure recovery at the actual Process.run boundary.
+  func launchInstaller(_ installer: URL, candidate: URL) async throws {
     try await prepareForUpdate()
     let process = Process()
     process.executableURL = installer
     process.arguments = [
-      String(ProcessInfo.processInfo.processIdentifier), update.candidate.path,
+      String(ProcessInfo.processInfo.processIdentifier), candidate.path,
       Bundle.main.bundleURL.path, configuration.bundleID,
     ]
     do {

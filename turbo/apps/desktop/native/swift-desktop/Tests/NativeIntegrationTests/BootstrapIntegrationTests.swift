@@ -6,6 +6,37 @@ import Testing
 @testable import OkouDesktop
 
 @Suite(.serialized) struct BootstrapIntegrationTests {
+  @Test @MainActor func installerStartupFailureRecoversWithoutQuitting() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let installer = directory.appendingPathComponent("installer")
+    let candidate = directory.appendingPathComponent("candidate.app")
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: installer)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: installer.path)
+    var events: [String] = []
+    let updater = DesktopUpdater(
+      configuration: try DesktopConfiguration(platformURL: "https://app.okou.ai", version: "1.0.0"),
+      directory: directory, feed: DesktopUpdateFeed(url: URL(string: "https://example.invalid")!),
+      activity: { .idle },
+      prepareForUpdate: { events.append("prepared") },
+      recoverAfterFailedUpdate: { events.append("recovered") },
+      report: { _ in events.append("reported") },
+      quitForUpdate: { events.append("quit") })
+    // Real file permissions make Process.run fail after preparation. No
+    // throwing process stub or signed-update validation override is used.
+    do {
+      try await updater.launchInstaller(installer, candidate: candidate)
+      Issue.record("A non-executable installer unexpectedly launched")
+    } catch {
+      #expect((error as NSError).domain == NSCocoaErrorDomain)
+      // Foundation treats a non-executable launch target as unavailable.
+      #expect((error as NSError).code == NSFileNoSuchFileError)
+    }
+    #expect(events == ["prepared", "recovered"])
+    #expect(FileManager.default.fileExists(atPath: installer.path))
+  }
+
   @Test @MainActor func replacementRestoresThePreviousBundleWhenLaunchFails() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let installed = directory.appendingPathComponent("Okou.app")
