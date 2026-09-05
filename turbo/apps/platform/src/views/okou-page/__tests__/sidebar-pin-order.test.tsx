@@ -1,5 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
 import {
   chatThreadPinOrderContract,
   chatThreadPinContract,
@@ -89,9 +90,16 @@ test("keyboard reorder is optimistic and survives the matching persisted event",
     },
   );
   const grip = handle("Last pin");
-  fireEvent.keyDown(grip, { key: " " });
-  fireEvent.keyDown(grip, { key: "ArrowUp" });
-  fireEvent.keyDown(grip, { key: " " });
+  const user = userEvent.setup();
+  act(() => {
+    grip.focus();
+  });
+  await user.keyboard(" ");
+  await user.keyboard("{ArrowUp}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(grip).toHaveFocus();
+  expect(grip).toHaveAttribute("aria-pressed", "true");
+  await user.keyboard(" ");
   const event = await requested.promise;
   expect(event.chatThreadId).toBe(snapshot[2]?.id);
   await waitFor(() => {

@@ -53,6 +53,31 @@ function ThreadDragHandle({
         onMouseDown={(event) => {
           event.preventBaseUIHandler();
         }}
+        onKeyDown={(event) => {
+          if (event.key === " " || event.key === "Enter") {
+            event.preventBaseUIHandler();
+            event.preventDefault();
+            event.stopPropagation();
+            if (picked) {
+              detach(drop(signal), Reason.DomCallback);
+            } else {
+              start(signals.threadId, true);
+            }
+          } else if (
+            picked &&
+            (event.key === "ArrowUp" || event.key === "ArrowDown")
+          ) {
+            event.preventBaseUIHandler();
+            event.preventDefault();
+            event.stopPropagation();
+            step(event.key === "ArrowUp" ? -1 : 1);
+          } else if (picked && event.key === "Escape") {
+            event.preventBaseUIHandler();
+            event.preventDefault();
+            event.stopPropagation();
+            cancel();
+          }
+        }}
       >
         <Button
           className="okou-thread-drag-handle pointer-events-auto absolute left-1 top-1 z-10 cursor-grab active:cursor-grabbing"
@@ -80,28 +105,6 @@ function ThreadDragHandle({
           }}
           onDragEnd={() => {
             return cancel();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === " " || event.key === "Enter") {
-              event.preventDefault();
-              event.stopPropagation();
-              if (picked) {
-                detach(drop(signal), Reason.DomCallback);
-              } else {
-                start(signals.threadId, true);
-              }
-            } else if (
-              picked &&
-              (event.key === "ArrowUp" || event.key === "ArrowDown")
-            ) {
-              event.preventDefault();
-              event.stopPropagation();
-              step(event.key === "ArrowUp" ? -1 : 1);
-            } else if (picked && event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              cancel();
-            }
           }}
           onBlur={() => {
             if (picked && drag.keyboard) {
