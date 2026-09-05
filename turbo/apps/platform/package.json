@@ -65,7 +65,7 @@
     "micromark-util-sanitize-uri": "^2.0.1",
     "onnxruntime-web": "1.29.0",
     "path-to-regexp": "^8.4.0",
-    "posthog-js": "^1.414.0",
+    "posthog-js": "^1.422.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.11",
