@@ -157,9 +157,13 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
+  const runId =
+    auth.tokenType === "agent" || auth.tokenType === "sandbox"
+      ? auth.runId
+      : undefined;
   const hasCredits = await set(
     checkSpeechCredits$,
-    { orgId: auth.orgId, userId: auth.userId },
+    { orgId: auth.orgId, userId: auth.userId, runId },
     signal,
   );
   if (!hasCredits) {
@@ -175,10 +179,6 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const runId =
-    auth.tokenType === "agent" || auth.tokenType === "sandbox"
-      ? auth.runId
-      : undefined;
   const publicBrand =
     auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
   const admission = await set(

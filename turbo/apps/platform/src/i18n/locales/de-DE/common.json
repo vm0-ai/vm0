@@ -2736,12 +2736,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Weitere Optionen",
-      "statusConnected": "Verbunden",
       "toasts": {
         "connected": "Verbunden",
         "created": "Erstellt „{{connector}}“",
         "deleted": "Benutzerdefinierte Integration gelöscht",
-        "disconnected": "Getrennt",
         "updated": "Aktualisiert „{{connector}}“"
       },
       "updateConfirm": {
@@ -3245,15 +3243,13 @@
       "redirectTitle": "Weiterleitung zu {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} verbunden",
-      "disconnected": "{{connector}} getrennt"
+      "connected": "{{connector}} verbunden"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Die Anfrage ist fehlgeschlagen",
-      "sharedDatabaseUnavailable": "In der App ist ein Problem aufgetreten. Bitte warten Sie einen Moment und aktualisieren Sie dann die Seite, um es erneut zu versuchen."
+      "requestFailed": "Die Anfrage ist fehlgeschlagen"
     },
     "realtime": {
       "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite.",

@@ -2783,12 +2783,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Más opciones",
-      "statusConnected": "Conectado",
       "toasts": {
         "connected": "Conectado",
         "created": "Se ha creado \"{{connector}}\"",
         "deleted": "Conector personalizado eliminado",
-        "disconnected": "Desconectado",
         "updated": "Se ha actualizado \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3295,15 +3293,13 @@
       "redirectTitle": "Redirigiendo a {{connector}}..."
     },
     "toasts": {
-      "connected": "{{connector}} conectado",
-      "disconnected": "{{connector}} desconectado"
+      "connected": "{{connector}} conectado"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Solicitud fallida",
-      "sharedDatabaseUnavailable": "Se produjo un problema en la aplicación. Espera un momento y, a continuación, actualiza la página para volver a intentarlo."
+      "requestFailed": "Solicitud fallida"
     },
     "realtime": {
       "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página.",

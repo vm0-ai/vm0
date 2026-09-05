@@ -49,6 +49,9 @@ import { removeBuiltInGenerationPublicBrandFixture } from "../../../test-fixture
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 
 const context = testContext();
 const store = createStore();
@@ -185,6 +188,11 @@ function readPublishedGenerationId(
 interface ImageFixture {
   readonly orgId: string;
   readonly userId: string;
+}
+
+interface AdmittedImageFixture extends ImageFixture {
+  readonly actor: ApiTestUser;
+  readonly runId: string;
 }
 
 function authHeaders() {
@@ -572,6 +580,36 @@ async function seedImageFixture(options: {
   return fixture;
 }
 
+async function seedAdmittedImageRun(): Promise<AdmittedImageFixture> {
+  await seedBuiltInDefaultModelKey(context);
+  const bdd = createBddApi(context);
+  const runs = createRunsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Image tests require an organization");
+  }
+  bdd.acceptAgentStorageWrites();
+  runs.configureRunnerGroup();
+  const completed = await bdd.completeOnboarding(actor);
+  expect(completed.status).toBe(200);
+  await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1 });
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Admitted image agent",
+    visibility: "private",
+  });
+  const run = await runs.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "Generate after credit exhaustion",
+    modelProvider: "built-in",
+  });
+  return {
+    actor,
+    orgId: actor.orgId,
+    userId: actor.userId,
+    runId: run.runId,
+  };
+}
+
 async function seedImageRun(
   fixture: ImageFixture,
   options: {
@@ -944,6 +982,72 @@ describe("POST /api/image-io/generate", () => {
     });
     expect(falCalls).toBe(0);
     await expect(orgCredits(fixture)).resolves.toBe(0);
+  });
+
+  it("settles admitted provider work after the run becomes terminal", async () => {
+    const fixture = await seedAdmittedImageRun();
+    const pricingFixture = await createScopedImagePricing({
+      configured: GPT_IMAGE_1_PRICING,
+    });
+    await seedOrgMetadata({ orgId: fixture.orgId, tier: "pro", credits: 0 });
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_GPT_IMAGE_1_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json(
+          falQueueHandle("admitted-terminal-image-request"),
+        );
+      }),
+      http.get(FAL_GPT_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+    const token = okouToken(fixture);
+    const app = createImageIoTestApp(pricingFixture.resolution);
+
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ prompt: "an admitted terminal run image" }),
+    });
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    const runs = createRunsApi(context);
+    await runs.requestCancelRun(fixture.actor, fixture.runId, [200]);
+    await expect(
+      runs.readRun(fixture.actor, fixture.runId),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_GPT_MEDIA_URL,
+          width: 1024,
+          height: 1024,
+          content_type: "image/png",
+        },
+      ],
+      prompt: "An admitted terminal run image.",
+    });
+    await flushWaitUntilForTest();
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(readGenerationResult(await statusResponse.json())).toMatchObject({
+      creditsCharged: 50,
+      billingCategory: "output_image.medium.standard",
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(-50);
   });
 
   it("keeps a legacy generation job on VM0 when allowance remains", async () => {

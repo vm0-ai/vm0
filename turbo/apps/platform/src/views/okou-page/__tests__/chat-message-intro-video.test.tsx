@@ -1,5 +1,5 @@
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
-import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
+import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -62,22 +62,25 @@ function installIntroVideoFixture(
       visibility: "public",
     });
   });
-  context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
-    return respond(200, {
-      voices: [
-        {
-          id: "riley-en",
-          name: "Riley",
-          language: "English",
-          gender: "female",
-          age: "adult",
-          useCase: "Narration",
-        },
-      ],
-      hasMore: false,
-      filterOptions: { languages: ["English"], useCases: ["Narration"] },
-    });
-  });
+  context.mocks.api(
+    introVideoPresenterContract.voices,
+    ({ query, respond }) => {
+      expect(query).toStrictEqual({ pageSize: 24 });
+      return respond(200, {
+        voices: [
+          {
+            id: "330290724a1b470fb63153f34d4c0183",
+            name: "Annie - Lifelike",
+            language: "English",
+            gender: "female",
+            sampleUrl: "https://files.heygen.test/annie.wav",
+          },
+        ],
+        hasMore: false,
+        nextToken: null,
+      });
+    },
+  );
 }
 
 async function openIntroVideoDialog(): Promise<HTMLElement> {
@@ -282,6 +285,67 @@ test("A presentation video request does not invent editing direction, opening, o
   await waitFor(() => {
     expect(dialog).not.toBeInTheDocument();
   });
+});
+
+test("A selected Intro Video voice comes from HeyGen and is reused for lip sync", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: INTRO_VIDEO_SWITCHES,
+  });
+
+  const dialog = await openIntroVideoDialog();
+  await uploadLaunchPresentation(user, dialog);
+  click(
+    await within(dialog).findByLabelText(
+      "Select template Abigail Office Front",
+    ),
+  );
+  await clickDialogButton(dialog, "Next");
+  await expect(
+    within(dialog).findByText("Choose a voice"),
+  ).resolves.toBeVisible();
+  expect(
+    dialog.querySelector('[data-intro-video-voice-provider="heygen"]'),
+  ).not.toBeNull();
+  click(await within(dialog).findByLabelText("Select voice Annie - Lifelike"));
+  await clickDialogButton(dialog, "Next");
+  await expect(
+    within(dialog).findByText("Review your intro video"),
+  ).resolves.toBeVisible();
+  expect(within(dialog).getByText("Annie - Lifelike")).toBeVisible();
+
+  await clickDialogButton(dialog, "Create in chat");
+
+  await waitFor(() => {
+    expect(submittedPrompt).toContain(
+      "- Voice: Annie - Lifelike (330290724a1b470fb63153f34d4c0183)",
+    );
+  });
+  expect(submittedPrompt).toContain(
+    "okou __intro-video-voice --voice-id 330290724a1b470fb63153f34d4c0183 --text <final-narration-script> --json",
+  );
+  expect(submittedPrompt).toContain(
+    "use the command's returned permanent audio URL for presenter lip sync and reuse that exact audio in the final mix",
+  );
+  expect(submittedPrompt).toContain(
+    "okou __intro-video-presenter --avatar-id Abigail_standing_office_front --audio-url <resolved-audio-url> --json",
+  );
+  expect(submittedPrompt).toContain("- Avatar provider: heygen");
+  expect(submittedPrompt).toContain("output_format webm and Avatar III");
+  expect(submittedPrompt).not.toContain("Avatar IV");
+  expect(submittedPrompt).not.toContain("voice's owning provider");
+  expect(submittedPrompt).not.toContain(
+    "never send the catalog voice ID as a HeyGen voice_id",
+  );
 });
 
 test("Pass the user's intro-video editing direction to the new chat", async () => {

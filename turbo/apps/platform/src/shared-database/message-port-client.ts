@@ -112,7 +112,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   fail(reason: unknown): void {
-    this.close(reason, false);
+    this.close(reason);
   }
 
   async getComputed<TKey extends ComputedKey>(

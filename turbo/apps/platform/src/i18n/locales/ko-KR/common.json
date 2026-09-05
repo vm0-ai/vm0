@@ -2728,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "추가 옵션",
-      "statusConnected": "연결됨",
       "toasts": {
         "connected": "연결됨",
         "created": "\"{{connector}}\" 생성됨",
         "deleted": "커스텀 커넥터가 삭제되었습니다",
-        "disconnected": "연결 해제됨",
         "updated": "\"{{connector}}\" 업데이트됨"
       },
       "updateConfirm": {
@@ -3237,15 +3235,13 @@
       "redirectTitle": "{{connector}}로 리디렉션 중…"
     },
     "toasts": {
-      "connected": "{{connector}} 연결됨",
-      "disconnected": "{{connector}} 연결 해제됨"
+      "connected": "{{connector}} 연결됨"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "요청 실패",
-      "sharedDatabaseUnavailable": "앱에 문제가 발생했습니다. 잠시 기다린 후 페이지를 새로고침하여 다시 시도하세요."
+      "requestFailed": "요청 실패"
     },
     "realtime": {
       "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요.",

@@ -221,7 +221,7 @@ async function insertPromotedRunnerJob(
 
   recordSandboxOperation({
     sandboxType: "runner",
-    actionType: "dequeue_zero_run",
+    actionType: "dequeue_agent_run",
     durationMs: Math.max(0, args.promotedAt - args.queuedAt.getTime()),
     success: true,
     runId: args.runId,

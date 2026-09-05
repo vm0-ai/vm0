@@ -40,12 +40,13 @@ interface RichClipboardPayload {
 function richClipboard(
   payload: RichClipboardPayload,
   plainText = payload.text,
+  attribute = "data-okou-chat-message",
 ): DataTransfer {
   const data = new DataTransfer();
   const encoded = encodeURIComponent(JSON.stringify(payload));
   data.setData(
     "text/html",
-    `<div data-vm0-chat-message="${encoded}">${payload.text}</div>`,
+    `<div ${attribute}="${encoded}">${payload.text}</div>`,
   );
   data.setData("text/plain", plainText);
   return data;
@@ -177,6 +178,46 @@ test("Paste copied chat text and attachments safely", async () => {
     expect(composer).toHaveTextContent("Resumo copiado em duas linhas");
     expect(composer).toHaveTextContent("Continuação preservada");
     expect(fastButton("Remove locale-copy.txt")).toBeVisible();
+  });
+});
+
+test("Paste chat content copied before the okou attribute rename", async () => {
+  const thread = continuityThread(17, 1, "Legacy clipboard restoration");
+  const available = continuityAttachment(17, 1, "legacy-copy.txt");
+  const workspace = await installContinuityWorkspace(context, {
+    caseId: 17,
+    threads: [thread],
+    resolveAttachment() {
+      return "available";
+    },
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    auth: workspace.auth,
+  });
+
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  placeCaretAtEnd(composer);
+  fireEvent.paste(composer, {
+    clipboardData: richClipboard(
+      {
+        text: "Copied before the rename",
+        attachments: [available],
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Copied before the rename" }],
+        },
+      },
+      "Copied before the rename",
+      "data-vm0-chat-message",
+    ),
+  });
+
+  await waitFor(() => {
+    expect(composer).toHaveTextContent("Copied before the rename");
+    expect(fastButton("Remove legacy-copy.txt")).toBeVisible();
   });
 });
 

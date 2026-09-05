@@ -13,10 +13,6 @@ import {
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
-  connectorAccountsContract,
-  type ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
-import {
   agentCustomConnectorsContract,
   type AgentCustomConnectorGrants,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
@@ -29,7 +25,7 @@ import { agents$ } from "../../agent.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
-import { singleAccountConnectorMutation } from "../../connector-domain.ts";
+import type { PlatformConnectorAccountMutationIntent } from "../../connector-domain.ts";
 import {
   connectorAccountConnectionExists,
   connectorAccountMutationCompleted,
@@ -386,7 +382,7 @@ const setCustomConnectorValuesForTarget$ = command(
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly authorizeTarget?: boolean;
     },
     signal: AbortSignal,
@@ -397,7 +393,7 @@ const setCustomConnectorValuesForTarget$ = command(
       client.set({
         params: { id: args.id },
         body: {
-          account: args.account ?? singleAccountConnectorMutation,
+          account: args.account,
           values: [...args.values],
         },
         fetchOptions: { signal },
@@ -459,7 +455,7 @@ export const setCustomConnectorValues$ = command(
     args: {
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -481,7 +477,7 @@ export const setCustomConnectorValuesForAgent$ = command(
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
       readonly agentId: string;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -490,7 +486,7 @@ export const setCustomConnectorValuesForAgent$ = command(
       {
         id: args.id,
         values: args.values,
-        ...(args.account ? { account: args.account } : {}),
+        account: args.account,
         authorizationTarget: { kind: "agent", agentId: args.agentId },
       },
       signal,
@@ -504,7 +500,7 @@ export const setCustomConnectorAccountValues$ = command(
     args: {
       readonly id: string;
       readonly values: readonly CustomConnectorValueInput[];
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -520,39 +516,13 @@ export const setCustomConnectorAccountValues$ = command(
   },
 );
 
-export const disconnectCustomConnector$ = command(
-  async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
-    const createClient = get(apiClient$);
-    const client = createClient(connectorAccountsContract);
-    await accept(
-      client.disconnectSingleAccount({
-        body: {
-          target: { kind: "custom", customConnectorId: id },
-        },
-        fetchOptions: { signal },
-      }),
-      [204],
-    );
-    signal.throwIfAborted();
-    set(bumpReload$);
-    toast.success(
-      i18n.t(($) => {
-        return $.connectors.custom.toasts.disconnected;
-      }),
-    );
-  },
-);
-
 async function customConnectorAccountMutationCompleted(
   createClient: ApiClientFactory,
   connectorId: string,
-  account: ConnectorAccountMutationIntent | undefined,
+  account: PlatformConnectorAccountMutationIntent,
   initialVersion: ConnectorAccountMutationVersion | undefined,
   signal: AbortSignal,
 ): Promise<boolean> {
-  if (!account || account.intent === "single-account") {
-    return true;
-  }
   const currentVersion = await readConnectorAccountMutationVersion(
     createClient,
     { kind: "custom", customConnectorId: connectorId },
@@ -568,7 +538,7 @@ async function customConnectorAccountMutationCompleted(
 interface CustomConnectorAuthorizationTargetArgs {
   readonly id: string;
   readonly authorizationTarget: CustomConnectorAuthorizationTarget;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly authorizeTarget?: boolean;
   readonly useDefaultConnectorProjection?: boolean;
 }
@@ -580,23 +550,23 @@ interface CustomConnectorOAuthCompletion {
 
 function defaultCustomConnectorOAuthCompletion(args: {
   readonly connector: CustomConnectorResponse | undefined;
-  readonly account: ConnectorAccountMutationIntent | undefined;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly expectedConnectionId: string | null;
   readonly initialUpdatedAt: string | null | undefined;
 }): CustomConnectorOAuthCompletion {
   const connectionId =
-    args.account?.intent === "reconnect"
+    args.account.intent === "reconnect"
       ? args.account.connectionId
       : args.expectedConnectionId;
   const projectedAccountMatches =
     args.connector?.connectedAccountId === connectionId ||
-    (args.account?.intent === "add" &&
+    (args.account.intent === "add" &&
       args.connector?.connectedAccountId === undefined);
   const completed =
     connectionId !== null &&
     args.connector?.connected === true &&
     projectedAccountMatches &&
-    (args.account?.intent === "add"
+    (args.account.intent === "add"
       ? args.initialUpdatedAt === null
       : args.initialUpdatedAt !== undefined &&
         args.connector.connectedAccountUpdatedAt !== undefined &&
@@ -649,7 +619,7 @@ async function customConnectorOAuthCompletion(
   return {
     completed,
     connectionId:
-      completed && args.target.account?.intent === "reconnect"
+      completed && args.target.account.intent === "reconnect"
         ? args.target.account.connectionId
         : null,
   };
@@ -716,22 +686,21 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
               return connector.id === args.id;
             })?.connectedAccountUpdatedAt ?? null;
         }
-        initialAccountVersion =
-          args.account && !args.useDefaultConnectorProjection
-            ? await readConnectorAccountMutationVersion(
-                createClient,
-                { kind: "custom", customConnectorId: args.id },
-                args.account,
-                signal,
-              )
-            : undefined;
+        initialAccountVersion = !args.useDefaultConnectorProjection
+          ? await readConnectorAccountMutationVersion(
+              createClient,
+              { kind: "custom", customConnectorId: args.id },
+              args.account,
+              signal,
+            )
+          : undefined;
         const client = createClient(customConnectorOAuth2Contract, {
           apiBase: "api",
         });
         const result = await accept(
           client.start({
             params: { id: args.id },
-            body: { account: args.account ?? singleAccountConnectorMutation },
+            body: { account: args.account },
             fetchOptions: { signal },
           }),
           [200],
@@ -823,7 +792,7 @@ export const connectCustomConnectorAuthorization$ = command(
     { set },
     args: {
       readonly id: string;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly useDefaultConnectorProjection?: boolean;
     },
     signal: AbortSignal,
@@ -845,7 +814,7 @@ export const connectCustomConnectorAuthorizationForAgent$ = command(
     args: {
       readonly id: string;
       readonly agentId: string;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly useDefaultConnectorProjection?: boolean;
     },
     signal: AbortSignal,
@@ -854,7 +823,7 @@ export const connectCustomConnectorAuthorizationForAgent$ = command(
       connectCustomConnectorAuthorizationForTarget$,
       {
         id: args.id,
-        ...(args.account ? { account: args.account } : {}),
+        account: args.account,
         ...(args.useDefaultConnectorProjection
           ? { useDefaultConnectorProjection: true as const }
           : {}),
@@ -870,7 +839,7 @@ export const connectCustomConnectorAccountAuthorization$ = command(
     { set },
     args: {
       readonly id: string;
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -894,7 +863,6 @@ type DialogState =
   | { kind: "none" }
   | { kind: "create" }
   | { kind: "edit"; connector: CustomConnectorResponse }
-  | { kind: "connect"; connector: CustomConnectorResponse }
   | { kind: "access"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
@@ -936,12 +904,6 @@ export const openCustomConnectorEditConfirmationDialog$ = command(
 export const closeCustomConnectorEditConfirmationDialog$ = command(
   ({ set }) => {
     set(internalEditConfirmation$, null);
-  },
-);
-export const openCustomConnectorConnectDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
-    set(internalConnectForm$, CONNECT_FORM_DEFAULTS);
-    set(internalDialog$, { kind: "connect", connector });
   },
 );
 export const openCustomConnectorAccessDialog$ = command(

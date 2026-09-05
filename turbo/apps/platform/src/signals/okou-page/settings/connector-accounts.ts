@@ -2,12 +2,12 @@ import { command } from "ccstate";
 import {
   connectorAccountsContract,
   type ConnectorAccountConnection,
-  type ConnectorAccountMutationIntent,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
 import { accept } from "../../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../../api-client.ts";
+import type { PlatformConnectorAccountMutationIntent } from "../../connector-domain.ts";
 import {
   connectorAccountTargetKey,
   createConnectorAccountListSignals,
@@ -19,7 +19,7 @@ export type ConnectorAccountMutationVersion = number | string | null;
 export async function readConnectorAccountMutationVersion(
   createClient: ApiClientFactory,
   target: ConnectorAccountTarget,
-  account: ConnectorAccountMutationIntent,
+  account: PlatformConnectorAccountMutationIntent,
   signal: AbortSignal,
 ): Promise<ConnectorAccountMutationVersion> {
   if (account.intent === "add") {
@@ -38,18 +38,15 @@ export async function readConnectorAccountMutationVersion(
       })?.accountCount ?? 0
     );
   }
-  if (account.intent === "reconnect") {
-    const result = await accept(
-      createClient(connectorAccountsContract).connection({
-        params: { connectionId: account.connectionId },
-        query: target,
-        fetchOptions: { signal },
-      }),
-      [200, 404],
-    );
-    return result.status === 404 ? null : result.body.updatedAt;
-  }
-  return null;
+  const result = await accept(
+    createClient(connectorAccountsContract).connection({
+      params: { connectionId: account.connectionId },
+      query: target,
+      fetchOptions: { signal },
+    }),
+    [200, 404],
+  );
+  return result.status === 404 ? null : result.body.updatedAt;
 }
 
 export async function connectorAccountConnectionExists(
@@ -70,7 +67,7 @@ export async function connectorAccountConnectionExists(
 }
 
 export function connectorAccountMutationCompleted(
-  account: ConnectorAccountMutationIntent,
+  account: PlatformConnectorAccountMutationIntent,
   initialVersion: ConnectorAccountMutationVersion,
   currentVersion: ConnectorAccountMutationVersion,
 ): boolean {
@@ -81,9 +78,9 @@ export function connectorAccountMutationCompleted(
       currentVersion > initialVersion
     );
   }
-  return account.intent === "reconnect"
-    ? typeof currentVersion === "string" && currentVersion !== initialVersion
-    : true;
+  return (
+    typeof currentVersion === "string" && currentVersion !== initialVersion
+  );
 }
 
 export const settingsConnectorAccounts = createConnectorAccountListSignals({

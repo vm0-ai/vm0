@@ -8,7 +8,7 @@ import {
 import { v5 as uuidv5 } from "uuid";
 import {
   getCanonicalModelDisplayName,
-  getVm0VisibleModels,
+  getBuiltInVisibleModels,
   isSupportedRunModel,
   normalizeRunModelId,
   type SupportedRunModel,
@@ -44,6 +44,7 @@ import {
   resolveAgentPhoneUserLink,
   resolveOrgDefaultComposeId,
   storeOutboundAgentPhoneMessage,
+  stripAgentPhoneMention,
   touchAgentPhoneUserLink,
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
@@ -184,13 +185,6 @@ function isAgentPhoneGroupAccountCommand(
       commandName === "new_session" ||
       commandName === "model")
   );
-}
-
-function stripZeroMention(text: string): string {
-  return text
-    .replace(/(^|\s)@(zero|vm0)\b/giu, " ")
-    .replace(/[ \t]{2,}/gu, " ")
-    .trim();
 }
 
 function normalizeHandleForConnect(handle: string): string {
@@ -973,7 +967,7 @@ function enrichAgentPhonePrompt(opts: {
   readonly isGroup: boolean;
 }): string {
   const promptText = opts.isGroup
-    ? stripZeroMention(opts.prompt)
+    ? stripAgentPhoneMention(opts.prompt)
     : opts.prompt.trim();
   const parts = [promptText];
   if (opts.mediaUrl) {
@@ -1364,7 +1358,7 @@ const handleModelCommand$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const visibleModels = new Set(getVm0VisibleModels());
+    const visibleModels = new Set(getBuiltInVisibleModels());
     const [policies, preference] = await Promise.all([
       set(
         listOrgModelPolicies$,

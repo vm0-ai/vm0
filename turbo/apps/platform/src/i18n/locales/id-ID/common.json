@@ -2728,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
-      "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
-        "disconnected": "Terputus",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3237,15 +3235,13 @@
       "redirectTitle": "Mengarahkan ke {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} terhubung",
-      "disconnected": "{{connector}} terputus"
+      "connected": "{{connector}} terhubung"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Permintaan gagal",
-      "sharedDatabaseUnavailable": "Aplikasi mengalami masalah. Tunggu sebentar, lalu segarkan halaman untuk mencoba lagi."
+      "requestFailed": "Permintaan gagal"
     },
     "realtime": {
       "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",

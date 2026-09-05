@@ -679,9 +679,7 @@ describe("Stripe automation event webhook", () => {
 
   it("uses the exact Stripe source without persisting a thread override", async () => {
     const scenario = await setupScenario();
-    await connectors.updateFeatureSwitches(scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(scenario.actor, {});
     await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
       "stripe",
     ]);
@@ -720,9 +718,7 @@ describe("Stripe automation event webhook", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped workflow owner");
     }
-    await connectors.updateFeatureSwitches(scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(scenario.actor, {});
     await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
       "stripe",
     ]);
@@ -860,9 +856,7 @@ describe("Stripe automation event webhook", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped workflow owner");
     }
-    await connectors.updateFeatureSwitches(scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(scenario.actor, {});
     await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
       "stripe",
     ]);
@@ -936,9 +930,7 @@ describe("Stripe automation event webhook", () => {
     if (!orgId) {
       throw new Error("Expected an organization-scoped workflow owner");
     }
-    await connectors.updateFeatureSwitches(scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(scenario.actor, {});
     await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
       "stripe",
     ]);
@@ -1102,9 +1094,7 @@ describe("Stripe automation event webhook", () => {
 
   it("falls back when a queued event's Stripe source is deleted", async () => {
     const scenario = await setupScenario();
-    await connectors.updateFeatureSwitches(scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(scenario.actor, {});
     await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
       "stripe",
     ]);
@@ -1614,9 +1604,7 @@ describe("Stripe automation event webhook", () => {
       if (!orgId) {
         throw new Error("Expected an organization-scoped workflow owner");
       }
-      await connectors.updateFeatureSwitches(scenario.actor, {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      });
+      await connectors.updateFeatureSwitches(scenario.actor, {});
       await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
         "stripe",
       ]);

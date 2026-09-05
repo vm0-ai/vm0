@@ -139,10 +139,6 @@ export const composerVoiceInputShortcutEnabled$ = computed((get): boolean => {
   );
 });
 
-export const baseUiSidebarScrollAreaEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.BaseUiSidebarScrollArea] ?? false;
-});
-
 export const searchResultNumberShortcutsEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.SearchResultNumberShortcuts] ?? false

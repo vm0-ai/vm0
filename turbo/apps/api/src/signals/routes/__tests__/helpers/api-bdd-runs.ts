@@ -811,7 +811,7 @@ export function createRunsApi(context: TestContext) {
       publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
-        throw new Error("Zero run tokens require an org-scoped actor");
+        throw new Error("Agent run tokens require an org-scoped actor");
       }
       const seconds = Math.floor(now() / 1000);
       return signSandboxJwtForTests({

@@ -64,7 +64,7 @@ export async function createUnassociatedThreadBoundAgentRunsServiceFixture(
       },
       body: {
         agentId: "thread-run-invariant-agent",
-        prompt: "must be rejected before Zero run preparation",
+        prompt: "must be rejected before agent run preparation",
       },
       apiStartTime: now(),
       piExecution: false,

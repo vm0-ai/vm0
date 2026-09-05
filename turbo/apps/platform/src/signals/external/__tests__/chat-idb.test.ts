@@ -23,8 +23,8 @@ function closeOnAbort(database: IDBPDatabase): IDBPDatabase {
 }
 
 test("Local conversation data is isolated by user and workspace", async () => {
-  const reload = vi.fn<() => void>();
-  const opener = createChatIdbOpener({ reload });
+  const onVersionChange = vi.fn<() => void>();
+  const opener = createChatIdbOpener({ onVersionChange });
   const identitySuffix = context.resourceId;
   const primary = closeOnAbort(
     await opener.openChatIdb(
@@ -60,10 +60,10 @@ test("Local conversation data is isolated by user and workspace", async () => {
   await expect(
     otherUser.get(CHAT_THREAD_SNAPSHOT_STORE, privateSnapshot.id),
   ).resolves.toBeUndefined();
-  expect(reload).not.toHaveBeenCalled();
+  expect(onVersionChange).not.toHaveBeenCalled();
 });
 
-test("A local chat-cache upgrade refreshes open pages safely", async () => {
+test("A local chat-cache upgrade closes the old connection and notifies its owner", async () => {
   const identitySuffix = context.resourceId;
   const userId = `upgrade-user-${identitySuffix}`;
   const orgId = `upgrade-workspace-${identitySuffix}`;
@@ -75,9 +75,9 @@ test("A local chat-cache upgrade refreshes open pages safely", async () => {
     },
   });
   oldDatabase.close();
-  const reload = vi.fn<() => void>();
+  const onVersionChange = vi.fn<() => void>();
   const database = closeOnAbort(
-    await createChatIdbOpener({ reload }).openChatIdb(userId, orgId),
+    await createChatIdbOpener({ onVersionChange }).openChatIdb(userId, orgId),
   );
 
   expect(Array.from(database.objectStoreNames).sort()).toStrictEqual(
@@ -118,5 +118,5 @@ test("A local chat-cache upgrade refreshes open pages safely", async () => {
   );
 
   expect(newerDatabase.version).toBe(CHAT_IDB_VERSION + 1);
-  expect(reload).toHaveBeenCalledOnce();
+  expect(onVersionChange).toHaveBeenCalledOnce();
 });

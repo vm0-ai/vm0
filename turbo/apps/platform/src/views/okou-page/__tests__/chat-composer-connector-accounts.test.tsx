@@ -163,7 +163,6 @@ test("Carry a connector account choice into a new chat", async () => {
   await setupPage({
     context,
     path: `/agents/${SCOUT_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
 
   await loadComposer();
@@ -271,7 +270,6 @@ test("Choose an account for a custom MCP connector", async () => {
     context,
     path: `/chats/${SCOUT_THREAD_ID}`,
     featureSwitches: {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     },
   });
@@ -319,7 +317,6 @@ test("Keep the selected connector account visible during search", async () => {
   await setupPage({
     context,
     path: `/chats/${SCOUT_THREAD_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
 
   await loadComposer();
@@ -357,7 +354,6 @@ test("Choose which connector account a chat uses", async () => {
   await setupPage({
     context,
     path: `/chats/${SCOUT_THREAD_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
 
   await loadComposer();

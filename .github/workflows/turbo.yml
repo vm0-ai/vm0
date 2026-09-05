@@ -2589,23 +2589,6 @@ jobs:
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-      - name: Enable runner connector account coverage
-        shell: bash
-        run: |
-          set -euo pipefail
-          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
-          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-          fi
-
-          curl -fsS "${headers[@]}" \
-            -X POST \
-            -d '{"switches":{"connectorAccounts":true}}' \
-            "${E2E_API_URL}/api/feature-switches" \
-            | jq -e '.effectiveSwitches.connectorAccounts == true' \
-            >/dev/null
-        env:
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Reset runner model defaults
         shell: bash
         run: |

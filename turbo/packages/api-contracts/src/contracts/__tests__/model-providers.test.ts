@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  getProviderBaseUrl,
-  areProvidersCompatible,
   hasModelSelection,
   getModels,
   getDefaultModel,
@@ -9,8 +7,8 @@ import {
   getModelProviderEnvBindings,
   getFrameworkForType,
   getModelProviderPresentationLabel,
-  getVm0VisibleModels,
-  normalizeVm0ModelId,
+  getBuiltInVisibleModels,
+  normalizeBuiltInModelId,
   getModelImageInputSupport,
   modelSupportsImageInput,
   getSelectableProviderTypes,
@@ -18,12 +16,12 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
-  getVm0ApiModel,
-  getVm0ConcreteProviderType,
-  getVm0Vendor,
-  getVm0BuiltInModelRouteCandidates,
-  getVm0BuiltInModelRouteVendors,
-  getVm0ModelPriceTier,
+  getBuiltInApiModel,
+  getBuiltInConcreteProviderType,
+  getBuiltInVendor,
+  getBuiltInModelRouteCandidates,
+  getBuiltInModelRouteVendors,
+  getBuiltInModelPriceTier,
   isModelSupportedByProvider,
   isCodexFastModeModel,
   isSupportedRunModel,
@@ -44,20 +42,19 @@ import {
   updateOrgModelPolicySchema,
   updateOrgModelPoliciesRequestSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  VM0_MODEL_TO_PROVIDER,
+  BUILT_IN_MODEL_TO_PROVIDER,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   CODEX_FAST_MODE_MODELS,
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   ACTIVE_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_TYPES,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
-  type ModelProviderType,
   type ModelProviderWriteType,
 } from "../model-providers";
 import { findMatchingPermissions } from "@okouai/connectors/firewall-rule-matcher";
@@ -569,23 +566,27 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("built-in", "gpt-6-astra")).toBe(
       "gpt-6-astra",
     );
-    expect(getVm0ConcreteProviderType("gpt-6-astra")).toBe("openai-api-key");
-    expect(getVm0Vendor("gpt-6-astra")).toBe("openai");
+    expect(getBuiltInConcreteProviderType("gpt-6-astra")).toBe(
+      "openai-api-key",
+    );
+    expect(getBuiltInVendor("gpt-6-astra")).toBe("openai");
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.6-sol")).toBe(
       "gpt-5.6-sol",
     );
     expect(getProviderRuntimeModel("built-in", "gpt-5.6-sol")).toBe(
       "gpt-5.6-sol",
     );
-    expect(getVm0ConcreteProviderType("gpt-5.6-sol")).toBe("openai-api-key");
-    expect(getVm0Vendor("gpt-5.6-sol")).toBe("openai");
+    expect(getBuiltInConcreteProviderType("gpt-5.6-sol")).toBe(
+      "openai-api-key",
+    );
+    expect(getBuiltInVendor("gpt-5.6-sol")).toBe("openai");
     expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
       "custom/model",
     );
   });
 
   it("routes GPT 6 Astra through OpenAI with an OpenRouter fallback", () => {
-    expect(getVm0BuiltInModelRouteCandidates("gpt-6-astra")).toEqual([
+    expect(getBuiltInModelRouteCandidates("gpt-6-astra")).toEqual([
       {
         selectedModel: "gpt-6-astra",
         providerType: "openai-api-key",
@@ -604,9 +605,9 @@ describe("model-first canonical catalog", () => {
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
     "routes vm0 built-in model %s directly through DeepSeek",
     (model) => {
-      expect(getVm0ConcreteProviderType(model)).toBe("deepseek");
-      expect(getVm0Vendor(model)).toBe("deepseek");
-      expect(getVm0ApiModel(model)).toBe(model);
+      expect(getBuiltInConcreteProviderType(model)).toBe("deepseek");
+      expect(getBuiltInVendor(model)).toBe("deepseek");
+      expect(getBuiltInApiModel(model)).toBe(model);
       expect(getProviderRuntimeModel("built-in", model)).toBe(model);
     },
   );
@@ -621,15 +622,15 @@ describe("model-first canonical catalog", () => {
   ] as const)(
     "routes vm0 built-in model %s directly through Anthropic",
     (model) => {
-      expect(getVm0ConcreteProviderType(model)).toBe("anthropic-api-key");
-      expect(getVm0Vendor(model)).toBe("anthropic");
-      expect(getVm0ApiModel(model)).toBe(model);
+      expect(getBuiltInConcreteProviderType(model)).toBe("anthropic-api-key");
+      expect(getBuiltInVendor(model)).toBe("anthropic");
+      expect(getBuiltInApiModel(model)).toBe(model);
       expect(getProviderRuntimeModel("built-in", model)).toBe(model);
     },
   );
 
   it("defines two statically compilable built-in model routes for every active model", () => {
-    expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual([
+    expect(Object.keys(BUILT_IN_MODEL_TO_PROVIDER)).toEqual([
       "claude-fable-5-1",
       "claude-fable-5",
       "claude-opus-5",
@@ -644,7 +645,7 @@ describe("model-first canonical catalog", () => {
       "gpt-5.6-luna",
       "gpt-5.5",
     ]);
-    expect(getVm0BuiltInModelRouteVendors()).toEqual([
+    expect(getBuiltInModelRouteVendors()).toEqual([
       "anthropic",
       "openrouter",
       "deepseek",
@@ -652,12 +653,12 @@ describe("model-first canonical catalog", () => {
     ]);
 
     for (const model of ACTIVE_RUN_MODELS) {
-      const candidates = getVm0BuiltInModelRouteCandidates(model);
+      const candidates = getBuiltInModelRouteCandidates(model);
       expect(candidates).toHaveLength(2);
       expect(candidates[0]?.providerType).toBe(
-        getVm0ConcreteProviderType(model),
+        getBuiltInConcreteProviderType(model),
       );
-      expect(candidates[0]?.upstreamModel).toBe(getVm0ApiModel(model));
+      expect(candidates[0]?.upstreamModel).toBe(getBuiltInApiModel(model));
       expect(
         new Set(
           candidates.map((candidate) => {
@@ -737,7 +738,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("exposes VM0 price tiers for built-in reasoning models", () => {
-    expect(VM0_MODEL_PRICE_TIER).toEqual(
+    expect(BUILT_IN_MODEL_PRICE_TIER).toEqual(
       expect.objectContaining({
         "claude-fable-5-1": "$$$$",
         "claude-fable-5": "$$$$",
@@ -752,96 +753,23 @@ describe("model-first canonical catalog", () => {
         "deepseek-v4-pro": "$",
       }),
     );
-    expect(getVm0ModelPriceTier("claude-fable-5-1")).toBe("$$$$");
-    expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
-    expect(getVm0ModelPriceTier("claude-opus-5")).toBe("$$$");
-    expect(getVm0ModelPriceTier("gpt-6-astra")).toBe("$$$$");
-    expect(getVm0ModelPriceTier("gpt-5.6-sol")).toBe("$$$");
-    expect(getVm0ModelPriceTier("gpt-5.6-terra")).toBe("$$");
-    expect(getVm0ModelPriceTier("gpt-5.6-luna")).toBe("$");
-    expect(getVm0ModelPriceTier("claude-opus-4-8")).toBe("$$$");
-    expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
-    expect(getVm0ModelPriceTier("deepseek-v4-flash")).toBe("$");
-    expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
-    expect(getVm0ModelPriceTier("claude-opus-4-7")).toBeUndefined();
-    expect(getVm0ModelPriceTier("kimi-k3")).toBeUndefined();
-    expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
+    expect(getBuiltInModelPriceTier("claude-fable-5-1")).toBe("$$$$");
+    expect(getBuiltInModelPriceTier("claude-fable-5")).toBe("$$$$");
+    expect(getBuiltInModelPriceTier("claude-opus-5")).toBe("$$$");
+    expect(getBuiltInModelPriceTier("gpt-6-astra")).toBe("$$$$");
+    expect(getBuiltInModelPriceTier("gpt-5.6-sol")).toBe("$$$");
+    expect(getBuiltInModelPriceTier("gpt-5.6-terra")).toBe("$$");
+    expect(getBuiltInModelPriceTier("gpt-5.6-luna")).toBe("$");
+    expect(getBuiltInModelPriceTier("claude-opus-4-8")).toBe("$$$");
+    expect(getBuiltInModelPriceTier("claude-sonnet-5")).toBe("$$");
+    expect(getBuiltInModelPriceTier("deepseek-v4-flash")).toBe("$");
+    expect(getBuiltInModelPriceTier("deepseek-v4-pro")).toBe("$");
+    expect(getBuiltInModelPriceTier("claude-opus-4-7")).toBeUndefined();
+    expect(getBuiltInModelPriceTier("kimi-k3")).toBeUndefined();
+    expect(getBuiltInModelPriceTier("custom/model")).toBeUndefined();
     expect(MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS["gpt-6-astra"]).toBe(
       272_001,
     );
-  });
-});
-
-describe("getProviderBaseUrl", () => {
-  it.each([
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "azure-foundry",
-    "aws-bedrock",
-    "openai-api-key",
-  ] as ModelProviderType[])("returns null for %s", (type) => {
-    expect(getProviderBaseUrl(type)).toBeNull();
-  });
-
-  it.each([
-    ["openrouter-api-key", "https://openrouter.ai/api"],
-    ["deepseek", "https://api.deepseek.com/"],
-    ["vercel-ai-gateway", "https://ai-gateway.vercel.sh"],
-    ["openrouter-codex", "https://openrouter.ai/api/v1"],
-    ["vercel-ai-gateway-codex", "https://ai-gateway.vercel.sh/v1"],
-  ] as [ModelProviderType, string][])(
-    "returns correct URL for %s",
-    (type, expectedUrl) => {
-      expect(getProviderBaseUrl(type)).toBe(expectedUrl);
-    },
-  );
-});
-
-describe("areProvidersCompatible", () => {
-  const anthropicNative: ModelProviderType[] = [
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "azure-foundry",
-    "aws-bedrock",
-  ];
-
-  const thirdParty: ModelProviderType[] = [
-    "openrouter-api-key",
-    "deepseek",
-    "vercel-ai-gateway",
-  ];
-
-  it("all Anthropic-native providers are mutually compatible", () => {
-    for (const a of anthropicNative) {
-      for (const b of anthropicNative) {
-        expect(areProvidersCompatible(a, b)).toBe(true);
-      }
-    }
-  });
-
-  it("every provider is compatible with itself", () => {
-    for (const p of [...anthropicNative, ...thirdParty]) {
-      expect(areProvidersCompatible(p, p)).toBe(true);
-    }
-  });
-
-  it("Anthropic-native is incompatible with third-party providers", () => {
-    for (const native of anthropicNative) {
-      for (const tp of thirdParty) {
-        expect(areProvidersCompatible(native, tp)).toBe(false);
-        expect(areProvidersCompatible(tp, native)).toBe(false);
-      }
-    }
-  });
-
-  it("different third-party providers are incompatible", () => {
-    expect(areProvidersCompatible("openrouter-api-key", "deepseek")).toBe(
-      false,
-    );
-    expect(
-      areProvidersCompatible("openrouter-api-key", "vercel-ai-gateway"),
-    ).toBe(false);
-    expect(areProvidersCompatible("deepseek", "vercel-ai-gateway")).toBe(false);
   });
 });
 
@@ -884,11 +812,6 @@ describe("model selection for Anthropic-native providers", () => {
     expect(envBindings).toBeDefined();
     expect(envBindings!["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("$secret");
     expect(envBindings!["ANTHROPIC_MODEL"]).toBe("$model");
-  });
-
-  it("Anthropic-native providers have no ANTHROPIC_BASE_URL (use default)", () => {
-    expect(getProviderBaseUrl("anthropic-api-key")).toBeNull();
-    expect(getProviderBaseUrl("claude-code-oauth-token")).toBeNull();
   });
 });
 
@@ -937,9 +860,9 @@ describe("model selection for Claude-compatible gateway providers", () => {
   });
 });
 
-describe("getVm0VisibleModels", () => {
+describe("getBuiltInVisibleModels", () => {
   it("returns only active VM0 built-in models", () => {
-    const models = getVm0VisibleModels();
+    const models = getBuiltInVisibleModels();
     expect(models).toEqual(ACTIVE_RUN_MODELS);
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("claude-sonnet-4-6");
@@ -948,7 +871,7 @@ describe("getVm0VisibleModels", () => {
   });
 });
 
-describe("normalizeVm0ModelId", () => {
+describe("normalizeBuiltInModelId", () => {
   it.each([
     ["anthropic/claude-fable-5.1", "claude-fable-5-1"],
     ["anthropic/claude-fable-5", "claude-fable-5"],
@@ -957,11 +880,11 @@ describe("normalizeVm0ModelId", () => {
     ["anthropic/claude-sonnet-5", "claude-sonnet-5"],
     ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
   ])("normalizes %s to %s", (model, expected) => {
-    expect(normalizeVm0ModelId(model)).toBe(expected);
+    expect(normalizeBuiltInModelId(model)).toBe(expected);
   });
 
   it("keeps unknown model ids unchanged", () => {
-    expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
+    expect(normalizeBuiltInModelId("custom/model")).toBe("custom/model");
   });
 });
 
@@ -1336,10 +1259,6 @@ describe("codex-oauth-token codex provider", () => {
     expect(hasModelSelection("codex-oauth-token")).toBe(true);
   });
 
-  it("getProviderBaseUrl returns null (codex provider, no ANTHROPIC_BASE_URL)", () => {
-    expect(getProviderBaseUrl("codex-oauth-token")).toBeNull();
-  });
-
   it("firewall entry has both ChatGPT and auth.openai.com APIs", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.apis).toHaveLength(2);
@@ -1541,15 +1460,6 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
     expect(vercelCodex.secretName).toBe(vercelClaudeCode.secretName);
   });
 
-  it("are NOT compatible with their claude-code twin (different protocol)", () => {
-    expect(
-      areProvidersCompatible("openrouter-codex", "openrouter-api-key"),
-    ).toBe(false);
-    expect(
-      areProvidersCompatible("vercel-ai-gateway-codex", "vercel-ai-gateway"),
-    ).toBe(false);
-  });
-
   it("modelProviderTypeSchema accepts both new types", () => {
     expect(modelProviderTypeSchema.safeParse("openrouter-codex").success).toBe(
       true,
@@ -1636,66 +1546,12 @@ describe("custom model gateway provider types", () => {
     expect(getSecretNameForType("vercel-ai-gateway")).toBe(
       "VERCEL_AI_GATEWAY_API_KEY",
     );
-    expect(getProviderBaseUrl("vercel-ai-gateway-codex")).toBe(
-      "https://ai-gateway.vercel.sh/v1",
-    );
+    expect(
+      getModelProviderEnvBindings("vercel-ai-gateway-codex")?.OPENAI_BASE_URL,
+    ).toBe("https://ai-gateway.vercel.sh/v1");
     const selectable = getSelectableProviderTypes();
     expect(selectable).toContain("vercel-ai-gateway");
     expect(selectable).toContain("vercel-ai-gateway-codex");
-  });
-
-  it.each([
-    "built-in",
-    "anthropic-api-key",
-    "claude-code-oauth-token",
-    "openai-api-key",
-    "codex-oauth-token",
-    "aws-bedrock",
-    "azure-foundry",
-  ] as const)(
-    "are not session-compatible with %s despite sharing an absent base URL",
-    (type) => {
-      // These providers resolve to no base URL because they use the vendor
-      // default endpoint. A custom gateway resolves to none because its
-      // endpoint lives on the surface row, so the two must not be conflated.
-      expect(getProviderBaseUrl(type)).toBeNull();
-      expect(areProvidersCompatible("custom-anthropic-messages", type)).toBe(
-        false,
-      );
-      expect(areProvidersCompatible("custom-openai-responses", type)).toBe(
-        false,
-      );
-    },
-  );
-
-  it("are session-compatible only with themselves", () => {
-    expect(
-      areProvidersCompatible(
-        "custom-anthropic-messages",
-        "custom-anthropic-messages",
-      ),
-    ).toBe(true);
-    expect(
-      areProvidersCompatible(
-        "custom-openai-responses",
-        "custom-openai-responses",
-      ),
-    ).toBe(true);
-    expect(
-      areProvidersCompatible(
-        "custom-anthropic-messages",
-        "custom-openai-responses",
-      ),
-    ).toBe(false);
-    expect(
-      areProvidersCompatible("custom-anthropic-messages", "vercel-ai-gateway"),
-    ).toBe(false);
-    expect(
-      areProvidersCompatible(
-        "custom-openai-responses",
-        "vercel-ai-gateway-codex",
-      ),
-    ).toBe(false);
   });
 });
 

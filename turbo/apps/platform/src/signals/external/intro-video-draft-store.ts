@@ -48,6 +48,18 @@ interface IntroVideoDraftDatabase extends DBSchema {
   };
 }
 
+/**
+ * Client-persisted identity, deliberately kept under the pre-rename name.
+ *
+ * The browser keys an IndexedDB database by this string. Renaming it does not
+ * move the stored drafts: the old database keeps the user's saved blob and this
+ * build opens an empty new one, so every draft saved before the rename is
+ * silently lost. Copying them across would mean opening both databases, moving
+ * blobs, and deleting the old one on every client that ever returns — and a
+ * client that never returns keeps an orphaned database forever. The name is
+ * invisible to users, so #31816 keeps it. Rename it only as part of a slice
+ * that already has to restructure this store and can carry the copy.
+ */
 const DATABASE_NAME = "zero-intro-video-drafts";
 const DATABASE_VERSION = 1;
 const TRANSACTION_TEMPLATES = {

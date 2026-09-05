@@ -110,10 +110,7 @@ import {
   type ConnectorConnectionMutationResolution,
   type StoredConnectorConnectionRow as StoredConnectorRow,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 import { reprojectWorkflowAutomationsForOwner } from "./workflow-automation-account-projection.service";
 
 const log = logger("api:connector-data");
@@ -187,7 +184,7 @@ export function connectorConnectionWriteFailureMessage(
       return "Multiple connector accounts require an exact choice";
     }
     case "siblingDisabled": {
-      return "Additional connector accounts are not enabled yet";
+      return "This connector does not support additional accounts";
     }
   }
 }
@@ -1506,9 +1503,7 @@ async function commitManualGrantConnector(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation: normalizeConnectorAccountMutation(args.account),
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
   });
   signal.throwIfAborted();
   if (resolution.kind !== "ready") {
@@ -1699,8 +1694,7 @@ export const connectNoAuthConnector$ = command(
           connectorSlug: args.runtimeMethod.connectorSlug,
         },
         mutation: normalizeConnectorAccountMutation(args.account),
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        allowSiblings: true,
       });
       signal.throwIfAborted();
       if (resolution.kind !== "ready") {
@@ -2360,9 +2354,7 @@ async function commitConnectorTokenConnection(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation,
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
     matchExternalId: authorizedExternalIdForMutation({
       mutation,
       matchExistingExternalIdentity: args.matchExistingExternalIdentity,

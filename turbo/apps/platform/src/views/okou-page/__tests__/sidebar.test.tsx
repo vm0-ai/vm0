@@ -338,8 +338,7 @@ function sidebar(): HTMLElement {
 }
 
 function queryMobileSidebar(): HTMLElement | null {
-  const drawer = document.querySelector("aside.okou-pwa-fixed-cover");
-  return drawer instanceof HTMLElement ? drawer : null;
+  return screen.queryByRole("complementary", { name: "Sidebar" });
 }
 
 function mobileSidebar(): HTMLElement {
@@ -2037,6 +2036,19 @@ test("Recognize and pin sidebar conversation states", async () => {
     within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
   ).toHaveAttribute("role", "img");
 
+  // Touch rows never hover, so the state indicator has to be the menu trigger
+  // itself; otherwise running, unread, and draft chats lose every row action.
+  for (const [title, label] of [
+    ["Incident notes", "Unread"],
+    ["Running analysis", "Running"],
+    ["Draft brief", "Draft"],
+  ] as const) {
+    const row = threadRowByTitle(title);
+    expect(
+      within(row).getByTestId("chat-thread-menu-trigger"),
+    ).toContainElement(within(row).getByLabelText(label));
+  }
+
   openThreadMenu("Release plan");
   click(menuItemByText("Pin chat"));
 
@@ -2062,6 +2074,10 @@ test("Recognize and pin sidebar conversation states", async () => {
       ),
     ).not.toBeInTheDocument();
   });
+
+  openThreadMenu("Running analysis");
+  expect(menuItemByText("Rename chat")).toBeInTheDocument();
+  expect(menuItemByText("Delete chat")).toBeInTheDocument();
 });
 
 test("Refresh agent and thread unread indicators", async () => {
