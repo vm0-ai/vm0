@@ -44,7 +44,9 @@ import Testing
     #expect(partial["result"]["content"].string?.contains("Error -") == true)
     let current = await call(
       "search_files", ["path": .string(root.path), "pattern": .string("*.txt")])
-    #expect(current["result"]["content"].string == file.path)
+    #expect(
+      URL(fileURLWithPath: try current["result"].requireString("content")).resolvingSymlinksInPath()
+        == file.resolvingSymlinksInPath())
     let recursive = await call(
       "search_files", ["path": .string(root.path), "pattern": .string("**/*.txt")])
     #expect(recursive["result"]["content"].string?.components(separatedBy: "\n").count == 2)
@@ -54,7 +56,9 @@ import Testing
         "path": .string(root.path), "pattern": .string("**/*.txt"),
         "excludePatterns": .strings(["sub"]),
       ])
-    #expect(excluded["result"]["content"].string == file.path)
+    #expect(
+      URL(fileURLWithPath: try excluded["result"].requireString("content"))
+        .resolvingSymlinksInPath() == file.resolvingSymlinksInPath())
     let sizes = await call("list_directory_with_sizes", ["path": .string(root.path)])
     #expect(sizes["result"]["content"].string?.contains("Total: 1 files, 1 directories") == true)
     #expect(sizes["result"]["content"].string?.contains("Combined size: 5 B") == true)

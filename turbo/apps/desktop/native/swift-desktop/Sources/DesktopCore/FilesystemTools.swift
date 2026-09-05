@@ -142,7 +142,7 @@ public actor FilesystemTools {
         var matches: [String] = []
         let excludes = args["excludePatterns"].array.compactMap(\.string)
         let pattern = tool == "search_files" ? try args.requireString("pattern") : ""
-        func visit(_ url: URL, depth: Int) throws -> JSON {
+        func visit(_ url: URL, depth: Int, relativePath: String) throws -> JSON {
           visited += 1
           guard visited <= 10000, depth <= 64 else {
             throw DesktopFailure("result_too_large", "Directory traversal exceeds the result limit")
@@ -159,7 +159,9 @@ public actor FilesystemTools {
             ).sorted { $0.path < $1.path }
             var entries: [JSON] = []
             for child in children {
-              let relative = String(child.path.dropFirst(path.path.count + 1))
+              let relative =
+                relativePath.isEmpty
+                ? child.lastPathComponent : relativePath + "/" + child.lastPathComponent
               if excludes.contains(where: { pattern in
                 FilesystemMatching.matches(pattern, path: relative)
                   || (tool == "directory_tree" && !pattern.contains("*")
@@ -184,13 +186,13 @@ public actor FilesystemTools {
               if tool == "search_files", FilesystemMatching.matches(pattern, path: relative) {
                 matches.append(child.path)
               }
-              entries.append(try visit(child, depth: depth + 1))
+              entries.append(try visit(child, depth: depth + 1, relativePath: relative))
             }
             entry["children"] = .array(entries)
           }
           return entry
         }
-        let tree = try visit(path, depth: 0)
+        let tree = try visit(path, depth: 0, relativePath: "")
         result =
           tool == "search_files"
           ? (matches.isEmpty ? "No matches found" : matches.joined(separator: "\n"))

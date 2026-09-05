@@ -94,6 +94,7 @@ import Testing
     let script = """
       import json,sys,threading
       from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+      from socketserver import TCPServer
       class Handler(BaseHTTPRequestHandler):
           def log_message(self,*args): pass
           def reply(self,data,status=200,content_type='application/json'):
@@ -110,6 +111,7 @@ import Testing
               else: self.reply(b'',405)
           def do_DELETE(self): self.reply(b'',204)
           def do_POST(self):
+              if self.path=='/api/uploads/prepare': self.reply(b'{"error":"offline fixture"}',503); return
               request=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
               if 'id' not in request: self.reply(b'',202); return
               method=request['method']
@@ -118,7 +120,12 @@ import Testing
               elif method=='tools/call': result={'content':[{'type':'text','text':'http-works'}]}
               else: result={}
               self.reply(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}).encode())
-      server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+      class LoopbackServer(ThreadingHTTPServer):
+          def server_bind(self):
+              TCPServer.server_bind(self)
+              self.server_name='localhost'
+              self.server_port=self.server_address[1]
+      server=LoopbackServer(('127.0.0.1',0),Handler)
       threading.Thread(target=server.serve_forever,daemon=True).start()
       for line in sys.stdin:
           request=json.loads(line)
@@ -152,6 +159,58 @@ import Testing
     try await auth.refreshIdentity(api: api)
     #expect(auth.signedIn)
     #expect(auth.organization["id"].string == "fixture-org")
+    let recorderScript = """
+      import json,pathlib,sys
+      output=None
+      for line in sys.stdin:
+          request=json.loads(line)
+          kind=request['kind']
+          payload=request['payload']
+          if kind=='recorder.capabilities': result={'supportsMicrophone':True}
+          elif kind=='recorder.requestPermission': result={'granted':True}
+          elif kind=='recorder.sources': result={'sources':[{'id':'display:1','kind':'display','title':'Fixture display'}]}
+          elif kind=='recorder.windowPreviews': result={'previews':[]}
+          elif kind=='recorder.prepare':
+              assert payload['sourceKind']=='display' and payload['sourceId']=='display:1'
+              assert payload['systemAudio'] and payload['microphone']
+              result={'sessionId':'recording-fixture'}
+          elif kind=='recorder.start':
+              assert payload['sessionId']=='recording-fixture'
+              output=pathlib.Path(payload['outputPath'])
+              output.write_bytes(b'recorded frames')
+              result={}
+          elif kind=='recorder.stop':
+              clicks=output.with_suffix('.json');clicks.write_text('[]')
+              result={'videoPath':str(output),'clickTrackPath':str(clicks),'durationMs':1000,'sizeBytes':output.stat().st_size,'width':100,'height':100}
+          elif kind=='recorder.state': result={'status':'recording','elapsedMs':1000}
+          else: result={}
+          print(json.dumps({'id':request['id'],'status':'succeeded','result':result}),flush=True)
+      """
+    let recorderHelper = HelperProcess(
+      executable: URL(fileURLWithPath: "/usr/bin/env"),
+      arguments: ["python3", "-u", "-c", recorderScript], cancelStopsProcess: false)
+    defer { recorderHelper.close() }
+    let recorder = ScreenRecorder(
+      helper: recorderHelper, preferences: preferences, api: api, auth: auth)
+    recorder.available = true
+    try await recorder.loadSources()
+    let source = try #require(recorder.sources.first)
+    try await recorder.start(source: source, systemAudio: true, microphone: true)
+    #expect(recorder.status == "recording")
+    try await recorder.pauseOrResume()
+    #expect(recorder.status == "paused")
+    try await recorder.pauseOrResume()
+    #expect(recorder.status == "recording")
+    try await recorder.stop()
+    #expect(recorder.status == "ready")
+    #expect(recorder.error?.contains("503") == true)
+    let recordings = try FileManager.default.contentsOfDirectory(
+      at: directory.appendingPathComponent("recordings"), includingPropertiesForKeys: nil)
+    #expect(recordings.filter { $0.pathExtension == "mp4" }.count == 1)
+    #expect(recordings.filter { $0.pathExtension == "json" }.count == 1)
+    try await recorder.deliver()
+    #expect(recorder.status == "ready")
+    try await recorder.shutdown()
     try await auth.signOut()
     #expect(!auth.signedIn)
     #expect(try await auth.getToken(force: false) == nil)

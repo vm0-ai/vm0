@@ -10,6 +10,7 @@ import Testing
     let script = """
       import json, sys, threading
       from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+      from socketserver import TCPServer
       done = threading.Event()
       completed = {}
       issued = False
@@ -49,7 +50,12 @@ import Testing
                   self.respond({})
                   done.set()
               else: self.respond({})
-      server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+      class LoopbackServer(ThreadingHTTPServer):
+          def server_bind(self):
+              TCPServer.server_bind(self)
+              self.server_name='localhost'
+              self.server_port=self.server_address[1]
+      server=LoopbackServer(('127.0.0.1',0),Handler)
       threading.Thread(target=server.serve_forever,daemon=True).start()
       for line in sys.stdin:
           request=json.loads(line)

@@ -129,6 +129,9 @@ public final class ComputerCommands {
       } else if payload["elementId"].string != nil {
         action["elementId"] = payload["elementId"]
       }
+      let targetText =
+        payload["elementIndex"].number.map { "elementIndex=\(Int($0))" } ?? payload["elementId"]
+        .string ?? "element"
       switch kind {
       case "app.open": action["summary"] = .string("Opened \(app)")
       case "keyboard.type_text": action["summary"] = .string("Typed text")
@@ -138,10 +141,24 @@ public final class ComputerCommands {
       case "element.click":
         action["button"] = payload["button"]
         action["clickCount"] = payload["clickCount"]
+        if let x = payload["x"].number, let y = payload["y"].number,
+          payload["elementId"].string == nil
+        {
+          action["x"] = .number(x)
+          action["y"] = .number(y)
+          action["snapshotId"] = payload["snapshotId"]
+          action["summary"] = .string("Clicked \(x),\(y)")
+        } else {
+          action["summary"] = .string("Clicked " + targetText)
+        }
       case "element.scroll":
         action["direction"] = payload["direction"]
         action["pages"] = payload["pages"]
-      case "element.perform_action": action["action"] = payload["action"]
+        action["summary"] = .string("Scrolled " + targetText)
+      case "element.set_value": action["summary"] = .string("Set " + targetText)
+      case "element.perform_action":
+        action["action"] = payload["action"]
+        action["summary"] = .string("Performed " + (payload["action"].string ?? ""))
       default: break
       }
       var result = try await appState(app, settle: true)

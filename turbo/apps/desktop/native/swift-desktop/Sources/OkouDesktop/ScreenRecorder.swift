@@ -109,27 +109,33 @@ final class ScreenRecorder: ObservableObject {
     pollTask?.cancel()
     await pollTask?.value
     pollTask = nil
+    let previousStatus = status
     status = "finalizing"
     onChange()
     do {
-      recording = try await request(
-        "stop", .object(["sessionId": .string(sessionID)]), timeout: 120)
-      self.sessionID = nil
-      status = "ready"
-      onChange()
-      if let message = recording?["failure"]["message"].string {
-        error = message
-        onChange()
-        return
-      }
-      try await deliver()
+      try await collect(sessionID, deliver: true)
     } catch {
-      self.sessionID = nil
-      status = recording == nil ? "idle" : "ready"
+      // A failed stop may leave the capture alive; retain ownership so the
+      // user can retry instead of losing a still-running helper session.
+      status = previousStatus
       self.error = error.localizedDescription
+      pollTask = Task { [weak self] in await self?.poll() }
       onChange()
       throw error
     }
+  }
+
+  private func collect(_ sessionID: String, deliver: Bool) async throws {
+    recording = try await request("stop", .object(["sessionId": .string(sessionID)]), timeout: 120)
+    self.sessionID = nil
+    status = "ready"
+    if let message = recording?["failure"]["message"].string {
+      error = message
+      onChange()
+      return
+    }
+    onChange()
+    if deliver { try await self.deliver() }
   }
 
   func discard() async throws {
@@ -178,7 +184,6 @@ final class ScreenRecorder: ObservableObject {
       status = "ready"
       self.error = error.localizedDescription
       onChange()
-      throw error
     }
   }
 
@@ -195,12 +200,10 @@ final class ScreenRecorder: ObservableObject {
         let state = try await request("state", .object(["sessionId": .string(sessionID)]))
         elapsed = (state["elapsedMs"].number ?? 0) / 1000
         onChange()
-        if state["status"].string == "failed" {
-          recording = try await request(
-            "stop", .object(["sessionId": .string(sessionID)]), timeout: 120)
-          self.sessionID = nil
-          status = "ready"
-          error = state["error"]["message"].string ?? "Recording source was lost"
+        if ["failed", "stopped"].contains(state["status"].string ?? "") {
+          let failed = state["status"].string == "failed"
+          try await collect(sessionID, deliver: !failed)
+          if failed { error = state["error"]["message"].string ?? "Recording source was lost" }
           onChange()
           return
         }
@@ -217,10 +220,10 @@ final class ScreenRecorder: ObservableObject {
   }
 
   func shutdown() async throws {
-    if capturing { try await stop() }
     pollTask?.cancel()
     await pollTask?.value
     pollTask = nil
+    if let sessionID, capturing { try await collect(sessionID, deliver: false) }
     helper.close()
   }
 }
