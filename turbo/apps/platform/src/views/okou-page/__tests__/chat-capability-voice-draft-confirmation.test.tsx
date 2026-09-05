@@ -114,8 +114,13 @@ test.each([false, true])(
     if (!originalError) {
       throw new Error("Expected unexpected-console-error guard");
     }
+    const consoleErrors: unknown[][] = [];
     errorSpy.mockImplementation((...args: unknown[]) => {
-      if (args[0] === "[E][Composer:VoiceDraft]") {
+      if (
+        args[0] === "[E][Composer:VoiceDraft]" &&
+        args[1] === "Voice draft transcription failed"
+      ) {
+        consoleErrors.push(args);
         return;
       }
       originalError(...args);
@@ -215,5 +220,12 @@ test.each([false, true])(
         return button.textContent?.trim() === "Retry";
       }),
     ).toBeUndefined();
+    expect(consoleErrors).toStrictEqual([
+      [
+        "[E][Composer:VoiceDraft]",
+        "Voice draft transcription failed",
+        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
+      ],
+    ]);
   },
 );

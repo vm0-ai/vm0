@@ -53,20 +53,26 @@ function installVoiceBoundaries() {
   context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
     return respond(200, { allowed: true, count: 0, limit: 60 });
   });
-  const errors = vi.spyOn(console, "error");
-  const original = errors.getMockImplementation();
+  const errorSpy = vi.spyOn(console, "error");
+  const original = errorSpy.getMockImplementation();
   if (!original) {
     throw new Error("Expected console guard");
   }
-  errors.mockImplementation((...args: unknown[]) => {
+  const errors: unknown[][] = [];
+  errorSpy.mockImplementation((...args: unknown[]) => {
     if (
-      args[0] === "[E][Composer:VoiceDraft]" ||
-      args[0] === "[E][VoiceIO:STT]"
+      (args[0] === "[E][Composer:VoiceDraft]" &&
+        (args[1] === "Voice draft transcription failed" ||
+          args[1] === "Voice recording could not be saved")) ||
+      (args[0] === "[E][VoiceIO:STT]" &&
+        args[1] === "Voice recording failed to finish")
     ) {
+      errors.push(args);
       return;
     }
     original(...args);
   });
+  return errors;
 }
 
 async function uploadedAudio(request: Request): Promise<ArrayBuffer> {
@@ -90,7 +96,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       rms: 0.12,
       onPcmCapture: capture.resolve,
     });
-    installVoiceBoundaries();
+    const consoleErrors = installVoiceBoundaries();
     const uploads: ArrayBuffer[] = [];
     context.mocks.http.post(
       "*/api/voice-io/transcribe",
@@ -151,6 +157,14 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     await waitFor(async () => {
       return await expect(savedRecording()).resolves.toBeNull();
     });
+    expect(consoleErrors).toHaveLength(2);
+    for (const error of consoleErrors) {
+      expect(error).toStrictEqual([
+        "[E][Composer:VoiceDraft]",
+        "Voice draft transcription failed",
+        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
+      ]);
+    }
   },
 );
 
@@ -164,7 +178,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       onPcmCapture: capture.resolve,
       finalPcmSamples: new Float32Array(1024).fill(-0.75),
     });
-    installVoiceBoundaries();
+    const consoleErrors = installVoiceBoundaries();
     context.mocks.http.post(
       "*/api/voice-io/transcribe",
       async ({ request }) => {
@@ -191,6 +205,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     await waitFor(async () => {
       return await expect(savedRecording()).resolves.toBeNull();
     });
+    expect(consoleErrors).toStrictEqual([]);
   },
 );
 
@@ -201,7 +216,7 @@ test("Keep the active tab's recording until its owner closes", async () => {
     rms: 0.12,
     onPcmCapture: capture.resolve,
   });
-  installVoiceBoundaries();
+  const consoleErrors = installVoiceBoundaries();
   await setupPage({
     context: { ...context, signal: firstPage.signal },
     path: RUN_PATH,
@@ -241,6 +256,7 @@ test("Keep the active tab's recording until its owner closes", async () => {
   click(await findEnabledButton("Remove voice draft"));
   await findEnabledButton("Voice input");
   await expect(savedRecording()).resolves.toBeNull();
+  expect(consoleErrors).toStrictEqual([]);
 });
 
 test("Stop capture and expose a failed chunk write without discarding the saved prefix", async () => {
@@ -249,7 +265,7 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
     rms: 0.12,
     onPcmCapture: capture.resolve,
   });
-  installVoiceBoundaries();
+  const consoleErrors = installVoiceBoundaries();
   await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
   click(await findEnabledButton("Voice input"));
   await findEnabledButton("Stop recording");
@@ -261,12 +277,16 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
     });
   });
   const add = IDBObjectStore.prototype.add;
+  const storageError = new DOMException(
+    "Storage is full",
+    "QuotaExceededError",
+  );
   vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(function (
     this: IDBObjectStore,
     ...args
   ) {
     if (this.name === "chunks") {
-      throw new DOMException("Storage is full", "QuotaExceededError");
+      throw storageError;
     }
     return add.apply(this, args);
   });
@@ -282,12 +302,20 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
     sampleCount: 4096,
     chunkCount: 1,
   });
+  expect(consoleErrors).toStrictEqual([
+    [
+      "[E][Composer:VoiceDraft]",
+      "Voice recording could not be saved",
+      storageError,
+    ],
+    ["[E][VoiceIO:STT]", "Voice recording failed to finish", storageError],
+  ]);
 });
 
 test("Restore audio when voice input v2 enables after the composer mounts", async () => {
   const firstPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
-  installVoiceBoundaries();
+  const consoleErrors = installVoiceBoundaries();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
     return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
   });
@@ -322,4 +350,11 @@ test("Restore audio when voice input v2 enables after the composer mounts", asyn
     "aria-keyshortcuts",
   );
   await expect(savedRecording()).resolves.toBeNull();
+  expect(consoleErrors).toStrictEqual([
+    [
+      "[E][Composer:VoiceDraft]",
+      "Voice draft transcription failed",
+      expect.objectContaining({ status: 503, code: "UNKNOWN" }),
+    ],
+  ]);
 });

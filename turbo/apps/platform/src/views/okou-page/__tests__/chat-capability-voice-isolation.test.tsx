@@ -40,23 +40,29 @@ function installVoiceBoundaries() {
   context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
     return respond(200, { allowed: true, count: 0, limit: 60 });
   });
-  const errors = vi.spyOn(console, "error");
-  const original = errors.getMockImplementation();
+  const errorSpy = vi.spyOn(console, "error");
+  const original = errorSpy.getMockImplementation();
   if (!original) {
     throw new Error("Expected console guard");
   }
-  errors.mockImplementation((...args: unknown[]) => {
-    if (args[0] === "[E][Composer:VoiceDraft]") {
+  const errors: unknown[][] = [];
+  errorSpy.mockImplementation((...args: unknown[]) => {
+    if (
+      args[0] === "[E][Composer:VoiceDraft]" &&
+      args[1] === "Voice draft transcription failed"
+    ) {
+      errors.push(args);
       return;
     }
     original(...args);
   });
+  return errors;
 }
 
 test.each(["user", "org", "target"] as const)(
   "Keep local recordings isolated when the composer changes %s",
   async (part) => {
-    installVoiceBoundaries();
+    const consoleErrors = installVoiceBoundaries();
     const firstPage = createChildAbortController(context.signal);
     const secondPage = createChildAbortController(secondContext.signal);
     let successful = false;
@@ -115,11 +121,19 @@ test.each(["user", "org", "target"] as const)(
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
       "Original recording.",
     );
+    expect(consoleErrors).toHaveLength(2);
+    for (const error of consoleErrors) {
+      expect(error).toStrictEqual([
+        "[E][Composer:VoiceDraft]",
+        "Voice draft transcription failed",
+        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
+      ]);
+    }
   },
 );
 
 test("Two open composers preserve an unfinished recording and stale Remove cannot delete its replacement", async () => {
-  installVoiceBoundaries();
+  const consoleErrors = installVoiceBoundaries();
   let successful = false;
   let transcript = "First recording.";
   const uploads: ArrayBuffer[] = [];
@@ -197,4 +211,12 @@ test("Two open composers preserve an unfinished recording and stale Remove canno
   ).toHaveTextContent("Replacement recording.");
   const recovered = decodeVoiceDraftPcmWav(uploads.at(-1)!);
   expect(recovered?.at(-1)).toBeCloseTo(-0.5, 4);
+  expect(consoleErrors).toHaveLength(2);
+  for (const error of consoleErrors) {
+    expect(error).toStrictEqual([
+      "[E][Composer:VoiceDraft]",
+      "Voice draft transcription failed",
+      expect.objectContaining({ status: 503, code: "UNKNOWN" }),
+    ]);
+  }
 });
