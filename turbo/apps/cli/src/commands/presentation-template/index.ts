@@ -16,7 +16,7 @@ const publishCommand = new Command()
     "Publish an analysed deck as a reusable presentation template. Uploads the source deck, the ordered page images, and the guidance package, then commits them together.",
   )
   .requiredOption("--title <title>", "Template name shown to the user")
-  .requiredOption("--source <path>", "The original .pptx or .pdf")
+  .requiredOption("--source <path>", "The original .ppt, .pptx, or .pdf")
   .requiredOption(
     "--pages <dir>",
     "Directory of rendered page PNGs, in filename order",

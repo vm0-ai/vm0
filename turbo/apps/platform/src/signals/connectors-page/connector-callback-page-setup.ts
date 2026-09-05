@@ -26,6 +26,7 @@ import { ROUTES } from "../route-paths.ts";
 import { jsonParseOr, settle } from "../utils.ts";
 import { i18n } from "../../i18n/index.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
+import { connectorIconFromSearchParams } from "./connector-redirecting-page-setup.ts";
 
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
@@ -73,23 +74,6 @@ function connectorCallbackDocumentTitle(label: string): string {
     },
     { connector: label },
   );
-}
-
-function connectorIconFromSearchParams(
-  searchParams: URLSearchParams,
-): PublicConnectorCatalogIcon | undefined {
-  const url = searchParams.get("iconUrl");
-  const invertInDarkMode = searchParams.get("iconInvertInDarkMode");
-  if (!url || (invertInDarkMode !== "true" && invertInDarkMode !== "false")) {
-    return undefined;
-  }
-  const scale = searchParams.get("iconScale");
-  const parsed = publicConnectorCatalogIconSchema.safeParse({
-    url,
-    invertInDarkMode: invertInDarkMode === "true",
-    ...(scale === null ? {} : { scale: Number(scale) }),
-  });
-  return parsed.success ? parsed.data : undefined;
 }
 
 function addConnectorIconSearchParams(

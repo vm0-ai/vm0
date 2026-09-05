@@ -105,6 +105,7 @@ import {
   setPermConnectorSlug$,
   permSearch$,
   setPermSearch$,
+  focusPermSearchRef$,
   permSearchActive$,
   setPermSearchActive$,
   permSavingConnectorSlug$,
@@ -442,6 +443,7 @@ function ConnectedConnectorPermissions({
   onManage: (connectorSlug: ConnectorSlug) => void;
 }) {
   const { t } = useTranslation("agents");
+  const focusSearch = useSet(focusPermSearchRef$);
   return (
     <>
       <div className="zero-card">
@@ -461,9 +463,7 @@ function ConnectedConnectorPermissions({
             <div className="absolute inset-0 flex items-center gap-2 px-5">
               <Search size={14} className="shrink-0 text-muted-foreground" />
               <input
-                ref={(el) => {
-                  return el?.focus();
-                }}
+                ref={focusSearch}
                 type="text"
                 placeholder={t(($) => {
                   return $.authorization.searchPlaceholder;
@@ -557,31 +557,21 @@ function ConnectedConnectorPermissions({
 
 function AgentPermissionsDrawer({
   targetId,
-  targetKind = "agent",
   connectorSlug,
   connectorLabel,
   displayName,
   initialPolicies,
   initialGrants,
-  initialIntent,
-  initialSearch,
-  initialContextKey,
-  resetEnabled,
   readOnly,
   onApply,
   onClose,
 }: {
   targetId: string;
-  targetKind?: "agent" | "workflow";
   connectorSlug: ConnectorSlug | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly PlatformUserPermissionGrant[];
-  initialIntent?: PermissionDraftIntent;
-  initialSearch?: string;
-  initialContextKey?: string;
-  resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
     intent: PermissionDraftIntent,
@@ -597,17 +587,12 @@ function AgentPermissionsDrawer({
   return (
     <PermissionsDrawer
       agentId={targetId}
-      targetKind={targetKind}
       connectorSlug={connectorSlug}
       connectorLabel={connectorLabel}
       metadata$={agentPermissionMetadata$}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
-      initialIntent={initialIntent}
-      initialSearch={initialSearch}
-      initialContextKey={initialContextKey}
-      resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}
       onClose={onClose}
@@ -745,7 +730,6 @@ function JobPermissionsTab({
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={activeUserGrantSnapshot.grants}
-            resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
               if (connectorSlug === null) {
@@ -857,6 +841,7 @@ function AgentHeader({
   const { t } = useTranslation("agents");
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <DetailPageHeader>
@@ -876,7 +861,7 @@ function AgentHeader({
                       type="button"
                       onClick={() => {
                         onTabChange("profile");
-                        openMaker(avatarUrl);
+                        openMaker(avatarUrl, pageSignal);
                       }}
                       className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
                       aria-label={t(($) => {

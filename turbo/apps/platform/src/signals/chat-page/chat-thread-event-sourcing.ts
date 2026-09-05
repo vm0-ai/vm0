@@ -7,6 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { accept } from "../../lib/accept.ts";
+import { nowDate } from "../../lib/time.ts";
 import {
   captureChatThreadMetadataShortcut$,
   type ChatThreadMetadataShortcutOutcome,
@@ -33,6 +34,7 @@ import { queryChatThreadEventSharedDatabase$ } from "../shared-database.ts";
 import type {
   ChatThreadEventView,
   OptimisticChatThreadEvent,
+  OptimisticChatThreadEventInput,
 } from "./chat-thread-event-types.ts";
 
 interface ChatThreadEventData {
@@ -616,7 +618,18 @@ const syncCurrentChatThreadDocumentTitle$ = command(
 );
 
 export const registerOptimisticChatThreadEvent$ = command(
-  ({ set }, event: OptimisticChatThreadEvent) => {
+  ({ set }, input: OptimisticChatThreadEventInput) => {
+    const event: OptimisticChatThreadEvent = {
+      title: null,
+      selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      selectedVideoModel: null,
+      selectedImageModel: null,
+      createdAt: nowDate().toISOString(),
+      ...input,
+    };
     set(optimisticChatThreadEventsState$, (events) => {
       if (
         events.some((existing) => {
@@ -645,15 +658,8 @@ export const touchOptimisticChatThreadSort$ = command(
       kind: "sort_touched",
       chatThreadId: args.threadId,
       agentId: args.agentId,
-      title: null,
-      selectedModel: null,
-      serviceTier: null,
-      computerUseHostId: null,
-      cloudBrowserEnabled: false,
-      selectedVideoModel: null,
-      selectedImageModel: null,
       createdAt: args.createdAt,
-    } satisfies OptimisticChatThreadEvent);
+    });
   },
 );
 

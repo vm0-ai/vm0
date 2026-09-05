@@ -269,7 +269,7 @@ export default [
       "src/signals/routes/test-*.ts",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": [
+      "okou/no-abort-signal-in-object-params": [
         "error",
         {
           allowedFunctions: [

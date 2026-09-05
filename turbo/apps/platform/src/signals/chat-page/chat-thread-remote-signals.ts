@@ -25,7 +25,6 @@ import {
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
-import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
 interface ChatThreadRealtimeHandlers {
@@ -126,30 +125,18 @@ export const patchChatThreadModelSelection$ = command(
         kind: "model_selection_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
         selectedModel: modelSelection?.selectedModel ?? null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
         createdAt,
-      } satisfies OptimisticChatThreadEvent);
+      });
       set(registerOptimisticChatThreadEvent$, {
         id: serviceTierEventId,
         kind: "service_tier_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
         serviceTier:
           modelSelection?.codexServiceTier === "fast" ? "priority" : null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
         createdAt,
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
 
     const client = get(apiClient$)(chatThreadModelSelectionContract);
@@ -187,15 +174,9 @@ export const patchChatThreadComputerUseHost$ = command(
         kind: "computer_use_host_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
         computerUseHostId,
         cloudBrowserEnabled,
-        selectedVideoModel: null,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadComputerUseHostContract);
     await accept(
@@ -223,15 +204,8 @@ export const patchChatThreadVideoModel$ = command(
         kind: "video_model_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
         selectedVideoModel: videoModel,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadVideoModelContract);
     await accept(
@@ -259,15 +233,8 @@ export const patchChatThreadImageModel$ = command(
         kind: "image_model_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
         selectedImageModel: imageModel,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadImageModelContract);
     await accept(

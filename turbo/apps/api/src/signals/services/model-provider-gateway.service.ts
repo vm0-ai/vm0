@@ -4,7 +4,7 @@ import { and, eq, notExists, notInArray } from "drizzle-orm";
 import {
   getFrameworkForType,
   getVm0ConcreteProviderType,
-  isSupportedRunModel,
+  isActiveRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type {
   CreateModelProviderConnectionRequest,
@@ -160,7 +160,7 @@ function protocolSupportsModel(
   protocol: ModelProviderSurfaceProtocol,
   model: string,
 ): boolean {
-  if (!isSupportedRunModel(model)) {
+  if (!isActiveRunModel(model)) {
     return false;
   }
   const framework = getFrameworkForType(getVm0ConcreteProviderType(model));

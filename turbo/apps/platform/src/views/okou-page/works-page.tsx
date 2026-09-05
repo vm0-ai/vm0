@@ -1,6 +1,5 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { TeamsConnectStatus } from "@okouai/api-contracts/contracts/teams-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   AlertTriangle,
@@ -103,13 +102,20 @@ function ConnectedIndicator({
   );
 }
 
-function SlackCardActions({
+function ProviderCardActions({
   isConnected,
   isInstalled,
   isAdmin,
   installUrl,
   connectUrl,
   connectedDetail,
+  connectedTestId,
+  installTestId,
+  connectTestId,
+  installLabel,
+  moreOptionsLabel,
+  disconnectLabel,
+  uninstallLabel,
   onDisconnect,
   onUninstall,
   disconnecting,
@@ -120,6 +126,13 @@ function SlackCardActions({
   installUrl: string | null | undefined;
   connectUrl: string | null | undefined;
   connectedDetail?: string | null;
+  connectedTestId: string;
+  installTestId: string;
+  connectTestId?: string;
+  installLabel: string;
+  moreOptionsLabel: string;
+  disconnectLabel: string;
+  uninstallLabel: string;
   onDisconnect: () => void;
   onUninstall: () => void;
   disconnecting: boolean;
@@ -129,13 +142,13 @@ function SlackCardActions({
     <>
       {isConnected ? (
         <ConnectedIndicator
-          testId="slack-connected-indicator"
+          testId={connectedTestId}
           connectedDetail={connectedDetail}
         />
       ) : null}
       {!isInstalled && isAdmin && installUrl && (
         <Button
-          data-testid="slack-install-button"
+          data-testid={installTestId}
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
@@ -144,13 +157,12 @@ function SlackCardActions({
           }}
         >
           <Download size={14} />
-          {t(($) => {
-            return $.works.slack.install;
-          })}
+          {installLabel}
         </Button>
       )}
       {isInstalled && !isConnected && connectUrl && (
         <Button
+          data-testid={connectTestId}
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
@@ -172,9 +184,7 @@ function SlackCardActions({
               variant="quiet"
               size="icon-xs"
               className="shrink-0"
-              aria-label={t(($) => {
-                return $.works.actions.moreOptions;
-              })}
+              aria-label={moreOptionsLabel}
             >
               <EllipsisVertical size={16} />
             </Button>
@@ -186,9 +196,7 @@ function SlackCardActions({
             {isConnected && (
               <button
                 type="button"
-                aria-label={t(($) => {
-                  return $.works.actions.disconnect;
-                })}
+                aria-label={disconnectLabel}
                 disabled={disconnecting}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
@@ -205,9 +213,7 @@ function SlackCardActions({
             {isAdmin && (
               <button
                 type="button"
-                aria-label={t(($) => {
-                  return $.works.actions.uninstall;
-                })}
+                aria-label={uninstallLabel}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-state-hover hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
@@ -223,10 +229,12 @@ function SlackCardActions({
   );
 }
 
-function SlackPermissionWarning({
+function PermissionWarning({
   reinstallUrl,
+  message,
 }: {
   reinstallUrl: string | null | undefined;
+  message: string;
 }) {
   const { t } = useTranslation();
   if (!reinstallUrl) {
@@ -237,9 +245,7 @@ function SlackPermissionWarning({
     <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
       <AlertTriangle size={16} className="shrink-0 text-amber-500" />
       <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
-        {t(($) => {
-          return $.works.slack.permissionsUpdated;
-        })}
+        {message}
       </span>
       <Button
         variant="outline"
@@ -254,6 +260,75 @@ function SlackPermissionWarning({
         })}
       </Button>
     </div>
+  );
+}
+
+function UninstallConfirmDialog({
+  open,
+  setOpen,
+  uninstalling,
+  uninstall,
+  title,
+  description,
+}: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  uninstalling: boolean;
+  uninstall: () => Promise<unknown>;
+  title: string;
+  description: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!uninstalling) {
+          setOpen(v);
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={uninstalling}
+            onClick={() => {
+              return setOpen(false);
+            }}
+          >
+            {t(($) => {
+              return $.works.actions.cancel;
+            })}
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={uninstalling}
+            onClick={() => {
+              detach(
+                (async () => {
+                  await uninstall();
+                  setOpen(false);
+                })(),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {uninstalling
+              ? t(($) => {
+                  return $.works.actions.uninstalling;
+                })
+              : t(($) => {
+                  return $.works.actions.uninstall;
+                })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -302,13 +377,27 @@ function SlackCard({ displayName }: { displayName: string }) {
                   })}
             </div>
           </div>
-          <SlackCardActions
+          <ProviderCardActions
             isConnected={isConnected}
             isInstalled={isInstalled}
             isAdmin={isAdmin}
             installUrl={slackData?.installUrl}
             connectUrl={slackData?.connectUrl}
             connectedDetail={slackData?.workspaceName}
+            connectedTestId="slack-connected-indicator"
+            installTestId="slack-install-button"
+            installLabel={t(($) => {
+              return $.works.slack.install;
+            })}
+            moreOptionsLabel={t(($) => {
+              return $.works.actions.moreOptions;
+            })}
+            disconnectLabel={t(($) => {
+              return $.works.actions.disconnect;
+            })}
+            uninstallLabel={t(($) => {
+              return $.works.actions.uninstall;
+            })}
             disconnecting={disconnecting}
             onDisconnect={() => {
               return detach(disconnect(pageSignal), Reason.DomCallback);
@@ -319,256 +408,33 @@ function SlackCard({ displayName }: { displayName: string }) {
           />
         </div>
 
-        <SlackPermissionWarning
+        <PermissionWarning
           reinstallUrl={scopeMismatch && isAdmin ? reinstallUrl : null}
+          message={t(($) => {
+            return $.works.slack.permissionsUpdated;
+          })}
         />
       </div>
 
-      <Dialog
+      <UninstallConfirmDialog
         open={showUninstallDialog}
-        onOpenChange={(v) => {
-          if (!uninstalling) {
-            setShowUninstallDialog(v);
-          }
+        setOpen={setShowUninstallDialog}
+        uninstalling={uninstalling}
+        uninstall={() => {
+          return uninstall(pageSignal);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t(($) => {
-                return $.works.slack.uninstallTitle;
-              })}
-            </DialogTitle>
-            <DialogDescription>
-              {t(
-                ($) => {
-                  return $.works.slack.uninstallDescription;
-                },
-                { displayName },
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={uninstalling}
-              onClick={() => {
-                return setShowUninstallDialog(false);
-              }}
-            >
-              {t(($) => {
-                return $.works.actions.cancel;
-              })}
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={uninstalling}
-              onClick={() => {
-                detach(
-                  (async () => {
-                    await uninstall(pageSignal);
-                    setShowUninstallDialog(false);
-                  })(),
-                  Reason.DomCallback,
-                );
-              }}
-            >
-              {uninstalling
-                ? t(($) => {
-                    return $.works.actions.uninstalling;
-                  })
-                : t(($) => {
-                    return $.works.actions.uninstall;
-                  })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={t(($) => {
+          return $.works.slack.uninstallTitle;
+        })}
+        description={t(
+          ($) => {
+            return $.works.slack.uninstallDescription;
+          },
+          { displayName },
+        )}
+      />
     </>
   );
-}
-
-function TeamsConnectedIndicator({
-  connectedDetail,
-}: {
-  connectedDetail?: string | null;
-}) {
-  return (
-    <ConnectedIndicator
-      testId="teams-connected-indicator"
-      connectedDetail={connectedDetail}
-    />
-  );
-}
-
-function TeamsCardActions({
-  isConnected,
-  isInstalled,
-  isAdmin,
-  installUrl,
-  connectUrl,
-  connectedDetail,
-  onDisconnect,
-  onUninstall,
-  disconnecting,
-}: {
-  isConnected: boolean;
-  isInstalled: boolean;
-  isAdmin: boolean;
-  installUrl: string | null | undefined;
-  connectUrl: string | null | undefined;
-  connectedDetail?: string | null;
-  onDisconnect: () => void;
-  onUninstall: () => void;
-  disconnecting: boolean;
-}) {
-  const { t } = useTranslation();
-  const installActionUrl = connectUrl ?? installUrl;
-  return (
-    <>
-      {isConnected ? (
-        <TeamsConnectedIndicator connectedDetail={connectedDetail} />
-      ) : null}
-      {!isInstalled && isAdmin && installActionUrl && (
-        <Button
-          data-testid="teams-install-button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => {
-            return openFreshOAuth(installActionUrl);
-          }}
-        >
-          <Download size={14} />
-          {t(($) => {
-            return $.works.teams.install;
-          })}
-        </Button>
-      )}
-      {isInstalled && !isConnected && connectUrl && (
-        <Button
-          data-testid="teams-connect-button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => {
-            return openFreshOAuth(connectUrl);
-          }}
-        >
-          {t(($) => {
-            return $.works.actions.connect;
-          })}
-        </Button>
-      )}
-      {isInstalled && (isConnected || isAdmin) && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              showTooltip
-              type="button"
-              variant="quiet"
-              size="icon-xs"
-              className="shrink-0"
-              aria-label={t(($) => {
-                return $.works.teams.moreOptions;
-              })}
-            >
-              <EllipsisVertical size={16} />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            className="flex flex-col gap-0.5 w-40 p-2"
-          >
-            {isConnected && (
-              <button
-                type="button"
-                aria-label={t(($) => {
-                  return $.works.teams.disconnect;
-                })}
-                disabled={disconnecting}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-state-hover hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                onClick={onDisconnect}
-              >
-                {disconnecting
-                  ? t(($) => {
-                      return $.works.actions.disconnecting;
-                    })
-                  : t(($) => {
-                      return $.works.actions.disconnect;
-                    })}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                type="button"
-                aria-label={t(($) => {
-                  return $.works.teams.uninstall;
-                })}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-state-hover hover:text-accent-foreground transition-colors"
-                onClick={onUninstall}
-              >
-                {t(($) => {
-                  return $.works.actions.uninstall;
-                })}
-              </button>
-            )}
-          </PopoverContent>
-        </Popover>
-      )}
-    </>
-  );
-}
-
-function teamsPermissionReinstallUrl(args: {
-  isAdmin: boolean;
-  permissionMismatch: boolean;
-  reinstallUrl: string | null | undefined;
-}): string | null {
-  if (!args.isAdmin || !args.permissionMismatch || !args.reinstallUrl) {
-    return null;
-  }
-  return args.reinstallUrl;
-}
-
-function TeamsPermissionWarning({
-  reinstallUrl,
-}: {
-  reinstallUrl: string | null;
-}) {
-  const { t } = useTranslation();
-  if (!reinstallUrl) {
-    return null;
-  }
-
-  return (
-    <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
-      <AlertTriangle size={16} className="shrink-0 text-amber-500" />
-      <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
-        {t(($) => {
-          return $.works.teams.permissionsUpdated;
-        })}
-      </span>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 shrink-0 text-xs"
-        onClick={() => {
-          return openFreshOAuth(reinstallUrl);
-        }}
-      >
-        {t(($) => {
-          return $.works.actions.updatePermissions;
-        })}
-      </Button>
-    </div>
-  );
-}
-
-function teamsConnectedDetail(
-  teamsData: TeamsConnectStatus | null,
-): string | null | undefined {
-  return teamsData?.teamName ?? teamsData?.tenantName;
 }
 
 function teamsCardDescription(args: {
@@ -614,13 +480,8 @@ function TeamsCard({ displayName }: { displayName: string }) {
   const isConnected = teamsData?.isConnected ?? false;
   const isInstalled = teamsData?.isInstalled ?? false;
   const isAdmin = teamsData?.isAdmin ?? false;
-  const connectedDetail = teamsConnectedDetail(teamsData);
+  const connectedDetail = teamsData?.teamName ?? teamsData?.tenantName;
   const permissionMismatch = teamsData?.permissionMismatch === true;
-  const reinstallUrl = teamsPermissionReinstallUrl({
-    isAdmin,
-    permissionMismatch,
-    reinstallUrl: teamsData?.reinstallUrl,
-  });
   const description = teamsCardDescription({
     isInstalled,
     isConnected,
@@ -642,13 +503,28 @@ function TeamsCard({ displayName }: { displayName: string }) {
             </div>
             <div className="text-sm text-muted-foreground">{description}</div>
           </div>
-          <TeamsCardActions
+          <ProviderCardActions
             isConnected={isConnected}
             isInstalled={isInstalled}
             isAdmin={isAdmin}
-            installUrl={teamsData?.installUrl}
+            installUrl={teamsData?.connectUrl ?? teamsData?.installUrl}
             connectUrl={teamsData?.connectUrl}
             connectedDetail={connectedDetail}
+            connectedTestId="teams-connected-indicator"
+            installTestId="teams-install-button"
+            connectTestId="teams-connect-button"
+            installLabel={t(($) => {
+              return $.works.teams.install;
+            })}
+            moreOptionsLabel={t(($) => {
+              return $.works.teams.moreOptions;
+            })}
+            disconnectLabel={t(($) => {
+              return $.works.teams.disconnect;
+            })}
+            uninstallLabel={t(($) => {
+              return $.works.teams.uninstall;
+            })}
             disconnecting={disconnecting}
             onDisconnect={() => {
               return detach(disconnect(pageSignal), Reason.DomCallback);
@@ -659,69 +535,33 @@ function TeamsCard({ displayName }: { displayName: string }) {
           />
         </div>
 
-        <TeamsPermissionWarning reinstallUrl={reinstallUrl} />
+        <PermissionWarning
+          reinstallUrl={
+            isAdmin && permissionMismatch ? teamsData?.reinstallUrl : null
+          }
+          message={t(($) => {
+            return $.works.teams.permissionsUpdated;
+          })}
+        />
       </div>
 
-      <Dialog
+      <UninstallConfirmDialog
         open={showUninstallDialog}
-        onOpenChange={(v) => {
-          if (!uninstalling) {
-            setShowUninstallDialog(v);
-          }
+        setOpen={setShowUninstallDialog}
+        uninstalling={uninstalling}
+        uninstall={() => {
+          return uninstall(pageSignal);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t(($) => {
-                return $.works.teams.uninstallTitle;
-              })}
-            </DialogTitle>
-            <DialogDescription>
-              {t(
-                ($) => {
-                  return $.works.teams.uninstallDescription;
-                },
-                { brandName, displayName },
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={uninstalling}
-              onClick={() => {
-                return setShowUninstallDialog(false);
-              }}
-            >
-              {t(($) => {
-                return $.works.actions.cancel;
-              })}
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={uninstalling}
-              onClick={() => {
-                detach(
-                  (async () => {
-                    await uninstall(pageSignal);
-                    setShowUninstallDialog(false);
-                  })(),
-                  Reason.DomCallback,
-                );
-              }}
-            >
-              {uninstalling
-                ? t(($) => {
-                    return $.works.actions.uninstalling;
-                  })
-                : t(($) => {
-                    return $.works.actions.uninstall;
-                  })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={t(($) => {
+          return $.works.teams.uninstallTitle;
+        })}
+        description={t(
+          ($) => {
+            return $.works.teams.uninstallDescription;
+          },
+          { brandName, displayName },
+        )}
+      />
     </>
   );
 }

@@ -1,10 +1,5 @@
 import { command, type Command } from "ccstate";
-import type {
-  ChatThreadDraft,
-  DraftVoice,
-  PersistedAttachment,
-  UserMessageDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
+import type { ChatThreadDraft } from "@okouai/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -16,13 +11,12 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import {
-  createRestoredAttachment,
-  type RestorableAttachment,
-} from "../okou-page/chat-draft.ts";
+import { createRestoredAttachment } from "../okou-page/chat-draft.ts";
 import {
   draftToEditorDoc,
   messageDocumentToPrompt,
+  userMessageDraftAttachments,
+  type RestoredDraftState,
 } from "../okou-page/user-message-document-codec.ts";
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
@@ -83,41 +77,6 @@ interface PaneSpec {
   setPane$: Command<void, [ChatThreadPaneState]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
   onNotFoundReady$?: Command<void, [AbortSignal]>;
-}
-
-interface RestoredDraftState {
-  readonly content: string;
-  readonly userMessage: UserMessageDocument | null;
-  readonly draftVoice: DraftVoice | null;
-  readonly attachments: RestorableAttachment[];
-}
-
-function userMessageDraftAttachments(
-  document: UserMessageDocument,
-  attachments: readonly PersistedAttachment[],
-): RestorableAttachment[] {
-  const attachmentById = new Map(
-    attachments.map((attachment) => {
-      return [attachment.id, attachment] as const;
-    }),
-  );
-  return document.parts.flatMap((part) => {
-    if (part.type !== "file") {
-      return [];
-    }
-    const attachment = attachmentById.get(part.fileId);
-    return attachment
-      ? [
-          {
-            ...attachment,
-            ...(part.annotatedFileId
-              ? { annotatedFileId: part.annotatedFileId }
-              : {}),
-            ...(part.annotations ? { annotations: part.annotations } : {}),
-          },
-        ]
-      : [];
-  });
 }
 
 function userMessageDraftState(

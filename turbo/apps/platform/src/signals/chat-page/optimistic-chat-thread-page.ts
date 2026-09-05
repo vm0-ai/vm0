@@ -46,7 +46,6 @@ import type { ModelProviderSelection } from "../../views/okou-page/components/mo
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import { chatPageModelSelection$ } from "../okou-page/chat-page.ts";
 import { selectedModelAvailable$ } from "../okou-page/model-first-personal-oauth.ts";
-import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
 import {
@@ -356,21 +355,18 @@ const mintOptimisticThreadWithEvent$ = command(
       threadId: args.threadId,
       agentId: args.agentId,
     });
-    const createdAt = nowDate().toISOString();
     set(registerOptimisticChatThreadEvent$, {
       id: args.eventId,
       kind: "created",
       chatThreadId: args.threadId,
       agentId: args.agentId,
-      title: null,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       selectedVideoModel: args.selectedVideoModel,
       selectedImageModel: args.selectedImageModel,
-      createdAt,
-    } satisfies OptimisticChatThreadEvent);
+    });
   },
 );
 

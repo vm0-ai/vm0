@@ -12,6 +12,7 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
@@ -499,27 +500,25 @@ function eventNonContentPart(
   );
 }
 
-function ArtifactsButton({ thread }: { thread: ChatPanelSignals }) {
-  return <ArtifactsButtonInner thread={thread} />;
-}
-
-function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
-  const { t } = useTranslation();
-  const sidebarTarget = useGet(thread.sidebar.target$);
-  const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const openThreadArtifacts = useOpenThreadArtifacts(thread);
-  const open = sidebarTarget?.type === "artifacts";
-
+function ChatThreadHeaderIconButton({
+  icon,
+  label,
+  tooltip = label,
+  open,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  tooltip?: string;
+  open: boolean;
+  onClick: () => void;
+}) {
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             type="button"
-            onClick={() => {
-              reloadArtifacts();
-              openThreadArtifacts();
-            }}
             variant="quiet"
             size="icon-sm"
             iconSize="md"
@@ -527,21 +526,36 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
               "shrink-0 duration-150",
               open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
-            aria-label={t(($) => {
-              return $.chat.thread.openArtifacts;
-            })}
+            aria-label={label}
             aria-pressed={open}
+            onClick={onClick}
           >
-            <Package size={18} />
+            {icon}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t(($) => {
-            return $.chat.thread.openArtifacts;
-          })}
-        </TooltipContent>
+        <TooltipContent side="bottom">{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function ArtifactsButton({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const sidebarTarget = useGet(thread.sidebar.target$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  return (
+    <ChatThreadHeaderIconButton
+      icon={<Package size={18} />}
+      label={t(($) => {
+        return $.chat.thread.openArtifacts;
+      })}
+      open={sidebarTarget?.type === "artifacts"}
+      onClick={() => {
+        reloadArtifacts();
+        openThreadArtifacts();
+      }}
+    />
   );
 }
 // Loads automations and only renders once this thread has at least one linked
@@ -573,40 +587,23 @@ export function AutomationMenuButton({
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            iconSize="md"
-            className={cn(
-              "shrink-0 duration-150",
-              open && "bg-primary/10 text-brand-text hover:text-brand-text",
-            )}
-            aria-label={
-              ariaLabel ??
-              t(($) => {
-                return $.chat.automations.title;
-              })
-            }
-            aria-pressed={open}
-            onClick={() => {
-              reloadAutomations();
-              openAutomationSidebar(thread);
-            }}
-          >
-            <Clock size={18} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t(($) => {
-            return $.chat.automations.open;
-          })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <ChatThreadHeaderIconButton
+      icon={<Clock size={18} />}
+      label={
+        ariaLabel ??
+        t(($) => {
+          return $.chat.automations.title;
+        })
+      }
+      tooltip={t(($) => {
+        return $.chat.automations.open;
+      })}
+      open={open}
+      onClick={() => {
+        reloadAutomations();
+        openAutomationSidebar(thread);
+      }}
+    />
   );
 }
 
@@ -614,39 +611,17 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
-
-  const open = sidebarTarget?.type === "browser";
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            iconSize="md"
-            className={cn(
-              "shrink-0 duration-150",
-              open && "bg-primary/10 text-brand-text hover:text-brand-text",
-            )}
-            aria-label={t(($) => {
-              return $.chat.thread.openBrowser;
-            })}
-            aria-pressed={open}
-            onClick={() => {
-              openBrowserSidebar(thread.threadId);
-            }}
-          >
-            <Globe size={18} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t(($) => {
-            return $.chat.thread.openBrowser;
-          })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <ChatThreadHeaderIconButton
+      icon={<Globe size={18} />}
+      label={t(($) => {
+        return $.chat.thread.openBrowser;
+      })}
+      open={sidebarTarget?.type === "browser"}
+      onClick={() => {
+        openBrowserSidebar(thread.threadId);
+      }}
+    />
   );
 }
 
@@ -2384,25 +2359,38 @@ function HeaderScheduleAutomationEditForm({
           </span>
         </label>
       ) : null}
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          {t(($) => {
-            return $.chat.actions.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-          {t(($) => {
-            return $.chat.automations.save;
-          })}
-        </Button>
-      </DialogFooter>
+      <HeaderAutomationEditFooter saving={saving} onCancel={onDone} />
     </form>
+  );
+}
+
+function HeaderAutomationEditFooter({
+  saving,
+  onCancel,
+}: {
+  saving: boolean;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={saving}
+        onClick={onCancel}
+      >
+        {t(($) => {
+          return $.chat.actions.cancel;
+        })}
+      </Button>
+      <Button type="submit" disabled={saving}>
+        {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+        {t(($) => {
+          return $.chat.automations.save;
+        })}
+      </Button>
+    </DialogFooter>
   );
 }
 
@@ -2590,7 +2578,6 @@ function HeaderGmailNewMessageAutomationEditForm({
   readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
-  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
     headerAutomations.updateGmailNewMessage$,
@@ -2630,24 +2617,7 @@ function HeaderGmailNewMessageAutomationEditForm({
         eventConfig={automation.eventConfig}
         disabled={saving}
       />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          {t(($) => {
-            return $.chat.actions.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-          {t(($) => {
-            return $.chat.automations.save;
-          })}
-        </Button>
-      </DialogFooter>
+      <HeaderAutomationEditFooter saving={saving} onCancel={onDone} />
     </form>
   );
 }
@@ -2712,24 +2682,7 @@ function HeaderGmailLabelAutomationEditForm({
           })}
         />
       </label>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          {t(($) => {
-            return $.chat.actions.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-          {t(($) => {
-            return $.chat.automations.save;
-          })}
-        </Button>
-      </DialogFooter>
+      <HeaderAutomationEditFooter saving={saving} onCancel={onDone} />
     </form>
   );
 }
@@ -2954,13 +2907,8 @@ export function ChatThreadPage() {
   );
 }
 
-type LoadableValue<T> =
-  | { state: "loading" }
-  | { state: "hasData"; data: T }
-  | { state: "hasError"; error: unknown };
-
 function resolveSessionError(
-  renderedGroupsReadyLoadable: LoadableValue<boolean>,
+  renderedGroupsReadyLoadable: Loadable<boolean>,
 ): string | null {
   if (renderedGroupsReadyLoadable.state === "hasError") {
     return renderedGroupsReadyLoadable.error instanceof Error
@@ -5695,7 +5643,6 @@ function AssistantRecoveryActions({
           })}
           triggerClassName="h-8 w-auto bg-background text-sm"
           compactTrigger
-          resolveDefaultSelection={false}
           {...(recovery.failedModel
             ? { excludedModel: recovery.failedModel }
             : {})}
@@ -7999,14 +7946,12 @@ function UsageChip({
   usage,
   title,
   ariaLabel,
-  contentAlign = "start",
   open,
   setOpen,
 }: {
   usage: ChatEventUsagePayload;
   title: string;
   ariaLabel: string;
-  contentAlign?: "start" | "center" | "end";
   open: boolean;
   setOpen: (open: boolean) => void;
 }) {
@@ -8025,7 +7970,7 @@ function UsageChip({
           <span>{total}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align={contentAlign} className="w-72 p-3">
+      <PopoverContent side="bottom" align="start" className="w-72 p-3">
         <div className="flex items-center justify-between gap-3 text-sm font-medium">
           <span>{title}</span>
           <span>{total}</span>
@@ -8175,10 +8120,6 @@ function PagedGroupActions({
   })?.runId;
   const usage = group.usage;
   const hasContent = content.length > 0;
-
-  if (group.role === "user") {
-    return null;
-  }
 
   const handleCopy = () => {
     if (!content) {

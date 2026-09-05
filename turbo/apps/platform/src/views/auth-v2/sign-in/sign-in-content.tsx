@@ -3,7 +3,7 @@ import type { Computed } from "ccstate";
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { ChevronRight, Loader2, Mail } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type {
   AuthV2SignInError,
@@ -14,7 +14,13 @@ import type {
 } from "../../../signals/auth-v2/sign-in-flow.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
-import { Link } from "../../router/link.tsx";
+import {
+  AuthV2BackLink,
+  AuthV2CompleteStep,
+  AuthV2LoadingStep,
+  AuthV2SwitchLink,
+  authV2SubmitHandler,
+} from "../auth-v2-status-steps.tsx";
 import { UserAvatar } from "../../components/avatar.tsx";
 import {
   AUTH_V2_LINK_ACTION_CLASS,
@@ -200,34 +206,6 @@ function FlowErrorAlert({
   );
 }
 
-function signUpLinkOptions(signUpHref: string) {
-  const url = new URL(signUpHref, location.origin);
-  return {
-    hash: url.hash,
-    searchParams: url.searchParams,
-  };
-}
-
-function SignUpLink({
-  children,
-  className,
-  signUpHref,
-}: {
-  readonly children: ReactNode;
-  readonly className?: string;
-  readonly signUpHref: string;
-}) {
-  return (
-    <Link
-      className={className}
-      options={signUpLinkOptions(signUpHref)}
-      pathname={ROUTES.signUp}
-    >
-      {children}
-    </Link>
-  );
-}
-
 function PasswordField({
   autoComplete,
   copy,
@@ -338,14 +316,9 @@ function IdentifierStep({
   const selectingFactorId =
     selectLoadable.state === "loading" ? pendingFactorId : null;
   const field = identifierFieldPresentation(state.identifierMode, copy);
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    detach(
-      submit(operationSignal),
-      Reason.DomCallback,
-      "submit auth v2 sign in",
-    );
-  };
+  const handleSubmit = authV2SubmitHandler(() => {
+    return submit(operationSignal);
+  }, "submit auth v2 sign in");
   const handleSelectFactor = (factorId: string): void => {
     detach(
       selectFactor(factorId, operationSignal),
@@ -589,18 +562,12 @@ function ChooseFactorStep({
           );
         })}
       </div>
-      <Button
-        className={cn(
-          "mx-auto h-auto w-fit p-0 text-sm leading-5",
-          AUTH_V2_LINK_ACTION_CLASS,
-        )}
+      <AuthV2BackLink
         disabled={selectLoadable.state === "loading"}
-        type="button"
-        variant="link"
         onClick={back}
       >
         {copy.back}
-      </Button>
+      </AuthV2BackLink>
     </div>
   );
 }
@@ -621,14 +588,9 @@ function PasswordStep({
   const resetFactor = state.factors.find((factor) => {
     return factor.kind === "password-reset";
   });
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    detach(
-      submit(operationSignal),
-      Reason.DomCallback,
-      "submit auth v2 sign in",
-    );
-  };
+  const handleSubmit = authV2SubmitHandler(() => {
+    return submit(operationSignal);
+  }, "submit auth v2 sign in");
   const submitting = submitLoadable.state === "loading";
   return (
     <div className="flex flex-col gap-4">
@@ -666,18 +628,9 @@ function PasswordStep({
         />
         <AuthV2SubmitButton busy={submitting} label={copy.continue} />
       </form>
-      <Button
-        className={cn(
-          "mx-auto h-auto w-fit p-0 text-sm leading-5",
-          AUTH_V2_LINK_ACTION_CLASS,
-        )}
-        disabled={submitting}
-        type="button"
-        variant="link"
-        onClick={backToMethods}
-      >
+      <AuthV2BackLink disabled={submitting} onClick={backToMethods}>
         {copy.useAnotherMethod}
-      </Button>
+      </AuthV2BackLink>
     </div>
   );
 }
@@ -801,18 +754,9 @@ function PasswordRecoveryStep({
             })}
           </div>
         ) : null}
-        <Button
-          className={cn(
-            "mx-auto h-auto w-fit p-0 text-sm leading-5",
-            AUTH_V2_LINK_ACTION_CLASS,
-          )}
-          disabled={selecting}
-          type="button"
-          variant="link"
-          onClick={back}
-        >
+        <AuthV2BackLink disabled={selecting} onClick={back}>
           {copy.back}
-        </Button>
+        </AuthV2BackLink>
       </div>
     </div>
   );
@@ -831,17 +775,7 @@ function HelpStep({ copy, signals }: SignInStepProps) {
           <AuthV2ActionGlyph />
         </a>
       </Button>
-      <Button
-        className={cn(
-          "mx-auto h-auto w-fit p-0 text-sm leading-5",
-          AUTH_V2_LINK_ACTION_CLASS,
-        )}
-        type="button"
-        variant="link"
-        onClick={back}
-      >
-        {copy.back}
-      </Button>
+      <AuthV2BackLink onClick={back}>{copy.back}</AuthV2BackLink>
     </div>
   );
 }
@@ -890,14 +824,9 @@ function CodeStep({
   const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
   const clientTrust = selectedFactor?.kind === "client-trust-email-code";
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    detach(
-      submit(operationSignal),
-      Reason.DomCallback,
-      "submit auth v2 sign in",
-    );
-  };
+  const handleSubmit = authV2SubmitHandler(() => {
+    return submit(operationSignal);
+  }, "submit auth v2 sign in");
   const handleResend = (): void => {
     detach(
       resendCode(operationSignal),
@@ -988,36 +917,18 @@ function CodeStepBottomAction({
 }) {
   if (factorKind === "email-code") {
     return (
-      <Button
-        className={cn(
-          "mx-auto h-auto w-fit p-0 text-sm leading-5",
-          AUTH_V2_LINK_ACTION_CLASS,
-        )}
-        disabled={disabled}
-        type="button"
-        variant="link"
-        onClick={backToMethods}
-      >
+      <AuthV2BackLink disabled={disabled} onClick={backToMethods}>
         {copy.useAnotherMethod}
-      </Button>
+      </AuthV2BackLink>
     );
   }
   if (factorKind !== "client-trust-email-code") {
     return null;
   }
   return (
-    <Button
-      className={cn(
-        "mx-auto h-auto w-fit p-0 text-sm leading-5",
-        AUTH_V2_LINK_ACTION_CLASS,
-      )}
-      disabled={disabled}
-      type="button"
-      variant="link"
-      onClick={backToIdentifier}
-    >
+    <AuthV2BackLink disabled={disabled} onClick={backToIdentifier}>
       {copy.back}
-    </Button>
+    </AuthV2BackLink>
   );
 }
 
@@ -1044,14 +955,9 @@ function NewPasswordStep({
     error?.field === "new-password" && error.code === "password-mismatch"
       ? error
       : null;
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    detach(
-      submit(operationSignal),
-      Reason.DomCallback,
-      "submit auth v2 sign in",
-    );
-  };
+  const handleSubmit = authV2SubmitHandler(() => {
+    return submit(operationSignal);
+  }, "submit auth v2 sign in");
   const submitting = submitLoadable.state === "loading";
   return (
     <div className="flex flex-col gap-4">
@@ -1099,44 +1005,9 @@ function NewPasswordStep({
           />
         </div>
       </form>
-      <Button
-        className={cn(
-          "mx-auto h-auto w-fit p-0 text-sm leading-5",
-          AUTH_V2_LINK_ACTION_CLASS,
-        )}
-        disabled={submitting}
-        type="button"
-        variant="link"
-        onClick={back}
-      >
+      <AuthV2BackLink disabled={submitting} onClick={back}>
         {copy.back}
-      </Button>
-    </div>
-  );
-}
-
-function LoadingStep({ copy }: { readonly copy: AuthV2SignInCopy }) {
-  return (
-    <div
-      className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
-      role="status"
-    >
-      <Loader2 className="animate-spin" aria-hidden="true" />
-      <span>{copy.loading}</span>
-    </div>
-  );
-}
-
-function CompleteStep() {
-  return (
-    <div
-      className="flex flex-col items-center gap-3 py-8 text-center"
-      role="status"
-    >
-      <Loader2
-        className="animate-spin text-muted-foreground"
-        aria-hidden="true"
-      />
+      </AuthV2BackLink>
     </div>
   );
 }
@@ -1150,7 +1021,9 @@ function TransferStep({
   return (
     <div className="space-y-3">
       <Button className={cn("w-full", AUTH_V2_PRIMARY_ACTION_CLASS)} asChild>
-        <SignUpLink signUpHref={signUpHref}>{copy.signUp}</SignUpLink>
+        <AuthV2SwitchLink href={signUpHref} pathname={ROUTES.signUp}>
+          {copy.signUp}
+        </AuthV2SwitchLink>
       </Button>
       <Button
         className={cn("w-full", AUTH_V2_LINK_ACTION_CLASS)}
@@ -1191,10 +1064,10 @@ export function SignInCardContent({
   readonly state: AuthV2SignInState;
 }) {
   if (state.status === "loading") {
-    return <LoadingStep copy={copy} />;
+    return <AuthV2LoadingStep copy={copy} />;
   }
   if (state.status === "complete") {
-    return <CompleteStep />;
+    return <AuthV2CompleteStep />;
   }
   if (state.status === "transfer") {
     return (
@@ -1306,15 +1179,16 @@ export function SignInSwitch({
   return (
     <p className="text-center text-sm text-muted-foreground">
       {copy.noAccount}{" "}
-      <SignUpLink
+      <AuthV2SwitchLink
         className={cn(
           "font-medium underline underline-offset-4",
           AUTH_V2_LINK_ACTION_CLASS,
         )}
-        signUpHref={signUpHref}
+        href={signUpHref}
+        pathname={ROUTES.signUp}
       >
         {copy.signUp}
-      </SignUpLink>
+      </AuthV2SwitchLink>
     </p>
   );
 }

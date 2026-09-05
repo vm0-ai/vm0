@@ -21,16 +21,13 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { computerUseIllustrationImg } from "../okou-page/platform-assets.ts";
 import { ProductBrandMarkLink } from "../okou-page/directed-shared.tsx";
+import {
+  AuthorizationErrorState,
+  formatTime,
+} from "../components/authorization-error-state.tsx";
 import { locale$ } from "../../signals/locale.ts";
 import { i18n } from "../../i18n/index.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
-
-function formatTime(value: string, locale: string): string {
-  return new Date(value).toLocaleString(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
 
 function sourceLabel(source: ComputerUseAuthorizationSource): string {
   switch (source) {
@@ -186,29 +183,6 @@ function EmptyHosts() {
   );
 }
 
-function ErrorState() {
-  const { t } = useTranslation();
-  return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center px-4">
-      <div className="flex w-[430px] max-w-full flex-col items-center gap-6 rounded-xl border border-border bg-background px-6 py-10 text-center">
-        <ProductBrandMarkLink />
-        <div className="flex flex-col gap-2">
-          <h1 className="text-lg font-medium text-foreground">
-            {t(($) => {
-              return $.authorization.computerUse.unavailableTitle;
-            })}
-          </h1>
-          <p className="text-sm leading-5 text-muted-foreground">
-            {t(($) => {
-              return $.authorization.computerUse.unavailableDescription;
-            })}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function ComputerUseAuthorizationPage() {
   const { t } = useTranslation();
   const locale = useGet(locale$);
@@ -235,7 +209,16 @@ export function ComputerUseAuthorizationPage() {
   }
 
   if (requestLoadable.state === "hasError" || !request) {
-    return <ErrorState />;
+    return (
+      <AuthorizationErrorState
+        title={t(($) => {
+          return $.authorization.computerUse.unavailableTitle;
+        })}
+        description={t(($) => {
+          return $.authorization.computerUse.unavailableDescription;
+        })}
+      />
+    );
   }
 
   const applying = applyLoadable.state === "loading";

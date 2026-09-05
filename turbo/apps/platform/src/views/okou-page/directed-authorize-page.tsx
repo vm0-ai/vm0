@@ -40,7 +40,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../../signals/okou-page/agent-connector-authorizations.ts";
 import { Check, Loader2 } from "lucide-react";
-import { ProductBrandMarkLink } from "./directed-shared.tsx";
+import { DirectedCardShell } from "./directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { useTranslation } from "react-i18next";
 import { assistantName$ } from "../../signals/branding.ts";
@@ -204,79 +204,6 @@ function useDirectedAuthorizeConnectModalOpen(
   );
 }
 
-function DirectedAuthorizeCardContent({
-  icon,
-  connectorLabel,
-  connectorDescription,
-  agentName,
-  isAuthorized,
-  isConnecting,
-  isLoading,
-  canAuthorize,
-  onAuthorize,
-}: {
-  readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
-  readonly connectorLabel: string;
-  readonly connectorDescription: string;
-  readonly agentName: string;
-  readonly isAuthorized: boolean;
-  readonly isConnecting: boolean;
-  readonly isLoading: boolean;
-  readonly canAuthorize: boolean;
-  readonly onAuthorize: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-        <ProductBrandMarkLink />
-        <div className="flex w-full flex-col gap-4">
-          <div className="flex flex-col items-center gap-2.5">
-            {isLoading ? (
-              <Loader2 size={20} className="animate-spin" />
-            ) : (
-              <>
-                <h1 className="text-lg font-medium text-foreground">
-                  {isAuthorized
-                    ? t(
-                        ($) => {
-                          return $.connectors.directed.authorized;
-                        },
-                        { connector: connectorLabel },
-                      )
-                    : t(
-                        ($) => {
-                          return $.connectors.directed.needsConnector;
-                        },
-                        { agent: agentName, connector: connectorLabel },
-                      )}
-                </h1>
-                <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                  <ConnectorIcon icon={icon} size={20} />
-                </div>
-                <p className="w-60 text-sm text-muted-foreground">
-                  {connectorDescription}
-                </p>
-              </>
-            )}
-          </div>
-          {!isLoading && (
-            <div className="flex items-center justify-center">
-              <AuthorizeAction
-                isAuthorized={isAuthorized}
-                isConnecting={isConnecting}
-                disabled={!canAuthorize}
-                agentName={agentName}
-                onAuthorize={onAuthorize}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function runDirectedAuthorize(
   params: {
     readonly canAuthorize: boolean;
@@ -434,6 +361,7 @@ function DirectedAuthorizeConnectModal({
 }
 
 function DirectedAuthorizeCard() {
+  const { t } = useTranslation();
   const params = useDirectedAuthorizeParams();
   const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
@@ -462,7 +390,7 @@ function DirectedAuthorizeCard() {
     signal,
   );
 
-  if (!params) {
+  if (!params || unavailable) {
     return null;
   }
 
@@ -470,9 +398,6 @@ function DirectedAuthorizeCard() {
   const isConnecting =
     pollingConnectorSlug === connectorSlug ||
     connectFlowConnectorSlug === connectorSlug;
-  if (unavailable) {
-    return null;
-  }
 
   const isLoading = catalogLoading || permissionLoading;
   const canAuthorize = canAuthorizeConnector(item, isConnected);
@@ -523,17 +448,36 @@ function DirectedAuthorizeCard() {
 
   return (
     <>
-      <DirectedAuthorizeCardContent
-        icon={item?.icon}
-        connectorLabel={connectorLabel}
-        connectorDescription={connectorDescription}
-        agentName={agentName}
-        isAuthorized={isAuthorized}
-        isConnecting={isConnecting}
+      <DirectedCardShell
+        icon={<ConnectorIcon icon={item?.icon} size={20} />}
+        title={
+          isAuthorized
+            ? t(
+                ($) => {
+                  return $.connectors.directed.authorized;
+                },
+                { connector: connectorLabel },
+              )
+            : t(
+                ($) => {
+                  return $.connectors.directed.needsConnector;
+                },
+                { agent: agentName, connector: connectorLabel },
+              )
+        }
+        description={connectorDescription}
         isLoading={isLoading}
-        canAuthorize={canAuthorize}
-        onAuthorize={handleAuthorize}
-      />
+      >
+        <div className="flex items-center justify-center">
+          <AuthorizeAction
+            isAuthorized={isAuthorized}
+            isConnecting={isConnecting}
+            disabled={!canAuthorize}
+            agentName={agentName}
+            onAuthorize={handleAuthorize}
+          />
+        </div>
+      </DirectedCardShell>
       <DirectedAuthorizeConnectModal
         open={connectModalOpen}
         item={item}

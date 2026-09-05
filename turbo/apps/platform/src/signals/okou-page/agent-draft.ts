@@ -17,7 +17,6 @@ import {
   createDraftSignals,
   createRestoredAttachment,
   type DraftSignals,
-  type RestorableAttachment,
 } from "./chat-draft.ts";
 import {
   buildDraftPersistencePayload,
@@ -26,6 +25,8 @@ import {
 import {
   draftToEditorDoc,
   messageDocumentToPrompt,
+  userMessageDraftAttachments,
+  type RestoredDraftState,
 } from "./user-message-document-codec.ts";
 
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
@@ -41,48 +42,13 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
   readonly isNew: boolean;
 }
 
-interface RestoredAgentDraftState {
-  readonly content: string;
-  readonly userMessage: UserMessageDocument | null;
-  readonly draftVoice: DraftVoice | null;
-  readonly attachments: RestorableAttachment[];
-}
-
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
-
-function userMessageAgentDraftAttachments(
-  document: UserMessageDocument,
-  attachments: readonly PersistedAttachment[],
-): RestorableAttachment[] {
-  const attachmentById = new Map(
-    attachments.map((attachment) => {
-      return [attachment.id, attachment] as const;
-    }),
-  );
-  return document.parts.flatMap((part) => {
-    if (part.type !== "file") {
-      return [];
-    }
-    const attachment = attachmentById.get(part.fileId);
-    return attachment
-      ? [
-          {
-            ...attachment,
-            ...(part.annotatedFileId
-              ? { annotatedFileId: part.annotatedFileId }
-              : {}),
-            ...(part.annotations ? { annotations: part.annotations } : {}),
-          },
-        ]
-      : [];
-  });
-}
 
 function userMessageAgentDraftState(args: {
   readonly draftUserMessage?: UserMessageDocument | null;
   readonly draftVoice?: DraftVoice | null;
   readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState | null {
+}): RestoredDraftState | null {
   const document = args.draftUserMessage ?? null;
   // A new App may receive a pre-#31562 API response during serving or rollback.
   // Remove this new-App -> old-API bridge with #31612 after that window closes.
@@ -99,7 +65,7 @@ function userMessageAgentDraftState(args: {
     userMessage: document,
     draftVoice,
     attachments: document
-      ? userMessageAgentDraftAttachments(document, args.draftAttachments ?? [])
+      ? userMessageDraftAttachments(document, args.draftAttachments ?? [])
       : [],
   };
 }

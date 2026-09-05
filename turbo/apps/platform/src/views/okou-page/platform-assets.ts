@@ -42,9 +42,6 @@ export const noConnectorImg = pageAssetUrl("assets/no-connector.webp");
 export const noPermissionIllustration = pageAssetUrl(
   "assets/no-permission-illustration.webp",
 );
-export const planFreeImg = pageAssetUrl(
-  "components/org-manage/assets/plan-free.webp",
-);
 export const planProImg = pageAssetUrl(
   "components/org-manage/assets/plan-pro.webp",
 );

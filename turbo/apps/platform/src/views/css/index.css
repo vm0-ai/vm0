@@ -569,8 +569,10 @@ body {
   filter: invert(1);
 }
 
-/* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"]) .zero-app [role="switch"][data-unchecked] {
+/* Keep the legacy dark track visible without overriding the new UI token. */
+:where([data-theme="dark"]:not([data-new-ui]))
+  .zero-app
+  [role="switch"][data-unchecked] {
   background-color: hsl(var(--gray-400));
 }
 
@@ -1996,9 +1998,9 @@ html:has(.zero-dialog-overlay)
    dark card does not: it lands on a bright grey that reads as a white outline
    rather than as focus, which is what `--ring` means on every other control.
    Saturation, not lightness, does the work, so the ring stays quieter than the
-   full Cobalt stop. */
+   full Amber stop. */
 :where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
-  --zero-composer-ring: 222 38% 38%;
+  --zero-composer-ring: 38.8 38% 38%;
 }
 
 /* ===================================================================
@@ -2038,15 +2040,18 @@ html:has(.zero-dialog-overlay)
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* Markdown links read the brand tokens now that those carry Cobalt themselves.
-   They used to hardcode it, because Amber could not be a link colour, and the
-   dark pair below them never applied: `:where()` zeroes its own specificity, so
-   the light rule outweighed it. One theme-aware token settles both. */
+/* Markdown links use the palette's Cobalt rather than the Amber action color. */
 [data-new-ui] .wmde-markdown a {
-  color: hsl(var(--brand-text));
+  color: hsl(222 64% 45%);
 }
 [data-new-ui] .wmde-markdown a:hover {
-  color: hsl(var(--brand-text-hover));
+  color: hsl(222 65% 39%);
+}
+[data-theme="dark"][data-new-ui] .wmde-markdown a {
+  color: hsl(222 72% 70%);
+}
+[data-theme="dark"][data-new-ui] .wmde-markdown a:hover {
+  color: hsl(222 80% 88%);
 }
 
 /* Colour themes realigned to the new ramp's lightness steps. */

@@ -53,7 +53,8 @@
       "face": "Gesicht",
       "hair": "Haar",
       "mood": "Stimmung",
-      "skin": "Haut"
+      "skin": "Haut",
+      "sweater": "Pullover"
     },
     "title": "Geben Sie Ihrem Agenten ein Gesicht",
     "use": "Diesen Avatar verwenden"
@@ -76,7 +77,6 @@
   "detail": {
     "chatWith": "Chatten Sie mit {{agentName}}",
     "defaultDescription": "Ihr KI-Teamkollege, auf Sie zugeschnitten",
-    "noSelection": "Kein Agent ausgewählt",
     "notFound": {
       "back": "Zurück zum Team",
       "description": "Der Agent „{{agentId}}“ existiert nicht oder Sie haben keinen Zugriff darauf.",

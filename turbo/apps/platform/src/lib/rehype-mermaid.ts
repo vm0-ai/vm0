@@ -24,7 +24,13 @@ export const MARKDOWN_MERMAID_FENCE_ATTRIBUTE =
 
 const MARKDOWN_MERMAID_FENCE_PROPERTY = "dataVm0MarkdownMermaidFence";
 
-function collectText(node: HastNode): string {
+interface TextTreeNode {
+  readonly type: string;
+  readonly value?: string;
+  readonly children?: readonly TextTreeNode[];
+}
+
+export function collectText(node: TextTreeNode): string {
   if (node.type === "text") {
     return node.value ?? "";
   }

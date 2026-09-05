@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { AgentsPage } from "../../views/agents-page/agents-page.tsx";
+import { AgentsPageTabs } from "../../views/agents-page/agents-page-tabs.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -8,7 +8,7 @@ import { i18n } from "../../i18n/index.ts";
 
 export const setupAgentsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(AgentsPage), "sidebar");
+    set(updatePage$, createElement(AgentsPageTabs), "sidebar");
     set(
       updateDocumentTitle$,
       i18n.t(

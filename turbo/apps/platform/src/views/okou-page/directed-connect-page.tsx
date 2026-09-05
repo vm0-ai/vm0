@@ -68,7 +68,7 @@ import {
 } from "../../signals/connectors-page/directed-connect-slug.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Check, Loader2 } from "lucide-react";
-import { ProductBrandMarkLink } from "./directed-shared.tsx";
+import { DirectedCardShell } from "./directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -715,52 +715,35 @@ function DirectedConnectCardContent({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
-        <ProductBrandMarkLink />
-        <div className="flex w-full flex-col gap-4">
-          <div className="flex flex-col items-center gap-2.5">
-            {isLoading ? (
-              <Loader2 size={20} className="animate-spin" />
-            ) : (
-              <>
-                <h1 className="text-lg font-medium text-foreground">
-                  {isConnected
-                    ? t(
-                        ($) => {
-                          return $.connectors.directed.connected;
-                        },
-                        { connector: connectorLabel },
-                      )
-                    : t(
-                        ($) => {
-                          return $.connectors.directed.needsConnector;
-                        },
-                        { agent: agentName, connector: connectorLabel },
-                      )}
-                </h1>
-                <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                  {icon}
-                </div>
-                <p className="w-60 text-sm text-muted-foreground">
-                  {connectorDescription}
-                </p>
-              </>
-            )}
-          </div>
-          {!isLoading && (
-            <div className="flex flex-col items-center justify-center gap-2">
-              <ConnectActions
-                isConnected={isConnected}
-                isConnecting={isConnecting}
-                disabled={!canConnect}
-                onConnect={onConnect}
-              />
-            </div>
-          )}
-        </div>
+    <DirectedCardShell
+      icon={icon}
+      title={
+        isConnected
+          ? t(
+              ($) => {
+                return $.connectors.directed.connected;
+              },
+              { connector: connectorLabel },
+            )
+          : t(
+              ($) => {
+                return $.connectors.directed.needsConnector;
+              },
+              { agent: agentName, connector: connectorLabel },
+            )
+      }
+      description={connectorDescription}
+      isLoading={isLoading}
+    >
+      <div className="flex flex-col items-center justify-center gap-2">
+        <ConnectActions
+          isConnected={isConnected}
+          isConnecting={isConnecting}
+          disabled={!canConnect}
+          onConnect={onConnect}
+        />
       </div>
-    </div>
+    </DirectedCardShell>
   );
 }
 

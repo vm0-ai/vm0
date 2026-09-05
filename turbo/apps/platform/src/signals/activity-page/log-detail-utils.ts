@@ -1,6 +1,7 @@
 import type { AgentEvent } from "../okou-page/log-types.ts";
 import { i18n } from "../../i18n/index.ts";
 import { normalizeCodexEventsForGrouping } from "./codex-activity-normalizer.ts";
+import { isNonArrayRecord } from "../utils.ts";
 
 interface ToolResultContent {
   type: "tool_result";
@@ -379,7 +380,7 @@ function isVisibleEventGroup(
   if (framework !== "claude-code") {
     return true;
   }
-  const result = isRecord(nextGroup.eventData)
+  const result = isNonArrayRecord(nextGroup.eventData)
     ? nextGroup.eventData.result
     : undefined;
   if (typeof result !== "string" || result.trim().length === 0) {
@@ -439,16 +440,12 @@ interface PendingToolUse {
   parentToolUseId?: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
 export function isTaskEventData(data: unknown): data is TaskEventData {
-  return isRecord(data) && typeof data.task_id === "string";
+  return isNonArrayRecord(data) && typeof data.task_id === "string";
 }
 
 function toTaskEventData(data: TaskEventData): TaskEventData {
@@ -473,7 +470,7 @@ function toTaskEventData(data: TaskEventData): TaskEventData {
 }
 
 function toGroupingEventData(data: unknown): GroupingEventData {
-  return isRecord(data) ? (data as GroupingEventData) : {};
+  return isNonArrayRecord(data) ? (data as GroupingEventData) : {};
 }
 
 function getEventContents(eventData: GroupingEventData): unknown[] {
@@ -491,7 +488,7 @@ function toStringList(value: unknown): string[] {
 }
 
 function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
-  if (!isRecord(value)) {
+  if (!isNonArrayRecord(value)) {
     return undefined;
   }
 
@@ -513,7 +510,7 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
   if (typeof value.fallbackToolName === "string") {
     meta.fallbackToolName = value.fallbackToolName;
   }
-  if (isRecord(value.fallbackInput)) {
+  if (isNonArrayRecord(value.fallbackInput)) {
     meta.fallbackInput = value.fallbackInput;
   }
   return Object.keys(meta).length > 0 ? meta : undefined;
@@ -719,7 +716,7 @@ function parseAssistantContent(
   let foundToolUse = false;
 
   for (const [contentIndex, content] of contents.entries()) {
-    if (!isRecord(content)) {
+    if (!isNonArrayRecord(content)) {
       continue;
     }
     if (content.type === "thinking") {
@@ -737,7 +734,7 @@ function parseAssistantContent(
       foundToolUse = true;
       const rawInput =
         content.type === "toolCall" ? content.arguments : content.input;
-      const input = isRecord(rawInput) ? rawInput : {};
+      const input = isNonArrayRecord(rawInput) ? rawInput : {};
       const toolUseId =
         typeof content.id === "string" && content.id.length > 0
           ? content.id
@@ -796,7 +793,7 @@ function processToolResult(params: {
 
   // Orphan tool_result - create standalone group
   const fallbackToolName = stringValue(toolMeta?.fallbackToolName);
-  const fallbackInput = isRecord(toolMeta?.fallbackInput)
+  const fallbackInput = isNonArrayRecord(toolMeta?.fallbackInput)
     ? toolMeta.fallbackInput
     : {};
   grouped.push({
@@ -873,7 +870,7 @@ function processTodoWrite(op: ToolOperation): TodoItem[] | null {
   }
 
   return todos.map((todo) => {
-    const item = isRecord(todo) ? todo : {};
+    const item = isNonArrayRecord(todo) ? todo : {};
     const content =
       typeof item.content === "string"
         ? item.content
@@ -1190,7 +1187,7 @@ function processUserEvent(
   const contents = getEventContents(eventData);
   const toolMeta = toToolResultMeta(eventData.tool_use_result);
   const toolResults = contents.flatMap((content, contentIndex) => {
-    return isRecord(content) && content.type === "tool_result"
+    return isNonArrayRecord(content) && content.type === "tool_result"
       ? [{ content, contentIndex }]
       : [];
   });

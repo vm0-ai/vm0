@@ -10,11 +10,7 @@ import type {
   WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
 
-import { i18n } from "../../i18n/index.ts";
-
-function currentLocale(): string {
-  return i18n.resolvedLanguage ?? "en-US";
-}
+import { currentLocale, i18n } from "../../i18n/index.ts";
 
 export function workflowTitle(workflow: {
   readonly name: string;
