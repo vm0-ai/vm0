@@ -81,7 +81,7 @@ struct DesktopView: View {
                   .disabled(model.changingAccount)
               }
               HStack {
-                Button("Open Okou") { NSWorkspace.shared.open(model.configuration.platformURL) }
+                Button("Open Okou") { NSWorkspace.shared.open(model.configuration.platformPage()) }
                 Spacer()
                 Button("Sign Out") { model.run { try await model.signOut() } }
                   .disabled(model.changingAccount)

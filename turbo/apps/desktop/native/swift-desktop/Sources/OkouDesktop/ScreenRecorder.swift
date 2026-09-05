@@ -328,9 +328,7 @@ final class ScreenRecorder: ObservableObject {
       let clicks = try await delivery.upload(
         file: URL(fileURLWithPath: recording.requireString("clickTrackPath")),
         contentType: "application/json")
-      var url = URLComponents(url: api.configuration.platformURL, resolvingAgainstBaseURL: false)!
-      url.path = "/"
-      url.queryItems = [
+      let query: [URLQueryItem] = [
         .init(name: "intro-video-recording", value: video.id),
         .init(name: "intro-video-recording-name", value: video.name),
         .init(name: "intro-video-recording-size", value: String(video.size)),
@@ -339,7 +337,7 @@ final class ScreenRecorder: ObservableObject {
         .init(name: "intro-video-clicks-size", value: String(clicks.size)),
         .init(name: "intro-video-user", value: recordingIdentity.userID),
       ]
-      NSWorkspace.shared.open(url.url!)
+      NSWorkspace.shared.open(api.configuration.platformPage(query: query))
       self.recording = nil
       self.recordingIdentity = nil
       status = "idle"

@@ -61,6 +61,10 @@ origin restriction, and rejection of redirects; production origins reject the
 preview credential. Real WebKit tests require that cookie before acknowledging
 handoff. A macOS cookie probe exposed that a `secure` property with the string
 `FALSE` still sets `isSecure`; HTTP fixture cookies now omit that property.
+The app and recording links also renew preview access in the external browser,
+whose cookie store is separate from WebKit and whose preview cookie expires after
+one hour. A fresh HTTP browser request verifies both access and preserved
+recording parameters; production links contain no preview credential.
 Anonymous startup skips account-only feature requests. A held real identity
 request reproduces startup supersession; the unchanged assertion passed after
 expected cancellation stopped becoming a visible application error.
@@ -128,8 +132,24 @@ Lab restored the API values and native tabs. The staging deployment log for
 run `33962858999`, job `101298336923`, records the shared `preview/staging`
 database resetting at 2026-09-05 11:22:04 UTC during this walkthrough. This
 establishes an environment reset during acceptance; it does not attribute every
-earlier disappearance to that cause. Actual capture,
-audio, upload, real app control, and TCC revocation are therefore still open.
+earlier disappearance to that cause.
+
+After restoring the switch, this same installed package recorded the dedicated
+TextEdit window with system audio and microphone disabled. Native floating
+controls paused at 01:02, resumed, and stopped the take. The downloaded H.264
+file contains one video track and no audio tracks, is 3,621,871 bytes, and lasts
+99.69 seconds at 1346×878. Its click track records a 673×439-point window at scale
+2 and excludes three out-of-frame control clicks. The actual frame was inspected
+and the entire file decoded without errors using its original 1/600 time base.
+Default null-output conversion rounded timestamps and warned about duplicate
+DTS; the source has strictly increasing DTS and no duplicate PTS/DTS.
+
+Delivery opened Safari, which was signed out. Normal app login through email,
+password, and the development OTP reached the sign-in-complete screen, but the
+next page stalled and a later navigation returned to sign-in. Browser session
+persistence and final review remain unaccepted. This is separate from the hosted
+desktop login factor-route problem above. Audio, multi-display/area capture,
+source loss, full upload/review, real app control, and TCC revocation remain open.
 
 ## Feature inventory and evidence
 

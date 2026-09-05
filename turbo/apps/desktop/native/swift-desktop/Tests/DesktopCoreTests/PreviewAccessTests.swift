@@ -2,12 +2,16 @@ import DesktopCore
 import Foundation
 import Testing
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 @Suite struct PreviewAccessTests {
   @Test @MainActor func protectedAPIAcceptsPreviewAccessWithoutForwardingCredentials() async throws
   {
     let script = """
       import json,sys,threading
-      from urllib.parse import unquote
+      from urllib.parse import unquote,urlsplit,parse_qs
       from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
       from socketserver import TCPServer
       redirects=0
@@ -22,6 +26,12 @@ import Testing
               self.wfile.write(data)
           def do_GET(self):
               global redirects
+              url=urlsplit(self.path)
+              if url.path=='/':
+                  params=parse_qs(url.query)
+                  allowed=params.get('x-vercel-protection-bypass')==['preview-123']
+                  self.reply({'recording':params.get('intro-video-recording')},200 if allowed else 403)
+                  return
               if self.path=='/redirected': redirects+=1;self.reply({});return
               if self.path=='/api/redirect':
                   self.send_response(302)
@@ -66,6 +76,20 @@ import Testing
     }
     let state = try await server.request("inspect")
     #expect(state["redirects"].number == 0)
+    // Opening the system browser cannot rely on native WebKit's cookie store.
+    // A fresh browser request carries preview access and the original handoff.
+    let browser = URLSession(configuration: .ephemeral)
+    defer { browser.finishTasksAndInvalidate() }
+    let (_, blocked) = try await browser.data(from: configuration.platformURL)
+    #expect((blocked as? HTTPURLResponse)?.statusCode == 403)
+    let (page, response) = try await browser.data(
+      from: configuration.platformPage(query: [
+        .init(name: "intro-video-recording", value: "take-1")
+      ]))
+    #expect((response as? HTTPURLResponse)?.statusCode == 200)
+    #expect(try JSON.decode(page)["recording"] == .strings(["take-1"]))
+    let production = try DesktopConfiguration(platformURL: "https://app.okou.ai", version: "1.0.0")
+    #expect(production.platformPage().absoluteString == "https://app.okou.ai/")
     for origin in ["https://app.okou.ai", "https://staging-app.omby.ai.attacker.test"] {
       #expect(throws: DesktopFailure.self) {
         try DesktopConfiguration(

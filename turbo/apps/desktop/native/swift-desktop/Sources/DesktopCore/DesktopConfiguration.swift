@@ -97,14 +97,27 @@ public struct DesktopConfiguration: Sendable {
   }
 
   public var signInURL: URL {
-    var query = [URLQueryItem(name: "callbackScheme", value: bundleID)]
-    if let previewBypass {
-      query += [
-        .init(name: "x-vercel-protection-bypass", value: previewBypass),
-        .init(name: "x-vercel-set-bypass-cookie", value: "true"),
-      ]
-    }
-    return webPath("desktop-auth/start", query: query)
+    webPath(
+      "desktop-auth/start",
+      query: [.init(name: "callbackScheme", value: bundleID)] + previewBrowserQuery)
+  }
+
+  public func platformPage(query: [URLQueryItem] = []) -> URL {
+    var parts = URLComponents(url: platformURL, resolvingAgainstBaseURL: false)!
+    parts.path = "/"
+    let items = query + previewBrowserQuery
+    parts.queryItems = items.isEmpty ? nil : items
+    return parts.url!
+  }
+
+  private var previewBrowserQuery: [URLQueryItem] {
+    guard let previewBypass else { return [] }
+    // An external browser has a different cookie store from native WebKit.
+    // Renew its preview access when opening the app or delivering a recording.
+    return [
+      .init(name: "x-vercel-protection-bypass", value: previewBypass),
+      .init(name: "x-vercel-set-bypass-cookie", value: "true"),
+    ]
   }
 
   public func callback(_ url: URL) -> (code: String, handoffID: String?)? {
