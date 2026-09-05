@@ -15,6 +15,7 @@ import {
   File,
   LayoutTemplate,
   Loader2,
+  Play,
   Sparkles,
   Upload,
   UserRound,
@@ -122,8 +123,8 @@ function FileDropzone({
       <div
         data-intro-video-dropzone=""
         className={cn(
-          "rounded-2xl border border-dashed border-border bg-muted/35 px-5 text-center transition-colors hover:border-foreground/25 hover:bg-muted/50",
-          sources.length === 0 ? "py-6" : "py-4",
+          "rounded-2xl border border-dashed border-border bg-muted/35 px-4 text-center transition-colors hover:border-foreground/25 hover:bg-muted/50 sm:px-5",
+          sources.length === 0 ? "py-4 sm:py-6" : "py-3 sm:py-4",
         )}
         onDragOver={(event) => {
           event.preventDefault();
@@ -303,13 +304,14 @@ function SettingTrigger({
     <button
       type="button"
       aria-label={`${label}: ${value}`}
-      className="flex min-w-0 items-center gap-2.5 rounded-xl border border-border bg-card p-2.5 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title={`${label}: ${value}`}
+      className="flex min-w-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-2.5 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-2.5"
       onClick={onClick}
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground sm:size-9">
         {icon}
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="w-full min-w-0 flex-1">
         <small className="block text-[11px] text-muted-foreground">
           {label}
         </small>
@@ -317,7 +319,10 @@ function SettingTrigger({
           {value}
         </strong>
       </span>
-      <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+      <ChevronDown
+        size={14}
+        className="hidden shrink-0 text-muted-foreground sm:block"
+      />
     </button>
   );
 }
@@ -340,20 +345,22 @@ function UtilityOption({
       type="button"
       aria-pressed={selected}
       className={cn(
-        "relative flex min-h-28 min-w-0 flex-col rounded-xl border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "relative flex min-w-0 items-start gap-3 rounded-xl border bg-card p-3 pr-10 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-28 sm:flex-col sm:gap-0 sm:pr-3",
         selected ? "border-primary" : "border-border",
       )}
       onClick={onSelect}
     >
-      <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-brand-text">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text">
         {icon}
       </span>
-      <strong className="mt-3 block text-sm font-semibold text-foreground">
-        {title}
-      </strong>
-      <small className="mt-1 block text-xs leading-5 text-muted-foreground">
-        {description}
-      </small>
+      <span className="min-w-0">
+        <strong className="block text-sm font-semibold text-foreground sm:mt-3">
+          {title}
+        </strong>
+        <small className="mt-0.5 block text-xs leading-5 text-muted-foreground sm:mt-1">
+          {description}
+        </small>
+      </span>
       {selected ? (
         <span className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-primary text-primary-foreground">
           <Check size={12} />
@@ -381,6 +388,114 @@ function CatalogMessage({ children }: { readonly children: ReactNode }) {
   );
 }
 
+function stylePreviewElement(video: HTMLVideoElement): HTMLElement | null {
+  return video.closest<HTMLElement>("[data-intro-video-style-preview]");
+}
+
+function setStylePreviewLoading(
+  video: HTMLVideoElement,
+  loading: boolean,
+): void {
+  const preview = stylePreviewElement(video);
+  if (preview) {
+    preview.dataset.loading = String(loading);
+  }
+}
+
+function setStylePreviewPlaying(
+  video: HTMLVideoElement,
+  playing: boolean,
+): void {
+  const preview = stylePreviewElement(video);
+  if (preview) {
+    preview.dataset.loading = "false";
+    preview.dataset.previewPlaying = String(playing);
+  }
+}
+
+function StyleCardMedia({ style }: { readonly style: IntroVideoStyle }) {
+  return (
+    <div className="aspect-video overflow-hidden bg-muted">
+      {style.previewVideoUrl ? (
+        <video
+          src={style.previewVideoUrl}
+          poster={style.thumbnailUrl}
+          muted
+          loop
+          playsInline
+          preload="none"
+          className="h-full w-full object-cover"
+          onWaiting={(event) => {
+            setStylePreviewLoading(event.currentTarget, true);
+          }}
+          onPlaying={(event) => {
+            setStylePreviewPlaying(event.currentTarget, true);
+          }}
+          onPause={(event) => {
+            setStylePreviewPlaying(event.currentTarget, false);
+          }}
+          onError={(event) => {
+            setStylePreviewPlaying(event.currentTarget, false);
+          }}
+        />
+      ) : style.thumbnailUrl ? (
+        <img
+          src={style.thumbnailUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+        />
+      ) : (
+        <span className="grid h-full place-items-center text-muted-foreground">
+          <LayoutTemplate size={28} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+function StylePreviewControl({ style }: { readonly style: IntroVideoStyle }) {
+  const { t } = useTranslation();
+  if (!style.previewVideoUrl) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      aria-label={t(
+        ($) => {
+          return $.artifacts.templates.playVideo;
+        },
+        { title: style.name },
+      )}
+      className="absolute inset-x-px top-px flex aspect-video items-center justify-center rounded-t-[11px] bg-black/10 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:pointer-events-none group-data-[preview-playing=true]/style-preview:opacity-0"
+      onClick={(event) => {
+        const preview = event.currentTarget.closest<HTMLElement>(
+          "[data-intro-video-style-preview]",
+        );
+        const video = preview?.querySelector("video");
+        if (!video) {
+          return;
+        }
+        video.defaultMuted = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+        setStylePreviewLoading(video, true);
+        detach(video.play(), Reason.DomCallback);
+      }}
+    >
+      <span className="grid size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:hidden">
+        <Play size={20} fill="currentColor" />
+      </span>
+      <span className="hidden size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:grid">
+        <Loader2 size={20} className="animate-spin" />
+      </span>
+    </button>
+  );
+}
+
 function StyleCard({
   selected,
   style,
@@ -392,44 +507,41 @@ function StyleCard({
 }) {
   const { t } = useTranslation();
   return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      aria-label={`${t(($) => {
-        return $.chat.introVideo.style.heading;
-      })}: ${style.name}`}
-      className={cn(
-        "group relative min-w-0 overflow-hidden rounded-xl border bg-card text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "border-primary" : "border-border",
-      )}
-      onClick={onSelect}
+    <div
+      data-intro-video-style-preview=""
+      data-preview-playing="false"
+      data-loading="false"
+      className="group/style-preview relative min-w-0 transition-transform hover:-translate-y-0.5"
     >
-      <div className="aspect-video overflow-hidden bg-muted">
-        {style.thumbnailUrl ? (
-          <img
-            src={style.thumbnailUrl}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-          />
-        ) : (
-          <span className="grid h-full place-items-center text-muted-foreground">
-            <LayoutTemplate size={28} />
-          </span>
+      <button
+        type="button"
+        aria-pressed={selected}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.selectStyle;
+          },
+          { style: style.name },
         )}
-      </div>
-      <div className="flex min-h-12 items-center gap-2 px-3 py-2.5">
-        <strong className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {style.name}
-        </strong>
-        {selected ? (
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-            <Check size={12} />
-          </span>
-        ) : null}
-      </div>
-    </button>
+        className={cn(
+          "group w-full min-w-0 overflow-hidden rounded-xl border bg-card text-left transition-all hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          selected ? "border-primary" : "border-border",
+        )}
+        onClick={onSelect}
+      >
+        <StyleCardMedia style={style} />
+        <div className="flex min-h-11 items-center gap-2 px-2.5 py-2 sm:min-h-12 sm:px-3 sm:py-2.5">
+          <strong className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            {style.name}
+          </strong>
+          {selected ? (
+            <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+              <Check size={12} />
+            </span>
+          ) : null}
+        </div>
+      </button>
+      <StylePreviewControl style={style} />
+    </div>
   );
 }
 
@@ -510,7 +622,7 @@ function StylePicker() {
   };
   return (
     <div className="grid gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
         <UtilityOption
           title={t(($) => {
             return $.chat.introVideo.style.auto;
@@ -553,7 +665,7 @@ function StylePicker() {
           })}
         </CatalogMessage>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
           {visible.items.map((style) => {
             return (
               <StyleCard
@@ -620,7 +732,7 @@ function AvatarPicker() {
   };
   return (
     <div className="grid gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
         <UtilityOption
           title={t(($) => {
             return $.chat.introVideo.avatar.auto;
@@ -663,7 +775,7 @@ function AvatarPicker() {
           })}
         </CatalogMessage>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
           {visible.items.map((avatar) => {
             return (
               <AvatarCard
@@ -726,7 +838,7 @@ function VoicePicker({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
           <UtilityOption
             title={t(($) => {
               return $.chat.introVideo.voice.default;
@@ -853,14 +965,16 @@ function PickerDialog({
         }
       }}
     >
-      <DialogContent className="okou-app flex h-[min(82vh,720px)] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:px-6">
+      <DialogContent className="okou-app flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:h-[min(82vh,720px)] sm:w-[calc(100vw-2rem)]">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left sm:px-6 sm:py-4 sm:pr-14">
           <DialogTitle className="text-base font-semibold">
             {copy.title}
           </DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
+          <DialogDescription className="text-xs leading-5 sm:text-sm">
+            {copy.description}
+          </DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5 sm:p-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6">
           {picker === "style" ? <StylePicker /> : null}
           {picker === "avatar" ? <AvatarPicker /> : null}
           {picker === "voice" ? (
@@ -899,9 +1013,9 @@ function IntroVideoFormFields({
   const setInstructions = useSet(introVideoWizardSignals.setInstructions$);
   const setPicker = useSet(introVideoWizardSignals.setPicker$);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-background px-5 py-6 sm:px-6">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-6">
       <div className="mx-auto w-full max-w-3xl">
-        <h3 className="text-xl font-semibold tracking-tight text-foreground">
+        <h3 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
           {t(($) => {
             return $.chat.introVideo.heading;
           })}
@@ -911,10 +1025,10 @@ function IntroVideoFormFields({
             return $.chat.introVideo.help;
           })}
         </p>
-        <div className="mt-5">
+        <div className="mt-4 sm:mt-5">
           <FileDropzone composer={composer} sources={sources} />
         </div>
-        <label className="mt-5 block">
+        <label className="mt-4 block sm:mt-5">
           <span className="mb-2 block text-sm font-medium text-foreground">
             {t(($) => {
               return $.chat.introVideo.prompt.label;
@@ -932,7 +1046,7 @@ function IntroVideoFormFields({
             }}
           />
         </label>
-        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-2.5">
           <SettingTrigger
             label={t(($) => {
               return $.chat.introVideo.style.label;
@@ -984,7 +1098,7 @@ function IntroVideoFooter({
   const submit = useSet(introVideoWizardSignals.submit$);
   const canSubmit = sources.length > 0 || instructions.trim().length > 0;
   return (
-    <footer className="shrink-0 border-t border-border bg-card px-5 py-3.5 sm:px-6">
+    <footer className="shrink-0 border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-3.5">
       {error ? (
         <div className="mb-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorCopy(t, error)}
@@ -996,13 +1110,20 @@ function IntroVideoFooter({
             return $.chat.introVideo.footer.hint;
           })}
         </span>
-        <Button type="button" variant="outline" disabled={busy} onClick={close}>
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1 sm:flex-none"
+          disabled={busy}
+          onClick={close}
+        >
           {t(($) => {
             return $.chat.introVideo.footer.cancel;
           })}
         </Button>
         <Button
           type="button"
+          className="flex-1 sm:flex-none"
           disabled={busy || !canSubmit}
           onClick={() => {
             detach(
@@ -1046,9 +1167,9 @@ export function IntroVideoWizard({
       >
         <DialogContent
           aria-describedby="intro-video-description"
-          className="okou-app flex h-[min(88vh,760px)] w-[calc(100vw-1.5rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 [&>button]:right-4 [&>button]:top-4"
+          className="okou-app flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:h-[min(88vh,760px)] sm:w-[calc(100vw-1.5rem)] [&>button]:right-3 [&>button]:top-3 sm:[&>button]:right-4 sm:[&>button]:top-4"
         >
-          <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:px-6">
+          <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left sm:px-6 sm:py-4 sm:pr-14">
             <div className="flex items-center gap-2.5">
               <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
                 <Clapperboard size={18} />

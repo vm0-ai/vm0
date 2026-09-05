@@ -158,10 +158,24 @@ function requiredButtonNamed(
 }
 
 async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(requiredButtonNamed("Video style: Auto · Okou decides"));
+  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
     name: "Choose a video style",
   });
+  const preview = within(picker).getByLabelText(
+    "Play video template preview Thriller",
+  );
+  expect(preview).toBeVisible();
+  const video = picker.querySelector<HTMLVideoElement>(
+    'video[src="https://files.heygen.test/thriller.mp4"]',
+  );
+  expect(video).not.toBeNull();
+  expect(video).toHaveAttribute(
+    "poster",
+    "https://files.heygen.test/thriller.jpg",
+  );
+  expect(video).toHaveAttribute("preload", "none");
+  expect(video).toHaveAttribute("playsinline");
   await user.click(within(picker).getByLabelText("Select style Thriller"));
 }
 
@@ -171,7 +185,7 @@ async function chooseAvatar(user: ReturnType<typeof userEvent.setup>) {
     name: "Choose an avatar",
   });
   await user.click(
-    within(picker).getByLabelText("Select avatar Daphne in Grey blazer"),
+    within(picker).getByLabelText("Choose an avatar: Daphne in Grey blazer"),
   );
 }
 

@@ -1995,13 +1995,13 @@
         "remove": "Remove {{filename}}"
       },
       "style": {
-        "auto": "Auto · Okou decides",
-        "autoDescription": "Match the style to your goal and material",
+        "auto": "Let Okou choose",
+        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
         "heading": "Choose a video style",
-        "help": "Pick a public HeyGen Video Agent style, use no style, or let Okou decide.",
+        "help": "Preview a public HeyGen video style, create without one, or let Okou choose.",
         "label": "Video style",
-        "none": "No template",
-        "noneDescription": "Use a clean composition without a HeyGen style"
+        "none": "No video style",
+        "noneDescription": "Create without a preset HeyGen visual style"
       },
       "title": "Create an intro video",
       "voice": {
