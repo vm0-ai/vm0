@@ -15,6 +15,32 @@ public final class HelperProcess {
     let continuation: CheckedContinuation<JSON, any Error>
     let deadline: Task<Void, Never>
   }
+  private struct Response: Decodable {
+    enum Status: String, Decodable { case succeeded, failed }
+    struct Failure: Decodable {
+      let code: String
+      let message: String
+    }
+    let id: String
+    let status: Status
+    let result: [String: JSON]?
+    let error: Failure?
+
+    func outcome() throws -> Result<JSON, any Error> {
+      switch status {
+      case .succeeded:
+        guard let result else {
+          throw DesktopFailure("helper_protocol", "The helper omitted its result")
+        }
+        return .success(.object(result))
+      case .failed:
+        guard let error, !error.code.isEmpty, !error.message.isEmpty else {
+          throw DesktopFailure("helper_protocol", "The helper omitted its failure details")
+        }
+        return .failure(DesktopFailure(error.code, error.message))
+      }
+    }
+  }
   private var pending: [String: Pending] = [:]
   public private(set) var generation = 0
 
@@ -104,19 +130,16 @@ public final class HelperProcess {
       buffer.removeSubrange(...newline)
       if line.isEmpty { continue }
       do {
-        let response = try JSON.decode(line)
-        guard let id = response["id"].string, let request = pending.removeValue(forKey: id) else {
+        let response = try JSONDecoder().decode(Response.self, from: line)
+        guard let request = pending[response.id] else {
           throw DesktopFailure("helper_protocol", "Native helper returned an unknown request ID")
         }
+        // Validate the frame before removing its continuation. A malformed
+        // response must reject every pending request rather than strand one.
+        let outcome = try response.outcome()
+        pending.removeValue(forKey: response.id)
         request.deadline.cancel()
-        if response["status"].string == "succeeded" {
-          request.continuation.resume(returning: response["result"])
-        } else {
-          request.continuation.resume(
-            throwing: DesktopFailure(
-              response["error"]["code"].string ?? "helper_unavailable",
-              response["error"]["message"].string ?? "Native helper command failed"))
-        }
+        request.continuation.resume(with: outcome)
       } catch {
         close(error: error)
         return

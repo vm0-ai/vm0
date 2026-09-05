@@ -16,6 +16,17 @@ final class ScreenRecorder: ObservableObject {
   private var sessionID: String?
   private var recording: JSON?
   private var pollTask: Task<Void, Never>?
+
+  private struct RecorderState: Decodable {
+    enum Status: String, Decodable { case ready, recording, paused, stopped, discarded, failed }
+    struct Failure: Decodable {
+      let code: String
+      let message: String
+    }
+    let status: Status
+    let elapsedMs: Double
+    let error: Failure?
+  }
   var onChange: @MainActor () -> Void = {}
   var available = false
   var capturing: Bool { ["recording", "paused"].contains(status) }
@@ -168,12 +179,12 @@ final class ScreenRecorder: ObservableObject {
       var url = URLComponents(url: api.configuration.platformURL, resolvingAgainstBaseURL: false)!
       url.path = "/"
       url.queryItems = [
-        .init(name: "intro-video-recording", value: video["id"].string),
-        .init(name: "intro-video-recording-name", value: video["name"].string),
-        .init(name: "intro-video-recording-size", value: String(Int(video["size"].number ?? 0))),
-        .init(name: "intro-video-clicks", value: clicks["id"].string),
-        .init(name: "intro-video-clicks-name", value: clicks["name"].string),
-        .init(name: "intro-video-clicks-size", value: String(Int(clicks["size"].number ?? 0))),
+        .init(name: "intro-video-recording", value: video.id),
+        .init(name: "intro-video-recording-name", value: video.name),
+        .init(name: "intro-video-recording-size", value: String(video.size)),
+        .init(name: "intro-video-clicks", value: clicks.id),
+        .init(name: "intro-video-clicks-name", value: clicks.name),
+        .init(name: "intro-video-clicks-size", value: String(clicks.size)),
         .init(name: "intro-video-user", value: userID),
       ]
       NSWorkspace.shared.open(url.url!)
@@ -197,13 +208,26 @@ final class ScreenRecorder: ObservableObject {
     while !Task.isCancelled, capturing, let sessionID {
       do {
         try await Task.sleep(for: .seconds(1))
-        let state = try await request("state", .object(["sessionId": .string(sessionID)]))
-        elapsed = (state["elapsedMs"].number ?? 0) / 1000
+        let response = try await request("state", .object(["sessionId": .string(sessionID)]))
+        let state = try JSONDecoder().decode(RecorderState.self, from: response.encoded())
+        guard state.elapsedMs.isFinite, state.elapsedMs >= 0 else {
+          throw DesktopFailure("helper_protocol", "The recorder returned an invalid elapsed time")
+        }
+        elapsed = state.elapsedMs / 1000
         onChange()
-        if ["failed", "stopped"].contains(state["status"].string ?? "") {
-          let failed = state["status"].string == "failed"
+        if state.status == .failed || state.status == .stopped {
+          let failed = state.status == .failed
+          let failure: String?
+          if failed {
+            guard let message = state.error?.message, !message.isEmpty else {
+              throw DesktopFailure("helper_protocol", "The recorder omitted its failure reason")
+            }
+            failure = message
+          } else {
+            failure = nil
+          }
           try await collect(sessionID, deliver: !failed)
-          if failed { error = state["error"]["message"].string ?? "Recording source was lost" }
+          if let failure { error = failure }
           onChange()
           return
         }

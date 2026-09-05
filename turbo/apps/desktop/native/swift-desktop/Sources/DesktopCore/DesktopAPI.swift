@@ -12,6 +12,12 @@ public struct DesktopHTTPError: Error, LocalizedError, Sendable {
   public var retryable: Bool { status == 408 || status == 429 || status >= 500 }
 }
 
+public struct DesktopUploadedFile: Sendable {
+  public let id: String
+  public let name: String
+  public let size: Int64
+}
+
 @MainActor
 public final class DesktopAPI {
   public let configuration: DesktopConfiguration
@@ -67,23 +73,33 @@ public final class DesktopAPI {
     return data.isEmpty ? .object([:]) : try JSON.decode(data)
   }
 
-  public func upload(file: URL, contentType: String) async throws -> JSON {
+  private struct PreparedUpload: Decodable {
+    let id: String
+    let uploadUrl: URL
+    let uploadHeaders: [String: String]
+  }
+
+  public func upload(file: URL, contentType: String) async throws -> DesktopUploadedFile {
     let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
     guard let size = attributes[.size] as? NSNumber else {
       throw DesktopFailure("upload", "Could not read recording size")
     }
-    let prepared = try await request(
+    let preparation = try await request(
       "api/uploads/prepare", method: "POST",
       body: .object([
         "filename": .string(file.lastPathComponent), "contentType": .string(contentType),
         "size": .number(size.doubleValue),
       ]))
-    guard let url = URL(string: try prepared.requireString("uploadUrl")), url.scheme == "https"
+    let prepared = try JSONDecoder().decode(PreparedUpload.self, from: preparation.encoded())
+    guard UUID(uuidString: prepared.id) != nil else {
+      throw DesktopFailure("upload", "Upload preparation returned an invalid file identity")
+    }
+    guard prepared.uploadUrl.scheme == "https"
     else { throw DesktopFailure("upload", "Upload URL must use HTTPS") }
-    var upload = URLRequest(url: url, timeoutInterval: 600)
+    var upload = URLRequest(url: prepared.uploadUrl, timeoutInterval: 600)
     upload.httpMethod = "PUT"
-    for (key, value) in prepared["uploadHeaders"].object ?? [:] {
-      upload.setValue(value.string, forHTTPHeaderField: key)
+    for (key, value) in prepared.uploadHeaders {
+      upload.setValue(value, forHTTPHeaderField: key)
     }
     // Storage requests use a separate, cookie-free session and never carry
     // the API bearer. URLSession streams the recording from disk.
@@ -95,12 +111,10 @@ public final class DesktopAPI {
     let (_, response) = try await storage.upload(for: upload, fromFile: file)
     guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode)
     else { throw DesktopFailure("upload", "Recording upload failed") }
-    let id = try prepared.requireString("id")
+    let id = prepared.id
     _ = try await request(
       "api/uploads/complete", method: "POST",
       body: .object(["id": .string(id), "contentType": .string(contentType)]))
-    return .object([
-      "id": .string(id), "name": .string(file.lastPathComponent), "size": .number(size.doubleValue),
-    ])
+    return DesktopUploadedFile(id: id, name: file.lastPathComponent, size: size.int64Value)
   }
 }

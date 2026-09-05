@@ -95,6 +95,7 @@ import Testing
       import json,sys,threading
       from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
       from socketserver import TCPServer
+      features_valid=True
       class Handler(BaseHTTPRequestHandler):
           def log_message(self,*args): pass
           def reply(self,data,status=200,content_type='application/json'):
@@ -104,10 +105,15 @@ import Testing
               self.end_headers()
               self.wfile.write(data)
           def do_GET(self):
+              global features_valid
               if self.path.startswith('/desktop-auth/'):
                   self.reply(b'<html><body><script>window.vm0DesktopAuth.completeSignIn({token:"fixture-same-token"});</script></body></html>',content_type='text/html')
               elif self.path=='/api/auth/me': self.reply(b'{"userId":"fixture-user"}')
               elif self.path=='/api/org': self.reply(b'{"id":"fixture-org","name":"Fixture"}')
+              elif self.path=='/api/test/malformed-features': features_valid=False; self.reply(b'{}')
+              elif self.path=='/api/feature-switches':
+                  flags={'_debug':True,'computerUseDesktopPlugins':True,'introVideo':True}
+                  self.reply(json.dumps({'effectiveSwitches':flags,'switches':{}} if features_valid else {'switches':flags}).encode())
               else: self.reply(b'',405)
           def do_DELETE(self): self.reply(b'',204)
           def do_POST(self):
@@ -211,6 +217,28 @@ import Testing
     try await recorder.deliver()
     #expect(recorder.status == "ready")
     try await recorder.shutdown()
+    let helperPath = directory.appendingPathComponent("computer-use-helper")
+    let permissionScript = """
+      #!/usr/bin/env python3
+      import json,sys
+      for line in sys.stdin:
+          request=json.loads(line)
+          print(json.dumps({'id':request['id'],'status':'succeeded','result':{'accessibility':True,'screenRecording':True}}),flush=True)
+      """
+    try Data(permissionScript.utf8).write(to: helperPath)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperPath.path)
+    let desktop = try DesktopModel(
+      configuration: configuration, directory: directory, helperDirectory: directory)
+    try await desktop.refresh()
+    #expect(desktop.pluginsAvailable && desktop.debugAvailable && desktop.recorder.available)
+    desktop.debugEnabled = true
+    _ = try await api.request("api/test/malformed-features")
+    // A malformed account-scoped response must not activate privileged
+    // capabilities from the raw overrides instead of effective permissions.
+    await #expect(throws: DecodingError.self) { try await desktop.refresh() }
+    #expect(!desktop.pluginsAvailable && !desktop.debugAvailable && !desktop.recorder.available)
+    #expect(!desktop.debugEnabled)
+    try await desktop.shutdown()
     try await auth.signOut()
     #expect(!auth.signedIn)
     #expect(try await auth.getToken(force: false) == nil)

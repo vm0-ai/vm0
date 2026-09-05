@@ -92,7 +92,7 @@ import Testing
     await host.stop()
     if permissionFailure {
       #expect(completion["body"]["status"].string == "failed")
-      #expect(completion["body"]["error"]["code"].string == "helper_unavailable")
+      #expect(completion["body"]["error"]["code"].string == "accessibility_unavailable")
     } else {
       #expect(completion["body"]["status"].string == "succeeded")
       #expect(completion["body"]["result"]["apps"].array.first?["name"].string == "Notes")

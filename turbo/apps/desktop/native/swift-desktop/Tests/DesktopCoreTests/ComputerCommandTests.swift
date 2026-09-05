@@ -3,6 +3,26 @@ import Foundation
 import Testing
 
 @Suite struct ComputerCommandTests {
+  @Test(arguments: ["target_app_unresponsive", "browser_navigation_failed"]) @MainActor
+  func helperLocalErrorsUseTheExistingApiFailureCode(code: String) async throws {
+    let script = """
+      import json,sys
+      for line in sys.stdin:
+          request=json.loads(line)
+          print(json.dumps({'id':request['id'],'status':'failed','error':{'code':sys.argv[1],'message':'Native target failed'}}),flush=True)
+      """
+    let helper = HelperProcess(
+      executable: URL(fileURLWithPath: "/usr/bin/env"),
+      arguments: ["python3", "-u", "-c", script, code])
+    defer { helper.close() }
+    let response = await ComputerCommands(helper: helper).execute(
+      .object(["kind": .string("app.open"), "payload": .object(["app": .string("Notes")])]),
+      permissions: .object(["accessibility": .bool(true), "screenRecording": .bool(true)]))
+    #expect(response["status"].string == "failed")
+    #expect(response["error"]["code"].string == "accessibility_unavailable")
+    #expect(response["error"]["message"].string == "Native target failed")
+  }
+
   @Test @MainActor func commandsPreserveSnapshotTargetsAndPostActionState() async throws {
     let script = """
       import json,sys

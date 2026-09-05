@@ -3,6 +3,25 @@ import Foundation
 import Testing
 
 @Suite struct DesktopIntegrationTests {
+  @Test @MainActor func malformedHelperRepliesRejectTheirRequestAndAllowRestart() async throws {
+    let script = """
+      import json,sys
+      for line in sys.stdin:
+          request=json.loads(line)
+          if request['kind']=='malformed': response={'id':request['id'],'status':'failed','error':{'message':'Missing code'}}
+          else: response={'id':request['id'],'status':'succeeded','result':{'accessibility':True}}
+          print(json.dumps(response),flush=True)
+      """
+    let helper = HelperProcess(
+      executable: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["python3", "-u", "-c", script])
+    defer { helper.close() }
+    _ = try await helper.request("permissions.state")
+    let before = helper.generation
+    await #expect(throws: DecodingError.self) { try await helper.request("malformed") }
+    #expect(try await helper.request("permissions.state")["accessibility"].bool)
+    #expect(helper.generation > before)
+  }
+
   @Test @MainActor func preferenceRoundTripPreservesExistingInstallation() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }

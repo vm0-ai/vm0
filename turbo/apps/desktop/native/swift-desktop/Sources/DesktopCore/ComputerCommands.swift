@@ -164,7 +164,16 @@ public final class ComputerCommands {
       var result = try await appState(app, settle: true)
       result["action"] = action
       return .success(result)
-    } catch let failure as DesktopFailure { return failure.response } catch {
+    } catch let failure as DesktopFailure {
+      switch failure.code {
+      case "target_app_unresponsive", "browser_navigation_failed", "helper_unavailable",
+        "helper_protocol":
+        // These helper-local failures map to the existing public Desktop API
+        // error category; they are not accepted command-completion wire codes.
+        return DesktopFailure("accessibility_unavailable", failure.message).response
+      default: return failure.response
+      }
+    } catch {
       return DesktopFailure("accessibility_unavailable", error.localizedDescription).response
     }
   }

@@ -26,6 +26,10 @@ final class DesktopModel: ObservableObject {
   var onChange: @MainActor () -> Void = {}
   private let filesystem = FilesystemTools()
 
+  private struct FeatureSwitches: Decodable {
+    let effectiveSwitches: [String: Bool]
+  }
+
   init(configuration: DesktopConfiguration, directory: URL, helperDirectory: URL) throws {
     self.configuration = configuration
     preferences = try DesktopPreferences(directory: directory)
@@ -143,12 +147,12 @@ final class DesktopModel: ObservableObject {
   private func refreshFeatures() async throws {
     do {
       let body = try await api.request("api/feature-switches")
-      let switches =
-        body["effectiveSwitches"].object == nil ? body["switches"] : body["effectiveSwitches"]
-      pluginsAvailable = switches["computerUseDesktopPlugins"].bool
-      debugAvailable = switches["_debug"].bool
+      let switches = try JSONDecoder().decode(FeatureSwitches.self, from: body.encoded())
+        .effectiveSwitches
+      pluginsAvailable = switches["computerUseDesktopPlugins"] == true
+      debugAvailable = switches["_debug"] == true
       if !debugAvailable { debugEnabled = false }
-      let recordingEnabled = switches["introVideo"].bool
+      let recordingEnabled = switches["introVideo"] == true
       if recorder.available && !recordingEnabled { try await recorder.shutdown() }
       recorder.available = recordingEnabled
     } catch {
