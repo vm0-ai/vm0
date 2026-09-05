@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.843.2](https://github.com/vm0-ai/vm0/compare/app-v0.843.1...app-v0.843.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* open the sidebar chat menu from the row state indicator ([#31831](https://github.com/vm0-ai/vm0/issues/31831)) ([65a0a31](https://github.com/vm0-ai/vm0/commit/65a0a319d53662f14fb701414ae2f9f9f405338d))
+* **platform:** remove shared worker timeouts and automatic reloads ([#31809](https://github.com/vm0-ai/vm0/issues/31809)) ([8cbf53e](https://github.com/vm0-ai/vm0/commit/8cbf53e0829416e6e606f33ae4213da71011a1fa))
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+* **platform:** rename data-vm0-* dom attributes to data-okou-* ([#31821](https://github.com/vm0-ai/vm0/issues/31821)) ([5555a53](https://github.com/vm0-ai/vm0/commit/5555a535cd2ffed1d2fdf9d79c315e5756c554e3))
+* **platform:** roll out base ui sidebar scroll area ([#31822](https://github.com/vm0-ai/vm0/issues/31822)) ([eae726c](https://github.com/vm0-ai/vm0/commit/eae726c7761929845a30c58286dd8a28af3f0622))
+* **platform:** roll out markdown hex color previews ([#31826](https://github.com/vm0-ai/vm0/issues/31826)) ([82f7578](https://github.com/vm0-ai/vm0/commit/82f7578886827deb17f678c0e90c7d7d977ebee2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+    * @okouai/core bumped to 8.623.2
+
 ## [0.843.1](https://github.com/vm0-ai/vm0/compare/app-v0.843.0...app-v0.843.1) (2026-09-05)
 
 
