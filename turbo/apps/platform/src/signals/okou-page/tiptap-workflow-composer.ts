@@ -58,6 +58,7 @@ import {
   splitAgentMentionSegments,
   type ComposerAgentSuggestion,
 } from "./composer-agent-suggestion-domain.ts";
+import { avatarNeckSweaterEnabled$ } from "../external/feature-switch.ts";
 import {
   agentMentionText,
   createAgentMentionAvatarRuntime,
@@ -2360,6 +2361,7 @@ function createSyncAgentMentionAvatarsCommand(
   return command(async ({ get }, signal: AbortSignal): Promise<void> => {
     const agents = await get(agents$);
     signal.throwIfAborted();
+    avatarRuntime.setNeckSweaterEnabled(get(avatarNeckSweaterEnabled$));
     avatarRuntime.replaceAgents(agents);
   });
 }

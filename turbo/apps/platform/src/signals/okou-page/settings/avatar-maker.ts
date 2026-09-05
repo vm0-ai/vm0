@@ -14,14 +14,18 @@ import {
   type ResolvedAvatarSvgConfig,
 } from "../../../views/okou-page/avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "../../../views/okou-page/avatar-utils.ts";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
+import {
+  avatarNeckSweaterEnabled$,
+  featureSwitch$,
+} from "../../external/feature-switch.ts";
 
 export type ComposerStep =
   | "face"
   | "hair"
   | "expression"
   | "skin"
-  | "hairColor";
+  | "hairColor"
+  | "sweater";
 export type LegacyStep =
   | "rotation"
   | "skin"
@@ -80,10 +84,14 @@ const LEGACY_AVATAR_MAKER_STEPS: readonly Step[] = [
   "intensity",
 ];
 
-function stepsForConfig(config: ResolvedAvatarSvgConfig): readonly Step[] {
-  return isLegacyAvatarSvgConfig(config)
-    ? LEGACY_AVATAR_MAKER_STEPS
-    : AVATAR_MAKER_STEPS;
+function stepsForConfig(
+  config: ResolvedAvatarSvgConfig,
+  neckSweater: boolean,
+): readonly Step[] {
+  if (isLegacyAvatarSvgConfig(config)) {
+    return LEGACY_AVATAR_MAKER_STEPS;
+  }
+  return neckSweater ? [...AVATAR_MAKER_STEPS, "sweater"] : AVATAR_MAKER_STEPS;
 }
 
 function updateLegacyConfig(
@@ -134,7 +142,7 @@ export const avatarMakerEditing$ = computed((get) => {
 });
 
 export const avatarMakerSteps$ = computed((get) => {
-  return stepsForConfig(get(internalConfig$));
+  return stepsForConfig(get(internalConfig$), get(avatarNeckSweaterEnabled$));
 });
 
 export const avatarMakerStepIdx$ = computed((get) => {
@@ -198,7 +206,10 @@ export const openAvatarMaker$ = command(
         ? randomAvatarSvgConfig()
         : randomLegacyAvatarSvgConfig());
     set(internalConfig$, config);
-    set(internalStep$, stepsForConfig(config)[0]!);
+    set(
+      internalStep$,
+      stepsForConfig(config, get(avatarNeckSweaterEnabled$))[0]!,
+    );
     set(internalEditing$, current !== null);
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
@@ -232,7 +243,7 @@ export const selectAvatarOption$ = command(
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
 
-    const steps = stepsForConfig(previous);
+    const steps = stepsForConfig(previous, get(avatarNeckSweaterEnabled$));
     const idx = steps.indexOf(selection.field);
     if (idx + 1 < steps.length) {
       set(internalStep$, steps[idx + 1]!);

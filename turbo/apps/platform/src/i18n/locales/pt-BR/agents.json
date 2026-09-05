@@ -53,7 +53,8 @@
       "face": "Rosto",
       "hair": "Cabelo",
       "mood": "Humor",
-      "skin": "Pele"
+      "skin": "Pele",
+      "sweater": "Suéter"
     },
     "title": "Dê um rosto ao seu agente",
     "use": "Usar este avatar"

@@ -53,7 +53,8 @@
       "face": "Viso",
       "hair": "Capelli",
       "mood": "Umore",
-      "skin": "Pelle"
+      "skin": "Pelle",
+      "sweater": "Maglione"
     },
     "title": "Dai un volto al tuo agente",
     "use": "Usa questo avatar"
