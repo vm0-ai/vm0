@@ -109,6 +109,24 @@ import Testing
     #expect(plugins.capabilities.isEmpty)
   }
 
+  @MainActor private func waitForRecorderTick(_ recorder: ScreenRecorder, after elapsed: Double)
+    async throws
+  {
+    let (events, continuation) = AsyncStream<Double>.makeStream()
+    recorder.onChange = { continuation.yield(recorder.elapsed) }
+    let deadline = Task {
+      do { try await Task.sleep(for: .seconds(10)) } catch { return }
+      continuation.finish()
+    }
+    defer {
+      deadline.cancel()
+      continuation.finish()
+      recorder.onChange = {}
+    }
+    for await value in events { if value > elapsed { return } }
+    throw DesktopFailure("test_timeout", "Recording polling did not recover after a failed control")
+  }
+
   @Test @MainActor func httpMcpAndWebKitTokenRefreshUseRealBoundaries() async throws {
     _ = NSApplication.shared
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -189,17 +207,27 @@ import Testing
     #expect(auth.signedIn)
     #expect(auth.organization["id"].string == "fixture-org")
     let recorderScript = """
-      import json,pathlib,sys
+      import json,os,pathlib,sys
       output=None
+      discard_failed=False
+      stop_failed=False
+      stop_malformed=False
+      ticks=0
       for line in sys.stdin:
           request=json.loads(line)
           kind=request['kind']
           payload=request['payload']
+          if (kind=='recorder.discard' and not discard_failed) or (kind=='recorder.stop' and not stop_failed):
+              if kind=='recorder.discard': discard_failed=True
+              else: stop_failed=True
+              print(json.dumps({'id':request['id'],'status':'failed','error':{'code':'capture_failed','message':'Fixture control rejected once'}}),flush=True)
+              continue
           if kind=='recorder.capabilities': result={'supportsMicrophone':True}
           elif kind=='recorder.requestPermission': result={'granted':True}
           elif kind=='recorder.sources': result={'sources':[{'id':'display:1','kind':'display','title':'Fixture display'}]}
           elif kind=='recorder.windowPreviews': result={'previews':[]}
           elif kind=='recorder.prepare':
+              stop_failed=False; stop_malformed=False
               assert payload['sourceKind']=='display' and payload['sourceId']=='display:1'
               assert payload['systemAudio'] and payload['microphone']
               result={'sessionId':'recording-fixture'}
@@ -211,7 +239,12 @@ import Testing
           elif kind=='recorder.stop':
               clicks=output.with_suffix('.json');clicks.write_text('[]')
               result={'videoPath':str(output),'clickTrackPath':str(clicks),'durationMs':1000,'sizeBytes':output.stat().st_size,'width':100,'height':100}
-          elif kind=='recorder.state': result={'status':'recording','elapsedMs':1000}
+              if not stop_malformed:
+                  del result['width']; stop_malformed=True
+          elif kind=='recorder.state':
+              ticks+=1
+              result={'status':'recording','elapsedMs':ticks*1000}
+          elif kind=='test.identity': result={'pid':os.getpid()}
           else: result={}
           print(json.dumps({'id':request['id'],'status':'succeeded','result':result}),flush=True)
       """
@@ -230,6 +263,14 @@ import Testing
     #expect(recorder.status == "paused")
     try await recorder.pauseOrResume()
     #expect(recorder.status == "recording")
+    await #expect(throws: DesktopFailure.self) { try await recorder.discard() }
+    #expect(recorder.status == "recording")
+    try await waitForRecorderTick(recorder, after: recorder.elapsed)
+    await #expect(throws: DesktopFailure.self) { try await recorder.stop() }
+    #expect(recorder.status == "recording")
+    try await waitForRecorderTick(recorder, after: recorder.elapsed)
+    await #expect(throws: DecodingError.self) { try await recorder.stop() }
+    #expect(recorder.status == "recording")
     try await recorder.stop()
     #expect(recorder.status == "ready")
     #expect(recorder.error?.contains("503") == true)
@@ -239,7 +280,15 @@ import Testing
     #expect(recordings.filter { $0.pathExtension == "json" }.count == 1)
     try await recorder.deliver()
     #expect(recorder.status == "ready")
-    try await recorder.shutdown()
+    try await recorder.start(source: source, systemAudio: true, microphone: true)
+    let identity = try await recorderHelper.request(
+      "test.identity", fields: .object(["payload": .object([:])]))
+    let recorderPID = pid_t(try #require(identity["pid"].number))
+    recorder.available = false
+    await #expect(throws: DesktopFailure.self) { try await recorder.shutdown(force: true) }
+    #expect(!recorder.capturing)
+    #expect(kill(recorderPID, 0) == -1)
+    #expect(errno == ESRCH)
     let helperPath = directory.appendingPathComponent("computer-use-helper")
     let permissionScript = """
       #!/usr/bin/env python3

@@ -153,16 +153,18 @@ final class DesktopModel: ObservableObject {
       debugAvailable = switches["_debug"] == true
       if !debugAvailable { debugEnabled = false }
       let recordingEnabled = switches["introVideo"] == true
-      if recorder.available && !recordingEnabled { try await recorder.shutdown() }
+      let wasRecordingEnabled = recorder.available
       recorder.available = recordingEnabled
+      if wasRecordingEnabled && !recordingEnabled { try await recorder.shutdown(force: true) }
     } catch {
       pluginsAvailable = false
       debugAvailable = false
       debugEnabled = false
-      if recorder.available {
-        do { try await recorder.shutdown() } catch { report(error) }
-      }
+      let wasRecordingEnabled = recorder.available
       recorder.available = false
+      if wasRecordingEnabled {
+        do { try await recorder.shutdown(force: true) } catch { report(error) }
+      }
       mcp.setContext(available: false, online: false)
       throw error
     }

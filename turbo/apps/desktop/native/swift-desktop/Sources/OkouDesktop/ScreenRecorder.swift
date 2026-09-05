@@ -16,6 +16,8 @@ final class ScreenRecorder: ObservableObject {
   private var sessionID: String?
   private var recording: JSON?
   private var pollTask: Task<Void, Never>?
+  private var control: (id: UUID, task: Task<Void, any Error>)?
+  private var teardown: (id: UUID, task: Task<Void, any Error>)?
 
   private struct RecorderState: Decodable {
     enum Status: String, Decodable { case ready, recording, paused, stopped, discarded, failed }
@@ -26,6 +28,15 @@ final class ScreenRecorder: ObservableObject {
     let status: Status
     let elapsedMs: Double
     let error: Failure?
+  }
+  private struct RecordingOutput: Decodable {
+    let videoPath: String
+    let clickTrackPath: String
+    let durationMs: Int
+    let sizeBytes: Int64
+    let width: Int
+    let height: Int
+    let failure: RecorderState.Failure?
   }
   var onChange: @MainActor () -> Void = {}
   var available = false
@@ -68,19 +79,41 @@ final class ScreenRecorder: ObservableObject {
     }
   }
 
+  private func performControl(_ operation: @escaping @MainActor () async throws -> Void)
+    async throws
+  {
+    guard control == nil, teardown == nil else { return }
+    let id = UUID()
+    let task = Task { try await operation() }
+    control = (id, task)
+    defer { if control?.id == id { control = nil } }
+    try await task.value
+  }
+
   func start(source: JSON, systemAudio: Bool, microphone: Bool, area: JSON? = nil) async throws {
+    try await performControl {
+      try await self.startCapture(
+        source: source, systemAudio: systemAudio, microphone: microphone, area: area)
+    }
+  }
+
+  private func startCapture(source: JSON, systemAudio: Bool, microphone: Bool, area: JSON?)
+    async throws
+  {
     guard available, !busy else {
       throw DesktopFailure("capture_failed", "A recording is already in progress or unavailable")
-    }
-    try await auth.refreshIdentity(api: api)
-    guard auth.signedIn, auth.organization["id"].string != nil else {
-      throw DesktopFailure("signed_out", "Sign in and select a workspace before recording")
     }
     recording = nil
     status = "preparing"
     error = nil
     onChange()
     do {
+      try await auth.refreshIdentity(api: api)
+      try Task.checkCancellation()
+      guard available else { throw CancellationError() }
+      guard auth.signedIn, auth.organization["id"].string != nil else {
+        throw DesktopFailure("signed_out", "Sign in and select a workspace before recording")
+      }
       var payload: JSON = .object([
         "sourceId": source["id"], "sourceKind": area == nil ? source["kind"] : .string("area"),
         "systemAudio": .bool(systemAudio), "microphone": .bool(microphone && microphoneSupported),
@@ -88,6 +121,7 @@ final class ScreenRecorder: ObservableObject {
       if let area { payload["area"] = area }
       let prepared = try await request("prepare", payload)
       sessionID = try prepared.requireString("sessionId")
+      try Task.checkCancellation()
       let directory = preferences.directory.appendingPathComponent("recordings")
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       let output = directory.appendingPathComponent("screen-recording-\(UUID().uuidString).mp4")
@@ -98,7 +132,7 @@ final class ScreenRecorder: ObservableObject {
       onChange()
       pollTask = Task { [weak self] in await self?.poll() }
     } catch {
-      helper.close()
+      await helper.stop()
       sessionID = nil
       status = "idle"
       self.error = error.localizedDescription
@@ -107,7 +141,9 @@ final class ScreenRecorder: ObservableObject {
     }
   }
 
-  func pauseOrResume() async throws {
+  func pauseOrResume() async throws { try await performControl { try await self.changePause() } }
+
+  private func changePause() async throws {
     guard let sessionID, capturing else { return }
     let pause = status == "recording"
     _ = try await request(pause ? "pause" : "resume", .object(["sessionId": .string(sessionID)]))
@@ -115,7 +151,9 @@ final class ScreenRecorder: ObservableObject {
     onChange()
   }
 
-  func stop() async throws {
+  func stop() async throws { try await performControl { try await self.stopCapture() } }
+
+  private func stopCapture() async throws {
     guard let sessionID, capturing else { return }
     pollTask?.cancel()
     await pollTask?.value
@@ -137,7 +175,15 @@ final class ScreenRecorder: ObservableObject {
   }
 
   private func collect(_ sessionID: String, deliver: Bool) async throws {
-    recording = try await request("stop", .object(["sessionId": .string(sessionID)]), timeout: 120)
+    let response = try await request(
+      "stop", .object(["sessionId": .string(sessionID)]), timeout: 120)
+    let output = try JSONDecoder().decode(RecordingOutput.self, from: response.encoded())
+    guard output.videoPath.hasPrefix("/"), output.clickTrackPath.hasPrefix("/"),
+      output.durationMs >= 0, output.sizeBytes >= 0, output.width > 0, output.height > 0
+    else {
+      throw DesktopFailure("helper_protocol", "The recorder returned invalid recording metadata")
+    }
+    recording = response
     self.sessionID = nil
     status = "ready"
     if let message = recording?["failure"]["message"].string {
@@ -146,24 +192,39 @@ final class ScreenRecorder: ObservableObject {
       return
     }
     onChange()
-    if deliver { try await self.deliver() }
+    if deliver { try await uploadRecording() }
   }
 
-  func discard() async throws {
+  func discard() async throws { try await performControl { try await self.discardCapture() } }
+
+  private func discardCapture() async throws {
+    guard let sessionID, capturing else { return }
+    let previousStatus = status
     pollTask?.cancel()
     await pollTask?.value
     pollTask = nil
-    if let sessionID {
-      _ = try await request("discard", .object(["sessionId": .string(sessionID)]))
-    }
-    self.sessionID = nil
-    recording = nil
-    status = "idle"
-    error = nil
+    status = "discarding"
     onChange()
+    do {
+      _ = try await request("discard", .object(["sessionId": .string(sessionID)]))
+      self.sessionID = nil
+      recording = nil
+      status = "idle"
+      elapsed = 0
+      error = nil
+      onChange()
+    } catch {
+      status = previousStatus
+      self.error = error.localizedDescription
+      pollTask = Task { [weak self] in await self?.poll() }
+      onChange()
+      throw error
+    }
   }
 
-  func deliver() async throws {
+  func deliver() async throws { try await performControl { try await self.uploadRecording() } }
+
+  private func uploadRecording() async throws {
     guard let recording else { return }
     status = "delivering"
     error = nil
@@ -209,6 +270,7 @@ final class ScreenRecorder: ObservableObject {
       do {
         try await Task.sleep(for: .seconds(1))
         let response = try await request("state", .object(["sessionId": .string(sessionID)]))
+        guard !Task.isCancelled, capturing, self.sessionID == sessionID else { return }
         let state = try JSONDecoder().decode(RecorderState.self, from: response.encoded())
         guard state.elapsedMs.isFinite, state.elapsedMs >= 0 else {
           throw DesktopFailure("helper_protocol", "The recorder returned an invalid elapsed time")
@@ -243,11 +305,45 @@ final class ScreenRecorder: ObservableObject {
     }
   }
 
-  func shutdown() async throws {
+  func shutdown(force: Bool = false) async throws {
+    do { try await shutdownOwnedCapture() } catch {
+      if force {
+        pollTask?.cancel()
+        await pollTask?.value
+        pollTask = nil
+        await helper.stop()
+        sessionID = nil
+        status = recording == nil ? "idle" : "ready"
+        onChange()
+      }
+      throw error
+    }
+  }
+
+  private func shutdownOwnedCapture() async throws {
+    if let teardown { return try await teardown.task.value }
+    let id = UUID()
+    let task = Task { try await self.releaseCapture() }
+    teardown = (id, task)
+    defer { if teardown?.id == id { teardown = nil } }
+    try await task.value
+  }
+
+  private func releaseCapture() async throws {
+    if let control {
+      if status == "preparing" { control.task.cancel() }
+      do { try await control.task.value } catch { self.error = error.localizedDescription }
+      if self.control?.id == control.id { self.control = nil }
+    }
     pollTask?.cancel()
     await pollTask?.value
     pollTask = nil
-    if let sessionID, capturing { try await collect(sessionID, deliver: false) }
-    await helper.stop()
+    do {
+      if let sessionID, capturing { try await collect(sessionID, deliver: false) }
+      await helper.stop()
+    } catch {
+      if capturing { pollTask = Task { [weak self] in await self?.poll() } }
+      throw error
+    }
   }
 }
