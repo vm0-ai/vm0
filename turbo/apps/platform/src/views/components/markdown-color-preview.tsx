@@ -1,11 +1,8 @@
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 
 import { findHexRgbColors } from "../../lib/markdown/hex-rgb-color.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
-function ColorPreview({ color }: { readonly color: string }) {
+export function MarkdownColorPreview({ color }: { readonly color: string }) {
   return (
     <span
       aria-hidden="true"
@@ -16,27 +13,11 @@ function ColorPreview({ color }: { readonly color: string }) {
   );
 }
 
-function useMarkdownColorPreviewEnabled(): boolean {
-  return (
-    useGet(featureSwitch$)[FeatureSwitchKey.MarkdownHexColorPreview] ?? false
-  );
-}
-
-export function MarkdownColorPreview({ color }: { readonly color: string }) {
-  return useMarkdownColorPreviewEnabled() ? (
-    <ColorPreview color={color} />
-  ) : null;
-}
-
 export function MarkdownTextWithColorPreviews({
   text,
 }: {
   readonly text: string;
 }) {
-  const enabled = useMarkdownColorPreviewEnabled();
-  if (!enabled) {
-    return text;
-  }
   const colors = findHexRgbColors(text);
   if (colors.length === 0) {
     return text;
@@ -48,7 +29,7 @@ export function MarkdownTextWithColorPreviews({
     if (start > offset) {
       content.push(text.slice(offset, start));
     }
-    content.push(color, <ColorPreview key={start} color={color} />);
+    content.push(color, <MarkdownColorPreview key={start} color={color} />);
     offset = end;
   }
   if (offset < text.length) {

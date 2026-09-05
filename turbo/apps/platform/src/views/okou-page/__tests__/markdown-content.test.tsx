@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -123,7 +122,6 @@ test("A complete HEX color has a preview in a plain assistant response", async (
     context,
     path: chat.path,
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.MarkdownHexColorPreview]: true },
   });
 
   await waitFor(() => {
@@ -162,7 +160,6 @@ test("Preview exact inline HEX code without decorating linked or partial code", 
     context,
     path: chat.path,
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.MarkdownHexColorPreview]: true },
   });
 
   const brand = await screen.findByText("Brand #112233");
@@ -181,28 +178,6 @@ test("Preview exact inline HEX code without decorating linked or partial code", 
   expect(frame).toHaveTextContent("#AABB");
   expect(frame).toHaveTextContent("shade#DDEEFFtail");
   expect(frame).toHaveTextContent("#123456");
-});
-
-test("HEX colors remain undecorated when previews are unavailable", async () => {
-  const chat = createMarkdownChatFixture(context);
-  const source = "Accent #ABCDEF remains readable.";
-  const rows = completedMessageRows(chat, source);
-  chat.install({
-    rows: () => {
-      return rows;
-    },
-  });
-
-  await setupPage({
-    context,
-    path: chat.path,
-    host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.MarkdownHexColorPreview]: false },
-  });
-
-  const response = await screen.findByText(source);
-  expect(response).toBeVisible();
-  expect(colorPreviews(markdownFrameFor(response))).toHaveLength(0);
 });
 
 test("Fenced code stays readable for known and unknown languages", async () => {
