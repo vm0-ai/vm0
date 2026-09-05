@@ -11,6 +11,9 @@ concurrency:
   group: one-time-publish-presentation-reverse-template-0a52be7
   cancel-in-progress: false
 
+env:
+  npm_config_audit: "false"
+
 jobs:
   verify:
     if: >-
