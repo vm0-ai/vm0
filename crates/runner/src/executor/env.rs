@@ -220,7 +220,10 @@ fn validate_pi_model_config_common(
     model: &str,
     catalog_model: Option<&serde_json::Value>,
 ) -> Result<(), PiModelConfigCommonError> {
-    url::Url::parse(base_url).map_err(|_| PiModelConfigCommonError::InvalidBaseUrl)?;
+    let parsed = url::Url::parse(base_url).map_err(|_| PiModelConfigCommonError::InvalidBaseUrl)?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(PiModelConfigCommonError::InvalidBaseUrl);
+    }
     if model.is_empty() {
         return Err(PiModelConfigCommonError::EmptyModel);
     }
