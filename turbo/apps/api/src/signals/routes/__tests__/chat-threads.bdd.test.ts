@@ -508,7 +508,7 @@ function goalsClient() {
   return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
-function zeroCapabilityHeaders(
+function okouCapabilityHeaders(
   actor: ApiTestUser,
   runId: string,
   capabilities: readonly Capability[],
@@ -535,7 +535,7 @@ function goalHeaders(
   actor: ApiTestUser,
   runId: string,
 ): { readonly authorization: string } {
-  return zeroCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
+  return okouCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
 }
 
 async function createThreadGoal(
@@ -673,14 +673,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const apiClient = setupApp({ context, routes: chatThreadRoutes })(
       chatThreadsContract,
     );
-    const zeroHeaders = zeroCapabilityHeaders(
+    const okouHeaders = okouCapabilityHeaders(
       actor,
       randomUUID(),
       CHAT_THREAD_READ_CAPABILITIES,
     );
 
     const snapshot = await accept(
-      apiClient.snapshot({ headers: zeroHeaders }),
+      apiClient.snapshot({ headers: okouHeaders }),
       [200],
     );
     expect(snapshot.body).toStrictEqual({
@@ -689,7 +689,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: null,
     });
     const events = await accept(
-      apiClient.events({ headers: zeroHeaders, query: {} }),
+      apiClient.events({ headers: okouHeaders, query: {} }),
       [200],
     );
     expect(events.body).toStrictEqual({
@@ -2587,7 +2587,7 @@ describe("CHAT-03 run usage events", () => {
       agentId,
       prompt: "record zero-credit usage",
     });
-    const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
+    const { sandboxHeaders: okouSandboxHeaders } = await claimChatRun(
       runnerGroup,
       agentRun.runId,
     );
@@ -2604,10 +2604,10 @@ describe("CHAT-03 run usage events", () => {
           },
         ],
       },
-      zeroSandboxHeaders,
+      okouSandboxHeaders,
       [200],
     );
-    await completeChatRunOk(agentRun.runId, zeroSandboxHeaders);
+    await completeChatRunOk(agentRun.runId, okouSandboxHeaders);
     await flushWaitUntilForTest();
 
     const [zeroUsageEvent] = await usageEventsForRun(

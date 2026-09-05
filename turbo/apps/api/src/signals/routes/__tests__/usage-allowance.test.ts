@@ -638,7 +638,7 @@ describe("Usage Allowance", () => {
     await api.requestCancelRun(actor, byok.runId, [200]);
   });
 
-  it("backfills allowance windows during non-vm0 usage settlement", async () => {
+  it("backfills allowance windows during non-built-in usage settlement", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user();
@@ -663,7 +663,7 @@ describe("Usage Allowance", () => {
     });
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "non-vm0 run uses allowance",
+      prompt: "non-built-in run uses allowance",
       modelProvider: "anthropic-api-key",
     });
     const provider = usageProvider();
@@ -680,7 +680,7 @@ describe("Usage Allowance", () => {
     await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
-  it("applies allowance to non-vm0 runs inside active allowance windows", async () => {
+  it("applies allowance to non-built-in runs inside active allowance windows", async () => {
     const { actor, agentId } = await vm0AllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
@@ -693,7 +693,7 @@ describe("Usage Allowance", () => {
     await api.ensureOrgModelProvider(actor);
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "non-vm0 run inside active allowance window",
+      prompt: "non-built-in run inside active allowance window",
       modelProvider: "anthropic-api-key",
     });
     const provider = usageProvider();

@@ -797,10 +797,10 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     {
       name: "renamed official App",
       storedAppId: "123456",
-      storedAppSlug: "vm0-test",
+      storedAppSlug: "okou-test",
       expectedAppId: "123456",
       expectedBotUsername: "@okou[bot]",
-      excludedBotUsername: "@vm0-test[bot]",
+      excludedBotUsername: "@okou-test[bot]",
       subjectNumber: 81_001,
     },
     {
@@ -809,7 +809,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       storedAppSlug: null,
       expectedAppId: "123456",
       expectedBotUsername: "@okou[bot]",
-      excludedBotUsername: "@vm0-test[bot]",
+      excludedBotUsername: "@okou-test[bot]",
       subjectNumber: 81_002,
     },
     {

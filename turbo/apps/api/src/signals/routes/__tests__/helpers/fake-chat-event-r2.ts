@@ -21,7 +21,7 @@ import type { TestContext } from "../../../../__tests__/test-context";
  * a head row persisted by one process can always re-download its object from
  * another, mirroring the durability the archiver assumes of real R2.
  */
-const OBJECT_DIR = join(tmpdir(), "vm0-test-chat-event-snapshots");
+const OBJECT_DIR = join(tmpdir(), "okou-test-chat-event-snapshots");
 
 function objectPath(key: string): string {
   return join(OBJECT_DIR, Buffer.from(key).toString("base64url"));

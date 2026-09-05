@@ -313,7 +313,7 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
 /**
  * Mint an agent run token directly, the same auth boundary production crosses
  * when agent-runs-create issues a token whose chat thread granted a
- * computer-use host (`generateOkouToken`). Precedent: `zeroCapabilityToken`
+ * computer-use host (`generateOkouToken`). Precedent: the run-token helpers
  * in api-bdd-github.ts. Returns the runId so audit events created by the
  * token's commands can be read back through the audit-events list API.
  */

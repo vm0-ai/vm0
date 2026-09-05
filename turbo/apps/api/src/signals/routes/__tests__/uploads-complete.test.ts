@@ -64,7 +64,7 @@ function okouToken(args: {
   });
 }
 
-function zeroBearer(
+function okouBearer(
   capabilities: readonly Capability[] = ["file:write"],
 ): string {
   const actor = bdd.user();
@@ -486,7 +486,7 @@ describe("POST /api/uploads/complete", () => {
 
   it("returns 403 for an agent token without file:write capability", async () => {
     const response = await chat.completeUploadWithBearer(
-      zeroBearer(["file:read"]),
+      okouBearer(["file:read"]),
       { id: randomUUID() },
       [403],
     );
@@ -498,7 +498,7 @@ describe("POST /api/uploads/complete", () => {
 
   it("returns 400 when the request body is invalid", async () => {
     const response = await chat.completeUploadWithBearer(
-      zeroBearer(),
+      okouBearer(),
       { id: "not-a-uuid" },
       [400],
     );

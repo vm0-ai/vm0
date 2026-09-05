@@ -74,7 +74,7 @@ function authHeaders(user: ApiTestUser | null): AuthHeaders {
   return user ? { authorization: "Bearer clerk-session" } : {};
 }
 
-function zeroAgentReadHeaders(user: ApiTestUser): AuthHeaders {
+function okouAgentReadHeaders(user: ApiTestUser): AuthHeaders {
   if (!user.orgId) {
     throw new Error("Cannot bootstrap onboarding without an organization");
   }
@@ -290,7 +290,7 @@ export function createBddApi(context: TestContext) {
     ): Promise<string> {
       const headers = authenticate(nextUser);
       await accept(
-        agentsClient().list({ headers: zeroAgentReadHeaders(nextUser) }),
+        agentsClient().list({ headers: okouAgentReadHeaders(nextUser) }),
         [200],
       );
       const statusResponse = await accept(

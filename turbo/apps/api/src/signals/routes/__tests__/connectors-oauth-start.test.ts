@@ -74,7 +74,7 @@ const XERO_OAUTH_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 const AIRTABLE_OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
-const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_oauth_start_";
+const AUTH_REQUEST_USER_ID_PREFIX = "user_okou_connectors_oauth_start_";
 const YOUTUBE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/youtube",
   "https://www.googleapis.com/auth/youtube.force-ssl",

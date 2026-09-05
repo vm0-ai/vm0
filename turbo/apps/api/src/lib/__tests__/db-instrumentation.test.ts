@@ -707,7 +707,7 @@ describe("instrumentPgPool", () => {
 
     const failurePool = createPool();
     const invalidStatement =
-      "SELECT * FROM vm0_missing_db_instrumentation_table";
+      "SELECT * FROM okou_missing_db_instrumentation_table";
     const recoveryStatement = "SELECT 302 AS recovered";
     const queryError = await captureRejection(
       failurePool.query(invalidStatement),

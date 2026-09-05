@@ -18,7 +18,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 const testDatabase = `migration_runner_timeouts_${process.pid}_${Date.now()}`;
 const fixtureDirectory = await fs.mkdtemp(
-  path.join(tmpdir(), "vm0-migration-runner-"),
+  path.join(tmpdir(), "okou-migration-runner-"),
 );
 
 async function createTestDatabase(): Promise<void> {

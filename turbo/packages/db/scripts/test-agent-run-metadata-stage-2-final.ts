@@ -673,7 +673,7 @@ export async function validateAgentRunMetadataStage2Runner(): Promise<void> {
   assertStage2PooledTransactionShape(migrationSql);
 
   const fixtureDirectory = await fs.mkdtemp(
-    path.join(tmpdir(), "vm0-stage2-runner-"),
+    path.join(tmpdir(), "okou-stage2-runner-"),
   );
   const { admin, client, testUrl } = await createTestDatabase(
     databaseUrl,

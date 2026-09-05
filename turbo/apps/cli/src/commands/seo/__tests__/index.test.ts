@@ -59,7 +59,7 @@ describe("okou seo command", () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-okou-token");
     for (const command of seoCommand.commands) {
       command.setOptionValue("json", undefined);
       if (command.name() === "serp") {
