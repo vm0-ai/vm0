@@ -172,6 +172,7 @@ function mockCatalogIntersection() {
   class CatalogObserver implements IntersectionObserver {
     readonly root: Element | Document | null;
     readonly rootMargin: string;
+    readonly scrollMargin = "0px";
     readonly thresholds = [0];
     private readonly observed = new Set<Element>();
 
