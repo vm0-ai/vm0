@@ -23,8 +23,8 @@ extension NativeIntegrationTests {
               if self.path.startswith('/desktop-auth/'):
                   kind='text/html';data=b'<script>window.vm0DesktopAuth.completeSignIn({token:"capture-owner"}).then(()=>window.location.replace("/"));</script>'
               elif self.path=='/': kind='text/html';data=b'<html>Done</html>'
-              elif self.path=='/api/auth/me': kind='application/json';data=b'{"userId":"capture-user"}'
-              elif self.path=='/api/org': kind='application/json';data=b'{"id":"capture-org"}'
+              elif self.path=='/api/auth/me': kind='application/json';data=b'{"userId":"capture-user","email":"fixture@example.test","orgId":"capture-org"}'
+              elif self.path=='/api/org': kind='application/json';data=b'{"id":"capture-org","name":"Fixture"}'
               else: kind='application/json';data=b'{}'
               self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
       class Server(ThreadingHTTPServer):

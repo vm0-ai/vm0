@@ -75,7 +75,7 @@ extension NativeIntegrationTests {
                           identity_started=True
                           condition.notify_all()
                   if held: release.wait(20)
-                  self.reply(json.dumps({'userId':'user-'+owner,'email':'fixture@example.test'}).encode())
+                  self.reply(json.dumps({'userId':'user-'+owner,'email':'fixture@example.test','orgId':'org-'+owner}).encode())
               elif self.path=='/api/org': self.reply(json.dumps({'id':'org-'+owner,'name':'Fixture'}).encode())
               elif self.path=='/api/feature-switches':
                   with condition:

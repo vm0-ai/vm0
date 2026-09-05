@@ -65,6 +65,14 @@ Anonymous startup skips account-only feature requests. A held real identity
 request reproduces startup supersession; the unchanged assertion passed after
 expected cancellation stopped becoming a visible application error.
 
+A further real HTTP/WebKit regression expires a token between the account and
+workspace requests and renews it into another session. Before the repair the UI
+combined the previous user with the new workspace. Identity refresh now pins one
+bearer, retries the complete pair after a 401, and validates the required account
+fields and matching workspace ID before publishing either response. Missing or
+deleted workspaces still retain a signed-in account without a selected workspace.
+The unchanged regression and all 31 app/core tests pass on the staging Mac.
+
 The MCP producer/import review also restored baseline normalization: trim URL
 and command, prefer a nonempty URL, otherwise use the command, retain only string
 arguments/environment values, and keep imported servers disabled. The existing
@@ -112,8 +120,15 @@ restored the helper's granted state without restarting the process; the native
 UI then reported ready to connect. This verifies recovery of that consent
 record, not live Computer Use commands or general grant/revocation coverage.
 During the later picker walkthrough the
-recording/plugin tabs disappeared on refresh; no recording helper or completed
-video was present at inspection. The cause remains unconfirmed. Actual capture,
+recording/plugin tabs disappeared on refresh; no completed video was present at
+inspection. A subsequent walkthrough observed the same account's actual feature
+API return empty overrides and disabled effective switches, while the Lab UI
+temporarily retained its earlier checked state. Re-enabling the switches through
+Lab restored the API values and native tabs. The staging deployment log for
+run `33962858999`, job `101298336923`, records the shared `preview/staging`
+database resetting at 2026-09-05 11:22:04 UTC during this walkthrough. This
+establishes an environment reset during acceptance; it does not attribute every
+earlier disappearance to that cause. Actual capture,
 audio, upload, real app control, and TCC revocation are therefore still open.
 
 ## Feature inventory and evidence

@@ -49,8 +49,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     }
     do {
       let verification = DesktopAPI(configuration: configuration)
-      let user = try await verification.request("api/auth/me", hostToken: token)
-      let organization = try await verification.request("api/org", hostToken: token)
+      let (user, organization) = try await readIdentity(api: verification, token: token)
       try Task.checkCancellation()
       guard epoch == currentEpoch else { throw CancellationError() }
       guard
@@ -108,13 +107,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   func refreshIdentity(api: DesktopAPI) async throws {
     let currentEpoch = epoch
     do {
-      let user = try await api.request("api/auth/me")
-      var org: JSON = .null
-      do { org = try await api.request("api/org") } catch let error as DesktopHTTPError
-        where error.status == 404
-      {
-        // Signed in without an active organization.
-      }
+      let (user, org) = try await refreshedIdentity(api: api, force: false)
       try Task.checkCancellation()
       guard epoch == currentEpoch else { throw CancellationError() }
       self.user = user
@@ -126,6 +119,39 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
       token = nil
     }
     onChange()
+  }
+
+  private func refreshedIdentity(api: DesktopAPI, force: Bool) async throws -> (JSON, JSON) {
+    let currentEpoch = epoch
+    guard let token = try await getToken(force: force) else { return (.null, .null) }
+    do {
+      return try await readIdentity(api: api, token: token)
+    } catch let error as DesktopHTTPError where error.status == 401 && !force {
+      guard epoch == currentEpoch else { throw CancellationError() }
+      // Renew and retry both requests. Retrying only the organization request
+      // can pair the previous user with a newly authenticated workspace.
+      return try await refreshedIdentity(api: api, force: true)
+    }
+  }
+
+  private func readIdentity(api: DesktopAPI, token: String) async throws -> (JSON, JSON) {
+    let user = try await api.request("api/auth/me", hostToken: token)
+    _ = try user.requireString("userId")
+    guard user["email"].string != nil, let orgID = user.object?["orgId"],
+      orgID == .null || orgID.string.map({ !$0.isEmpty }) == true
+    else { throw DesktopFailure("auth_protocol", "The server returned an invalid account") }
+    var organization: JSON = .null
+    do {
+      organization = try await api.request("api/org", hostToken: token)
+      guard try organization.requireString("id") == orgID.string,
+        organization["name"].string != nil
+      else {
+        throw DesktopFailure("auth_protocol", "The server returned an inconsistent workspace")
+      }
+    } catch let error as DesktopHTTPError where error.status == 404 {
+      // The active organization may be absent or have been deleted.
+    }
+    return (user, organization)
   }
 
   func signIn() throws {
