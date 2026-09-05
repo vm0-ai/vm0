@@ -3,7 +3,6 @@ import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
 import type { ChatEventUsagePayload } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
 import { mergeChatEventUsagePayloads } from "./chat-event-usage.ts";
-import { isGoalContinuationInput } from "./chat-event-types.ts";
 
 interface RunSegment {
   readonly runId: string;
@@ -40,7 +39,7 @@ export interface RunGroupFolding {
 }
 
 interface RunGroupFoldingOptions {
-  readonly preserveGoalRunsForWorkFolding?: boolean;
+  readonly preserveRunGroupsForWorkFolding?: boolean;
 }
 
 const internalRunGroupExpansionOverrides$ = state<Map<string, boolean>>(
@@ -520,12 +519,7 @@ export function buildRunGroupFolding(
     const runSegments = segments
       .slice(index, endIndex)
       .filter(isGroupedRunSegment);
-    if (
-      options.preserveGoalRunsForWorkFolding &&
-      runSegments.some((item) => {
-        return item.events.some(isGoalContinuationInput);
-      })
-    ) {
+    if (options.preserveRunGroupsForWorkFolding) {
       visibleGroups.push(
         ...runSegments.flatMap((item) => {
           return segmentGroups(item, usageByRunId);

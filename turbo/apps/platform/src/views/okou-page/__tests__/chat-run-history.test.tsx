@@ -13,11 +13,13 @@ import {
   creditUsage,
   expectTextOrder,
   findButton,
+  findLink,
   installRunChat,
   promptEvent,
   queryButton,
   readyChat,
   RUN_PATH,
+  thinkingEvent,
   usageEvent,
 } from "./chat-run-test-fixtures.ts";
 
@@ -36,10 +38,14 @@ function buttonsNamed(name: string): HTMLElement[] {
   });
 }
 
-function runWorkPreviews(): HTMLElement[] {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>("[data-chat-run-work-preview]"),
-  );
+function buttonNamedIn(name: string, container: HTMLElement): HTMLElement {
+  const button = buttonsNamed(name).find((candidate) => {
+    return container.contains(candidate);
+  });
+  if (!button) {
+    throw new Error(`Expected button named "${name}" in container`);
+  }
+  return button;
 }
 
 function workMessage(index: number): string {
@@ -71,23 +77,17 @@ function activeWorkChatEvents(messageCount: number): MockChatEventInput[] {
   ];
 }
 
-function visibleWorkMessages(messageCount: number): string[] {
-  return Array.from({ length: messageCount }, (_, index) => {
-    return workMessage(index);
-  }).filter((message) => {
-    return screen.queryByText(message) !== null;
-  });
+function assistantGroupFor(element: Element): HTMLElement {
+  const group = element.closest<HTMLElement>('[data-role="assistant"]');
+  if (!group) {
+    throw new Error("Expected content inside one assistant response");
+  }
+  return group;
 }
 
-function fullWorkMessages(messageCount: number): string[] {
-  return Array.from({ length: messageCount }, (_, index) => {
-    return workMessage(index);
-  }).filter((message) => {
-    const element = screen.queryByText(message);
-    return (
-      element !== null &&
-      element.closest("[data-chat-run-work-preview]") === null
-    );
+function viewAgentProfileLinks(): HTMLElement[] {
+  return queryAllByRoleFast("link").filter((link) => {
+    return link.getAttribute("aria-label") === "View agent profile";
   });
 }
 
@@ -263,10 +263,28 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one final plan")).toBeVisible();
 });
 
-test.each([0, 1, 2, 5])(
-  "Summarize an active run with %i text messages",
-  async (messageCount) => {
-    const messages = workMessageEvents(messageCount);
+test.each([
+  {
+    label: "no output messages",
+    messageCount: 0,
+    showsHistoryStatus: false,
+    canExpandHistory: false,
+  },
+  {
+    label: "one output message",
+    messageCount: 1,
+    showsHistoryStatus: true,
+    canExpandHistory: false,
+  },
+  {
+    label: "multiple output messages",
+    messageCount: 3,
+    showsHistoryStatus: true,
+    canExpandHistory: true,
+  },
+])(
+  "Project an active run with $label",
+  async ({ messageCount, showsHistoryStatus, canExpandHistory }) => {
     installRunChat({
       activeRunIds: [RUN_A],
       chatEvents: activeWorkChatEvents(messageCount),
@@ -279,88 +297,62 @@ test.each([0, 1, 2, 5])(
     });
 
     await readyChat();
-    expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
-    const expectedPreviews = messages
-      .slice(Math.max(0, messageCount - 4), -1)
-      .map((_, index) => {
-        return workMessage(Math.max(0, messageCount - 4) + index);
-      });
-    const expectedLatestMessage =
-      messageCount === 0 ? [] : [workMessage(messageCount - 1)];
-    expect(screen.queryAllByText(/^Working for /)).toHaveLength(
-      messageCount === 0 ? 0 : 1,
+    const thinking = document.querySelector<HTMLElement>(
+      "[data-thinking-indicator]",
     );
-    expect(
-      runWorkPreviews().map((preview) => {
-        return preview.textContent?.replace(/\s+/gu, " ").trim();
-      }),
-    ).toStrictEqual(
-      expectedPreviews.map((message) => {
-        return `•${message}`;
-      }),
+    expect(thinking).toBeVisible();
+    expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(
+      showsHistoryStatus ? 1 : 0,
     );
-    expect(visibleWorkMessages(messageCount)).toStrictEqual([
-      ...expectedPreviews,
-      ...expectedLatestMessage,
-    ]);
-    expect(fullWorkMessages(messageCount)).toStrictEqual(expectedLatestMessage);
     expect(buttonsNamed("Expand work history")).toHaveLength(
-      messageCount > 1 ? 1 : 0,
+      canExpandHistory ? 1 : 0,
     );
-  },
-);
 
-test.each([2, 8])(
-  "Expand an active run with %i text messages",
-  async (messageCount) => {
-    installRunChat({
-      activeRunIds: [RUN_A],
-      chatEvents: activeWorkChatEvents(messageCount),
-    });
+    if (messageCount === 0) {
+      return;
+    }
 
-    await setupPage({
-      context,
-      path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
-    });
+    const main = screen.getByText(workMessage(messageCount - 1));
+    expect(main).toBeVisible();
+
+    for (let index = 0; index < messageCount - 1; index += 1) {
+      expect(screen.queryByText(workMessage(index))).toBeNull();
+    }
+    expect(assistantGroupFor(main)).toContainElement(thinking);
+
+    if (!canExpandHistory) {
+      return;
+    }
 
     click(await findButton("Expand work history"));
-    await waitFor(() => {
-      expect(runWorkPreviews()).toHaveLength(0);
-    });
-    expect(fullWorkMessages(messageCount)).toStrictEqual(
-      Array.from({ length: messageCount }, (_, index) => {
-        return workMessage(index);
-      }),
+    const firstHistoryMessage = await screen.findByText(workMessage(0));
+    const secondHistoryMessage = screen.getByText(workMessage(1));
+    expect(assistantGroupFor(firstHistoryMessage)).toBe(
+      assistantGroupFor(main),
     );
+    expect(assistantGroupFor(secondHistoryMessage)).toBe(
+      assistantGroupFor(main),
+    );
+    expectTextOrder(workMessage(0), workMessage(1), workMessage(2));
   },
 );
 
-test("Treat media-looking literals inside code as text work messages", async () => {
-  const mediaUrl = "https://example.com/example.png";
+test("Do not create history before the first output.message", async () => {
   installRunChat({
     activeRunIds: [RUN_A],
     chatEvents: [
       promptEvent({
-        id: "code-literal-user",
+        id: "status-only-user",
         runId: RUN_A,
         seqId: 1,
-        text: "Review this media URL",
-        createdAt: createdAt(10),
+        text: "Inspect the release",
+        createdAt: createdAt(0),
       }),
-      assistantEvent({
-        id: "code-literal-work",
+      thinkingEvent({
+        id: "status-only-thinking",
         runId: RUN_A,
         seqId: 2,
-        text: ["```text", mediaUrl, "```"].join("\n"),
-        createdAt: createdAt(10, 20),
-      }),
-      assistantEvent({
-        id: "code-literal-latest",
-        runId: RUN_A,
-        seqId: 3,
-        text: "The URL remains plain text",
-        createdAt: createdAt(10, 40),
+        text: "Reading release evidence",
       }),
     ],
   });
@@ -372,31 +364,72 @@ test("Treat media-looking literals inside code as text work messages", async () 
   });
 
   await readyChat();
-  expect(runWorkPreviews()).toHaveLength(1);
-  expect(runWorkPreviews()[0]).toHaveTextContent(mediaUrl);
-  expect(screen.getByText("The URL remains plain text")).toBeVisible();
-
-  click(await findButton("Expand work history"));
-  await waitFor(() => {
-    expect(runWorkPreviews()).toHaveLength(0);
-  });
-  expect(screen.getByText(mediaUrl).closest("pre")).toBeInTheDocument();
+  expect(screen.queryByText(/^Working(?: for)? /u)).toBeNull();
+  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
 });
 
-test.each([0, 1, 2])(
-  "Summarize a finished run with %i text messages",
-  async (messageCount) => {
-    const messages = workMessageEvents(messageCount);
+test("Count one output.message once when Markdown renders multiple child blocks", async () => {
+  const artifactUrl =
+    "https://cdn.vm7.io/artifacts/run-folding/multi-block/package.pdf";
+  installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: [
+      promptEvent({
+        id: "multi-block-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Prepare the package",
+      }),
+      assistantEvent({
+        id: "multi-block-output",
+        runId: RUN_A,
+        seqId: 2,
+        text: [
+          "Final package",
+          "![Package chart](https://example.com/package-chart.png)",
+          artifactUrl,
+          "[Compare plans](/?settings=billing&billingView=plans)",
+        ].join("\n\n"),
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  expect(screen.getByText("Final package")).toBeVisible();
+  await expect(screen.findByAltText("Package chart")).resolves.toBeVisible();
+  await expect(
+    findLink("Open pdf preview for package.pdf"),
+  ).resolves.toBeVisible();
+  await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
+  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(1);
+  expect(viewAgentProfileLinks()).toHaveLength(1);
+});
+
+test.each([
+  {
+    label: "one output message",
+    messageCount: 1,
+    canExpandHistory: false,
+  },
+  {
+    label: "multiple output messages",
+    messageCount: 3,
+    canExpandHistory: true,
+  },
+])(
+  "Project a completed run with $label",
+  async ({ messageCount, canExpandHistory }) => {
     installRunChat({
       chatEvents: [
-        promptEvent({
-          id: "finished-work-user",
-          runId: RUN_A,
-          seqId: 1,
-          text: "Prepare the deployment review",
-          createdAt: createdAt(10),
-        }),
-        ...messages,
+        ...activeWorkChatEvents(messageCount),
         completedEvent({
           id: "finished-work-complete",
           runId: RUN_A,
@@ -413,62 +446,123 @@ test.each([0, 1, 2])(
     });
 
     await readyChat();
-    expect(screen.getByText(/^Worked for /)).toBeVisible();
-    expect(runWorkPreviews()).toHaveLength(0);
-    const expectedLatestMessage =
-      messageCount === 0 ? [] : [workMessage(messageCount - 1)];
-    expect(visibleWorkMessages(messageCount)).toStrictEqual(
-      expectedLatestMessage,
-    );
-    expect(fullWorkMessages(messageCount)).toStrictEqual(expectedLatestMessage);
+    expect(screen.getByText(workMessage(messageCount - 1))).toBeVisible();
+    expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    expect(screen.queryAllByText(/^Worked(?: for)? /u)).toHaveLength(1);
     expect(buttonsNamed("Expand work history")).toHaveLength(
-      messageCount > 1 ? 1 : 0,
+      canExpandHistory ? 1 : 0,
     );
+    for (let index = 0; index < messageCount - 1; index += 1) {
+      expect(screen.queryByText(workMessage(index))).toBeNull();
+    }
   },
 );
 
-test("Keep non-text run output fully visible and outside the message count", async () => {
+const finalOutputDocuments = [
+  {
+    label: "plain Markdown",
+    content: "Final plain answer",
+    find: () => {
+      return screen.findByText("Final plain answer");
+    },
+  },
+  {
+    label: "a fenced media-looking literal",
+    content: ["```text", "https://example.com/final-literal.png", "```"].join(
+      "\n",
+    ),
+    find: () => {
+      return screen.findByText("https://example.com/final-literal.png");
+    },
+  },
+  {
+    label: "an inline image",
+    content: "![Final chart](https://example.com/final-chart.png)",
+    find: () => {
+      return screen.findByAltText("Final chart");
+    },
+  },
+  {
+    label: "an artifact card",
+    content: "https://cdn.vm7.io/artifacts/tests/run-folding/final-report.pdf",
+    find: () => {
+      return findLink("Open pdf preview for final-report.pdf");
+    },
+  },
+  {
+    label: "an action card",
+    content: "[Compare plans](/?settings=billing&billingView=plans)",
+    find: () => {
+      return screen.findByTestId("plan-upgrade-card");
+    },
+  },
+] as const;
+
+test.each(finalOutputDocuments)(
+  "Use the last output.message as the main result when it renders $label",
+  async ({ content, find }) => {
+    installRunChat({
+      activeRunIds: [RUN_A],
+      chatEvents: [
+        promptEvent({
+          id: "document-shape-user",
+          runId: RUN_A,
+          seqId: 1,
+          text: "Prepare the final result",
+          createdAt: createdAt(10),
+        }),
+        assistantEvent({
+          id: "document-shape-history",
+          runId: RUN_A,
+          seqId: 2,
+          text: "Earlier output belongs in history",
+          createdAt: createdAt(10, 20),
+        }),
+        assistantEvent({
+          id: "document-shape-main",
+          runId: RUN_A,
+          seqId: 3,
+          text: content,
+          createdAt: createdAt(10, 40),
+        }),
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+    });
+
+    await readyChat();
+    const main = await find();
+    expect(main).toBeVisible();
+    expect(viewAgentProfileLinks()).toHaveLength(1);
+    expect(screen.queryByText("Earlier output belongs in history")).toBeNull();
+    expect(buttonsNamed("Expand work history")).toHaveLength(1);
+    const thinking = document.querySelector<HTMLElement>(
+      "[data-thinking-indicator]",
+    );
+    expect(assistantGroupFor(main)).toContainElement(thinking);
+  },
+);
+
+test("Render progress or result actions, never both", async () => {
   installRunChat({
     activeRunIds: [RUN_A],
     chatEvents: [
       promptEvent({
-        id: "active-work-user",
+        id: "exclusive-tail-user",
         runId: RUN_A,
         seqId: 1,
-        text: "Prepare the deployment review",
-        createdAt: createdAt(10),
+        text: "Prepare a result",
       }),
       assistantEvent({
-        id: "active-work-text",
+        id: "exclusive-tail-result",
         runId: RUN_A,
         seqId: 2,
-        text: "Checked the deployment logs",
-        createdAt: createdAt(10, 20),
+        text: "The result is still being checked",
       }),
-      assistantEvent({
-        id: "active-work-image",
-        runId: RUN_A,
-        seqId: 3,
-        text: "![Generated chart](https://example.com/generated-chart.png)",
-        createdAt: createdAt(10, 40),
-      }),
-      assistantEvent({
-        id: "active-work-action",
-        runId: RUN_A,
-        seqId: 4,
-        text: "[Compare plans](/?settings=billing&billingView=plans)",
-        createdAt: createdAt(10, 45),
-      }),
-      {
-        id: "active-work-error",
-        eventType: "output.error",
-        role: "assistant",
-        content: null,
-        error: "Health check failed visibly",
-        runId: RUN_A,
-        seqId: 5,
-        createdAt: createdAt(10, 50),
-      },
     ],
   });
 
@@ -479,13 +573,87 @@ test("Keep non-text run output fully visible and outside the message count", asy
   });
 
   await readyChat();
-  expect(screen.getByText("Checked the deployment logs")).toBeVisible();
-  await expect(screen.findByAltText("Generated chart")).resolves.toBeVisible();
-  await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
-  expect(screen.getByText("Health check failed visibly")).toBeVisible();
-  expect(screen.getByText(/^Working for /)).toBeVisible();
-  expect(runWorkPreviews()).toHaveLength(0);
-  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(screen.getByText("The result is still being checked")).toBeVisible();
+  expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
+  expect(
+    document.querySelector('[data-testid="chat-event-actions"]'),
+  ).toBeNull();
+});
+
+test("Do not render result actions while waiting for assistant output", async () => {
+  installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: [
+      promptEvent({
+        id: "waiting-actions-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Prepare a result",
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
+  expect(
+    document.querySelector('[data-testid="chat-event-actions"]'),
+  ).toBeNull();
+});
+
+test("Render result actions after a run completes", async () => {
+  installRunChat({
+    chatEvents: [
+      promptEvent({
+        id: "completed-actions-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Prepare a completed result",
+      }),
+      assistantEvent({
+        id: "completed-actions-result",
+        runId: RUN_A,
+        seqId: 2,
+        text: "The completed result is ready",
+      }),
+      completedEvent({
+        id: "completed-actions-terminal",
+        runId: RUN_A,
+        seqId: 3,
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  const result = screen.getByText("The completed result is ready");
+  const assistantGroup = assistantGroupFor(result);
+  const mainMessage = result.closest<HTMLElement>("[data-chat-run-work-main]");
+  if (!mainMessage) {
+    throw new Error("Expected the result inside the main message region");
+  }
+  expect(assistantGroup.querySelector("[data-thinking-indicator]")).toBeNull();
+  const actions = assistantGroup.querySelector<HTMLElement>(
+    '[data-testid="chat-event-actions"]',
+  );
+  if (!actions) {
+    throw new Error("Expected the completed result action bar");
+  }
+  expect(actions).toBeVisible();
+  expect(mainMessage).toContainElement(actions);
+  expect(
+    result.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 });
 
 test("Fold intermediate work only after a run completes", async () => {
@@ -571,8 +739,20 @@ test("Fold intermediate work only after a run completes", async () => {
     screen.queryByText("Intermediate research one"),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Completed research answer")).toBeVisible();
-  expect(screen.getByText("Direct answer")).toBeVisible();
+  const directAnswer = screen.getByText("Direct answer");
+  expect(directAnswer).toBeVisible();
   expect(buttonsNamed("Expand work history")).toHaveLength(1);
+
+  const directGroup = assistantGroupFor(directAnswer);
+  const directCopy = buttonNamedIn("Copy message", directGroup);
+  expect(directGroup.firstElementChild).toContainElement(directAnswer);
+  expect(directGroup.firstElementChild).not.toContainElement(directCopy);
+  expect(directGroup.lastElementChild).toContainElement(directCopy);
+  expect(
+    directGroup.querySelector(
+      "[data-chat-run-work], [data-chat-run-work-main], [data-chat-run-work-remaining-artifacts]",
+    ),
+  ).toBeNull();
 
   click(await findButton("Expand work history"));
 
@@ -581,6 +761,36 @@ test("Fold intermediate work only after a run completes", async () => {
   ).resolves.toBeVisible();
   expect(screen.getByText("Intermediate research two")).toBeVisible();
   expect(buttonsNamed("Collapse work history")).toHaveLength(1);
+});
+
+test("Keep the legacy running tail outside the response when work folding is disabled", async () => {
+  installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: activeWorkChatEvents(2),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
+  });
+
+  await readyChat();
+  const latestMessage = screen.getByText(workMessage(1));
+  const assistantGroup = assistantGroupFor(latestMessage);
+  const thinking = document.querySelector<HTMLElement>(
+    "[data-thinking-indicator]",
+  );
+  const copy = buttonNamedIn("Copy message", assistantGroup);
+
+  expect(screen.getByText(workMessage(0))).toBeVisible();
+  expect(thinking).toBeVisible();
+  expect(assistantGroup).not.toContainElement(thinking);
+  expect(assistantGroup.firstElementChild).toContainElement(latestMessage);
+  expect(assistantGroup.firstElementChild).not.toContainElement(copy);
+  expect(assistantGroup.lastElementChild).toContainElement(copy);
+  expect(assistantGroup.querySelector("[data-chat-run-work]")).toBeNull();
+  expect(buttonsNamed("Expand work history")).toHaveLength(0);
 });
 
 test("Keep interleaved run updates with their own turns", async () => {
