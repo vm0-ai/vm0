@@ -390,11 +390,14 @@ function StyleCard({
   readonly style: IntroVideoStyle;
   readonly onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       aria-pressed={selected}
-      aria-label={`Select style ${style.name}`}
+      aria-label={`${t(($) => {
+        return $.chat.introVideo.style.heading;
+      })}: ${style.name}`}
       className={cn(
         "group relative min-w-0 overflow-hidden rounded-xl border bg-card text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected ? "border-primary" : "border-border",
@@ -439,11 +442,14 @@ function AvatarCard({
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       aria-pressed={selected}
-      aria-label={`Select avatar ${avatar.name}`}
+      aria-label={`${t(($) => {
+        return $.chat.introVideo.avatar.heading;
+      })}: ${avatar.name}`}
       className={cn(
         "group relative min-w-0 overflow-hidden rounded-xl border bg-card text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected ? "border-primary" : "border-border",
@@ -847,7 +853,7 @@ function PickerDialog({
         }
       }}
     >
-      <DialogContent className="zero-app flex h-[min(82vh,720px)] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="okou-app flex h-[min(82vh,720px)] w-[calc(100vw-2rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:px-6">
           <DialogTitle className="text-base font-semibold">
             {copy.title}

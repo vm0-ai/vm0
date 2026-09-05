@@ -211,6 +211,7 @@ describe("Intro Video HeyGen presenter route", () => {
 
   it("rejects agent requests while Intro Video is disabled", async () => {
     const fixture = await seedFixture();
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },

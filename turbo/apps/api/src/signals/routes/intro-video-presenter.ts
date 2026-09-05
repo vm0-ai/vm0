@@ -113,7 +113,7 @@ const introVideoEnabled$ = computed(async (get) => {
     userId: [auth.userId],
     limit: 1,
   });
-  const profile = users.data[0];
+  const profile = users?.data[0];
   const email =
     profile?.emailAddresses.find((candidate) => {
       return candidate.id === profile.primaryEmailAddressId;

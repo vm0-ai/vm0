@@ -10,7 +10,7 @@ import { onRef, settle } from "../utils.ts";
 
 export type IntroVideoWizardError = "send-failed" | "upload-failed";
 export type IntroVideoPicker = "avatar" | "style" | "voice";
-export type IntroVideoSourceKind = "file" | "presentation" | "video";
+type IntroVideoSourceKind = "file" | "presentation" | "video";
 
 interface IntroVideoSourceFacts {
   readonly contentType: string;
@@ -58,13 +58,13 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "original" };
 
 const PRESENTATION_EXTENSIONS = ["html", "pdf", "ppt", "pptx"] as const;
-export const INTRO_VIDEO_ASPECT_RATIO_LABEL = "16:9";
+const INTRO_VIDEO_ASPECT_RATIO_LABEL = "16:9";
 
 function extensionForFilename(filename: string): string {
   return filename.split(".").pop()?.toLocaleLowerCase() ?? "";
 }
 
-export function isIntroVideoPresentation(file: Pick<File, "name">): boolean {
+function isIntroVideoPresentation(file: Pick<File, "name">): boolean {
   const extension = extensionForFilename(file.name);
   return PRESENTATION_EXTENSIONS.some((candidate) => {
     return candidate === extension;
@@ -90,7 +90,7 @@ function localSource(file: File): LocalIntroVideoSource {
   };
 }
 
-function styleLabel(selection: IntroVideoStyleSelection): string {
+function serializeStyleSelection(selection: IntroVideoStyleSelection): string {
   switch (selection.kind) {
     case "auto": {
       return "Auto — choose the best visual direction";
@@ -104,7 +104,9 @@ function styleLabel(selection: IntroVideoStyleSelection): string {
   }
 }
 
-function avatarLabel(selection: IntroVideoAvatarSelection): string {
+function serializeAvatarSelection(
+  selection: IntroVideoAvatarSelection,
+): string {
   switch (selection.kind) {
     case "auto": {
       return "Auto — choose a suitable public HeyGen avatar when useful";
@@ -118,7 +120,7 @@ function avatarLabel(selection: IntroVideoAvatarSelection): string {
   }
 }
 
-function voiceLabel(
+function serializeVoiceSelection(
   selection: IntroVideoVoiceSelection,
   avatar: IntroVideoAvatarSelection,
 ): string {
@@ -140,7 +142,7 @@ function voiceLabel(
   }
 }
 
-export function buildIntroVideoPrompt(args: {
+function buildIntroVideoPrompt(args: {
   readonly avatar: IntroVideoAvatarSelection;
   readonly instructions: string;
   readonly sources: readonly IntroVideoSource[];
@@ -190,9 +192,9 @@ export function buildIntroVideoPrompt(args: {
     "",
     "Configuration:",
     `- Aspect ratio: ${INTRO_VIDEO_ASPECT_RATIO_LABEL}`,
-    `- HeyGen style: ${styleLabel(args.style)}`,
-    `- Avatar: ${avatarLabel(args.avatar)}`,
-    `- Voice: ${voiceLabel(args.voice, args.avatar)}`,
+    `- HeyGen style: ${serializeStyleSelection(args.style)}`,
+    `- Avatar: ${serializeAvatarSelection(args.avatar)}`,
+    `- Voice: ${serializeVoiceSelection(args.voice, args.avatar)}`,
     ...styleReference,
     ...avatarReference,
     "",

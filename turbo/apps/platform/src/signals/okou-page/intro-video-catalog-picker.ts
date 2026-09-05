@@ -17,7 +17,7 @@ interface CatalogPage<T> {
   readonly nextToken: string | null;
 }
 
-export interface IntroVideoCatalogPage<T> extends CatalogPage<T> {
+interface IntroVideoCatalogPage<T> extends CatalogPage<T> {
   readonly generation: number;
 }
 
