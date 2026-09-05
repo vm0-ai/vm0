@@ -64,6 +64,7 @@ import {
   Square,
   SwatchBook,
   Target,
+  Trash2,
   User,
   UserCheck,
   Users,
@@ -8664,9 +8665,58 @@ function VoiceDraftFooter({
   const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
   const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const signal = useGet(pageSignal$);
-  const processing = status === "transcribing";
+  const retry = useSet(signals.voice.retry$);
+  const discard = useSet(signals.voice.discard$);
+  const recordingAvailable = useGet(signals.voice.recordingAvailable$);
 
-  if (processing) {
+  if (status === "failed") {
+    return (
+      <div className="flex min-h-8 w-full items-center gap-3">
+        <span
+          role="status"
+          className="min-w-0 flex-1 text-sm text-muted-foreground"
+        >
+          {recordingAvailable
+            ? t(($) => {
+                return $.chat.voice.retryReady;
+              })
+            : t(($) => {
+                return $.chat.voice.restoreFailed;
+              })}
+        </span>
+        {recordingAvailable && (
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            aria-label={t(($) => {
+              return $.chat.voice.removeDraft;
+            })}
+            onClick={() => {
+              detach(discard(signal), Reason.DomCallback);
+            }}
+          >
+            <Trash2 size={16} />
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-w-14 shrink-0 bg-background"
+          onClick={() => {
+            detach(retry(signal), Reason.DomCallback);
+          }}
+        >
+          {t(($) => {
+            return $.chat.voice.retry;
+          })}
+        </Button>
+      </div>
+    );
+  }
+
+  if (status !== "recording") {
     return (
       <div
         className="flex min-h-8 w-full items-center justify-center gap-2.5 text-sm text-muted-foreground"
@@ -8674,9 +8724,17 @@ function VoiceDraftFooter({
       >
         <Loader2 size={16} className="animate-spin text-[#2E9E9F]" />
         <span>
-          {t(($) => {
-            return $.chat.voice.transcribingProgress;
-          })}
+          {status === "restoring"
+            ? t(($) => {
+                return $.chat.voice.restoring;
+              })
+            : status === "discarding"
+              ? t(($) => {
+                  return $.chat.voice.discarding;
+                })
+              : t(($) => {
+                  return $.chat.voice.transcribingProgress;
+                })}
         </span>
       </div>
     );
@@ -10554,8 +10612,12 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
 function ComposerFooter({ signals }: { signals: ComposerSignals }) {
   const voiceDraftEnabled = useGet(voiceDraftEnabled$);
   const voiceDraftStatus = useGet(signals.voice.status$);
+  const setVoiceLifecycleRef = useSet(signals.voice.setLifecycleRef$);
   return (
-    <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
+    <div
+      ref={voiceDraftEnabled ? setVoiceLifecycleRef : undefined}
+      className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2"
+    >
       {voiceDraftEnabled && voiceDraftStatus !== "idle" ? (
         <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
       ) : (

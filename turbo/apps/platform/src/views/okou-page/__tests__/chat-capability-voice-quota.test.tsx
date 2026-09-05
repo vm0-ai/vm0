@@ -6,6 +6,7 @@ import {
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
@@ -14,6 +15,7 @@ import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import {
   context,
   findButton,
+  findEnabledButton,
   installRunChat,
   readyChat,
   RUN_PATH,
@@ -184,6 +186,57 @@ test("Offer a Team upgrade when a Pro admin exhausts voice quota", async () => {
   );
   expect(recorderStarts).toBe(1);
   await expectPlanChooser(["Team plan"]);
+});
+
+test("Keep a recorded draft retryable when transcription exhausts the quota", async () => {
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installVoicePlan("team", "admin");
+  context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+    return respond(200, { allowed: true, count: 0, limit: 60 });
+  });
+  let exhausted = true;
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    if (exhausted) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "DAILY_RATE_LIMIT_EXCEEDED",
+            message: "Daily voice request limit reached",
+          },
+        },
+        { status: 429 },
+      );
+    }
+    return HttpResponse.json({
+      transcript: "retained recording",
+      polishedText: "Retained recording.",
+      language: "en-US",
+    });
+  });
+  installRunChat();
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+  click(await readyVoiceInput());
+  const stop = await findButton("Stop recording");
+  await waitFor(() => {
+    return expect(stop).toBeEnabled();
+  });
+  click(stop);
+  await expectVoiceLimitMessage(
+    "Voice input limit reached. Please wait for your limit to reset.",
+  );
+  const retry = await findButton("Retry");
+  expect(retry).toBeEnabled();
+
+  exhausted = false;
+  click(retry);
+  await findEnabledButton("Send");
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+    "Retained recording.",
+  );
 });
 
 test("Ask an admin when a member exhausts voice quota", async () => {
