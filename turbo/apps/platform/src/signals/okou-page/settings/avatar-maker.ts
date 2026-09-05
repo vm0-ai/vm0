@@ -270,12 +270,6 @@ export const selectAvatarOption$ = command(
     await delay(350, { signal });
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
-
-    const steps = stepsForConfig(previous, get(avatarNeckSweaterEnabled$));
-    const idx = steps.indexOf(selection.field);
-    if (idx + 1 < steps.length) {
-      set(internalStep$, steps[idx + 1]!);
-    }
   },
 );
 

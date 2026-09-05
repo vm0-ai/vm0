@@ -4,6 +4,7 @@ import {
   randomAvatarComposerConfig,
   type AvatarComposerConfig,
   type AvatarComposerFaceShape,
+  type AvatarComposerHairStyle,
 } from "@okouai/core/agent-avatar";
 import {
   avatarComposerAssetUrl,
@@ -101,6 +102,53 @@ const AVATAR_CHIN_BASELINE_Y = 327.6;
 /** The face pivot (190, 116) of the 380px canvas, as a CSS transform origin. */
 export const AVATAR_HEAD_TRANSFORM_ORIGIN = "50% 30.5263%";
 
+/**
+ * Visible hair tops, including strokes, on the 380px composer canvas. Square
+ * faces use separate hair geometry. Center the artwork rather than its
+ * transparent canvas when displaying it inside a picker option.
+ */
+const AVATAR_HAIR_TOP_Y: Readonly<
+  Record<AvatarComposerHairStyle, readonly [regular: number, square: number]>
+> = {
+  "high-bun": [22, 3],
+  "geometric-long": [116, 81],
+  "center-part": [114, 116],
+  "curly-cap": [74, 92],
+  "long-center-part": [116, 116],
+  sparse: [99, 96],
+  "triple-bun": [43, 68],
+  "rounded-crop": [116, 116],
+  halo: [85, 116],
+  "topknot-locks": [17, 56],
+  "low-pigtails": [116, 116],
+  "ribbon-updo": [45, 51],
+};
+
+function composerContentOffsetY(
+  config: AvatarSvgConfig,
+  headScale: number,
+  neckSweater: boolean,
+): number {
+  const hairTop =
+    AVATAR_HAIR_TOP_Y[config.hair][config.face === "square" ? 1 : 0];
+  const hairBottom =
+    config.hair === "low-pigtails"
+      ? config.face === "square"
+        ? 370
+        : 348
+      : config.hair === "geometric-long" || config.hair === "long-center-part"
+        ? 316
+        : AVATAR_FACE_CHIN_Y[config.face];
+  const top = Math.max(
+    0,
+    AVATAR_FACE_TOP_Y + (hairTop - AVATAR_FACE_TOP_Y) * headScale,
+  );
+  const bottom = neckSweater
+    ? 380
+    : Math.min(380, Math.max(AVATAR_FACE_CHIN_Y[config.face], hairBottom));
+  return ((380 - top - bottom) / 2 / 380) * 100;
+}
+
 interface AvatarSvgComposition {
   /** Drawn behind the head, and never scaled with it. */
   readonly behind: readonly string[];
@@ -109,6 +157,8 @@ interface AvatarSvgComposition {
   /** Drawn in front of the head, and never scaled with it. */
   readonly front: readonly string[];
   readonly headScale: number;
+  /** Percentage translation that centers the visible artwork vertically. */
+  readonly contentOffsetY: number;
 }
 
 /**
@@ -135,6 +185,7 @@ export function avatarSvgComposition(
       ],
       front: [],
       headScale: 1,
+      contentOffsetY: 0,
     };
   }
 
@@ -149,15 +200,23 @@ export function avatarSvgComposition(
     ),
   ];
   if (!neckSweater) {
-    return { behind: [], head, front: [], headScale: 1 };
+    return {
+      behind: [],
+      head,
+      front: [],
+      headScale: 1,
+      contentOffsetY: composerContentOffsetY(config, 1, false),
+    };
   }
+  const headScale =
+    (AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_TOP_Y) /
+    (AVATAR_FACE_CHIN_Y[config.face] - AVATAR_FACE_TOP_Y);
   return {
     behind: [avatarComposerAssetUrl(`neck/${config.skin}.svg`)],
     head,
     front: [avatarComposerAssetUrl(`sweater/${config.sweater}.svg`)],
-    headScale:
-      (AVATAR_CHIN_BASELINE_Y - AVATAR_FACE_TOP_Y) /
-      (AVATAR_FACE_CHIN_Y[config.face] - AVATAR_FACE_TOP_Y),
+    headScale,
+    contentOffsetY: composerContentOffsetY(config, headScale, true),
   };
 }
 

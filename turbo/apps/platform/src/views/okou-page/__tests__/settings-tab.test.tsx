@@ -1,4 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import {
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
@@ -40,6 +45,11 @@ function isNeckOrSweaterLayer(src: string): boolean {
 
 function findCreateCustomAvatarButton(): Promise<HTMLElement> {
   return screen.findByLabelText("Create custom avatar");
+}
+
+async function waitForAvatarFeedback(dialog: HTMLElement): Promise<void> {
+  const sparkles = within(dialog).getByTestId("avatar-sparkles");
+  await waitForElementToBeRemoved(sparkles);
 }
 
 async function findAvatarRow(): Promise<HTMLElement> {
@@ -361,13 +371,50 @@ test("Create and save a composer avatar from the profile page", async () => {
   });
   expect(within(dialog).getByText("Face")).toBeVisible();
   click(within(dialog).getByLabelText("Randomize avatar"));
+  await waitForAvatarFeedback(dialog);
+  click(within(dialog).getByLabelText("Round"));
+  await waitForAvatarFeedback(dialog);
+  expect(within(dialog).getByLabelText("Round")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  click(within(dialog).getByLabelText("Oval"));
+  await waitForAvatarFeedback(dialog);
+  expect(within(dialog).getByLabelText("Round")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  expect(within(dialog).getByLabelText("Oval")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   for (const step of ["Hair", "Mood", "Skin", "Color"]) {
     click(within(dialog).getByLabelText("Next step"));
     await expect(within(dialog).findByText(step)).resolves.toBeVisible();
   }
+  click(within(dialog).getByLabelText("Green"));
+  await waitForAvatarFeedback(dialog);
   click(within(dialog).getByLabelText("Blue"));
+  await waitForAvatarFeedback(dialog);
+  expect(within(dialog).getByText("Color")).toBeVisible();
+  expect(within(dialog).getByLabelText("Blue")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  click(within(dialog).getByLabelText("Next step"));
   await expect(within(dialog).findByText("Sweater")).resolves.toBeVisible();
   click(within(dialog).getByLabelText("Pink"));
+  await waitForAvatarFeedback(dialog);
+  click(within(dialog).getByLabelText("Previous step"));
+  expect(within(dialog).getByLabelText("Blue")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  click(within(dialog).getByLabelText("Next step"));
+  expect(within(dialog).getByLabelText("Pink")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   click(within(dialog).getByText("Use this avatar"));
 
   await waitFor(() => {
@@ -379,7 +426,7 @@ test("Create and save a composer avatar from the profile page", async () => {
   expect(savedLayerSrcs).toStrictEqual([
     expect.stringMatching(/\/avatar-svg-v2\/.*\/neck\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-rear\.svg$/u),
-    expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\//u),
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\/oval-/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-front\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/expressions\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/sweater\/pink\.svg$/u),
