@@ -20,14 +20,14 @@ const OKOU_PRIMARY_SATELLITE_LOAD_OPTIONS = {
   signUpUrl: "https://app.okou.ai/sign-up",
 } as const;
 
-const VM0_PRIMARY_LOAD_OPTIONS = {
+const ROLLBACK_PRIMARY_LOAD_OPTIONS = {
   afterSignOutUrl: "https://app.vm0.ai/sign-in",
   signInUrl: "https://app.vm0.ai/sign-in",
   signUpUrl: "https://app.vm0.ai/sign-up",
 } as const;
 
-const VM0_PRIMARY_SATELLITE_LOAD_OPTIONS = {
-  ...VM0_PRIMARY_LOAD_OPTIONS,
+const ROLLBACK_SATELLITE_LOAD_OPTIONS = {
+  ...ROLLBACK_PRIMARY_LOAD_OPTIONS,
   isSatellite: true,
   satelliteAutoSync: true,
 } as const;
@@ -81,7 +81,7 @@ test("An explicitly requested app.vm0.ai still owns primary authentication", asy
   expect(clerk.resourceRequests).toStrictEqual([
     { domain: undefined, publishableKey: "test_production_key" },
   ]);
-  expect(clerk.loads).toContainEqual(VM0_PRIMARY_LOAD_OPTIONS);
+  expect(clerk.loads).toContainEqual(ROLLBACK_PRIMARY_LOAD_OPTIONS);
 });
 
 test("An explicitly requested app.vm0.ai keeps Okou a satellite", async () => {
@@ -97,7 +97,7 @@ test("An explicitly requested app.vm0.ai keeps Okou a satellite", async () => {
   expect(clerk.resourceRequests).toStrictEqual([
     { domain: "app.okou.ai", publishableKey: "test_production_key" },
   ]);
-  expect(clerk.loads).toContainEqual(VM0_PRIMARY_SATELLITE_LOAD_OPTIONS);
+  expect(clerk.loads).toContainEqual(ROLLBACK_SATELLITE_LOAD_OPTIONS);
 });
 
 const BOOTSTRAP_SCRIPT_SELECTOR = "[data-okou-clerk-bootstrap]";
