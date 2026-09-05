@@ -11,7 +11,10 @@ import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
-import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
+import {
+  setRunModelProviderFixture,
+  setRunModelRuntimeRouteFixture,
+} from "../../../test-fixtures/agent-runs";
 import {
   holdBuiltInModelRouteLockFixture,
   withBuiltInModelRuntimeRouteCandidateUnavailableForTest,
@@ -1006,10 +1009,19 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
     }
+    const fixtureRoute = {
+      ...primary,
+      upstream_model: `fixture-${randomUUID()}`,
+    };
+    await setRunModelRuntimeRouteFixture({
+      runId: claimed.runId,
+      modelRuntimeProvider: fixtureRoute.provider_type,
+      modelRuntimeModel: fixtureRoute.upstream_model,
+    });
     registerBuiltInCandidateCooldownCleanup(
       context,
       claimed.selectedModel,
-      primary,
+      fixtureRoute,
     );
 
     await expect(
