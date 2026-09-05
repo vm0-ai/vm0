@@ -8560,7 +8560,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const starting = useGet(sttStarting$);
   const sttTranscribing = useGet(sttTranscribing$);
   const recording = voiceDraftEnabled
-    ? voiceDraftStatus === "recording"
+    ? voiceDraftStatus === "recording" && sttRecording
     : sttRecording;
   const transcribing = voiceDraftEnabled
     ? voiceDraftStatus === "transcribing"
@@ -8603,6 +8603,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             onClick={handleClick}
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
+            aria-busy={starting || transcribing}
             aria-keyshortcuts={
               voiceInputShortcutEnabled
                 ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
@@ -10554,9 +10555,12 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
 function ComposerFooter({ signals }: { signals: ComposerSignals }) {
   const voiceDraftEnabled = useGet(voiceDraftEnabled$);
   const voiceDraftStatus = useGet(signals.voice.status$);
+  const recording = useGet(sttRecording$);
   return (
     <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
-      {voiceDraftEnabled && voiceDraftStatus !== "idle" ? (
+      {voiceDraftEnabled &&
+      (voiceDraftStatus === "transcribing" ||
+        (voiceDraftStatus === "recording" && recording)) ? (
         <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
       ) : (
         <>

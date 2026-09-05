@@ -2213,7 +2213,7 @@ function createInsertTextCommands(editor: Editor) {
     const { from, to } = editor.state.selection;
     const transaction = editor.state.tr.insertText(value, from, to);
     transaction.setSelection(
-      TextSelection.create(transaction.doc, from, from + value.length),
+      TextSelection.create(transaction.doc, from + value.length),
     );
     editor.view.dispatch(transaction.scrollIntoView());
     editor.view.focus();
