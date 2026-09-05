@@ -45,6 +45,7 @@ import {
 } from "../../signals/okou-page/pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import { refreshSidebarChatThreadLayoutOnRef$ } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
@@ -66,8 +67,10 @@ const pinnedAgentGridCardFrameClassName =
 const pinnedAgentGridLabelFrameClassName = "h-3.5 leading-[14px]";
 
 function PinnedAgentGridSkeletonCard() {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   return (
     <div
+      ref={refreshLayoutRef}
       aria-hidden="true"
       data-testid="pinned-agent-skeleton"
       className={pinnedAgentGridCardFrameClassName}
@@ -267,6 +270,7 @@ function PinnedAgentGridCard({
   const setDropTarget = useSet(setPinnedAgentDropTarget$);
   const endDrag = useSet(endPinnedAgentDrag$);
   const [, moveAgent] = useLoadableSet(movePinnedAgent$);
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const displayName = agent.displayName ?? agent.agentId;
 
   const isDragging = draggingAgentId === agent.agentId;
@@ -278,6 +282,7 @@ function PinnedAgentGridCard({
 
   const card = (
     <Link
+      ref={refreshLayoutRef}
       pathname="/agents/:agentId/chat"
       options={{ pathParams: { agentId: agent.agentId } }}
       data-testid="pinned-agent-card"
@@ -451,6 +456,7 @@ export function PinnedAgentListSection({
 }: {
   layout?: "vertical" | "horizontal";
 }) {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const { t } = useTranslation("agents");
   const activeRoute = useGet(activeRoute$);
   const pathParams = useGet(pathParams$);
@@ -584,10 +590,13 @@ export function PinnedAgentListSection({
         </span>
       </div>
       {!collapsed && (
-        <div className="flex flex-col gap-0.5 mt-1">
+        <div ref={refreshLayoutRef} className="flex flex-col gap-0.5 mt-1">
           {pinnedAgentsLoadable.state === "loading" && (
             <>
-              <div className="flex h-8 items-center gap-2 px-2">
+              <div
+                ref={refreshLayoutRef}
+                className="flex h-8 items-center gap-2 px-2"
+              >
                 <div className="h-5 w-5 shrink-0 rounded-md bg-muted animate-pulse" />
                 <div className="h-3 w-20 rounded bg-muted animate-pulse" />
               </div>
@@ -609,6 +618,7 @@ export function PinnedAgentListSection({
               return (
                 <div
                   key={agent.agentId}
+                  ref={refreshLayoutRef}
                   className="group relative"
                   data-testid="pinned-agent-card"
                 >

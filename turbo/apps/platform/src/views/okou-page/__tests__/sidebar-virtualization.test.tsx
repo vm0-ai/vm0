@@ -3,14 +3,22 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import {
   click,
   queryAllByRoleFast,
   setupPage,
+  startPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -79,60 +87,23 @@ function mockThreads(count: number): void {
   });
 }
 
-function mockViewportResize(): (target: HTMLElement) => void {
-  const observers = new Set<TestResizeObserver>();
+function mockViewportHeight(height: () => number, threadCount = 120): void {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.dataset.testid === "sidebar-scroll-area" ? height() : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.dataset.testid === "sidebar-scroll-area"
+        ? threadCount * ROW_HEIGHT
+        : 0;
+    },
+  );
+}
 
-  class TestResizeObserver implements ResizeObserver {
-    private targets = new Set<Element>();
-
-    constructor(private readonly callback: ResizeObserverCallback) {}
-
-    observe(target: Element): void {
-      this.targets.add(target);
-      observers.add(this);
-    }
-
-    unobserve(target: Element): void {
-      this.targets.delete(target);
-    }
-
-    disconnect(): void {
-      this.targets = new Set();
-      observers.delete(this);
-    }
-
-    resize(target: HTMLElement): void {
-      if (!this.targets.has(target)) {
-        return;
-      }
-      const contentRect = target.getBoundingClientRect();
-      const size = {
-        inlineSize: contentRect.width,
-        blockSize: contentRect.height,
-      };
-      this.callback(
-        [
-          {
-            target,
-            contentRect,
-            borderBoxSize: [size],
-            contentBoxSize: [size],
-            devicePixelContentBoxSize: [size],
-          },
-        ],
-        this,
-      );
-    }
-  }
-
-  vi.stubGlobal("ResizeObserver", TestResizeObserver);
-  return (target) => {
-    act(() => {
-      for (const observer of observers) {
-        observer.resize(target);
-      }
-    });
-  };
+function resizeWindow(): void {
+  fireEvent(window, new Event("resize"));
 }
 
 function queueAnimationFrames(): () => void {
@@ -158,55 +129,42 @@ function queueAnimationFrames(): () => void {
   };
 }
 
-test.each([
-  { baseUi: false, threadCount: 120, initialHeight: 120 * ROW_HEIGHT },
-  { baseUi: true, threadCount: 120, initialHeight: 120 * ROW_HEIGHT },
-  { baseUi: false, threadCount: 6406, initialHeight: 0 },
-  { baseUi: true, threadCount: 6406, initialHeight: 0 },
-])(
-  "Keep $threadCount sidebar threads virtualized after layout settles (baseUi=$baseUi)",
-  async ({ baseUi, threadCount, initialHeight }) => {
+test.each([false, true])(
+  "Wait for styles before mounting the virtual viewport (baseUi=%s)",
+  async (baseUi) => {
+    const threadCount = 6406;
     mockThreads(threadCount);
     context.mocks.browser.noAnimations();
-    const resize = mockViewportResize();
-    let viewportHeight = initialHeight;
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return this.dataset.testid === "sidebar-scroll-area"
-          ? viewportHeight
-          : 0;
-      },
-    );
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return this.dataset.testid === "sidebar-scroll-area"
-          ? threadCount * ROW_HEIGHT
-          : 0;
-      },
-    );
+    const stylesheet = context.mocks.deferred<"loaded" | "failed">();
+    vi.stubGlobal("__mainStylesheetLoaded", stylesheet.promise);
+    let viewportHeight = threadCount * ROW_HEIGHT;
+    mockViewportHeight(() => {
+      return viewportHeight;
+    }, threadCount);
 
-    await setupPage({
+    const page = await startPage({
       context,
       path: `/chats/${threadId(0)}`,
       featureSwitches: {
         [FeatureSwitchKey.BaseUiSidebarScrollArea]: baseUi,
       },
     });
+    const sidebar = await screen.findByTestId("chat-list-column");
+    await within(sidebar).findByTestId("pinned-agent-card");
+    expect(
+      within(sidebar).queryByTestId("sidebar-scroll-area"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryAllByTestId("sidebar-chat-thread-virtual-row"),
+    ).toHaveLength(0);
 
-    const sidebar = screen.getByTestId("chat-list-column");
+    // CSS is active before its existing readiness promise resolves.
+    viewportHeight = 612;
+    stylesheet.resolve("loaded");
+    await page.ready;
     const rows = () => {
       return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
     };
-    await waitFor(() => {
-      expect(rows()).toHaveLength(initialHeight ? threadCount : 100);
-    });
-
-    // Model stylesheet activation without a scroll event. The smaller
-    // unbounded fixture exercises the same transition without mounting 6,406
-    // rows in happy-dom; the large fixture also verifies the 100-row fallback.
-    const viewport = within(sidebar).getByTestId("sidebar-scroll-area");
-    viewportHeight = 612;
-    resize(viewport);
     await waitFor(() => {
       expect(rows()).toHaveLength(25);
     });
@@ -214,14 +172,12 @@ test.each([
     expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
 
     viewportHeight = 900;
-    resize(viewport);
+    resizeWindow();
     await waitFor(() => {
-      expect(within(sidebar).getByText("History 33")).toBeInTheDocument();
+      expect(rows()).toHaveLength(33);
     });
-    expect(rows()).toHaveLength(33);
-
     viewportHeight = 360;
-    resize(viewport);
+    resizeWindow();
     await waitFor(() => {
       expect(rows()).toHaveLength(18);
     });
@@ -240,9 +196,23 @@ test.each([
   },
 );
 
+test("Keep the virtual viewport unmounted when the main stylesheet fails", async () => {
+  mockThreads(120);
+  vi.stubGlobal("__mainStylesheetLoaded", Promise.resolve("failed"));
+  await startPage({ context, path: `/chats/${threadId(0)}` });
+  const sidebar = await screen.findByTestId("chat-list-column");
+  await within(sidebar).findByTestId("pinned-agent-card");
+  expect(
+    within(sidebar).queryByTestId("sidebar-scroll-area"),
+  ).not.toBeInTheDocument();
+  expect(screen.getByTestId("app-skeleton")).not.toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+});
+
 test("Coalesce sidebar resize bursts and cancel pending measurements when hidden", async () => {
   mockThreads(120);
-  const resize = mockViewportResize();
   await setupPage({
     context,
     path: `/chats/${threadId(0)}`,
@@ -269,11 +239,11 @@ test("Coalesce sidebar resize bursts and cancel pending measurements when hidden
   vi.spyOn(viewport, "scrollHeight", "get").mockReturnValue(120 * ROW_HEIGHT);
   const flushFrame = queueAnimationFrames();
 
-  resize(viewport);
+  resizeWindow();
   viewportHeight = 900;
-  resize(viewport);
+  resizeWindow();
   viewportHeight = 360;
-  resize(viewport);
+  resizeWindow();
 
   // Intermediate layouts must not force repeated geometry reads. The single
   // frame measurement must use the latest height and update the visible rows.
@@ -286,12 +256,191 @@ test("Coalesce sidebar resize bursts and cancel pending measurements when hidden
 
   heightReads = 0;
   viewportHeight = 900;
-  resize(viewport);
+  resizeWindow();
   click(within(sidebar).getByLabelText("Hide chat list"));
   await waitFor(() => {
     expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
   });
-  resize(viewport);
+  resizeWindow();
   flushFrame();
   expect(heightReads).toBe(0);
+});
+
+function mockPinnedGrid(): string {
+  const agents = Array.from({ length: 5 }, (_, index) => {
+    return {
+      agentId: `c0000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`,
+      ownerId: "test-user-123",
+      displayName: index === 0 ? "Zero" : `Agent ${index + 1}`,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      visibility: "public" as const,
+    };
+  });
+  context.mocks.data.agents(agents);
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: agents.slice(1, 4).map((agent) => {
+      return agent.agentId;
+    }),
+  });
+  return "c0000000-0000-4000-a000-000000000005";
+}
+
+function pinToggle(container: HTMLElement, name: "Pin" | "Unpin"): HTMLElement {
+  const row = within(container).getByText("Agent 5").closest('[role="option"]');
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("Fifth agent is missing from the pin manager");
+  }
+  const button = queryAllByRoleFast("button", row).find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!button) {
+    throw new Error(`${name} button is missing from the pin manager`);
+  }
+  return button;
+}
+
+test("Refresh virtualization after pinning adds a grid row and unpinning removes it", async () => {
+  mockThreads(120);
+  mockPinnedGrid();
+  mockViewportHeight(() => {
+    const cards = document.querySelectorAll(
+      '[data-testid="pinned-agent-card"]',
+    );
+    return cards.length > 4 ? 360 : 612;
+  });
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+  const sidebar = screen.getByTestId("chat-list-column");
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(25);
+  });
+
+  click(screen.getByLabelText("Pin an agent"));
+  const dialog = await screen.findByTestId("pin-agent-dialog-list");
+  click(pinToggle(dialog, "Pin"));
+  await waitFor(() => {
+    expect(within(sidebar).getAllByTestId("pinned-agent-card")).toHaveLength(5);
+    expect(rows()).toHaveLength(18);
+  });
+  await waitFor(() => {
+    return expect(pinToggle(dialog, "Unpin")).toBeEnabled();
+  });
+  click(pinToggle(dialog, "Unpin"));
+  await waitFor(() => {
+    expect(within(sidebar).getAllByTestId("pinned-agent-card")).toHaveLength(4);
+    expect(rows()).toHaveLength(25);
+  });
+});
+
+test("Refresh virtualization when unread indicators add an agent to the grid", async () => {
+  mockThreads(120);
+  const unreadAgentId = mockPinnedGrid();
+  const indicators = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
+    await indicators.promise;
+    return respond(200, { agents: { [unreadAgentId]: "unread" }, threads: {} });
+  });
+  mockViewportHeight(() => {
+    return document.querySelectorAll('[data-testid="pinned-agent-card"]')
+      .length > 4
+      ? 360
+      : 612;
+  });
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+  const sidebar = screen.getByTestId("chat-list-column");
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(25);
+  });
+  indicators.resolve(undefined);
+  await waitFor(() => {
+    expect(within(sidebar).getAllByTestId("pinned-agent-card")).toHaveLength(5);
+    expect(rows()).toHaveLength(18);
+  });
+});
+
+test("Refresh virtualization after collapsing and expanding the pinned section", async () => {
+  mockThreads(120);
+  context.mocks.browser.matchMedia(false);
+  mockViewportHeight(() => {
+    const header = document.querySelector(
+      '[data-testid="pinned-section-header"]',
+    );
+    return header?.nextElementSibling ? 360 : 612;
+  });
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+  const header = screen.getByTestId("pinned-section-header");
+  const rows = () => {
+    return screen.getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(18);
+  });
+  click(header);
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(25);
+  });
+  click(header);
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(18);
+  });
+});
+
+test("Refresh virtualization when the upgrade card appears and disappears", async () => {
+  mockThreads(120);
+  let tier = "team";
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, {
+      tier,
+      credits: 10_000,
+      onboardingPaymentPending: false,
+      subscriptionStatus: "active",
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 1,
+      concurrencySubscriptions: [],
+    });
+  });
+  mockViewportHeight(() => {
+    return screen.queryByText("Get Pro") ? 360 : 612;
+  });
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+  const sidebar = screen.getByTestId("chat-list-column");
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(25);
+  });
+  await waitFor(() => {
+    return expect(
+      context.mocks.ably.hasSubscription("billing:changed"),
+    ).toBeTruthy();
+  });
+
+  tier = "pro-suspend";
+  context.mocks.ably.trigger("billing:changed");
+  await within(sidebar).findByText("Get Pro");
+  await waitFor(() => {
+    return expect(rows()).toHaveLength(18);
+  });
+
+  tier = "team";
+  context.mocks.ably.trigger("billing:changed");
+  await waitFor(() => {
+    expect(within(sidebar).queryByText("Get Pro")).not.toBeInTheDocument();
+    expect(rows()).toHaveLength(25);
+  });
 });
