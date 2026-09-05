@@ -19,7 +19,31 @@ These run within the original lifecycle through the integration callbacks;
 existing post-run path. Optional signals on shared session helpers identify
 the pending operation; retry/compaction retain their own explicit abort controls
 while also observing that native owner. A fresh explicit prompt obtains a new
-signal. Unconsumed steering/follow-up input stays in the native queues.
+signal.
+
+For this entrypoint, extension `agent_settled` handlers are awaited preparation,
+called once per owner while both native lifecycles remain busy. They can queue
+input or request cancellation through the supported, non-waiting `ctx.abort()`;
+they must not wait for their own owner to become idle. New turns caused by that
+input retain ordinary turn/message hooks, but do not re-enter settlement
+handlers. The public `agent_settled` event is the terminal commit notification.
+
+After preparation, the same owner reconciles cancellation first. Otherwise it
+drains accepted input in native steering/follow-up order, including post-run
+retry/compaction, and rechecks after every await. An empty queue and un-aborted
+signal close admission synchronously with public settlement and owner release.
+There is no asynchronous callback after this decision.
+
+When cancellation wins, native queue admission closes before awaited message
+callbacks. Accepted input is drained once into native message events and JSONL,
+without a new turn, tool, HTTP request, retry or compaction. The final assistant
+outcome is aborted before the sole public settlement. If a provider already
+emitted an aborted assistant, retain that fact instead of appending a duplicate;
+subsequently accepted input can follow it in history. A fresh prompt sees those
+messages as persisted context, never as a revived pending queue. Input arriving
+after admission closes receives the existing RPC error response, before queue
+display state changes. Guest therefore retains its existing failed-delivery
+path; successful acknowledgements never rely on a future prompt or process.
 
 Cancellation gates surround awaited context conversion, auth, turn preparation,
 and prepared-tool entry. Started tools and event callbacks are joined even if
