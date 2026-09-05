@@ -476,7 +476,8 @@ def decode_response_body_for_network_log_capture(
     - ``br`` rejects invalid or incomplete input, except that reaching the
       decoded-output bound returns the bounded prefix.
     - ``zstd`` reads concatenated frames up to ``max_output`` bytes and rejects
-      malformed or incomplete frames unless the decoded-output bound is reached.
+      malformed, incomplete, or strict-frame-budget-exceeding input unless the
+      decoded-output bound is reached.
 
     This is stricter than the best-effort ``decompress_body()`` path used for
     retained streaming buffers, which can preserve original wire bytes or
@@ -796,7 +797,8 @@ def decompress_json_usage_body(
     empty body because body capture can still mark those responses truncated
     from stream metadata. JSON usage fallback only has the final buffer, so it
     needs to distinguish a valid compressed empty response from an incomplete
-    compressed frame that produced no JSON bytes.
+    compressed frame that produced no JSON bytes. Strict zstd validation also
+    rejects bodies that exceed its per-body frame budget.
 
     """
     encoding = headers.get("content-encoding", "").strip().lower()

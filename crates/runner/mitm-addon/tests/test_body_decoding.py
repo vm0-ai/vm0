@@ -1056,6 +1056,10 @@ class TestDecompressJsonUsageBody:
         assert decoded == body
         assert error is None
 
+
+class TestStrictZstdFrameBudget:
+    """Structural coverage for strict zstd decoder construction bounds."""
+
     def test_zstd_validation_bounds_frame_transitions_for_strict_consumers(
         self, headers, monkeypatch
     ):
