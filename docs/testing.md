@@ -231,7 +231,12 @@ it("should scrape a page", async () => {
     http.post("http://localhost:3000/api/scrape", () => {
       return HttpResponse.json({
         requestedUrl: "https://example.com",
+        format: "markdown",
+        mode: "standard",
         provider: "firecrawl",
+        creditsCharged: 4,
+        billingCategory: "standard.markdown",
+        billingQuantity: 1,
         result: { markdown: "# Example" },
       });
     }),

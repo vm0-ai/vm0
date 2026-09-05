@@ -519,7 +519,7 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     category: "wire-and-persisted-value",
     id: "wire-and-persisted-value/namespaced-key",
     reason:
-      "A vm0: prefixed key outlives the deploy that writes it: a versioned localStorage entry on the user's own device, a Postgres advisory-lock key two overlapping deployments must spell identically to exclude each other, or a window event name already-loaded page code is still listening for. Renaming either side of one of these silently splits the pair instead of failing.",
+      "A vm0: prefixed key outlives the deploy that writes it: a versioned localStorage entry on the user's own device, a window event name already-loaded page code is still listening for, or the domain-separation prefix an applied migration hashed into a fingerprint that its verification script has to reproduce byte for byte. Renaming either side of one of these silently splits the pair instead of failing.",
     tokens: ["vm0"],
   },
   {
