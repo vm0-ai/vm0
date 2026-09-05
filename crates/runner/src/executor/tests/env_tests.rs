@@ -1507,6 +1507,49 @@ fn pi_execution_context_rejects_invalid_legacy_shared_model_fields_before_sandbo
 }
 
 #[test]
+fn pi_execution_context_restricts_model_base_url_schemes_before_sandbox() {
+    let v2_public = pi_model_config_v2_for_test("openai-responses");
+    let v2_codex = pi_model_config_v2_for_test("openai-codex-responses");
+    let mut v3_public = v2_public.clone();
+    v3_public["schemaVersion"] = json!(3);
+    let mut v3_codex = v2_codex.clone();
+    v3_codex["schemaVersion"] = json!(3);
+    let configs = [
+        pi_model_config_for_test(),
+        v2_public,
+        v2_codex,
+        v3_public,
+        v3_codex,
+    ];
+
+    for (base_url, supported) in [
+        ("http://provider.example/v1", true),
+        ("https://provider.example/v1", true),
+        ("ftp://provider.example/v1", false),
+        ("file:///tmp/model", false),
+    ] {
+        for original in &configs {
+            let mut context = pi_context_for_test();
+            let mut config = original.clone();
+            config["baseUrl"] = json!(base_url);
+            context.pi_model_config = Some(config.clone());
+
+            let result = validate_context_for_test(&context);
+
+            if supported {
+                assert!(result.is_ok(), "{config}");
+            } else {
+                assert_eq!(
+                    result.unwrap_err(),
+                    "Pi model config baseUrl is invalid",
+                    "{config}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn pi_execution_context_accepts_and_preserves_versioned_dialect_tiers() {
     for generation in [2, 3] {
         for dialect in ["openai-responses", "openai-codex-responses"] {
