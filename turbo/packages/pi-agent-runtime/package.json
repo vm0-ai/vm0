@@ -33,6 +33,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "msw": "^2.13.2",
     "@types/node": "^24.3.0",
     "@okouai/eslint-config": "workspace:*",
     "@okouai/typescript-config": "workspace:*",

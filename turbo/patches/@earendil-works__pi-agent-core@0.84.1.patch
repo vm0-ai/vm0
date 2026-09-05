@@ -1,0 +1,304 @@
+diff --git a/dist/agent.js b/dist/agent.js
+--- a/dist/agent.js
++++ b/dist/agent.js
+@@ -1,4 +1,4 @@
+-import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.js";
++import { getPendingToolContinuation, runAgentLoop, runAgentLoopContinue, runAgentLoopPendingTools } from "./agent-loop.js";
+ import { getDefaultStreamFn } from "./stream-fn.js";
+ function defaultConvertToLlm(messages) {
+     return messages.filter((message) => message.role === "user" || message.role === "assistant" || message.role === "toolResult");
+@@ -254,6 +254,36 @@
+         }
+         await this.runContinuation();
+     }
++    /** Local pinned integration: retain one native owner through session settlement. */
++    async continuePendingTools(options = {}) {
++        if (this.activeRun) {
++            throw new Error("Agent is already processing. Wait for completion before continuing.");
++        }
++        const context = this.createContextSnapshot();
++        const pending = getPendingToolContinuation(context);
++        await this.runWithLifecycle(async (signal) => {
++            options.onStart?.();
++            await runAgentLoopPendingTools(context, pending, this.createLoopConfig(), (event) => this.processEvents(event), signal, this.streamFunction);
++            if (signal.aborted && this._state.messages.at(-1)?.stopReason === "aborted") return;
++            signal.throwIfAborted();
++            while (await options.afterRun?.(signal)) {
++                signal.throwIfAborted();
++                const lastMessage = this._state.messages.at(-1);
++                if (lastMessage?.role === "assistant") {
++                    const steering = this.steeringQueue.drain();
++                    const messages = steering.length > 0 ? steering : this.followUpQueue.drain();
++                    if (messages.length === 0) throw new Error("Cannot continue from message role: assistant");
++                    await runAgentLoop(messages, this.createContextSnapshot(), this.createLoopConfig({ skipInitialSteeringPoll: steering.length > 0 }), (event) => this.processEvents(event), signal, this.streamFunction);
++                }
++                else {
++                    await runAgentLoopContinue(this.createContextSnapshot(), this.createLoopConfig(), (event) => this.processEvents(event), signal, this.streamFunction);
++                }
++                if (signal.aborted && this._state.messages.at(-1)?.stopReason === "aborted") return;
++                signal.throwIfAborted();
++            }
++            signal.throwIfAborted();
++        }, options.onSettled);
++    }
+     normalizePromptInput(input, images) {
+         if (Array.isArray(input)) {
+             return input;
+@@ -323,7 +353,7 @@
+             getFollowUpMessages: async () => this.followUpQueue.drain(),
+         };
+     }
+-    async runWithLifecycle(executor) {
++    async runWithLifecycle(executor, onSettled) {
+         if (this.activeRun) {
+             throw new Error("Agent is already processing.");
+         }
+@@ -343,7 +373,12 @@
+             await this.handleRunFailure(error, abortController.signal.aborted);
+         }
+         finally {
+-            this.finishRun();
++            try {
++                if (onSettled) await onSettled();
++            }
++            finally {
++                this.finishRun();
++            }
+         }
+     }
+     async handleRunFailure(error, aborted) {
+diff --git a/dist/agent.d.ts b/dist/agent.d.ts
+--- a/dist/agent.d.ts
++++ b/dist/agent.d.ts
+@@ -109,6 +109,12 @@
+     prompt(input: string, images?: ImageContent[]): Promise<void>;
+     /** Continue from the current transcript. The last message must be a user or tool-result message. */
+     continue(): Promise<void>;
++    /** Local pinned integration; callbacks run inside the native abort/idle owner. */
++    continuePendingTools(options?: {
++        onStart?: () => void;
++        afterRun?: (signal: AbortSignal) => Promise<boolean>;
++        onSettled?: () => Promise<void>;
++    }): Promise<void>;
+     private normalizePromptInput;
+     private runPromptMessages;
+     private runContinuation;
+diff --git a/dist/agent-loop.js b/dist/agent-loop.js
+--- a/dist/agent-loop.js
++++ b/dist/agent-loop.js
+@@ -69,18 +69,42 @@
+     await runLoop(currentContext, newMessages, config, signal, emit, streamFn ?? getDefaultStreamFn());
+     return newMessages;
+ }
++/** Validate the current handoff without replaying any transcript message. */
++export function getPendingToolContinuation(context) {
++    const index = context.messages.findLastIndex((message) => message.role === "assistant");
++    const assistant = context.messages[index];
++    const suffix = context.messages.slice(index + 1);
++    if (!assistant || suffix.some((message) => message.role !== "toolResult") ||
++        (assistant.stopReason !== "toolUse" && assistant.stopReason !== "length")) {
++        throw new Error("Pi handoff session contains no pending tool calls");
++    }
++    const resolved = new Set(suffix.map((message) => message.toolCallId));
++    const calls = assistant.content.filter((content) => content.type === "toolCall" && !resolved.has(content.id));
++    if (calls.length === 0) {
++        throw new Error("Pi handoff session contains no pending tool calls");
++    }
++    return { assistant, calls };
++}
++/** Resume the unresolved tool suffix using the ordinary executor and turn pipeline. */
++export async function runAgentLoopPendingTools(context, pending, config, emit, signal, streamFn) {
++    const newMessages = [];
++    await emit({ type: "agent_start" });
++    await emit({ type: "turn_start" });
++    await runLoop(context, newMessages, config, signal, emit, streamFn, pending);
++    return newMessages;
++}
+ function createAgentStream() {
+     return new EventStream((event) => event.type === "agent_end", (event) => (event.type === "agent_end" ? event.messages : []));
+ }
+ /**
+  * Main loop logic shared by agentLoop and agentLoopContinue.
+  */
+-async function runLoop(initialContext, newMessages, initialConfig, signal, emit, streamFunction) {
++async function runLoop(initialContext, newMessages, initialConfig, signal, emit, streamFunction, pendingTools) {
+     let currentContext = initialContext;
+     let config = initialConfig;
+     let firstTurn = true;
+     // Check for steering messages at start (user may have typed while waiting)
+-    let pendingMessages = (await config.getSteeringMessages?.()) || [];
++    let pendingMessages = pendingTools ? [] : (await config.getSteeringMessages?.()) || [];
+     // Outer loop: continues when queued follow-up messages arrive after agent would stop
+     while (true) {
+         let hasMoreToolCalls = true;
+@@ -102,16 +126,19 @@
+                 }
+                 pendingMessages = [];
+             }
+-            // Stream assistant response
+-            const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFunction);
+-            newMessages.push(message);
++            signal?.throwIfAborted();
++            // A handoff already persisted its assistant; only new messages emit/persist.
++            const pending = pendingTools;
++            pendingTools = undefined;
++            const message = pending?.assistant ?? await streamAssistantResponse(currentContext, config, signal, emit, streamFunction);
++            if (!pending) newMessages.push(message);
+             if (message.stopReason === "error" || message.stopReason === "aborted") {
+                 await emit({ type: "turn_end", message, toolResults: [] });
+                 await emit({ type: "agent_end", messages: newMessages });
+                 return;
+             }
+             // Check for tool calls
+-            const toolCalls = message.content.filter((c) => c.type === "toolCall");
++            const toolCalls = pending?.calls ?? message.content.filter((c) => c.type === "toolCall");
+             const toolResults = [];
+             hasMoreToolCalls = false;
+             if (toolCalls.length > 0) {
+@@ -120,7 +147,7 @@
+                 // them all instead of executing potentially borked calls.
+                 const executedToolBatch = message.stopReason === "length"
+                     ? await failToolCallsFromTruncatedMessage(toolCalls, emit)
+-                    : await executeToolCalls(currentContext, message, config, signal, emit);
++                    : await executeToolCalls(currentContext, message, config, signal, emit, toolCalls);
+                 toolResults.push(...executedToolBatch.messages);
+                 hasMoreToolCalls = !executedToolBatch.terminate;
+                 for (const result of toolResults) {
+@@ -129,6 +156,7 @@
+                 }
+             }
+             await emit({ type: "turn_end", message, toolResults });
++            signal?.throwIfAborted();
+             const nextTurnContext = {
+                 message,
+                 toolResults,
+@@ -136,6 +164,7 @@
+                 newMessages,
+             };
+             const nextTurnSnapshot = await config.prepareNextTurn?.(nextTurnContext);
++            signal?.throwIfAborted();
+             if (nextTurnSnapshot) {
+                 currentContext = nextTurnSnapshot.context ?? currentContext;
+                 config = {
+@@ -157,8 +186,10 @@
+                 await emit({ type: "agent_end", messages: newMessages });
+                 return;
+             }
++            signal?.throwIfAborted();
+             pendingMessages = (await config.getSteeringMessages?.()) || [];
+         }
++        signal?.throwIfAborted();
+         // Agent would stop here. Check for follow-up messages.
+         const followUpMessages = (await config.getFollowUpMessages?.()) || [];
+         if (followUpMessages.length > 0) {
+@@ -176,13 +207,16 @@
+  * This is where AgentMessage[] gets transformed to Message[] for the LLM.
+  */
+ async function streamAssistantResponse(context, config, signal, emit, streamFunction) {
++    signal?.throwIfAborted();
+     // Apply context transform if configured (AgentMessage[] → AgentMessage[])
+     let messages = context.messages;
+     if (config.transformContext) {
+         messages = await config.transformContext(messages, signal);
+     }
++    signal?.throwIfAborted();
+     // Convert to LLM-compatible messages (AgentMessage[] → Message[])
+     const llmMessages = await config.convertToLlm(messages);
++    signal?.throwIfAborted();
+     // Build LLM context
+     const llmContext = {
+         systemPrompt: context.systemPrompt,
+@@ -191,6 +225,7 @@
+     };
+     // Resolve API key (important for expiring tokens)
+     const resolvedApiKey = (config.getApiKey ? await config.getApiKey(config.model.provider) : undefined) || config.apiKey;
++    signal?.throwIfAborted();
+     const response = await streamFunction(config.model, llmContext, {
+         ...config,
+         apiKey: resolvedApiKey,
+@@ -284,8 +319,7 @@
+ /**
+  * Execute tool calls from an assistant message.
+  */
+-async function executeToolCalls(currentContext, assistantMessage, config, signal, emit) {
+-    const toolCalls = assistantMessage.content.filter((c) => c.type === "toolCall");
++async function executeToolCalls(currentContext, assistantMessage, config, signal, emit, toolCalls) {
+     const hasSequentialToolCall = toolCalls.some((tc) => currentContext.tools?.find((t) => t.name === tc.name)?.executionMode === "sequential");
+     if (config.toolExecution === "sequential" || hasSequentialToolCall) {
+         return executeToolCallsSequential(currentContext, assistantMessage, toolCalls, config, signal, emit);
+@@ -362,7 +396,7 @@
+             break;
+         }
+     }
+-    const orderedFinalizedCalls = await Promise.all(finalizedCalls.map((entry) => (typeof entry === "function" ? entry() : Promise.resolve(entry))));
++    const orderedFinalizedCalls = await settleAll(finalizedCalls.map((entry) => (typeof entry === "function" ? entry() : Promise.resolve(entry))));
+     const messages = [];
+     for (const finalized of orderedFinalizedCalls) {
+         const toolResultMessage = createToolResultMessage(finalized);
+@@ -374,6 +408,14 @@
+         terminate: shouldTerminateToolBatch(orderedFinalizedCalls),
+     };
+ }
++// A failed tool/event must not release the owner while siblings are still running.
++async function settleAll(promises) {
++    const settled = await Promise.allSettled(promises);
++    return settled.map((entry) => {
++        if (entry.status === "rejected") throw entry.reason;
++        return entry.value;
++    });
++}
+ function shouldTerminateToolBatch(finalizedCalls) {
+     return finalizedCalls.length > 0 && finalizedCalls.every((finalized) => finalized.result.terminate === true);
+ }
+@@ -400,6 +442,7 @@
+         };
+     }
+     try {
++        signal?.throwIfAborted();
+         const preparedToolCall = prepareToolCallArguments(tool, toolCall);
+         const validatedArgs = validateToolArguments(tool, preparedToolCall);
+         if (config.beforeToolCall) {
+@@ -454,6 +497,7 @@
+     const updateEvents = [];
+     let acceptingUpdates = true;
+     try {
++        signal?.throwIfAborted();
+         const result = await prepared.tool.execute(prepared.toolCall.id, prepared.args, signal, (partialResult) => {
+             if (!acceptingUpdates)
+                 return;
+@@ -466,12 +510,12 @@
+             })));
+         });
+         acceptingUpdates = false;
+-        await Promise.all(updateEvents);
++        await settleAll(updateEvents);
+         return { result, isError: false };
+     }
+     catch (error) {
+         acceptingUpdates = false;
+-        await Promise.all(updateEvents);
++        await settleAll(updateEvents);
+         return {
+             result: createErrorToolResult(error instanceof Error ? error.message : String(error)),
+             isError: true,
+diff --git a/dist/agent-loop.d.ts b/dist/agent-loop.d.ts
+--- a/dist/agent-loop.d.ts
++++ b/dist/agent-loop.d.ts
+@@ -2,7 +2,7 @@
+  * Agent loop that works with AgentMessage throughout.
+  * Transforms to Message[] only at the LLM call boundary.
+  */
+-import { EventStream } from "@earendil-works/pi-ai";
++import { type AssistantMessage, type ToolCall, EventStream } from "@earendil-works/pi-ai";
+ import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, StreamFn } from "./types.ts";
+ export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
+ /**
+@@ -21,4 +21,7 @@
+ export declare function agentLoopContinue(context: AgentContext, config: AgentLoopConfig, signal: AbortSignal | undefined, streamFn: StreamFn): EventStream<AgentEvent, AgentMessage[]>;
+ export declare function runAgentLoop(prompts: AgentMessage[], context: AgentContext, config: AgentLoopConfig, emit: AgentEventSink, signal: AbortSignal | undefined, streamFn: StreamFn): Promise<AgentMessage[]>;
+ export declare function runAgentLoopContinue(context: AgentContext, config: AgentLoopConfig, emit: AgentEventSink, signal: AbortSignal | undefined, streamFn: StreamFn): Promise<AgentMessage[]>;
++/** Local pinned pending-tool integration. */
++export declare function getPendingToolContinuation(context: AgentContext): { assistant: AssistantMessage; calls: ToolCall[] };
++export declare function runAgentLoopPendingTools(context: AgentContext, pending: { assistant: AssistantMessage; calls: ToolCall[] }, config: AgentLoopConfig, emit: AgentEventSink, signal: AbortSignal, streamFn: StreamFn): Promise<AgentMessage[]>;
+ //# sourceMappingURL=agent-loop.d.ts.map
+\ No newline at end of file

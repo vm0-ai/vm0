@@ -16,6 +16,7 @@ async fn run_settlement_case(
     run_id: &str,
     assistant_message: &Value,
     expected_result: &str,
+    expected_assistant_text: Option<&str>,
     base_path: &OsStr,
     original_directory: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -167,13 +168,27 @@ fi
                 .cloned(),
         );
     }
-    let assistant = delivered_events
+    let assistants: Vec<_> = delivered_events
         .iter()
-        .find(|event| event["type"] == "assistant")
-        .ok_or_else(|| std::io::Error::other("assistant event was not delivered"))?;
+        .filter(|event| event["type"] == "assistant")
+        .collect();
+    if let Some(text) = expected_assistant_text {
+        assert_eq!(assistants.len(), 1);
+        assert_eq!(
+            assistants
+                .first()
+                .and_then(|assistant| assistant.pointer("/message/content/0/text")),
+            Some(&Value::String(text.to_string()))
+        );
+    } else {
+        assert!(assistants.is_empty());
+    }
     assert_eq!(
-        assistant.pointer("/message/content/0/text"),
-        Some(&Value::String("ignored assistant text".to_string()))
+        delivered_events
+            .iter()
+            .filter(|event| event["type"] == "result")
+            .count(),
+        1
     );
     let terminal = delivered_events
         .iter()
@@ -203,6 +218,7 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "timestamp": 1,
         }),
         "API Error: Overloaded",
+        Some("ignored assistant text"),
         &base_path,
         &original_directory,
     )
@@ -220,6 +236,22 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "timestamp": 1,
         }),
         "Pi model turn aborted",
+        Some("ignored assistant text"),
+        &base_path,
+        &original_directory,
+    )
+    .await?;
+    // This fixture is also asserted against actual official RPC output by the
+    // TypeScript pending-tool cancellation test (only its timestamp is normalized).
+    let [assistant_end, settlement]: [Value; 2] = serde_json::from_str(include_str!(
+        "../../../turbo/packages/pi-agent-runtime/src/test/fixtures/pending-tool-abort.json"
+    ))?;
+    assert_eq!(settlement["type"], "agent_settled");
+    run_settlement_case(
+        "00000000-0000-4000-8000-000000000126",
+        &assistant_end["message"],
+        "This operation was aborted",
+        None,
         &base_path,
         &original_directory,
     )
