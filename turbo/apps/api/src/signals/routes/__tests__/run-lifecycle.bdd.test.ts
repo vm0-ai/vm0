@@ -88,6 +88,7 @@ import {
   readRunModelRuntimeRouteFixture,
   readSessionHistoryBlobRefCountFixture,
   setRunModelProviderFixture,
+  setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
 import {
   holdAgentRunRowLockFixture,
@@ -7313,6 +7314,48 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 });
 
 describe("RUN-01: admission boundaries beyond request validation", () => {
+  it.each(["claude-fable-5", "anthropic/claude-fable-5"])(
+    "fails a pre-deployment queued %s selection when capacity becomes available",
+    async (selectedModel) => {
+      const api = createRunsApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      const first = await api.createRun(actor, {
+        agentId,
+        prompt: "hold first slot",
+        modelProvider: "anthropic-api-key",
+      });
+      const second = await api.createRun(actor, {
+        agentId,
+        prompt: "hold second slot",
+        modelProvider: "anthropic-api-key",
+      });
+      const queued = await api.createRun(actor, {
+        agentId,
+        prompt: "queued before model retirement",
+        modelProvider: "anthropic-api-key",
+      });
+      expect(queued.status).toBe("queued");
+      // The previous API could enqueue this snapshot. The current write APIs
+      // reject it, so simulate only the persisted pre-deployment selection.
+      await setRunModelRuntimeRouteFixture({
+        runId: queued.runId,
+        selectedModel,
+        modelRuntimeProvider: "anthropic-api-key",
+        modelRuntimeModel: selectedModel,
+      });
+      await api.requestCancelRun(actor, first.runId, [200]);
+      const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
+      expect(failed.error).toBe(
+        "Claude Fable 5 has been retired. Select Claude Fable 5.1.",
+      );
+      expect(
+        (await waitForRunQueueLength(api, actor, 0)).body.queue,
+      ).toHaveLength(0);
+      expect((await api.readRun(actor, second.runId)).status).toBe("pending");
+      await api.requestCancelRun(actor, second.runId, [200]);
+    },
+  );
+
   it("rejects runs for onboarded organizations that never gained an entitlement", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);

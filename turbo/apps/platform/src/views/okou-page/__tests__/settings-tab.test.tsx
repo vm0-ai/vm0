@@ -34,6 +34,10 @@ function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
   });
 }
 
+function isNeckOrSweaterLayer(src: string): boolean {
+  return src.includes("/neck/") || src.includes("/sweater/");
+}
+
 function findCreateCustomAvatarButton(): Promise<HTMLElement> {
   return screen.findByLabelText("Create custom avatar");
 }
@@ -213,8 +217,35 @@ test("Load only the visible avatar SVG layers", async () => {
   });
   const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
 
+  // Four head layers across the preview and the six face options.
   expect(layerSrcs).toHaveLength(28);
   expect(new Set(layerSrcs).size).toBe(24);
+  expect(layerSrcs.filter(isNeckOrSweaterLayer)).toStrictEqual([]);
+});
+
+test("Add the neck and sweater layers once the switch is on", async () => {
+  prepareAgentProfile(null);
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
+  });
+
+  click(await findCreateCustomAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
+
+  // Two more layers per avatar, but the shared neck and sweater are one
+  // request each no matter how many avatars wear them.
+  expect(layerSrcs).toHaveLength(42);
+  expect(new Set(layerSrcs).size).toBe(26);
+  expect(new Set(layerSrcs.filter(isNeckOrSweaterLayer)).size).toBe(2);
 });
 
 test("Keep every composer step and its edge options usable in one dialog", async () => {
@@ -222,7 +253,10 @@ test("Keep every composer step and its edge options usable in one dialog", async
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
   });
 
   click(await findCreateCustomAvatarButton());
@@ -236,6 +270,7 @@ test("Keep every composer step and its edge options usable in one dialog", async
     { label: "Mood", first: "Neutral smile", last: "Stubble smile" },
     { label: "Skin", first: "Gold", last: "Brown" },
     { label: "Color", first: "Blue", last: "Brown" },
+    { label: "Sweater", first: "Lime", last: "Orange" },
   ] as const;
 
   for (const [index, step] of steps.entries()) {
@@ -280,7 +315,10 @@ test("Create and save a composer avatar from the profile page", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
   });
 
   click(await findCreateCustomAvatarButton());
@@ -295,6 +333,8 @@ test("Create and save a composer avatar from the profile page", async () => {
     await expect(within(dialog).findByText(step)).resolves.toBeVisible();
   }
   click(within(dialog).getByLabelText("Blue"));
+  await expect(within(dialog).findByText("Sweater")).resolves.toBeVisible();
+  click(within(dialog).getByLabelText("Pink"));
   click(within(dialog).getByText("Use this avatar"));
 
   await waitFor(() => {
@@ -304,19 +344,21 @@ test("Create and save a composer avatar from the profile page", async () => {
 
   const savedLayerSrcs = renderedAvatarSvgLayerSrcs(await findAvatarRow());
   expect(savedLayerSrcs).toStrictEqual([
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/neck\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-rear\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\//u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-front\.svg$/u),
     expect.stringMatching(/\/avatar-svg-v2\/.*\/expressions\//u),
+    expect.stringMatching(/\/avatar-svg-v2\/.*\/sweater\/pink\.svg$/u),
   ]);
 
   // Reopening the maker must reload the saved avatar, not roll a new one.
   click(await findCustomizeAvatarButton());
 
   const editDialog = await screen.findByRole("dialog", { name: "Edit avatar" });
-  expect(renderedAvatarSvgLayerSrcs(editDialog).slice(0, 4)).toStrictEqual(
-    savedLayerSrcs,
-  );
+  expect(
+    renderedAvatarSvgLayerSrcs(editDialog).slice(0, savedLayerSrcs.length),
+  ).toStrictEqual(savedLayerSrcs);
 });
 
 test("Allow an org admin to update another user's public agent avatar", async () => {

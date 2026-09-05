@@ -261,7 +261,7 @@ test("Make a temporary Codex speed the default", async () => {
 test("Make a new-chat model choice the default immediately", async () => {
   const user = userEvent.setup({ delay: null });
   let update: UpdateUserModelPreferenceRequest | undefined;
-  installNewChat(["claude-fable-5", "claude-sonnet-4-6"], "claude-fable-5");
+  installNewChat(["claude-fable-5-1", "claude-sonnet-4-6"], "claude-fable-5-1");
   context.mocks.api(userModelPreferenceContract.update, ({ body, respond }) => {
     update = body;
     const nextPreference = preference("claude-sonnet-4-6");
@@ -278,7 +278,7 @@ test("Make a new-chat model choice the default immediately", async () => {
   });
 
   await readyComposer();
-  await chooseModel(user, "Claude Fable 5", /^Claude Sonnet 4\.6/iu);
+  await chooseModel(user, "Claude Fable 5.1", /^Claude Sonnet 4\.6/iu);
   await waitFor(() => {
     expect(update).toStrictEqual({
       selectedModel: "claude-sonnet-4-6",
@@ -296,7 +296,7 @@ test("Temporarily choose a model for a new chat", async () => {
   const updateGate = createDeferredPromise<void>(context.signal);
   const responsePrepared = createDeferredPromise<void>(context.signal);
   let update: UpdateUserModelPreferenceRequest | undefined;
-  installNewChat(["claude-fable-5", "claude-sonnet-4-6"], "claude-fable-5");
+  installNewChat(["claude-fable-5-1", "claude-sonnet-4-6"], "claude-fable-5-1");
   context.mocks.api(
     userModelPreferenceContract.update,
     async ({ body, respond }) => {
@@ -318,7 +318,7 @@ test("Temporarily choose a model for a new chat", async () => {
   });
 
   await readyComposer();
-  await chooseModel(user, "Claude Fable 5", /^Claude Sonnet 4\.6/iu);
+  await chooseModel(user, "Claude Fable 5.1", /^Claude Sonnet 4\.6/iu);
   expect(update).toBeUndefined();
   const scopeCard = await screen.findByRole("group", {
     name: "Model for this chat",
@@ -352,19 +352,19 @@ test("Keep the model picker stable while settings refresh", async () => {
   const user = userEvent.setup({ delay: null });
   const refreshGate = createDeferredPromise<void>(context.signal);
   let preferenceRequestCount = 0;
-  installNewChat(["claude-fable-5", "claude-sonnet-4-6"], "claude-fable-5");
+  installNewChat(["claude-fable-5-1", "claude-sonnet-4-6"], "claude-fable-5-1");
   context.mocks.api(userModelPreferenceContract.get, async ({ respond }) => {
     preferenceRequestCount += 1;
     if (preferenceRequestCount > 1) {
       await refreshGate.promise;
     }
-    return respond(200, preference("claude-fable-5"));
+    return respond(200, preference("claude-fable-5-1"));
   });
 
   await setupPage({ context, path: NEW_CHAT_PATH });
 
   await readyComposer();
-  await user.click(await modelPicker("Claude Fable 5"));
+  await user.click(await modelPicker("Claude Fable 5.1"));
   await expect(
     screen.findByRole("option", { name: /^Claude Sonnet 4\.6/iu }),
   ).resolves.toBeVisible();
@@ -376,7 +376,7 @@ test("Keep the model picker stable while settings refresh", async () => {
   expect(
     screen.getByRole("option", { name: /^Claude Sonnet 4\.6/iu }),
   ).toBeVisible();
-  await expect(modelPicker("Claude Fable 5")).resolves.toHaveAttribute(
+  await expect(modelPicker("Claude Fable 5.1")).resolves.toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -387,18 +387,18 @@ test("Keep the model picker stable while settings refresh", async () => {
       screen.getByRole("option", { name: /^Claude Sonnet 4\.6/iu }),
     ).toBeVisible();
     expect(
-      screen.getByRole("combobox", { name: "Claude Fable 5" }),
+      screen.getByRole("combobox", { name: "Claude Fable 5.1" }),
     ).toHaveAttribute("aria-expanded", "true");
   });
 });
 
 test("Follow model preference changes made in another session", async () => {
-  installNewChat(["claude-fable-5", "claude-opus-4-8"], "claude-fable-5");
+  installNewChat(["claude-fable-5-1", "claude-opus-4-8"], "claude-fable-5-1");
 
   await setupPage({ context, path: NEW_CHAT_PATH });
 
   await readyComposer();
-  await expect(modelPicker("Claude Fable 5")).resolves.toBeVisible();
+  await expect(modelPicker("Claude Fable 5.1")).resolves.toBeVisible();
 
   context.mocks.data.userModelPreference({
     ...preference("claude-opus-4-8"),

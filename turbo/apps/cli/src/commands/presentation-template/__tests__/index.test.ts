@@ -125,8 +125,8 @@ describe("okou presentation-template publish", () => {
     mkdirSync(pagesDir, { recursive: true });
     mkdirSync(packageDir, { recursive: true });
 
-    sourcePath = join(tempDir, "brand-system.pptx");
-    writeFileSync(sourcePath, Buffer.from("PK deck bytes"));
+    sourcePath = join(tempDir, "brand-system.ppt");
+    writeFileSync(sourcePath, Buffer.from("legacy deck bytes"));
     writeFileSync(join(packageDir, "SKILL.md"), "# Use this template\n");
     writeFileSync(join(packageDir, "design-system.md"), "Ink on paper.\n");
   });
@@ -156,7 +156,7 @@ describe("okou presentation-template publish", () => {
         return HttpResponse.json({
           id: TEMPLATE_ID,
           title: published.title,
-          sourceFilename: "brand-system.pptx",
+          sourceFilename: "brand-system.ppt",
           coverUrl: "https://presigned.example.com/cover.png",
           pageCount: published.pageFileIds.length,
           createdAt: "2026-08-20T00:00:00.000Z",
@@ -183,8 +183,9 @@ describe("okou presentation-template publish", () => {
       throw new Error("Expected the publish route to receive a request");
     }
     expect(published.title).toBe("Brand system");
-    expect(uploads.filenameOf(published.sourceFileId)).toBe(
-      "brand-system.pptx",
+    expect(uploads.filenameOf(published.sourceFileId)).toBe("brand-system.ppt");
+    expect(uploads.contentTypeOf(published.sourceFileId)).toBe(
+      "application/vnd.ms-powerpoint",
     );
     expect(
       published.pageFileIds.map((id) => {

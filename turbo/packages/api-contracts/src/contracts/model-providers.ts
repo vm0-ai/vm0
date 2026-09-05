@@ -179,6 +179,30 @@ const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
   SUPPORTED_RUN_MODELS,
 );
 
+// Historical IDs remain in the wire schemas and billing catalog. Availability
+// is a separate product decision, including for provider-prefixed aliases.
+export const RETIRED_RUN_MODEL_MESSAGE =
+  "Claude Fable 5 has been retired. Select Claude Fable 5.1.";
+
+export function getRunModelAccess(
+  model: string | null | undefined,
+  restrictedBuiltInModels = false,
+): "allowed" | "pro_required" | "retired" {
+  const canonical = normalizeVm0ModelId(model?.trim().toLowerCase() ?? "");
+  if (canonical === "claude-fable-5") {
+    return "retired";
+  }
+  return restrictedBuiltInModels && isLimitedFree1RestrictedRunModel(model)
+    ? "pro_required"
+    : "allowed";
+}
+
+export function isActiveRunModel(
+  model: string | null | undefined,
+): model is SupportedRunModel {
+  return isSupportedRunModel(model) && getRunModelAccess(model) === "allowed";
+}
+
 export function isSupportedRunModel(
   model: string | null | undefined,
 ): model is SupportedRunModel {
@@ -477,6 +501,11 @@ export function isLimitedFree1RestrictedRunModel(
   return !LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel);
 }
 
+export const ACTIVE_RUN_MODELS: readonly SupportedRunModel[] =
+  SUPPORTED_RUN_MODELS.filter((model) => {
+    return getRunModelAccess(model) === "allowed";
+  });
+
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
@@ -536,7 +565,7 @@ export function modelSupportsImageInput(
  * Return the VM0 built-in models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
-  return [...SUPPORTED_RUN_MODELS];
+  return [...ACTIVE_RUN_MODELS];
 }
 
 /**
@@ -556,7 +585,7 @@ export function getVm0VisibleModels(): string[] {
 const BUILT_IN_MODEL_PROVIDER_CONFIG = {
   framework: "claude-code" as const,
   label: "Built-in model",
-  models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
+  models: [...ACTIVE_RUN_MODELS],
   defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
 };
 
@@ -574,7 +603,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "claude-fable-5-1",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
@@ -595,7 +623,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "claude-fable-5-1",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
@@ -621,7 +648,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-fable-5.1",
-      "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-5",
@@ -663,7 +689,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-fable-5.1",
-      "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-5",
@@ -1074,7 +1099,7 @@ export function normalizeRunModelId(model: string): string {
 
 export function getProvidersForModel(model: string): ModelProviderType[] {
   const canonical = normalizeRunModelId(model);
-  if (!isSupportedRunModel(canonical)) {
+  if (!isActiveRunModel(canonical)) {
     return [];
   }
   return [...MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical]];
@@ -1465,7 +1490,15 @@ export const upsertModelProviderRequestSchema = z.object({
   secret: z.string().min(1).optional(), // Legacy single secret
   authMethod: z.string().optional(), // For multi-auth providers
   secrets: z.record(z.string(), z.string()).optional(), // For multi-auth providers
-  selectedModel: z.string().optional(),
+  selectedModel: z
+    .string()
+    .refine(
+      (model) => {
+        return getRunModelAccess(model) !== "retired";
+      },
+      { message: RETIRED_RUN_MODEL_MESSAGE },
+    )
+    .optional(),
 });
 
 export type UpsertModelProviderRequest = z.infer<

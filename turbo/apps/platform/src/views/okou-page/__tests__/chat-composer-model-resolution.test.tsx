@@ -168,8 +168,11 @@ test("Edit only the model for an existing thread", async () => {
 });
 
 test("Resolve the model shown for a chat", async () => {
-  installRunChat({ selectedModel: "claude-fable-5" });
-  configurePolicies(["claude-fable-5", "claude-opus-4-8"], "claude-fable-5");
+  installRunChat({ selectedModel: "claude-fable-5-1" });
+  configurePolicies(
+    ["claude-fable-5-1", "claude-opus-4-8"],
+    "claude-fable-5-1",
+  );
   preference("claude-opus-4-8");
 
   await setupPage({ context, path: NEW_CHAT_PATH });
@@ -181,8 +184,8 @@ test("Resolve the model shown for a chat", async () => {
 test("Keep an existing thread's explicit model", async () => {
   installRunChat({ selectedModel: "claude-opus-5" });
   configurePolicies(
-    ["claude-fable-5", "claude-opus-4-8", "claude-opus-5"],
-    "claude-fable-5",
+    ["claude-fable-5-1", "claude-opus-4-8", "claude-opus-5"],
+    "claude-fable-5-1",
   );
   preference("claude-opus-4-8");
 

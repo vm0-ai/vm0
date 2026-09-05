@@ -47,6 +47,7 @@ import {
   CODEX_FAST_MODE_MODELS,
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
@@ -334,7 +335,7 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("claude-sonnet-4-6")).toBe(true);
   });
 
-  it("exposes only selectable models in the shared schema catalog", () => {
+  it("keeps historical models readable in the shared schema catalog", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-fable-5-1",
       "claude-fable-5",
@@ -363,20 +364,6 @@ describe("model-first canonical catalog", () => {
       "vercel-ai-gateway",
     ]);
     expect(getProvidersForModel("anthropic/claude-fable-5.1")).toEqual([
-      "built-in",
-      "claude-code-oauth-token",
-      "anthropic-api-key",
-      "openrouter-api-key",
-      "vercel-ai-gateway",
-    ]);
-    expect(getProvidersForModel("claude-fable-5")).toEqual([
-      "built-in",
-      "claude-code-oauth-token",
-      "anthropic-api-key",
-      "openrouter-api-key",
-      "vercel-ai-gateway",
-    ]);
-    expect(getProvidersForModel("anthropic/claude-fable-5")).toEqual([
       "built-in",
       "claude-code-oauth-token",
       "anthropic-api-key",
@@ -638,7 +625,7 @@ describe("model-first canonical catalog", () => {
     },
   );
 
-  it("defines two statically compilable built-in model routes for every model", () => {
+  it("defines two statically compilable built-in model routes for every active model", () => {
     expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toEqual([
       "claude-fable-5-1",
       "claude-fable-5",
@@ -661,7 +648,7 @@ describe("model-first canonical catalog", () => {
       "openai",
     ]);
 
-    for (const model of SUPPORTED_RUN_MODELS) {
+    for (const model of ACTIVE_RUN_MODELS) {
       const candidates = getVm0BuiltInModelRouteCandidates(model);
       expect(candidates).toHaveLength(2);
       expect(candidates[0]?.providerType).toBe(
@@ -795,7 +782,6 @@ describe("model selection for Anthropic-native providers", () => {
     (type) => {
       const models = getModels(type);
       expect(models).toContain("claude-fable-5-1");
-      expect(models).toContain("claude-fable-5");
       expect(models).toContain("claude-opus-5");
       expect(models).toContain("claude-sonnet-5");
       expect(models).toContain("claude-sonnet-4-6");
@@ -829,7 +815,6 @@ describe("model selection for Claude-compatible gateway providers", () => {
   it("openrouter-api-key exposes current Claude models", () => {
     expect(getModels("openrouter-api-key")).toEqual([
       "anthropic/claude-fable-5.1",
-      "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-5",
@@ -848,13 +833,6 @@ describe("model selection for Claude-compatible gateway providers", () => {
       ).toBe(true);
       expect(getProviderRuntimeModel(type, "claude-fable-5-1")).toBe(
         "anthropic/claude-fable-5.1",
-      );
-      expect(getModels(type)).toContain("anthropic/claude-fable-5");
-      expect(isModelSupportedByProvider("anthropic/claude-fable-5", type)).toBe(
-        true,
-      );
-      expect(getProviderRuntimeModel(type, "claude-fable-5")).toBe(
-        "anthropic/claude-fable-5",
       );
       expect(getModels(type)).toContain("anthropic/claude-opus-5");
       expect(isModelSupportedByProvider("anthropic/claude-opus-5", type)).toBe(
@@ -881,7 +859,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
 describe("getVm0VisibleModels", () => {
   it("returns only active VM0 built-in models", () => {
     const models = getVm0VisibleModels();
-    expect(models).toEqual(SUPPORTED_RUN_MODELS);
+    expect(models).toEqual(ACTIVE_RUN_MODELS);
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("claude-sonnet-4-6");
     expect(models).not.toContain("kimi-k3");

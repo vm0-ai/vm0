@@ -198,6 +198,7 @@ test("The agent header opens avatar customization on the current avatar", async 
           expression: "neutral-smile",
           skin: "deep",
           hairColor: "green",
+          sweater: "lime",
         }),
       }),
     ],
