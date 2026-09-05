@@ -4,7 +4,7 @@ import DEEPSEEK_V4_FLASH_MODEL_CATALOG from "./deepseek-model-catalog.json" with
 import {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   type SupportedRunModel,
   type ModelPriceTier,
 } from "./model-price-tiers";
@@ -54,7 +54,7 @@ const DEEPSEEK_MODEL_CATALOG = {
 export {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   type SupportedRunModel,
   type ModelPriceTier,
 };
@@ -188,7 +188,7 @@ export function getRunModelAccess(
   model: string | null | undefined,
   restrictedBuiltInModels = false,
 ): "allowed" | "pro_required" | "retired" {
-  const canonical = normalizeVm0ModelId(model?.trim().toLowerCase() ?? "");
+  const canonical = normalizeBuiltInModelId(model?.trim().toLowerCase() ?? "");
   if (canonical === "claude-fable-5") {
     return "retired";
   }
@@ -232,10 +232,12 @@ export function isCodexFastModeModel(
   );
 }
 
-export function getVm0ModelPriceTier(
+export function getBuiltInModelPriceTier(
   model: string,
 ): ModelPriceTier | undefined {
-  return isSupportedRunModel(model) ? VM0_MODEL_PRICE_TIER[model] : undefined;
+  return isSupportedRunModel(model)
+    ? BUILT_IN_MODEL_PRICE_TIER[model]
+    : undefined;
 }
 
 export function getCanonicalModelDisplayName(model: string): string {
@@ -263,7 +265,7 @@ export function getDefaultOrgModelPolicySeed(
  * NOTE: Defined before MODEL_PROVIDER_TYPES so the built-in entry can derive
  * its models list from this mapping via Object.keys().
  */
-export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
+export const BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "anthropic-api-key": { vendor: "anthropic" },
   "openrouter-api-key": { vendor: "openrouter" },
   deepseek: { vendor: "deepseek" },
@@ -272,7 +274,7 @@ export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
 } as const satisfies Partial<Record<ModelProviderType, { vendor: string }>>;
 
 export type BuiltInModelRouteProviderType =
-  keyof typeof VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS;
+  keyof typeof BUILT_IN_MODEL_ROUTE_PROVIDERS;
 
 export interface BuiltInModelRouteCandidate {
   readonly concreteType: BuiltInModelRouteProviderType;
@@ -292,7 +294,7 @@ interface ModelConfig {
 // Key order is load-bearing: `Object.keys()` preserves insertion order and
 // `MODEL_PROVIDER_TYPES["built-in"].models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
-export const VM0_MODEL_TO_PROVIDER = {
+export const BUILT_IN_MODEL_TO_PROVIDER = {
   "claude-fable-5-1": {
     candidates: [
       { concreteType: "anthropic-api-key" },
@@ -425,62 +427,61 @@ export interface BuiltInModelRouteTarget {
 function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
   if (!isSupportedRunModel(model)) {
     throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+      `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
   }
-  return VM0_MODEL_TO_PROVIDER[model].candidates[0];
+  return BUILT_IN_MODEL_TO_PROVIDER[model].candidates[0];
 }
 
-export function getVm0BuiltInModelRouteCandidates(
+export function getBuiltInModelRouteCandidates(
   model: string,
 ): readonly BuiltInModelRouteTarget[] {
   if (!isSupportedRunModel(model)) {
     throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+      `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
   }
-  return VM0_MODEL_TO_PROVIDER[model].candidates.map((candidate) => {
+  return BUILT_IN_MODEL_TO_PROVIDER[model].candidates.map((candidate) => {
     return {
       selectedModel: model,
       providerType: candidate.concreteType,
       upstreamModel: "apiModel" in candidate ? candidate.apiModel : model,
-      vendor: VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor,
+      vendor: BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor,
     };
   });
 }
 
-export function getVm0BuiltInModelRouteVendors(): readonly string[] {
+export function getBuiltInModelRouteVendors(): readonly string[] {
   return [
     ...new Set(
-      Object.values(VM0_MODEL_TO_PROVIDER).flatMap((config) => {
+      Object.values(BUILT_IN_MODEL_TO_PROVIDER).flatMap((config) => {
         return config.candidates.map((candidate) => {
-          return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType]
-            .vendor;
+          return BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor;
         });
       }),
     ),
   ];
 }
 
-export const VM0_MODEL_ALIAS_TO_MODEL = {
+export const BUILT_IN_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-fable-5.1": "claude-fable-5-1",
   "anthropic/claude-fable-5": "claude-fable-5",
   "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
   "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-} as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
+} as const satisfies Record<string, keyof typeof BUILT_IN_MODEL_TO_PROVIDER>;
 
-const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
-  VM0_MODEL_ALIAS_TO_MODEL;
+const BUILT_IN_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
+  BUILT_IN_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
   "gpt-5.6-luna",
   "deepseek-v4-flash",
 ]);
 
-export function normalizeVm0ModelId(model: string): string {
-  return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
+export function normalizeBuiltInModelId(model: string): string {
+  return BUILT_IN_MODEL_ALIAS_LOOKUP[model] ?? model;
 }
 
 export function isLimitedFree1RestrictedRunModel(
@@ -493,7 +494,7 @@ export function isLimitedFree1RestrictedRunModel(
   if (!normalized) {
     return false;
   }
-  const canonicalModel = normalizeVm0ModelId(normalized);
+  const canonicalModel = normalizeBuiltInModelId(normalized);
   const unprefixedModel = canonicalModel.replace(
     /^(anthropic|deepseek|openai)\//,
     "",
@@ -539,7 +540,7 @@ export function getModelImageInputSupport(
   if (!model) {
     return "unknown";
   }
-  const normalized = normalizeVm0ModelId(model);
+  const normalized = normalizeBuiltInModelId(model);
   if (
     IMAGE_INPUT_SUPPORTED_MODELS.has(normalized) ||
     IMAGE_INPUT_SUPPORTED_MODELS.has(model)
@@ -564,7 +565,7 @@ export function modelSupportsImageInput(
 /**
  * Return the VM0 built-in models visible to callers.
  */
-export function getVm0VisibleModels(): string[] {
+export function getBuiltInVisibleModels(): string[] {
   return [...ACTIVE_RUN_MODELS];
 }
 
@@ -1168,7 +1169,7 @@ export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
  * Get the concrete provider type for a VM0 built-in model.
  * Throws if the model is not in the VM0 model mapping.
  */
-export function getVm0ConcreteProviderType(
+export function getBuiltInConcreteProviderType(
   model: string,
 ): BuiltInModelRouteProviderType {
   return vm0PrimaryCandidate(model).concreteType;
@@ -1178,16 +1179,16 @@ export function getVm0ConcreteProviderType(
  * Get the vendor name for a VM0 built-in model.
  * Used for key pool lookup.
  */
-export function getVm0Vendor(model: string): string {
+export function getBuiltInVendor(model: string): string {
   const providerType = vm0PrimaryCandidate(model).concreteType;
-  return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
+  return BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
 }
 
 /**
  * Get the upstream API model identifier for a VM0 built-in model.
  * Falls back to the display name when no override is configured.
  */
-export function getVm0ApiModel(model: string): string {
+export function getBuiltInApiModel(model: string): string {
   return vm0PrimaryCandidate(model).apiModel ?? model;
 }
 

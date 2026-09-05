@@ -17,7 +17,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
+import { seedBuiltInModelKey } from "./helpers/runtime-state";
 import { createFixtureOperationOwner } from "./helpers/fixture-operation-owner";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -474,7 +474,7 @@ beforeEach(async () => {
   mockEnv("CRON_SECRET", CRON_SECRET);
   context.sessionHistoryBlobs.clear();
   installS3Objects();
-  await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+  await seedBuiltInModelKey(context, "gpt-5.6-terra");
 });
 
 describe("Pi memory Stage 1 worker", () => {

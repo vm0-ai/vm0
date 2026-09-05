@@ -5,8 +5,8 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getProviderRuntimeModel,
-  getVm0ConcreteProviderType,
-  getVm0Vendor,
+  getBuiltInConcreteProviderType,
+  getBuiltInVendor,
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -153,8 +153,8 @@ import {
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
-  seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
-  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
+  seedBuiltInDefaultModelKey as seedBuiltInDefaultModelKeyState,
+  seedBuiltInModelKey as seedBuiltInModelKeyState,
   setCustomConnectorAuthTemplateFixture,
   setRunModelProviderStateFixture,
   setRunnerJobConnectorRuntimeTargets,
@@ -644,13 +644,13 @@ function findFirewallEntry(
   });
 }
 
-async function seedVm0BuiltInDefaultModelKey(): Promise<string> {
-  const fixture = await seedVm0BuiltInDefaultModelKeyState(context);
+async function seedBuiltInDefaultModelKey(): Promise<string> {
+  const fixture = await seedBuiltInDefaultModelKeyState(context);
   return fixture.selectedModel;
 }
 
-async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
+async function seedBuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedBuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -661,10 +661,10 @@ async function expectBuiltInModelRunRuntimeRoute(
   await expect(readRunModelRuntimeRouteFixture(runId)).resolves.toStrictEqual({
     modelProvider: "built-in",
     selectedModel,
-    modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
+    modelRuntimeProvider: getBuiltInConcreteProviderType(selectedModel),
     modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
     builtInModelKeyId: expect.any(String),
-    builtInModelKeyVendor: getVm0Vendor(selectedModel),
+    builtInModelKeyVendor: getBuiltInVendor(selectedModel),
   });
 }
 
@@ -5802,7 +5802,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   it("reuses built-in continuation across provider aliases and isolates runtime changes", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const selectedModel = await seedVm0BuiltInDefaultModelKey();
+    const selectedModel = await seedBuiltInDefaultModelKey();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
@@ -8272,7 +8272,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       "gpt-5.6-luna",
     ] as const) {
-      await seedVm0BuiltInModelKey(model);
+      await seedBuiltInModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
         {
@@ -8316,8 +8316,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
     const api = createRunsApi(context);
-    const selectedModel = await seedVm0BuiltInDefaultModelKey();
-    const concreteProvider = getVm0ConcreteProviderType(selectedModel);
+    const selectedModel = await seedBuiltInDefaultModelKey();
+    const concreteProvider = getBuiltInConcreteProviderType(selectedModel);
     const expectedFirewall = getModelProviderFirewall(concreteProvider)?.name;
     if (!expectedFirewall) {
       throw new Error(
@@ -8366,7 +8366,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "gpt-5.6-sol";
-    await seedVm0BuiltInModelKey(selectedModel);
+    await seedBuiltInModelKey(selectedModel);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await api.updateOrgModelPolicies(actor, [
@@ -8460,7 +8460,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       { orgId: slackOrgId, userId: slackUserId },
       context.signal,
     );
-    await seedVm0BuiltInModelKey(selectedModel);
+    await seedBuiltInModelKey(selectedModel);
     await releaseSlackFixture();
 
     const { actor, agentId } = await entitledRunActor();
@@ -8496,7 +8496,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     async (selectedModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
-      await seedVm0BuiltInModelKey(selectedModel);
+      await seedBuiltInModelKey(selectedModel);
       const { actor, agentId, runnerGroup } = await entitledRunActor();
 
       await api.updateOrgModelPolicies(actor, [
@@ -18119,7 +18119,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await seedVm0BuiltInDefaultModelKey();
+    await seedBuiltInDefaultModelKey();
     const modelProvider = `bdd-model-pricing-${randomUUID()}`;
     onTestFinished(async () => {
       await deleteUsagePricingRows({
@@ -18832,7 +18832,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
   it("suppresses reviewed expected failures from generic completion logs", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    await seedVm0BuiltInDefaultModelKey();
+    await seedBuiltInDefaultModelKey();
     const { actor, agentId } = await entitledRunActor();
     const suppressedReasons = [
       "insufficient_credits",

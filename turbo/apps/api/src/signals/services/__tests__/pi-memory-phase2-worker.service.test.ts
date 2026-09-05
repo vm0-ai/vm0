@@ -23,7 +23,7 @@ import { db } from "../../../lib/db";
 import { mockEnv } from "../../../lib/env";
 import { withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { seedVm0BuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
+import { seedBuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
 import { cronConsolidatePiMemoryPhase2RoutesForTest } from "../../routes/cron-consolidate-pi-memory-phase2";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -479,7 +479,7 @@ describe("Pi memory Phase 2 worker composition", () => {
   it("converges when Pi publishes before an external writer", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    await seedBuiltInModelKey(context, "gpt-5.6-terra");
     const provider = installProvider();
     const objects = new Map<string, Buffer>();
     installS3(objects);
@@ -639,7 +639,7 @@ describe("Pi memory Phase 2 worker composition", () => {
   it("lets an external upload win, then reclaims its exact archive and converges", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    await seedBuiltInModelKey(context, "gpt-5.6-terra");
     const provider = installProvider();
     const objects = new Map<string, Buffer>();
     const uploadStarted = createDeferredPromise<void>(context.signal);
@@ -962,7 +962,7 @@ describe("Pi memory Phase 2 worker composition", () => {
   it("reuses a detached registered archive and provider usage after a stale replay", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    await seedBuiltInModelKey(context, "gpt-5.6-terra");
     const provider = installProvider(true);
     const objects = new Map<string, Buffer>();
     const uploadStarted = createDeferredPromise<void>(context.signal);
@@ -1138,7 +1138,7 @@ describe("Pi memory Phase 2 worker composition", () => {
   it("persists terminal usage but publishes nothing after invalid provider output", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    await seedBuiltInModelKey(context, "gpt-5.6-terra");
     const provider = installTextOnlyProvider();
     const objects = new Map<string, Buffer>();
     installS3(objects);
@@ -1266,7 +1266,7 @@ describe("Pi memory Phase 2 worker composition", () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
     mockEnv("CRON_SECRET", CRON_SECRET);
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    await seedBuiltInModelKey(context, "gpt-5.6-terra");
     installS3(new Map<string, Buffer>());
     const providerStarted = createDeferredPromise<void>(context.signal);
     const providerAborted = createDeferredPromise<void>(context.signal);
@@ -1354,7 +1354,7 @@ describe("Pi memory Phase 2 worker composition", () => {
   it("fails closed when an exact registered non-empty base object is missing", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    await seedBuiltInModelKey(context, "gpt-5.6-terra");
     const objects = new Map<string, Buffer>();
     installS3(objects);
     const scope = await createPhase2TestScope("worker-missing-base");

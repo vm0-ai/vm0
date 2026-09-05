@@ -1041,7 +1041,7 @@ function buildZeroCreateAgentRunArgs(args: {
     okouTokenPublicBrand: command.publicBrand,
     okouTokenComputerUseHostId: command.computerUseHostId,
     okouTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
-    enforceVm0Credits: true,
+    enforceBuiltInCredits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
     requiredOfficialWorkflowIds: command.requiredOfficialWorkflowIds,

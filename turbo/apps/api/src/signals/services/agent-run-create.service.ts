@@ -41,7 +41,7 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   hasAuthMethods,
   isBuiltInModelProviderType,
   isSupportedRunModel,
@@ -1003,7 +1003,7 @@ export interface CreateAgentRunArgs {
   readonly validateEnvironmentReferences?: boolean;
   readonly agentRunMetadata?: AgentRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
-  readonly enforceVm0Credits?: boolean;
+  readonly enforceBuiltInCredits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly queueFirstAssociation?: QueueFirstRunAssociation;
   readonly agentRunModelPin?: AgentRunModelPin;
@@ -1441,7 +1441,7 @@ function frameworkForProviderSelection(
   if (!vm0Model) {
     return null;
   }
-  return getFrameworkForType(getVm0ConcreteProviderType(vm0Model));
+  return getFrameworkForType(getBuiltInConcreteProviderType(vm0Model));
 }
 
 async function resolveRequestedRunFramework(
@@ -5753,12 +5753,12 @@ async function checkFinalRunAdmission(
     readonly userId: string;
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
-    readonly enforceVm0Credits: boolean;
+    readonly enforceBuiltInCredits: boolean;
     readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
 ): Promise<CreateRunErrorResult | null> {
-  if (args.enforceVm0Credits) {
+  if (args.enforceBuiltInCredits) {
     return await args.timing.measure(
       "api_dispatch_check_vm0_credits",
       "nested",
@@ -8641,7 +8641,7 @@ async function resolveRunModelProvider(
   }
 
   if (
-    args.enforceVm0Credits &&
+    args.enforceBuiltInCredits &&
     isBuiltInModelProviderType(args.modelProviderType)
   ) {
     const creditGate =
@@ -10365,7 +10365,7 @@ export const completeAgentRun$ = command(
     const selectedModel =
       context.modelProvider?.selectedModel ?? args.selectedModelOverride;
     const creditAdmitted =
-      args.enforceVm0Credits === true &&
+      args.enforceBuiltInCredits === true &&
       isBuiltInModelProviderType(context.modelProvider?.type);
     const admissionGate = await timing.measure(
       "api_dispatch_check_run_admission",
@@ -10378,7 +10378,7 @@ export const completeAgentRun$ = command(
             userId: args.userId,
             modelProviderType,
             selectedModel,
-            enforceVm0Credits: creditAdmitted,
+            enforceBuiltInCredits: creditAdmitted,
             timing,
           },
           signal,

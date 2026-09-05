@@ -66,8 +66,8 @@ import { detach, Reason } from "../../../signals/utils";
 import {
   getMediaModelPriceTierLabel,
   getModelBrandIconType,
-  getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
+  getBuiltInModelPriceTier,
+  getBuiltInModelPriceTierLabel,
   type ModelPriceTier,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
@@ -474,7 +474,7 @@ function ModelFirstPolicyRowContent({
   const builtInPriceTier = isBuiltInModelProviderType(
     policy.defaultProviderType,
   )
-    ? getVm0ModelPriceTier(policy.model)
+    ? getBuiltInModelPriceTier(policy.model)
     : undefined;
   const restricted = !modelPolicyAllowedForPlan(policy, modelCapabilities);
   return (
@@ -486,7 +486,7 @@ function ModelFirstPolicyRowContent({
       {builtInPriceTier !== undefined ? (
         <PriceTierBadge
           tier={builtInPriceTier}
-          description={getVm0ModelPriceTierLabel(builtInPriceTier)}
+          description={getBuiltInModelPriceTierLabel(builtInPriceTier)}
         />
       ) : (
         <ByokBadge />

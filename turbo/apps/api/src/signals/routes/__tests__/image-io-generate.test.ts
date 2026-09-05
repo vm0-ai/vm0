@@ -51,7 +51,7 @@ import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 
 const context = testContext();
 const store = createStore();
@@ -581,7 +581,7 @@ async function seedImageFixture(options: {
 }
 
 async function seedAdmittedImageRun(): Promise<AdmittedImageFixture> {
-  await seedVm0BuiltInDefaultModelKey(context);
+  await seedBuiltInDefaultModelKey(context);
   const bdd = createBddApi(context);
   const runs = createRunsApi(context);
   const actor = bdd.user();
