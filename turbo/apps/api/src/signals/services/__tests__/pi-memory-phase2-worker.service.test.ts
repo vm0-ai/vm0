@@ -16,6 +16,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { db } from "../../../lib/db";
 import { withMockNowForTest } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { seedBuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
 import { DEFAULT_AGENT_NAME } from "../default-agent-profile";
 import { failPiMemoryPhase2Job } from "../pi-memory-phase2-job.service";
@@ -98,6 +99,11 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     const now = new Date("2026-09-05T02:00:00.000Z");
     const scope = await createPhase2TestScope("sandbox-dispatch", {
       emptyBase: true,
+    });
+    await seedOrgMetadata({
+      orgId: scope.orgId,
+      tier: "pro",
+      credits: 100_000,
     });
     const agentId = randomUUID();
     await db().insert(agents).values({
