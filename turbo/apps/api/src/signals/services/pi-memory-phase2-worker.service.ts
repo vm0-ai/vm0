@@ -224,6 +224,7 @@ const dispatchClaim$ = command(
           ],
         },
         apiStartTime: now(),
+        modelProviderType: "built-in",
         selectedModelOverride: PI_MEMORY_PHASE2_MODEL,
         builtInModelRuntimeRoute: route,
         callbacks: [
