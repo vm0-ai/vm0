@@ -129,6 +129,7 @@ async function recoverMaintenanceRun(
       claimedBaseVersionId: job.claimedBaseVersionId,
       currentTime: input.currentTime,
       expectedMaintenanceRunId: job.maintenanceRunId,
+      allowExpiredLease: true,
       errorClass: "maintenance_run_missing",
     });
     return { outcome: "failed", errorClass: "maintenance_run_missing" };

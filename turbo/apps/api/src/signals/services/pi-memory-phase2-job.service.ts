@@ -83,6 +83,8 @@ interface PiMemoryPhase2LeaseFence extends PiMemoryPhase2OwnerScope {
   readonly claimedBaseVersionId: string;
   readonly currentTime: Date;
   readonly expectedMaintenanceRunId?: string | null;
+  /** Bound orphan recovery retains the exact run/token fence after expiry. */
+  readonly allowExpiredLease?: boolean;
 }
 
 interface PiMemoryPhase2SelectionMetadata {
@@ -754,7 +756,9 @@ function exactLeaseCondition(args: PiMemoryPhase2LeaseFence) {
     eq(piMemoryPhase2Jobs.sandboxLeaseToken, args.leaseToken),
     eq(piMemoryPhase2Jobs.claimedRevision, args.claimedRevision),
     eq(piMemoryPhase2Jobs.claimedBaseVersionId, args.claimedBaseVersionId),
-    gt(piMemoryPhase2Jobs.leaseExpiresAt, args.currentTime),
+    ...(args.allowExpiredLease
+      ? []
+      : [gt(piMemoryPhase2Jobs.leaseExpiresAt, args.currentTime)]),
     ...(args.expectedMaintenanceRunId === undefined
       ? []
       : [

@@ -95,6 +95,46 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     expect(candidate?.rawMemory).toBe("bounded private candidate");
   });
 
+  it("recovers an expired bound lease whose maintenance run is missing", async () => {
+    const currentTime = new Date("2026-09-05T04:00:00.000Z");
+    const scope = await createPhase2TestScope("sandbox-orphaned-run", {
+      emptyBase: true,
+    });
+    const leaseToken = randomUUID();
+    const maintenanceRunId = randomUUID();
+    await insertPendingPhase2Job(scope, {
+      status: "leased",
+      claimedRevision: 1,
+      leaseToken,
+      sandboxLeaseToken: leaseToken,
+      leaseExpiresAt: new Date("2026-09-05T03:00:00.000Z"),
+      maintenanceRunId,
+      claimedSelectionDigest: "a".repeat(64),
+      claimedSelectedCount: 0,
+      claimedSelectedUtf8Bytes: 0,
+    });
+
+    const store = createStore();
+    await expect(
+      store.set(
+        executePiMemoryPhase2Work$,
+        { scope, currentTime },
+        testContext().signal,
+      ),
+    ).resolves.toStrictEqual({
+      outcome: "failed",
+      errorClass: "maintenance_run_missing",
+    });
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "retryable_failure",
+      maintenanceRunId: null,
+      leaseToken: null,
+      sandboxLeaseToken: null,
+      retryCount: 1,
+      lastErrorClass: "maintenance_run_missing",
+    });
+  });
+
   it("dispatches one isolated threadless run with the exact private claim", async () => {
     const now = new Date("2026-09-05T02:00:00.000Z");
     const scope = await createPhase2TestScope("sandbox-dispatch", {
