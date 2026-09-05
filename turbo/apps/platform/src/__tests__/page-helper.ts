@@ -32,6 +32,7 @@ import {
   resolveClerkProductionTopology,
   type ClerkProductionPrimaryAppDomain,
 } from "../lib/clerk-production-topology.ts";
+import { resolvePlatformRuntimeConfig } from "../lib/platform-host.ts";
 import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
@@ -216,7 +217,9 @@ function installClerkBootstrap(
       signUpUrl: new URL("/sign-up", authOrigin).toString(),
     },
     productionPrimaryAppDomain: primaryAppDomain,
-    publishableKey: "test_production_key",
+    // The page selects the publishable key by hostname. Read the same source
+    // the app reads so the two never disagree for a preview host.
+    publishableKey: resolvePlatformRuntimeConfig().clerkPublishableKey,
   };
   signal.addEventListener(
     "abort",

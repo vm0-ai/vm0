@@ -203,6 +203,11 @@ const PAGE_HOSTNAMES = [
 
 // The page and the app decide the same thing in two languages. A change to one
 // without the other is a silent split-brain that type checking cannot catch.
+//
+// This case cannot be built through the page: no page surface exposes the raw
+// bootstrap script, and `setupPage` accepts only the two valid primary app
+// domains, so a page test cannot present the unsubstituted marker or a
+// misspelled substitution this test exists to pin.
 test("The inline Clerk bootstrap and the topology module agree", () => {
   for (const injectedPrimaryAppDomain of INJECTED_PRIMARY_APP_DOMAINS) {
     for (const hostname of PAGE_HOSTNAMES) {
