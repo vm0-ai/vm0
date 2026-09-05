@@ -5,9 +5,6 @@ import {
   sharedDatabaseQuerySchema,
 } from "./data-key.ts";
 
-export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
-  "SharedDatabaseClientNotConnectedError";
-
 const requestIdSchema = z.string().min(1);
 
 const registerTabMessageSchema = z
@@ -145,7 +142,6 @@ const getTokenRequestSchema = z
 export const sharedDatabaseWorkerUnavailableReasonSchema = z.enum([
   "force-upgrade-required",
   "indexeddb-version-changed",
-  "worker-load-or-transport-failure",
 ]);
 
 export type SharedDatabaseWorkerUnavailableReason = z.infer<

@@ -115,7 +115,7 @@ export async function seedChatListCache(
   events: readonly ChatThreadEvent[] = [],
 ): Promise<void> {
   const identity = authIdentity(auth);
-  const opener = createChatIdbOpener({ reload: () => {} });
+  const opener = createChatIdbOpener({ onVersionChange: () => {} });
   const database: IDBPDatabase = await opener.openChatIdb(
     identity.userId,
     identity.orgId,

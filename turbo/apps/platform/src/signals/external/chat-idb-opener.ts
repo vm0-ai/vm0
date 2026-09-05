@@ -18,11 +18,8 @@ type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
 
 interface ChatIdbOpenerOptions {
   readonly openDatabase?: OpenChatIdbDatabase;
-  // Required: the page reloads itself, while the shared database worker has no
-  // window to reload and instead tells its clients that it is unavailable.
-  // Keeping this explicit is what allows this module to stay free of DOM
-  // globals.
-  readonly reload: () => void;
+  // Notify the caller after closing a connection whose schema changed.
+  readonly onVersionChange: () => void;
 }
 
 interface ChatIdbOpener {
@@ -47,7 +44,7 @@ export function createChatIdbOpener(
   options: ChatIdbOpenerOptions,
 ): ChatIdbOpener {
   const openDatabase = options.openDatabase ?? openDB;
-  const reload = options.reload;
+  const onVersionChange = options.onVersionChange;
 
   return {
     async openChatIdb(userId, orgId) {
@@ -80,7 +77,7 @@ export function createChatIdbOpener(
             nextVersion: event.newVersion,
           });
           db.close();
-          reload();
+          onVersionChange();
         },
         { once: true },
       );

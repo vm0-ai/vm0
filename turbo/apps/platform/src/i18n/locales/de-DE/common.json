@@ -3257,8 +3257,7 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Die Anfrage ist fehlgeschlagen",
-      "sharedDatabaseUnavailable": "In der App ist ein Problem aufgetreten. Bitte warten Sie einen Moment und aktualisieren Sie dann die Seite, um es erneut zu versuchen."
+      "requestFailed": "Die Anfrage ist fehlgeschlagen"
     },
     "realtime": {
       "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite.",

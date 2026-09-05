@@ -12,10 +12,7 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
-import {
-  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
-  type SharedDatabaseConnectionStatus,
-} from "../protocol.ts";
+import type { SharedDatabaseConnectionStatus } from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 
 const axiomTelemetry = vi.hoisted(() => {
@@ -42,7 +39,6 @@ vi.mock("@axiomhq/js", () => {
 
 class FakeBridge implements SharedDatabaseBridge {
   queryCalls = 0;
-  queryError: Error | null = null;
 
   registerTab(): Promise<void> {
     return Promise.resolve();
@@ -58,11 +54,6 @@ class FakeBridge implements SharedDatabaseBridge {
     _query: SharedDatabaseQuery<TKey>,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
     this.queryCalls += 1;
-    if (this.queryError) {
-      const error = this.queryError;
-      this.queryError = null;
-      return Promise.reject(error);
-    }
     return Promise.resolve([] as SharedDatabaseQueryResult<TKey>);
   }
 }
@@ -74,12 +65,6 @@ function dataKey(): SharedDatabaseDataKey {
     kind: "chat-event",
     threadId: "single-connection-thread",
   };
-}
-
-function clientNotConnectedError(): Error {
-  const error = new Error("Shared database client is not connected");
-  error.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
-  return error;
 }
 
 function createEvents(): SharedDatabaseBridgeEvents {
@@ -132,34 +117,6 @@ async function createRegisteredBridge(): Promise<{
   await bridge.registerTab(owner.signal);
   return { bridge, bridges, owner };
 }
-
-test("Reload a tab whose shared-data registration has expired", async () => {
-  const bridges: FakeBridge[] = [];
-  const events = createEvents();
-  const bridge = new SingleConnectionSharedDatabaseBridge({
-    createBridge: () => {
-      const created = new FakeBridge();
-      bridges.push(created);
-      return created;
-    },
-    events,
-  });
-  const owner = createChildAbortController(context.signal);
-  await bridge.registerTab(owner.signal);
-  bridges[0]!.queryError = clientNotConnectedError();
-
-  const pendingQuery = bridge.query(query(), owner.signal);
-  await vi.waitFor(() => {
-    expect(events.workerUnavailable).toHaveBeenCalledWith(
-      "worker-load-or-transport-failure",
-    );
-  });
-
-  expect(bridges).toHaveLength(1);
-  expect(bridges[0]!.queryCalls).toBe(1);
-  owner.abort(new DOMException("App unloaded", "AbortError"));
-  await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
-});
 
 test("Reports production shared worker queries without entity identifiers", async () => {
   configureClientTelemetry("https://app.okou.ai/", "xaat-test-ingest-token");

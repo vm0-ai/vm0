@@ -3307,8 +3307,7 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Falha na solicitação",
-      "sharedDatabaseUnavailable": "O app encontrou um problema. Aguarde um momento e atualize a página para tentar novamente."
+      "requestFailed": "Falha na solicitação"
     },
     "realtime": {
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página.",

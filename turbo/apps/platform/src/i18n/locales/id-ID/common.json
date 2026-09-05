@@ -3249,8 +3249,7 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Permintaan gagal",
-      "sharedDatabaseUnavailable": "Aplikasi mengalami masalah. Tunggu sebentar, lalu segarkan halaman untuk mencoba lagi."
+      "requestFailed": "Permintaan gagal"
     },
     "realtime": {
       "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",
