@@ -205,7 +205,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
 
@@ -237,9 +236,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });

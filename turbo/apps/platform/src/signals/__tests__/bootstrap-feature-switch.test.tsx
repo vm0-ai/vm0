@@ -51,7 +51,6 @@ async function setupIntroVideoRolloutPage(args: {
     return respond(200, {
       switches: {},
       effectiveSwitches: {
-        [FeatureSwitchKey.BaseUiSidebarScrollArea]: false,
         [FeatureSwitchKey.IntroVideo]: false,
       },
     });
