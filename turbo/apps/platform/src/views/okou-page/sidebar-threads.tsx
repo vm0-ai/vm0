@@ -95,7 +95,10 @@ import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { equalArrays } from "../../lib/equality.ts";
 
-const CHAT_THREAD_ROW_ICON_CLASS = "[&_svg]:size-[17px] [&_svg]:opacity-70";
+// The row glyphs draw at 17px, which the shared button base (`[&_svg]:size-4`)
+// would otherwise clamp to 16px. Dimming stays on the individual glyphs so the
+// state indicators keep their own contrast.
+const CHAT_THREAD_ROW_ICON_CLASS = "[&_svg]:size-[17px]";
 
 function equalSidebarChatThreadWindows(
   previous: SidebarChatThreadWindow,
@@ -216,9 +219,9 @@ function ChatThreadMenu({
     detach(openRename(pageSignal), Reason.DomCallback);
   }
 
-  const hasOtherIndicator = indicatorState !== null || isPinned;
-  const usePinnedIndicatorTrigger = isPinned && indicatorState === null;
-  const showMobileTrigger = !hasOtherIndicator || usePinnedIndicatorTrigger;
+  const showStateIndicator = indicatorState !== null;
+  const showPinIndicator = isPinned && indicatorState === null;
+  const hasRestingIndicator = showStateIndicator || showPinIndicator;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -229,9 +232,11 @@ function ChatThreadMenu({
             onClick={preventChatThreadMenuNavigation}
             variant="quiet"
             size="icon-2xs"
-            className={`peer pointer-events-auto absolute left-1 top-1 cursor-pointer rounded-md ${
-              showMobileTrigger ? "visible" : "invisible"
-            } transition-opacity duration-150 md:invisible md:group-hover:visible md:data-popup-open:visible ${CHAT_THREAD_ROW_ICON_CLASS}`}
+            className={`group/thread-menu pointer-events-auto absolute left-1 top-1 cursor-pointer rounded-md transition-opacity duration-150 ${
+              hasRestingIndicator
+                ? ""
+                : "md:invisible md:group-hover:visible md:data-popup-open:visible"
+            } ${CHAT_THREAD_ROW_ICON_CLASS}`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
             })}
@@ -242,25 +247,35 @@ function ChatThreadMenu({
               <TooltipTrigger asChild>
                 <span
                   aria-label={
-                    usePinnedIndicatorTrigger
+                    showPinIndicator
                       ? t(($) => {
                           return $.chat.sidebar.pinned;
                         })
                       : undefined
                   }
                   data-testid={
-                    usePinnedIndicatorTrigger
+                    showPinIndicator
                       ? "chat-thread-pinned-indicator"
                       : undefined
                   }
+                  className="flex items-center justify-center"
                 >
-                  {usePinnedIndicatorTrigger ? (
+                  {hasRestingIndicator ? (
                     <>
-                      <Pin size={17} className="md:hidden" />
-                      <Ellipsis size={17} className="hidden md:block" />
+                      <span className="flex items-center justify-center md:group-hover:hidden md:group-data-[popup-open]/thread-menu:hidden">
+                        {showStateIndicator ? (
+                          <SessionStateIndicator signals={signals} />
+                        ) : (
+                          <Pin size={17} className="opacity-70" />
+                        )}
+                      </span>
+                      <Ellipsis
+                        size={17}
+                        className="hidden opacity-70 md:group-hover:block md:group-data-[popup-open]/thread-menu:block"
+                      />
                     </>
                   ) : (
-                    <Ellipsis size={17} />
+                    <Ellipsis size={17} className="opacity-70" />
                   )}
                 </span>
               </TooltipTrigger>
@@ -313,57 +328,6 @@ function ChatThreadMenu({
         </DropdownMenuContent>
       </DropdownMenu>
     </TooltipProvider>
-  );
-}
-
-function ChatThreadSideDecorator({
-  signals,
-}: {
-  signals: SidebarChatThreadItemSignals;
-}) {
-  const { t } = useTranslation();
-  const isPinned = useGet(signals.pinned$);
-  const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
-  if (indicatorState === "draft") {
-    return (
-      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-        <span className="flex items-center justify-center">
-          <SessionStateIndicator signals={signals} />
-        </span>
-      </div>
-    );
-  }
-  return (
-    <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      <ChatThreadMenu signals={signals} />
-      {indicatorState !== null ? (
-        <span className="flex items-center justify-center group-hover:hidden peer-data-popup-open:hidden">
-          <SessionStateIndicator signals={signals} />
-        </span>
-      ) : isPinned ? (
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                aria-label={t(($) => {
-                  return $.chat.sidebar.pinned;
-                })}
-                className={`hidden items-center justify-center text-muted-foreground group-hover:hidden peer-data-popup-open:hidden md:flex ${CHAT_THREAD_ROW_ICON_CLASS}`}
-              >
-                <Pin size={17} />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">
-                {t(($) => {
-                  return $.chat.sidebar.pinned;
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : null}
-    </div>
   );
 }
 
@@ -428,7 +392,9 @@ function ChatThreadItem({
   return (
     <div className="group relative">
       <ChatThreadItemLink signals={signals} />
-      <ChatThreadSideDecorator signals={signals} />
+      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+        <ChatThreadMenu signals={signals} />
+      </div>
     </div>
   );
 }
