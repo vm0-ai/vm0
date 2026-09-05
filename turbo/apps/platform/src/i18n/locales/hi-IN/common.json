@@ -629,7 +629,6 @@
       "renameImportedTemplate": "टेम्पलेट का नाम बदलें",
       "searchConnector": "टेम्पलेट खोजें",
       "searchConnectors": "टेम्पलेट खोजें",
-      "selected": "टेम्पलेट: {{title}}",
       "selectStyle": "शैली {{style}} चुनें",
       "selectTemplate": "टेम्पलेट {{title}} चुनें",
       "selectVideo": "वीडियो टेम्पलेट {{title}} चुनें",
@@ -1360,38 +1359,22 @@
     },
     "plans": {
       "cancellationNotice": "आपकी {{plan}} योजना रद्द कर दी गई है और {{date}} पर समाप्त होगी।",
-      "changeAnytime": "किसी भी समय अपग्रेड या डाउनग्रेड करें।",
       "compare": "योजनाओं की तुलना करें",
       "compareAll": "सभी योजनाओं की तुलना करें",
-      "currentPlan": "वर्तमान योजना",
       "custom": {
         "name": "रिवाज़"
       },
       "customAccess": "{{value}} समवर्ती रन के साथ कस्टम एक्सेस",
       "customCancellationNotice": "आपकी कस्टम योजना {{date}} पर समाप्त हो जाएगी।",
-      "customCheckoutUnavailable": "कस्टम वर्कस्पेस प्रो या टीम चेकआउट पर स्विच नहीं कर सकते।",
       "downgrade": "डाउनग्रेड",
       "downgradeNotice": "आपका {{currentPlan}} प्लान {{date}} पर {{targetPlan}} में डाउनग्रेड हो जाएगा।",
       "downgradesOn": "{{date}} पर {{plan}} में डाउनग्रेड",
       "downgradeTo": "{{plan}} पर डाउनग्रेड करें",
       "endsOn": "{{date}} पर समाप्त होता है",
       "features": {
-        "byok": "अपनी स्वयं की LLM कुंजियाँ लाएँ",
-        "communitySupport": "समुदाय का समर्थन",
-        "emailSupport": "ई - मेल समर्थन",
-        "existingCredits": "केवल मौजूदा निःशुल्क क्रेडिट",
-        "oneConcurrentRun": "1 समवर्ती रन",
-        "prioritySupport": "प्रायोरिटी सपोर्ट",
-        "sharedAndPrivateAgents": "7 साझा एजेंट, असीमित निजी एजेंट",
-        "tenConcurrentRuns": "10 समवर्ती रन",
-        "twoConcurrentRuns": "2 समवर्ती रन",
-        "unlimitedAgents": "असीमित कुल एजेंट",
-        "voiceInputFree": "वॉइस इनपुट (कुल 10 अनुरोध · प्रति सदस्य 10 मिनट/दिन)",
-        "voiceInputPro": "वॉइस इनपुट (प्रति सदस्य 300 अनुरोध/दिन · 200 मिनट/दिन)",
-        "voiceInputTeam": "वॉइस इनपुट (प्रति सदस्य 500 अनुरोध/दिन · 500 मिनट/दिन)"
+        "byok": "अपनी स्वयं की LLM कुंजियाँ लाएँ"
       },
       "free": {
-        "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
         "name": "फ्री"
       },
       "highlights": {
@@ -1418,7 +1401,6 @@
         "name": "लिमिटेड फ्री"
       },
       "loadError": "बिलिंग स्थिति लोड नहीं हो सकी.",
-      "manageSubscription": "सदस्यता प्रबंधित करें",
       "namedPlan": "{{plan}} योजना",
       "noActivePlan": "कोई सक्रिय योजना नहीं",
       "noActiveSubscription": "कोई सक्रिय सदस्यता नहीं",
@@ -1426,11 +1408,9 @@
         "name": "कोई योजना नहीं"
       },
       "perMonth": "/महीना",
-      "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
         "description": "रोज़ का एजेंट काम, हर सदस्य के हिसाब से।",
-        "legacyDescription": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
         "name": "प्रो"
       },
       "renews": "{{date}} को नवीनीकृत होगा",
@@ -1439,7 +1419,6 @@
       "selectedPlan": "चयनित योजना",
       "team": {
         "description": "उस टीम के लिए जो दिनभर एजेंट चलाती रहती है।",
-        "legacyDescription": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
@@ -1542,13 +1521,11 @@
       "subscriptionChangeConfirmed": "सदस्यता में बदलाव की पुष्टि हो गई है।"
     },
     "usage": {
-      "added": "{{date}} जोड़ा गया",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} शेष",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} क्रेडिट",
         "remainingAria": "उपयोग भत्ता {{label}} शेष है",
         "resets": "{{date}} रीसेट करता है",
         "resetsRaw": "{{value}} रीसेट करता है",
@@ -1569,15 +1546,12 @@
         "teamPlan": "टीम योजना"
       },
       "creditAdditions": "क्रेडिट परिवर्धन",
-      "creditsRemaining_one": "{{value}} क्रेडिट शेष",
-      "creditsRemaining_other": "{{value}} क्रेडिट शेष",
       "expires": "{{date}} समाप्त हो रहा है",
       "grantsTable": {
         "credits": "क्रेडिट",
         "date": "तारीख",
         "left": "शेष"
       },
-      "left": "{{value}} शेष",
       "member": "सदस्य",
       "neverExpires": "कभी समाप्त नहीं होता",
       "orgCredits": "संगठन क्रेडिट",
@@ -2814,7 +2788,6 @@
       "always": "हमेशा",
       "clearSearch": "अनुमति खोज साफ़ करें",
       "descriptionAgent": "कॉन्फ़िगर करें कि इस एजेंट को इस कनेक्टर के माध्यम से कौन से कार्य करने की अनुमति है।",
-      "descriptionWorkflow": "कॉन्फ़िगर करें कि इस वर्कफ़्लो को इस कनेक्टर के माध्यम से कौन से कार्य करने की अनुमति है।",
       "find": "अनुमतियाँ खोजें",
       "findPlaceholder": "अनुमतियाँ ढूँढें...",
       "forTarget": "{{target}} के लिए",

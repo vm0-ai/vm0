@@ -7,18 +7,14 @@ import {
   type NetworkLogEntry,
 } from "@okouai/api-contracts/contracts/runs";
 import type { AgentEvent, LogDetail } from "../okou-page/log-types.ts";
-import { jsonParseOr } from "../utils.ts";
+import { isNonArrayRecord, jsonParseOr } from "../utils.ts";
 
 export type InspectLogMeta = Partial<LogDetail>;
 
 const INVALID_JSON = Symbol("invalid-json");
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function parseAgentEvent(value: unknown): AgentEvent | null {
-  if (!isRecord(value)) {
+  if (!isNonArrayRecord(value)) {
     return null;
   }
   if (
@@ -75,12 +71,12 @@ export function parseInspectLog(jsonText: string): {
   if (rawValue === INVALID_JSON) {
     return null;
   }
-  if (!isRecord(rawValue)) {
+  if (!isNonArrayRecord(rawValue)) {
     return null;
   }
 
   return {
-    meta: isRecord(rawValue.meta) ? rawValue.meta : null,
+    meta: isNonArrayRecord(rawValue.meta) ? rawValue.meta : null,
     events: parseAgentEvents(rawValue.events),
     context: parseRunContext(rawValue.context),
     networkLogs: parseNetworkLogs(rawValue.networkLogs),

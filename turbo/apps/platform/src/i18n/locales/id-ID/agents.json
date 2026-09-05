@@ -76,7 +76,6 @@
   "detail": {
     "chatWith": "Chat dengan {{agentName}}",
     "defaultDescription": "Rekan kerja AI Anda, disesuaikan untuk Anda",
-    "noSelection": "Belum ada agen dipilih",
     "notFound": {
       "back": "Kembali ke tim",
       "description": "Agen “{{agentId}}” tidak ada atau Anda tidak memiliki akses ke sana.",

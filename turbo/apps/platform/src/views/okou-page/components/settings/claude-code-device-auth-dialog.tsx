@@ -1,12 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@okouai/ui/components/ui/dialog";
 import { Button } from "@okouai/ui/components/ui/button";
 import { Input } from "@okouai/ui/components/ui/input";
 import { Loader2 } from "lucide-react";
@@ -31,7 +25,11 @@ import {
 import { brandName$ } from "../../../../signals/branding.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { ProviderIcon } from "./provider-icons.tsx";
+import {
+  DeviceAuthDialogShell,
+  DeviceAuthLoadingContent,
+  DeviceAuthRetryContent,
+} from "./device-auth-dialog-shell.tsx";
 
 type ClaudeCodeDeviceAuthDialogState = {
   open: boolean;
@@ -133,50 +131,27 @@ function ClaudeCodeDeviceAuthDialogView({
           return $.settings.models.deviceAuth.claude.connectTitle;
         });
 
-  function handleOpenChange(nextOpen: boolean): void {
-    if (nextOpen) {
-      return;
-    }
-    detach(close(pageSignal), Reason.DomCallback);
-  }
-
-  function handleStart(): void {
-    detach(run(pageSignal), Reason.DomCallback);
-  }
-
-  function handleSubmit(): void {
-    detach(submit(pageSignal), Reason.DomCallback);
-  }
-
   return (
-    <Dialog open={dialog.open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className="max-w-md"
-        aria-describedby={undefined}
-        closeLabel={t(($) => {
-          return $.settings.shared.close;
-        })}
-      >
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <ProviderIcon type="claude-code-oauth-token" size={20} />
-            </div>
-            <DialogTitle>{title}</DialogTitle>
-          </div>
-        </DialogHeader>
-
-        <ClaudeCodeDeviceAuthBody
-          flow={flow}
-          mode={dialog.mode}
-          onStart={handleStart}
-          onSubmit={handleSubmit}
-          openApprovalPage={openApprovalPage}
-          setAuthorizationCode={setAuthorizationCode}
-          submitting={submitting}
-        />
-      </DialogContent>
-    </Dialog>
+    <DeviceAuthDialogShell
+      open={dialog.open}
+      close={close}
+      iconType="claude-code-oauth-token"
+      title={title}
+    >
+      <ClaudeCodeDeviceAuthBody
+        flow={flow}
+        mode={dialog.mode}
+        onStart={() => {
+          detach(run(pageSignal), Reason.DomCallback);
+        }}
+        onSubmit={() => {
+          detach(submit(pageSignal), Reason.DomCallback);
+        }}
+        openApprovalPage={openApprovalPage}
+        setAuthorizationCode={setAuthorizationCode}
+        submitting={submitting}
+      />
+    </DeviceAuthDialogShell>
   );
 }
 
@@ -197,148 +172,141 @@ function ClaudeCodeDeviceAuthBody({
   setAuthorizationCode: (value: string) => void;
   submitting: boolean;
 }) {
-  const brandName = useGet(brandName$);
-  const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   switch (flow.status) {
-    case "idle": {
-      return <ClaudeCodeDeviceAuthLoadingContent />;
-    }
+    case "idle":
     case "starting": {
-      return <ClaudeCodeDeviceAuthLoadingContent />;
+      return (
+        <DeviceAuthLoadingContent
+          testId="claude-code-device-auth-loading"
+          label={t(($) => {
+            return $.settings.models.deviceAuth.claude.preparing;
+          })}
+        />
+      );
     }
     case "pending": {
       return (
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmit();
-          }}
-        >
-          <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-            <p>
-              {t(
-                ($) => {
-                  return $.settings.models.deviceAuth.claude.instructions;
-                },
-                { brandName },
-              )}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              detach(openApprovalPage(pageSignal), Reason.DomCallback);
-            }}
-            data-testid="claude-code-device-auth-open"
-          >
-            {t(($) => {
-              return $.settings.models.deviceAuth.claude.openApproval;
-            })}
-          </Button>
-          <div className="flex flex-col gap-2">
-            <label
-              className="text-sm font-medium text-foreground"
-              htmlFor="claude-code-device-auth-code"
-            >
-              {t(($) => {
-                return $.settings.models.deviceAuth.claude.authorizationCode;
-              })}
-            </label>
-            <Input
-              id="claude-code-device-auth-code"
-              value={flow.authorizationCode}
-              placeholder={t(($) => {
-                return $.settings.models.deviceAuth.claude.codePlaceholder;
-              })}
-              readOnly={submitting}
-              onChange={(event) => {
-                setAuthorizationCode(event.target.value);
-              }}
-              data-testid="claude-code-device-auth-code"
-            />
-          </div>
-          {flow.errorMessage && (
-            <p className="text-xs text-destructive" role="alert">
-              {flow.errorMessage}
-            </p>
-          )}
-          <Button
-            type="submit"
-            className="w-full gap-2"
-            disabled={submitting}
-            data-testid="claude-code-device-auth-submit"
-          >
-            {submitting && <Loader2 size={14} className="animate-spin" />}
-            {submitting
-              ? t(($) => {
-                  return $.settings.shared.connecting;
-                })
-              : t(($) => {
-                  return $.settings.models.deviceAuth.claude.submit;
-                })}
-          </Button>
-        </form>
+        <ClaudeCodeDeviceAuthPendingForm
+          flow={flow}
+          onSubmit={onSubmit}
+          openApprovalPage={openApprovalPage}
+          setAuthorizationCode={setAuthorizationCode}
+          submitting={submitting}
+        />
       );
     }
     case "expired":
     case "error": {
       return (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-destructive" role="alert">
-            {flow.message}
-          </p>
-          <ClaudeCodeDeviceAuthStartButton mode={mode} onStart={onStart} />
-        </div>
+        <DeviceAuthRetryContent
+          message={flow.message}
+          testId="claude-code-device-auth-start"
+          onStart={onStart}
+          label={
+            mode === "reconnect"
+              ? t(($) => {
+                  return $.settings.models.deviceAuth.claude.reconnectAction;
+                })
+              : t(($) => {
+                  return $.settings.models.deviceAuth.claude.signIn;
+                })
+          }
+        />
       );
     }
   }
 }
 
-function ClaudeCodeDeviceAuthLoadingContent() {
-  const { t } = useTranslation();
-  return (
-    <div
-      className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
-      role="status"
-      data-testid="claude-code-device-auth-loading"
-    >
-      <Loader2 size={16} className="animate-spin" />
-      <span>
-        {t(($) => {
-          return $.settings.models.deviceAuth.claude.preparing;
-        })}
-      </span>
-    </div>
-  );
-}
-
-function ClaudeCodeDeviceAuthStartButton({
-  mode,
-  onStart,
+function ClaudeCodeDeviceAuthPendingForm({
+  flow,
+  onSubmit,
+  openApprovalPage,
+  setAuthorizationCode,
+  submitting,
 }: {
-  mode: "connect" | "reconnect";
-  onStart: () => void;
+  flow: Extract<ClaudeCodeDeviceAuthFlowState, { status: "pending" }>;
+  onSubmit: () => void;
+  openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
+  setAuthorizationCode: (value: string) => void;
+  submitting: boolean;
 }) {
+  const brandName = useGet(brandName$);
+  const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   return (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={onStart}
-      className="w-full gap-2"
-      data-testid="claude-code-device-auth-start"
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
     >
-      {mode === "reconnect"
-        ? t(($) => {
-            return $.settings.models.deviceAuth.claude.reconnectAction;
-          })
-        : t(($) => {
-            return $.settings.models.deviceAuth.claude.signIn;
+      <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+        <p>
+          {t(
+            ($) => {
+              return $.settings.models.deviceAuth.claude.instructions;
+            },
+            { brandName },
+          )}
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={() => {
+          detach(openApprovalPage(pageSignal), Reason.DomCallback);
+        }}
+        data-testid="claude-code-device-auth-open"
+      >
+        {t(($) => {
+          return $.settings.models.deviceAuth.claude.openApproval;
+        })}
+      </Button>
+      <div className="flex flex-col gap-2">
+        <label
+          className="text-sm font-medium text-foreground"
+          htmlFor="claude-code-device-auth-code"
+        >
+          {t(($) => {
+            return $.settings.models.deviceAuth.claude.authorizationCode;
           })}
-    </Button>
+        </label>
+        <Input
+          id="claude-code-device-auth-code"
+          value={flow.authorizationCode}
+          placeholder={t(($) => {
+            return $.settings.models.deviceAuth.claude.codePlaceholder;
+          })}
+          readOnly={submitting}
+          onChange={(event) => {
+            setAuthorizationCode(event.target.value);
+          }}
+          data-testid="claude-code-device-auth-code"
+        />
+      </div>
+      {flow.errorMessage && (
+        <p className="text-xs text-destructive" role="alert">
+          {flow.errorMessage}
+        </p>
+      )}
+      <Button
+        type="submit"
+        className="w-full gap-2"
+        disabled={submitting}
+        data-testid="claude-code-device-auth-submit"
+      >
+        {submitting && <Loader2 size={14} className="animate-spin" />}
+        {submitting
+          ? t(($) => {
+              return $.settings.shared.connecting;
+            })
+          : t(($) => {
+              return $.settings.models.deviceAuth.claude.submit;
+            })}
+      </Button>
+    </form>
   );
 }

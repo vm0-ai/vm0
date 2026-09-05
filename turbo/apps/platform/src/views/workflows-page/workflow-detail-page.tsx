@@ -8,7 +8,6 @@ import type { OfficialWorkflowInstallationDefinition } from "@okouai/api-contrac
 import type {
   ChatRunFinishedEventConfig,
   ChatRunFinishedRunStatus,
-  GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
   GithubDeploymentState,
   GithubDeploymentStatusCreatedEventConfig,
@@ -99,7 +98,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 
-import { i18n } from "../../i18n/index.ts";
+import { currentLocale, i18n } from "../../i18n/index.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
@@ -160,10 +159,7 @@ import {
   setWorkflowAutomationCreateDialog$,
   setWorkflowAutomationEnabled$,
   scrollTargetedWorkflowAutomationIntoViewRef$,
-  updateWorkflowGithubWebhookAutomation$,
-  updateWorkflowGithubWorkflowRunCompletedAutomation$,
-  updateWorkflowGmailNewMessageAutomation$,
-  updateWorkflowGmailLabelAppliedAutomation$,
+  updateWorkflowAutomationEventConfig$,
   updateWorkflowScheduleAutomation$,
   updateWorkflow$,
   workflowActionDialog$,
@@ -189,7 +185,6 @@ import {
   type GmailMatchField,
   type GmailMatchCondition,
   type GmailMatchOperator,
-  type GmailTextField,
   type GmailTextOperator,
   workflowMetadataPatch$,
   targetedWorkflowAutomationId$,
@@ -238,13 +233,19 @@ import {
 } from "@okouai/ui/components/ui/alert";
 import {
   agentLabel,
+  buildGmailLabelAppliedEventConfig,
+  buildGmailNewMessageEventConfig,
   chatRunFinishedAutomationSummary,
   chatRunFinishedStatusLabel,
+  formatGmailMatchSummary,
   formatWorkflowIntervalSeconds,
+  formTextValue,
   githubAutomationFilterValueLabel,
   getWorkflowIntervalSecondOptions,
+  GMAIL_TEXT_FIELDS,
   isMarkdownPath,
   automationKindLabel,
+  quote,
   workflowTitle,
 } from "./workflow-shared.tsx";
 import { WorkflowHoverContent } from "./workflows-page.tsx";
@@ -306,6 +307,53 @@ function automationActionCopy() {
       return $.workflows.automations.common.runNow;
     }),
   };
+}
+
+function WorkflowDialogFooter({
+  busy,
+  disabled = busy,
+  icon = null,
+  size = 14,
+  label,
+  cancelLabel,
+  variant,
+  onCancel,
+  onConfirm,
+}: {
+  readonly busy: boolean;
+  readonly disabled?: boolean;
+  readonly icon?: ReactNode;
+  readonly size?: 13 | 14;
+  readonly label: ReactNode;
+  readonly cancelLabel?: string;
+  readonly variant?: "destructive";
+  readonly onCancel: () => void;
+  readonly onConfirm?: () => void;
+}) {
+  return (
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy}
+        onClick={onCancel}
+      >
+        {cancelLabel ??
+          i18n.t(($) => {
+            return $.workflows.automations.common.cancel;
+          })}
+      </Button>
+      <Button
+        type={onConfirm ? "button" : "submit"}
+        variant={variant}
+        disabled={disabled}
+        onClick={onConfirm}
+      >
+        {busy ? <Loader2 size={size} className="animate-spin" /> : icon}
+        {label}
+      </Button>
+    </DialogFooter>
+  );
 }
 
 function workflowMetadataCopy() {
@@ -410,8 +458,6 @@ function workflowWebhookCopy() {
   };
 }
 
-type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
-type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailWorkflowAutomationSummary = Extract<
   WorkflowAutomationSummary,
   {
@@ -448,52 +494,6 @@ type WebhookWorkflowAutomationSummary = Extract<
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 
-const GMAIL_TEXT_FIELDS: readonly {
-  readonly field: GmailTextField;
-  readonly label: string;
-}[] = [
-  {
-    field: "from",
-    get label() {
-      return i18n.t(($) => {
-        return $.workflows.automations.gmail.field.from;
-      });
-    },
-  },
-  {
-    field: "subject",
-    get label() {
-      return i18n.t(($) => {
-        return $.workflows.automations.gmail.field.subject;
-      });
-    },
-  },
-  {
-    field: "body",
-    get label() {
-      return i18n.t(($) => {
-        return $.workflows.automations.gmail.field.body;
-      });
-    },
-  },
-  {
-    field: "to",
-    get label() {
-      return i18n.t(($) => {
-        return $.workflows.automations.gmail.field.to;
-      });
-    },
-  },
-  {
-    field: "cc",
-    get label() {
-      return i18n.t(($) => {
-        return $.workflows.automations.gmail.field.cc;
-      });
-    },
-  },
-];
-
 const GMAIL_MATCH_FIELDS: readonly {
   readonly field: GmailMatchField;
   readonly label: string;
@@ -506,18 +506,7 @@ const GMAIL_MATCH_FIELDS: readonly {
       });
     },
   },
-  ...GMAIL_TEXT_FIELDS.map(({ field }) => {
-    return {
-      field,
-      get label() {
-        return (
-          GMAIL_TEXT_FIELDS.find((candidate) => {
-            return candidate.field === field;
-          })?.label ?? field
-        );
-      },
-    };
-  }),
+  ...GMAIL_TEXT_FIELDS,
 ];
 
 interface GmailMatchOperatorOption {
@@ -1268,11 +1257,9 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      googleCalendarAutomationsEnabled
       googleFormsWorkflowAutomationsEnabled={
         googleFormsWorkflowAutomationsEnabled
       }
-      googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       stripeInvoicePaidAutomationsEnabled={stripeInvoicePaidAutomationsEnabled}
       webhookTierEligible={webhookTierEligible}
@@ -1729,49 +1716,22 @@ function OfficialWorkflowReconfigureDialog({
             </AlertDescription>
           </Alert>
         ) : null}
-        <OfficialWorkflowReconfigureDialogFooter
+        <WorkflowDialogFooter
+          busy={reconfiguring}
           disabled={!activeForm || !complete || reconfiguring}
-          loading={reconfiguring}
+          cancelLabel={i18n.t(($) => {
+            return $.workflows.common.cancel;
+          })}
+          label={i18n.t(($) => {
+            return $.workflows.official.reconfigure;
+          })}
           onCancel={() => {
             setForm(null);
           }}
-          onSubmit={submit}
+          onConfirm={submit}
         />
       </DialogContent>
     </Dialog>
-  );
-}
-
-function OfficialWorkflowReconfigureDialogFooter({
-  disabled,
-  loading,
-  onCancel,
-  onSubmit,
-}: {
-  readonly disabled: boolean;
-  readonly loading: boolean;
-  readonly onCancel: () => void;
-  readonly onSubmit: () => void;
-}) {
-  return (
-    <DialogFooter>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={loading}
-        onClick={onCancel}
-      >
-        {i18n.t(($) => {
-          return $.workflows.common.cancel;
-        })}
-      </Button>
-      <Button type="button" disabled={disabled} onClick={onSubmit}>
-        {loading ? <Loader2 size={14} className="animate-spin" /> : null}
-        {i18n.t(($) => {
-          return $.workflows.official.reconfigure;
-        })}
-      </Button>
-    </DialogFooter>
   );
 }
 
@@ -1805,43 +1765,30 @@ function OfficialWorkflowUninstallDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={uninstalling}
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            {i18n.t(($) => {
-              return $.workflows.common.cancel;
-            })}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={uninstalling}
-            onClick={() => {
-              detach(
-                (async () => {
-                  await uninstall(detail.id, pageSignal);
-                  onOpenChange(false);
-                  navigate(ROUTES.workflows);
-                })(),
-                Reason.DomCallback,
-                "uninstall Official Workflow",
-              );
-            }}
-          >
-            {uninstalling ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : null}
-            {i18n.t(($) => {
-              return $.workflows.official.uninstall;
-            })}
-          </Button>
-        </DialogFooter>
+        <WorkflowDialogFooter
+          busy={uninstalling}
+          variant="destructive"
+          cancelLabel={i18n.t(($) => {
+            return $.workflows.common.cancel;
+          })}
+          label={i18n.t(($) => {
+            return $.workflows.official.uninstall;
+          })}
+          onCancel={() => {
+            onOpenChange(false);
+          }}
+          onConfirm={() => {
+            detach(
+              (async () => {
+                await uninstall(detail.id, pageSignal);
+                onOpenChange(false);
+                navigate(ROUTES.workflows);
+              })(),
+              Reason.DomCallback,
+              "uninstall Official Workflow",
+            );
+          }}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -2187,30 +2134,19 @@ function WorkflowPublicToggle({
               )}
             </AlertDescription>
           </Alert>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                setDemoteConfirmOpen(false);
-              }}
-            >
-              {copy.cancel}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={busy}
-              onClick={() => {
-                setDemoteConfirmOpen(false);
-                submitVisibilityAction("demote");
-              }}
-            >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-              {copy.makePrivate}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={busy}
+            variant="destructive"
+            cancelLabel={copy.cancel}
+            label={copy.makePrivate}
+            onCancel={() => {
+              setDemoteConfirmOpen(false);
+            }}
+            onConfirm={() => {
+              setDemoteConfirmOpen(false);
+              submitVisibilityAction("demote");
+            }}
+          />
         </DialogContent>
       </Dialog>
     </div>
@@ -2466,14 +2402,25 @@ function WorkflowCopyDialog({
           sourceAgentName={sourceAgentName}
           enabledSourceAutomationCount={enabledSourceAutomationIds.length}
         />
-        <WorkflowCopyDialogFooter
-          submitting={submitting}
-          removeOriginal={form.removeOriginal}
+        <WorkflowDialogFooter
+          busy={submitting}
           disabled={!form.selectedAgentId || submitting || agents.length === 0}
+          cancelLabel={i18n.t(($) => {
+            return $.workflows.common.cancel;
+          })}
+          label={
+            form.removeOriginal
+              ? i18n.t(($) => {
+                  return $.workflows.detail.copy.copyAndRemove;
+                })
+              : i18n.t(($) => {
+                  return $.workflows.common.copyWorkflow;
+                })
+          }
           onCancel={() => {
             onOpenChange(false);
           }}
-          onSubmit={submit}
+          onConfirm={submit}
         />
       </DialogContent>
     </Dialog>
@@ -2571,45 +2518,6 @@ function useWorkflowCopySubmission({
   return { submit, submitting };
 }
 
-function WorkflowCopyDialogFooter({
-  submitting,
-  removeOriginal,
-  disabled,
-  onCancel,
-  onSubmit,
-}: {
-  readonly submitting: boolean;
-  readonly removeOriginal: boolean;
-  readonly disabled: boolean;
-  readonly onCancel: () => void;
-  readonly onSubmit: () => void;
-}) {
-  return (
-    <DialogFooter>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={submitting}
-        onClick={onCancel}
-      >
-        {i18n.t(($) => {
-          return $.workflows.common.cancel;
-        })}
-      </Button>
-      <Button type="button" disabled={disabled} onClick={onSubmit}>
-        {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
-        {removeOriginal
-          ? i18n.t(($) => {
-              return $.workflows.detail.copy.copyAndRemove;
-            })
-          : i18n.t(($) => {
-              return $.workflows.common.copyWorkflow;
-            })}
-      </Button>
-    </DialogFooter>
-  );
-}
-
 function WorkflowDeleteDialog({
   detail,
   open,
@@ -2647,40 +2555,29 @@ function WorkflowDeleteDialog({
             { title: workflowTitle(detail) },
           )}
         </div>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={deleting}
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            {i18n.t(($) => {
-              return $.workflows.common.cancel;
-            })}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={deleting}
-            onClick={() => {
-              detach(
-                (async () => {
-                  await deleteWorkflow(detail.id, pageSignal);
-                  onOpenChange(false);
-                  navigate(ROUTES.workflows);
-                })(),
-                Reason.DomCallback,
-              );
-            }}
-          >
-            {deleting ? <Loader2 size={14} className="animate-spin" /> : null}
-            {i18n.t(($) => {
-              return $.workflows.common.delete;
-            })}
-          </Button>
-        </DialogFooter>
+        <WorkflowDialogFooter
+          busy={deleting}
+          variant="destructive"
+          cancelLabel={i18n.t(($) => {
+            return $.workflows.common.cancel;
+          })}
+          label={i18n.t(($) => {
+            return $.workflows.common.delete;
+          })}
+          onCancel={() => {
+            onOpenChange(false);
+          }}
+          onConfirm={() => {
+            detach(
+              (async () => {
+                await deleteWorkflow(detail.id, pageSignal);
+                onOpenChange(false);
+                navigate(ROUTES.workflows);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -3115,10 +3012,6 @@ function browserTimezone(): string {
   return new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-function currentLocale(): string {
-  return i18n.resolvedLanguage ?? "en-US";
-}
-
 function timezoneDisplayName(timezone: string): string {
   return timezone.replace(/_/g, " ");
 }
@@ -3495,71 +3388,6 @@ function localDateTimeInputValue(value: string): string {
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
-function formTextValue(form: FormData, name: string): string | undefined {
-  const value = form.get(name);
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function formTextValues(
-  form: FormData,
-  name: string,
-): readonly string[] | undefined {
-  const value = formTextValue(form, name);
-  if (!value) {
-    return undefined;
-  }
-  const values = value
-    .split(",")
-    .map((entry) => {
-      return entry.trim();
-    })
-    .filter((entry) => {
-      return entry.length > 0;
-    });
-  return values.length > 0 ? values : undefined;
-}
-
-function buildGmailNewMessageEventConfig(
-  form: FormData,
-  baseConfig?: GmailNewMessageEventConfig,
-): GmailNewMessageEventConfig {
-  const baseMatch = baseConfig?.match;
-  const threadId = formTextValue(form, "threadId");
-  const match: GmailMatchRules = {};
-  for (const { field } of GMAIL_TEXT_FIELDS) {
-    const existing = baseMatch?.[field];
-    const contains = formTextValue(form, `${field}Contains`);
-    const containsAny = formTextValues(form, `${field}ContainsAny`);
-    const doesNotContain = formTextValue(form, `${field}DoesNotContain`);
-    const matcher: GmailTextMatcher = {};
-    if (existing?.doesNotContainAny) {
-      matcher.doesNotContainAny = existing.doesNotContainAny;
-    }
-    if (contains) {
-      matcher.contains = contains;
-    }
-    if (containsAny) {
-      matcher.containsAny = [...containsAny];
-    }
-    if (doesNotContain) {
-      matcher.doesNotContain = doesNotContain;
-    }
-    if (Object.keys(matcher).length > 0) {
-      match[field] = matcher;
-    }
-  }
-  return {
-    provider: "gmail",
-    event: "new_message",
-    ...(threadId ? { threadId } : {}),
-    ...(Object.keys(match).length > 0 ? { match } : {}),
-  };
-}
-
 function gmailMatchConditions(
   config?: GmailNewMessageEventConfig,
 ): GmailMatchCondition[] {
@@ -3657,20 +3485,6 @@ function gmailMatchOperatorForField(
     return "is";
   }
   return operator === "is" ? "contains" : operator;
-}
-
-function buildGmailLabelAppliedEventConfig(
-  form: FormData,
-): GmailLabelAppliedEventConfig | null {
-  const labelName = formTextValue(form, "labelName");
-  if (!labelName) {
-    return null;
-  }
-  return {
-    provider: "gmail",
-    event: "label_applied",
-    labelName,
-  };
 }
 
 type GoogleCalendarAutomationEventType =
@@ -3879,96 +3693,6 @@ function buildGithubWebhookEventConfig(
       commentPrefixes: githubWorkflowRunFilterValues(form, "commentPrefixes"),
     },
   };
-}
-
-function quote(value: string): string {
-  return `"${value}"`;
-}
-
-function quoteList(values: readonly string[]): string {
-  return values.map(quote).join(", ");
-}
-
-function textMatcherParts(
-  field: GmailTextField,
-  matcher: GmailTextMatcher,
-): string[] {
-  const parts: string[] = [];
-  const fieldOption = GMAIL_TEXT_FIELDS.find((option) => {
-    return option.field === field;
-  });
-  if (!fieldOption) {
-    throw new Error(`Unknown Gmail text field: ${field}`);
-  }
-  const fieldLabel = fieldOption.label.toLocaleLowerCase(currentLocale());
-  if (matcher.contains) {
-    parts.push(
-      i18n.t(
-        ($) => {
-          return $.workflows.automations.gmail.summary.contains;
-        },
-        { field: fieldLabel, value: quote(matcher.contains) },
-      ),
-    );
-  }
-  if (matcher.containsAny) {
-    parts.push(
-      i18n.t(
-        ($) => {
-          return $.workflows.automations.gmail.summary.containsAny;
-        },
-        { field: fieldLabel, value: quoteList(matcher.containsAny) },
-      ),
-    );
-  }
-  if (matcher.doesNotContain) {
-    parts.push(
-      i18n.t(
-        ($) => {
-          return $.workflows.automations.gmail.summary.doesNotContain;
-        },
-        { field: fieldLabel, value: quote(matcher.doesNotContain) },
-      ),
-    );
-  }
-  if (matcher.doesNotContainAny) {
-    parts.push(
-      i18n.t(
-        ($) => {
-          return $.workflows.automations.gmail.summary.doesNotContainAny;
-        },
-        { field: fieldLabel, value: quoteList(matcher.doesNotContainAny) },
-      ),
-    );
-  }
-  return parts;
-}
-
-function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
-  const parts: string[] = config.threadId
-    ? [
-        i18n.t(
-          ($) => {
-            return $.workflows.automations.gmail.summary.threadId;
-          },
-          { value: quote(config.threadId) },
-        ),
-      ]
-    : [];
-  const match = config.match;
-  if (match) {
-    for (const { field } of GMAIL_TEXT_FIELDS) {
-      const matcher = match[field];
-      if (matcher) {
-        parts.push(...textMatcherParts(field, matcher));
-      }
-    }
-  }
-  return parts.length > 0
-    ? parts.join("; ")
-    : i18n.t(($) => {
-        return $.workflows.automations.gmail.allInboundMessages;
-      });
 }
 
 function workflowAutomationTitle(
@@ -4529,7 +4253,7 @@ function buildIntegrationAutomationOptions({
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
-  const integrationOptions: AutomationCreateOption[] = [
+  return [
     {
       kind: "chat-run-finished",
       title: i18n.t(($) => {
@@ -4540,18 +4264,16 @@ function buildIntegrationAutomationOptions({
       }),
       icon: MessageCircle,
     },
-  ];
-  integrationOptions.push({
-    kind: "github-workflow-run",
-    title: i18n.t(($) => {
-      return $.workflows.automations.github.workflowRunTitle;
-    }),
-    description: i18n.t(($) => {
-      return $.workflows.automations.github.workflowRunDescription;
-    }),
-    icon: BrandGithub,
-  });
-  integrationOptions.push(
+    {
+      kind: "github-workflow-run",
+      title: i18n.t(($) => {
+        return $.workflows.automations.github.workflowRunTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.github.workflowRunDescription;
+      }),
+      icon: BrandGithub,
+    },
     {
       kind: "github-pull-request",
       title: i18n.t(($) => {
@@ -4602,30 +4324,27 @@ function buildIntegrationAutomationOptions({
       }),
       icon: BrandGithub,
     },
-  );
-  integrationOptions.push(
     ...buildStripeInvoicePaidAutomationOptions(
       stripeInvoicePaidAutomationsEnabled,
     ),
-  );
-  integrationOptions.push({
-    kind: "webhook",
-    title: i18n.t(($) => {
-      return $.workflows.automations.webhook.createTitle;
-    }),
-    description: i18n.t(($) => {
-      return $.workflows.automations.webhook.createDescription;
-    }),
-    icon: LinkIcon,
-    ...(webhookTierEligible
-      ? {}
-      : {
-          badge: i18n.t(($) => {
-            return $.workflows.automations.webhook.paidBadge;
+    {
+      kind: "webhook",
+      title: i18n.t(($) => {
+        return $.workflows.automations.webhook.createTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.webhook.createDescription;
+      }),
+      icon: LinkIcon,
+      ...(webhookTierEligible
+        ? {}
+        : {
+            badge: i18n.t(($) => {
+              return $.workflows.automations.webhook.paidBadge;
+            }),
           }),
-        }),
-  });
-  return integrationOptions;
+    },
+  ];
 }
 
 function buildNotionAutomationOptions(
@@ -4701,47 +4420,39 @@ const AUTOMATION_CATEGORY_CHIP: Readonly<
   integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
 });
 
-function buildCalendarAutomationOptions(
-  googleCalendarEnabled: boolean,
-  googleMeetEnabled: boolean,
-): AutomationCreateOption[] {
-  const options: AutomationCreateOption[] = [];
-  if (googleCalendarEnabled) {
-    options.push(
-      {
-        kind: "google-calendar-created",
-        title: i18n.t(($) => {
-          return $.workflows.automations.calendar.createdTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.calendar.createdDescription;
-        }),
-        icon: CalendarClock,
-      },
-      {
-        kind: "google-calendar-updated",
-        title: i18n.t(($) => {
-          return $.workflows.automations.calendar.updatedTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.calendar.updatedDescription;
-        }),
-        icon: CalendarClock,
-      },
-      {
-        kind: "google-calendar-cancelled",
-        title: i18n.t(($) => {
-          return $.workflows.automations.calendar.cancelledTitle;
-        }),
-        description: i18n.t(($) => {
-          return $.workflows.automations.calendar.cancelledDescription;
-        }),
-        icon: CalendarClock,
-      },
-    );
-  }
-  if (googleMeetEnabled) {
-    options.push({
+function buildCalendarAutomationOptions(): AutomationCreateOption[] {
+  return [
+    {
+      kind: "google-calendar-created",
+      title: i18n.t(($) => {
+        return $.workflows.automations.calendar.createdTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.calendar.createdDescription;
+      }),
+      icon: CalendarClock,
+    },
+    {
+      kind: "google-calendar-updated",
+      title: i18n.t(($) => {
+        return $.workflows.automations.calendar.updatedTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.calendar.updatedDescription;
+      }),
+      icon: CalendarClock,
+    },
+    {
+      kind: "google-calendar-cancelled",
+      title: i18n.t(($) => {
+        return $.workflows.automations.calendar.cancelledTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.calendar.cancelledDescription;
+      }),
+      icon: CalendarClock,
+    },
+    {
       kind: "google-meet-transcript-generated",
       title: i18n.t(($) => {
         return $.workflows.automations.meet.transcriptReadyTitle;
@@ -4750,9 +4461,8 @@ function buildCalendarAutomationOptions(
         return $.workflows.automations.meet.transcriptReadyDescription;
       }),
       icon: Video,
-    });
-  }
-  return options;
+    },
+  ];
 }
 
 function buildScheduleAutomationOptions(): AutomationCreateOption[] {
@@ -4816,24 +4526,16 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
-  googleCalendarAutomationsEnabled,
   googleFormsWorkflowAutomationsEnabled,
-  googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
-  readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
-  readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
-  const calendarOptions = buildCalendarAutomationOptions(
-    googleCalendarAutomationsEnabled,
-    googleMeetAutomationsEnabled,
-  );
   const googleFormsOptions = buildGoogleFormsAutomationOptions(
     googleFormsWorkflowAutomationsEnabled,
   );
@@ -4868,7 +4570,7 @@ function buildAutomationCreateCategories({
         return $.workflows.automations.picker.calendar;
       }),
       icon: CalendarClock,
-      options: calendarOptions,
+      options: buildCalendarAutomationOptions(),
     },
     {
       key: "forms",
@@ -4972,17 +4674,13 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  googleCalendarAutomationsEnabled,
   googleFormsWorkflowAutomationsEnabled,
-  googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
-  readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
@@ -4992,9 +4690,7 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    googleCalendarAutomationsEnabled,
     googleFormsWorkflowAutomationsEnabled,
-    googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
@@ -5068,45 +4764,6 @@ function AutomationCreateMenu({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function GoogleCalendarAutomationDialogs({
-  workflowId,
-  createDialog,
-  setCreateDialog,
-}: {
-  readonly workflowId: string;
-  readonly createDialog: AutomationCreateDialogKind | null;
-  readonly setCreateDialog: (dialog: AutomationCreateDialogKind | null) => void;
-}) {
-  return (
-    <>
-      <CreateGoogleCalendarEventAutomationDialog
-        workflowId={workflowId}
-        eventType="google-calendar-event-created"
-        open={createDialog === "google-calendar-created"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-calendar-created" : null);
-        }}
-      />
-      <CreateGoogleCalendarEventAutomationDialog
-        workflowId={workflowId}
-        eventType="google-calendar-event-updated"
-        open={createDialog === "google-calendar-updated"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-calendar-updated" : null);
-        }}
-      />
-      <CreateGoogleCalendarEventAutomationDialog
-        workflowId={workflowId}
-        eventType="google-calendar-event-cancelled"
-        open={createDialog === "google-calendar-cancelled"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-calendar-cancelled" : null);
-        }}
-      />
-    </>
   );
 }
 
@@ -5192,53 +4849,19 @@ function CreateGoogleFormsResponseSubmittedAutomationDialog({
               })}
             />
           </label>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <FileText size={14} />
-              )}
-              {i18n.t(($) => {
-                return $.workflows.automations.forms.addAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            icon={<FileText size={14} />}
+            label={i18n.t(($) => {
+              return $.workflows.automations.forms.addAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function GoogleFormsAutomationDialogs({
-  workflowId,
-  createDialog,
-  setCreateDialog,
-}: {
-  readonly workflowId: string;
-  readonly createDialog: WorkflowAutomationCreateDialog;
-  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
-}) {
-  return (
-    <CreateGoogleFormsResponseSubmittedAutomationDialog
-      workflowId={workflowId}
-      open={createDialog === "google-forms"}
-      onOpenChange={(open) => {
-        setCreateDialog(open ? "google-forms" : null);
-      }}
-    />
   );
 }
 
@@ -5303,30 +4926,16 @@ function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
               return $.workflows.automations.meet.transcriptHint;
             })}
           </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Video size={14} />
-              )}
-              {i18n.t(($) => {
-                return $.workflows.automations.meet.addAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            icon={<Video size={14} />}
+            label={i18n.t(($) => {
+              return $.workflows.automations.meet.addAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -5717,30 +5326,16 @@ function CreateStripeInvoicePaidAutomationDialog({
           {createError ? (
             <StripeAutomationCreateError message={createError} />
           ) : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <BrandStripe size={14} />
-              )}
-              {i18n.t(($) => {
-                return $.workflows.automations.stripe.addAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            icon={<BrandStripe size={14} />}
+            label={i18n.t(($) => {
+              return $.workflows.automations.stripe.addAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -5790,181 +5385,87 @@ function WorkflowAutomationCreateDialogs({
   readonly createDialog: WorkflowAutomationCreateDialog;
   readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
 }) {
+  const dialogProps = (kind: AutomationCreateDialogKind) => {
+    return {
+      workflowId,
+      open: createDialog === kind,
+      onOpenChange: (open: boolean) => {
+        setCreateDialog(open ? kind : null);
+      },
+    };
+  };
   return (
     <>
-      <CreateIntervalAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "interval"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "interval" : null);
-        }}
-      />
+      <CreateIntervalAutomationDialog {...dialogProps("interval")} />
       <CreateScheduledAutomationDialog
-        workflowId={workflowId}
         displayTimezone={displayTimezone}
-        open={createDialog === "scheduled"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "scheduled" : null);
-        }}
+        {...dialogProps("scheduled")}
       />
       <CreateOnceAutomationDialog
-        workflowId={workflowId}
         displayTimezone={displayTimezone}
-        open={createDialog === "once"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "once" : null);
-        }}
+        {...dialogProps("once")}
       />
-      <CreateGmailNewMessageAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "gmail"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "gmail" : null);
-        }}
-      />
+      <CreateGmailNewMessageAutomationDialog {...dialogProps("gmail")} />
       <CreateGmailLabelAppliedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "gmail-label"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "gmail-label" : null);
-        }}
+        {...dialogProps("gmail-label")}
       />
-      <GoogleFormsAutomationDialogs
-        workflowId={workflowId}
-        createDialog={createDialog}
-        setCreateDialog={setCreateDialog}
+      <CreateGoogleFormsResponseSubmittedAutomationDialog
+        {...dialogProps("google-forms")}
       />
       <CreateGithubWorkflowRunCompletedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "github-workflow-run"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-workflow-run" : null);
-        }}
+        {...dialogProps("github-workflow-run")}
       />
-      <GithubWebhookAutomationCreateDialogs
-        workflowId={workflowId}
-        createDialog={createDialog}
-        setCreateDialog={setCreateDialog}
+      <CreateGithubWebhookAutomationDialog
+        eventType="github-pull-request"
+        {...dialogProps("github-pull-request")}
       />
-      <GoogleCalendarAutomationDialogs
-        workflowId={workflowId}
-        createDialog={createDialog}
-        setCreateDialog={setCreateDialog}
+      <CreateGithubWebhookAutomationDialog
+        eventType="github-workflow-job-completed"
+        {...dialogProps("github-workflow-job")}
       />
-      <ConversationAutomationCreateDialogs
-        workflowId={workflowId}
-        createDialog={createDialog}
-        setCreateDialog={setCreateDialog}
+      <CreateGithubWebhookAutomationDialog
+        eventType="github-pull-request-review-submitted"
+        {...dialogProps("github-pull-request-review")}
+      />
+      <CreateGithubWebhookAutomationDialog
+        eventType="github-deployment-status-created"
+        {...dialogProps("github-deployment-status")}
+      />
+      <CreateGithubWebhookAutomationDialog
+        eventType="github-issue-comment-created"
+        {...dialogProps("github-issue-comment")}
+      />
+      <CreateGoogleCalendarEventAutomationDialog
+        eventType="google-calendar-event-created"
+        {...dialogProps("google-calendar-created")}
+      />
+      <CreateGoogleCalendarEventAutomationDialog
+        eventType="google-calendar-event-updated"
+        {...dialogProps("google-calendar-updated")}
+      />
+      <CreateGoogleCalendarEventAutomationDialog
+        eventType="google-calendar-event-cancelled"
+        {...dialogProps("google-calendar-cancelled")}
+      />
+      <CreateGoogleMeetTranscriptGeneratedAutomationDialog
+        {...dialogProps("google-meet-transcript-generated")}
+      />
+      <CreateChatRunFinishedAutomationDialog
+        {...dialogProps("chat-run-finished")}
       />
       <CreateNotionChildPageAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "notion-child-page"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "notion-child-page" : null);
-        }}
+        {...dialogProps("notion-child-page")}
       />
       <CreateNotionDatabaseItemAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "notion-database-item"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "notion-database-item" : null);
-        }}
+        {...dialogProps("notion-database-item")}
       />
       <CreateNotionPageContentUpdatedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "notion-page-content-updated"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "notion-page-content-updated" : null);
-        }}
+        {...dialogProps("notion-page-content-updated")}
       />
       <IntegrationAutomationCreateDialogs
         workflowId={workflowId}
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
-      />
-    </>
-  );
-}
-
-function ConversationAutomationCreateDialogs({
-  workflowId,
-  createDialog,
-  setCreateDialog,
-}: {
-  readonly workflowId: string;
-  readonly createDialog: WorkflowAutomationCreateDialog;
-  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
-}) {
-  return (
-    <>
-      <CreateGoogleMeetTranscriptGeneratedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "google-meet-transcript-generated"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-meet-transcript-generated" : null);
-        }}
-      />
-      <CreateChatRunFinishedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "chat-run-finished"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "chat-run-finished" : null);
-        }}
-      />
-    </>
-  );
-}
-
-function GithubWebhookAutomationCreateDialogs({
-  workflowId,
-  createDialog,
-  setCreateDialog,
-}: {
-  readonly workflowId: string;
-  readonly createDialog: WorkflowAutomationCreateDialog;
-  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
-}) {
-  return (
-    <>
-      <CreateGithubWebhookAutomationDialog
-        workflowId={workflowId}
-        eventType="github-pull-request"
-        open={createDialog === "github-pull-request"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-pull-request" : null);
-        }}
-      />
-      <CreateGithubWebhookAutomationDialog
-        workflowId={workflowId}
-        eventType="github-workflow-job-completed"
-        open={createDialog === "github-workflow-job"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-workflow-job" : null);
-        }}
-      />
-      <CreateGithubWebhookAutomationDialog
-        workflowId={workflowId}
-        eventType="github-pull-request-review-submitted"
-        open={createDialog === "github-pull-request-review"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-pull-request-review" : null);
-        }}
-      />
-      <CreateGithubWebhookAutomationDialog
-        workflowId={workflowId}
-        eventType="github-deployment-status-created"
-        open={createDialog === "github-deployment-status"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-deployment-status" : null);
-        }}
-      />
-      <CreateGithubWebhookAutomationDialog
-        workflowId={workflowId}
-        eventType="github-issue-comment-created"
-        open={createDialog === "github-issue-comment"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-issue-comment" : null);
-        }}
       />
     </>
   );
@@ -6048,30 +5549,16 @@ function CreateNotionDatabaseItemAutomationDialog({
               })}
             />
           </label>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <BrandNotion size={14} />
-              )}
-              {i18n.t(($) => {
-                return $.workflows.automations.notion.addAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            icon={<BrandNotion size={14} />}
+            label={i18n.t(($) => {
+              return $.workflows.automations.notion.addAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -6252,30 +5739,16 @@ function CreateNotionPageContentUpdatedAutomationDialog({
             creating={creating}
             setScope={setScope}
           />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <BrandNotion size={14} />
-              )}
-              {i18n.t(($) => {
-                return $.workflows.automations.notion.addAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            icon={<BrandNotion size={14} />}
+            label={i18n.t(($) => {
+              return $.workflows.automations.notion.addAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -6359,30 +5832,16 @@ function CreateNotionChildPageAutomationDialog({
               })}
             />
           </label>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <BrandNotion size={14} />
-              )}
-              {i18n.t(($) => {
-                return $.workflows.automations.notion.addAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            icon={<BrandNotion size={14} />}
+            label={i18n.t(($) => {
+              return $.workflows.automations.notion.addAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -6453,26 +5912,15 @@ function CreateIntervalAutomationDialog({
         >
           <WorkflowIntervalField disabled={creating} />
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {i18n.t(($) => {
-                return $.workflows.automations.schedule.addIntervalAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            label={i18n.t(($) => {
+              return $.workflows.automations.schedule.addIntervalAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -6553,26 +6001,15 @@ function CreateScheduledAutomationDialog({
             disabled={creating}
           />
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {i18n.t(($) => {
-                return $.workflows.automations.schedule.addScheduleAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            label={i18n.t(($) => {
+              return $.workflows.automations.schedule.addScheduleAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -6652,26 +6089,15 @@ function CreateOnceAutomationDialog({
             disabled={creating}
           />
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {i18n.t(($) => {
-                return $.workflows.automations.schedule.addOnceAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            label={i18n.t(($) => {
+              return $.workflows.automations.schedule.addOnceAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -7399,26 +6825,15 @@ function CreateGmailNewMessageAutomationDialog({
             disabled={creating}
             onChange={setMatchConditions}
           />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {i18n.t(($) => {
-                return $.workflows.automations.gmail.addMessageAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            label={i18n.t(($) => {
+              return $.workflows.automations.gmail.addMessageAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -7515,26 +6930,15 @@ function CreateGmailLabelAppliedAutomationDialog({
               })}
             />
           </label>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {i18n.t(($) => {
-                return $.workflows.automations.gmail.addLabelAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            label={i18n.t(($) => {
+              return $.workflows.automations.gmail.addLabelAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -7719,7 +7123,7 @@ function GithubCheckboxFilters<T extends string>({
               key={option.value}
               className="flex items-center gap-2 text-xs text-foreground"
             >
-              {/* Native input: see the note in GithubConclusionFilters. */}
+              {/* Native input: see the note in GithubWorkflowRunAutomationFields. */}
               <input
                 type="checkbox"
                 name={name}
@@ -8434,26 +7838,16 @@ function CreateGithubWorkflowRunCompletedAutomationDialog({
             <GithubNotInstalledNotice githubData={githubData} />
           ) : null}
           {githubLoadError ? <GithubLoadErrorNotice /> : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {i18n.t(($) => {
-                return $.workflows.automations.common.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={submitDisabled}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {i18n.t(($) => {
-                return $.workflows.automations.github.addWorkflowAction;
-              })}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            disabled={submitDisabled}
+            label={i18n.t(($) => {
+              return $.workflows.automations.github.addWorkflowAction;
+            })}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -8612,26 +8006,16 @@ function CreateGithubWebhookAutomationDialog({
             <GithubNotInstalledNotice githubData={githubData} />
           ) : null}
           {githubLoadError ? <GithubLoadErrorNotice /> : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {copy.cancel}
-            </Button>
-            <Button type="submit" disabled={submitDisabled}>
-              {creating ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <BrandGithub size={14} />
-              )}
-              {copy.action}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            disabled={submitDisabled}
+            icon={<BrandGithub size={14} />}
+            cancelLabel={copy.cancel}
+            label={copy.action}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -8763,22 +8147,14 @@ function CreateGoogleCalendarEventAutomationDialog({
               })}
             />
           </label>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {copy.cancel}
-            </Button>
-            <Button type="submit" disabled={creating}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {copy.action}
-            </Button>
-          </DialogFooter>
+          <WorkflowDialogFooter
+            busy={creating}
+            cancelLabel={copy.cancel}
+            label={copy.action}
+            onCancel={() => {
+              onOpenChange(false);
+            }}
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -9100,24 +8476,14 @@ function CreateWebhookAutomationView({
           return $.workflows.automations.webhook.secretOneTimeHint;
         })}
       </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={creating}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="button" disabled={creating} onClick={onCreate}>
-          {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-          {i18n.t(($) => {
-            return $.workflows.automations.webhook.create;
-          })}
-        </Button>
-      </DialogFooter>
+      <WorkflowDialogFooter
+        busy={creating}
+        label={i18n.t(($) => {
+          return $.workflows.automations.webhook.create;
+        })}
+        onCancel={onCancel}
+        onConfirm={onCreate}
+      />
     </div>
   );
 }
@@ -10059,30 +9425,19 @@ function UpdateScheduleAutomationForm({
         }
         disabled={saving}
       />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Clock size={13} />
-          )}
+      <WorkflowDialogFooter
+        busy={saving}
+        size={13}
+        icon={<Clock size={13} />}
+        label={
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.schedule.saveSchedule;
             })}
           </span>
-        </Button>
-      </DialogFooter>
+        }
+        onCancel={onCancel}
+      />
     </form>
   );
 }
@@ -10099,7 +9454,7 @@ function UpdateGmailNewMessageAutomationForm({
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateGmailAutomation] = useLoadableSet(
-    updateWorkflowGmailNewMessageAutomation$,
+    updateWorkflowAutomationEventConfig$,
   );
   const matchConditionsByAutomationId = useGet(editingGmailMatchConditions$);
   const setMatchConditions = useSet(setEditingGmailMatchConditions$);
@@ -10142,30 +9497,19 @@ function UpdateGmailNewMessageAutomationForm({
           setMatchConditions({ automationId: automation.id, conditions });
         }}
       />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Mail size={13} />
-          )}
+      <WorkflowDialogFooter
+        busy={saving}
+        size={13}
+        icon={<Mail size={13} />}
+        label={
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.gmail.saveMatch;
             })}
           </span>
-        </Button>
-      </DialogFooter>
+        }
+        onCancel={onCancel}
+      />
     </form>
   );
 }
@@ -10182,7 +9526,7 @@ function UpdateGmailLabelAppliedAutomationForm({
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateGmailLabelAutomation] = useLoadableSet(
-    updateWorkflowGmailLabelAppliedAutomation$,
+    updateWorkflowAutomationEventConfig$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -10232,30 +9576,19 @@ function UpdateGmailLabelAppliedAutomationForm({
           className={AUTOMATION_FIELD_CLASS}
         />
       </label>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Mail size={13} />
-          )}
+      <WorkflowDialogFooter
+        busy={saving}
+        size={13}
+        icon={<Mail size={13} />}
+        label={
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.gmail.saveLabel;
             })}
           </span>
-        </Button>
-      </DialogFooter>
+        }
+        onCancel={onCancel}
+      />
     </form>
   );
 }
@@ -10272,7 +9605,7 @@ function UpdateGithubWorkflowRunCompletedAutomationForm({
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateGithubWorkflowRunAutomation] = useLoadableSet(
-    updateWorkflowGithubWorkflowRunCompletedAutomation$,
+    updateWorkflowAutomationEventConfig$,
   );
   const saving = updateLoadable.state === "loading";
   return (
@@ -10305,30 +9638,19 @@ function UpdateGithubWorkflowRunCompletedAutomationForm({
         disabled={saving}
         defaultConfig={automation.eventConfig}
       />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <BrandGithub size={13} />
-          )}
+      <WorkflowDialogFooter
+        busy={saving}
+        size={13}
+        icon={<BrandGithub size={13} />}
+        label={
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.github.saveFilters;
             })}
           </span>
-        </Button>
-      </DialogFooter>
+        }
+        onCancel={onCancel}
+      />
     </form>
   );
 }
@@ -10342,7 +9664,7 @@ function UpdateGithubWebhookAutomationForm({
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateGithubWebhookAutomation] = useLoadableSet(
-    updateWorkflowGithubWebhookAutomation$,
+    updateWorkflowAutomationEventConfig$,
   );
   const saving = updateLoadable.state === "loading";
   return (
@@ -10377,30 +9699,19 @@ function UpdateGithubWebhookAutomationForm({
         disabled={saving}
         defaultConfig={automation.eventConfig}
       />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <BrandGithub size={13} />
-          )}
+      <WorkflowDialogFooter
+        busy={saving}
+        size={13}
+        icon={<BrandGithub size={13} />}
+        label={
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.github.saveFilters;
             })}
           </span>
-        </Button>
-      </DialogFooter>
+        }
+        onCancel={onCancel}
+      />
     </form>
   );
 }

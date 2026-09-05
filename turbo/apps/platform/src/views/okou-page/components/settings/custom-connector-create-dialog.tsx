@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 import { ChevronRight, Plus, Trash } from "lucide-react";
 import type {
@@ -105,6 +105,44 @@ const OAUTH_AUTHORIZATION_PARAM_FIELDS = [
   readonly placeholder: string;
 }[];
 
+function ConnectorField({
+  id,
+  field,
+  form,
+  setField,
+  label,
+  hint,
+  placeholder,
+  type,
+}: CreateFormFieldProps & {
+  readonly id: string;
+  readonly field: CreateField;
+  readonly label: ReactNode;
+  readonly hint?: ReactNode;
+  readonly placeholder?: string;
+  readonly type?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}
+        {hint !== undefined && (
+          <span className="text-muted-foreground font-normal ml-1">{hint}</span>
+        )}
+      </label>
+      <Input
+        id={id}
+        type={type}
+        value={form[field]}
+        onChange={(event) => {
+          setField(field, event.target.value);
+        }}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
 function BaseFields({
   form,
   setField,
@@ -156,24 +194,16 @@ function BaseFields({
           </Select>
         </div>
       )}
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-display-name"
-          className="text-sm font-medium text-foreground"
-        >
-          {t(($) => {
-            return $.connectors.custom.create.displayName;
-          })}
-        </label>
-        <Input
-          id="cc-display-name"
-          value={form.displayName}
-          onChange={(event) => {
-            setField("displayName", event.target.value);
-          }}
-          placeholder="Acme API"
-        />
-      </div>
+      <ConnectorField
+        id="cc-display-name"
+        field="displayName"
+        form={form}
+        setField={setField}
+        label={t(($) => {
+          return $.connectors.custom.create.displayName;
+        })}
+        placeholder="Acme API"
+      />
       {form.kind === "http" ? (
         <div className="flex flex-col gap-2">
           <label
@@ -201,31 +231,21 @@ function BaseFields({
           />
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="cc-mcp-endpoint"
-            className="text-sm font-medium text-foreground"
-          >
-            {t(($) => {
-              return $.connectors.custom.create.mcpEndpoint;
-            })}
-            <span className="text-muted-foreground font-normal ml-1">
-              {t(($) => {
-                return $.connectors.custom.create.mcpEndpointHint;
-              })}
-            </span>
-          </label>
-          <Input
-            id="cc-mcp-endpoint"
-            value={form.mcpEndpoint}
-            onChange={(event) => {
-              setField("mcpEndpoint", event.target.value);
-            }}
-            placeholder={t(($) => {
-              return $.connectors.custom.create.mcpEndpointPlaceholder;
-            })}
-          />
-        </div>
+        <ConnectorField
+          id="cc-mcp-endpoint"
+          field="mcpEndpoint"
+          form={form}
+          setField={setField}
+          label={t(($) => {
+            return $.connectors.custom.create.mcpEndpoint;
+          })}
+          hint={t(($) => {
+            return $.connectors.custom.create.mcpEndpointHint;
+          })}
+          placeholder={t(($) => {
+            return $.connectors.custom.create.mcpEndpointPlaceholder;
+          })}
+        />
       )}
     </>
   );
@@ -275,50 +295,32 @@ function ApiAuthenticationFields({
       </div>
       {editable ? (
         <>
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-header-name"
-              className="text-sm font-medium text-foreground"
-            >
-              {t(($) => {
-                return $.connectors.custom.create.headerName;
-              })}
-            </label>
-            <Input
-              id="cc-header-name"
-              value={form.headerName}
-              onChange={(event) => {
-                setField("headerName", event.target.value);
-              }}
-              placeholder="Authorization"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="cc-header-template"
-              className="text-sm font-medium text-foreground"
-            >
-              {t(($) => {
-                return $.connectors.custom.create.headerTemplate;
-              })}
-              <span className="text-muted-foreground font-normal ml-1">
-                {t(
-                  ($) => {
-                    return $.connectors.custom.create.headerTemplateHint;
-                  },
-                  { placeholder: "{{secret}}" },
-                )}
-              </span>
-            </label>
-            <Input
-              id="cc-header-template"
-              value={form.headerTemplate}
-              onChange={(event) => {
-                setField("headerTemplate", event.target.value);
-              }}
-              placeholder="Bearer {{secret}}"
-            />
-          </div>
+          <ConnectorField
+            id="cc-header-name"
+            field="headerName"
+            form={form}
+            setField={setField}
+            label={t(($) => {
+              return $.connectors.custom.create.headerName;
+            })}
+            placeholder="Authorization"
+          />
+          <ConnectorField
+            id="cc-header-template"
+            field="headerTemplate"
+            form={form}
+            setField={setField}
+            label={t(($) => {
+              return $.connectors.custom.create.headerTemplate;
+            })}
+            hint={t(
+              ($) => {
+                return $.connectors.custom.create.headerTemplateHint;
+              },
+              { placeholder: "{{secret}}" },
+            )}
+            placeholder="Bearer {{secret}}"
+          />
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -346,52 +348,38 @@ function OAuth2ClientFields({
   const { t } = useTranslation();
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-oauth-client-id"
-          className="text-sm font-medium text-foreground"
-        >
-          {t(($) => {
-            return $.connectors.custom.create.clientId;
-          })}
-        </label>
-        <Input
-          id="cc-oauth-client-id"
-          value={form.oauthClientId}
-          onChange={(event) => {
-            setField("oauthClientId", event.target.value);
-          }}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-oauth-client-secret"
-          className="text-sm font-medium text-foreground"
-        >
-          {editing
+      <ConnectorField
+        id="cc-oauth-client-id"
+        field="oauthClientId"
+        form={form}
+        setField={setField}
+        label={t(($) => {
+          return $.connectors.custom.create.clientId;
+        })}
+      />
+      <ConnectorField
+        id="cc-oauth-client-secret"
+        field="oauthClientSecret"
+        form={form}
+        setField={setField}
+        type="password"
+        label={
+          editing
             ? t(($) => {
                 return $.connectors.custom.create.newClientSecret;
               })
             : t(($) => {
                 return $.connectors.custom.create.clientSecret;
-              })}
-        </label>
-        <Input
-          id="cc-oauth-client-secret"
-          type="password"
-          value={form.oauthClientSecret}
-          onChange={(event) => {
-            setField("oauthClientSecret", event.target.value);
-          }}
-          placeholder={
-            editing
-              ? t(($) => {
-                  return $.connectors.custom.create.keepClientSecretPlaceholder;
-                })
-              : undefined
-          }
-        />
-      </div>
+              })
+        }
+        placeholder={
+          editing
+            ? t(($) => {
+                return $.connectors.custom.create.keepClientSecretPlaceholder;
+              })
+            : undefined
+        }
+      />
       {editing && (
         <p className="text-xs text-muted-foreground">
           {t(($) => {
@@ -495,12 +483,14 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
           <div className="grid gap-3 sm:grid-cols-2">
             {OAUTH_AUTHORIZATION_PARAM_FIELDS.map((parameter) => {
               return (
-                <div key={parameter.field} className="flex flex-col gap-2">
-                  <label
-                    htmlFor={`cc-${parameter.field}`}
-                    className="text-sm font-medium text-foreground"
-                  >
-                    {parameter.field === "oauthResource"
+                <ConnectorField
+                  key={parameter.field}
+                  id={`cc-${parameter.field}`}
+                  field={parameter.field}
+                  form={form}
+                  setField={setField}
+                  label={
+                    parameter.field === "oauthResource"
                       ? t(($) => {
                           return $.connectors.custom.create.parameters.resource;
                         })
@@ -517,22 +507,13 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
                           : t(($) => {
                               return $.connectors.custom.create.parameters
                                 .prompt;
-                            })}
-                    <span className="text-muted-foreground font-normal ml-1">
-                      {t(($) => {
-                        return $.connectors.custom.create.optional;
-                      })}
-                    </span>
-                  </label>
-                  <Input
-                    id={`cc-${parameter.field}`}
-                    value={form[parameter.field]}
-                    onChange={(event) => {
-                      setField(parameter.field, event.target.value);
-                    }}
-                    placeholder={parameter.placeholder}
-                  />
-                </div>
+                            })
+                  }
+                  hint={t(($) => {
+                    return $.connectors.custom.create.optional;
+                  })}
+                  placeholder={parameter.placeholder}
+                />
               );
             })}
           </div>
@@ -546,42 +527,26 @@ function OAuth2EndpointFields({ form, setField }: CreateFormFieldProps) {
   const { t } = useTranslation();
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-oauth-authorization-url"
-          className="text-sm font-medium text-foreground"
-        >
-          {t(($) => {
-            return $.connectors.custom.create.authorizationUrl;
-          })}
-        </label>
-        <Input
-          id="cc-oauth-authorization-url"
-          value={form.oauthAuthorizationUrl}
-          onChange={(event) => {
-            setField("oauthAuthorizationUrl", event.target.value);
-          }}
-          placeholder="https://provider.example.com/oauth/authorize"
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="cc-oauth-token-url"
-          className="text-sm font-medium text-foreground"
-        >
-          {t(($) => {
-            return $.connectors.custom.create.tokenUrl;
-          })}
-        </label>
-        <Input
-          id="cc-oauth-token-url"
-          value={form.oauthTokenUrl}
-          onChange={(event) => {
-            setField("oauthTokenUrl", event.target.value);
-          }}
-          placeholder="https://provider.example.com/oauth/token"
-        />
-      </div>
+      <ConnectorField
+        id="cc-oauth-authorization-url"
+        field="oauthAuthorizationUrl"
+        form={form}
+        setField={setField}
+        label={t(($) => {
+          return $.connectors.custom.create.authorizationUrl;
+        })}
+        placeholder="https://provider.example.com/oauth/authorize"
+      />
+      <ConnectorField
+        id="cc-oauth-token-url"
+        field="oauthTokenUrl"
+        form={form}
+        setField={setField}
+        label={t(($) => {
+          return $.connectors.custom.create.tokenUrl;
+        })}
+        placeholder="https://provider.example.com/oauth/token"
+      />
     </>
   );
 }

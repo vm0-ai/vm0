@@ -22,6 +22,7 @@ import {
   updateLocalePreference$,
 } from "../../../../signals/locale.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { PreferenceCardRow } from "./preference-card-row.tsx";
 
 interface LanguageSelectItem {
   readonly label: string;
@@ -153,29 +154,18 @@ export function LanguageSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <Globe size={22} className="text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.preferences.language.title;
-              })}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t(
-                ($) => {
-                  return $.settings.preferences.language.description;
-                },
-                { brandName },
-              )}
-            </div>
-          </div>
-        </div>
+      <PreferenceCardRow
+        icon={Globe}
+        title={t(($) => {
+          return $.settings.preferences.language.title;
+        })}
+        description={t(
+          ($) => {
+            return $.settings.preferences.language.description;
+          },
+          { brandName },
+        )}
+      >
         <div className="w-full shrink-0 sm:w-40">
           <Select
             items={languageItems}
@@ -194,7 +184,7 @@ export function LanguageSettings() {
             <LanguageSelectContent items={languageItems} />
           </Select>
         </div>
-      </div>
+      </PreferenceCardRow>
     </div>
   );
 }

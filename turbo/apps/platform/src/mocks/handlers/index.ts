@@ -35,7 +35,6 @@ import {
   apiPresentationTemplatesHandlers,
   resetMockPresentationTemplates,
 } from "./api-presentation-templates.ts";
-import { exampleHandlers } from "./example.ts";
 import { appLogsHandlers } from "./api-logs.ts";
 import {
   apiIntegrationsSlackOrgHandlers,
@@ -114,7 +113,6 @@ export const handlers = [
   ...apiOrgModelPoliciesHandlers,
   ...apiPersonalModelProvidersHandlers,
   ...apiPresentationTemplatesHandlers,
-  ...exampleHandlers,
   ...appLogsHandlers,
   ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,

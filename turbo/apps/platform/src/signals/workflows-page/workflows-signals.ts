@@ -31,6 +31,7 @@ import {
   type WorkflowAutomationCreateRequest,
   type WorkflowAutomationSummary,
   type WorkflowUpdateRequest,
+  type WorkflowAutomationUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
 import { MORNING_BRIEF_OFFICIAL_DEFINITION_NAME } from "@okouai/api-contracts/contracts/morning-brief-preference";
 
@@ -1388,94 +1389,21 @@ export const revealWorkflowWebhookSecret$ = command(
   },
 );
 
-export const updateWorkflowGmailNewMessageAutomation$ = command(
+export const updateWorkflowAutomationEventConfig$ = command(
   async (
     { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig: GmailNewMessageEventConfig;
-    },
+    input: { readonly automationId: string } & Extract<
+      WorkflowAutomationUpdateRequest,
+      { readonly eventConfig: unknown }
+    >,
     signal: AbortSignal,
   ) => {
+    const { automationId, ...body } = input;
     const client = get(apiClient$)(workflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const updateWorkflowGmailLabelAppliedAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig: GmailLabelAppliedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const updateWorkflowGithubWorkflowRunCompletedAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig: GithubWorkflowRunCompletedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const updateWorkflowGithubWebhookAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig:
-        | GithubPullRequestEventConfig
-        | GithubWorkflowJobCompletedEventConfig
-        | GithubPullRequestReviewSubmittedEventConfig
-        | GithubDeploymentStatusCreatedEventConfig
-        | GithubIssueCommentCreatedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
+        params: { id: automationId },
+        body,
         fetchOptions: { signal },
       }),
       [200],

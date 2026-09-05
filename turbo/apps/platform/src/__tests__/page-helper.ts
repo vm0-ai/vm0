@@ -32,7 +32,10 @@ import {
   SUPPORTED_LOCALES,
   type SupportedLocale,
 } from "../i18n/resources.ts";
-import { initializeI18n } from "../i18n/index.ts";
+import {
+  initializeI18nWithResources,
+  loadInitialLocaleResources,
+} from "../i18n/index.ts";
 
 const TEST_APP_VERSION = "0.540.0";
 
@@ -201,7 +204,9 @@ async function setupPageAsync(
 ): Promise<void> {
   ensureTestLocalStorage();
   applyPageEnvironment(options.env, options.context.signal);
-  await initializeI18n(options.locale ?? DEFAULT_LOCALE);
+  await initializeI18nWithResources(
+    await loadInitialLocaleResources(options.locale ?? DEFAULT_LOCALE),
+  );
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any
   // fixture mutations made by the application during this test.

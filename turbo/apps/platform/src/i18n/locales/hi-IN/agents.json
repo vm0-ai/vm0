@@ -76,7 +76,6 @@
   "detail": {
     "chatWith": "{{agentName}} के साथ चैट करें",
     "defaultDescription": "आपका AI टीम साथी, आपके साथ जुड़ा हुआ है",
-    "noSelection": "कोई एजेंट चयनित नहीं",
     "notFound": {
       "back": "टीम में वापस",
       "description": "एजेंट \"{{agentId}}\" मौजूद नहीं है या आपके पास उस तक पहुंच नहीं है।",

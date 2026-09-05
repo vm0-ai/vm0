@@ -142,7 +142,10 @@ import {
   COMPOSER_VOICE_INPUT_SHORTCUT,
 } from "../../lib/composer-voice-input-shortcut.ts";
 import {
+  contrastRatio,
   previewPresentationHtml,
+  previewTextColorOn,
+  safePreviewGround,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
 import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
@@ -356,7 +359,6 @@ interface ComposerModelPicker {
 }
 
 interface ComposerTemplatePicker {
-  readonly value: GenerationTemplateRequest | undefined;
   readonly onChange: (value: GenerationTemplateRequest | undefined) => void;
 }
 
@@ -425,19 +427,6 @@ type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
 
-function resolveComposerModelForSelection(
-  modelPicker: ComposerModelPicker | undefined,
-  selection: ModelProviderSelection | null,
-): ModelProviderSelection | null {
-  if (!modelPicker) {
-    return null;
-  }
-  if (selection) {
-    return selection;
-  }
-  return null;
-}
-
 interface VisualAttachmentUnsupportedState {
   currentModelName: string;
 }
@@ -452,7 +441,7 @@ function getVisualAttachmentUnsupportedState(
   imageRecognitionEnabled: boolean,
   selection: ModelProviderSelection | null = modelPicker?.value ?? null,
 ): VisualAttachmentUnsupportedState | null {
-  const currentModel = resolveComposerModelForSelection(modelPicker, selection);
+  const currentModel = modelPicker ? selection : null;
   if (
     !currentModel ||
     !shouldExcludeVisualAttachmentsForModel(
@@ -892,32 +881,6 @@ function selectedImportedPresentationTemplate(
       formatUserPresentationTemplateId(template.id)
     );
   });
-}
-
-function selectedTemplateTitle(
-  value: GenerationTemplateRequest | undefined,
-  importedTemplates: readonly PresentationTemplateSummary[] = [],
-): string | undefined {
-  if (value?.type === "video") {
-    return (
-      avatarTemplateSelection(value)?.title ??
-      selectedVideoTemplateItem(value)?.title
-    );
-  }
-  if (value?.type === "workflow") {
-    const workflowItem = selectedWorkflowTemplateItem(value);
-    return workflowItem
-      ? localizedWorkflowTemplate(workflowItem).title
-      : undefined;
-  }
-  if (value?.type === "website") {
-    return selectedWebsiteTemplateItem(value)?.title;
-  }
-  return (
-    selectedImportedPresentationTemplate(value, importedTemplates)?.title ??
-    selectedPresentationTemplateItem(value)?.title ??
-    selectedIllustrationTemplateItem(value)?.title
-  );
 }
 
 function selectedPresentationTemplateItem(
@@ -1828,28 +1791,12 @@ function prewarmTemplatePreviewImage(
   }
 }
 
-function uniqueTemplatePreviewImageUrls(
-  imageUrls: readonly string[],
-): string[] {
-  const uniqueUrls: string[] = [];
-  const seenUrls = new Set<string>();
-  for (const imageUrl of imageUrls) {
-    if (seenUrls.has(imageUrl)) {
-      continue;
-    }
-    seenUrls.add(imageUrl);
-    uniqueUrls.push(imageUrl);
-  }
-  return uniqueUrls;
-}
-
 function prewarmTemplatePreviewImages(
   runtime: TemplatePreviewRuntime,
   imageUrls: readonly string[],
   count = TEMPLATE_PREWARM_IMAGE_COUNT,
 ): void {
-  const uniqueUrls = uniqueTemplatePreviewImageUrls(imageUrls);
-  for (const imageUrl of uniqueUrls.slice(0, count)) {
+  for (const imageUrl of [...new Set(imageUrls)].slice(0, count)) {
     prewarmTemplatePreviewImage(runtime, imageUrl);
   }
 }
@@ -1901,30 +1848,24 @@ function websitePreviewImageUrlsForItems(
 
 function initialTemplatePreviewImageUrlsForCategory({
   category,
-  hasPptTab,
-  hasIllustrationTab,
-  hasVideoTab,
   presentationThemeIdBySlug,
 }: {
   category: string;
-  hasPptTab: boolean;
-  hasIllustrationTab: boolean;
-  hasVideoTab: boolean;
   presentationThemeIdBySlug?: Readonly<Record<string, string>>;
 }): string[] {
-  if (category === "slides" && hasPptTab) {
+  if (category === "slides") {
     return presentationPreviewImageUrlsForItems(
       PRESENTATION_TEMPLATE_PICKER_ITEMS,
       presentationThemeIdBySlug,
     );
   }
-  if (category === "illustration" && hasIllustrationTab) {
+  if (category === "illustration") {
     return illustrationPreviewImageUrlsForItems({
       items: ILLUSTRATION_TEMPLATE_ITEMS,
       variantIndexBySlug: {},
     });
   }
-  if (category === "video" && hasVideoTab) {
+  if (category === "video") {
     return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
   }
   if (category === "website") {
@@ -2473,77 +2414,6 @@ function presentationTemplateThemeAccentSwatches(
   ];
 }
 
-function hexLuminance(hexColor: string): number {
-  const normalized = hexColor.replace("#", "");
-  const channels = [0, 2, 4].map((index) => {
-    const value = Number.parseInt(normalized.slice(index, index + 2), 16) / 255;
-    return value <= 0.03928
-      ? value / 12.92
-      : Math.pow((value + 0.055) / 1.055, 2.4);
-  });
-  return (
-    0.2126 * (channels[0] ?? 0) +
-    0.7152 * (channels[1] ?? 0) +
-    0.0722 * (channels[2] ?? 0)
-  );
-}
-
-function contrastRatio(colorA: string, colorB: string): number {
-  const luminanceA = hexLuminance(colorA);
-  const luminanceB = hexLuminance(colorB);
-  return (
-    (Math.max(luminanceA, luminanceB) + 0.05) /
-    (Math.min(luminanceA, luminanceB) + 0.05)
-  );
-}
-
-function hexToRgb(hexColor: string): readonly [number, number, number] {
-  const normalized = hexColor.replace("#", "");
-  return [
-    Number.parseInt(normalized.slice(0, 2), 16),
-    Number.parseInt(normalized.slice(2, 4), 16),
-    Number.parseInt(normalized.slice(4, 6), 16),
-  ];
-}
-
-function rgbToHex(rgb: readonly [number, number, number]): string {
-  return `#${rgb
-    .map((value) => {
-      return Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0");
-    })
-    .join("")}`;
-}
-
-function mixRgb(
-  colorA: readonly [number, number, number],
-  colorB: readonly [number, number, number],
-  amount: number,
-): readonly [number, number, number] {
-  return [
-    Math.round(colorA[0] * (1 - amount) + colorB[0] * amount),
-    Math.round(colorA[1] * (1 - amount) + colorB[1] * amount),
-    Math.round(colorA[2] * (1 - amount) + colorB[2] * amount),
-  ];
-}
-
-function previewTextColorOn(background: string): string {
-  return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
-}
-
-function safePreviewGround(accent: string): readonly [string, string] {
-  const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
-  const target: readonly [number, number, number] =
-    text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];
-  const accentRgb = hexToRgb(accent);
-  for (let amount = 0; amount <= 1.0001; amount += 0.04) {
-    const ground = rgbToHex(mixRgb(accentRgb, target, amount));
-    if (contrastRatio(text, ground) >= 4.6) {
-      return [ground, text];
-    }
-  }
-  return [accent, text];
-}
-
 function presentationTemplateThemeCss(
   theme: PresentationTemplateThemeOption,
 ): string {
@@ -2680,22 +2550,6 @@ function presentationTemplateThemeVariables(
   };
 }
 
-function getPresentationTemplateThumbnailThemeVariables(
-  theme: PresentationTemplateThemeOption,
-): PresentationTemplateThemeVariables {
-  return presentationTemplateThemeVariables(theme);
-}
-
-function getPresentationTemplateThumbnailPreviewHtml(
-  draft: PresentationPreviewDraft,
-  slideId: string,
-): string {
-  return previewPresentationHtml({
-    activeSlideId: slideId,
-    html: draft.html,
-  });
-}
-
 function applyPresentationTemplateThumbnailTheme(
   host: HTMLDivElement,
   themeVariables: PresentationTemplateThemeVariables,
@@ -2819,7 +2673,10 @@ function PresentationTemplateShadowThumbnail({
               renderPresentationTemplateShadowThumbnail(
                 runtime,
                 node,
-                getPresentationTemplateThumbnailPreviewHtml(draft, slideId),
+                previewPresentationHtml({
+                  activeSlideId: slideId,
+                  html: draft.html,
+                }),
                 themeVariables,
               );
             }
@@ -3133,7 +2990,6 @@ function TemplatePreview({
 }: {
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
-  priority?: boolean;
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
   theme?: PresentationTemplateThemeOption;
@@ -3590,7 +3446,7 @@ function TemplatePreviewPage({
   const cachedDetailDraft = runtime.presentation.drafts.get(item.embedUrl);
   const htmlPreviewFailed = runtime.presentation.failed.has(item.embedUrl);
   const thumbnailThemeVariables =
-    getPresentationTemplateThumbnailThemeVariables(selectedTheme);
+    presentationTemplateThemeVariables(selectedTheme);
   const detailImageSource = presentationTemplateDetailSlideImageSource(
     item,
     activeSlideIndex,
@@ -3962,7 +3818,6 @@ function PptCard({
   selected: boolean;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
-  priority?: boolean;
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
 }) {
@@ -4628,57 +4483,27 @@ function IllustrationTemplateCard({
   );
 }
 
-function resolveTemplatePickerCategory({
-  category,
-  hasPptTab,
-  hasIllustrationTab,
-  hasVideoTab,
-  hasAvatarTab,
-  hasWorkflowTab,
-}: {
-  category: string;
-  hasPptTab: boolean;
-  hasIllustrationTab: boolean;
-  hasVideoTab: boolean;
-  hasAvatarTab: boolean;
-  hasWorkflowTab: boolean;
-}): string {
-  const categories: string[] = [];
-  if (hasPptTab) {
-    categories.push("slides");
+function resolveTemplatePickerCategory(category: string): string {
+  switch (category) {
+    case "slides":
+    case "website":
+    case "illustration":
+    case "video":
+    case "avatar":
+    case "workflow": {
+      return category;
+    }
+    default: {
+      return "slides";
+    }
   }
-  categories.push("website");
-  if (hasIllustrationTab) {
-    categories.push("illustration");
-  }
-  if (hasVideoTab) {
-    categories.push("video");
-  }
-  if (hasAvatarTab) {
-    categories.push("avatar");
-  }
-  if (hasWorkflowTab) {
-    categories.push("workflow");
-  }
-  const defaultCategory = categories[0] ?? "slides";
-  return categories.includes(category) ? category : defaultCategory;
 }
 
 function TemplatePickerCategoryNav({
   selectedCategory,
-  hasPptTab,
-  hasIllustrationTab,
-  hasVideoTab,
-  hasAvatarTab,
-  hasWorkflowTab,
   onChange,
 }: {
   selectedCategory: string;
-  hasPptTab: boolean;
-  hasIllustrationTab: boolean;
-  hasVideoTab: boolean;
-  hasAvatarTab: boolean;
-  hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
@@ -4686,59 +4511,50 @@ function TemplatePickerCategoryNav({
     value: string;
     label: string;
     Icon: LucideIcon;
-  }[] = [];
-  if (hasPptTab) {
-    categoryOptions.push({
+  }[] = [
+    {
       value: "slides",
       label: t(($) => {
         return $.artifacts.kinds.presentation;
       }),
       Icon: Presentation,
-    });
-  }
-  categoryOptions.push({
-    value: "website",
-    label: t(($) => {
-      return $.artifacts.templates.website;
-    }),
-    Icon: Globe,
-  });
-  if (hasIllustrationTab) {
-    categoryOptions.push({
+    },
+    {
+      value: "website",
+      label: t(($) => {
+        return $.artifacts.templates.website;
+      }),
+      Icon: Globe,
+    },
+    {
       value: "illustration",
       label: t(($) => {
         return $.artifacts.templates.illustration;
       }),
       Icon: ImageIcon,
-    });
-  }
-  if (hasVideoTab) {
-    categoryOptions.push({
+    },
+    {
       value: "video",
       label: t(($) => {
         return $.artifacts.kinds.video;
       }),
       Icon: Video,
-    });
-  }
-  if (hasAvatarTab) {
-    categoryOptions.push({
+    },
+    {
       value: "avatar",
       label: t(($) => {
         return $.artifacts.templates.avatar;
       }),
       Icon: User,
-    });
-  }
-  if (hasWorkflowTab) {
-    categoryOptions.push({
+    },
+    {
       value: "workflow",
       label: t(($) => {
         return $.artifacts.templates.workflow;
       }),
       Icon: Route,
-    });
-  }
+    },
+  ];
 
   return (
     <>
@@ -5072,18 +4888,6 @@ function ImportedPptCardMediaControls({
   );
 }
 
-function importedPptImageVariant(
-  imageUrl: string,
-  size: TemplatePreviewImageSize,
-): string;
-function importedPptImageVariant(
-  imageUrl: null,
-  size: TemplatePreviewImageSize,
-): null;
-function importedPptImageVariant(
-  imageUrl: string | null,
-  size: TemplatePreviewImageSize,
-): string | null;
 function importedPptImageVariant(
   imageUrl: string | null,
   size: TemplatePreviewImageSize,
@@ -6192,12 +5996,7 @@ function TemplatePickerDialog({
   onChange,
   onClose,
   skipEnterAnimation,
-  hasPptTab,
   presentationItems,
-  hasIllustrationTab,
-  hasVideoTab,
-  hasAvatarTab,
-  hasWorkflowTab,
   runtime,
   signals,
 }: {
@@ -6205,12 +6004,7 @@ function TemplatePickerDialog({
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
   skipEnterAnimation: boolean;
-  hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
-  hasIllustrationTab: boolean;
-  hasVideoTab: boolean;
-  hasAvatarTab: boolean;
-  hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
 }) {
@@ -6317,31 +6111,24 @@ function TemplatePickerDialog({
     search,
   });
 
-  const selectedCategory = resolveTemplatePickerCategory({
-    category,
-    hasPptTab,
-    hasIllustrationTab,
-    hasVideoTab,
-    hasAvatarTab,
-    hasWorkflowTab,
-  });
+  const selectedCategory = resolveTemplatePickerCategory(category);
   const showTemplatePickerSearch = selectedCategory === "workflow";
-  const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
+  const showAvatarPickerToolbar = selectedCategory === "avatar";
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
-    if (targetCategory === "slides" && hasPptTab) {
+    if (targetCategory === "slides") {
       return presentationPreviewImageUrlsForItems(
         presentationItems,
         cardThemeIdBySlug,
       );
     }
-    if (targetCategory === "illustration" && hasIllustrationTab) {
+    if (targetCategory === "illustration") {
       return illustrationPreviewImageUrlsForItems({
         items: ILLUSTRATION_TEMPLATE_ITEMS,
         variantIndexBySlug: illustrationVariantIndex,
       });
     }
-    if (targetCategory === "video" && hasVideoTab) {
+    if (targetCategory === "video") {
       return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
     }
     if (targetCategory === "website") {
@@ -6609,11 +6396,6 @@ function TemplatePickerDialog({
           <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
             <TemplatePickerCategoryNav
               selectedCategory={selectedCategory}
-              hasPptTab={hasPptTab}
-              hasIllustrationTab={hasIllustrationTab}
-              hasVideoTab={hasVideoTab}
-              hasAvatarTab={hasAvatarTab}
-              hasWorkflowTab={hasWorkflowTab}
               onChange={handleCategoryChange}
             />
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -6638,10 +6420,6 @@ function TemplatePickerDialog({
               <TemplatePickerCategoryContent
                 signals={signals}
                 selectedCategory={selectedCategory}
-                hasPptTab={hasPptTab}
-                hasVideoTab={hasVideoTab}
-                hasAvatarTab={hasAvatarTab}
-                hasWorkflowTab={hasWorkflowTab}
                 pptItems={presentationItems}
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
@@ -6697,10 +6475,6 @@ function TemplatePickerDialog({
 function TemplatePickerCategoryContent({
   signals,
   selectedCategory,
-  hasPptTab,
-  hasVideoTab,
-  hasAvatarTab,
-  hasWorkflowTab,
   pptItems,
   websiteItems,
   illustrationItems,
@@ -6728,10 +6502,6 @@ function TemplatePickerCategoryContent({
 }: {
   signals: ComposerSignals;
   selectedCategory: string;
-  hasPptTab: boolean;
-  hasVideoTab: boolean;
-  hasAvatarTab: boolean;
-  hasWorkflowTab: boolean;
   pptItems: readonly PresentationTemplateItem[];
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
@@ -6770,7 +6540,7 @@ function TemplatePickerCategoryContent({
   onSelectWorkflow: (item: WorkflowTemplateItem) => void;
   runtime: TemplatePreviewRuntime;
 }) {
-  if (selectedCategory === "slides" && hasPptTab) {
+  if (selectedCategory === "slides") {
     return (
       <div
         data-presentation-template-grid-scroll=""
@@ -6780,21 +6550,17 @@ function TemplatePickerCategoryContent({
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
       >
-        {pptItems.length > 0 ? (
-          <PptTemplateGrid
-            items={pptItems}
-            value={value}
-            onSelect={onSelectPresentation}
-            onSelectImported={onSelectImportedPresentation}
-            onPreview={onPreviewPresentation}
-            onPreviewImported={onPreviewImportedPresentation}
-            onImported={onImportedPresentation}
-            runtime={runtime}
-            signals={signals}
-          />
-        ) : (
-          <TemplateEmptyPanel />
-        )}
+        <PptTemplateGrid
+          items={pptItems}
+          value={value}
+          onSelect={onSelectPresentation}
+          onSelectImported={onSelectImportedPresentation}
+          onPreview={onPreviewPresentation}
+          onPreviewImported={onPreviewImportedPresentation}
+          onImported={onImportedPresentation}
+          runtime={runtime}
+          signals={signals}
+        />
       </div>
     );
   }
@@ -6805,16 +6571,12 @@ function TemplatePickerCategoryContent({
         data-website-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {websiteItems.length > 0 ? (
-          <WebsiteTemplateGrid
-            items={websiteItems}
-            value={value}
-            onSelect={onSelectWebsite}
-            onPreview={onPreviewWebsite}
-          />
-        ) : (
-          <TemplateEmptyPanel />
-        )}
+        <WebsiteTemplateGrid
+          items={websiteItems}
+          value={value}
+          onSelect={onSelectWebsite}
+          onPreview={onPreviewWebsite}
+        />
       </div>
     );
   }
@@ -6833,43 +6595,35 @@ function TemplatePickerCategoryContent({
           });
         }}
       >
-        {illustrationItems.length > 0 ? (
-          <IllustrationTemplateGrid
-            items={illustrationItems}
-            value={value}
-            variantIndexBySlug={illustrationVariantIndex}
-            onSelect={onSelectIllustration}
-            onVariantChange={onIllustrationVariantChange}
-            runtime={runtime}
-          />
-        ) : (
-          <TemplateEmptyPanel />
-        )}
+        <IllustrationTemplateGrid
+          items={illustrationItems}
+          value={value}
+          variantIndexBySlug={illustrationVariantIndex}
+          onSelect={onSelectIllustration}
+          onVariantChange={onIllustrationVariantChange}
+          runtime={runtime}
+        />
       </div>
     );
   }
 
-  if (selectedCategory === "video" && hasVideoTab) {
+  if (selectedCategory === "video") {
     return (
       <div
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoItems.length > 0 ? (
-          <VideoTemplateGrid
-            items={videoItems}
-            value={value}
-            videoGenerationAllowed={videoGenerationAllowed}
-            onSelect={onSelectVideo}
-          />
-        ) : (
-          <TemplateEmptyPanel />
-        )}
+        <VideoTemplateGrid
+          items={videoItems}
+          value={value}
+          videoGenerationAllowed={videoGenerationAllowed}
+          onSelect={onSelectVideo}
+        />
       </div>
     );
   }
 
-  if (selectedCategory === "avatar" && hasAvatarTab) {
+  if (selectedCategory === "avatar") {
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6">
         <AvatarTemplatePickerContent
@@ -6881,7 +6635,7 @@ function TemplatePickerCategoryContent({
     );
   }
 
-  if (selectedCategory === "workflow" && hasWorkflowTab) {
+  if (selectedCategory === "workflow") {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {workflowCatalog.pills.length > 1 && (
@@ -6992,42 +6746,6 @@ function selectedComposerTemplateAttachment(
     : undefined;
 }
 
-function inlineComposerTemplatePicker({
-  picker,
-  insertTemplate,
-  importedTemplates,
-  onDraftChange,
-}: {
-  picker: ComposerTemplatePicker | undefined;
-  insertTemplate: (
-    value: GenerationTemplateRequest,
-    attachment: ComposerTemplateAttachment,
-  ) => void;
-  importedTemplates: readonly PresentationTemplateSummary[];
-  onDraftChange: (() => void) | undefined;
-}): ComposerTemplatePicker | undefined {
-  if (!picker) {
-    return picker;
-  }
-  return {
-    value: undefined,
-    onChange(value) {
-      if (!value) {
-        return;
-      }
-      const attachment = selectedComposerTemplateAttachment(
-        value,
-        importedTemplates,
-      );
-      if (!attachment) {
-        return;
-      }
-      insertTemplate(value, attachment);
-      onDraftChange?.();
-    },
-  };
-}
-
 function ComposerImportedTemplateUrlRefreshLifecycle({
   signals,
 }: {
@@ -7047,22 +6765,12 @@ function ComposerImportedTemplateUrlRefreshLifecycle({
 
 function TemplatePickerButton({
   picker,
-  hasPptTab,
   presentationItems,
-  hasIllustrationTab,
-  hasVideoTab,
-  hasAvatarTab,
-  hasWorkflowTab,
   runtime,
   signals,
 }: {
   picker: ComposerTemplatePicker;
-  hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
-  hasIllustrationTab: boolean;
-  hasVideoTab: boolean;
-  hasAvatarTab: boolean;
-  hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
 }) {
@@ -7079,24 +6787,12 @@ function TemplatePickerButton({
   );
   const openTemplatePicker = useSet(signals.template.openTemplatePicker$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates = useImportedPresentationTemplates(signals);
-  const selectedTitle = selectedTemplateTitle(picker.value, importedTemplates);
-  const selectedCategory = resolveTemplatePickerCategory({
-    category,
-    hasPptTab,
-    hasIllustrationTab,
-    hasVideoTab,
-    hasAvatarTab,
-    hasWorkflowTab,
-  });
+  const selectedCategory = resolveTemplatePickerCategory(category);
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,
       initialTemplatePreviewImageUrlsForCategory({
         category: selectedCategory,
-        hasPptTab,
-        hasIllustrationTab,
-        hasVideoTab,
         presentationThemeIdBySlug: cardThemeIdBySlug,
       }),
       templatePreviewPrewarmImageCountForCategory(selectedCategory),
@@ -7113,14 +6809,11 @@ function TemplatePickerButton({
               variant="quiet"
               size="icon-sm"
               iconSize="md"
-              className={cn(
-                "shrink-0",
-                picker.value && "bg-accent text-foreground",
-              )}
+              className="shrink-0"
               aria-label={t(($) => {
                 return $.artifacts.templates.template;
               })}
-              aria-pressed={picker.value !== undefined}
+              aria-pressed={false}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
@@ -7136,36 +6829,22 @@ function TemplatePickerButton({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {selectedTitle
-              ? t(
-                  ($) => {
-                    return $.artifacts.templates.selected;
-                  },
-                  {
-                    title: selectedTitle,
-                  },
-                )
-              : t(($) => {
-                  return $.artifacts.templates.template;
-                })}
+            {t(($) => {
+              return $.artifacts.templates.template;
+            })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       {open && (
         <TemplatePickerDialog
-          value={referenceValue ?? picker.value}
+          value={referenceValue ?? undefined}
           onChange={picker.onChange}
           onClose={() => {
             setReferenceValue(null);
             setOpen(false);
           }}
           skipEnterAnimation={skipEnterAnimation}
-          hasPptTab={hasPptTab}
           presentationItems={presentationItems}
-          hasIllustrationTab={hasIllustrationTab}
-          hasVideoTab={hasVideoTab}
-          hasAvatarTab={hasAvatarTab}
-          hasWorkflowTab={hasWorkflowTab}
           runtime={runtime}
           signals={signals}
         />
@@ -7176,21 +6855,10 @@ function TemplatePickerButton({
 
 function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
   const picker = useComposerTemplatePicker(signals);
-  const hasPptTab = true;
-  const hasIllustrationTab = true;
-  const hasVideoTab = true;
-  const hasAvatarTab = true;
-  const hasWorkflowTab = true;
-  const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   return (
     <TemplatePickerButton
       picker={picker}
-      hasPptTab={hasPptTab}
-      presentationItems={presentationItems}
-      hasIllustrationTab={hasIllustrationTab}
-      hasVideoTab={hasVideoTab}
-      hasAvatarTab={hasAvatarTab}
-      hasWorkflowTab={hasWorkflowTab}
+      presentationItems={PRESENTATION_TEMPLATE_PICKER_ITEMS}
       runtime={signals.template.templatePreview}
       signals={signals}
     />
@@ -7710,7 +7378,6 @@ function ComposerConnectorPermissionDialog({
       displayName={agentDisplayName}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
-      resetEnabled
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies(
@@ -9292,19 +8959,25 @@ function useComposerVisualAttachmentUnsupported(
 function useComposerTemplatePicker(
   signals: ComposerSignals,
 ): ComposerTemplatePicker {
-  const value = useGet(signals.template.generationTemplate$);
-  const setValue = useSet(signals.template.setGenerationTemplate$);
   const insertTemplate = useSet(signals.template.insertTemplate$);
   const importedTemplates = useImportedPresentationTemplates(signals);
   const notifyDraftChanged = useComposerDraftChange(signals);
-  return (
-    inlineComposerTemplatePicker({
-      picker: { value, onChange: setValue },
-      insertTemplate,
-      importedTemplates,
-      onDraftChange: notifyDraftChanged,
-    }) ?? { value, onChange: setValue }
-  );
+  return {
+    onChange(value) {
+      if (!value) {
+        return;
+      }
+      const attachment = selectedComposerTemplateAttachment(
+        value,
+        importedTemplates,
+      );
+      if (!attachment) {
+        return;
+      }
+      insertTemplate(value, attachment);
+      notifyDraftChanged();
+    },
+  };
 }
 
 function useComposerPrimaryAction(
@@ -9690,7 +9363,6 @@ function ComposerRunModelPickerControl({
         onOpenChange={(open) => {
           setModelPickerOpen(open);
         }}
-        resolveDefaultSelection={false}
         codexFastModeEnabled={codexFastModeEnabled}
         {...(mediaModelPanel ? { mediaModelPanel } : {})}
       />
@@ -11084,13 +10756,10 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerSurface({
+export function ChatComposer({
   signals,
-  showPendingItems,
-}: {
-  signals: ComposerSignals;
-  showPendingItems: boolean;
-}) {
+  showPendingItems = true,
+}: ChatComposerProps) {
   const setImageAnnotationLifecycleRef = useSet(
     signals.setImageAnnotationLifecycleRef$,
   );
@@ -11109,14 +10778,5 @@ function ComposerSurface({
         <ImageAnnotationEditor signals={signals.imageAnnotation} />
       </div>
     </>
-  );
-}
-
-export function ChatComposer({
-  signals,
-  showPendingItems = true,
-}: ChatComposerProps) {
-  return (
-    <ComposerSurface signals={signals} showPendingItems={showPendingItems} />
   );
 }

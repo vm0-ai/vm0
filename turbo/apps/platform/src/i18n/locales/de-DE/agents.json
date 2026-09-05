@@ -76,7 +76,6 @@
   "detail": {
     "chatWith": "Chatten Sie mit {{agentName}}",
     "defaultDescription": "Ihr KI-Teamkollege, auf Sie zugeschnitten",
-    "noSelection": "Kein Agent ausgewählt",
     "notFound": {
       "back": "Zurück zum Team",
       "description": "Der Agent „{{agentId}}“ existiert nicht oder Sie haben keinen Zugriff darauf.",

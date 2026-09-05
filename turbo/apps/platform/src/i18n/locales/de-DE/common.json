@@ -629,7 +629,6 @@
       "renameImportedTemplate": "Vorlage umbenennen",
       "searchConnector": "Vorlagen suchen",
       "searchConnectors": "Vorlagen suchen",
-      "selected": "Vorlage: {{title}}",
       "selectStyle": "Stil auswählen {{style}}",
       "selectTemplate": "Wählen Sie die Vorlage {{title}} aus.",
       "selectVideo": "Wählen Sie die Videovorlage {{title}} aus.",
@@ -1360,38 +1359,22 @@
     },
     "plans": {
       "cancellationNotice": "Ihr {{plan}}-Plan wurde gekündigt und endet am {{date}}.",
-      "changeAnytime": "Upgrade oder Downgrade jederzeit möglich.",
       "compare": "Tarife vergleichen",
       "compareAll": "Vergleichen Sie alle Pläne",
-      "currentPlan": "Aktueller Plan",
       "custom": {
         "name": "Benutzerdefiniert"
       },
       "customAccess": "Benutzerdefinierter Zugriff mit {{value}} gleichzeitigen Ausführungen",
       "customCancellationNotice": "Ihr benutzerdefinierter Plan endet am {{date}}.",
-      "customCheckoutUnavailable": "Benutzerdefinierte Arbeitsbereiche können nicht zum Pro- oder Team-Checkout wechseln.",
       "downgrade": "Downgrade",
       "downgradeNotice": "Ihr {{currentPlan}}-Plan wird am {{date}} auf {{targetPlan}} heruntergestuft.",
       "downgradesOn": "Downgrade auf {{plan}} auf {{date}}",
       "downgradeTo": "Downgrade auf {{plan}}",
       "endsOn": "Endet am {{date}}",
       "features": {
-        "byok": "Bringen Sie Ihre eigenen LLM-Schlüssel mit",
-        "communitySupport": "Community-Unterstützung",
-        "emailSupport": "E-Mail-Support",
-        "existingCredits": "Nur vorhandene Gratisguthaben",
-        "oneConcurrentRun": "1 gleichzeitige Ausführung",
-        "prioritySupport": "Vorrangiger Support",
-        "sharedAndPrivateAgents": "7 geteilte Agents, unbegrenzt private Agents",
-        "tenConcurrentRuns": "10 gleichzeitige Ausführungen",
-        "twoConcurrentRuns": "2 gleichzeitige Ausführungen",
-        "unlimitedAgents": "Unbegrenzte Gesamtanzahl an Agenten",
-        "voiceInputFree": "Spracheingabe (insgesamt 10 Anfragen · 10 Min./Tag pro Mitglied)",
-        "voiceInputPro": "Spracheingabe (300 Anfragen/Tag · 200 Min./Tag pro Mitglied)",
-        "voiceInputTeam": "Spracheingabe (500 Anfragen/Tag · 500 Min./Tag pro Mitglied)"
+        "byok": "Bringen Sie Ihre eigenen LLM-Schlüssel mit"
       },
       "free": {
-        "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
         "name": "Frei"
       },
       "highlights": {
@@ -1418,7 +1401,6 @@
         "name": "Begrenzt kostenlos"
       },
       "loadError": "Der Abrechnungsstatus konnte nicht geladen werden.",
-      "manageSubscription": "Abonnement verwalten",
       "namedPlan": "{{plan}} Plan",
       "noActivePlan": "Kein aktiver Plan",
       "noActiveSubscription": "Kein aktives Abonnement",
@@ -1426,11 +1408,9 @@
         "name": "Kein Plan"
       },
       "perMonth": "/Monat",
-      "popular": "Beliebt",
       "pricePerMonth": "{{price}}/Monat",
       "pro": {
         "description": "Tägliche Agent-Arbeit, pro Mitglied abgerechnet.",
-        "legacyDescription": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
         "name": "Pro"
       },
       "renews": "Erneuert {{date}}",
@@ -1439,7 +1419,6 @@
       "selectedPlan": "den ausgewählten Plan",
       "team": {
         "description": "Für ein Team, das Agents den ganzen Tag laufen lässt.",
-        "legacyDescription": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
@@ -1542,13 +1521,11 @@
       "subscriptionChangeConfirmed": "Die Abonnementänderung wurde bestätigt."
     },
     "usage": {
-      "added": "Hinzugefügt {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} übrig",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} Credits",
         "remainingAria": "Verbleibendes Nutzungskontingent für {{label}}",
         "resets": "Wird am {{date}} zurückgesetzt",
         "resetsRaw": "Wird in {{value}} zurückgesetzt",
@@ -1569,15 +1546,12 @@
         "teamPlan": "Team-Tarif"
       },
       "creditAdditions": "Hinzugefügte Credits",
-      "creditsRemaining_one": "{{value}} verbleibender Credit",
-      "creditsRemaining_other": "Es verbleiben noch {{value}} Credits",
       "expires": "Verfällt am {{date}}",
       "grantsTable": {
         "credits": "Credits",
         "date": "Datum",
         "left": "Übrig"
       },
-      "left": "{{value}} übrig",
       "member": "Mitglied",
       "neverExpires": "Läuft nie ab",
       "orgCredits": "Organisationsguthaben",
@@ -2814,7 +2788,6 @@
       "always": "Stets",
       "clearSearch": "Klare Berechtigungssuche",
       "descriptionAgent": "Legen Sie fest, welche Aktionen dieser Agent über diese Integration ausführen darf.",
-      "descriptionWorkflow": "Legen Sie fest, welche Aktionen dieser Workflow über diese Integration ausführen darf.",
       "find": "Suchen Sie nach Berechtigungen",
       "findPlaceholder": "Berechtigungen finden...",
       "forTarget": "für {{target}}",

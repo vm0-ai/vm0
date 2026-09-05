@@ -10,12 +10,6 @@ export const setupSkeletonPage$ = command(({ set }) => {
 });
 
 export const setupErrorPage$ = command(async ({ set }, signal: AbortSignal) => {
-  set(
-    updatePage$,
-    createElement(DefaultErrorFallback, {
-      error: new Error("Preview"),
-      errorInfo: { componentStack: "" },
-    }),
-  );
+  set(updatePage$, createElement(DefaultErrorFallback));
   await set(hideAppSkeleton$, signal);
 });

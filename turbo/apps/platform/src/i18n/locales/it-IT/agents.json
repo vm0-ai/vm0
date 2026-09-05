@@ -76,7 +76,6 @@
   "detail": {
     "chatWith": "Chatta con {{agentName}}",
     "defaultDescription": "Il tuo collega IA, pensato per te",
-    "noSelection": "Nessun agente selezionato",
     "notFound": {
       "back": "Torna al team",
       "description": "L'agente \"{{agentId}}\" non esiste o non puoi accedervi.",
