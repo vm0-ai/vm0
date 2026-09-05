@@ -83,15 +83,15 @@
         var root = document.documentElement;
         var isOkou = root.dataset.appBrandName === "Okou";
         if (!isOkou) {
-          var vm0Preference = localStorage.getItem("theme");
-          var vm0Theme =
-            vm0Preference === "dark" || vm0Preference === "light"
-              ? vm0Preference
+          var themePreference = localStorage.getItem("theme");
+          var theme =
+            themePreference === "dark" || themePreference === "light"
+              ? themePreference
               : window.matchMedia("(prefers-color-scheme: dark)").matches
                 ? "dark"
                 : "light";
-          root.dataset.theme = vm0Theme;
-          if (vm0Theme === "dark") root.classList.add("dark");
+          root.dataset.theme = theme;
+          if (theme === "dark") root.classList.add("dark");
           return;
         }
         var p = null;
@@ -216,8 +216,8 @@
       }
     </style>
     <script
-      id="vm0-clerk-core-script"
-      src="__VM0_CLERK_BROWSER_SCRIPT_URL__"
+      id="okou-clerk-core-script"
+      src="__OKOU_CLERK_BROWSER_SCRIPT_URL__"
       crossorigin="anonymous"
       defer
       type="text/javascript"
@@ -238,7 +238,7 @@
         // value selects the pre-cutover topology, and everything else fails
         // closed to the deployed one.
         var productionPrimaryAppDomain =
-          "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.vm0.ai"
+          "__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.vm0.ai"
             ? "app.vm0.ai"
             : "app.okou.ai";
         var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
@@ -276,7 +276,7 @@
           productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
         };
-        window.__vm0ClerkBootstrap = bootstrap;
+        window.__okouClerkBootstrap = bootstrap;
 
         function isDomainOrSubdomain(value, domain) {
           return value === domain || value.endsWith("." + domain);
@@ -313,7 +313,7 @@
           bootstrap.loaded = clerk.load(loadOptions);
         }
 
-        var script = document.getElementById("vm0-clerk-core-script");
+        var script = document.getElementById("okou-clerk-core-script");
         if (!script) throw new Error("Clerk core script is unavailable");
         script.dataset.clerkJsScript = "";
         script.dataset.clerkPublishableKey = publishableKey;

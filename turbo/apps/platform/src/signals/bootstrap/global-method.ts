@@ -28,7 +28,7 @@ export const setupGlobalMethod$ = command(
       { signal },
     );
 
-    window._vm0 = {
+    window._okou = {
       get loggers() {
         return createDebugLoggers((name) => {
           window.dispatchEvent(
@@ -47,7 +47,7 @@ export const setupGlobalMethod$ = command(
 
     signal.addEventListener("abort", () => {
       L.debug("Cleaning up global method vm0");
-      delete window._vm0;
+      delete window._okou;
     });
   },
 );

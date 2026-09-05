@@ -23,10 +23,10 @@ function installEarlyBootstrap(options: {
   readonly loaded?: Promise<void>;
 }): void {
   context.mocks.clerk();
-  const originalBootstrap = window.__vm0ClerkBootstrap;
+  const originalBootstrap = window.__okouClerkBootstrap;
   const originalClerk = Reflect.get(globalThis, "Clerk");
   Reflect.set(globalThis, "Clerk", options.clerk ?? mockedClerk);
-  const bootstrap: NonNullable<Window["__vm0ClerkBootstrap"]> = {
+  const bootstrap: NonNullable<Window["__okouClerkBootstrap"]> = {
     loadOptions: PRIMARY_LOAD_OPTIONS,
     loaded: options.loaded,
     productionPrimaryAppDomain: "app.vm0.ai",
@@ -35,14 +35,14 @@ function installEarlyBootstrap(options: {
   if (options.clerk) {
     Reflect.set(bootstrap, "clerk", options.clerk);
   }
-  window.__vm0ClerkBootstrap = bootstrap;
+  window.__okouClerkBootstrap = bootstrap;
   context.signal.addEventListener(
     "abort",
     () => {
       if (originalBootstrap) {
-        window.__vm0ClerkBootstrap = originalBootstrap;
+        window.__okouClerkBootstrap = originalBootstrap;
       } else {
-        Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+        Reflect.deleteProperty(window, "__okouClerkBootstrap");
       }
       if (originalClerk) {
         Reflect.set(globalThis, "Clerk", originalClerk);
@@ -117,7 +117,7 @@ test("Authentication startup retries after an early failure", async () => {
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([]);
   expect(clerk.loads).toHaveLength(1);
-  expect(window.__vm0ClerkBootstrap?.loaded).toBeUndefined();
+  expect(window.__okouClerkBootstrap?.loaded).toBeUndefined();
 });
 
 test("Startup onboarding follows the current account and workspace", async () => {

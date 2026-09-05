@@ -5229,7 +5229,7 @@ function getRequiredFirewallExecutionMetadata(
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 const BASE_URL_VALIDATION_SECRET_TEMPLATE = [
   "$",
-  "{{ secrets.__VM0_FIREWALL_BASE_URL_VALIDATION }}",
+  "{{ secrets.__OKOU_FIREWALL_BASE_URL_VALIDATION }}",
 ].join("");
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {

@@ -269,8 +269,8 @@ const builtIndexTemplate = indexTemplate
     "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
     productionClerkPublishableKey,
   )
-  .replaceAll("__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
-  .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+  .replaceAll("__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
+  .replaceAll("__OKOU_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
 const embeddedIndexTemplate = builtIndexTemplate
   .replace(
     "</head>",
@@ -383,7 +383,7 @@ function htmlAttribute(html, attributeName) {
 function clerkEdgeSessionJson(html) {
   const matches = [
     ...html.matchAll(
-      /<script type="application\/json" id="vm0-clerk-edge-session">([\s\S]*?)<\/script>/giu,
+      /<script type="application\/json" id="okou-clerk-edge-session">([\s\S]*?)<\/script>/giu,
     ),
   ];
   assert.equal(matches.length, 1);
@@ -450,7 +450,7 @@ function clerkBootstrap(html) {
 
 function clerkCoreScript(html) {
   const script =
-    /<script\b[^>]*id="vm0-clerk-core-script"[^>]*><\/script>/iu.exec(
+    /<script\b[^>]*id="okou-clerk-core-script"[^>]*><\/script>/iu.exec(
       html,
     )?.[0];
   if (!script) {
@@ -652,7 +652,7 @@ const edgeDebugBaseline = await responseSnapshot(
   edgeDebugUrl,
   edgeDebugEnvironment,
 );
-assert.doesNotMatch(edgeDebugBaseline.body, /vm0-clerk-edge-session/u);
+assert.doesNotMatch(edgeDebugBaseline.body, /okou-clerk-edge-session/u);
 assertNoClerkSecrets(edgeDebugBaseline);
 
 const retiredDebugFlag = await responseSnapshot(
@@ -924,7 +924,7 @@ for (const [productionOrigin, publicBrand] of [
     productionEdgeEnvironment,
   );
   assert.equal(clerkClientFactoryCalls, 0);
-  assert.doesNotMatch(productionBaseline.body, /vm0-clerk-edge-session/u);
+  assert.doesNotMatch(productionBaseline.body, /okou-clerk-edge-session/u);
 
   const productionAuthenticated = await responseSnapshot(
     productionEdgeWorker,
