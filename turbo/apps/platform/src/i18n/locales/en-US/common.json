@@ -1972,7 +1972,8 @@
       "catalog": {
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
-        "loadMore": "Load more"
+        "loading": "Loading more options",
+        "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
@@ -1991,8 +1992,7 @@
         "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
-        "browse": "Browse files",
-        "drop": "Drop files here or browse",
+        "drop": "Drop files here or click to upload",
         "remove": "Remove {{filename}}"
       },
       "style": {

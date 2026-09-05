@@ -49,7 +49,7 @@ function LookThumbnails({
                 alt=""
                 loading="lazy"
                 decoding="async"
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
               />
             ) : (
               <UserRound size={18} className="mx-auto text-muted-foreground" />
@@ -101,7 +101,7 @@ export function IntroVideoAvatarGroupCard({
             alt={avatar.name}
             loading="lazy"
             decoding="async"
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
           />
         ) : (
           <span className="grid h-full place-items-center text-muted-foreground">

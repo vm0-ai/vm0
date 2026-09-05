@@ -60,6 +60,7 @@ import {
   VoiceLibraryToolbar,
 } from "./avatar-template-picker.tsx";
 import { IntroVideoAvatarGroupCard } from "./intro-video-avatar-group-card.tsx";
+import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 
@@ -113,59 +114,46 @@ function FileDropzone({
     addFiles(Array.from(event.currentTarget.files ?? []));
     event.currentTarget.value = "";
   };
-  const onDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+  const onDrop = (event: ReactDragEvent<HTMLElement>) => {
     event.preventDefault();
     addFiles(Array.from(event.dataTransfer.files));
   };
 
   return (
     <div>
-      <div
+      <input
+        ref={setFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        data-intro-video-file-input=""
+        onChange={onFileChange}
+      />
+      <Button
+        type="button"
+        variant="outline"
         data-intro-video-dropzone=""
         className={cn(
-          "rounded-2xl border border-dashed border-border bg-muted/35 px-4 text-center transition-colors hover:border-foreground/25 hover:bg-muted/50 sm:flex sm:items-center sm:justify-center sm:gap-4 sm:px-5",
+          "h-auto w-full flex-col gap-3 whitespace-normal rounded-2xl border border-dashed border-border bg-muted/35 px-4 text-center hover:border-foreground/25 hover:bg-muted/50 sm:flex-row sm:gap-4 sm:px-5",
           sources.length === 0 ? "py-4 sm:py-5" : "py-3 sm:py-4",
         )}
+        onClick={openFileInput}
         onDragOver={(event) => {
           event.preventDefault();
         }}
         onDrop={onDrop}
       >
-        <input
-          ref={setFileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          data-intro-video-file-input=""
-          onChange={onFileChange}
-        />
         {sources.length === 0 ? (
           <span className="mx-auto grid size-10 place-items-center rounded-xl bg-primary/10 text-brand-text sm:mx-0 sm:shrink-0">
             <Upload size={19} />
           </span>
         ) : null}
-        <p
-          className={cn(
-            "text-sm font-semibold text-foreground",
-            sources.length === 0 && "mt-3 sm:mt-0",
-          )}
-        >
+        <span className="text-sm font-semibold text-foreground">
           {t(($) => {
             return $.chat.introVideo.source.drop;
           })}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-3 bg-background sm:mt-0 sm:shrink-0"
-          onClick={openFileInput}
-        >
-          {t(($) => {
-            return $.chat.introVideo.source.browse;
-          })}
-        </Button>
-      </div>
+        </span>
+      </Button>
       {sources.length > 0 ? (
         <div className="mt-3 grid gap-2" data-intro-video-file-list="">
           {sources.map((source) => {
@@ -424,7 +412,7 @@ function StyleCardMedia({ style }: { readonly style: IntroVideoStyle }) {
           loop
           playsInline
           preload="none"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
           onWaiting={(event) => {
             setStylePreviewLoading(event.currentTarget, true);
           }}
@@ -454,7 +442,7 @@ function StyleCardMedia({ style }: { readonly style: IntroVideoStyle }) {
           alt=""
           loading="lazy"
           decoding="async"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+          className="h-full w-full object-contain"
         />
       ) : (
         <span className="grid h-full place-items-center text-muted-foreground">
@@ -594,6 +582,7 @@ function StylePicker() {
   const generation = useGet(introVideoStylePickerSignals.generation$);
   const loadMore = useSet(introVideoStylePickerSignals.loadMore$);
   const loadingMore = useGet(introVideoStylePickerSignals.loadingMore$);
+  const loadMoreError = useGet(introVideoStylePickerSignals.loadMoreError$);
   const pageSignal = useGet(pageSignal$);
   const visible =
     catalog.state === "hasData"
@@ -655,26 +644,18 @@ function StylePicker() {
           })}
         </div>
       )}
-      {visible?.hasNext ? (
-        <Button
-          type="button"
-          variant="outline"
-          disabled={loadingMore}
-          className="mx-auto"
-          onClick={() => {
-            detach(
-              loadMore(pageSignal),
-              Reason.DomCallback,
-              "load more HeyGen styles",
-            );
-          }}
-        >
-          {loadingMore ? <Loader2 className="animate-spin" size={15} /> : null}
-          {t(($) => {
-            return $.chat.introVideo.catalog.loadMore;
-          })}
-        </Button>
-      ) : null}
+      <IntroVideoCatalogPagination
+        hasNext={visible?.hasNext ?? false}
+        loading={loadingMore}
+        error={loadMoreError}
+        onLoadMore={() => {
+          detach(
+            loadMore(pageSignal),
+            Reason.DomCallback,
+            "load more HeyGen styles",
+          );
+        }}
+      />
     </div>
   );
 }
@@ -691,6 +672,7 @@ function AvatarPicker() {
   const generation = useGet(introVideoAvatarPickerSignals.generation$);
   const loadMore = useSet(introVideoAvatarPickerSignals.loadMore$);
   const loadingMore = useGet(introVideoAvatarPickerSignals.loadingMore$);
+  const loadMoreError = useGet(introVideoAvatarPickerSignals.loadMoreError$);
   const pageSignal = useGet(pageSignal$);
   const visible =
     catalog.state === "hasData"
@@ -764,26 +746,18 @@ function AvatarPicker() {
           })}
         </div>
       )}
-      {visible?.hasNext ? (
-        <Button
-          type="button"
-          variant="outline"
-          disabled={loadingMore}
-          className="mx-auto"
-          onClick={() => {
-            detach(
-              loadMore(pageSignal),
-              Reason.DomCallback,
-              "load more HeyGen avatars",
-            );
-          }}
-        >
-          {loadingMore ? <Loader2 className="animate-spin" size={15} /> : null}
-          {t(($) => {
-            return $.chat.introVideo.catalog.loadMore;
-          })}
-        </Button>
-      ) : null}
+      <IntroVideoCatalogPagination
+        hasNext={visible?.hasNext ?? false}
+        loading={loadingMore}
+        error={loadMoreError}
+        onLoadMore={() => {
+          detach(
+            loadMore(pageSignal),
+            Reason.DomCallback,
+            "load more HeyGen avatars",
+          );
+        }}
+      />
     </div>
   );
 }
@@ -959,7 +933,10 @@ function PickerDialog({
             {copy.description}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6">
+        <div
+          data-intro-video-catalog-scroll=""
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
+        >
           {picker === "style" ? <StylePicker /> : null}
           {picker === "avatar" ? <AvatarPicker /> : null}
           {picker === "voice" ? (

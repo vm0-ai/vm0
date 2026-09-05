@@ -30,6 +30,7 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
   const internalPages$ = state<readonly CatalogPage<T>[]>([]);
   const internalRequestedTokens$ = state<readonly string[]>([]);
   const internalLoadingMore$ = state(false);
+  const internalLoadMoreError$ = state(false);
   const internalGeneration$ = state(0);
 
   const firstPage$ = computed((get) => {
@@ -74,12 +75,14 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
         return [...tokens, token];
       });
       set(internalLoadingMore$, true);
+      set(internalLoadMoreError$, false);
       const loadPage = get(loadPage$);
       const next = await onRejection(loadPage(token, signal), () => {
         if (get(internalGeneration$) !== generation) {
           return;
         }
         set(internalLoadingMore$, false);
+        set(internalLoadMoreError$, true);
         set(internalRequestedTokens$, (tokens) => {
           return tokens.filter((candidate) => {
             return candidate !== token;
@@ -104,6 +107,9 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
     }),
     loadingMore$: computed((get) => {
       return get(internalLoadingMore$);
+    }),
+    loadMoreError$: computed((get) => {
+      return get(internalLoadMoreError$);
     }),
     loadMore$,
   };

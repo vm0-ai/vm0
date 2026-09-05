@@ -5,7 +5,13 @@ import {
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
@@ -14,6 +20,7 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   context,
   installMessageExperienceChat,
@@ -160,6 +167,73 @@ function requiredButtonNamed(
   return button;
 }
 
+function mockCatalogIntersection() {
+  const targets = new Map<Element, (visible: boolean) => void>();
+  class CatalogObserver implements IntersectionObserver {
+    readonly root: Element | Document | null;
+    readonly rootMargin: string;
+    readonly thresholds = [0];
+    private readonly observed = new Set<Element>();
+
+    constructor(
+      private readonly callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit,
+    ) {
+      this.root = options?.root ?? null;
+      this.rootMargin = options?.rootMargin ?? "0px";
+    }
+
+    observe(target: Element) {
+      this.observed.add(target);
+      targets.set(target, (isIntersecting) => {
+        const rect = target.getBoundingClientRect();
+        this.callback(
+          [
+            {
+              target,
+              isIntersecting,
+              intersectionRatio: isIntersecting ? 1 : 0,
+              time: 0,
+              boundingClientRect: rect,
+              intersectionRect: rect,
+              rootBounds: null,
+            },
+          ],
+          this,
+        );
+      });
+    }
+
+    unobserve(target: Element) {
+      this.observed.delete(target);
+      targets.delete(target);
+    }
+
+    disconnect() {
+      for (const target of this.observed) {
+        this.unobserve(target);
+      }
+    }
+
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+  vi.stubGlobal("IntersectionObserver", CatalogObserver);
+  return (container: HTMLElement, visible = true) => {
+    const sentinel = container.querySelector(
+      "[data-intro-video-catalog-sentinel]",
+    );
+    const notify = sentinel ? targets.get(sentinel) : undefined;
+    if (!notify) {
+      throw new Error("Expected an observed catalog sentinel");
+    }
+    act(() => {
+      notify(visible);
+    });
+  };
+}
+
 async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
   await user.click(requiredButtonNamed("Video style: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
@@ -181,6 +255,7 @@ async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
   );
   expect(video).toHaveAttribute("preload", "none");
   expect(video).toHaveAttribute("playsinline");
+  expect(video).toHaveClass("object-contain");
   await user.click(within(picker).getByLabelText("Select style Thriller"));
 }
 
@@ -222,6 +297,152 @@ test("Intro Video opens as one unrestricted multi-file form", async () => {
   expect(input).toHaveAttribute("multiple");
   expect(input).not.toHaveAttribute("accept");
   expect(requiredButtonNamed("Create video", dialog)).toBeDisabled();
+});
+
+test("The whole upload area opens the file picker and still accepts drops", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  const input = dialog.querySelector<HTMLInputElement>(
+    "[data-intro-video-file-input]",
+  );
+  if (!input) {
+    throw new Error("Expected the Intro Video file input");
+  }
+  const dropzone = requiredButtonNamed(
+    "Drop files here or click to upload",
+    dialog,
+  );
+  expect(dropzone).toHaveAttribute("data-intro-video-dropzone");
+  expect(dropzone.querySelector("button, input")).toBeNull();
+  expect(within(dialog).queryByText("Browse files")).toBeNull();
+  const openFilePicker = vi.spyOn(input, "click").mockImplementation(() => {});
+  await user.click(dropzone);
+  expect(openFilePicker).toHaveBeenCalledTimes(1);
+  await user.keyboard("{Enter}");
+  await user.keyboard(" ");
+  expect(openFilePicker).toHaveBeenCalledTimes(3);
+
+  fireEvent.drop(dropzone, {
+    dataTransfer: { files: [new File(["notes"], "source.docx")] },
+  });
+  await expect(within(dialog).findByText("source.docx")).resolves.toBeVisible();
+  expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
+});
+
+test("Styles automatically load near the end without duplicate page requests", async () => {
+  const user = userEvent.setup({ delay: null });
+  const approachEnd = mockCatalogIntersection();
+  installIntroVideoFixture();
+  const requested: (string | undefined)[] = [];
+  const nextPage = createDeferredPromise<void>(context.signal);
+  context.mocks.api(
+    introVideoPresenterContract.styles,
+    async ({ query, respond }) => {
+      requested.push(query.token);
+      if (query.token === "next-styles") {
+        await nextPage.promise;
+        return respond(200, {
+          styles: [
+            {
+              id: "portrait-style",
+              name: "Portrait",
+              thumbnailUrl: "https://files.heygen.test/portrait.jpg",
+              aspectRatio: "9:16",
+              tags: [],
+            },
+          ],
+          hasMore: false,
+          nextToken: null,
+        });
+      }
+      return respond(200, {
+        styles: [{ id: "landscape-style", name: "Landscape", tags: [] }],
+        hasMore: true,
+        nextToken: "next-styles",
+      });
+    },
+  );
+  await setupIntroVideoPage();
+  await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a video style",
+  });
+  await within(picker).findByText("Landscape");
+  expect(within(picker).queryByText("Load more")).toBeNull();
+  approachEnd(picker, false);
+  expect(requested).toStrictEqual([undefined]);
+  approachEnd(picker);
+  await within(picker).findByText("Loading more options");
+  expect(requested).toStrictEqual([undefined, "next-styles"]);
+  expect(
+    picker.querySelector("[data-intro-video-catalog-sentinel]"),
+  ).toBeNull();
+  nextPage.resolve();
+  await within(picker).findByText("Portrait");
+  expect(
+    picker.querySelector('img[src="https://files.heygen.test/portrait.jpg"]'),
+  ).toHaveClass("object-contain");
+  expect(requested).toStrictEqual([undefined, "next-styles"]);
+  expect(
+    picker.querySelector("[data-intro-video-catalog-sentinel]"),
+  ).toBeNull();
+});
+
+test("A failed automatic page load keeps existing options and waits for a retry", async () => {
+  const user = userEvent.setup({ delay: null });
+  const approachEnd = mockCatalogIntersection();
+  installIntroVideoFixture();
+  let attempts = 0;
+  context.mocks.api(
+    introVideoPresenterContract.styles,
+    ({ query, respond }) => {
+      if (query.token === "next-styles") {
+        attempts += 1;
+        if (attempts === 1) {
+          return respond(502, {
+            error: {
+              code: "HEYGEN_UNAVAILABLE",
+              message: "Catalog unavailable",
+            },
+          });
+        }
+        return respond(200, {
+          styles: [{ id: "second-style", name: "Second style", tags: [] }],
+          hasMore: false,
+          nextToken: null,
+        });
+      }
+      return respond(200, {
+        styles: [{ id: "first-style", name: "First style", tags: [] }],
+        hasMore: true,
+        nextToken: "next-styles",
+      });
+    },
+  );
+  await setupIntroVideoPage();
+  await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a video style",
+  });
+  await within(picker).findByText("First style");
+  approachEnd(picker);
+  const retry = await within(picker).findByText("Try again");
+  expect(attempts).toBe(1);
+  expect(within(picker).getByText("First style")).toBeVisible();
+  expect(
+    picker.querySelector("[data-intro-video-catalog-sentinel]"),
+  ).toBeNull();
+  await user.click(retry);
+  await within(picker).findByText("Second style");
+  expect(attempts).toBe(2);
+  expect(within(picker).queryByText("Try again")).toBeNull();
+  expect(
+    picker.querySelector("[data-intro-video-catalog-sentinel]"),
+  ).toBeNull();
 });
 
 test("Style previews can play and pause without selecting a style", async () => {
@@ -369,6 +590,7 @@ test("A selected public avatar uses its HeyGen default voice", async () => {
 
 test("Avatar looks share a person card across pages and only Use commits a look", async () => {
   const user = userEvent.setup({ delay: null });
+  const approachEnd = mockCatalogIntersection();
   let submittedPrompt: string | undefined;
   installIntroVideoFixture({
     onSendRequest(body) {
@@ -421,11 +643,13 @@ test("Avatar looks share a person card across pages and only Use commits a look"
   const picker = await screen.findByRole("dialog", {
     name: "Choose an avatar",
   });
-  await within(picker).findByText("Load more");
-  expect(
-    picker.querySelectorAll("[data-intro-video-avatar-group]"),
-  ).toHaveLength(2);
-  await user.click(requiredButtonNamed("Load more", picker));
+  await waitFor(() => {
+    expect(
+      picker.querySelectorAll("[data-intro-video-avatar-group]"),
+    ).toHaveLength(2);
+  });
+  expect(within(picker).queryByText("Load more")).toBeNull();
+  approachEnd(picker);
   await within(picker).findByLabelText("Preview look Daphne in White shirt");
   // Same-name people stay separate; a repeated look and a new page do not add cards.
   expect(
@@ -447,6 +671,12 @@ test("Avatar looks share a person card across pages and only Use commits a look"
     "src",
     secondLook.previewImageUrl,
   );
+  expect(within(group).getByAltText(secondLook.name)).toHaveClass(
+    "object-contain",
+  );
+  for (const thumbnail of group.querySelectorAll("button img")) {
+    expect(thumbnail).toHaveClass("object-contain");
+  }
   expect(picker).toBeVisible();
   await user.click(requiredButtonNamed("Close", picker));
   expect(
