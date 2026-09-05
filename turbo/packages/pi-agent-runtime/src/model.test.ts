@@ -279,7 +279,7 @@ describe("Pi agent model adapter", () => {
   );
 
   it.each([undefined, "fast"] as const)(
-    "passes an explicit account ID to native Codex Responses over SSE with tier %s",
+    "normalizes native config tier %s with exact credentials and no retry over SSE",
     async (serviceTier) => {
       const provider = await retryableCodexProvider();
       try {
@@ -313,9 +313,15 @@ describe("Pi agent model adapter", () => {
         if (serviceTier === undefined) {
           expect(request?.body).not.toHaveProperty("service_tier");
         } else {
-          expect(request?.body).toMatchObject({ service_tier: "fast" });
+          expect(config.serviceTier).toBe("fast");
+          expect(request?.body).toMatchObject({ service_tier: "priority" });
         }
-        expect(request?.body).toMatchObject({ store: false, stream: true });
+        expect(request?.body).toMatchObject({
+          model: "gpt-5.6-terra",
+          store: false,
+          stream: true,
+        });
+        expect(request?.body).not.toHaveProperty("previous_response_id");
         expect(request?.headers.authorization).toBe("Bearer opaque-not-a-jwt");
         expect(request?.headers["chatgpt-account-id"]).toBe(
           "account-id-from-binding",

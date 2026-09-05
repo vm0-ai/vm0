@@ -435,7 +435,17 @@ async function startResponsesProvider(
 describe("official Pi AgentSession runtime", () => {
   it.each([
     {
-      name: "subscription",
+      name: "standard subscription",
+      provider: "openai-codex",
+      dialect: "openai-codex-responses",
+      model: "gpt-5.6-terra",
+      basePath: "/backend-api",
+      endpoint: "/backend-api/codex/responses",
+      tier: undefined,
+      secretName: "CHATGPT_ACCESS_TOKEN",
+    },
+    {
+      name: "Fast subscription",
       provider: "openai-codex",
       dialect: "openai-codex-responses",
       model: "gpt-5.6-terra",
@@ -476,7 +486,7 @@ describe("official Pi AgentSession runtime", () => {
       secretName: "VERCEL_AI_GATEWAY_API_KEY",
     },
   ] as const)(
-    "keeps generation-3 $name Fast on every Sandbox turn after pending tools",
+    "preserves $name request policy on every Sandbox turn after pending tools",
     async (route) => {
       const cwd = await mkdtemp(join(tmpdir(), "pi-user-owned-fast-"));
       onTestFinished(async () => {
@@ -508,16 +518,17 @@ describe("official Pi AgentSession runtime", () => {
       const model = await materializePiAgentModelConfig({
         target: "sandbox-firewall",
         config: {
-          schemaVersion: 3,
           transport: "sse",
           baseUrl: provider.baseUrl.replace(/\/v1$/, route.basePath),
           thinkingLevel: "low",
           ...(route.dialect === "openai-codex-responses"
             ? {
+                ...(route.tier === undefined
+                  ? { schemaVersion: 2 as const }
+                  : { schemaVersion: 3 as const, serviceTier: route.tier }),
                 dialect: route.dialect,
                 provider: route.provider,
                 model: route.model,
-                serviceTier: route.tier,
                 credentialBindings: [
                   {
                     kind: "access-token",
@@ -532,13 +543,14 @@ describe("official Pi AgentSession runtime", () => {
                 ],
               }
             : {
+                schemaVersion: 3,
+                serviceTier: route.tier,
                 dialect: route.dialect,
                 provider: route.provider,
                 model: route.model,
                 ...(route.name === "Vercel API key"
                   ? { catalogModel: route.catalogModel }
                   : {}),
-                serviceTier: route.tier,
                 credentialBindings: [
                   {
                     kind: "api-key",
@@ -552,6 +564,7 @@ describe("official Pi AgentSession runtime", () => {
           return `opaque-${binding.secretName}`;
         },
       });
+      expect(model.serviceTier).toBe(route.tier);
       const created = await createPiAgentSessionForRuntime({
         cwd,
         agentDir: join(cwd, ".pi"),
@@ -576,10 +589,14 @@ describe("official Pi AgentSession runtime", () => {
               model: route.model,
               stream: true,
               store: false,
-              service_tier: route.tier,
               reasoning: { effort: "low" },
             },
           });
+          if (route.tier === undefined) {
+            expect(request.body).not.toHaveProperty("service_tier");
+          } else {
+            expect(request.body).toMatchObject({ service_tier: "priority" });
+          }
           expect(request.body).not.toHaveProperty("previous_response_id");
           expect(JSON.stringify(request.body)).toContain("Terra tool result");
         }
@@ -599,7 +616,7 @@ describe("official Pi AgentSession runtime", () => {
           content: [{ type: "text", text: "Sandbox answer" }],
         });
         expect(JSON.stringify(sessionManager.getEntries())).not.toMatch(
-          /serviceTier|service_tier/,
+          /serviceTier|service_tier|opaque-CHATGPT|opaque-OPENAI|opaque-OPENROUTER|opaque-VERCEL/,
         );
       } finally {
         created.session.dispose();

@@ -980,7 +980,7 @@ describe("sandbox Pi agent loop", () => {
         expect(continuationBody).toContain("rs_terra_okou_handoff");
         expect(occurrences(continuationBody, prompt)).toBe(1);
         expect(continuationRequest.body).toMatchObject({
-          service_tier: route === "codex-terra" ? "fast" : "priority",
+          service_tier: "priority",
         });
         continuationRequest.respond("Terra Okou handoff complete");
         await host.waitFor((record) => {
@@ -993,7 +993,7 @@ describe("sandbox Pi agent loop", () => {
         });
         const nextRequest = await provider.nextRequest();
         expect(nextRequest.body).toMatchObject({
-          service_tier: route === "codex-terra" ? "fast" : "priority",
+          service_tier: "priority",
         });
         nextRequest.respond("Terra followup complete");
         await host.waitFor((record) => {
