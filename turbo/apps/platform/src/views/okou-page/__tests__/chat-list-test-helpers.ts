@@ -146,10 +146,10 @@ export function installChatListStream(
   options: ChatListStreamOptions,
 ): {
   readonly setEvents: (events: readonly ChatThreadEvent[]) => void;
-  readonly wasEventServed: (eventId: string) => boolean;
+  readonly eventsServed: Promise<void>;
 } {
   let currentEvents = [...(options.events ?? [])];
-  const servedEventIds = new Set<string>();
+  const eventsServed = context.mocks.deferred<void>();
   context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
     await options.remoteGate;
     return respond(200, {
@@ -164,8 +164,8 @@ export function installChatListStream(
     const events = currentEvents.filter((event) => {
       return event.seqId > sinceSeqId;
     });
-    for (const event of events) {
-      servedEventIds.add(event.id);
+    if (!eventsServed.settled()) {
+      eventsServed.resolve();
     }
     return respond(200, {
       events,
@@ -182,9 +182,7 @@ export function installChatListStream(
     setEvents(events) {
       currentEvents = [...events];
     },
-    wasEventServed(eventId) {
-      return servedEventIds.has(eventId);
-    },
+    eventsServed: eventsServed.promise,
   };
 }
 
