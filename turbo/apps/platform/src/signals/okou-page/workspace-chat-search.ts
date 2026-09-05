@@ -134,7 +134,12 @@ export const threeColumnSearchChatThreads$ = computed(
       return get(workspaceSearchChatThreads$);
     }
     const threads = await get(chatThreads$);
-    return { query, chatThreads: threads.map(workspaceSearchChatThread) };
+    return {
+      query,
+      chatThreads: threads
+        .slice(0, MAX_VISIBLE_CHAT_THREAD_RESULTS)
+        .map(workspaceSearchChatThread),
+    };
   },
 );
 

@@ -138,10 +138,10 @@ test.each([
     modifiers: { metaKey: false, ctrlKey: true },
   },
 ])(
-  "Open the ninth current chat from search on $platform",
+  "Limit empty search to 25 current chats and open the ninth result on $platform",
   async ({ userAgent, modifiers }) => {
     context.mocks.browser.userAgent(userAgent);
-    const threads = Array.from({ length: 11 }, (_, index) => {
+    const threads = Array.from({ length: 30 }, (_, index) => {
       return chatListThread(index + 1, `Chat ${index + 1}`, {
         pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
       });
@@ -156,15 +156,18 @@ test.each([
       auth: workspace.auth,
       featureSwitches,
     });
-    await waitFor(() => {
-      expect(sidebarThreadTitles()).toHaveLength(11);
-    });
-    const expectedTitles = sidebarThreadTitles();
-    expect(expectedTitles.slice(0, 3)).toStrictEqual([
+    const expectedTitles = [
       "Chat 1",
       "Chat 2",
-      "Chat 11",
-    ]);
+      ...Array.from({ length: 23 }, (_, index) => {
+        return `Chat ${30 - index}`;
+      }),
+    ];
+    await waitFor(() => {
+      expect(sidebarThreadTitles().slice(0, 3)).toStrictEqual(
+        expectedTitles.slice(0, 3),
+      );
+    });
     click(fastButton("Hide chat list"));
     const { dialog, search } = await openSearch(modifiers);
     await waitFor(() => {
@@ -197,7 +200,7 @@ test.each([
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
-      expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
+      expect(pathname()).toBe(`/chats/${threads[23]!.id}`);
     });
     expect(screen.queryByTestId("chat-list-column")).toBeNull();
   },
