@@ -587,6 +587,27 @@ wait
     }
 
     #[test]
+    fn template_installs_and_verifies_presentation_renderers() {
+        for package in ["libreoffice-impress", "poppler-utils"] {
+            assert!(
+                template_build_installs_apt_package(package),
+                "build-template.sh should install {package} into sandbox templates"
+            );
+        }
+
+        for (path, name) in [
+            ("/usr/bin/soffice", "LibreOffice"),
+            ("/usr/bin/pdftocairo", "Poppler pdftocairo"),
+        ] {
+            let check = format!(r#"check_required_executable "{path}" "{name}""#);
+            assert!(
+                VERIFY_SCRIPT.contains(&check),
+                "verify-rootfs.sh should verify {name} is present in sandbox images"
+            );
+        }
+    }
+
+    #[test]
     fn template_installs_and_verifies_legacy_timezone_links() {
         assert!(
             template_build_installs_apt_package("tzdata-legacy"),

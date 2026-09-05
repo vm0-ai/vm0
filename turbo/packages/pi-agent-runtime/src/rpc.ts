@@ -1,12 +1,5 @@
 import { readFileSync } from "node:fs";
 
-import type {
-  AssistantMessage,
-  Message,
-  ToolCall,
-  ToolResultMessage,
-} from "@earendil-works/pi-ai";
-import { validateToolArguments } from "@earendil-works/pi-ai";
 import {
   createAgentSessionRuntime,
   runRpcMode,
@@ -84,164 +77,35 @@ function createRuntimeFactory(args: {
   };
 }
 
-interface InternalAgentSession {
-  _runAgentPrompt(messages: Message[]): Promise<void>;
-}
-
-function pendingToolCalls(session: AgentSession): {
-  readonly assistant: AssistantMessage | null;
-  readonly calls: ToolCall[];
-} {
-  const messages = session.agent.state.messages;
-  let lastAssistant: (typeof messages)[number] | undefined;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role === "assistant") {
-      lastAssistant = message;
-      break;
-    }
-  }
-  if (lastAssistant?.role !== "assistant") {
-    return { assistant: null, calls: [] };
-  }
-  const resolvedIds = new Set(
-    messages.flatMap((message) => {
-      return message.role === "toolResult" ? [message.toolCallId] : [];
-    }),
-  );
-  return {
-    assistant: lastAssistant,
-    calls: lastAssistant.content.filter((content): content is ToolCall => {
-      return content.type === "toolCall" && !resolvedIds.has(content.id);
-    }),
-  };
-}
-
-async function executePendingToolCalls(
-  session: AgentSession,
-): Promise<ToolResultMessage[]> {
-  const tools = new Map(
-    session.agent.state.tools.map((tool) => {
-      return [tool.name, tool] as const;
-    }),
-  );
-  const pending = pendingToolCalls(session);
-  const errorResult = (call: ToolCall, message: string): ToolResultMessage => {
-    return {
-      role: "toolResult",
-      toolCallId: call.id,
-      toolName: call.name,
-      content: [{ type: "text", text: message }],
-      isError: true,
-      timestamp: Date.now(),
-    };
-  };
-  if (pending.assistant?.stopReason === "length") {
-    return pending.calls.map((call) => {
-      return errorResult(
-        call,
-        `Tool call "${call.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
-      );
-    });
-  }
-  const execute = async (call: ToolCall): Promise<ToolResultMessage> => {
-    const tool = tools.get(call.name);
-    try {
-      if (!tool) {
-        throw new Error(`Tool "${call.name}" is not available in the sandbox`);
-      }
-      const preparedCall = tool.prepareArguments
-        ? {
-            ...call,
-            arguments: tool.prepareArguments(
-              call.arguments,
-            ) as ToolCall["arguments"],
-          }
-        : call;
-      const value = await tool.execute(
-        call.id,
-        validateToolArguments(tool, preparedCall),
-      );
-      return {
-        role: "toolResult",
-        toolCallId: call.id,
-        toolName: call.name,
-        content: value.content ?? [],
-        details: value.details,
-        usage: value.usage,
-        ...(value.addedToolNames?.length
-          ? { addedToolNames: value.addedToolNames }
-          : {}),
-        isError: false,
-        timestamp: Date.now(),
-      };
-    } catch (error) {
-      return errorResult(
-        call,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  };
-  const calls = pending.calls;
-  if (
-    calls.some((call) => {
-      return tools.get(call.name)?.executionMode === "sequential";
-    })
-  ) {
-    const results: ToolResultMessage[] = [];
-    for (const call of calls) {
-      results.push(await execute(call));
-    }
-    return results;
-  }
-  return await Promise.all(calls.map(execute));
-}
-
 export async function resumePiApiFirstTurn(
   session: AgentSession,
+  options?: Parameters<AgentSession["continuePendingTools"]>[0],
 ): Promise<void> {
-  const internal = session as unknown as InternalAgentSession;
-  const pending = pendingToolCalls(session);
-  if (pending.calls.length === 0) {
-    throw new Error("Pi handoff session contains no pending tool calls");
-  }
-  const toolResults = await executePendingToolCalls(session);
-  await internal._runAgentPrompt(toolResults);
-}
-
-function replaceFirstPrompt(
-  session: AgentSession,
-  continuation: () => Promise<void>,
-): void {
-  const originalPrompt = session.prompt.bind(session);
-  session.prompt = async (_text, options) => {
-    session.prompt = originalPrompt;
-    options?.preflightResult?.(true);
-    await continuation();
-  };
+  await session.continuePendingTools(options);
 }
 
 function installOwnershipTransferStartup(
   session: AgentSession,
   mode: PiSandboxOwnershipTransferMode,
 ): void {
-  switch (mode) {
-    case "sandbox-first": {
-      return;
-    }
-    case "pending-tool-continuation": {
-      replaceFirstPrompt(session, async () => {
-        await resumePiApiFirstTurn(session);
-      });
-      return;
-    }
-    case "settled-session-continuation": {
-      replaceFirstPrompt(session, () => {
-        return Promise.resolve();
-      });
-      return;
-    }
+  if (mode === "sandbox-first") {
+    return;
   }
+  const originalPrompt = session.prompt.bind(session);
+  session.prompt = async (_text, options) => {
+    if (mode === "pending-tool-continuation") {
+      await resumePiApiFirstTurn(session, {
+        preflightResult(success) {
+          // Both native owners are established before ordinary input or RPC ack.
+          session.prompt = originalPrompt;
+          options?.preflightResult?.(success);
+        },
+      });
+    } else {
+      session.prompt = originalPrompt;
+      options?.preflightResult?.(true);
+    }
+  };
 }
 
 /** Run Pi's official AgentSession RPC host until stdin closes. */

@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.313.5](https://github.com/vm0-ai/vm0/compare/cli-v9.313.4...cli-v9.313.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** validate native session parent graphs before traversal ([#31910](https://github.com/vm0-ai/vm0/issues/31910)) ([9a84dc8](https://github.com/vm0-ai/vm0/commit/9a84dc87ccba2f12c6e8e7e16bbc6eea1d4c8501))
+
+
+### Refactoring
+
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.4
+    * @okouai/connectors bumped to 3.3.6
+    * @okouai/core bumped to 8.625.3
+    * @okouai/pi-agent-runtime bumped to 1.20.2
+
 ## [9.313.4](https://github.com/vm0-ai/vm0/compare/cli-v9.313.3...cli-v9.313.4) (2026-09-05)
 
 

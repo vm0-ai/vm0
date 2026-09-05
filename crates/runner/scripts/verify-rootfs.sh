@@ -323,6 +323,11 @@ check_required_executable "/usr/bin/mkdir" "mkdir"
 # Media workflows rely on ffmpeg being available in fresh agent runtimes.
 check_required_executable "/usr/bin/ffmpeg" "ffmpeg"
 
+# Presentation screenshot workflows must not install these large dependencies
+# inside every fresh agent runtime.
+check_required_executable "/usr/bin/soffice" "LibreOffice"
+check_required_executable "/usr/bin/pdftocairo" "Poppler pdftocairo"
+
 # Browser screenshots and exports need system fallbacks for multilingual text.
 check_bin "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf" "Noto Sans"
 check_bin "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf" "Noto Sans Arabic"
