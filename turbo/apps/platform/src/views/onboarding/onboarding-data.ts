@@ -194,7 +194,7 @@ export function onboardingWorkflowCategories(
   });
 }
 
-export const CUSTOM_WORKFLOW_ID = "talk-to-zero";
+export const CUSTOM_WORKFLOW_ID = "custom-workflow";
 
 function onboardingWorkflowIdentity(workflowIdValue: string | null): {
   readonly id: OnboardingWorkflowId;

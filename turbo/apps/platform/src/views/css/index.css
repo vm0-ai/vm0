@@ -1571,8 +1571,6 @@ details > summary {
   --workflow-top-line-y: 81px;
   --workflow-source-icon-left: 107px;
   --workflow-node-icon-size: 56px;
-  --workflow-zero-left: 277px;
-  --workflow-zero-size: 72px;
   --workflow-output-icon-left: 457.5px;
   --workflow-output-icon-top: 53px;
   --workflow-source-dot-x: calc(

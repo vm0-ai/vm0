@@ -1,5 +1,5 @@
 import {
-  CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN,
+  normalizeClerkProductionPrimaryAppDomain,
   resolveClerkProductionSatelliteDomain,
   type ClerkProductionDomain,
   type ClerkProductionPrimaryAppDomain,
@@ -18,16 +18,16 @@ interface ClerkInstanceConfig {
 }
 
 export function resolveConfiguredProductionPrimaryAppDomain(): ClerkProductionPrimaryAppDomain {
-  const bootstrap = Reflect.get(globalThis, "__vm0ClerkBootstrap");
-  if (
+  const bootstrap = Reflect.get(globalThis, "__okouClerkBootstrap");
+  const configured =
     typeof bootstrap === "object" &&
     bootstrap !== null &&
-    "productionPrimaryAppDomain" in bootstrap &&
-    bootstrap.productionPrimaryAppDomain === "app.okou.ai"
-  ) {
-    return bootstrap.productionPrimaryAppDomain;
-  }
-  return CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
+    "productionPrimaryAppDomain" in bootstrap
+      ? bootstrap.productionPrimaryAppDomain
+      : undefined;
+  // A missing bootstrap object is the same unknown input as a missing
+  // injected value, so both fail closed to the deployed topology.
+  return normalizeClerkProductionPrimaryAppDomain(configured);
 }
 
 export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {

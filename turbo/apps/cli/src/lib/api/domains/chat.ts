@@ -36,7 +36,7 @@ interface ChatThreadUnread {
 
 export type ChatThreadEvent = ApiChatThreadEvent;
 
-type ZeroChatEventSnapshotResult =
+type ChatEventSnapshotResult =
   | {
       readonly kind: "snapshot";
       readonly url: string;
@@ -45,7 +45,7 @@ type ZeroChatEventSnapshotResult =
     }
   | { readonly kind: "missing" };
 
-type ZeroChatEventRowsPage =
+type ChatEventRowsPage =
   | {
       readonly kind: "rows";
       readonly rows: readonly ChatEventRow[];
@@ -78,21 +78,21 @@ function requireSupportedModel(model: string) {
   return model;
 }
 
-interface ZeroChatThreadCreateResult {
+interface ChatThreadCreateResult {
   readonly threadId: string;
   readonly title: string | null;
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
 }
 
-interface ZeroChatEventSendResult {
+interface ChatEventSendResult {
   readonly runId: string | null;
   readonly threadId: string;
   readonly status?: string;
   readonly createdAt?: string;
 }
 
-type ZeroChatThreadEventsResult =
+type ChatThreadEventsResult =
   | {
       readonly kind: "page";
       readonly events: readonly ChatThreadEvent[];
@@ -136,7 +136,7 @@ export async function getChatThreadSnapshot(): Promise<ChatThreadSnapshot> {
 
 export async function listChatThreadEvents(options: {
   sinceSeqId?: number;
-}): Promise<ZeroChatThreadEventsResult> {
+}): Promise<ChatThreadEventsResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.events({
@@ -177,7 +177,7 @@ export async function createChatThread(options: {
   title: string;
   model?: string;
   serviceTier?: ChatThreadServiceTier | null;
-}): Promise<ZeroChatThreadCreateResult> {
+}): Promise<ChatThreadCreateResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
   const result = await client.create({
@@ -242,7 +242,7 @@ export async function getChatThreadAgentId(options: {
 
 export async function sendChatEvent(
   body: ChatEventSendBody,
-): Promise<ZeroChatEventSendResult> {
+): Promise<ChatEventSendResult> {
   const config = await getClientConfig();
   const client = initClient(chatEventsContract, config);
   const result = await client.send({ body });
@@ -254,7 +254,7 @@ export async function sendChatEvent(
 
 export async function getChatEventSnapshot(options: {
   readonly threadId: string;
-}): Promise<ZeroChatEventSnapshotResult> {
+}): Promise<ChatEventSnapshotResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.snapshot({
@@ -287,7 +287,7 @@ export async function listChatEventRows(
         readonly sinceSeqId: number;
       }
   ),
-): Promise<ZeroChatEventRowsPage> {
+): Promise<ChatEventRowsPage> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.rows({

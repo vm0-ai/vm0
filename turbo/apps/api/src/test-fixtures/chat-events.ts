@@ -1106,7 +1106,7 @@ export async function queueOtherWorkerChatEventReadFixture(args: {
   readonly done: Promise<void>;
 }> {
   const started = createDeferredPromise<void>(args.signal);
-  const applicationName = `vm0-api-test-other-${randomUUID()}`;
+  const applicationName = `okou-api-test-other-${randomUUID()}`;
   const missingEventId = randomUUID();
   const done = onRejection(
     db().transaction(async (tx) => {

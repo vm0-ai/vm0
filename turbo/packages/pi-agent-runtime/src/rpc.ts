@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import type {
   AssistantMessage,
   Message,
@@ -13,6 +15,10 @@ import {
   type CreateAgentSessionRuntimeFactory,
 } from "@earendil-works/pi-coding-agent";
 
+import {
+  parseValidatedPiSessionJsonl,
+  validatePiSessionEntries,
+} from "./session-validation";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
 import type {
   PiMemoryRecallOutcome,
@@ -26,12 +32,22 @@ export type PiSandboxOwnershipTransferMode =
   | "pending-tool-continuation"
   | "settled-session-continuation";
 
-async function resolveSessionManager(args: {
+function resolveSessionManager(args: {
   readonly cwd: string;
   readonly sessionDir: string;
   readonly sessionId: string;
   readonly sessionFile: string;
-}): Promise<SessionManager> {
+}): SessionManager {
+  // Keep the read, validation and SDK open synchronous: opening can migrate
+  // and rewrite a legacy file. Reject invalid bytes and identity before that.
+  const { header } = parseValidatedPiSessionJsonl(
+    new TextDecoder("utf-8", { fatal: true }).decode(
+      readFileSync(args.sessionFile),
+    ),
+  );
+  if (header.id !== args.sessionId) {
+    throw new Error("Pi handoff session id does not match the launch session");
+  }
   const sessionManager = SessionManager.open(
     args.sessionFile,
     args.sessionDir,
@@ -40,6 +56,8 @@ async function resolveSessionManager(args: {
   if (sessionManager.getSessionId() !== args.sessionId) {
     throw new Error("Pi handoff session id does not match the launch session");
   }
+  // Validate the actual SDK-loaded entries before any context traversal, too.
+  validatePiSessionEntries(sessionManager.getEntries());
   return sessionManager;
 }
 
@@ -241,7 +259,7 @@ export async function runPiOfficialRpcMode(args: {
   readonly ownershipTransferMode: PiSandboxOwnershipTransferMode;
 }): Promise<never> {
   const createRuntime = createRuntimeFactory(args);
-  const sessionManager = await resolveSessionManager(args);
+  const sessionManager = resolveSessionManager(args);
   const runtime = await createAgentSessionRuntime(createRuntime, {
     cwd: args.cwd,
     agentDir: args.agentDir,

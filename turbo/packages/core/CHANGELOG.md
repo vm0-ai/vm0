@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.625.2](https://github.com/vm0-ai/vm0/compare/core-v8.625.1...core-v8.625.2) (2026-09-05)
+
+
+### Refactoring
+
+* **platform:** fully roll out batch chat event catch-up ([#31890](https://github.com/vm0-ai/vm0/issues/31890)) ([523f917](https://github.com/vm0-ai/vm0/commit/523f917203f26c95e91ef1e94df04d439a82f1f7))
+
+## [8.625.1](https://github.com/vm0-ai/vm0/compare/core-v8.625.0...core-v8.625.1) (2026-09-05)
+
+
+### Refactoring
+
+* unify voice input feature switches ([#31884](https://github.com/vm0-ai/vm0/issues/31884)) ([4537935](https://github.com/vm0-ai/vm0/commit/453793580a047239a98c91d92568b56898e58c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.3
+
 ## [8.625.0](https://github.com/vm0-ai/vm0/compare/core-v8.624.0...core-v8.625.0) (2026-09-05)
 
 

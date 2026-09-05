@@ -59,7 +59,7 @@ with socket.create_connection(("ssh.github.com", 443), timeout=5) as connection:
 print("RAW_TCP_PROBE_DONE")
 
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as connection:
-    connection.sendto(b"vm0-udp-probe", ("192.0.2.1", 9999))
+    connection.sendto(b"okou-udp-probe", ("192.0.2.1", 9999))
 print("UDP_PROBE_DONE")
 
 udp_query = dns_query(0x4501, "udp-dns.invalid")
@@ -100,7 +100,7 @@ curl --silent --show-error --max-time 10 \
     --http1.1 \
     --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' \
     --header 'Content-Type: text/plain' \
-    --data 'vm0-captured-request-body' \
+    --data 'okou-captured-request-body' \
     --output /tmp/browser-response.txt \
     https://www.google.com/
 printf 'BROWSER_REQUEST_DONE\n'
@@ -166,7 +166,7 @@ EOF
                     .type == "http" and
                     .host == "www.google.com" and
                     .browser_user_agent == true and
-                    .request_body == "vm0-captured-request-body" and
+                    .request_body == "okou-captured-request-body" and
                     (.response_body | type) == "string" and
                     (.response_body | length) > 0)
             ' <<<"$network_logs" >/dev/null; then
@@ -209,7 +209,7 @@ EOF
                         status,
                         error,
                         browser_user_agent,
-                        request_body_matches: (.request_body == "vm0-captured-request-body"),
+                        request_body_matches: (.request_body == "okou-captured-request-body"),
                         response_body_length: ((.response_body // "") | length)
                     }]
             }

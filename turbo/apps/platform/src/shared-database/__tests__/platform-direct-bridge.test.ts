@@ -6,7 +6,6 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test, vi } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
@@ -171,6 +170,17 @@ test("Show cached chat data before catching up live", async () => {
       threads: { [unreadThreadId]: "unread" },
     });
   });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          prewarmedThreadIds.push(threadId);
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+  });
   context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
     return respond(404, {
       error: {
@@ -181,11 +191,7 @@ test("Show cached chat data before catching up live", async () => {
   });
   context.mocks.api(
     chatThreadEventsContract.rows,
-    async ({ params, query, respond }) => {
-      if (params.threadId === unreadThreadId) {
-        prewarmedThreadIds.push(params.threadId);
-        return respond(200, chatEventRowsResponse([], query));
-      }
+    async ({ query, respond }) => {
       requestedSeqIds.push(query.sinceSeqId);
       if (query.sinceSeqId === 1) {
         await initialPage.promise;
@@ -317,7 +323,6 @@ test("Cache incoming chat messages before the conversation is opened", async () 
   await setupPage({
     context,
     path: "/error",
-    featureSwitches: { [FeatureSwitchKey.BatchChatEventCatchUp]: true },
     sharedWorkerTestTransport: "message-port",
     auth: {
       user: { id: userId(), fullName: "Direct Bridge User" },
@@ -362,6 +367,17 @@ test("Preserve every message during a burst of realtime notifications", async ()
       threads: { [unopenedThreadId]: "unread" },
     });
   });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          prewarmedThreadIds.push(threadId);
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+  });
   context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
     return respond(404, {
       error: {
@@ -372,11 +388,7 @@ test("Preserve every message during a burst of realtime notifications", async ()
   });
   context.mocks.api(
     chatThreadEventsContract.rows,
-    async ({ params, query, respond }) => {
-      if (params.threadId === unopenedThreadId) {
-        prewarmedThreadIds.push(params.threadId);
-        return respond(200, chatEventRowsResponse([], query));
-      }
+    async ({ query, respond }) => {
       catchUpRequests += 1;
       if (query.sinceSeqId === 1 && !catchUpStarted.settled()) {
         catchUpStarted.resolve();

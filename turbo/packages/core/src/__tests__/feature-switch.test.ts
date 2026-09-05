@@ -182,7 +182,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       true,
@@ -199,10 +198,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
@@ -213,7 +209,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       false,
@@ -230,10 +225,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);

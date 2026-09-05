@@ -295,7 +295,7 @@ describe("provider console paths", () => {
 
   describe("POST /api/webhooks/slack/commands", () => {
     const paths = ["/api/webhooks/slack/commands"];
-    const body = "command=%2Fzero&text=help";
+    const body = "command=%2Fokou&text=help";
 
     it("verifies the Slack signature before parsing the command", async () => {
       const snapshots = await snapshotEachPath(

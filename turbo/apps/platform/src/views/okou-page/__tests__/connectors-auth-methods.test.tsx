@@ -463,7 +463,7 @@ test("Connect through device authorization", async () => {
 
   await expect(
     screen.findByTestId("connector-oauth-device-code"),
-  ).resolves.toHaveTextContent("VM0-DEVICE");
+  ).resolves.toHaveTextContent("OKOU-DEVICE");
   click(within(dialog).getByTestId("connector-oauth-device-open"));
   expect(
     browserOpen.calls.some((call) => {

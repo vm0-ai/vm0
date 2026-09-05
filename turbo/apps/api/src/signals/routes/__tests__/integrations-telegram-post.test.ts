@@ -48,7 +48,7 @@ const webhooksApi = createWebhookCallbackApi(context);
 const TEST_BOT_TOKEN = "123456:test-bot-token";
 const NEW_BOT_TOKEN = "123456:new-test-bot-token";
 const OFFICIAL_BOT_TOKEN = "987654:official-bot-token";
-const OFFICIAL_BOT_USERNAME = "official_zero_bot";
+const OFFICIAL_BOT_USERNAME = "official_okou_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
 const TELEGRAM_STATE_ACTION_ROUTE = "/api/test/telegram-state/action";
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
@@ -2261,7 +2261,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("run through official bot");
     expect(run?.appendSystemPrompt).toContain(
-      "Bot username: @official_zero_bot",
+      "Bot username: @official_okou_bot",
     );
     expectExactSystemPromptFragment(
       run?.appendSystemPrompt,
@@ -2340,7 +2340,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const run = await latestRunForFixture(fixture);
     expect(run?.prompt).toBe("help from a group");
     expect(run?.appendSystemPrompt).toContain(
-      "Bot username: @official_zero_bot",
+      "Bot username: @official_okou_bot",
     );
   });
 

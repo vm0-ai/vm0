@@ -643,9 +643,9 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     });
     expect(queuedForeign.status).toBe("queued");
 
-    const zeroQueue = await api.readRunQueue(actor);
-    expect(zeroQueue.body.queue).toHaveLength(2);
-    expect(zeroQueue.body.queue[0]).toMatchObject({
+    const privacyQueue = await api.readRunQueue(actor);
+    expect(privacyQueue.body.queue).toHaveLength(2);
+    expect(privacyQueue.body.queue[0]).toMatchObject({
       position: 1,
       isOwner: true,
       runId: queuedOwn.runId,
@@ -653,7 +653,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       userEmail: actor.email,
       sessionLink: `/chat/${seedRun.sessionId}`,
     });
-    expect(zeroQueue.body.queue[1]).toMatchObject({
+    expect(privacyQueue.body.queue[1]).toMatchObject({
       position: 2,
       isOwner: false,
       runId: null,
@@ -663,7 +663,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       triggerSource: null,
       sessionLink: null,
     });
-    expect(JSON.stringify(zeroQueue.body)).not.toContain(
+    expect(JSON.stringify(privacyQueue.body)).not.toContain(
       "member queued secret",
     );
 
@@ -1826,13 +1826,13 @@ function timeCursorRows(
   }
 
   return rows.map((row, index) => {
-    if (!isAxiomRow(row) || typeof row._vm0Cursor === "string") {
+    if (!isAxiomRow(row) || typeof row._timeCursor === "string") {
       return row;
     }
 
     return {
       ...row,
-      _vm0Cursor: `cursor-${index.toString().padStart(4, "0")}`,
+      _timeCursor: `cursor-${index.toString().padStart(4, "0")}`,
     };
   });
 }
@@ -1864,8 +1864,8 @@ function expectTimeCursorAxiomResume(
   expect(apl).toContain(`| order by _time ${expected.order}`);
   expect(apl).not.toContain("| where _time > datetime(");
   expect(apl).not.toContain("| where _time < datetime(");
-  expect(apl).not.toContain("_vm0Cursor >");
-  expect(apl).not.toContain("_vm0Cursor <");
+  expect(apl).not.toContain("_timeCursor >");
+  expect(apl).not.toContain("_timeCursor <");
 }
 
 function networkHardeningRows(
@@ -2101,13 +2101,13 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    const zeroNetwork = await reads.requestAgentRunNetworkLogs(
+    const networkLogsRead = await reads.requestAgentRunNetworkLogs(
       actor,
       agentRun.runId,
       { limit: 4, order: "asc" },
       [200],
     );
-    if (zeroNetwork.status !== 200) {
+    if (networkLogsRead.status !== 200) {
       throw new Error("Expected the zero network log read to succeed");
     }
 
@@ -2161,7 +2161,7 @@ describe("RUN-04: agent run telemetry families", () => {
       "cursor-0003",
     );
 
-    expect(zeroNetwork.body).toStrictEqual({
+    expect(networkLogsRead.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
       hasMore: true,
       nextCursor: expectedNextCursor,
@@ -2184,7 +2184,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const networkRows = [
       {
         _time: timestamp,
-        _vm0Cursor: "network-a",
+        _timeCursor: "network-a",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2193,7 +2193,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: timestamp,
-        _vm0Cursor: "network-b",
+        _timeCursor: "network-b",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2202,7 +2202,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: laterTimestamp,
-        _vm0Cursor: "network-c",
+        _timeCursor: "network-c",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2229,7 +2229,7 @@ describe("RUN-04: agent run telemetry families", () => {
           cursor === undefined
             ? -1
             : networkRows.findIndex((row) => {
-                return row._vm0Cursor === cursor;
+                return row._timeCursor === cursor;
               });
         const startIndex =
           cursor === undefined
@@ -2297,7 +2297,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const descRows = [
       {
         _time: timestamp,
-        _vm0Cursor: "desc-a",
+        _timeCursor: "desc-a",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2306,7 +2306,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: timestamp,
-        _vm0Cursor: "desc-b",
+        _timeCursor: "desc-b",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2315,7 +2315,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: olderTimestamp,
-        _vm0Cursor: "desc-c",
+        _timeCursor: "desc-c",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2339,7 +2339,7 @@ describe("RUN-04: agent run telemetry families", () => {
           cursor === undefined
             ? -1
             : descRows.findIndex((row) => {
-                return row._vm0Cursor === cursor;
+                return row._timeCursor === cursor;
               });
         const startIndex =
           cursor === undefined
@@ -3486,7 +3486,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
       {},
       [200],
     );
-    mustOk(tokenList, "the zero-token log list");
+    mustOk(tokenList, "the Okou-token log list");
     expect(
       tokenList.body.data.map((entry) => {
         return entry.id;

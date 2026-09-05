@@ -7,7 +7,7 @@ import { mockApi } from "../msw-contract.ts";
 
 const defaultMissingGithubIntegration: GithubInstallationNotFoundResponse = {
   error: { message: "GitHub installation not found", code: "NOT_FOUND" },
-  installUrl: "https://github.com/apps/vm0-test/installations/new?state=abc",
+  installUrl: "https://github.com/apps/okou-test/installations/new?state=abc",
 };
 
 const defaultGithubInstallation: GithubInstallationResponse = {
@@ -15,7 +15,7 @@ const defaultGithubInstallation: GithubInstallationResponse = {
     id: "a0000000-0000-4000-a000-000000000001",
     installationId: "123456",
     status: "active",
-    targetName: "vm0-test",
+    targetName: "okou-test",
     targetType: "Organization",
     isAdmin: true,
   },

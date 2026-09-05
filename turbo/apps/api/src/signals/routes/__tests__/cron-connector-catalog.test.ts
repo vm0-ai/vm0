@@ -129,7 +129,7 @@ const TEST_APP_ROUTES = Object.freeze([
 ]);
 
 const context = testContext();
-const zeroMocks = createRouteMocks(context);
+const routeMocks = createRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const githubApi = createGithubBddApi(context);
@@ -144,7 +144,7 @@ const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
-const LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
+const PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES = 32 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
   "sha256:d93687a2d56312f36c56e3232f93bc928cebbeb626c1de6fa51f0bbf09cb4c97";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -1371,7 +1371,7 @@ function configureSource(): string {
   return bucket;
 }
 
-function legacyConnectorCatalogSourceId(bucket: string): string {
+function previousConnectorCatalogSourceId(bucket: string): string {
   const endpoint =
     env("S3_ENDPOINT") ??
     `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
@@ -1379,6 +1379,8 @@ function legacyConnectorCatalogSourceId(bucket: string): string {
     .update(new URL(endpoint).origin)
     .update("\0")
     .update(bucket)
+    .update("\0connector-catalog-persisted-snapshot-generation:")
+    .update("2")
     .digest("hex");
 }
 
@@ -1572,7 +1574,7 @@ async function syncCatalog() {
 }
 
 async function enableDiagnosticsFeatureSwitch(): Promise<void> {
-  zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
+  routeMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
   await accept(
     setupApp({ context, routes: featureSwitchesRoutes })(
       featureSwitchesContract,
@@ -1583,7 +1585,7 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
     [200],
   );
   onTestFinished(async () => {
-    zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
+    routeMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
     await accept(
       setupApp({ context, routes: featureSwitchesRoutes })(
         featureSwitchesContract,
@@ -1876,7 +1878,7 @@ describe("connector catalog valid lifecycle", () => {
       connectorSlugs: [first.connectorSlug],
     });
 
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
       setupApp({ context, routes: connectorCatalogRoutes })(
@@ -1909,7 +1911,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
@@ -2072,7 +2074,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
       setupApp({ context, routes: connectorCatalogRoutes })(
         connectorCatalogContract,
@@ -2095,7 +2097,7 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([release], release));
     await syncCatalog();
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
@@ -2135,7 +2137,7 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
       retainCatalogDigest: true,
     });
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const digestResponse = await accept(
       setupApp({ context, routes: connectorCatalogRoutes })(
         connectorCatalogContract,
@@ -2281,7 +2283,7 @@ describe("connector catalog valid lifecycle", () => {
       rawBytes: releaseCatalogBytes(invalidSemanticRelease),
       catalogValidationAuthority: null,
     });
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const semanticResponse = await accept(
       setupApp({ context, routes: connectorCatalogRoutes })(
         connectorCatalogContract,
@@ -2394,7 +2396,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    zeroMocks.clerk.session(userId, orgId);
+    routeMocks.clerk.session(userId, orgId);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
@@ -2513,7 +2515,7 @@ describe("connector catalog valid lifecycle", () => {
         name: "SERVICE_TOKEN",
       }),
     );
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2572,7 +2574,7 @@ describe("connector catalog valid lifecycle", () => {
       authMethod: "oauth",
       connectionStatus: "connected",
     });
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2672,7 +2674,7 @@ describe("connector catalog valid lifecycle", () => {
       connectionStatus: "connected",
     });
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2799,7 +2801,7 @@ describe("connector catalog valid lifecycle", () => {
       [204],
     );
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2871,7 +2873,7 @@ describe("connector catalog valid lifecycle", () => {
     const callbackLocation = new URL(callback.headers.get("location") ?? "");
     expect(callbackLocation.pathname).toBe("/connector/success");
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2939,7 +2941,7 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const check = await accept(
       setupApp({ context, routes: connectorCheckRoutes })(
         connectorCheckContract,
@@ -3084,7 +3086,7 @@ describe("connector catalog valid lifecycle", () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
       await bdd.deleteAgent(actor, agent.agentId);
     });
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const client = setupApp({ context, routes: userPermissionGrantsRoutes })(
       userPermissionGrantsContract,
     );
@@ -3877,7 +3879,7 @@ describe("connector catalog valid lifecycle", () => {
       currentScopes: ["read", "future_scope"],
       storedScopes: ["read"],
     });
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -3916,7 +3918,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const actor = bdd.user();
     onTestFinished(createConnectorCleanup(actor, "steam"));
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
@@ -4025,7 +4027,7 @@ describe("connector catalog valid lifecycle", () => {
       currentScopes: ["openid", "future_scope"],
       storedScopes: ["openid"],
     });
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -4347,7 +4349,7 @@ describe("connector catalog valid lifecycle", () => {
       visibility: "private",
     });
     created.agentId = agent.agentId;
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const workflow = await accept(
       setupApp({ context, routes: workflowsRoutes })(
@@ -4562,7 +4564,7 @@ describe("connector catalog valid lifecycle", () => {
       [FeatureSwitchKey.DatadogConnector]: true,
     });
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
@@ -4653,7 +4655,7 @@ describe("connector catalog valid lifecycle", () => {
       },
     });
 
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const catalogClient = setupApp({
       context,
       routes: connectorCatalogRoutes,
@@ -4698,7 +4700,7 @@ describe("connector catalog valid lifecycle", () => {
 
   it("fails closed without accepted catalog state", async () => {
     configureSource();
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
     const catalogClient = setupApp({
       context,
@@ -4767,7 +4769,7 @@ describe("connector catalog valid lifecycle", () => {
       state: "current",
       active: { catalogVersion: release.version },
     });
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const diagnostic = await accept(
       setupApp({ context, routes: connectorCheckRoutes })(
@@ -5416,7 +5418,7 @@ describe("connector catalog executable compatibility", () => {
     });
     expect(evaluation?.payload).toStrictEqual({ filteredAuthMethods: [] });
 
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const client = diagnosticsClient();
     await accept(client.list({ headers }), [200]);
@@ -5489,7 +5491,7 @@ describe("connector catalog executable compatibility", () => {
       stale: true,
       filteredAuthMethods: [],
     });
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
@@ -5691,7 +5693,7 @@ describe("connector catalog executable compatibility", () => {
     });
     const actor = bdd.user();
     onTestFinished(createConnectorCleanup(actor, "test-oauth"));
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const catalogClient = setupApp({
       context,
@@ -5810,7 +5812,7 @@ describe("connector catalog executable compatibility", () => {
         },
       ],
     });
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
       setupApp({ context, routes: connectorCheckRoutes })(
         connectorCheckContract,
@@ -5988,7 +5990,7 @@ describe("connector catalog executable compatibility", () => {
       ],
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const catalogClient = setupApp({
       context,
       routes: connectorCatalogRoutes,
@@ -6141,26 +6143,26 @@ describe("connector catalog executable compatibility", () => {
 });
 
 describe("connector catalog rejection and latest-valid retention", () => {
-  it("accepts 32 MiB in a rollback-isolated source generation and rejects 32 MiB plus one with latest-valid retention", async () => {
+  it("accepts 64 MiB in a rollback-isolated source generation and rejects 64 MiB plus one with latest-valid retention", async () => {
     const bucket = configureSource();
-    const legacySourceId = legacyConnectorCatalogSourceId(bucket);
+    const previousSourceId = previousConnectorCatalogSourceId(bucket);
     await installApiTestConnectorCatalog({
       catalogVersion: "2026-07-14.rollback-compatible",
-      sourceId: legacySourceId,
+      sourceId: previousSourceId,
     });
-    const legacySnapshot =
-      await readApiTestConnectorCatalogSnapshot(legacySourceId);
-    expect(legacySnapshot.catalogRawSize).toBeLessThanOrEqual(
-      LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    const previousSnapshot =
+      await readApiTestConnectorCatalogSnapshot(previousSourceId);
+    expect(previousSnapshot.catalogRawSize).toBeLessThanOrEqual(
+      PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES,
     );
-    const legacyRawBytes = gunzipSync(legacySnapshot.catalogGzip, {
-      maxOutputLength: LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES,
+    const previousRawBytes = gunzipSync(previousSnapshot.catalogGzip, {
+      maxOutputLength: PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES,
     });
-    expect(legacyRawBytes.byteLength).toBe(legacySnapshot.catalogRawSize);
-    expect(digest(legacyRawBytes)).toBe(legacySnapshot.catalogDigest);
+    expect(previousRawBytes.byteLength).toBe(previousSnapshot.catalogRawSize);
+    expect(digest(previousRawBytes)).toBe(previousSnapshot.catalogDigest);
 
-    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(32 * 1024 * 1024);
-    const acceptedVersion = "2026-07-15.thirty-two-mib-limit";
+    expect(CONNECTOR_CATALOG_MAX_RAW_BYTES).toBe(64 * 1024 * 1024);
+    const acceptedVersion = "2026-07-15.sixty-four-mib-limit";
     const unpadded = buildRelease({
       version: acceptedVersion,
       mutateCatalog: (artifact) => {
@@ -6187,11 +6189,11 @@ describe("connector catalog rejection and latest-valid retention", () => {
       active: { catalogVersion: accepted.version },
     });
     await expect(
-      readApiTestConnectorCatalogSnapshot(legacySourceId),
-    ).resolves.toStrictEqual(legacySnapshot);
+      readApiTestConnectorCatalogSnapshot(previousSourceId),
+    ).resolves.toStrictEqual(previousSnapshot);
 
     const rejected = buildRelease({
-      version: "2026-07-15.over-thirty-two-mib-limit",
+      version: "2026-07-15.over-sixty-four-mib-limit",
       catalogBytes: Buffer.alloc(CONNECTOR_CATALOG_MAX_RAW_BYTES + 1),
     });
     serveObjects(catalogObjects([rejected], rejected));
@@ -6206,8 +6208,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     });
     await expect(
-      readApiTestConnectorCatalogSnapshot(legacySourceId),
-    ).resolves.toStrictEqual(legacySnapshot);
+      readApiTestConnectorCatalogSnapshot(previousSourceId),
+    ).resolves.toStrictEqual(previousSnapshot);
   });
 
   it("classifies unavailable and oversized objects before acceptance", async () => {
@@ -6388,7 +6390,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       outcome: "accepted",
       active: { catalogVersion: release.version },
     });
-    zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    routeMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
       setupApp({ context, routes: connectorCheckRoutes })(
         connectorCheckContract,

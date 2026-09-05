@@ -212,6 +212,8 @@ import { mailRoutes } from "../mail";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 import { modelProvidersRoutes } from "../model-providers";
 
+import { runInIsolatedProcess } from "../../../../../../scripts/run-isolated-test.mjs";
+
 const TEST_APP_ROUTES = Object.freeze([
   ...chatEventsRoutes,
   ...chatThreadRoutes,
@@ -286,7 +288,7 @@ const USER_OWNED_TERRA_FAST_BDD_ROUTES = [
     type: "codex-oauth-token",
     endpoint: "https://chatgpt.com/backend-api/codex/responses",
     runtimeModel: "gpt-5.6-terra",
-    wireTier: "fast",
+    wireTier: "priority",
   },
   ...STANDARD_TERRA_API_KEY_BDD_ROUTES.map((route) => {
     return {
@@ -5301,7 +5303,7 @@ function expectNativeSubscriptionRequest(
   const { body } = z
     .object({ body: z.record(z.string(), z.unknown()) })
     .parse(request);
-  expect(body.service_tier).toBe(tier);
+  expect(body.service_tier).toBe(tier === undefined ? undefined : "priority");
   expect(body).not.toHaveProperty("previous_response_id");
 }
 
@@ -10353,7 +10355,106 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("publishes OpenRouter Responses blocks and hands fast Sandbox tool turns to H2", async () => {
+  it("rejects cyclic Pi H0 before provider or fallback and resumes valid history later", async () => {
+    if (await runInIsolatedProcess(import.meta.url)) {
+      return;
+    }
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          piResponsesTextSse("canonical H0 answer", modelCalls),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "create canonical Pi H0",
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, first.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    const bindingBeforeFailure = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    const firstSessionBytes = checkpointObjects.get(
+      [...checkpointObjects.keys()].find((key) => {
+        return key.includes("/blobs/");
+      }) ?? "missing-canonical-pi-blob",
+    );
+    if (!firstSessionBytes) {
+      throw new Error("Expected the first Pi run to persist native H1");
+    }
+    const cyclicH0 = `${firstSessionBytes.toString("utf8")}${JSON.stringify({ type: "model_change", id: "cycle", parentId: "cycle", timestamp: "2026-09-05T00:00:00.000Z", provider: "openai", modelId: "gpt-5.6-terra" })}\n`;
+    // A cyclic canonical H0 cannot be written through today's validated
+    // checkpoint API; seed this historical corruption at the existing fixture.
+    const h0Hash = await replacePiSessionHistoryJsonlFixture({
+      runId: first.runId,
+      jsonl: cyclicH0,
+    });
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h0Hash}.blob`,
+      Buffer.from(cyclicH0, "utf8"),
+    );
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "must not reach the model",
+    });
+    await waitForRunStatus(actor, second.runId, "failed");
+    await flushWaitUntilForTest();
+    expect((await api.readRun(actor, second.runId)).error).toContain(
+      "[PI_H0_JSONL_INVALID]",
+    );
+    expect(modelCalls).toBe(1);
+    await expect(
+      readThreadSessionBinding(context, first.threadId),
+    ).resolves.toStrictEqual({
+      ...bindingBeforeFailure,
+      agent_session_run_id: second.runId,
+    });
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`,
+      ),
+    ).toBeFalsy();
+    const claim = await api.requestClaimRunnerJob(true, second.runId, [404]);
+    expect(claim.status).toBe(404);
+    await replacePiSessionHistoryJsonlFixture({
+      runId: first.runId,
+      jsonl: firstSessionBytes.toString("utf8"),
+    });
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "resume valid history",
+    });
+    await waitForRunStatus(actor, third.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(2);
+  }, 150_000);
+
+  it("publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes", async () => {
+    if (await runInIsolatedProcess(import.meta.url)) {
+      return;
+    }
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
@@ -10371,6 +10472,9 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     mockPiResourceArchiveDownloads();
     const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou --help`;
+    const adHocNoteFilename = "2026-09-05T16-15-00-api-first-checkpoint.md";
+    const adHocNote =
+      "# API-first checkpoint\n\nPersist this staged sandbox note.\n";
     let modelCalls = 0;
     const terraModelRequests: unknown[] = [];
     server.use(
@@ -10395,10 +10499,10 @@ describe("CHAT-02: model-first provider policies", () => {
                     {
                       type: "toolCall",
                       callId: "call_pi_write",
-                      name: "write",
+                      name: "add_ad_hoc_note",
                       arguments: {
-                        path: "/home/user/workspace/***/handoff-copy.txt",
-                        content: "PI_API_FIRST_WRITE_CONTENT_SECRET",
+                        filename: adHocNoteFilename,
+                        note: adHocNote,
                       },
                     },
                     { type: "text", text: "after parallel tools" },
@@ -10454,7 +10558,13 @@ describe("CHAT-02: model-first provider policies", () => {
         return tool.name;
       });
     expect(terraTools).toStrictEqual(
-      expect.arrayContaining(["read", "write", "edit", "bash"]),
+      expect.arrayContaining([
+        "read",
+        "write",
+        "edit",
+        "bash",
+        "add_ad_hoc_note",
+      ]),
     );
     const manifestBytes = checkpointObjects.get(manifestKey);
     if (!manifestBytes) {
@@ -10528,12 +10638,12 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected Terra storage manifest");
     }
     const terraMounts = terraStorageManifest.storageMounts;
-    expect(terraMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: PI_MEMORY_ROOT,
-      }),
-    );
+    const terraMemoryMount = terraMounts.find((mount) => {
+      return mount.name === "memory" && mount.mountPath === PI_MEMORY_ROOT;
+    });
+    if (!terraMemoryMount) {
+      throw new Error("Expected the Pi memory mount");
+    }
     expect(claimed.claim.prompt).toBe(prompt);
     const sandboxUsageEvent = {
       idempotencyKey: randomUUID(),
@@ -10623,7 +10733,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         type: "toolCall",
         id: "call_pi_write|fc_pi_content_1_2",
-        name: "write",
+        name: "add_ad_hoc_note",
       },
       { type: "text", text: "after parallel tools" },
     ]);
@@ -10662,10 +10772,10 @@ describe("CHAT-02: model-first provider policies", () => {
                 {
                   type: "tool_use",
                   id: "call_pi_write|fc_pi_content_1_2",
-                  name: "write",
+                  name: "add_ad_hoc_note",
                   input: {
-                    path: "/home/user/workspace/***/handoff-copy.txt",
-                    content: "PI_REPLAY_WRITE_CONTENT_SECRET",
+                    filename: adHocNoteFilename,
+                    note: adHocNote,
                   },
                 },
               ],
@@ -10710,8 +10820,13 @@ describe("CHAT-02: model-first provider policies", () => {
     h2Session.appendMessage({
       role: "toolResult",
       toolCallId: "call_pi_write|fc_pi_content_1_2",
-      toolName: "write",
-      content: [{ type: "text", text: "Sandbox write output" }],
+      toolName: "add_ad_hoc_note",
+      content: [
+        {
+          type: "text",
+          text: `{"status":"staged","path":"extensions/ad_hoc/notes/${adHocNoteFilename}"}`,
+        },
+      ],
       details: {},
       isError: false,
       timestamp: 3,
@@ -10754,6 +10869,25 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
       Buffer.from(h2, "utf8"),
     );
+    const checkpointedMemory = await commitMemoryVersion(context, actor, [
+      {
+        path: `extensions/ad_hoc/notes/${adHocNoteFilename}`,
+        content: adHocNote,
+      },
+    ]);
+    expect(checkpointedMemory.storageId).toBe(terraMemoryMount.storageId);
+    const memoryArtifactSnapshots = [
+      {
+        name: terraMemoryMount.name,
+        version: checkpointedMemory.versionId,
+        mountPath: terraMemoryMount.mountPath,
+        ...(terraMemoryMount.missingRootPolicy === undefined
+          ? {}
+          : {
+              missingRootPolicy: terraMemoryMount.missingRootPolicy,
+            }),
+      },
+    ];
     const combinedH2 = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
@@ -10762,6 +10896,7 @@ describe("CHAT-02: model-first provider policies", () => {
           cliAgentType: "pi",
           cliAgentSessionId: run.threadId,
           cliAgentSessionHistoryHash: h2Hash,
+          artifactSnapshots: memoryArtifactSnapshots,
         },
       },
       claimed.sandboxHeaders,
@@ -10775,6 +10910,11 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed");
     await flushWaitUntilForTest();
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      result: {
+        artifact: { memory: checkpointedMemory.versionId },
+      },
+    });
     const combinedUsage = await readRunUsageEventsFixture(run.runId);
     expect(
       combinedUsage.filter((row) => {
@@ -10808,6 +10948,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cliAgentType: "pi",
         cliAgentSessionId: run.threadId,
         cliAgentSessionHistoryHash: h2Hash,
+        artifactSnapshots: memoryArtifactSnapshots,
       },
       claimed.sandboxHeaders,
       [200],
@@ -10853,6 +10994,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cliAgentType: "pi",
         cliAgentSessionId: run.threadId,
         cliAgentSessionHistoryHash: h2Hash,
+        artifactSnapshots: memoryArtifactSnapshots,
       },
       claimed.sandboxHeaders,
       [200],
@@ -10933,6 +11075,47 @@ describe("CHAT-02: model-first provider policies", () => {
       })
       .toBe(true);
     const failedClaim = await claimChatRun(runnerGroup, failedHandoff.runId);
+    const cyclicH2 = Buffer.from(
+      `${h2}${JSON.stringify({ type: "model_change", id: "cycle", parentId: "cycle", timestamp: "2026-09-05T00:00:00.000Z", provider: "openai", modelId: "gpt-5.6-terra" })}\n`,
+      "utf8",
+    );
+    const cyclicH2Hash = createHash("sha256").update(cyclicH2).digest("hex");
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: failedHandoff.runId,
+        hash: cyclicH2Hash,
+        rawSize: cyclicH2.length,
+        encodedSize: cyclicH2.length,
+        encoding: "identity",
+      },
+      failedClaim.sandboxHeaders,
+      [200],
+    );
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${cyclicH2Hash}.blob`,
+      cyclicH2,
+    );
+    const cyclicCheckpoint = await webhooks.requestAgentComplete(
+      {
+        runId: failedHandoff.runId,
+        exitCode: 1,
+        error: "reject cyclic native checkpoint",
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: cyclicH2Hash,
+        },
+      },
+      failedClaim.sandboxHeaders,
+      [400],
+    );
+    expect(JSON.stringify(cyclicCheckpoint.body)).toContain(
+      "[PI_H2_JSONL_INVALID]",
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(2);
     const invalidH2 = Buffer.from(`${h2}{malformed\n`, "utf8");
     const invalidH2Hash = createHash("sha256").update(invalidH2).digest("hex");
     await webhooks.requestAgentCheckpointPrepareHistory(
@@ -11251,13 +11434,14 @@ describe("CHAT-02: model-first provider policies", () => {
           cliAgentType: "pi",
           cliAgentSessionId: run.threadId,
           cliAgentSessionHistoryHash: h2Hash,
+          artifactSnapshots: memoryArtifactSnapshots,
         },
       },
       claimed.sandboxHeaders,
       [200],
     );
     expect(repeatedCombinedH2.body).toStrictEqual(combinedH2.body);
-  }, 90_000);
+  }, 150_000);
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -13718,7 +13902,7 @@ describe("CHAT-02: run-level model overrides", () => {
       accountId: "captured-subscription-account",
       body: {
         model: "gpt-5.6-terra",
-        service_tier: "fast",
+        service_tier: "priority",
         stream: true,
         store: false,
       },
@@ -13813,7 +13997,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(
         requests.map(({ body }) => {
           return z
-            .object({ service_tier: z.enum(["fast", "priority"]).optional() })
+            .object({ service_tier: z.literal("priority").optional() })
             .parse(body).service_tier;
         }),
       ).toStrictEqual([undefined, route.wireTier, undefined]);
@@ -15331,20 +15515,20 @@ describe("CHAT-02: run-level model overrides", () => {
     });
 
     // Chat send only accepts supported run models.
-    const vm0ThreadId = randomUUID();
+    const invalidModelThreadId = randomUUID();
     const invalidModel = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         prompt: "use an unsupported vm0 model",
-        clientThreadId: vm0ThreadId,
+        clientThreadId: invalidModelThreadId,
         model: "codex" as never,
       },
       [400],
     );
     expectApiError(invalidModel.body);
     expect(invalidModel.body.error.message).toBe("Invalid input");
-    await chat.requestReadThread(actor, vm0ThreadId, [404]);
+    await chat.requestReadThread(actor, invalidModelThreadId, [404]);
 
     const unavailableThreadId = randomUUID();
     const unavailable = await chat.requestSendEvent(

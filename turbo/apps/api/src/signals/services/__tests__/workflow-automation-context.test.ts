@@ -300,8 +300,8 @@ const cases: readonly WorkflowAutomationContextCase[] = [
       receivedAt: "2026-08-01T12:00:04.000Z",
       deliveryId: "delivery-webhook",
       body: {
-        event: "vm0-timing-sensitive-ping",
-        value: "vm0-timing-secret-value",
+        event: "okou-timing-sensitive-ping",
+        value: "okou-timing-secret-value",
       },
     },
     trigger:

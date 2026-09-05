@@ -16,15 +16,13 @@ import {
   buildSessionContext,
   convertToLlm,
   CURRENT_SESSION_VERSION,
-  migrateSessionEntries,
-  parseSessionEntries,
   type FileEntry,
   type SessionContext,
   type SessionEntry,
   type SessionHeader,
 } from "@earendil-works/pi-coding-agent";
 
-import { UnsupportedPiSessionVersionError } from "./errors";
+import { parseValidatedPiSessionJsonl } from "./session-validation";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 import type { PiAgentStreamOptions } from "./stream-options";
 
@@ -73,27 +71,12 @@ type NewMemorySessionEntry =
 // that has messages but no explicit thinking_level_change entry.
 const PI_DEFAULT_THINKING_LEVEL: ModelThinkingLevel = "medium";
 
-function assertSessionHeader(entry: FileEntry | undefined): SessionHeader {
-  if (entry?.type !== "session" || typeof entry.id !== "string") {
-    throw new Error("Pi session JSONL must start with a session header");
-  }
-  return entry;
-}
-
 function serializeFileEntries(entries: readonly FileEntry[]): string {
   return `${entries
     .map((entry) => {
       return JSON.stringify(entry);
     })
     .join("\n")}\n`;
-}
-
-function assertStrictJsonl(jsonl: string): void {
-  for (const line of jsonl.split("\n")) {
-    if (line.trim()) {
-      JSON.parse(line);
-    }
-  }
 }
 
 function generateEntryId(existingIds: ReadonlySet<string>): string {
@@ -137,27 +120,8 @@ export class MemoryPiSession {
   }
 
   static fromJsonl(jsonl: string): MemoryPiSession {
-    // Pi's exported parser intentionally skips malformed lines so an
-    // interactive local session can recover. Checkpoint boundaries cannot do
-    // that: silently dropping one line would change the canonical history.
-    assertStrictJsonl(jsonl);
-    const entries = parseSessionEntries(jsonl);
-    const header = assertSessionHeader(entries[0]);
-    if (
-      header.version !== undefined &&
-      header.version > CURRENT_SESSION_VERSION
-    ) {
-      throw new UnsupportedPiSessionVersionError(
-        `Pi session version ${header.version} is newer than supported version ${CURRENT_SESSION_VERSION}`,
-      );
-    }
-    migrateSessionEntries(entries);
-    if (header.version !== CURRENT_SESSION_VERSION) {
-      throw new UnsupportedPiSessionVersionError(
-        "Pi session could not be migrated to the current version",
-      );
-    }
-    return new MemoryPiSession(header, entries.slice(1) as SessionEntry[]);
+    const { header, entries } = parseValidatedPiSessionJsonl(jsonl);
+    return new MemoryPiSession(header, entries);
   }
 
   appendMessage(message: Message): string {

@@ -1493,7 +1493,7 @@ jobs:
       - name: Prepare standalone app Worker preview
         id: worker-preview
         env:
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
+          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}

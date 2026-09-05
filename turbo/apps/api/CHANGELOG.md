@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.551.1](https://github.com/vm0-ai/vm0/compare/api-v1.551.0...api-v1.551.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** normalize native fast requests to priority ([#31895](https://github.com/vm0-ai/vm0/issues/31895)) ([0c910e8](https://github.com/vm0-ai/vm0/commit/0c910e8b80be2c91ead2bb04101b68f3b1d8647e)), closes [#31885](https://github.com/vm0-ai/vm0/issues/31885)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.625.2
+    * @okouai/db bumped to 1.241.7
+    * @okouai/pi-agent-runtime bumped to 1.20.1
+
+## [1.551.0](https://github.com/vm0-ai/vm0/compare/api-v1.550.0...api-v1.551.0) (2026-09-05)
+
+
+### Features
+
+* **pi-memory:** add sandbox-local ad hoc notes ([#31878](https://github.com/vm0-ai/vm0/issues/31878)) ([1b70c02](https://github.com/vm0-ai/vm0/commit/1b70c028318063e0d90163eabb80f30868cd7dbb))
+
+
+### Bug Fixes
+
+* **api:** double connector catalog capacity ([#31882](https://github.com/vm0-ai/vm0/issues/31882)) ([647858d](https://github.com/vm0-ai/vm0/commit/647858d28bd4a8049b681305c168093fc3feca91))
+
+
+### Refactoring
+
+* unify voice input feature switches ([#31884](https://github.com/vm0-ai/vm0/issues/31884)) ([4537935](https://github.com/vm0-ai/vm0/commit/453793580a047239a98c91d92568b56898e58c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.3
+    * @okouai/connectors bumped to 3.3.5
+    * @okouai/core bumped to 8.625.1
+    * @okouai/db bumped to 1.241.6
+    * @okouai/pi-agent-runtime bumped to 1.20.0
+
 ## [1.550.0](https://github.com/vm0-ai/vm0/compare/api-v1.549.0...api-v1.550.0) (2026-09-05)
 
 

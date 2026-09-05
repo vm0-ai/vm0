@@ -339,16 +339,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
-  [FeatureSwitchKey.VoiceDraft]: {
+  [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Transcribe and polish voice input before inserting it into the composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ComposerVoiceInputShortcut]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Start or stop composer voice input with Mod+Shift+E.",
+      "Transcribe and polish voice input before inserting it into the composer, with Mod+Shift+E to start or stop recording.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -369,13 +363,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.BatchChatEventCatchUp]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Catch up unread, active, and recent ChatEvent threads through one throttled SharedWorker batch.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -46,18 +46,18 @@ import {
   type McpConnector,
 } from "@okouai/api-contracts/contracts/mcp-connectors";
 import type {
-  ConnectorListResponse,
+  ConnectorListResponse as ApiConnectorListResponse,
   ConnectorResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type Connector = ConnectorResponse;
-type ZeroConnectorListResponse = ConnectorListResponse;
+type ConnectorListResponse = ApiConnectorListResponse;
 export type ConnectorCatalogItem =
   PublicConnectorCatalogListResponse["connectors"][number];
 export type ConnectorCatalogStatus = PublicConnectorCatalogStatusItem;
-type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
-type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
+type ConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
+type ConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
 
@@ -141,7 +141,7 @@ export async function inspectConnectorAccounts(
 /**
  * List all connectors for the authenticated user (zero proxy)
  */
-export async function listConnectors(): Promise<ZeroConnectorListResponse> {
+export async function listConnectors(): Promise<ConnectorListResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorsMainContract, config);
 
@@ -154,7 +154,7 @@ export async function listConnectors(): Promise<ZeroConnectorListResponse> {
   handleError(result, "Failed to list connectors");
 }
 
-export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListResponse> {
+export async function listConnectorCatalog(): Promise<ConnectorCatalogListResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorCatalogContract, config);
 
@@ -167,7 +167,7 @@ export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListRe
   handleError(result, "Failed to list connector catalog");
 }
 
-export async function listConnectorCatalogStatus(): Promise<ZeroConnectorCatalogStatusResponse> {
+export async function listConnectorCatalogStatus(): Promise<ConnectorCatalogStatusResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorCatalogContract, config);
 

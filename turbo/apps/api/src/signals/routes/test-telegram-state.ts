@@ -56,7 +56,7 @@ const DEFAULT_TEST_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
 const TELEGRAM_E2E_FIXTURES = {
-  botUsername: "vm0_e2e_bot",
+  botUsername: "e2e_test_bot",
   botToken: "123456:e2e-test-bot-token",
   webhookSecret: "e2e-telegram-webhook-secret",
 } as const;
@@ -784,17 +784,17 @@ async function seedTelegramPostModelKeys(
     .values([
       {
         vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-        apiKey: `vm0-key-default-${seed.composeId}`,
+        apiKey: `built-in-key-default-${seed.composeId}`,
         label: seed.composeId,
       },
       {
         vendor: "anthropic",
-        apiKey: `vm0-key-anthropic-${seed.composeId}`,
+        apiKey: `built-in-key-anthropic-${seed.composeId}`,
         label: seed.composeId,
       },
       {
         vendor: "moonshot",
-        apiKey: `vm0-key-moonshot-${seed.composeId}`,
+        apiKey: `built-in-key-moonshot-${seed.composeId}`,
         label: seed.composeId,
       },
     ])
@@ -1302,7 +1302,7 @@ async function seedModelPoliciesForAction(
     .insert(builtInModelKeys)
     .values({
       vendor: "anthropic",
-      apiKey: "vm0-key-anthropic",
+      apiKey: "built-in-key-anthropic",
       label: required.compose_id!,
     })
     .onConflictDoNothing({ target: builtInModelKeys.vendor });

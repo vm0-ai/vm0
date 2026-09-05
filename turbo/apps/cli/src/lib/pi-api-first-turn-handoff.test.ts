@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,11 +12,15 @@ import {
 import { MAX_EVENT_SEQUENCE_NUMBER } from "@okouai/api-contracts/contracts/runs";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../mocks/server";
 
 import {
   resolvePiApiFirstTurnHandoff,
   type HandoffRuntime,
 } from "./pi-api-first-turn-handoff";
+
+import { runInIsolatedProcess } from "../../../../scripts/run-isolated-test.mjs";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 const H0_HASH = "b".repeat(64);
@@ -639,3 +643,64 @@ describe("Pi API first-turn handoff loader", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 });
+
+it("rejects cyclic and duplicate downloaded histories without replacing installed bytes", async () => {
+  if (await runInIsolatedProcess(import.meta.url)) {
+    return;
+  }
+  const directory = await mkdtemp(join(tmpdir(), "pi-handoff-invalid-"));
+  temporaryDirectories.push(directory);
+  const sessionFile = join(directory, `api-first-turn-${SESSION_ID}.jsonl`);
+  await writeFile(sessionFile, HANDOFF_SESSION_JSONL);
+  for (const mode of [
+    "sandbox-first",
+    "pending-tool-continuation",
+    "settled-session-continuation",
+  ] as const) {
+    for (const duplicate of [false, true]) {
+      const record = JSON.stringify({
+        type: "model_change",
+        id: "graph-entry",
+        parentId: duplicate ? null : "graph-entry",
+        timestamp: "2026-09-05T00:00:00.000Z",
+        provider: "openai",
+        modelId: "gpt-5.6-terra",
+      });
+      const history = `${HANDOFF_SESSION_JSONL}${record}\n${duplicate ? `${record}\n` : ""}`;
+      server.use(
+        http.get("https://handoff.example/manifest.json", () => {
+          return HttpResponse.json(manifestV3(history, mode, 4));
+        }),
+        http.get("https://handoff.example/session.jsonl", () => {
+          return new HttpResponse(history);
+        }),
+      );
+      await expect(
+        resolvePiApiFirstTurnHandoff({
+          config: config(5_000),
+          sessionDir: directory,
+          sessionId: SESSION_ID,
+          runtime: fixedRuntime(fetch),
+        }),
+      ).rejects.toMatchObject({ code: "PI_HANDOFF_H1_INVALID" });
+      expect(await readFile(sessionFile, "utf8")).toBe(HANDOFF_SESSION_JSONL);
+    }
+  }
+  server.use(
+    http.get("https://handoff.example/manifest.json", () => {
+      return HttpResponse.json(manifest(HANDOFF_SESSION_JSONL));
+    }),
+    http.get("https://handoff.example/session.jsonl", () => {
+      return new HttpResponse(HANDOFF_SESSION_JSONL);
+    }),
+  );
+  await expect(
+    resolvePiApiFirstTurnHandoff({
+      config: config(5_000),
+      sessionDir: directory,
+      sessionId: SESSION_ID,
+      runtime: fixedRuntime(fetch),
+    }),
+  ).resolves.toMatchObject({ sessionFile });
+  expect(await readFile(sessionFile, "utf8")).toBe(HANDOFF_SESSION_JSONL);
+}, 150_000);

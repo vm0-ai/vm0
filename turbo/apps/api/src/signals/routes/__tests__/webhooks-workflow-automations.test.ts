@@ -171,8 +171,8 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     );
 
     const rawBody = JSON.stringify({
-      event: "vm0-timing-sensitive-ping",
-      value: "vm0-timing-secret-value",
+      event: "okou-timing-sensitive-ping",
+      value: "okou-timing-secret-value",
     });
     const timestamp = Math.floor(now() / 1000);
     const first = await postWorkflowWebhook({
@@ -234,8 +234,8 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       ]),
     );
     const serializedTiming = JSON.stringify(timingEvents);
-    expect(serializedTiming).not.toContain("vm0-timing-sensitive-ping");
-    expect(serializedTiming).not.toContain("vm0-timing-secret-value");
+    expect(serializedTiming).not.toContain("okou-timing-sensitive-ping");
+    expect(serializedTiming).not.toContain("okou-timing-secret-value");
     expect(serializedTiming).not.toContain(webhook.id);
     expect(serializedTiming).not.toContain(WORKFLOW_NAME);
     expect(serializedTiming).not.toContain(webhook.token);
