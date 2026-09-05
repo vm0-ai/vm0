@@ -286,14 +286,16 @@ const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
 });
 
 interface WorkerChatThreadIndicatorsCache {
-  readonly source: Promise<ChatThreadIndicators>;
-  readonly result: Promise<ChatThreadIndicators>;
+  source: Promise<ChatThreadIndicators> | null;
+  result: Promise<ChatThreadIndicators> | null;
 }
 
-const workerChatThreadIndicatorsCache$ = computed((get) => {
-  get(rootSignal$).throwIfAborted();
-  return state<WorkerChatThreadIndicatorsCache | null>(null);
-});
+const workerChatThreadIndicatorsCache$ = computed(
+  (get): WorkerChatThreadIndicatorsCache => {
+    get(rootSignal$).throwIfAborted();
+    return { source: null, result: null };
+  },
+);
 
 const loadWorkerChatThreadIndicators$ = command(
   async (
@@ -319,9 +321,8 @@ const loadWorkerChatThreadIndicators$ = command(
 const readWorkerChatThreadIndicators$ = command(
   ({ get, set }): Promise<ChatThreadIndicators> => {
     const source = get(chatThreadIndicators$);
-    const cache$ = get(workerChatThreadIndicatorsCache$);
-    const cache = get(cache$);
-    if (cache?.source === source) {
+    const cache = get(workerChatThreadIndicatorsCache$);
+    if (cache.source === source && cache.result) {
       return cache.result;
     }
     const result = set(
@@ -329,7 +330,8 @@ const readWorkerChatThreadIndicators$ = command(
       source,
       get(rootSignal$),
     );
-    set(cache$, { source, result });
+    cache.source = source;
+    cache.result = result;
     return result;
   },
 );

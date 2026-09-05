@@ -502,6 +502,92 @@ function mockBatchIndicators(threadId: string): void {
   });
 }
 
+test.each([false, undefined])(
+  "Keep legacy indicator catch-up when the batch switch is %s",
+  async (enabled) => {
+    mockNow(40_000, context.signal);
+    const threadId = crypto.randomUUID();
+    const rows = [row(threadId, 1), row(threadId, 2)];
+    let availableRows = rows.slice(0, 1);
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: {},
+        effectiveSwitches:
+          enabled === undefined
+            ? {}
+            : { [FeatureSwitchKey.BatchChatEventCatchUp]: enabled },
+      });
+    });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: { [threadId]: "unread" } });
+    });
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ respond }) => {
+      return respond(500, {
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Batch catch-up must remain disabled",
+        },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ params, query, respond }) => {
+        return respond(
+          200,
+          chatEventRowsResponse(
+            availableRows.filter((event) => {
+              return (
+                event.chatThreadId === params.threadId &&
+                event.seqId > query.sinceSeqId
+              );
+            }),
+            query,
+          ),
+        );
+      },
+    );
+    initializeWorker();
+    const { bridge } = connectProtocolTransport(context.signal);
+    await bridge.registerTab(context.signal);
+    await bridge.getComputed("chat-thread-indicators");
+    const initial = await bridge.query(
+      {
+        dataKey: dataKey(threadId),
+        afterSeqId: null,
+        consistency: "cache-only",
+      },
+      context.signal,
+    );
+    expect(initial).toStrictEqual(rows.slice(0, 1));
+
+    availableRows = rows;
+    context.workerStore.set(refreshWorkerComputed$, "chat-thread-indicators");
+    await expect(
+      bridge.getComputed("chat-thread-indicators"),
+    ).resolves.toStrictEqual({
+      agents: {},
+      threads: { [threadId]: "unread" },
+    });
+    const refreshed = await bridge.query(
+      {
+        dataKey: dataKey(threadId),
+        afterSeqId: null,
+        consistency: "cache-only",
+      },
+      context.signal,
+    );
+    expect(refreshed).toStrictEqual(rows);
+  },
+);
+
 test("Continue warming unread chats after a trailing indicator catch-up completes", async () => {
   const startedAt = 10_000;
   mockNow(startedAt, context.signal);
