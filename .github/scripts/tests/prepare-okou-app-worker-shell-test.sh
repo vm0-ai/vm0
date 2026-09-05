@@ -62,7 +62,7 @@ done
 
 for prepared_shell in "$worker_shell" "$empty_shell" \
   "${tmp_dir}/app.okou.ai-shell" "${tmp_dir}/app.vm0.ai-shell"; do
-  if grep -Fq '__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__' \
+  if grep -Fq '__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__' \
     "${prepared_shell}/index.html"; then
     echo "expected the primary app domain marker to be replaced: $prepared_shell" >&2
     exit 1
