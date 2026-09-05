@@ -40,6 +40,17 @@ const sha256HexSchema = z
     "hash must be a lowercase 64-character SHA-256 hex string",
   );
 
+const piMemoryPhase2CheckpointAttestationSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    leaseToken: z.uuid(),
+    claimedRevision: z.number().int().positive(),
+    claimedBaseVersionId: sha256HexSchema,
+    selectionDigest: sha256HexSchema,
+    validatedVersionId: sha256HexSchema,
+  })
+  .strict();
+
 const thirdPartyWebhookErrorSchema = z.object({ error: z.string() });
 const thirdPartyWebhookOkSchema = z.union([
   z.string(),
@@ -1002,6 +1013,9 @@ export const webhookStoragesPrepareContract = c.router({
       force: z.boolean().optional(),
       baseVersion: z.string().optional(),
       changes: storageChangesSchema.optional(),
+      /** Private proof emitted only after sandbox-local Phase 2 validation. */
+      maintenanceAttestation:
+        piMemoryPhase2CheckpointAttestationSchema.optional(),
     }),
     responses: {
       200: z.object({
@@ -1046,6 +1060,9 @@ export const webhookStoragesCommitContract = c.router({
       parentVersionId: z.string().optional(),
       files: storageManifestFilesSchema,
       message: z.string().optional(),
+      /** Private proof emitted only after sandbox-local Phase 2 validation. */
+      maintenanceAttestation:
+        piMemoryPhase2CheckpointAttestationSchema.optional(),
     }),
     responses: {
       200: z.object({

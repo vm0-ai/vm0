@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.186.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.2...runner-rs-v0.186.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* **runner:** preserve literal systemd service paths ([#31916](https://github.com/vm0-ai/vm0/issues/31916)) ([90002fa](https://github.com/vm0-ai/vm0/commit/90002fa6beb4402428b2bd75cef85ee1e7cb7270))
+* **runner:** reject non-http pi model base urls ([#31875](https://github.com/vm0-ai/vm0/issues/31875)) ([99e7d8a](https://github.com/vm0-ai/vm0/commit/99e7d8a78d65f9be528b400b005a9cd9329e3786))
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
+## [0.186.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.1...runner-rs-v0.186.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **presentation:** make fresh screenshots fast and distinct ([#31921](https://github.com/vm0-ai/vm0/issues/31921)) ([62abfd8](https://github.com/vm0-ai/vm0/commit/62abfd86489bc2c969fcb7d175ca456d69c7764a))
+
 ## [0.186.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.0...runner-rs-v0.186.1) (2026-09-05)
 
 

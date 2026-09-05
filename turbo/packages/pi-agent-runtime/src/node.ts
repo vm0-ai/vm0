@@ -1,5 +1,7 @@
 export { resumePiApiFirstTurn, runPiOfficialRpcMode } from "./rpc";
 export type { PiSandboxOwnershipTransferMode } from "./rpc";
+export { runPiMemoryPhase2MountedConsolidation } from "./phase2-memory";
+export type { PiMemoryPhase2MountedConsolidationArgs } from "./phase2-memory";
 export {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,

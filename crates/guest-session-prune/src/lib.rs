@@ -1,8 +1,8 @@
 //! Bounded native session-history selection for guest checkpoints.
 //!
 //! The crate retains structurally valid native compact generations for Claude
-//! Code and legacy Codex rollouts without changing their native session IDs or
-//! modifying live JSONL files.
+//! Code and legacy or paginated Codex rollouts without changing their native
+//! session IDs or modifying live JSONL files.
 
 mod codex;
 #[cfg(test)]

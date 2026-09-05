@@ -1,5 +1,35 @@
 # Changelog
 
+## [9.313.7](https://github.com/vm0-ai/vm0/compare/cli-v9.313.6...cli-v9.313.7) (2026-09-05)
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.5
+    * @okouai/core bumped to 8.625.4
+    * @okouai/pi-agent-runtime bumped to 1.20.4
+
+## [9.313.6](https://github.com/vm0-ai/vm0/compare/cli-v9.313.5...cli-v9.313.6) (2026-09-05)
+
+
+### Bug Fixes
+
+* **presentation:** make fresh screenshots fast and distinct ([#31921](https://github.com/vm0-ai/vm0/issues/31921)) ([62abfd8](https://github.com/vm0-ai/vm0/commit/62abfd86489bc2c969fcb7d175ca456d69c7764a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.20.3
+
 ## [9.313.5](https://github.com/vm0-ai/vm0/compare/cli-v9.313.4...cli-v9.313.5) (2026-09-05)
 
 
