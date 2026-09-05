@@ -3,7 +3,7 @@ import { command, computed } from "ccstate";
 import { and, count, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
+  getBuiltInVendor,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTelegramStateContract,
@@ -783,7 +783,7 @@ async function seedTelegramPostModelKeys(
     .insert(builtInModelKeys)
     .values([
       {
-        vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+        vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
         apiKey: `vm0-key-default-${seed.composeId}`,
         label: seed.composeId,
       },

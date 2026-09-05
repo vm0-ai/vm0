@@ -44,7 +44,7 @@ import {
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   clearWorkflowAutomationEventConnectorAsPreviousApi,
-  seedVm0BuiltInModelKey,
+  seedBuiltInModelKey,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
@@ -446,7 +446,7 @@ function expectResponseStatus(
 async function configureWorkspaceModelProvider(
   actor: ApiTestUser,
 ): Promise<void> {
-  await configureVm0BuiltInModelKey();
+  await configureBuiltInModelKey();
   const policies = await miscApi.listModelPolicies(actor);
   const workspacePolicy = policies.policies.find((policy) => {
     return policy.model === GMAIL_WORKSPACE_MODEL;
@@ -480,8 +480,8 @@ async function configureWorkspaceModelProvider(
   });
 }
 
-async function configureVm0BuiltInModelKey(): Promise<void> {
-  await seedVm0BuiltInModelKey(context, GMAIL_WORKSPACE_MODEL);
+async function configureBuiltInModelKey(): Promise<void> {
+  await seedBuiltInModelKey(context, GMAIL_WORKSPACE_MODEL);
 }
 
 async function configureAutomationThreadModel(

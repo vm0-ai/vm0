@@ -1,6 +1,6 @@
 import {
   MODEL_PROVIDER_TYPES,
-  getVm0ModelPriceTier,
+  getBuiltInModelPriceTier,
   isBuiltInModelProviderType,
   type ModelProviderType,
   type SupportedRunModel,
@@ -39,7 +39,7 @@ export function getUILabel(type: ModelProviderType): string {
   }
 }
 
-export function getVm0ModelPriceTierLabel(tier: ModelPriceTier): string {
+export function getBuiltInModelPriceTierLabel(tier: ModelPriceTier): string {
   switch (tier) {
     case "$": {
       return i18n.t(($) => {
@@ -116,4 +116,4 @@ export function getModelBrandIconType(
 ): ModelProviderType {
   return MODEL_BRAND_ICON[model];
 }
-export { getVm0ModelPriceTier, type ModelPriceTier };
+export { getBuiltInModelPriceTier, type ModelPriceTier };

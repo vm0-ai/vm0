@@ -55,7 +55,7 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
-import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
+import { seedBuiltInModelKey } from "./helpers/runtime-state";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
 import { goalsRoutes } from "../goals";
 
@@ -2196,7 +2196,7 @@ describe("CHAT-02: completed chat callback", () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     await enableGoalWorkflows(actor);
-    await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
+    await seedBuiltInModelKey(context, "claude-sonnet-5");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-5",
@@ -4948,7 +4948,7 @@ describe("CHAT-02: failed chat callbacks", () => {
   it("formats failed-run errors and notifies, without auto-sending", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-sol");
+    await seedBuiltInModelKey(context, "gpt-5.6-sol");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-5",

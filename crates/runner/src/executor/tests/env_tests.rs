@@ -1507,16 +1507,47 @@ fn pi_execution_context_rejects_invalid_legacy_shared_model_fields_before_sandbo
 }
 
 #[test]
-fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
-    for dialect in ["openai-responses", "openai-codex-responses"] {
-        let mut context = pi_context_for_test();
-        let config = pi_model_config_v2_for_test(dialect);
-        context.pi_model_config = Some(config.clone());
+fn pi_execution_context_accepts_and_preserves_versioned_dialect_tiers() {
+    for generation in [2, 3] {
+        for dialect in ["openai-responses", "openai-codex-responses"] {
+            for tier in [None, Some("priority"), Some("fast"), Some("default")] {
+                let mut context = pi_context_for_test();
+                let mut config = pi_model_config_v2_for_test(dialect);
+                config["schemaVersion"] = json!(generation);
+                if let Some(tier) = tier {
+                    config["serviceTier"] = json!(tier);
+                }
+                context.pi_model_config = Some(config.clone());
+                let supported = tier.is_none()
+                    || (dialect == "openai-responses" && tier == Some("priority"))
+                    || (generation == 3
+                        && dialect == "openai-codex-responses"
+                        && tier == Some("fast"));
+                assert_eq!(
+                    validate_context_for_test(&context).is_ok(),
+                    supported,
+                    "{config}"
+                );
+                if supported {
+                    let payload = build_run_payload_for_run(&context).unwrap();
+                    let forwarded: serde_json::Value =
+                        serde_json::from_str(&payload.pi_model_config).unwrap();
+                    assert_eq!(forwarded, config);
+                }
+            }
+        }
+    }
+}
 
-        assert!(validate_context_for_test(&context).is_ok());
-        let payload = build_run_payload_for_run(&context).unwrap();
-        let forwarded: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
-        assert_eq!(forwarded, config);
+#[test]
+fn pi_execution_context_rejects_null_v3_optional_fields() {
+    for field in ["thinkingLevel", "serviceTier", "catalogModel"] {
+        let mut context = pi_context_for_test();
+        let mut config = pi_model_config_v2_for_test("openai-responses");
+        config["schemaVersion"] = json!(3);
+        config[field] = json!(null);
+        context.pi_model_config = Some(config);
+        assert!(validate_context_for_test(&context).is_err(), "{field}");
     }
 }
 
@@ -1622,21 +1653,36 @@ fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
         (
             {
                 let mut config = pi_model_config_v2_for_test("openai-responses");
-                config["schemaVersion"] = json!(3);
+                config["schemaVersion"] = json!(4);
                 config
             },
             "Pi model config generation is unsupported",
         ),
     ];
 
-    for (config, expected) in invalid_configs {
-        let mut context = pi_context_for_test();
-        context.pi_model_config = Some(config);
-        let error = validate_context_for_test(&context).unwrap_err();
-        assert!(
-            error.contains(expected),
-            "expected {expected:?}, got unexpected error: {error}"
-        );
+    for generation in [2, 3] {
+        for (original, expected) in &invalid_configs {
+            let mut config = original.clone();
+            if config["schemaVersion"] == json!(2) {
+                config["schemaVersion"] = json!(generation);
+            }
+            let mut context = pi_context_for_test();
+            let expected = if generation == 3
+                && (config["transport"] == json!("auto")
+                    || (config["dialect"] == json!("openai-codex-responses")
+                        && config["provider"] == json!("openai")))
+            {
+                "Pi model config v3 is invalid".to_string()
+            } else {
+                expected.replace("v2", &format!("v{generation}"))
+            };
+            context.pi_model_config = Some(config);
+            let error = validate_context_for_test(&context).unwrap_err();
+            assert!(
+                error.contains(&expected),
+                "expected {expected:?}, got unexpected error: {error}"
+            );
+        }
     }
 }
 

@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { getVm0BuiltInModelRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
+import { getBuiltInModelRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
 import { MANAGED_SOCIALKIT_BILLING_CATEGORY } from "@okouai/api-contracts/contracts/social";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
@@ -747,7 +747,7 @@ export function buildVm0ApiKeys(
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
   const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
-  for (const vendor of getVm0BuiltInModelRouteVendors()) {
+  for (const vendor of getBuiltInModelRouteVendors()) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {

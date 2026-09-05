@@ -130,7 +130,7 @@ export function mockTemplateObjectUrls(): void {
 function presentationHtml(slideTitles: readonly string[]): string {
   return `<!doctype html><html><body>${slideTitles
     .map((title, index) => {
-      return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1 data-vm0-editable="text">${title}</h1></section>`;
+      return `<section data-okou-slide data-slide-id="slide-${index + 1}"><h1 data-okou-editable="text">${title}</h1></section>`;
     })
     .join("")}</body></html>`;
 }

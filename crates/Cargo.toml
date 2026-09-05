@@ -105,6 +105,13 @@ uuid = "1"
 which = "8"
 zstd = { version = "0.13", default-features = false }
 
+# Keep routine local validation usable in constrained environments while
+# retaining source locations in backtraces.
+[profile.local]
+inherits = "dev"
+debug = "line-tables-only"
+incremental = false
+
 [profile.release]
 lto = true
 strip = true

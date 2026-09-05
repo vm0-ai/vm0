@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
-import type {
-  ConnectorRuntimeTargetRegistration,
-  PiModelConfigV2,
-} from "@okouai/api-contracts/contracts/runners";
+import type { ConnectorRuntimeTargetRegistration } from "@okouai/api-contracts/contracts/runners";
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
@@ -81,7 +78,7 @@ export async function reconcileSocialKitDownloadsForTest(
   return response.processed;
 }
 
-interface Vm0BuiltInModelKeyFixture {
+interface BuiltInModelKeyFixture {
   readonly selectedModel: string;
   release(): Promise<void>;
 }
@@ -90,7 +87,7 @@ function vm0BuiltInModelKeyFixture(
   context: TestContext,
   fixtureId: string,
   selectedModel: string,
-): Vm0BuiltInModelKeyFixture {
+): BuiltInModelKeyFixture {
   let released = false;
   const release = async (): Promise<void> => {
     if (released) {
@@ -106,24 +103,24 @@ function vm0BuiltInModelKeyFixture(
   return { selectedModel, release };
 }
 
-export async function seedVm0BuiltInDefaultModelKey(
+export async function seedBuiltInDefaultModelKey(
   context: TestContext,
-): Promise<Vm0BuiltInModelKeyFixture> {
+): Promise<BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-built-in-default-model-key",
     fixture_id: fixtureId,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0BuiltInDefaultModelKey missing selected_model");
+    throw new Error("seedBuiltInDefaultModelKey missing selected_model");
   }
   return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function seedVm0BuiltInModelKey(
+export async function seedBuiltInModelKey(
   context: TestContext,
   selectedModel: string,
-): Promise<Vm0BuiltInModelKeyFixture> {
+): Promise<BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-built-in-model-key",
@@ -131,15 +128,15 @@ export async function seedVm0BuiltInModelKey(
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0BuiltInModelKey missing selected_model");
+    throw new Error("seedBuiltInModelKey missing selected_model");
   }
   return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function seedVm0BuiltInModelCandidateKeys(
+export async function seedBuiltInModelCandidateKeys(
   context: TestContext,
   selectedModel: string,
-): Promise<Vm0BuiltInModelKeyFixture> {
+): Promise<BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-built-in-model-candidate-keys",
@@ -147,7 +144,7 @@ export async function seedVm0BuiltInModelCandidateKeys(
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
-    throw new Error("seedVm0BuiltInModelCandidateKeys missing selected_model");
+    throw new Error("seedBuiltInModelCandidateKeys missing selected_model");
   }
   return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
 }
@@ -156,7 +153,7 @@ type BuiltInModelRuntimeRouteFixture = NonNullable<
   TestRuntimeStateActionResponse["built_in_model_route"]
 >;
 
-export async function resolveVm0BuiltInModelRouteFixture(
+export async function resolveBuiltInModelRouteFixture(
   context: TestContext,
   selectedModel: string,
 ): Promise<BuiltInModelRuntimeRouteFixture | null> {
@@ -167,7 +164,7 @@ export async function resolveVm0BuiltInModelRouteFixture(
   return response.built_in_model_route ?? null;
 }
 
-export async function setVm0BuiltInCandidateCooldownFixture(
+export async function setBuiltInCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,
   route: BuiltInModelRuntimeRouteFixture,
@@ -180,10 +177,10 @@ export async function setVm0BuiltInCandidateCooldownFixture(
     upstream_model: route.upstream_model,
     unavailable_until: unavailableUntil.toISOString(),
   });
-  registerVm0BuiltInCandidateCooldownCleanup(context, selectedModel, route);
+  registerBuiltInCandidateCooldownCleanup(context, selectedModel, route);
 }
 
-export async function deleteVm0BuiltInCandidateCooldownFixture(
+export async function deleteBuiltInCandidateCooldownFixture(
   context: TestContext,
   selectedModel: string,
   route: BuiltInModelRuntimeRouteFixture,
@@ -196,17 +193,13 @@ export async function deleteVm0BuiltInCandidateCooldownFixture(
   });
 }
 
-export function registerVm0BuiltInCandidateCooldownCleanup(
+export function registerBuiltInCandidateCooldownCleanup(
   context: TestContext,
   selectedModel: string,
   route: BuiltInModelRuntimeRouteFixture,
 ): void {
   onTestFinished(async () => {
-    await deleteVm0BuiltInCandidateCooldownFixture(
-      context,
-      selectedModel,
-      route,
-    );
+    await deleteBuiltInCandidateCooldownFixture(context, selectedModel, route);
   });
 }
 
@@ -643,13 +636,13 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
-export async function setRunnerJobPiContextAsV2Writer(
+export async function setRunnerJobPiContextAsVersionedWriter(
   context: TestContext,
   runId: string,
-  piModelConfig: PiModelConfigV2,
+  piModelConfig: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   await postAction(context, {
-    action: "set-runner-job-pi-context-as-v2-writer",
+    action: "set-runner-job-pi-context-as-versioned-writer",
     run_id: runId,
     pi_model_config: piModelConfig,
   });

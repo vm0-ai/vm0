@@ -6,7 +6,7 @@ use api_contracts::generated::types::{
             CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
             PiLaunchConfigApiFirstTurnBaseSession, PiLaunchConfigMemoryRecall, PiModelConfig,
             PiModelConfigApiKeyEnv, PiModelConfigProvider, PiModelConfigServiceTier,
-            PiModelConfigV2, model_provider_failures,
+            PiModelConfigV2, PiModelConfigV3, model_provider_failures,
         },
         storage as runner_storage,
     },
@@ -872,4 +872,49 @@ fn generated_storage_mount_entry_preserves_canonical_shape() {
         mount.missing_root_policy,
         Some(runner_storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion)
     );
+}
+
+#[test]
+fn generated_pi_model_config_v3_preserves_native_fast() {
+    let value = serde_json::json!({
+        "schemaVersion": 3,
+        "dialect": "openai-codex-responses",
+        "transport": "sse",
+        "provider": "openai-codex",
+        "baseUrl": "https://chatgpt.com/backend-api",
+        "model": "gpt-5.6-terra",
+        "serviceTier": "fast",
+        "credentialBindings": [
+            { "kind": "access-token", "environment": "CHATGPT_ACCESS_TOKEN", "secretName": "CHATGPT_ACCESS_TOKEN" },
+            { "kind": "account-id", "environment": "CHATGPT_ACCOUNT_ID", "secretName": "CHATGPT_ACCOUNT_ID" }
+        ]
+    });
+    let decoded: PiModelConfigV3 = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+    assert!(serde_json::from_value::<PiModelConfigV2>(value.clone()).is_err());
+    for dialect in ["openai-responses", "openai-codex-responses"] {
+        for tier in [None, Some("priority"), Some("fast"), Some("unknown")] {
+            let mut candidate = value.clone();
+            candidate["dialect"] = serde_json::json!(dialect);
+            if dialect == "openai-responses" {
+                candidate["provider"] = serde_json::json!("openai");
+                candidate["credentialBindings"] = serde_json::json!([
+                    { "kind": "api-key", "environment": "OPENAI_API_KEY", "secretName": "OPENAI_API_KEY" }
+                ]);
+            }
+            if let Some(tier) = tier {
+                candidate["serviceTier"] = serde_json::json!(tier);
+            } else {
+                candidate.as_object_mut().unwrap().remove("serviceTier");
+            }
+            let supported = tier.is_none()
+                || (dialect == "openai-responses" && tier == Some("priority"))
+                || (dialect == "openai-codex-responses" && tier == Some("fast"));
+            let decoded = serde_json::from_value::<PiModelConfigV3>(candidate.clone());
+            assert_eq!(decoded.is_ok(), supported, "{candidate}");
+            if let Ok(decoded) = decoded {
+                assert_eq!(serde_json::to_value(decoded).unwrap(), candidate);
+            }
+        }
+    }
 }
