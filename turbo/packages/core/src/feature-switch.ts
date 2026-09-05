@@ -342,7 +342,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.VoiceDraft]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Keep raw voice transcription as a durable composer draft and polish it before sending.",
+      "Transcribe and polish voice input before inserting it into the composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

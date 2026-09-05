@@ -1,11 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
-import {
-  chatEventsContract,
-  type ChatThreadDraft,
-} from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
@@ -245,42 +241,6 @@ test("Restore a rich saved draft when a chat opens", async () => {
   });
   expect(composer).toHaveTextContent("Referenced launch chat");
   expect(composer).toHaveTextContent("Preserve the launch date");
-});
-
-test("Ignore a legacy voice draft sidecar when a chat opens", async () => {
-  const thread = continuityThread(6, 1, "Voice draft conversation");
-  const draft: ChatThreadDraft = {
-    draftUserMessage: null,
-    draftVoice: {
-      version: 1,
-      id: "a7000000-0000-4000-a000-000000000601",
-      transcript: "Raw launch notes captured before navigation",
-    },
-    draftAttachments: null,
-  };
-  const workspace = await installContinuityWorkspace(context, {
-    caseId: 6,
-    threads: [thread],
-    drafts: new Map([[thread.id, draft]]),
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${thread.id}`,
-    auth: workspace.auth,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
-  });
-
-  const composer = await messageComposer();
-  await waitFor(() => {
-    expect(composer).toHaveTextContent("");
-  });
-  expect(document.querySelector("[data-voice-draft]")).toBeNull();
-  expect(document.body).not.toHaveTextContent(
-    "Raw launch notes captured before navigation",
-  );
-  expect(document.body).not.toHaveTextContent("Finish");
-  expect(document.body).not.toHaveTextContent("Remove voice draft");
 });
 
 test("Save and clear typed drafts consistently", async () => {

@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import type {
   AgentDraftAttachments,
   AgentDraftUserMessage,
-  AgentDraftVoice,
 } from "@okouai/db/jsonb-contracts/agent-draft";
 import { agentDrafts } from "@okouai/db/schema/agent-draft";
 import { and, eq, sql } from "drizzle-orm";
@@ -65,7 +64,6 @@ async function createRelationHarness(
         "org_id",
         "agent_id",
         "draft_user_message",
-        "draft_voice",
         "draft_attachments",
         "created_at",
         "updated_at"
@@ -106,7 +104,6 @@ function draftWrite(
   return {
     ...key,
     draftUserMessage: draftUserMessage(text),
-    draftVoice: null,
     draftAttachments: null,
     updatedAt,
   };
@@ -173,7 +170,6 @@ describe.each([
     expect(created).toMatchObject({
       ...key,
       draftUserMessage: draftUserMessage("first draft"),
-      draftVoice: null,
       draftAttachments: null,
       updatedAt: firstUpdatedAt,
     });
@@ -187,7 +183,6 @@ describe.each([
     expect(updated).toMatchObject({
       ...key,
       draftUserMessage: draftUserMessage("updated draft"),
-      draftVoice: null,
       draftAttachments: null,
       createdAt: created?.createdAt,
       updatedAt: secondUpdatedAt,
@@ -196,7 +191,6 @@ describe.each([
     await persistAgentDraft(harness.db, {
       ...key,
       draftUserMessage: null,
-      draftVoice: null,
       draftAttachments: null,
       updatedAt: new Date("2026-08-25T10:10:00.000Z"),
     });
@@ -233,37 +227,6 @@ describe.each([
     );
   });
 
-  it("keeps a voice-only draft row", async () => {
-    const key = {
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      agentId: randomUUID(),
-    };
-    const draftVoice: AgentDraftVoice = {
-      version: 1,
-      id: randomUUID(),
-      transcript: "unfinished voice draft",
-    };
-    const write: AgentDraftWrite = {
-      ...key,
-      draftUserMessage: null,
-      draftVoice,
-      draftAttachments: null,
-      updatedAt: new Date("2026-08-25T10:10:00.000Z"),
-    };
-
-    await persistAgentDraft(harness.db, write);
-
-    await expect(selectDraft(harness.db, write)).resolves.toContainEqual(
-      expect.objectContaining({
-        ...key,
-        draftUserMessage: null,
-        draftVoice,
-        draftAttachments: null,
-      }),
-    );
-  });
-
   it("propagates non-unique constraint failures", async () => {
     const attachments: AgentDraftAttachments = [
       {
@@ -279,7 +242,6 @@ describe.each([
       orgId: `org_${randomUUID()}`,
       agentId: randomUUID(),
       draftUserMessage: null,
-      draftVoice: null,
       draftAttachments: attachments,
       updatedAt: new Date("2026-08-25T10:10:00.000Z"),
     };

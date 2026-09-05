@@ -28,7 +28,6 @@ describe("agentDrafts schema", () => {
         "org_id",
         "agent_id",
         "draft_user_message",
-        "draft_voice",
         "draft_attachments",
         "created_at",
         "updated_at",
@@ -39,7 +38,7 @@ describe("agentDrafts schema", () => {
     });
   });
 
-  it("exposes canonical document and sidecar voice draft storage", () => {
+  it("exposes canonical document draft storage", () => {
     const columns = new Map(
       getTableConfig(agentDrafts).columns.map((column) => {
         return [column.name, column.notNull] as const;
@@ -48,6 +47,5 @@ describe("agentDrafts schema", () => {
 
     expect(columns.has("draft_structured_prompt")).toBe(false);
     expect(columns.get("draft_user_message")).toBe(false);
-    expect(columns.get("draft_voice")).toBe(false);
   });
 });

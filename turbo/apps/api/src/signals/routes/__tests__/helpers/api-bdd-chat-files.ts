@@ -27,7 +27,6 @@ import {
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
-  type DraftVoice,
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
@@ -717,15 +716,11 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftUserMessage: UserMessageInputDocument | null;
-        readonly draftVoice?: DraftVoice | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
       const requestBody = {
         draftUserMessage: body.draftUserMessage,
-        ...(body.draftVoice === undefined
-          ? {}
-          : { draftVoice: body.draftVoice }),
         ...(body.draftAttachments === undefined
           ? {}
           : {
@@ -750,7 +745,6 @@ export function createChatFilesBddApi(context: TestContext) {
       threadId: string,
       body: {
         readonly draftUserMessage: UserMessageInputDocument | null;
-        readonly draftVoice?: DraftVoice | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -761,9 +755,6 @@ export function createChatFilesBddApi(context: TestContext) {
           params: { id: threadId },
           body: {
             draftUserMessage: body.draftUserMessage,
-            ...(body.draftVoice === undefined
-              ? {}
-              : { draftVoice: body.draftVoice }),
             ...(body.draftAttachments === undefined
               ? {}
               : {
