@@ -48,11 +48,11 @@ struct ScrollCommandTests {
     }
 
     @Test
-    func reportsUnsupportedFractionalPagesInsteadOfSuccess() throws {
+    func acceptsFractionalPagesBeforeTargetLookup() throws {
         let result = try response(["direction": "down", "pages": 0.5])
         let error = try #require(result["error"] as? [String: Any])
         #expect(result["status"] as? String == "failed")
         #expect(error["code"] as? String == "unsupported_command")
-        #expect((error["message"] as? String)?.contains("whole number of pages") == true)
+        #expect((error["message"] as? String)?.contains("app") == true)
     }
 }

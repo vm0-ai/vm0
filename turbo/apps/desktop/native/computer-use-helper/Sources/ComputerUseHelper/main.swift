@@ -4995,7 +4995,7 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
     let appName = try requiredString(request, "app")
     let elementId = try resolveElementId(request, session: session, commandName: "element.scroll")
     let app = try resolveRunningApp(named: appName)
-    return try withFrontmostPreservation(
+    var result = try withFrontmostPreservation(
         dispatchMode: "accessibility_action",
         dispatchTarget: "element",
         inputRisk: "targeted_app_action"
@@ -5014,6 +5014,8 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
         }
         return (targetPID: app.processIdentifier, result: result)
     }
+    result["dispatchMode"] = result.removeValue(forKey: "scrollDispatchMode")
+    return result
 }
 
 func commandRequest(from request: [String: Any]) throws -> [String: Any] {

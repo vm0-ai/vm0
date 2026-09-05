@@ -177,7 +177,7 @@ helper reproduced the unchanged TextEdit content position and zero scroll value.
 The repaired helper resolves the axis through the proper AX attribute and presses
 the scrollbar's native increment/decrement page button. It waits for animation
 to settle before issuing another page or reporting the final position. A missing
-bar, missing page action, invalid input, or action that fails to move is an error.
+bar, invalid input, or action that fails to move is an error.
 An already reached boundary reports zero completed pages and `atBoundary: true`.
 
 Real TextEdit window 1140 moved 374 points for one page, 748 for two more, and
@@ -199,11 +199,42 @@ and checks it again immediately before each page action. The repaired command
 returned its explicit time-limit error in 8.14 seconds including transport;
 successive settled snapshots remained at the same position, and the next single
 page completed in 1.38 seconds. All 121 helper tests also passed on the Mac.
+The downloaded `c36b282` release helper subsequently passed the same live test:
+8.49 seconds to the explicit error, identical settled positions afterward, and
+1.36 seconds for the next page. Its SHA-256 is
+`209ee6ea63fc11ecf08a2b165b5dd7758fe24508f660f17e055aa40e1bb6b9a8`.
+[Release timeout evidence](https://cdn.vm0.io/artifacts/kohyh4dksq.json).
 
-This establishes integer page scrolling through the real helper, not a new
-packaged Desktop/server round trip. Fractional pages currently return an explicit
-unsupported error; preserving that accepted API input still requires work.
-Apps without native scrollbar page buttons also require implementation/acceptance.
+Fractional pages now use a pixel wheel event addressed to the target process and
+window, with distance measured from the scroll area's visible extent. The same
+path handles scrollbars without native page buttons. Whole pages retain their
+native page action when available, including the application's overlap; a 1.5-page
+request then adds half of the visible extent. Position and direction are verified
+after each action, and the response identifies the actual dispatch method.
+
+Live TextEdit half-page requests moved 204 points down and back up; 1.5 pages moved
+578 points. Preview half pages moved 588 horizontal and 435 vertical points.
+Safari's owned HTML page exposed scrollbars with no native page buttons: one page
+moved 850 points, half a page moved 425 vertically and 662 horizontally, and 1.5
+pages moved 1275 points. [Window comparisons](https://cdn.vm0.io/artifacts/r5wj9te5nd.png)
+and [initial cross-app evidence](https://cdn.vm0.io/artifacts/97q1u8k3da.json).
+
+An additional nested Safari page exposed a candidate dispatch bug: an event at the
+outer area's center moved the inner list 425 points, leaving the outer scrollbar
+unchanged and returning an error. The final implementation addresses the target
+scrollbar's rail within the viewport. A real retest moved the outer page 425 points
+while preserving the inner list's relative offset. Eight further background
+commands across TextEdit, Preview, and Safari all preserved the acceptance app as
+frontmost without restoration. The final debug helper SHA-256 is
+`ac4f21b0414c02db5e184109926ab0f7f5f3433d2c2deff36a11893d5aff29cb`;
+all 121 helper tests passed. The first earlier Preview half-page command needed
+frontmost restoration; that remains recorded in the initial evidence.
+[Final candidate and nested-target evidence](https://cdn.vm0.io/artifacts/wiu49jyt34.json).
+
+These are real helper tests, not a new packaged Desktop/server round trip.
+The latest wheel implementation still needs release-artifact acceptance. Targets
+without an AX axis scrollbar, including unexposed nested web containers, and
+broader application coverage remain open.
 The old installed `f0b3b92` Desktop remains unchanged;
 do not mark all nine authenticated Desktop command kinds accepted from this test.
 
@@ -231,24 +262,24 @@ Sleep behavior, quit cleanup, and the remaining menu/Dock interactions are open.
 
 ## Feature inventory and evidence
 
-| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                       |
-| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                     |
-| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes             |
-| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                                  |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Packaged scroll round trip, fractional pages, cold launch, foreground recovery, broader targets |
-| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                          |
-| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges                    |
-| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load              |
-| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                       |
-| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                           |
-| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                         |
-| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                        |
-| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                      |
-| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                                 |
-| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents)       |
-| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration                  |
-| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                              |
+| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                  |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                |
+| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes        |
+| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                             |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Packaged scroll round trip, cold launch, foreground recovery, targets without AX axis bars |
+| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                     |
+| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges               |
+| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load         |
+| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                  |
+| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                      |
+| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                    |
+| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                   |
+| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                 |
+| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                            |
+| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents)  |
+| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration             |
+| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                         |
 
 ## Remaining implementation review
 
