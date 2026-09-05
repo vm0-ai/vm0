@@ -24,6 +24,7 @@ final class DesktopModel: ObservableObject {
   private var permissionTask: Task<Void, Never>?
   private var featuresTask: Task<Void, Never>?
   private var shuttingDown = false
+  private var featureRequestID: UUID?
   var onChange: @MainActor () -> Void = {}
   private let filesystem = FilesystemTools()
 
@@ -41,7 +42,9 @@ final class DesktopModel: ObservableObject {
     let commands = ComputerCommands(helper: helper)
     host = HostRuntime(
       api: api, installationID: try preferences.installationID(),
-      permissions: { [helper] in try await helper.request("permissions.state") },
+      permissions: { [helper] in
+        try DesktopPermissionState.validated(await helper.request("permissions.state"))
+      },
       execute: { command, permissions in await commands.execute(command, permissions: permissions) }
     )
     mcp = MCPPlugins(preferences: preferences)
@@ -123,8 +126,7 @@ final class DesktopModel: ObservableObject {
         do {
           try await Task.sleep(for: .seconds(3))
           guard let self else { return }
-          self.permissions = try await self.helper.request("permissions.state")
-          self.changed()
+          try await self.refreshPermissions()
         } catch {
           if Task.isCancelled { return }
           self?.report(error)
@@ -135,13 +137,15 @@ final class DesktopModel: ObservableObject {
       while !Task.isCancelled {
         do { try await Task.sleep(for: .seconds(60)) } catch { return }
         guard let self else { return }
-        do { try await self.refreshFeatures() } catch { self.report(error) }
+        do { try await self.refreshFeatures() } catch is CancellationError {} catch {
+          self.report(error)
+        }
       }
     }
   }
 
   func refresh() async throws {
-    permissions = try await helper.request("permissions.state")
+    try await refreshPermissions()
     try await auth.refreshIdentity(api: api)
     try await refreshFeatures()
     changed()
@@ -149,9 +153,16 @@ final class DesktopModel: ObservableObject {
 
   private func refreshFeatures() async throws {
     guard !shuttingDown else { return }
+    let id = UUID()
+    let authRevision = auth.revision
+    featureRequestID = id
+    defer { if featureRequestID == id { featureRequestID = nil } }
     do {
       let body = try await api.request("api/feature-switches")
-      guard !shuttingDown else { return }
+      try Task.checkCancellation()
+      guard !shuttingDown, featureRequestID == id, auth.revision == authRevision else {
+        throw CancellationError()
+      }
       let switches = try JSONDecoder().decode(FeatureSwitches.self, from: body.encoded())
         .effectiveSwitches
       pluginsAvailable = switches["computerUseDesktopPlugins"] == true
@@ -162,7 +173,9 @@ final class DesktopModel: ObservableObject {
       recorder.available = recordingEnabled
       if wasRecordingEnabled && !recordingEnabled { try await recorder.shutdown(force: true) }
     } catch {
-      if shuttingDown { throw error }
+      guard !shuttingDown, featureRequestID == id, auth.revision == authRevision,
+        !(error is CancellationError)
+      else { throw CancellationError() }
       pluginsAvailable = false
       debugAvailable = false
       debugEnabled = false
@@ -173,6 +186,9 @@ final class DesktopModel: ObservableObject {
       }
       mcp.setContext(available: false, online: false)
       throw error
+    }
+    guard !shuttingDown, featureRequestID == id, auth.revision == authRevision else {
+      throw CancellationError()
     }
     mcp.setContext(
       available: pluginsAvailable, online: ["online", "recovering"].contains(host.status))
@@ -209,13 +225,24 @@ final class DesktopModel: ObservableObject {
 
   func requestPermission(_ name: String) async throws {
     if name == "accessibility" {
-      permissions = try await helper.request("permissions.request_accessibility")
+      try await refreshPermissions("permissions.request_accessibility")
     } else if name == "screenRecording" {
-      permissions = try await helper.request("permissions.request_screen_recording")
+      try await refreshPermissions("permissions.request_screen_recording")
     } else {
       _ = try await helper.request(
         "permissions.probe_automation", fields: .object(["target": .string(name)]))
-      permissions = try await helper.request("permissions.state")
+      try await refreshPermissions()
+    }
+    changed()
+  }
+
+  private func refreshPermissions(_ kind: String = "permissions.state") async throws {
+    do {
+      permissions = try DesktopPermissionState.validated(await helper.request(kind))
+    } catch {
+      permissions = .null
+      changed()
+      throw error
     }
     changed()
   }

@@ -27,6 +27,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   private(set) var user: JSON = .null
   private(set) var organization: JSON = .null
   var signedIn: Bool { user["userId"].string != nil }
+  var revision: Int { epoch }
 
   struct Identity: Equatable {
     let userID: String

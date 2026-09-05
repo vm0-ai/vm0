@@ -23,6 +23,32 @@ final class ScreenRecorder: ObservableObject {
   private var pollTask: Task<Void, Never>?
   private var control: (id: UUID, task: Task<Void, any Error>)?
   private var teardown: (id: UUID, task: Task<Void, any Error>)?
+  private var sourceLoadID: UUID?
+
+  private struct Capabilities: Decodable { let supportsMicrophone: Bool }
+  private struct Permission: Decodable { let granted: Bool }
+  private struct Source: Decodable {
+    enum Kind: String, Decodable { case display, window }
+    let id: String
+    let kind: Kind
+    let title: String
+    let appName: String?
+    let bundleId: String?
+
+    func validate() throws {
+      guard !title.isEmpty, id.hasPrefix(kind.rawValue + ":"),
+        UInt32(id.dropFirst(kind.rawValue.count + 1)) != nil
+      else { throw DesktopFailure("helper_protocol", "The recorder returned an invalid source") }
+    }
+  }
+  private struct SourceList: Decodable { let sources: [Source] }
+  private struct PreviewList: Decodable {
+    struct Preview: Decodable {
+      let id: String
+      let previewDataUrl: String
+    }
+    let previews: [Preview]
+  }
 
   private struct RecorderState: Decodable {
     enum Status: String, Decodable { case ready, recording, paused, stopped, discarded, failed }
@@ -44,7 +70,15 @@ final class ScreenRecorder: ObservableObject {
     let failure: RecorderState.Failure?
   }
   var onChange: @MainActor () -> Void = {}
-  var available = false
+  var available = false {
+    didSet {
+      if !available {
+        sourceLoadID = nil
+        sources = []
+        previews = [:]
+      }
+    }
+  }
   var capturing: Bool { ["recording", "paused"].contains(status) }
   var busy: Bool { !["idle", "ready"].contains(status) }
 
@@ -63,24 +97,55 @@ final class ScreenRecorder: ObservableObject {
   }
 
   func loadSources() async throws {
-    guard available else {
+    guard available, !busy else {
       throw DesktopFailure("feature_disabled", "Screen recording is disabled for this account")
     }
-    microphoneSupported = try await request("capabilities")["supportsMicrophone"].bool
-    let permission = try await request("requestPermission")
-    guard permission["granted"].bool else {
+    let id = UUID()
+    sourceLoadID = id
+    sources = []
+    previews = [:]
+    microphoneSupported = false
+    defer { if sourceLoadID == id { sourceLoadID = nil } }
+    let capabilities = try await loadSourceReply("capabilities", id: id)
+    let microphone = try JSONDecoder().decode(Capabilities.self, from: capabilities.encoded())
+      .supportsMicrophone
+    let permission = try await loadSourceReply("requestPermission", id: id)
+    guard try JSONDecoder().decode(Permission.self, from: permission.encoded()).granted else {
       throw DesktopFailure(
         "permission_denied", "Grant Screen Recording permission in System Settings")
     }
-    sources = try await request("sources")["sources"].array
-    let images = try await request("windowPreviews")["previews"].array
-    previews = [:]
+    let sourceReply = try await loadSourceReply("sources", id: id)
+    let list = try JSONDecoder().decode(SourceList.self, from: sourceReply.encoded()).sources
+    for source in list { try source.validate() }
+    guard Set(list.map(\.id)).count == list.count else {
+      throw DesktopFailure("helper_protocol", "The recorder returned duplicate source identifiers")
+    }
+    let previewReply = try await loadSourceReply("windowPreviews", id: id)
+    let images = try JSONDecoder().decode(PreviewList.self, from: previewReply.encoded()).previews
+    var decoded: [String: NSImage] = [:]
+    let prefix = "data:image/png;base64,"
     for image in images {
-      guard let id = image["id"].string, let url = image["previewDataUrl"].string,
-        let encoded = url.split(separator: ",", maxSplits: 1).last,
-        let bytes = Data(base64Encoded: String(encoded)), let picture = NSImage(data: bytes)
-      else { continue }
-      previews[id] = picture
+      guard image.id.hasPrefix("window:"), UInt32(image.id.dropFirst(7)) != nil,
+        image.previewDataUrl.hasPrefix(prefix),
+        let bytes = Data(base64Encoded: String(image.previewDataUrl.dropFirst(prefix.count))),
+        let picture = NSImage(data: bytes), decoded[image.id] == nil
+      else { throw DesktopFailure("helper_protocol", "The recorder returned an invalid preview") }
+      decoded[image.id] = picture
+    }
+    sources = sourceReply["sources"].array
+    previews = decoded
+    microphoneSupported = microphone
+  }
+
+  private func loadSourceReply(_ kind: String, id: UUID) async throws -> JSON {
+    do {
+      let reply = try await request(kind)
+      try Task.checkCancellation()
+      guard sourceLoadID == id, available, !busy else { throw CancellationError() }
+      return reply
+    } catch {
+      guard sourceLoadID == id else { throw CancellationError() }
+      throw error
     }
   }
 
@@ -120,6 +185,8 @@ final class ScreenRecorder: ObservableObject {
         throw DesktopFailure("signed_out", "Sign in and select a workspace before recording")
       }
       recordingIdentity = try auth.identity()
+      let decodedSource = try JSONDecoder().decode(Source.self, from: source.encoded())
+      try decodedSource.validate()
       captureID = UUID()
       captureSourceID = try source.requireString("id")
       if let area {

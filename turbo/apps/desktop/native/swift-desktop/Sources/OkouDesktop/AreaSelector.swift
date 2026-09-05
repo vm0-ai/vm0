@@ -35,7 +35,10 @@ final class AreaSelector {
         let callback = self.completion
         self.cancel()
         callback?(
-          .object(["id": .string("display:\(displayID)"), "kind": .string("display")]), area)
+          .object([
+            "id": .string("display:\(displayID)"), "kind": .string("display"),
+            "title": .string("Display \(displayID)"),
+          ]), area)
       }
       panel.contentView = view
       panels.append(panel)

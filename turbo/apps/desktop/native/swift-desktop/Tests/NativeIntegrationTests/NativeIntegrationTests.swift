@@ -238,6 +238,7 @@ import Testing
       stop_malformed=False
       ticks=0
       poll_failed=False
+      mode='valid'
       for line in sys.stdin:
           request=json.loads(line)
           kind=request['kind']
@@ -247,7 +248,9 @@ import Testing
               else: stop_failed=True
               print(json.dumps({'id':request['id'],'status':'failed','error':{'code':'capture_failed','message':'Fixture control rejected once'}}),flush=True)
               continue
-          if kind=='recorder.capabilities': result={'supportsMicrophone':True}
+          if kind=='test.mode': mode=payload['mode'];result={}
+          elif kind=='recorder.'+mode: result={}
+          elif kind=='recorder.capabilities': result={'supportsMicrophone':True}
           elif kind=='recorder.requestPermission': result={'granted':True}
           elif kind=='recorder.sources': result={'sources':[{'id':'display:1','kind':'display','title':'Fixture display'}]}
           elif kind=='recorder.windowPreviews': result={'previews':[]}
@@ -284,6 +287,14 @@ import Testing
     let recorder = ScreenRecorder(
       helper: recorderHelper, preferences: preferences, api: api, auth: auth)
     recorder.available = true
+    for kind in ["capabilities", "requestPermission", "sources", "windowPreviews"] {
+      _ = try await recorderHelper.request(
+        "test.mode", fields: .object(["payload": .object(["mode": .string(kind)])]))
+      await #expect(throws: DecodingError.self) { try await recorder.loadSources() }
+      #expect(recorder.sources.isEmpty && recorder.previews.isEmpty)
+    }
+    _ = try await recorderHelper.request(
+      "test.mode", fields: .object(["payload": .object(["mode": .string("valid")])]))
     try await recorder.loadSources()
     let source = try #require(recorder.sources.first)
     let screen = try #require(NSScreen.main)
@@ -356,12 +367,14 @@ import Testing
     let helperPath = directory.appendingPathComponent("computer-use-helper")
     let permissionScript = """
       #!/usr/bin/env python3
-      import json,sys
+      import json,pathlib,sys
       queries=0
+      malformed=pathlib.Path(__file__).parent/'malformed-permissions'
       for line in sys.stdin:
           request=json.loads(line)
           queries+=1
-          print(json.dumps({'id':request['id'],'status':'succeeded','result':{'accessibility':True,'screenRecording':True,'queries':queries}}),flush=True)
+          state={} if malformed.exists() else {'accessibility':True,'screenRecording':True,'queries':queries}
+          print(json.dumps({'id':request['id'],'status':'succeeded','result':state}),flush=True)
       """
     try Data(permissionScript.utf8).write(to: helperPath)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperPath.path)
@@ -373,6 +386,15 @@ import Testing
       configuration: configuration, directory: directory, helperDirectory: directory)
     await desktop.launch(startHost: false)
     #expect(desktop.pluginsAvailable && desktop.debugAvailable && desktop.recorder.available)
+    let malformedPermissions = directory.appendingPathComponent("malformed-permissions")
+    try Data().write(to: malformedPermissions)
+    await #expect(throws: DecodingError.self) {
+      try await desktop.requestPermission("accessibility")
+    }
+    #expect(!desktop.ready && desktop.permissions == .null)
+    try FileManager.default.removeItem(at: malformedPermissions)
+    try await desktop.requestPermission("accessibility")
+    #expect(desktop.ready)
     try await desktop.recorder.loadSources()
     try await desktop.recorder.start(source: source, systemAudio: true, microphone: true)
     await #expect(throws: DesktopFailure.self) { try await desktop.shutdown() }

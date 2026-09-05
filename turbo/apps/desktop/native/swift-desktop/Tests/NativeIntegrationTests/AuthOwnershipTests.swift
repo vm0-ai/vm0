@@ -21,6 +21,9 @@ extension NativeIntegrationTests {
       generation=0
       requests=0
       expired=False
+      hold_features=False
+      features_started=False
+      feature_release=threading.Event()
       class Handler(BaseHTTPRequestHandler):
           def log_message(self,*args): pass
           def reply(self,data,status=200,kind='application/json'):
@@ -31,7 +34,7 @@ extension NativeIntegrationTests {
               try: self.wfile.write(data)
               except (BrokenPipeError,ConnectionResetError): pass
           def do_GET(self):
-              global generation,requests,identity_started,expired
+              global generation,requests,identity_started,expired,features_started
               if self.path.startswith('/desktop-auth/'):
                   with condition:
                       requests+=1
@@ -52,6 +55,12 @@ extension NativeIntegrationTests {
                   if held: release.wait(20)
                   self.reply(json.dumps({'userId':'user-'+owner,'email':'fixture@example.test'}).encode())
               elif self.path=='/api/org': self.reply(json.dumps({'id':'org-'+owner,'name':'Fixture'}).encode())
+              elif self.path=='/api/feature-switches':
+                  with condition:
+                      held=hold_features and not features_started
+                      if held: features_started=True;condition.notify_all()
+                  if held: feature_release.wait(20)
+                  self.reply(b'{"effectiveSwitches":{"_debug":true,"computerUseDesktopPlugins":true,"introVideo":true}}')
               else: self.reply(b'{}',404)
       class Server(ThreadingHTTPServer):
           def server_bind(self):
@@ -68,7 +77,11 @@ extension NativeIntegrationTests {
               with condition: condition.wait_for(lambda:identity_started,timeout=20)
           elif kind=='release': hold_identity=False;release.set()
           elif kind=='expire': expired=True
-          print(json.dumps({'id':command['id'],'status':'succeeded','result':{'port':server.server_port,'requests':requests,'identityStarted':identity_started}}),flush=True)
+          elif kind=='hold-features': hold_features=True
+          elif kind=='wait-features':
+              with condition: condition.wait_for(lambda:features_started,timeout=20)
+          elif kind=='release-features': feature_release.set()
+          print(json.dumps({'id':command['id'],'status':'succeeded','result':{'port':server.server_port,'requests':requests,'identityStarted':identity_started,'featuresStarted':features_started}}),flush=True)
       """
     let server = HelperProcess(
       executable: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["python3", "-u", "-c", script])
@@ -77,8 +90,22 @@ extension NativeIntegrationTests {
     let configuration = try DesktopConfiguration(
       platformURL: "http://127.0.0.1:\(Int(try #require(address["port"].number)))",
       version: "1.0.0", preview: true)
-    let auth = try DesktopAuth(
-      configuration: configuration, preferences: DesktopPreferences(directory: directory))
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let permissionHelper = directory.appendingPathComponent("computer-use-helper")
+    let permissionScript = """
+      #!/usr/bin/env python3
+      import json,sys
+      for line in sys.stdin:
+          request=json.loads(line)
+          print(json.dumps({'id':request['id'],'status':'succeeded','result':{'accessibility':True,'screenRecording':True}}),flush=True)
+      """
+    try Data(permissionScript.utf8).write(to: permissionHelper)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o700], ofItemAtPath: permissionHelper.path)
+    let desktop = try DesktopModel(
+      configuration: configuration, directory: directory, helperDirectory: directory)
+    defer { desktop.helper.close() }
+    let auth = desktop.auth
     let cancelled = Task { try await auth.getToken(force: true) }
     cancelled.cancel()
     await #expect(throws: CancellationError.self) { try await cancelled.value }
@@ -107,7 +134,16 @@ extension NativeIntegrationTests {
     await #expect(throws: DesktopFailure.self) {
       try await auth.token(for: original, force: false)
     }
-    try await auth.signOut()
+    try await desktop.refresh()
+    #expect(desktop.pluginsAvailable && desktop.recorder.available && desktop.debugAvailable)
+    _ = try await server.request("hold-features")
+    let oldFeatures = Task { try await desktop.refresh() }
+    let waiting = try await server.request("wait-features")
+    #expect(waiting["featuresStarted"].bool)
+    try await desktop.signOut()
+    _ = try await server.request("release-features")
+    await #expect(throws: CancellationError.self) { try await oldFeatures.value }
+    #expect(!desktop.pluginsAvailable && !desktop.recorder.available && !desktop.debugAvailable)
     #expect(try await auth.getToken(force: true) == nil)
   }
 }

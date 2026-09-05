@@ -186,7 +186,11 @@ final class MCPPlugins {
       "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
       "SHELL": ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
     ]
-    if let path = try? await loginShellPath() { environment["PATH"] = path }
+    if let path = slot.configuration["env"]["PATH"].string {
+      environment["PATH"] = path
+    } else {
+      environment["PATH"] = try await loginShellPath()
+    }
     try Task.checkCancellation()
     guard slots[name]?.id == slot.id else { throw CancellationError() }
     for (key, value) in slot.configuration["env"].object ?? [:] {
@@ -362,12 +366,15 @@ final class MCPPlugins {
     for retirement in retirements.values { await retirement.task.value }
   }
 
-  private func loginShellPath() async throws -> String? {
+  private func loginShellPath() async throws -> String {
     let mark = UUID().uuidString
     let data = try await ProcessCommand().run(
       ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
       ["-ilc", "printf '\(mark)%s\(mark)' \"$PATH\""], timeout: 10)
     let parts = String(decoding: data, as: UTF8.self).components(separatedBy: mark)
-    return parts.count >= 3 ? parts[1] : nil
+    guard parts.count >= 3, !parts[1].isEmpty else {
+      throw DesktopFailure("mcp_environment", "The login shell did not return a PATH for MCP")
+    }
+    return parts[1]
   }
 }
