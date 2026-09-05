@@ -16,7 +16,6 @@ import {
   createDraftSignals,
   createRestoredAttachment,
   type DraftSignals,
-  type RestorableAttachment,
 } from "./chat-draft.ts";
 import {
   buildDraftPersistencePayload,
@@ -25,6 +24,8 @@ import {
 import {
   draftToEditorDoc,
   messageDocumentToPrompt,
+  userMessageDraftAttachments,
+  type RestoredDraftState,
 } from "./user-message-document-codec.ts";
 
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
@@ -40,46 +41,12 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
   readonly isNew: boolean;
 }
 
-interface RestoredAgentDraftState {
-  readonly content: string;
-  readonly userMessage: UserMessageDocument | null;
-  readonly attachments: RestorableAttachment[];
-}
-
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
-
-function userMessageAgentDraftAttachments(
-  document: UserMessageDocument,
-  attachments: readonly PersistedAttachment[],
-): RestorableAttachment[] {
-  const attachmentById = new Map(
-    attachments.map((attachment) => {
-      return [attachment.id, attachment] as const;
-    }),
-  );
-  return document.parts.flatMap((part) => {
-    if (part.type !== "file") {
-      return [];
-    }
-    const attachment = attachmentById.get(part.fileId);
-    return attachment
-      ? [
-          {
-            ...attachment,
-            ...(part.annotatedFileId
-              ? { annotatedFileId: part.annotatedFileId }
-              : {}),
-            ...(part.annotations ? { annotations: part.annotations } : {}),
-          },
-        ]
-      : [];
-  });
-}
 
 function userMessageAgentDraftState(args: {
   readonly draftUserMessage?: UserMessageDocument | null;
   readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState | null {
+}): RestoredDraftState | null {
   const document = args.draftUserMessage ?? null;
   // Compatibility-only draftVoice responses from old App clients are ignored.
   // Remove the API/DB field with #31612 after the two-day client-skew window.
@@ -94,7 +61,7 @@ function userMessageAgentDraftState(args: {
     content,
     userMessage: document,
     attachments: document
-      ? userMessageAgentDraftAttachments(document, args.draftAttachments ?? [])
+      ? userMessageDraftAttachments(document, args.draftAttachments ?? [])
       : [],
   };
 }

@@ -557,31 +557,21 @@ function ConnectedConnectorPermissions({
 
 function AgentPermissionsDrawer({
   targetId,
-  targetKind = "agent",
   connectorSlug,
   connectorLabel,
   displayName,
   initialPolicies,
   initialGrants,
-  initialIntent,
-  initialSearch,
-  initialContextKey,
-  resetEnabled,
   readOnly,
   onApply,
   onClose,
 }: {
   targetId: string;
-  targetKind?: "agent" | "workflow";
   connectorSlug: ConnectorSlug | null;
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly PlatformUserPermissionGrant[];
-  initialIntent?: PermissionDraftIntent;
-  initialSearch?: string;
-  initialContextKey?: string;
-  resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
     intent: PermissionDraftIntent,
@@ -597,17 +587,12 @@ function AgentPermissionsDrawer({
   return (
     <PermissionsDrawer
       agentId={targetId}
-      targetKind={targetKind}
       connectorSlug={connectorSlug}
       connectorLabel={connectorLabel}
       metadata$={agentPermissionMetadata$}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
-      initialIntent={initialIntent}
-      initialSearch={initialSearch}
-      initialContextKey={initialContextKey}
-      resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}
       onClose={onClose}
@@ -745,7 +730,6 @@ function JobPermissionsTab({
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={activeUserGrantSnapshot.grants}
-            resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (intent, { metadata }) => {
               if (connectorSlug === null) {

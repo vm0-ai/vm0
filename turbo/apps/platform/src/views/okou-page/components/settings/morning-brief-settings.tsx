@@ -15,6 +15,7 @@ import {
 } from "../../../../signals/okou-page/settings/morning-brief-preference.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { PreferenceCardRow } from "./preference-card-row.tsx";
 
 function nextEmailText(
   state: MorningBriefPreferenceState,
@@ -150,32 +151,23 @@ export function MorningBriefSettings() {
       data-testid="morning-brief-preference"
       className="flex flex-col gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <Sunrise size={22} className="text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.preferences.morningBrief.title;
-              })}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t(($) => {
-                return $.settings.preferences.morningBrief.description;
-              })}
-            </div>
-            <MorningBriefStatus
-              state={state}
-              loading={loading}
-              loadFailed={loadFailed}
-              mutationFailed={mutationFailed}
-            />
-          </div>
-        </div>
+      <PreferenceCardRow
+        icon={Sunrise}
+        title={t(($) => {
+          return $.settings.preferences.morningBrief.title;
+        })}
+        description={t(($) => {
+          return $.settings.preferences.morningBrief.description;
+        })}
+        status={
+          <MorningBriefStatus
+            state={state}
+            loading={loading}
+            loadFailed={loadFailed}
+            mutationFailed={mutationFailed}
+          />
+        }
+      >
         <div className="flex shrink-0 items-center gap-2">
           {showRetry && (
             <Button
@@ -207,7 +199,7 @@ export function MorningBriefSettings() {
             }
           />
         </div>
-      </div>
+      </PreferenceCardRow>
     </div>
   );
 }

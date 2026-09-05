@@ -44,12 +44,13 @@ function normalizedComposerText(): string {
 }
 
 function captureVoiceTranscriptionErrors(): unknown[][] {
-  const defaultErrorHandler = vi.mocked(console.error).getMockImplementation();
+  const errorSpy = vi.spyOn(console, "error");
+  const defaultErrorHandler = errorSpy.getMockImplementation();
   if (!defaultErrorHandler) {
     throw new Error("Expected the shared unexpected-console-error guard");
   }
   const errors: unknown[][] = [];
-  vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+  errorSpy.mockImplementation((...args: unknown[]) => {
     if (args[0] === "[E][Composer:VoiceDraft]") {
       errors.push(args);
       return;

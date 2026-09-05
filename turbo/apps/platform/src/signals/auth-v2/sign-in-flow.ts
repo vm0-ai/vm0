@@ -16,7 +16,13 @@ import {
 
 import { now } from "../../lib/time.ts";
 import { clerk$ } from "../auth.ts";
-import { onRef, setLoop, settle, withCleanup } from "../utils.ts";
+import {
+  isRecord,
+  onRef,
+  settle,
+  stringProperty,
+  withCleanup,
+} from "../utils.ts";
 import {
   discoverAuthV2ExistingAccounts,
   discoverAuthV2ExternalCapabilities,
@@ -37,14 +43,18 @@ import {
 import {
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
+  createResendCooldownLifecycleRef,
+  createStartCooldownCommand,
+  type AuthV2ResendCooldown,
 } from "./resend-cooldown.ts";
 
-const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
-const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
-  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS * 1000;
 const signInResendCooldownStorage = createAuthV2ResendCooldownStorage(
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
 );
+const signInResendCooldown: Readonly<AuthV2ResendCooldown> = {
+  storage: signInResendCooldownStorage,
+  seconds: 30,
+};
 
 export type AuthV2SignInFactor =
   | {
@@ -447,20 +457,6 @@ function preparedFactorForSnapshot(
       );
     }) ?? null
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function stringProperty(
-  value: Record<string, unknown>,
-  property: string,
-): string | undefined {
-  const candidate = value[property];
-  return typeof candidate === "string" && candidate.length > 0
-    ? candidate
-    : undefined;
 }
 
 function clerkErrorField(
@@ -867,57 +863,6 @@ function createSignInFlowRuntime(): SignInFlowRuntime {
     inFlight$: state<ReadonlyMap<CoalescedOperation, Promise<void>>>(new Map()),
     preparedFactorId$: state<string | null>(null),
   };
-}
-
-function createStartCooldownCommand(
-  atoms: SignInFlowAtoms,
-  runtime: SignInFlowRuntime,
-): Command<void, [string, AbortSignal]> {
-  return command(({ set }, identity: string, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    const deadlineMs = now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS;
-    set(signInResendCooldownStorage.save$, identity, deadlineMs);
-    set(runtime.cooldownDeadlineMs$, deadlineMs);
-    set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS);
-  });
-}
-
-function createResendCooldownLifecycleRef(
-  atoms: SignInFlowAtoms,
-  runtime: SignInFlowRuntime,
-) {
-  return onRef(
-    command(
-      async (
-        { get, set },
-        _element: HTMLSpanElement,
-        signal: AbortSignal,
-      ): Promise<void> => {
-        await setLoop(
-          () => {
-            const deadlineMs = get(runtime.cooldownDeadlineMs$);
-            if (deadlineMs === null) {
-              return true;
-            }
-            const remainingSeconds = Math.max(
-              0,
-              Math.ceil((deadlineMs - now()) / 1000),
-            );
-            set(atoms.resendRemainingSeconds$, remainingSeconds);
-            if (remainingSeconds > 0) {
-              return false;
-            }
-            set(signInResendCooldownStorage.clear$);
-            set(runtime.cooldownDeadlineMs$, null);
-            return true;
-          },
-          1000,
-          signal,
-          { retryTransientErrors: false },
-        );
-      },
-    ),
-  );
 }
 
 function createCommitResourceCommand(
@@ -1881,7 +1826,11 @@ export function createAuthV2SignInSignals(
 ): AuthV2SignInSignals {
   const atoms = createSignInFlowAtoms();
   const runtime = createSignInFlowRuntime();
-  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
+  const startCooldown$ = createStartCooldownCommand(
+    signInResendCooldown,
+    atoms,
+    runtime,
+  );
   const { applyResource$, initialize$ } = createResourceCommands(
     atoms,
     runtime,
@@ -1894,6 +1843,7 @@ export function createAuthV2SignInSignals(
     applyResource$,
   );
   const resendCooldownLifecycleRef$ = createResendCooldownLifecycleRef(
+    signInResendCooldown,
     atoms,
     runtime,
   );

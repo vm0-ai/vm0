@@ -324,6 +324,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the background-free avatar composer for new agents and avatar customization.",
     enabled: true,
   },
+  [FeatureSwitchKey.AvatarNeckSweater]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
+    enabled: false,
+    // Staff first: this redraws every avatar that already exists, not just
+    // newly created ones, so the whole population changes the moment it widens.
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
     description:

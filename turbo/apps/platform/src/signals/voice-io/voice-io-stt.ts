@@ -286,6 +286,11 @@ interface VoiceRecordingStartup {
   readonly recordingStartedAt: number;
 }
 
+interface VoiceRecordingMedia {
+  readonly stream: MediaStream;
+  readonly pcm: VoiceDraftPcmCapture | null;
+}
+
 interface AudioActivityTracker {
   handle(samples: Float32Array<ArrayBufferLike>): number;
   reset(): void;
@@ -700,6 +705,19 @@ const prepareRecordingLifecycle$ = command(
     );
     set(prepareRecordingStart$);
     return signal;
+  },
+);
+
+const failRecordingStart$ = command(
+  async ({ get, set }, error: unknown, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const recordingCompletion = get(internalRecordingCompletion$);
+    set(resetRecord$);
+    if (recordingCompletion) {
+      await recordingCompletion.fail();
+    } else {
+      reportMicStartFailure(error);
+    }
   },
 );
 
@@ -1262,6 +1280,34 @@ function createVoiceSegmentSession(
   };
 }
 
+async function openRecordingMedia(
+  capturePcm: boolean,
+  signal: AbortSignal,
+): Promise<VoiceRecordingMedia | null> {
+  await waitForBrowserPaint(signal);
+  signal.throwIfAborted();
+
+  const stream = await tapError(openMedia(signal), reportMicStartFailure);
+  if (!stream) {
+    return null;
+  }
+
+  const pcm = await startPcm(stream, capturePcm, signal);
+  if (signal.aborted) {
+    pcm?.cancel();
+    signal.throwIfAborted();
+  }
+  signal.addEventListener(
+    "abort",
+    () => {
+      pcm?.cancel();
+    },
+    { once: true },
+  );
+  signal.throwIfAborted();
+  return { stream, pcm };
+}
+
 export const startRecording$ = command(
   async (
     { get, set },
@@ -1281,26 +1327,11 @@ export const startRecording$ = command(
     let silenceStop: VoiceSilenceStop | null = null;
     const starting = withCleanup(
       (async (): Promise<VoiceRecordingStartup | null> => {
-        await waitForBrowserPaint(signal);
-        signal.throwIfAborted();
-
-        const stream = await tapError(openMedia(signal), reportMicStartFailure);
-        if (!stream) {
+        const media = await openRecordingMedia(!!lifecycle, signal);
+        if (!media) {
           return null;
         }
-
-        const pcm = await startPcm(stream, !!lifecycle, signal);
-        if (signal.aborted) {
-          pcm?.cancel();
-          signal.throwIfAborted();
-        }
-        signal.addEventListener(
-          "abort",
-          () => {
-            pcm?.cancel();
-          },
-          { once: true },
-        );
+        const { stream, pcm } = media;
         signal.throwIfAborted();
         const recorder = createMediaRecorder(stream);
         const sessionOptions: VoiceSegmentSessionOptions = {
@@ -1358,13 +1389,7 @@ export const startRecording$ = command(
     set(internalStartingPromise$, starting);
     const started = await settle(starting, parentSignal);
     if (!started.ok) {
-      const recordingCompletion = get(internalRecordingCompletion$);
-      set(resetRecord$);
-      if (recordingCompletion) {
-        await recordingCompletion.fail();
-      } else {
-        reportMicStartFailure(started.error);
-      }
+      await set(failRecordingStart$, started.error, parentSignal);
       return;
     }
     const startup = started.value;

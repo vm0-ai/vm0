@@ -11,7 +11,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
   ExternalLink,
-  Crown,
   ArrowLeft,
   ChevronRight,
   Coins,
@@ -38,7 +37,6 @@ import {
   restoreConcurrencySubscription$,
   setConcurrencyChangeMode$,
   setConcurrencyTargetQuantity$,
-  startCheckout$,
   startConcurrencyCheckout$,
   openBillingPortal$,
   setConcurrencySubscriptionQuantity$,
@@ -56,14 +54,7 @@ import {
   type ConcurrencyChangeMode,
   type ConcurrencyConfirmDialogState,
 } from "../../../../signals/okou-page/billing.ts";
-import {
-  Button,
-  Input,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@okouai/ui";
+import { Button, Input } from "@okouai/ui";
 import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
@@ -77,7 +68,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@okouai/ui/components/ui/dialog";
-import { planFreeImg, planProImg, planTeamImg } from "../../platform-assets.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";
 import {
@@ -104,39 +94,13 @@ import {
   openSettingsUsagePackUpgrade$,
 } from "../../../../signals/okou-page/settings/settings-dialog.ts";
 import {
-  UsagePackMigrationPage,
   UsagePackMigrationDialogs,
-  UsagePackMigrationPlanSelectionPage,
   UsagePackPricingDialogs,
 } from "./usage-pack-pricing-page.tsx";
 
-const PLANS = [
-  {
-    tier: "free" as const,
-    monthlyPriceUsd: 0,
-    image: planFreeImg,
-  },
-  {
-    tier: "pro" as const,
-    monthlyPriceUsd: 20,
-    primary: true,
-    image: planProImg,
-  },
-  {
-    tier: "team" as const,
-    monthlyPriceUsd: 200,
-    image: planTeamImg,
-  },
-] as const;
-
-const COMPARE_PLANS = PLANS.filter((plan) => {
-  return plan.tier !== "free";
-});
-
 type ScheduledBillingChange = BillingStatusResponse["scheduledChange"];
-type BillingPlan = (typeof PLANS)[number];
 
-function planName(tier: BillingPlan["tier"] | BillingTier): string {
+function planName(tier: BillingTier): string {
   if (tier === "pro") {
     return i18n.t(($) => {
       return $.billing.plans.pro.name;
@@ -167,105 +131,13 @@ function planName(tier: BillingPlan["tier"] | BillingTier): string {
   });
 }
 
-/* The legacy plan cards need their own copy. A legacy plan pools its credits
-   in the organization, so the usage-pack description's per-member pricing is
-   not true of the plan this card sells. */
-function planDescription(tier: BillingPlan["tier"]): string {
-  if (tier === "pro") {
-    return i18n.t(($) => {
-      return $.billing.plans.pro.legacyDescription;
-    });
-  }
-  if (tier === "team") {
-    return i18n.t(($) => {
-      return $.billing.plans.team.legacyDescription;
-    });
-  }
-  return i18n.t(($) => {
-    return $.billing.plans.free.description;
-  });
-}
-
-function planFeatures(tier: BillingPlan["tier"]): string[] {
-  const unlimitedAgents = i18n.t(($) => {
-    return $.billing.plans.features.unlimitedAgents;
-  });
-  const sharedAndPrivateAgents = i18n.t(($) => {
-    return $.billing.plans.features.sharedAndPrivateAgents;
-  });
-  const byok = i18n.t(($) => {
-    return $.billing.plans.features.byok;
-  });
-  const voiceInputPro = i18n.t(($) => {
-    return $.billing.plans.features.voiceInputPro;
-  });
-  const voiceInputTeam = i18n.t(($) => {
-    return $.billing.plans.features.voiceInputTeam;
-  });
-  if (tier === "free") {
-    return [
-      i18n.t(($) => {
-        return $.billing.plans.features.existingCredits;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.features.oneConcurrentRun;
-      }),
-      unlimitedAgents,
-      byok,
-      i18n.t(($) => {
-        return $.billing.plans.features.voiceInputFree;
-      }),
-      i18n.t(($) => {
-        return $.billing.plans.features.communitySupport;
-      }),
-    ];
-  }
-  return [
-    tier === "pro"
-      ? i18n.t(($) => {
-          return $.billing.plans.features.twoConcurrentRuns;
-        })
-      : i18n.t(($) => {
-          return $.billing.plans.features.tenConcurrentRuns;
-        }),
-    sharedAndPrivateAgents,
-    byok,
-    tier === "pro" ? voiceInputPro : voiceInputTeam,
-    tier === "pro"
-      ? i18n.t(($) => {
-          return $.billing.plans.features.emailSupport;
-        })
-      : i18n.t(($) => {
-          return $.billing.plans.features.prioritySupport;
-        }),
-  ];
-}
-
-function getPlanPrice(tier: string): string {
-  const plan = PLANS.find((p) => {
-    return p.tier === tier;
-  });
-  return plan
-    ? i18n.t(
-        ($) => {
-          return $.billing.plans.pricePerMonth;
-        },
-        { price: formatUsd(plan.monthlyPriceUsd, 0) },
-      )
-    : "";
-}
-
-function tierRank(t: BillingTier): number {
-  if (t === "free" || t === "limited-free-1" || t === "pro-suspend") {
-    return 0;
-  }
-  if (t === "pro") {
-    return 1;
-  }
-  if (t === "team") {
-    return 2;
-  }
-  return 3;
+function getPlanPrice(tier: "free" | "pro"): string {
+  return i18n.t(
+    ($) => {
+      return $.billing.plans.pricePerMonth;
+    },
+    { price: formatUsd(tier === "pro" ? 20 : 0, 0) },
+  );
 }
 
 function isPaidTier(tier: BillingTier): boolean {
@@ -301,7 +173,7 @@ function scheduledTargetLabel(scheduledChange: ScheduledBillingChange): string {
       return $.billing.plans.selectedPlan;
     });
   }
-  return formatTierLabel(scheduledChange.targetTier);
+  return planName(scheduledChange.targetTier);
 }
 
 function scheduledPlanEndsConcurrency(
@@ -353,516 +225,6 @@ function billingManagementMode(
   return status ? "payment_methods" : null;
 }
 
-type PlanCardAction =
-  | "current"
-  | "unavailable"
-  | "manage-subscription"
-  | "upgrade"
-  | "manage"
-  | "restore"
-  | "downgrade-pro";
-
-function planButtonAction(
-  plan: BillingPlan,
-  currentTier: BillingTier,
-): PlanCardAction {
-  if (plan.tier === currentTier) {
-    return "current";
-  }
-  if (isCustomTier(currentTier)) {
-    return "unavailable";
-  }
-  if (
-    plan.tier === "free" &&
-    (currentTier === "limited-free-1" || currentTier === "pro-suspend")
-  ) {
-    return "unavailable";
-  }
-  if (plan.tier === "free") {
-    return "manage-subscription";
-  }
-  if (tierRank(plan.tier) > tierRank(currentTier)) {
-    return "upgrade";
-  }
-  return "manage";
-}
-
-function isPlanDowngradeTarget(
-  plan: BillingPlan,
-  scheduledChange: ScheduledBillingChange,
-): boolean {
-  return (
-    scheduledChange?.type === "downgrade" &&
-    plan.tier === scheduledChange.targetTier
-  );
-}
-
-function canReplaceCancellationWithPro(
-  plan: BillingPlan,
-  currentTier: BillingTier,
-  scheduledChange: ScheduledBillingChange,
-): boolean {
-  return (
-    currentTier === "team" &&
-    plan.tier === "pro" &&
-    scheduledChange?.type === "cancel"
-  );
-}
-
-function canRestoreCurrentPlan(args: {
-  currentTier: BillingTier;
-  canRestorePlan: boolean;
-  isCurrent: boolean;
-}): boolean {
-  return isPaidTier(args.currentTier) && args.canRestorePlan && args.isCurrent;
-}
-
-function planCardAction(args: {
-  plan: BillingPlan;
-  currentTier: BillingTier;
-  scheduledChange: ScheduledBillingChange;
-  restoreCurrentPlan: boolean;
-}): PlanCardAction {
-  if (args.restoreCurrentPlan) {
-    return "restore";
-  }
-  if (
-    canReplaceCancellationWithPro(
-      args.plan,
-      args.currentTier,
-      args.scheduledChange,
-    )
-  ) {
-    return "downgrade-pro";
-  }
-  return planButtonAction(args.plan, args.currentTier);
-}
-
-function planCardLabel(
-  action: PlanCardAction,
-  plan: BillingPlan,
-  currentTier: BillingTier,
-): string {
-  if (action === "current") {
-    return i18n.t(($) => {
-      return $.billing.plans.currentPlan;
-    });
-  }
-  if (action === "unavailable") {
-    return i18n.t(($) => {
-      return $.billing.common.unavailable;
-    });
-  }
-  if (action === "manage-subscription") {
-    return i18n.t(($) => {
-      return $.billing.plans.manageSubscription;
-    });
-  }
-  if (action === "upgrade") {
-    if (!isPaidTier(currentTier)) {
-      return i18n.t(
-        ($) => {
-          return $.billing.plans.usagePacks.selectPlan;
-        },
-        { plan: planName(plan.tier) },
-      );
-    }
-    return i18n.t(
-      ($) => {
-        return $.billing.plans.upgradeTo;
-      },
-      { plan: planName(plan.tier) },
-    );
-  }
-  if (action === "restore") {
-    return i18n.t(($) => {
-      return $.billing.plans.restorePlan;
-    });
-  }
-  if (action === "downgrade-pro") {
-    return i18n.t(
-      ($) => {
-        return $.billing.plans.downgradeTo;
-      },
-      { plan: planName("pro") },
-    );
-  }
-  return i18n.t(($) => {
-    return $.billing.common.manage;
-  });
-}
-
-function planCardButtonVariant(args: {
-  plan: BillingPlan;
-  isCurrent: boolean;
-  action: PlanCardAction;
-  restoreCurrentPlan: boolean;
-}): React.ComponentProps<typeof Button>["variant"] {
-  if (args.restoreCurrentPlan) {
-    return "default";
-  }
-  if (args.isCurrent || args.action === "manage") {
-    return "outline";
-  }
-  if ("primary" in args.plan && args.plan.primary) {
-    return "default";
-  }
-  return "outline";
-}
-
-function planCardButtonDisabled(args: {
-  loading: boolean;
-  action: PlanCardAction;
-  isCurrent: boolean;
-  restoreCurrentPlan: boolean;
-}): boolean {
-  if (args.loading) {
-    return true;
-  }
-  if (args.restoreCurrentPlan || args.action === "manage") {
-    return false;
-  }
-  return args.isCurrent || args.action === "unavailable";
-}
-
-function PlanScheduleNotice({
-  plan,
-  isCurrent,
-  isDowngradeTarget,
-  scheduledChange,
-  changeDate,
-}: {
-  plan: BillingPlan;
-  isCurrent: boolean;
-  isDowngradeTarget: boolean;
-  scheduledChange: ScheduledBillingChange;
-  changeDate: string | null;
-}) {
-  if (!changeDate) {
-    return null;
-  }
-  const noticeClassName =
-    "mb-5 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[12px] leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300";
-
-  if (scheduledChange?.type === "cancel" && isCurrent) {
-    return (
-      <p className={noticeClassName}>
-        {i18n.t(
-          ($) => {
-            return $.billing.plans.endsOn;
-          },
-          { date: formatBillingDate(changeDate) },
-        )}
-      </p>
-    );
-  }
-  if (scheduledChange?.type === "downgrade" && isCurrent) {
-    return (
-      <p className={noticeClassName}>
-        {i18n.t(
-          ($) => {
-            return $.billing.plans.downgradesOn;
-          },
-          {
-            plan: scheduledTargetLabel(scheduledChange),
-            date: formatBillingDate(changeDate),
-          },
-        )}
-      </p>
-    );
-  }
-  if (isDowngradeTarget) {
-    return (
-      <p className={noticeClassName}>
-        {i18n.t(
-          ($) => {
-            return $.billing.plans.downgradesOn;
-          },
-          {
-            plan: formatTierLabel(plan.tier),
-            date: formatBillingDate(changeDate),
-          },
-        )}
-      </p>
-    );
-  }
-  return null;
-}
-
-function PlanCard({
-  plan,
-  currentTier,
-  scheduledChange,
-  canRestorePlan,
-  periodEnd,
-  loading,
-  onAction,
-  onRestore,
-}: {
-  plan: BillingPlan;
-  currentTier: BillingTier;
-  scheduledChange: ScheduledBillingChange;
-  canRestorePlan: boolean;
-  periodEnd: string | null | undefined;
-  loading: boolean;
-  onAction: (planTier: BillingTier, e: React.MouseEvent) => void;
-  onRestore: () => void;
-}) {
-  const isCurrent = plan.tier === currentTier;
-  const isDowngradeTarget = isPlanDowngradeTarget(plan, scheduledChange);
-  const restoreCurrentPlan = canRestoreCurrentPlan({
-    currentTier,
-    canRestorePlan,
-    isCurrent,
-  });
-  const action = planCardAction({
-    plan,
-    currentTier,
-    scheduledChange,
-    restoreCurrentPlan,
-  });
-  const label = planCardLabel(action, plan, currentTier);
-  const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
-  const buttonVariant = planCardButtonVariant({
-    plan,
-    isCurrent,
-    action,
-    restoreCurrentPlan,
-  });
-  const buttonDisabled = planCardButtonDisabled({
-    loading,
-    action,
-    isCurrent,
-    restoreCurrentPlan,
-  });
-
-  return (
-    <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
-      {plan.tier === "pro" && (
-        <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Crown size={12} className="text-amber-500" />
-          {i18n.t(($) => {
-            return $.billing.plans.popular;
-          })}
-        </span>
-      )}
-
-      {plan.image && (
-        <img
-          src={plan.image}
-          alt={planName(plan.tier)}
-          loading="lazy"
-          className="h-20 w-20 object-contain mb-2"
-        />
-      )}
-
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-[#D27939] font-mono">
-        {planName(plan.tier)}
-      </h3>
-
-      <div className="mt-3 mb-1">
-        <span className="text-3xl font-light tracking-tight text-foreground">
-          {formatUsd(plan.monthlyPriceUsd, 0)}
-        </span>
-        <span className="ml-1.5 text-sm font-light text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.perMonth;
-          })}
-        </span>
-      </div>
-
-      <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-5 min-h-[42px]">
-        {planDescription(plan.tier)}
-      </p>
-
-      <PlanScheduleNotice
-        plan={plan}
-        isCurrent={isCurrent}
-        isDowngradeTarget={isDowngradeTarget}
-        scheduledChange={scheduledChange}
-        changeDate={changeDate}
-      />
-
-      <ul className="mb-6 flex flex-col gap-2.5">
-        {planFeatures(plan.tier).map((feature) => {
-          return (
-            <li key={feature} className="flex items-center gap-2">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide shrink-0 text-muted-foreground/40"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="16 9 10.5 15 8 12.5" />
-              </svg>
-              <span className="text-[13px] font-light text-muted-foreground">
-                {feature}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="mt-auto">
-        <Button
-          variant={buttonVariant}
-          size="default"
-          className="w-full h-11 text-sm font-medium"
-          disabled={buttonDisabled}
-          onClick={(e) => {
-            if (restoreCurrentPlan) {
-              return onRestore();
-            }
-            return onAction(plan.tier, e);
-          }}
-        >
-          {label}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function PricingPage({
-  currentTier,
-  scheduledChange,
-  canRestorePlan,
-  periodEnd,
-  onBack,
-  onRestore,
-}: {
-  currentTier: BillingTier;
-  scheduledChange: ScheduledBillingChange;
-  canRestorePlan: boolean;
-  periodEnd: string | null | undefined;
-  onBack: () => void;
-  onRestore: () => void;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
-  const loading = checkoutLoadable.state === "loading";
-  const openDowngrade = useSet(openDowngradeDialog$);
-  const setLockedTarget = useSet(setLockedTarget$);
-
-  const handlePlanAction = (planTier: BillingTier, e: React.MouseEvent) => {
-    if (isCustomTier(currentTier)) {
-      return;
-    }
-    if (planTier === currentTier) {
-      return;
-    }
-    if (
-      planTier === "free" &&
-      (currentTier === "limited-free-1" || currentTier === "pro-suspend")
-    ) {
-      return;
-    }
-    if (
-      currentTier === "team" &&
-      planTier === "pro" &&
-      scheduledChange?.type === "cancel"
-    ) {
-      setLockedTarget("pro");
-      openDowngrade();
-      return;
-    }
-    if (planTier === "free" || tierRank(planTier) < tierRank(currentTier)) {
-      openDowngrade();
-      return;
-    }
-    if (planTier !== "pro" && planTier !== "team") {
-      return;
-    }
-    const newTab = e.metaKey || e.ctrlKey;
-    detach(
-      checkout(planTier, newTab, undefined, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <div
-      className="flex flex-col gap-5 outline-none"
-      role="group"
-      tabIndex={-1}
-      ref={(el) => {
-        el?.focus();
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={onBack}
-                variant="quiet"
-                size="icon-xs"
-                aria-label={i18n.t(($) => {
-                  return $.billing.common.back;
-                })}
-              >
-                <ArrowLeft size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">
-                {i18n.t(($) => {
-                  return $.billing.common.back;
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <div>
-          <h3 className="text-sm font-medium text-foreground">
-            {i18n.t(($) => {
-              return $.billing.plans.compare;
-            })}
-          </h3>
-          <p className="text-[13px] text-muted-foreground">
-            {isCustomTier(currentTier)
-              ? i18n.t(($) => {
-                  return $.billing.plans.customCheckoutUnavailable;
-                })
-              : i18n.t(($) => {
-                  return $.billing.plans.changeAnytime;
-                })}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {COMPARE_PLANS.map((plan) => {
-          return (
-            <PlanCard
-              key={plan.tier}
-              plan={plan}
-              currentTier={currentTier}
-              scheduledChange={scheduledChange}
-              canRestorePlan={canRestorePlan}
-              periodEnd={periodEnd}
-              loading={loading}
-              onAction={handlePlanAction}
-              onRestore={onRestore}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function formatTierLabel(tier: BillingTier): string {
-  return planName(tier);
-}
-
 function DowngradeConfirmDialogContent({
   currentTier,
   paidConcurrency,
@@ -888,7 +250,7 @@ function DowngradeConfirmDialogContent({
   const isTeam = currentTier === "team";
   const isLockedTarget = lockedTarget !== null;
   const downgradeTarget = isTeam ? selectedTarget : "limited-free-1";
-  const targetLabel = formatTierLabel(downgradeTarget);
+  const targetLabel = planName(downgradeTarget);
   const proPlanPrice = getPlanPrice("pro");
   const freePlanPrice = getPlanPrice("free");
 
@@ -1103,7 +465,7 @@ function RestorePlanConfirmDialogContent({
   const loading = restoreLoadable.state === "loading";
   const error =
     restoreLoadable.state === "hasError" ? String(restoreLoadable.error) : null;
-  const planLabel = formatTierLabel(currentTier);
+  const planLabel = planName(currentTier);
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
   const description =
     scheduledChange?.type === "downgrade"
@@ -1322,7 +684,7 @@ function currentPlanNameLabel(currentTier: BillingTier): string {
     ($) => {
       return $.billing.plans.namedPlan;
     },
-    { plan: formatTierLabel(currentTier) },
+    { plan: planName(currentTier) },
   );
 }
 
@@ -1435,7 +797,7 @@ function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
     ($) => {
       return $.billing.plans.cancellationNotice;
     },
-    { plan: formatTierLabel(tier), date: formattedDate },
+    { plan: planName(tier), date: formattedDate },
   );
 }
 
@@ -2558,90 +1920,6 @@ function UsagePackMigrationProgressPage({
   );
 }
 
-function BillingPricingPage({
-  currentTier,
-  canRestorePlan,
-  migration,
-  migrationLoading,
-  migrationOpen,
-  migrationTargetTier,
-  onBack,
-  onMigrationBack,
-  onSelectMigration,
-  onRestore,
-  paidConcurrency,
-  periodEnd,
-  scheduledChange,
-}: {
-  readonly currentTier: BillingTier;
-  readonly canRestorePlan: boolean;
-  readonly migration: UsagePackMigrationStateResponse | null;
-  readonly migrationLoading: boolean;
-  readonly migrationOpen: boolean;
-  readonly migrationTargetTier: "pro" | "team" | null;
-  readonly onBack: () => void;
-  readonly onMigrationBack: () => void;
-  readonly onSelectMigration: (tier: "pro" | "team") => void;
-  readonly onRestore: () => void;
-  readonly paidConcurrency: number;
-  readonly periodEnd: string | null | undefined;
-  readonly scheduledChange: ScheduledBillingChange;
-}) {
-  const migrationNeedsProgressPage =
-    usagePackMigrationNeedsProgressPage(migration);
-  return (
-    <>
-      {migrationLoading ? (
-        <div
-          role="status"
-          className="h-80 animate-pulse rounded-xl bg-muted/40"
-        />
-      ) : migration && migrationNeedsProgressPage ? (
-        <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
-      ) : migrationOpen &&
-        migration &&
-        migrationTargetTier &&
-        migration.effectiveAt ? (
-        <UsagePackMigrationPage
-          configuration={migration.configuration ?? null}
-          effectiveAt={migration.effectiveAt}
-          migrationId={migration.migrationId}
-          onBack={onMigrationBack}
-          sourceTier={migration.tier}
-          targetTier={migrationTargetTier}
-        />
-      ) : migration ? (
-        <UsagePackMigrationPlanSelectionPage
-          configuration={migration.configuration ?? null}
-          currentTier={currentTier}
-          onBack={onBack}
-          onSelect={onSelectMigration}
-        />
-      ) : (
-        <PricingPage
-          currentTier={currentTier}
-          scheduledChange={scheduledChange}
-          canRestorePlan={canRestorePlan}
-          periodEnd={periodEnd}
-          onBack={onBack}
-          onRestore={onRestore}
-        />
-      )}
-      <DowngradeConfirmDialog
-        currentTier={currentTier}
-        paidConcurrency={paidConcurrency}
-        periodEnd={periodEnd}
-      />
-      <RestorePlanConfirmDialog
-        currentTier={currentTier}
-        paidConcurrency={paidConcurrency}
-        periodEnd={periodEnd}
-        scheduledChange={scheduledChange}
-      />
-    </>
-  );
-}
-
 function StandaloneBillingPricingDialog({
   children,
   onClose,
@@ -2708,9 +1986,6 @@ function billingPricingReplacement({
   return null;
 }
 
-function shouldWaitForUsagePackMigration(loading: boolean): boolean {
-  return loading;
-}
 function canStartUsagePackCheckout(
   status: BillingStatusResponse | null,
 ): boolean {
@@ -2739,8 +2014,8 @@ function usagePackMigrationNeedsProgressPage(
 }
 
 /* All actionable usage pack pricing steps live in a dialog over the billing
-   tab, including conversion from a legacy plan. The legacy pricing page and a
-   migration that can only report progress still keep the tab sub-page. */
+   tab, including conversion from a legacy plan. Only the loading skeleton and
+   a migration that can only report progress still keep the tab sub-page. */
 function showsUsagePackPlanDialogs(
   migrationLoading: boolean,
   migration: UsagePackMigrationStateResponse | null,
@@ -2866,6 +2141,30 @@ function UsagePackPricingFlowDialogs({
   );
 }
 
+/* Only the loading skeleton and the progress page remain on the tab sub-page;
+   every actionable pricing step lives in the usage pack dialogs. */
+function BillingSubPage({
+  migration,
+  migrationLoading,
+  onBack,
+}: {
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly migrationLoading: boolean;
+  readonly onBack: () => void;
+}) {
+  if (migrationLoading) {
+    return (
+      <div
+        role="status"
+        className="h-80 animate-pulse rounded-xl bg-muted/40"
+      />
+    );
+  }
+  return migration && usagePackMigrationNeedsProgressPage(migration) ? (
+    <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
+  ) : null;
+}
+
 export function OrgBillingTab({
   standalonePlans = false,
 }: {
@@ -2904,9 +2203,7 @@ export function OrgBillingTab({
 
   const status = loadableDataOrNull(statusLoadable);
   const migration = loadableDataOrNull(migrationLoadable);
-  const migrationLoading = shouldWaitForUsagePackMigration(
-    migrationLoadable.state === "loading",
-  );
+  const migrationLoading = migrationLoadable.state === "loading";
   const migrationInProgress = usagePackMigrationInProgress(migration);
   const canConvertLegacyPlan = usagePackMigrationConfigurable(migration);
   const statusLoading = statusLoadable.state === "loading";
@@ -2969,9 +2266,6 @@ export function OrgBillingTab({
   const managementMode = billingManagementMode(status);
   const canManageBilling = managementMode !== null;
   const openBillingPortal = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (!managementMode) {
-      return;
-    }
     return detach(
       portal(event.metaKey || event.ctrlKey, pageSignal),
       Reason.DomCallback,
@@ -2998,20 +2292,10 @@ export function OrgBillingTab({
     />
   );
   const pricingPage = (
-    <BillingPricingPage
-      currentTier={currentTier}
-      canRestorePlan={canRestorePlan}
+    <BillingSubPage
       migration={migration}
       migrationLoading={migrationLoading}
-      migrationOpen={migrationOpen}
-      migrationTargetTier={migrationTargetTier}
-      onMigrationBack={closeMigrationSubPage}
-      onSelectMigration={openMigrationPage}
-      scheduledChange={scheduledChange}
-      periodEnd={periodEnd}
       onBack={dismissPlans}
-      onRestore={handleRestore}
-      paidConcurrency={paidConcurrency}
     />
   );
   const pricingReplacement = billingPricingReplacement({
@@ -3112,7 +2396,7 @@ export function OrgBillingTab({
                           return $.billing.plans.downgradeNotice;
                         },
                         {
-                          currentPlan: formatTierLabel(currentTier),
+                          currentPlan: planName(currentTier),
                           targetPlan: scheduledTargetLabel(scheduledChange),
                           date: formatBillingDate(changeDate),
                         },

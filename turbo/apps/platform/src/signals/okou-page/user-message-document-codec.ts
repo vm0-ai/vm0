@@ -14,6 +14,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { i18n } from "../../i18n/index.ts";
+import type { RestorableAttachment } from "./chat-draft.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 import { avatarTemplateSelection } from "./avatar-template-selection.ts";
@@ -641,6 +642,12 @@ function flushRestoredParagraph(state: RestoredEditorState): void {
   state.trailingParagraph = false;
 }
 
+function flushPendingRestoredParagraph(state: RestoredEditorState): void {
+  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+    flushRestoredParagraph(state);
+  }
+}
+
 function appendRestoredText(state: RestoredEditorState, text: string): void {
   const lines = text.split("\n");
   for (const [index, line] of lines.entries()) {
@@ -689,9 +696,7 @@ function restoredEditorDoc(userMessage: UserMessageDocument): JSONContent {
       continue;
     }
     if (part.type === "feedback") {
-      if (state.paragraphContent.length > 0 || state.trailingParagraph) {
-        flushRestoredParagraph(state);
-      }
+      flushPendingRestoredParagraph(state);
       state.content.push({
         type: FEEDBACK_ITEM_NODE_NAME,
         attrs: {
@@ -726,9 +731,7 @@ function restoredEditorDoc(userMessage: UserMessageDocument): JSONContent {
     }
   }
 
-  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
-    flushRestoredParagraph(state);
-  }
+  flushPendingRestoredParagraph(state);
   if (state.content.length === 0) {
     state.content.push({ type: "paragraph" });
   }
@@ -885,4 +888,39 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
   flushFeedback();
   flushInlineText();
   return blocks.join("\n\n");
+}
+
+export interface RestoredDraftState {
+  readonly content: string;
+  readonly userMessage: UserMessageDocument | null;
+  readonly attachments: RestorableAttachment[];
+}
+
+/** Restorable composer attachments for the file parts a draft document still references. */
+export function userMessageDraftAttachments(
+  document: UserMessageDocument,
+  attachments: readonly PersistedAttachment[],
+): RestorableAttachment[] {
+  const attachmentById = new Map(
+    attachments.map((attachment) => {
+      return [attachment.id, attachment] as const;
+    }),
+  );
+  return document.parts.flatMap((part) => {
+    if (part.type !== "file") {
+      return [];
+    }
+    const attachment = attachmentById.get(part.fileId);
+    return attachment
+      ? [
+          {
+            ...attachment,
+            ...(part.annotatedFileId
+              ? { annotatedFileId: part.annotatedFileId }
+              : {}),
+            ...(part.annotations ? { annotations: part.annotations } : {}),
+          },
+        ]
+      : [];
+  });
 }
