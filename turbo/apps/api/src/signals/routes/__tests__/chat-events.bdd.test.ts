@@ -286,7 +286,7 @@ const USER_OWNED_TERRA_FAST_BDD_ROUTES = [
     type: "codex-oauth-token",
     endpoint: "https://chatgpt.com/backend-api/codex/responses",
     runtimeModel: "gpt-5.6-terra",
-    wireTier: "fast",
+    wireTier: "priority",
   },
   ...STANDARD_TERRA_API_KEY_BDD_ROUTES.map((route) => {
     return {
@@ -5301,7 +5301,7 @@ function expectNativeSubscriptionRequest(
   const { body } = z
     .object({ body: z.record(z.string(), z.unknown()) })
     .parse(request);
-  expect(body.service_tier).toBe(tier);
+  expect(body.service_tier).toBe(tier === undefined ? undefined : "priority");
   expect(body).not.toHaveProperty("previous_response_id");
 }
 
@@ -13760,7 +13760,7 @@ describe("CHAT-02: run-level model overrides", () => {
       accountId: "captured-subscription-account",
       body: {
         model: "gpt-5.6-terra",
-        service_tier: "fast",
+        service_tier: "priority",
         stream: true,
         store: false,
       },
@@ -13855,7 +13855,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(
         requests.map(({ body }) => {
           return z
-            .object({ service_tier: z.enum(["fast", "priority"]).optional() })
+            .object({ service_tier: z.literal("priority").optional() })
             .parse(body).service_tier;
         }),
       ).toStrictEqual([undefined, route.wireTier, undefined]);

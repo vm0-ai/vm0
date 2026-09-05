@@ -356,6 +356,7 @@ describe("Pi API facade", () => {
         readonly url: string | undefined;
         readonly body: unknown;
         readonly accountId: string | string[] | undefined;
+        readonly authorization: string | undefined;
       }> = [];
       const server = createServer((request, response) => {
         void (async () => {
@@ -366,6 +367,7 @@ describe("Pi API facade", () => {
           providerRequests.push({
             url: request.url,
             accountId: request.headers["chatgpt-account-id"],
+            authorization: request.headers.authorization,
             body: JSON.parse(
               (request.headers["content-encoding"] === "zstd"
                 ? zstdDecompressSync(Buffer.concat(chunks))
@@ -393,21 +395,23 @@ describe("Pi API facade", () => {
       }
 
       try {
+        let sessionJsonl: string | undefined;
         const runTurn = async (
           serviceTier: "priority" | "fast" | undefined,
           api: "openai-completions" | "openai-codex-responses",
         ) => {
-          return runPiApiFirstTurn({
+          const result = await runPiApiFirstTurn({
             cwd: "/home/user/workspace",
             agentDir: "/home/user/.pi/agent",
             sessionId: SESSION_ID,
+            sessionJsonl,
             prompt: "answer through Terra",
             appendSystemPrompt: null,
             model:
               route === "native"
                 ? await materializePiAgentModelConfig({
                     config: piModelConfigSchema.parse({
-                      schemaVersion: 3,
+                      schemaVersion: serviceTier === undefined ? 2 : 3,
                       dialect: "openai-codex-responses",
                       transport: "sse",
                       provider: "openai-codex",
@@ -448,21 +452,32 @@ describe("Pi API facade", () => {
             resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
             ownership: createPiApiFirstTurnOwnership(),
           });
+          sessionJsonl = result.sessionJsonl;
+          return result;
         };
         const standardResult = await runTurn(undefined, "openai-completions");
         const priorityResult = await runTurn(
           route === "native" ? "fast" : "priority",
           "openai-codex-responses",
         );
+        const standardReturnResult = await runTurn(
+          undefined,
+          "openai-completions",
+        );
 
-        expect(providerRequests).toHaveLength(2);
+        expect(providerRequests).toHaveLength(3);
         if (route === "native") {
           expect(
             providerRequests.map((request) => {
               return request.accountId;
             }),
-          ).toEqual(["exact-account-id", "exact-account-id"]);
+          ).toEqual([
+            "exact-account-id",
+            "exact-account-id",
+            "exact-account-id",
+          ]);
           for (const request of providerRequests) {
+            expect(request.authorization).toBe("Bearer opaque-access-token");
             expect(request.body).toMatchObject({ store: false, stream: true });
             expect(request.body).not.toHaveProperty("previous_response_id");
           }
@@ -480,8 +495,15 @@ describe("Pi API facade", () => {
           body: {
             model: "gpt-5.6-terra",
             reasoning: { effort: "low" },
-            service_tier: route === "native" ? "fast" : "priority",
+            service_tier: "priority",
           },
+        });
+        expect(providerRequests[2]?.body).not.toHaveProperty("service_tier");
+        expect(
+          inspectPiSessionJsonl(standardReturnResult.sessionJsonl),
+        ).toMatchObject({
+          sessionId: SESSION_ID,
+          messageCount: 6,
         });
         expect(standardResult.assistantMessage.content).toStrictEqual([
           { type: "text", text: "Terra API-first answer" },
@@ -491,8 +513,9 @@ describe("Pi API facade", () => {
         ]);
         expect(standardResult.observedServiceTier).toBeUndefined();
         expect(priorityResult.observedServiceTier).toBeUndefined();
-        expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
-        expect(priorityResult.sessionJsonl).not.toContain("service_tier");
+        expect(standardReturnResult.sessionJsonl).not.toMatch(
+          /serviceTier|service_tier|exact-account-id|opaque-access-token|test-key/,
+        );
         expect(
           MemoryPiSession.fromJsonl(
             priorityResult.sessionJsonl,

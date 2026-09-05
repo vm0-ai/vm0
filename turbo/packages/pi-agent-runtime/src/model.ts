@@ -238,7 +238,8 @@ function piAgentCodexStream(
             options.onObservedServiceTier,
           ),
     reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
-    serviceTier,
+    // Codex keeps fast in config but sends priority on Responses requests.
+    serviceTier: serviceTier === "fast" ? "priority" : undefined,
     accountId,
     maxRetries: 0,
     transport: "sse",
