@@ -51,7 +51,15 @@ export const piMemoryPhase2Jobs = pgTable(
     claimedRevision: integer("claimed_revision"),
     claimedBaseVersionId: varchar("claimed_base_version_id", { length: 64 }),
     leaseToken: uuid("lease_token"),
+    /**
+     * DB/API rollout fence copied from a pre-cutover publisher lease. Remove
+     * under #31067 only after the outgoing API and all legacy leases drain.
+     */
+    legacyLeaseToken: uuid("legacy_lease_token"),
+    /** Fence set only by the sandbox-checkpoint dispatcher. */
+    sandboxLeaseToken: uuid("sandbox_lease_token"),
     leaseExpiresAt: timestamp("lease_expires_at"),
+    maintenanceRunId: uuid("maintenance_run_id"),
     retryCount: integer("retry_count").default(0).notNull(),
     retryAt: timestamp("retry_at"),
     lastErrorClass: varchar("last_error_class", { length: 128 }),
@@ -73,6 +81,23 @@ export const piMemoryPhase2Jobs = pgTable(
       length: 64,
     }),
     lastPublishedAt: timestamp("last_published_at"),
+    lastMaintenanceRunId: uuid("last_maintenance_run_id"),
+    lastMaintenanceRevision: integer("last_maintenance_revision"),
+    lastMaintenanceBaseVersionId: varchar("last_maintenance_base_version_id", {
+      length: 64,
+    }),
+    lastMaintenanceSelectionDigest: varchar(
+      "last_maintenance_selection_digest",
+      { length: 64 },
+    ),
+    lastMaintenanceCheckpointId: uuid("last_maintenance_checkpoint_id"),
+    lastMaintenanceCheckpointVersionId: varchar(
+      "last_maintenance_checkpoint_version_id",
+      { length: 64 },
+    ),
+    lastMaintenanceOutcome: varchar("last_maintenance_outcome", {
+      length: 32,
+    }).$type<"published" | "no_diff" | "failed">(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -104,6 +129,9 @@ export const piMemoryPhase2Jobs = pgTable(
         table.orgId,
         table.memoryStorageId,
       ),
+      index("idx_pi_memory_phase2_jobs_maintenance_run")
+        .on(table.maintenanceRunId)
+        .where(sql`${table.maintenanceRunId} IS NOT NULL`),
       check(
         "pi_memory_phase2_jobs_status_check",
         sql`${table.status} IN ('idle', 'pending', 'leased', 'retryable_failure', 'terminal_failure')`,
@@ -135,7 +163,59 @@ export const piMemoryPhase2Jobs = pgTable(
         sql`(${table.claimedBaseVersionId} IS NULL OR ${table.claimedBaseVersionId} ~ '^[0-9a-f]{64}$') AND
           (${table.lastObservedHeadVersionId} IS NULL OR ${table.lastObservedHeadVersionId} ~ '^[0-9a-f]{64}$') AND
           (${table.lastConflictingHeadVersionId} IS NULL OR ${table.lastConflictingHeadVersionId} ~ '^[0-9a-f]{64}$') AND
-          (${table.lastPublishedVersionId} IS NULL OR ${table.lastPublishedVersionId} ~ '^[0-9a-f]{64}$')`,
+          (${table.lastPublishedVersionId} IS NULL OR ${table.lastPublishedVersionId} ~ '^[0-9a-f]{64}$') AND
+          (${table.lastMaintenanceBaseVersionId} IS NULL OR ${table.lastMaintenanceBaseVersionId} ~ '^[0-9a-f]{64}$') AND
+          (${table.lastMaintenanceSelectionDigest} IS NULL OR ${table.lastMaintenanceSelectionDigest} ~ '^[0-9a-f]{64}$') AND
+          (${table.lastMaintenanceCheckpointVersionId} IS NULL OR ${table.lastMaintenanceCheckpointVersionId} ~ '^[0-9a-f]{64}$')`,
+      ),
+      check(
+        "pi_memory_phase2_jobs_execution_fence_check",
+        sql`(
+          ${table.status} = 'leased' AND (
+            (
+              ${table.legacyLeaseToken} = ${table.leaseToken} AND
+              ${table.sandboxLeaseToken} IS NULL AND
+              ${table.maintenanceRunId} IS NULL
+            ) OR (
+              ${table.legacyLeaseToken} IS NULL AND
+              ${table.sandboxLeaseToken} = ${table.leaseToken}
+            )
+          )
+        ) OR (
+          ${table.status} <> 'leased' AND
+          ${table.sandboxLeaseToken} IS NULL AND
+          ${table.maintenanceRunId} IS NULL
+        )`,
+      ),
+      check(
+        "pi_memory_phase2_jobs_maintenance_history_check",
+        sql`(
+          ${table.lastMaintenanceRunId} IS NULL AND
+          ${table.lastMaintenanceRevision} IS NULL AND
+          ${table.lastMaintenanceBaseVersionId} IS NULL AND
+          ${table.lastMaintenanceSelectionDigest} IS NULL AND
+          ${table.lastMaintenanceCheckpointId} IS NULL AND
+          ${table.lastMaintenanceCheckpointVersionId} IS NULL AND
+          ${table.lastMaintenanceOutcome} IS NULL
+        ) OR (
+          ${table.lastMaintenanceRunId} IS NOT NULL AND
+          ${table.lastMaintenanceRevision} IS NOT NULL AND
+          ${table.lastMaintenanceRevision} > 0 AND
+          ${table.lastMaintenanceBaseVersionId} IS NOT NULL AND
+          ${table.lastMaintenanceSelectionDigest} IS NOT NULL AND
+          ${table.lastMaintenanceOutcome} IN ('published', 'no_diff', 'failed') AND
+          (
+            (
+              ${table.lastMaintenanceOutcome} = 'failed' AND
+              ${table.lastMaintenanceCheckpointId} IS NULL AND
+              ${table.lastMaintenanceCheckpointVersionId} IS NULL
+            ) OR (
+              ${table.lastMaintenanceOutcome} IN ('published', 'no_diff') AND
+              ${table.lastMaintenanceCheckpointId} IS NOT NULL AND
+              ${table.lastMaintenanceCheckpointVersionId} IS NOT NULL
+            )
+          )
+        )`,
       ),
       check(
         "pi_memory_phase2_jobs_conflict_check",

@@ -2,7 +2,14 @@ import { zstdDecompressSync } from "node:zlib";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +22,7 @@ import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import {
   piSandboxAgentConfigFromEnv,
   recordPiMemoryToolSourceUse,
+  runPiSandboxAgentLoop,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
@@ -604,6 +612,128 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 describe("sandbox Pi agent loop", () => {
+  it("writes the private maintenance attestation only after mounted validation", async () => {
+    const validationFile = join(
+      launchPayloadDirectory,
+      "maintenance-validation.json",
+    );
+    const memoryRoot = join(launchPayloadDirectory, "memory");
+    const storageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+    const memory = "# Durable memory\n";
+    const summary = "v1\nDurable memory\n";
+    await mkdir(memoryRoot, { recursive: true });
+    await writeFile(join(memoryRoot, "MEMORY.md"), memory);
+    await writeFile(join(memoryRoot, "memory_summary.md"), summary);
+    const versionEntries = [
+      `MEMORY.md:${createHash("sha256").update(memory).digest("hex")}`,
+      `memory_summary.md:${createHash("sha256").update(summary).digest("hex")}`,
+    ].sort();
+    const validatedVersionId = createHash("sha256")
+      .update(`storage:${storageId}\n${versionEntries.join("\n")}`)
+      .digest("hex");
+    const selectionEncoding = Buffer.from(
+      "vm0.pi-memory.phase2.selection.v1",
+      "utf8",
+    );
+    const selectionEncodingLength = Buffer.alloc(4);
+    selectionEncodingLength.writeUInt32BE(selectionEncoding.length);
+    const emptySelectionLength = Buffer.alloc(4);
+    emptySelectionLength.writeUInt32BE(0);
+    const selectionDigest = createHash("sha256")
+      .update(
+        Buffer.concat([
+          selectionEncodingLength,
+          selectionEncoding,
+          emptySelectionLength,
+        ]),
+      )
+      .digest("hex");
+    const maintenance = {
+      schemaVersion: 1 as const,
+      memoryStorageId: storageId,
+      claimedRevision: 7,
+      claimedBaseVersionId: validatedVersionId,
+      leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+      selectionDigest,
+      selected: [],
+    };
+    await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
+
+    await runPiSandboxAgentLoop({
+      config: {
+        ...CONFIG,
+        launchPayload: {
+          ...CONFIG.launchPayload,
+          launchConfig: {
+            ...CONFIG.launchPayload.launchConfig,
+            maintenance,
+          },
+        },
+      },
+      memoryRoot,
+      maintenanceValidationFile: validationFile,
+    });
+
+    await expect(readFile(join(memoryRoot, "MEMORY.md"), "utf8")).resolves.toBe(
+      memory,
+    );
+    await expect(
+      readFile(join(memoryRoot, "memory_summary.md"), "utf8"),
+    ).resolves.toBe(summary);
+    await expect(readFile(validationFile, "utf8")).resolves.toBe(
+      JSON.stringify({
+        schemaVersion: 1,
+        runId: RUN_ID,
+        memoryStorageId: maintenance.memoryStorageId,
+        claimedRevision: maintenance.claimedRevision,
+        claimedBaseVersionId: maintenance.claimedBaseVersionId,
+        leaseToken: maintenance.leaseToken,
+        selectionDigest: maintenance.selectionDigest,
+        validatedVersionId,
+      }),
+    );
+    expect((await stat(validationFile)).mode & 0o777).toBe(0o600);
+  });
+
+  it("removes a stale maintenance attestation when validation fails", async () => {
+    const validationFile = join(
+      launchPayloadDirectory,
+      "maintenance-validation.json",
+    );
+    const memoryRoot = join(launchPayloadDirectory, "memory");
+    await mkdir(memoryRoot, { recursive: true });
+    await writeFile(join(memoryRoot, "MEMORY.md"), "# Partial memory\n");
+    await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
+
+    await expect(
+      runPiSandboxAgentLoop({
+        config: {
+          ...CONFIG,
+          launchPayload: {
+            ...CONFIG.launchPayload,
+            launchConfig: {
+              ...CONFIG.launchPayload.launchConfig,
+              maintenance: {
+                schemaVersion: 1,
+                memoryStorageId: "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63",
+                claimedRevision: 7,
+                claimedBaseVersionId: "a".repeat(64),
+                leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+                selectionDigest: "b".repeat(64),
+                selected: [],
+              },
+            },
+          },
+        },
+        memoryRoot,
+        maintenanceValidationFile: validationFile,
+      }),
+    ).rejects.toThrow("Pi memory Phase 2 input was invalid");
+    await expect(readFile(validationFile)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("records content-free memory source use with run and session correlation", () => {
     const writes: string[] = [];
     const write = vi

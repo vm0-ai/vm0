@@ -113,6 +113,41 @@ function manifestFile(path: string) {
 }
 
 describe("storage webhook manifest limits", () => {
+  it("accepts only an exact versioned maintenance checkpoint attestation", () => {
+    const body = {
+      runId: "run-id",
+      storageId,
+      files: [],
+      parentVersionId: "a".repeat(64),
+      maintenanceAttestation: {
+        schemaVersion: 1,
+        leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+        claimedRevision: 7,
+        claimedBaseVersionId: "a".repeat(64),
+        selectionDigest: "b".repeat(64),
+        validatedVersionId: "c".repeat(64),
+      },
+    };
+    expect(
+      webhookStoragesPrepareContract.prepare.body.safeParse(body).success,
+    ).toBe(true);
+    expect(
+      webhookStoragesCommitContract.commit.body.safeParse({
+        ...body,
+        versionId: "c".repeat(64),
+      }).success,
+    ).toBe(true);
+    expect(
+      webhookStoragesPrepareContract.prepare.body.safeParse({
+        ...body,
+        maintenanceAttestation: {
+          ...body.maintenanceAttestation,
+          schemaVersion: 2,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts the exact file-count boundary and rejects one more file", () => {
     const exactFiles = Array.from(
       { length: STORAGE_MANIFEST_MAX_FILES },

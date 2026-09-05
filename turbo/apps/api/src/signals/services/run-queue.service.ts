@@ -427,7 +427,9 @@ async function promoteAdmittedQueuedRun(
         historyGenerationRunId: payload.historyGenerationRunId,
         createdAt: runnerJob.createdAt,
       },
-      ...(runnerJob.executionContext.piLaunchConfig && args.row.prompt !== null
+      ...(runnerJob.executionContext.piLaunchConfig &&
+      !runnerJob.executionContext.piLaunchConfig.maintenance &&
+      args.row.prompt !== null
         ? {
             piApiFirstTurn: {
               runId: args.row.runId,
