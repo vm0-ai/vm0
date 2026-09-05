@@ -4987,6 +4987,10 @@ func handlePressKey(_ request: [String: Any], session: ComputerUseRuntimeSession
 }
 
 func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
+    // The outer executor returns on timeout without cancelling its queue. Stop
+    // issuing pages early enough to finish an AX reply and its settling interval.
+    let deadline = ProcessInfo.processInfo.systemUptime + commandTimeoutPolicy.timeoutSeconds
+        - Double(limits.accessibilityMessagingTimeoutSeconds) - AccessibilitySettlePolicy.postAction.timeoutSeconds
     let scrollRequest = try AccessibilityScrollRequest(request)
     let appName = try requiredString(request, "app")
     let elementId = try resolveElementId(request, session: session, commandName: "element.scroll")
@@ -5004,7 +5008,7 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
                 point: CGPoint(x: frame.midX, y: frame.midY)
             )
         }
-        var result = try performAccessibilityScroll(element, request: scrollRequest)
+        var result = try performAccessibilityScroll(element, request: scrollRequest, deadline: deadline)
         if let visualPointerShown {
             result["visualPointerShown"] = visualPointerShown
         }

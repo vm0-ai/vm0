@@ -191,6 +191,15 @@ All 121 helper tests passed, including actual process/protocol input regressions
 [sanitized command/state evidence](https://cdn.vm0.io/artifacts/gjqeu8vfpr.json)
 record the baseline and candidate attribution.
 
+A further 2000-line TextEdit test exposed the outer helper executor returning its
+10-second timeout while its queue continued issuing page actions. An independent
+AX observer measured another 2244 points of movement after the error. Scrolling
+now owns an earlier deadline, reserving time for an AX reply and animation settling,
+and checks it again immediately before each page action. The repaired command
+returned its explicit time-limit error in 8.14 seconds including transport;
+successive settled snapshots remained at the same position, and the next single
+page completed in 1.38 seconds. All 121 helper tests also passed on the Mac.
+
 This establishes integer page scrolling through the real helper, not a new
 packaged Desktop/server round trip. Fractional pages currently return an explicit
 unsupported error; preserving that accepted API input still requires work.

@@ -58,13 +58,20 @@ func accessibilityScrollPosition(_ bar: AXUIElement) throws -> Double {
     return value
 }
 
-func pressAccessibilityPage(_ bar: AXUIElement, forward: Bool) throws {
+func ensureScrollDeadline(_ deadline: TimeInterval) throws {
+    guard ProcessInfo.processInfo.systemUptime < deadline else {
+        throw HelperFailure(code: "target_app_unresponsive", message: "Scroll command exceeded its time limit")
+    }
+}
+
+func pressAccessibilityPage(_ bar: AXUIElement, forward: Bool, deadline: TimeInterval) throws {
     let subrole = forward ? kAXIncrementPageSubrole : kAXDecrementPageSubrole
     guard let button = attributeArray(bar, kAXChildrenAttribute as CFString).first(where: {
         stringValue(attribute($0, kAXSubroleAttribute as CFString)) == subrole
     }) else {
         throw HelperFailure(code: "unsupported_command", message: "The scroll bar does not expose a native page action")
     }
+    try ensureScrollDeadline(deadline)
     let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
     guard error == .success else {
         throw HelperFailure(
@@ -74,9 +81,9 @@ func pressAccessibilityPage(_ bar: AXUIElement, forward: Bool) throws {
     }
 }
 
-func changedAccessibilityScrollPosition(_ bar: AXUIElement, previous: Double) throws -> Double {
+func changedAccessibilityScrollPosition(_ bar: AXUIElement, previous: Double, commandDeadline: TimeInterval) throws -> Double {
     let policy = AccessibilitySettlePolicy.postAction
-    let deadline = ProcessInfo.processInfo.systemUptime + policy.timeoutSeconds
+    let deadline = min(commandDeadline, ProcessInfo.processInfo.systemUptime + policy.timeoutSeconds)
     var latest = previous
     var stablePasses = 0
     repeat {
@@ -86,18 +93,22 @@ func changedAccessibilityScrollPosition(_ bar: AXUIElement, previous: Double) th
         if value != previous, stablePasses >= policy.requiredStablePasses { return value }
         usleep(policy.pollIntervalMicroseconds)
     } while ProcessInfo.processInfo.systemUptime < deadline
+    try ensureScrollDeadline(commandDeadline)
     throw HelperFailure(code: "accessibility_unavailable", message: "The native page action did not settle at a new scroll position")
 }
 
-func performAccessibilityScroll(_ element: AXUIElement, request: AccessibilityScrollRequest) throws -> [String: Any] {
+func performAccessibilityScroll(
+    _ element: AXUIElement, request: AccessibilityScrollRequest, deadline: TimeInterval
+) throws -> [String: Any] {
     let bar = try accessibilityScrollBar(element, vertical: request.vertical)
     let initial = try accessibilityScrollPosition(bar)
     var position = initial
     var completed = 0.0
     let boundary = request.forward ? 1.0 : 0.0
     while completed < request.pages, position != boundary {
-        try pressAccessibilityPage(bar, forward: request.forward)
-        let updated = try changedAccessibilityScrollPosition(bar, previous: position)
+        try ensureScrollDeadline(deadline)
+        try pressAccessibilityPage(bar, forward: request.forward, deadline: deadline)
+        let updated = try changedAccessibilityScrollPosition(bar, previous: position, commandDeadline: deadline)
         guard request.forward ? updated > position : updated < position else {
             throw HelperFailure(code: "accessibility_unavailable", message: "The page action moved in the wrong direction")
         }
