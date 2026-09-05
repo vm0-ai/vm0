@@ -5,7 +5,6 @@ import {
   agentDraftResponseSchema,
 } from "@okouai/api-contracts/contracts/agent-draft";
 import type {
-  DraftVoice,
   PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -46,14 +45,12 @@ const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
 
 function userMessageAgentDraftState(args: {
   readonly draftUserMessage?: UserMessageDocument | null;
-  readonly draftVoice?: DraftVoice | null;
   readonly draftAttachments: PersistedAttachment[] | null;
 }): RestoredDraftState | null {
   const document = args.draftUserMessage ?? null;
-  // A new App may receive a pre-#31562 API response during serving or rollback.
-  // Remove this new-App -> old-API bridge with #31612 after that window closes.
-  const draftVoice = args.draftVoice ?? null;
-  if (draftToEditorDoc(document, draftVoice) === null) {
+  // Compatibility-only draftVoice responses from old App clients are ignored.
+  // Remove the API/DB field with #31612 after the two-day client-skew window.
+  if (draftToEditorDoc(document) === null) {
     return null;
   }
   const content = document ? messageDocumentToPrompt(document) : "";
@@ -63,7 +60,6 @@ function userMessageAgentDraftState(args: {
   return {
     content,
     userMessage: document,
-    draftVoice,
     attachments: document
       ? userMessageDraftAttachments(document, args.draftAttachments ?? [])
       : [],
@@ -81,7 +77,6 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           params: { id: agentId },
           body: {
             draftUserMessage: payload.userMessage,
-            ...(payload.draftVoice ? { draftVoice: payload.draftVoice } : {}),
             draftAttachments: payload.attachments,
           },
           fetchOptions: { signal },
@@ -141,11 +136,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
     set(draftSyncReset$);
-    await set(
-      patchDraft$,
-      { userMessage: null, draftVoice: null, attachments: null },
-      signal,
-    );
+    await set(patchDraft$, { userMessage: null, attachments: null }, signal);
   });
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
@@ -228,7 +219,6 @@ export const loadAgentDraft$ = command(
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
-      restoredDraft.draftVoice !== null ||
       restoredDraft.attachments.length > 0;
     if (!hasServerDraft) {
       return;
@@ -239,7 +229,6 @@ export const loadAgentDraft$ = command(
       {
         content: restoredDraft.content,
         userMessage: restoredDraft.userMessage,
-        draftVoice: restoredDraft.draftVoice,
         generationTemplate: undefined,
         attachments: restoredDraft.attachments.map(createRestoredAttachment),
       },

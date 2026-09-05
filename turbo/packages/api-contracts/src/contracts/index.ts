@@ -1769,6 +1769,13 @@ export {
   type VoiceIoPolishResponse,
 } from "./voice-io-polish";
 export {
+  voiceIoTranscribeContract,
+  voiceIoTranscribeResponseSchema,
+  VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
+  type VoiceIoTranscribeContract,
+  type VoiceIoTranscribeResponse,
+} from "./voice-io-transcribe";
+export {
   voiceIoQuotaContract,
   audioInputQuotaResponseSchema,
   type VoiceIoQuotaContract,

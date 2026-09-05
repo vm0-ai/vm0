@@ -31,6 +31,10 @@ import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
 import { i18n } from "../../i18n/index.ts";
+import {
+  startVoiceDraftPcmCapture,
+  type VoiceDraftPcmCapture,
+} from "./voice-draft-pcm.ts";
 
 const L = logger("VoiceIO:STT");
 
@@ -82,7 +86,7 @@ const internalStartingPromise$ =
 const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
 interface VoiceRecordingLifecycle {
   readonly started: () => void;
-  readonly finish: () => Promise<void>;
+  readonly finish: (recording: VoiceRecordingCapture | null) => Promise<void>;
   readonly fail: () => Promise<void>;
 }
 
@@ -91,8 +95,13 @@ interface VoiceRecordingOptions {
   readonly autoStopOnSilence: boolean;
 }
 
+interface VoiceRecordingCapture {
+  readonly blob: Blob;
+  readonly mimeType: string;
+}
+
 interface VoiceRecordingCompletion {
-  readonly finish: () => Promise<void>;
+  readonly finish: (recording: VoiceRecordingCapture | null) => Promise<void>;
   readonly fail: () => Promise<void>;
 }
 const internalRecordingCompletion$ = state<VoiceRecordingCompletion | null>(
@@ -114,6 +123,13 @@ export const sttStarting$ = computed((get) => {
 
 export const sttTranscribing$ = computed((get) => {
   return get(internalTranscribing$);
+});
+const sttBusy$ = computed((get) => {
+  return (
+    get(internalStarting$) ||
+    get(internalRecording$) ||
+    get(internalTranscribing$)
+  );
 });
 export const sttVoiceLevel$ = computed((get) => {
   return get(internalVoiceLevel$);
@@ -191,6 +207,28 @@ function reportAudioActivityMonitorStartFailure(error: unknown): void {
   L.error("Audio activity monitor start failed", error);
 }
 
+function reportPcmCaptureStartFailure(error: unknown): void {
+  L.warn("Voice draft PCM capture failed to start; using encoded fallback", {
+    error,
+  });
+}
+
+async function startPcm(
+  stream: MediaStream,
+  enabled: boolean,
+  signal: AbortSignal,
+): Promise<VoiceDraftPcmCapture | null> {
+  if (!enabled) {
+    return null;
+  }
+  return (
+    (await tapError(
+      startVoiceDraftPcmCapture(stream, signal),
+      reportPcmCaptureStartFailure,
+    )) ?? null
+  );
+}
+
 function microphoneAccessDeniedMessage(): string {
   return i18n.t(($) => {
     return $.chat.voice.microphoneAccessDenied;
@@ -237,13 +275,20 @@ interface VoiceRecordingSession {
   readonly cancel: () => void;
   readonly handleActivity: (activity: VoiceActivity) => void;
   readonly startSilenceTimeout: () => void;
-  readonly stopAndTranscribe: (signal: AbortSignal) => Promise<void>;
+  readonly stopAndTranscribe: (
+    signal: AbortSignal,
+  ) => Promise<VoiceRecordingCapture | null>;
 }
 
 interface VoiceRecordingStartup {
   readonly stream: MediaStream;
   readonly session: VoiceRecordingSession;
   readonly recordingStartedAt: number;
+}
+
+interface VoiceRecordingMedia {
+  readonly stream: MediaStream;
+  readonly pcm: VoiceDraftPcmCapture | null;
 }
 
 interface AudioActivityTracker {
@@ -639,8 +684,10 @@ const prepareRecordingLifecycle$ = command(
         await callback();
       };
       set(internalRecordingCompletion$, {
-        finish: async () => {
-          await settleOnce(lifecycle.finish);
+        finish: async (recording) => {
+          await settleOnce(async () => {
+            await lifecycle.finish(recording);
+          });
         },
         fail: async () => {
           await settleOnce(lifecycle.fail);
@@ -661,11 +708,24 @@ const prepareRecordingLifecycle$ = command(
   },
 );
 
+const failRecordingStart$ = command(
+  async ({ get, set }, error: unknown, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const recordingCompletion = get(internalRecordingCompletion$);
+    set(resetRecord$);
+    if (recordingCompletion) {
+      await recordingCompletion.fail();
+    } else {
+      reportMicStartFailure(error);
+    }
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Public commands
 // ---------------------------------------------------------------------------
 
-const refreshAudioInputQuota$ = command(({ set }) => {
+export const refreshAudioInputQuota$ = command(({ set }) => {
   set(audioInputQuotaReload$, (x) => {
     return x + 1;
   });
@@ -754,17 +814,28 @@ async function readSttApiResponse(
 async function openMedia(signal: AbortSignal) {
   const audioConfig = await resolveAudioConfig();
   signal.throwIfAborted();
-  // getUserMedia rejects on permission denied and does not accept a signal, so
-  // settle() supplies the cancellation check the raw rejection cannot.
+  // getUserMedia cannot be cancelled. Release a late stream before propagating
+  // cancellation, and own every acquired track before recorder setup can fail.
   const opened = await settle(
     navigator.mediaDevices.getUserMedia({ audio: audioConfig.constraints }),
-    signal,
   );
   if (!opened.ok) {
+    signal.throwIfAborted();
     L.error("Microphone access denied", opened.error);
     toast.error(microphoneAccessDeniedMessage());
     return;
   }
+  if (signal.aborted) {
+    stopAllTracks(opened.value);
+    signal.throwIfAborted();
+  }
+  signal.addEventListener(
+    "abort",
+    () => {
+      stopAllTracks(opened.value);
+    },
+    { once: true },
+  );
   return opened.value;
 }
 
@@ -887,6 +958,8 @@ interface VoiceSegmentSessionOptions {
   readonly stream: MediaStream;
   readonly autoSegment: boolean;
   readonly autoStopOnSilence: boolean;
+  readonly captureOnly: boolean;
+  readonly pcmCapture: VoiceDraftPcmCapture | null;
   readonly onSegmentTranscribed: VoiceSegmentTranscribedCallback;
   readonly transcribeBlob: (
     input: TranscribeAudioBlobInput,
@@ -1154,7 +1227,11 @@ function createVoiceSegmentSession(
         currentSegmentHasVoice = true;
       }
       if (!activity.detected && !stopped) {
-        if (options.autoSegment && currentSegmentHasVoice) {
+        if (
+          !options.captureOnly &&
+          options.autoSegment &&
+          currentSegmentHasVoice
+        ) {
           transcriber.enqueueBackgroundSegment("silence", true, true);
         }
         if (options.autoStopOnSilence) {
@@ -1167,14 +1244,68 @@ function createVoiceSegmentSession(
         silenceTimer.start();
       }
     },
-    async stopAndTranscribe(stopSignal: AbortSignal): Promise<void> {
+    async stopAndTranscribe(
+      stopSignal: AbortSignal,
+    ): Promise<VoiceRecordingCapture | null> {
       stopped = true;
       silenceTimer.clear();
+      if (options.captureOnly) {
+        // Complete the browser-capability fallback declared at
+        // startVoiceDraftPcmCapture. Remove the encoded path with #31710.
+        const pcmRecording = options.pcmCapture
+          ? await settle(options.pcmCapture.finish(stopSignal), stopSignal)
+          : null;
+        if (pcmRecording && !pcmRecording.ok) {
+          L.warn("Voice draft PCM capture failed; using encoded fallback", {
+            error: pcmRecording.error,
+          });
+        }
+        const segment = await captureSegment("stop", true);
+        stopSignal.throwIfAborted();
+        if (pcmRecording?.ok && pcmRecording.value) {
+          return {
+            blob: pcmRecording.value,
+            mimeType: pcmRecording.value.type,
+          };
+        }
+        return segment.blob && segment.blob.size > 0
+          ? { blob: segment.blob, mimeType: segment.mimeType }
+          : null;
+      }
       await transcriber.enqueueSegment("stop", shouldUploadStopSegment(), true);
       stopSignal.throwIfAborted();
       await transcriber.waitForPending();
+      return null;
     },
   };
+}
+
+async function openRecordingMedia(
+  capturePcm: boolean,
+  signal: AbortSignal,
+): Promise<VoiceRecordingMedia | null> {
+  await waitForBrowserPaint(signal);
+  signal.throwIfAborted();
+
+  const stream = await tapError(openMedia(signal), reportMicStartFailure);
+  if (!stream) {
+    return null;
+  }
+
+  const pcm = await startPcm(stream, capturePcm, signal);
+  if (signal.aborted) {
+    pcm?.cancel();
+    signal.throwIfAborted();
+  }
+  signal.addEventListener(
+    "abort",
+    () => {
+      pcm?.cancel();
+    },
+    { once: true },
+  );
+  signal.throwIfAborted();
+  return { stream, pcm };
 }
 
 export const startRecording$ = command(
@@ -1185,11 +1316,7 @@ export const startRecording$ = command(
     lifecycle: VoiceRecordingLifecycle | undefined,
     parentSignal: AbortSignal,
   ) => {
-    if (
-      get(internalStarting$) ||
-      get(internalRecording$) ||
-      get(internalTranscribing$)
-    ) {
+    if (get(sttBusy$)) {
       return;
     }
 
@@ -1200,20 +1327,20 @@ export const startRecording$ = command(
     let silenceStop: VoiceSilenceStop | null = null;
     const starting = withCleanup(
       (async (): Promise<VoiceRecordingStartup | null> => {
-        await waitForBrowserPaint(signal);
-        signal.throwIfAborted();
-
-        const stream = await tapError(openMedia(signal), reportMicStartFailure);
-        if (!stream) {
+        const media = await openRecordingMedia(!!lifecycle, signal);
+        if (!media) {
           return null;
         }
-
+        const { stream, pcm } = media;
+        signal.throwIfAborted();
         const recorder = createMediaRecorder(stream);
         const sessionOptions: VoiceSegmentSessionOptions = {
           initialRecorder: recorder,
           stream,
           autoSegment,
           autoStopOnSilence,
+          captureOnly: lifecycle !== undefined,
+          pcmCapture: pcm,
           onSegmentTranscribed,
           transcribeBlob: (input, uploadSignal) => {
             return set(transcribeAudioBlob$, input, uploadSignal);
@@ -1242,7 +1369,6 @@ export const startRecording$ = command(
 
         signal.addEventListener("abort", () => {
           session.cancel();
-          stopAllTracks(stream);
           set(resetState$);
         });
 
@@ -1261,11 +1387,16 @@ export const startRecording$ = command(
       },
     );
     set(internalStartingPromise$, starting);
-    const startup = await starting;
+    const started = await settle(starting, parentSignal);
+    if (!started.ok) {
+      await set(failRecordingStart$, started.error, parentSignal);
+      return;
+    }
+    const startup = started.value;
     if (!startup) {
       const recordingCompletion = get(internalRecordingCompletion$);
       set(resetRecord$);
-      await recordingCompletion?.finish();
+      await recordingCompletion?.finish(null);
       return;
     }
     const { stream, session: recordingSession, recordingStartedAt } = startup;
@@ -1330,6 +1461,7 @@ export const stopAndTranscribe$ = command(
     }
 
     const recordingCompletion = get(internalRecordingCompletion$);
+    let recording: VoiceRecordingCapture | null = null;
     const completion = withCleanup(
       withCleanup(
         (async () => {
@@ -1353,7 +1485,7 @@ export const stopAndTranscribe$ = command(
 
           set(internalRecording$, false);
           set(internalTranscribing$, true);
-          await session.stopAndTranscribe(signal);
+          recording = await session.stopAndTranscribe(signal);
         })(),
         () => {
           set(resetRecord$);
@@ -1361,7 +1493,7 @@ export const stopAndTranscribe$ = command(
       ),
       async () => {
         if (recordingCompletion) {
-          await recordingCompletion.finish();
+          await recordingCompletion.finish(recording);
         }
       },
     );

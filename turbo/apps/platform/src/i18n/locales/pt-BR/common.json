@@ -2413,10 +2413,6 @@
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
       "confirmRecording": "OK",
-      "draft": "Rascunho de voz",
-      "draftTooLong": "Este rascunho de voz é muito longo. Inicie uma nova gravação.",
-      "finishDraft": "Finalizar",
-      "finishingDraft": "Finalizando...",
       "input": "Entrada de voz",
       "inputLimitReached": "Limite de entrada de voz atingido. Faça upgrade para Pro ou Team para aumentar os limites.",
       "inputLimitReachedMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade e aumentar os limites.",
@@ -2425,7 +2421,6 @@
       "inputLimitReachedReset": "Limite de entrada de voz atingido. Aguarde até que seu limite seja redefinido.",
       "microphoneAccessDenied": "O acesso ao microfone foi negado. Permita o acesso e tente novamente.",
       "openingMicrophone": "Abrindo microfone...",
-      "removeDraft": "Remover rascunho de voz",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Parar gravação",
       "transcribing": "Transcrevendo",

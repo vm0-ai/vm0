@@ -2366,10 +2366,6 @@
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "confirmRecording": "OK",
-      "draft": "音声ドラフト",
-      "draftTooLong": "この音声ドラフトは長すぎます。新しい録音を開始してください。",
-      "finishDraft": "仕上げる",
-      "finishingDraft": "仕上げ中...",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
       "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
@@ -2378,7 +2374,6 @@
       "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
-      "removeDraft": "音声ドラフトを削除",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
       "transcribing": "文字起こし",

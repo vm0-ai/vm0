@@ -225,6 +225,7 @@ import {
   composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
   featureSwitch$,
+  voiceDraftEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -251,6 +252,7 @@ import type {
   ComposerImageModelSignals,
   ComposerSignals,
   ComposerVideoModelSignals,
+  ComposerVoiceInputStatus,
 } from "../../signals/okou-page/composer-signals.ts";
 import {
   audioInputAvailable$,
@@ -8554,9 +8556,17 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const quotaState = useLoadableState(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const quotaResolved = quota !== null;
-  const recording = useGet(sttRecording$);
+  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
+  const voiceDraftStatus = useGet(signals.voice.status$);
+  const sttRecording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
-  const transcribing = useGet(sttTranscribing$);
+  const sttTranscribing = useGet(sttTranscribing$);
+  const recording = voiceDraftEnabled
+    ? voiceDraftStatus === "recording"
+    : sttRecording;
+  const transcribing = voiceDraftEnabled
+    ? voiceDraftStatus === "transcribing"
+    : sttTranscribing;
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
@@ -8646,18 +8656,17 @@ function VoiceDraftFooter({
   status,
 }: {
   signals: ComposerSignals;
-  status: "recording" | "processing";
+  status: Exclude<ComposerVoiceInputStatus, "idle">;
 }) {
   const { t } = useTranslation();
   const recording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
-  const transcribing = useGet(sttTranscribing$);
   const recordingStartedAt = useGet(sttRecordingStartedAt$);
   const toggleVoiceInput = useSet(signals.voice.toggle$);
   const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
   const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const signal = useGet(pageSignal$);
-  const processing = transcribing || status === "processing";
+  const processing = status === "transcribing";
 
   if (processing) {
     return (
@@ -10545,10 +10554,11 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
 }
 
 function ComposerFooter({ signals }: { signals: ComposerSignals }) {
-  const voiceDraftStatus = useGet(signals.voiceDraft.status$);
+  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
+  const voiceDraftStatus = useGet(signals.voice.status$);
   return (
     <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
-      {voiceDraftStatus === "recording" || voiceDraftStatus === "processing" ? (
+      {voiceDraftEnabled && voiceDraftStatus !== "idle" ? (
         <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
       ) : (
         <>

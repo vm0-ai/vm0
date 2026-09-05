@@ -2413,10 +2413,6 @@
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
       "confirmRecording": "OK",
-      "draft": "Brouillon vocal",
-      "draftTooLong": "Ce brouillon vocal est trop long. Démarrez un nouvel enregistrement.",
-      "finishDraft": "Finaliser",
-      "finishingDraft": "Finalisation...",
       "input": "Entrée vocale",
       "inputLimitReached": "Limite d'entrée vocale atteinte. Passez à Pro ou Team pour des limites plus élevées.",
       "inputLimitReachedMember": "Limite d'entrée vocale atteinte. Demandez à un administrateur de l'espace de travail d'effectuer une mise à niveau pour obtenir des limites plus élevées.",
@@ -2425,7 +2421,6 @@
       "inputLimitReachedReset": "Limite d'entrée vocale atteinte. Veuillez attendre la réinitialisation de votre limite.",
       "microphoneAccessDenied": "L'accès au microphone a été refusé. Autorisez l'accès au microphone et réessayez.",
       "openingMicrophone": "Ouverture du microphone...",
-      "removeDraft": "Supprimer le brouillon vocal",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
       "transcribing": "Transcription",

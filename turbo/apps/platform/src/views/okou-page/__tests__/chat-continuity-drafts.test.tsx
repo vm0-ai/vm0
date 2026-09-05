@@ -247,7 +247,7 @@ test("Restore a rich saved draft when a chat opens", async () => {
   expect(composer).toHaveTextContent("Preserve the launch date");
 });
 
-test("Restore an unfinished voice draft when a chat opens", async () => {
+test("Ignore a legacy voice draft sidecar when a chat opens", async () => {
   const thread = continuityThread(6, 1, "Voice draft conversation");
   const draft: ChatThreadDraft = {
     draftUserMessage: null,
@@ -271,13 +271,16 @@ test("Restore an unfinished voice draft when a chat opens", async () => {
     featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
   });
 
-  const voiceDraft = await screen.findByLabelText("Voice draft");
-  expect(voiceDraft).toBeVisible();
-  expect(voiceDraft).toHaveTextContent(
+  const composer = await messageComposer();
+  await waitFor(() => {
+    expect(composer).toHaveTextContent("");
+  });
+  expect(document.querySelector("[data-voice-draft]")).toBeNull();
+  expect(document.body).not.toHaveTextContent(
     "Raw launch notes captured before navigation",
   );
-  expect(fastButton("Finish", voiceDraft)).toBeEnabled();
-  expect(fastButton("Remove voice draft", voiceDraft)).toBeEnabled();
+  expect(document.body).not.toHaveTextContent("Finish");
+  expect(document.body).not.toHaveTextContent("Remove voice draft");
 });
 
 test("Save and clear typed drafts consistently", async () => {
