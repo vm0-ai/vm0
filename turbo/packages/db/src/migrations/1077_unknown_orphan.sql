@@ -9,9 +9,11 @@ ALTER TABLE "pi_memory_phase2_jobs" ADD COLUMN "last_maintenance_selection_diges
 ALTER TABLE "pi_memory_phase2_jobs" ADD COLUMN "last_maintenance_checkpoint_id" uuid;--> statement-breakpoint
 ALTER TABLE "pi_memory_phase2_jobs" ADD COLUMN "last_maintenance_checkpoint_version_id" varchar(64);--> statement-breakpoint
 ALTER TABLE "pi_memory_phase2_jobs" ADD COLUMN "last_maintenance_outcome" varchar(32);--> statement-breakpoint
--- Existing leased rows belong to the pre-cutover API publisher. Mark only
--- those exact lease tokens so an old worker may finish its current claim but
--- cannot acquire a fresh post-cutover claim.
+-- DB/API rollout fence: existing leased rows belong to the pre-cutover API
+-- publisher. Mark only those exact lease tokens so an old worker may finish
+-- its current claim but cannot acquire a fresh post-cutover claim. Remove the
+-- legacy columns/constraint under #31067 only after the outgoing API target
+-- and every live legacy lease have drained (observed DB/API skew: ~102 min).
 UPDATE "pi_memory_phase2_jobs"
 SET "legacy_lease_token" = "lease_token"
 WHERE "status" = 'leased';--> statement-breakpoint

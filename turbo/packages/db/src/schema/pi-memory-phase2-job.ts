@@ -51,7 +51,10 @@ export const piMemoryPhase2Jobs = pgTable(
     claimedRevision: integer("claimed_revision"),
     claimedBaseVersionId: varchar("claimed_base_version_id", { length: 64 }),
     leaseToken: uuid("lease_token"),
-    /** Fence copied from a lease held by a pre-cutover API publisher. */
+    /**
+     * DB/API rollout fence copied from a pre-cutover publisher lease. Remove
+     * under #31067 only after the outgoing API and all legacy leases drain.
+     */
     legacyLeaseToken: uuid("legacy_lease_token"),
     /** Fence set only by the sandbox-checkpoint dispatcher. */
     sandboxLeaseToken: uuid("sandbox_lease_token"),
