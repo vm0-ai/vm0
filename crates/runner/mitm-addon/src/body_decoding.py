@@ -36,9 +36,13 @@ _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
 # zstd's Python decompression object has no zlib-style max_length argument.
 # Keep validation input chunks small so the discarded decoded output is bounded.
 _ZSTD_VALIDATE_INPUT_CHUNK_SIZE = 32
+# Preserve ordinary concatenation with substantial headroom while capping
+# per-frame decoder construction independently of compressed and decoded bytes.
+_ZSTD_VALIDATE_MAX_FRAMES = 64
 INVALID_COMPRESSED_BODY = "invalid compressed body"
 INCOMPLETE_COMPRESSED_BODY = "incomplete compressed body"
 DECODED_BODY_LIMIT_EXCEEDED = "decoded body limit exceeded"
+COMPRESSED_FRAME_LIMIT_EXCEEDED = "compressed frame limit exceeded"
 _STREAM_ZLIB_WBITS_BY_ENCODING = {
     "gzip": 16 + zlib.MAX_WBITS,
     "deflate": zlib.MAX_WBITS,
@@ -675,7 +679,11 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
     source_offset = 0
     pending_input = b""
     decoded_size = 0
+    validated_frames = 0
     while source_offset < len(source) or pending_input:
+        if validated_frames >= _ZSTD_VALIDATE_MAX_FRAMES:
+            return COMPRESSED_FRAME_LIMIT_EXCEEDED
+        validated_frames += 1
         obj = zstandard.ZstdDecompressor().decompressobj()
 
         while source_offset < len(source) or pending_input:
