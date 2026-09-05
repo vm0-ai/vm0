@@ -197,6 +197,45 @@ fn systemd_run_cpu_delegation_property_args() -> [String; 2] {
     ]
 }
 
+fn systemd_run_command(
+    unit: &RunnerServiceUnit,
+    exe_path: &Path,
+    config_path: &Path,
+    env_vars: &[String],
+    local: bool,
+) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new("systemd-run");
+    command
+        .arg(format!("--unit={}", unit.unit_name()))
+        .arg(format!("--description=VM0 Runner ({})", unit.unit_name()))
+        .arg("--expand-environment=no")
+        .args([
+            "--property=Type=exec",
+            "--property=Restart=on-failure",
+            "--property=RestartSec=5",
+            "--property=StandardOutput=journal",
+            "--property=StandardError=journal",
+            "--property=KillSignal=SIGTERM",
+            "--property=TimeoutStopSec=300",
+        ])
+        .arg(systemd_run_limit_nofile_property_arg());
+    for property in systemd_run_cpu_delegation_property_args() {
+        command.arg(property);
+    }
+    command.arg(format!("--property=SyslogIdentifier={}", unit.unit_name()));
+    for entry in env_vars {
+        command.arg(format!("--setenv={entry}"));
+    }
+    command
+        .arg(exe_path)
+        .args(["start", "--config"])
+        .arg(config_path);
+    if local {
+        command.arg("--local");
+    }
+    command
+}
+
 type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 
 async fn restore_service_state_after_reload_failure(
@@ -320,41 +359,19 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     validate_systemd_path("config path", &config_path)?;
     reconcile_drain_restart_override_removal(&unit, DrainOverrideReloadPolicy::Unbounded).await?;
 
-    let unit_arg = format!("--unit={}", unit.unit_name());
-    let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
-    let syslog_arg = format!("--property=SyslogIdentifier={}", unit.unit_name());
-    let nofile_arg = systemd_run_limit_nofile_property_arg();
-    let [delegate_arg, delegate_subgroup_arg] = systemd_run_cpu_delegation_property_args();
+    let unit_for_start = unit.clone();
     with_service_activation_image_artifacts(
         &unit,
         &config_path,
         &home,
         |snapshot_path| async move {
-            let mut cmd = tokio::process::Command::new("systemd-run");
-            cmd.args([
-                &*unit_arg,
-                &*desc_arg,
-                "--property=Type=exec",
-                "--property=Restart=on-failure",
-                "--property=RestartSec=5",
-                "--property=StandardOutput=journal",
-                "--property=StandardError=journal",
-                "--property=KillSignal=SIGTERM",
-                "--property=TimeoutStopSec=300",
-                &*nofile_arg,
-                &*delegate_arg,
-                &*delegate_subgroup_arg,
-                &*syslog_arg,
-            ]);
-            for entry in &args.env {
-                cmd.arg(format!("--setenv={entry}"));
-            }
-            cmd.arg(&exe_path)
-                .args(["start", "--config"])
-                .arg(&snapshot_path);
-            if args.local {
-                cmd.arg("--local");
-            }
+            let mut cmd = systemd_run_command(
+                &unit_for_start,
+                &exe_path,
+                &snapshot_path,
+                &args.env,
+                args.local,
+            );
 
             let status = cmd
                 .status()
@@ -1490,6 +1507,39 @@ profiles:
             [
                 "--property=Delegate=cpu".to_string(),
                 "--property=DelegateSubgroup=control".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn systemd_run_preserves_literal_dollar_paths_and_environment() {
+        let command = systemd_run_command(
+            &service_unit(),
+            Path::new("/opt/vm0-${BUILD}/vm0-runner"),
+            Path::new("/srv/vm0-${TENANT}/runner.yaml"),
+            &["LITERAL=${VALUE}".to_string()],
+            true,
+        );
+        let args = command
+            .as_std()
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect::<Vec<_>>();
+
+        assert!(args.contains(&"--expand-environment=no"));
+        assert!(args.contains(&"--setenv=LITERAL=${VALUE}"));
+        let executable_index = args
+            .iter()
+            .position(|arg| *arg == "/opt/vm0-${BUILD}/vm0-runner")
+            .unwrap();
+        assert_eq!(
+            &args[executable_index..],
+            [
+                "/opt/vm0-${BUILD}/vm0-runner",
+                "start",
+                "--config",
+                "/srv/vm0-${TENANT}/runner.yaml",
+                "--local",
             ]
         );
     }
