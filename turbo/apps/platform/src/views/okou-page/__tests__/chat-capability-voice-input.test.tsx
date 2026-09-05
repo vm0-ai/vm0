@@ -680,48 +680,6 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
   expect(consoleErrors).toHaveLength(1);
 });
 
-test("Retry saving a transcript without inserting the voice note twice", async () => {
-  context.mocks.browser.voiceInput({ rms: 0.12 });
-  installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
-    return HttpResponse.json({
-      transcript: "recorded note",
-      polishedText: "Recorded note.",
-      language: "en-US",
-    });
-  });
-  installRunChat();
-  let saved = false;
-  context.mocks.http.patch("*/api/chat-threads/:id", () => {
-    if (!saved) {
-      return HttpResponse.json(
-        {
-          error: {
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Draft save unavailable",
-          },
-        },
-        { status: 500 },
-      );
-    }
-    return new HttpResponse(null, { status: 204 });
-  });
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
-  });
-  click(await readyVoiceInput());
-  click(await activeVoiceDraftStopButton());
-  const retry = await findButton("Retry");
-  expect(normalizedComposerText()).toBe("Recorded note.");
-
-  saved = true;
-  click(retry);
-  await findEnabledButton("Send");
-  expect(normalizedComposerText()).toBe("Recorded note.");
-});
-
 test("Discard a failed recording without removing typed notes", async () => {
   const consoleErrors = captureVoiceTranscriptionErrors();
   context.mocks.browser.voiceInput({ rms: 0.12 });

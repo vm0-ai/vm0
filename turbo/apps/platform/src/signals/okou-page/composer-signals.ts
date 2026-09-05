@@ -534,7 +534,6 @@ type VoiceDraftTranscriptionCommand = Command<Promise<void>, [AbortSignal]>;
 interface ComposerVoiceInputState {
   readonly status: ComposerVoiceInputStatus;
   readonly recording: VoiceDraftRecordingRecord | null;
-  readonly transcriptInserted?: boolean;
   readonly attempt?: symbol;
 }
 
@@ -557,7 +556,7 @@ function reportVoiceDraftTranscriptionFailure(error: unknown): void {
 
 function createVoiceDraftTranscriptionCommand(
   workflowComposer: WorkflowComposerSignals,
-  draft: Pick<CreateComposerSignalsOptions["draft"], "load$" | "save$">,
+  draft: CreateComposerSignalsOptions["draft"],
   lastAssistantMessage$: Computed<string | undefined>,
   state$: ComposerVoiceInputStateSignal,
   storageKey$: Computed<Promise<string | null>>,
@@ -573,7 +572,9 @@ function createVoiceDraftTranscriptionCommand(
     }
     const storageKey = await get(storageKey$);
     signal.throwIfAborted();
-    if (!voiceInput.transcriptInserted) {
+    if (
+      !set(draft.signals.hasInsertedVoiceRecording$, voiceInput.recording.id)
+    ) {
       // Commit the original recording before preparation or any network request.
       // A reload at any later point can offer the same recording for retry.
       if (storageKey) {
@@ -635,7 +636,7 @@ function createVoiceDraftTranscriptionCommand(
       // arrives. Finish that hydration before inserting or saving its text.
       await set(draft.load$, signal);
       set(workflowComposer.insertText$, result.value.body.polishedText);
-      set(state$, { ...voiceInput, transcriptInserted: true });
+      set(draft.signals.setInsertedVoiceRecordingId$, voiceInput.recording.id);
     }
     const persisted = await set(draft.save$, signal);
     signal.throwIfAborted();
@@ -786,7 +787,7 @@ function createVoiceDraftRecoverySignals(
 
 function createComposerVoiceInputSignals(
   workflowComposer: WorkflowComposerSignals,
-  draft: Pick<CreateComposerSignalsOptions["draft"], "load$" | "save$">,
+  draft: CreateComposerSignalsOptions["draft"],
   lastAssistantMessage$: Computed<string | undefined>,
   draftTarget: string | null,
 ): ComposerVoiceInputSignals {
