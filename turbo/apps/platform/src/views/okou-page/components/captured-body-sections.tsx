@@ -33,6 +33,24 @@ function formatBodyForDisplay(
 // Components
 // ---------------------------------------------------------------------------
 
+function TruncationBadge({ truncated }: { truncated: boolean | undefined }) {
+  const { t } = useTranslation();
+  if (truncated === undefined) {
+    return null;
+  }
+  return (
+    <InlineBadge color={truncated ? "warning" : "muted"}>
+      {truncated
+        ? t(($) => {
+            return $.activity.network.capture.truncated;
+          })
+        : t(($) => {
+            return $.activity.network.capture.complete;
+          })}
+    </InlineBadge>
+  );
+}
+
 function CollapsibleSection({
   title,
   badge,
@@ -46,7 +64,6 @@ function CollapsibleSection({
   copyText?: string;
   children: React.ReactNode;
 }) {
-  const { t } = useTranslation();
   return (
     <details className="group">
       <summary className="cursor-pointer list-none w-full text-left">
@@ -57,20 +74,7 @@ function CollapsibleSection({
           />
           <span className="text-xs font-medium text-foreground">{title}</span>
           {badge && <InlineBadge color="muted">{badge}</InlineBadge>}
-          {truncated === true && (
-            <InlineBadge color="warning">
-              {t(($) => {
-                return $.activity.network.capture.truncated;
-              })}
-            </InlineBadge>
-          )}
-          {truncated === false && (
-            <InlineBadge color="muted">
-              {t(($) => {
-                return $.activity.network.capture.complete;
-              })}
-            </InlineBadge>
-          )}
+          <TruncationBadge truncated={truncated} />
           {copyText && (
             <span
               className="ml-auto"
@@ -186,25 +190,11 @@ function BodyMetadata({
   encoding: NetworkLogEntry["request_body_encoding"];
   truncated: boolean | undefined;
 }) {
-  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="font-medium">{title}</span>
       {encoding && <InlineBadge color="muted">{encoding}</InlineBadge>}
-      {truncated === true && (
-        <InlineBadge color="warning">
-          {t(($) => {
-            return $.activity.network.capture.truncated;
-          })}
-        </InlineBadge>
-      )}
-      {truncated === false && (
-        <InlineBadge color="muted">
-          {t(($) => {
-            return $.activity.network.capture.complete;
-          })}
-        </InlineBadge>
-      )}
+      <TruncationBadge truncated={truncated} />
     </div>
   );
 }

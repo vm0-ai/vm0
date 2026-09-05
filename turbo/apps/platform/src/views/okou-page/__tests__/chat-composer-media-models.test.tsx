@@ -42,7 +42,7 @@ import {
 } from "./chat-composer-test-helpers.ts";
 
 const SPLIT_THREAD_ID = "b1000000-0000-4000-a000-000000000106";
-const DEFAULT_RUN_MODEL = "claude-fable-5";
+const DEFAULT_RUN_MODEL = "claude-fable-5-1";
 const DEFAULT_IMAGE_MODEL = "fal-ai/nano-banana-2";
 const DEFAULT_VIDEO_MODEL = "MiniMax-H3";
 
@@ -87,7 +87,7 @@ function composerFor(threadId?: string): HTMLElement {
   const root = threadId
     ? document.querySelector(`[data-chat-thread-container-id="${threadId}"]`)
     : document;
-  const composer = root?.querySelector(".zero-composer");
+  const composer = root?.querySelector(".okou-composer");
   if (!(composer instanceof HTMLElement)) {
     throw new Error(`Composer${threadId ? ` for ${threadId}` : ""} not found`);
   }

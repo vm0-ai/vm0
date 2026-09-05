@@ -1,3 +1,4 @@
+import { queryMessageBody } from "./chat-event-test-helpers.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,7 +99,7 @@ describe("chat engagement telemetry", () => {
       return buttonByLabel("Expand work history");
     });
     expect(expandWork).toHaveTextContent(/^Working for /);
-    expect(screen.queryByText("Checking the launch brief.")).toBeNull();
+    expect(queryMessageBody("Checking the launch brief.")).toBeNull();
 
     click(expandWork);
 
@@ -112,7 +113,7 @@ describe("chat engagement telemetry", () => {
     click(buttonByLabel("Collapse work history"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Checking the launch brief.")).toBeNull();
+      expect(queryMessageBody("Checking the launch brief.")).toBeNull();
     });
     expect(capturedEvents("chat_work_history_expanded")).toHaveLength(1);
   });

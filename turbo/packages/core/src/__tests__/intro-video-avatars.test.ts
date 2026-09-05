@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   HEYGEN_INTRO_VIDEO_AVATARS,
+  INTRO_VIDEO_AVATARS,
   isHeyGenIntroVideoAvatarId,
 } from "../intro-video-avatars";
 
@@ -36,6 +37,21 @@ describe("intro video avatars", () => {
       expect(avatar.transparentBackgroundValidated).toBe(false);
       expect(avatar.defaultVoiceId).not.toBe("");
     }
+  });
+
+  it("uses provider-qualified keys for the combined Intro Video catalog", () => {
+    expect(
+      new Set(
+        INTRO_VIDEO_AVATARS.map((avatar) => {
+          return avatar.key;
+        }),
+      ).size,
+    ).toBe(INTRO_VIDEO_AVATARS.length);
+    expect(
+      INTRO_VIDEO_AVATARS.every((avatar) => {
+        return avatar.key === `${avatar.provider}:${avatar.avatarId}`;
+      }),
+    ).toBe(true);
   });
 
   it("recognizes only curated HeyGen look IDs", () => {

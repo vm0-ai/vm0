@@ -94,7 +94,7 @@ test("Reports a physical chat database open without credential identifiers", asy
   const sensitiveUserId = `private-user-${crypto.randomUUID()}`;
   const sensitiveOrgId = `private-org-${crypto.randomUUID()}`;
   const database = await createChatIdbOpener({
-    reload: vi.fn<() => void>(),
+    onVersionChange: vi.fn<() => void>(),
   }).openChatIdb(sensitiveUserId, sensitiveOrgId);
   database.close();
 
@@ -132,7 +132,7 @@ test("Reports a failed chat database open without hiding its error", async () =>
     openDatabase: () => {
       return Promise.reject(openError);
     },
-    reload: vi.fn<() => void>(),
+    onVersionChange: vi.fn<() => void>(),
   });
 
   await expect(opener.openChatIdb("private-user", "private-org")).rejects.toBe(

@@ -112,7 +112,7 @@ export function StatusBadge({ status, shellStyle }: StatusBadgeProps) {
       data-status={status}
       className={
         shellStyle
-          ? "zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium"
+          ? "okou-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium"
           : "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
       }
     >

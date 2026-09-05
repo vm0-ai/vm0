@@ -1493,7 +1493,11 @@ export const imagePricing$: Computed<Promise<ImagePricing>> = computed(
 export const checkImageCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string; readonly userId: string },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly runId?: string;
+    },
     signal: AbortSignal,
   ): Promise<boolean> => {
     return await set(checkBillableOperationCredits$, args, signal);

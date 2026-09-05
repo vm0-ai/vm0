@@ -385,8 +385,8 @@ export const openDocumentLightbox$ = command(
   },
 );
 
-export const openFileLightbox$ = command(
-  ({ get, set }, value: Omit<AttachmentFileLightboxInput, "kind">) => {
+function createSimpleLightboxOpener(kind: "audio" | "file" | "video") {
+  return command(({ get, set }, value: AttachmentNamedLightboxBase) => {
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
@@ -396,59 +396,13 @@ export const openFileLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "file", ...value });
-  },
-);
+    set(internalLightboxState$, { kind, ...value });
+  });
+}
 
-export const openVideoLightbox$ = command(
-  (
-    { get, set },
-    value: {
-      url: string;
-      filename: string;
-      artifact?: AttachmentArtifactMetadata;
-      shareAvailable?: boolean;
-      showSizeInSubtitle?: boolean;
-      splitViewAvailable?: boolean;
-    },
-  ) => {
-    if (set(routeToOpenArtifactSidebar$, value)) {
-      return;
-    }
-    set(resetLightboxPreviewSignal$, get(rootSignal$));
-    set(internalLightboxDialogCloseToken$, (value) => {
-      return value + 1;
-    });
-    set(internalLightboxDialogVisible$, true);
-    set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "video", ...value });
-  },
-);
-
-export const openAudioLightbox$ = command(
-  (
-    { get, set },
-    value: {
-      url: string;
-      filename: string;
-      artifact?: AttachmentArtifactMetadata;
-      shareAvailable?: boolean;
-      showSizeInSubtitle?: boolean;
-      splitViewAvailable?: boolean;
-    },
-  ) => {
-    if (set(routeToOpenArtifactSidebar$, value)) {
-      return;
-    }
-    set(resetLightboxPreviewSignal$, get(rootSignal$));
-    set(internalLightboxDialogCloseToken$, (value) => {
-      return value + 1;
-    });
-    set(internalLightboxDialogVisible$, true);
-    set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind: "audio", ...value });
-  },
-);
+export const openFileLightbox$ = createSimpleLightboxOpener("file");
+export const openVideoLightbox$ = createSimpleLightboxOpener("video");
+export const openAudioLightbox$ = createSimpleLightboxOpener("audio");
 
 // ---------------------------------------------------------------------------
 // Global attachment preview mount owner — releases resources on route unmount

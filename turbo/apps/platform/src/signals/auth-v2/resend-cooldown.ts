@@ -1,8 +1,8 @@
-import { command } from "ccstate";
+import { command, type Command, type State } from "ccstate";
 
 import { now } from "../../lib/time.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
-import { jsonParseOr } from "../utils.ts";
+import { jsonParseOr, onRef, setLoop } from "../utils.ts";
 
 export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY =
   "vm0.authV2.signIn.resendCooldown";
@@ -65,4 +65,70 @@ export function createAuthV2ResendCooldownStorage(key: string) {
     restore$,
     save$,
   });
+}
+
+export interface AuthV2ResendCooldown {
+  readonly storage: ReturnType<typeof createAuthV2ResendCooldownStorage>;
+  readonly seconds: number;
+}
+
+interface ResendCooldownAtoms {
+  readonly resendRemainingSeconds$: State<number>;
+}
+
+interface ResendCooldownRuntime {
+  readonly cooldownDeadlineMs$: State<number | null>;
+}
+
+export function createStartCooldownCommand(
+  { storage, seconds }: AuthV2ResendCooldown,
+  atoms: ResendCooldownAtoms,
+  runtime: ResendCooldownRuntime,
+): Command<void, [string, AbortSignal]> {
+  return command(({ set }, identity: string, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    const deadlineMs = now() + seconds * 1000;
+    set(storage.save$, identity, deadlineMs);
+    set(runtime.cooldownDeadlineMs$, deadlineMs);
+    set(atoms.resendRemainingSeconds$, seconds);
+  });
+}
+
+export function createResendCooldownLifecycleRef(
+  { storage }: AuthV2ResendCooldown,
+  atoms: ResendCooldownAtoms,
+  runtime: ResendCooldownRuntime,
+) {
+  return onRef(
+    command(
+      async (
+        { get, set },
+        _element: HTMLSpanElement,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        await setLoop(
+          () => {
+            const deadlineMs = get(runtime.cooldownDeadlineMs$);
+            if (deadlineMs === null) {
+              return true;
+            }
+            const remainingSeconds = Math.max(
+              0,
+              Math.ceil((deadlineMs - now()) / 1000),
+            );
+            set(atoms.resendRemainingSeconds$, remainingSeconds);
+            if (remainingSeconds > 0) {
+              return false;
+            }
+            set(storage.clear$);
+            set(runtime.cooldownDeadlineMs$, null);
+            return true;
+          },
+          1000,
+          signal,
+          { retryTransientErrors: false },
+        );
+      },
+    ),
+  );
 }

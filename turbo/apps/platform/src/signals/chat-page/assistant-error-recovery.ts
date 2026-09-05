@@ -9,7 +9,7 @@ import {
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
   getFrameworkForType,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   isSupportedRunModel,
   type OrgModelPolicy,
   type ModelProviderResponse,
@@ -464,7 +464,7 @@ function modelPolicyFramework(
   }
   const providerType =
     policy.defaultProviderType === "built-in"
-      ? getVm0ConcreteProviderType(policy.model)
+      ? getBuiltInConcreteProviderType(policy.model)
       : policy.defaultProviderType;
   return getFrameworkForType(providerType);
 }

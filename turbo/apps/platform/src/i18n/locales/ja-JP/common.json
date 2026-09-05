@@ -628,7 +628,6 @@
       "renameImportedTemplate": "テンプレート名を変更",
       "searchConnector": "テンプレートを検索",
       "searchConnectors": "テンプレートを検索",
-      "selected": "テンプレート: {{title}}",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
       "selectVideo": "ビデオ テンプレート {{title}} を選択してください",
@@ -1359,38 +1358,22 @@
     },
     "plans": {
       "cancellationNotice": "{{plan}} プランはキャンセルされ、{{date}} に終了します。",
-      "changeAnytime": "いつでもアップグレードまたはダウングレードできます。",
       "compare": "プランを比較する",
       "compareAll": "すべてのプランを比較する",
-      "currentPlan": "現在の計画",
       "custom": {
         "name": "カスタム"
       },
       "customAccess": "{{value}} 同時実行によるカスタム アクセス",
       "customCancellationNotice": "カスタム プランは {{date}} に終了します。",
-      "customCheckoutUnavailable": "カスタム ワークスペースは、Pro または Team チェックアウトに切り替えることができません。",
       "downgrade": "ダウングレード",
       "downgradeNotice": "{{currentPlan}} プランは、{{date}} の {{targetPlan}} にダウングレードされます。",
       "downgradesOn": "{{date}} の {{plan}} にダウングレード",
       "downgradeTo": "{{plan}} にダウングレード",
       "endsOn": "{{date}} に終了",
       "features": {
-        "byok": "独自の LLM キーを持参する",
-        "communitySupport": "コミュニティサポート",
-        "emailSupport": "メールサポート",
-        "existingCredits": "既存の無料クレジットのみ",
-        "oneConcurrentRun": "1つの同時実行",
-        "prioritySupport": "優先サポート",
-        "sharedAndPrivateAgents": "共有エージェント7個、プライベートは無制限",
-        "tenConcurrentRuns": "10 個の同時実行",
-        "twoConcurrentRuns": "2つの同時実行",
-        "unlimitedAgents": "無制限の合計エージェント",
-        "voiceInputFree": "音声入力（メンバーごとに累計10リクエスト・1日10分）",
-        "voiceInputPro": "音声入力（メンバーごとに1日300リクエスト・200分）",
-        "voiceInputTeam": "音声入力（メンバーごとに1日500リクエスト・500分）"
+        "byok": "独自の LLM キーを持参する"
       },
       "free": {
-        "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
       "highlights": {
@@ -1417,7 +1400,6 @@
         "name": "限定無料"
       },
       "loadError": "請求ステータスを読み込めませんでした。",
-      "manageSubscription": "サブスクリプションの管理",
       "namedPlan": "{{plan}} プラン",
       "noActivePlan": "有効なプランはありません",
       "noActiveSubscription": "有効なサブスクリプションがありません",
@@ -1425,11 +1407,9 @@
         "name": "計画なし"
       },
       "perMonth": "/月",
-      "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
         "description": "日々のエージェント業務を、メンバー単位の料金で。",
-        "legacyDescription": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
         "name": "プロ"
       },
       "renews": "{{date}} を更新します",
@@ -1438,7 +1418,6 @@
       "selectedPlan": "選択したプラン",
       "team": {
         "description": "エージェントを一日中動かし続けるチームに。",
-        "legacyDescription": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },
       "upgrade": "アップグレード",
@@ -1541,13 +1520,11 @@
       "subscriptionChangeConfirmed": "サブスクリプションの変更が確認されました。"
     },
     "usage": {
-      "added": "{{date}} を追加しました",
       "allowance": {
         "day": "{{value}}日",
         "hour": "{{value}}時間",
         "left": "残り {{value}}",
         "minute": "{{value}}分",
-        "remaining": "{{remaining}} / {{total}} クレジット",
         "remainingAria": "使用許容量 {{label}} が残っています",
         "resets": "{{date}}にリセット",
         "resetsRaw": "リセット: {{value}}",
@@ -1568,15 +1545,12 @@
         "teamPlan": "Teamプラン"
       },
       "creditAdditions": "クレジットの追加",
-      "creditsRemaining_one": "{{value}} クレジットが残っています",
-      "creditsRemaining_other": "{{value}} クレジットが残っています",
       "expires": "{{date}}に期限切れ",
       "grantsTable": {
         "credits": "クレジット",
         "date": "日付",
         "left": "残り"
       },
-      "left": "{{value}} 残り",
       "member": "メンバー",
       "neverExpires": "有効期限はありません",
       "orgCredits": "組織クレジット",
@@ -1863,7 +1837,6 @@
       "threadSuggestions": "チャットスレッド",
       "useForFutureChats": "今後のチャットでも使用",
       "videoModelForThisChat": "このチャットの動画モデル",
-      "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
         "empty": "一致するワークフローがありません",
         "loading": "ワークフローを読み込んでいます...",
@@ -2393,10 +2366,6 @@
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "confirmRecording": "OK",
-      "draft": "音声ドラフト",
-      "draftTooLong": "この音声ドラフトは長すぎます。新しい録音を開始してください。",
-      "finishDraft": "仕上げる",
-      "finishingDraft": "仕上げ中...",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
       "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
@@ -2405,7 +2374,6 @@
       "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
-      "removeDraft": "音声ドラフトを削除",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
       "transcribing": "文字起こし",
@@ -2760,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "その他のオプション",
-      "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
-        "disconnected": "切断されました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -2806,7 +2772,6 @@
       "always": "いつも",
       "clearSearch": "権限検索のクリア",
       "descriptionAgent": "このエージェントがこのコネクタ経由で実行できるアクションを構成します。",
-      "descriptionWorkflow": "このワークフローがこのコネクタ経由で実行できるアクションを構成します。",
       "find": "権限の検索",
       "findPlaceholder": "権限を検索...",
       "forTarget": "{{target}} の場合",
@@ -3270,15 +3235,13 @@
       "redirectTitle": "{{connector}} にリダイレクトしています…"
     },
     "toasts": {
-      "connected": "{{connector}} が接続されました",
-      "disconnected": "{{connector}} が切断されました"
+      "connected": "{{connector}} が接続されました"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "リクエストが失敗しました",
-      "sharedDatabaseUnavailable": "アプリで問題が発生しました。少し待ってから、ページを更新してもう一度お試しください。"
+      "requestFailed": "リクエストが失敗しました"
     },
     "realtime": {
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",

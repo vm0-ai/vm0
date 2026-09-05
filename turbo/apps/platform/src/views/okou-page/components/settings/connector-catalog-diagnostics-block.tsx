@@ -242,28 +242,28 @@ function CatalogDiagnosticsSummary({
           })}
         </span>
         <span className="flex min-w-0 flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .syncState;
             })}
             : {formatEnumValue(diagnostics.state)}
           </span>
-          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .activeVersion;
             })}
             : {activeVersion}
           </span>
-          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .lastAttempt;
             })}
             : {lastAttempt}
           </span>
-          <span className="zero-badge max-w-full rounded-md px-2 py-0.5 break-all">
+          <span className="okou-badge max-w-full rounded-md px-2 py-0.5 break-all">
             {i18n.t(($) => {
               return $.connectors.providerSettings.catalogDiagnostics.fields
                 .evaluation;
@@ -564,7 +564,7 @@ export function ConnectorCatalogDiagnosticsBlock() {
   return (
     <section
       aria-labelledby="connector-catalog-diagnostics-title"
-      className="overflow-hidden rounded-xl bg-card zero-border"
+      className="overflow-hidden rounded-xl bg-card okou-border"
     >
       {diagnostics ? (
         <details className="group">

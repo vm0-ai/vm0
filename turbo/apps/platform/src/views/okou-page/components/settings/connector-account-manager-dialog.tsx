@@ -368,7 +368,7 @@ function AccountsCard({
       {rows.map((account, index) => {
         return (
           <div key={account.id}>
-            {index > 0 ? <div className="mx-5 h-0 zero-border-t" /> : null}
+            {index > 0 ? <div className="mx-5 h-0 okou-border-t" /> : null}
             <AccountRow
               target={target}
               account={account}

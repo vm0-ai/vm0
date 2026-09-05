@@ -3,7 +3,7 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
-  SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   isBuiltInModelProviderType,
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPolicy,
@@ -68,7 +68,7 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
   });
 }
 
-function makeVm0Policy(
+function makeBuiltInPolicy(
   model: UpdateOrgModelPolicy["model"],
   isDefault = false,
 ): UpdateOrgModelPolicy {
@@ -150,6 +150,52 @@ async function makeLimitedFreeWorkspace(
 }
 
 describe("GET/PUT /api/model-policies", () => {
+  it("keeps the successor usable after rejecting retired policy and preference writes", async () => {
+    const fixture = seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const existing = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const retired = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            ...toUpdate(existing.body),
+            makeBuiltInPolicy("claude-fable-5"),
+          ],
+        },
+      }),
+      [400],
+    );
+    expect(retired.body.error.message).toBe(
+      "Claude Fable 5 has been retired. Select Claude Fable 5.1.",
+    );
+
+    const preferences = setupApp({
+      context,
+      routes: userModelPreferenceRoutes,
+    })(userModelPreferenceContract);
+    const oldPreference = await accept(
+      preferences.update({
+        headers: authHeaders(),
+        body: { selectedModel: "claude-fable-5", serviceTier: null },
+      }),
+      [400],
+    );
+    expect(oldPreference.body.error.message).toBe(retired.body.error.message);
+    const successor = await accept(
+      preferences.update({
+        headers: authHeaders(),
+        body: { selectedModel: "claude-fable-5-1", serviceTier: null },
+      }),
+      [200],
+    );
+    expect(successor.body.selectedModel).toBe("claude-fable-5-1");
+  });
+
   it("returns 401 for unauthenticated reads and writes", async () => {
     const client = apiClient();
 
@@ -612,8 +658,8 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
-      makeVm0Policy("deepseek-v4-pro"),
+      makeBuiltInPolicy("claude-opus-5"),
+      makeBuiltInPolicy("deepseek-v4-pro"),
     ];
     const configuredModels = new Set(
       updates.map((policy) => {
@@ -634,7 +680,7 @@ describe("GET/PUT /api/model-policies", () => {
         return policy.model;
       }),
     ).toStrictEqual(
-      SUPPORTED_RUN_MODELS.filter((model) => {
+      ACTIVE_RUN_MODELS.filter((model) => {
         return configuredModels.has(model);
       }),
     );
@@ -649,8 +695,8 @@ describe("GET/PUT /api/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeVm0Policy("deepseek-v4-flash", true),
-          makeVm0Policy("deepseek-v4-pro"),
+          makeBuiltInPolicy("deepseek-v4-flash", true),
+          makeBuiltInPolicy("deepseek-v4-pro"),
         ],
       },
     });
@@ -698,7 +744,7 @@ describe("GET/PUT /api/model-policies", () => {
       body: {
         policies: [
           {
-            ...makeVm0Policy("claude-sonnet-5"),
+            ...makeBuiltInPolicy("claude-sonnet-5"),
             isDefault: true,
             defaultProviderType: "openrouter-api-key",
             credentialScope: "org",
@@ -733,8 +779,8 @@ describe("GET/PUT /api/model-policies", () => {
         body: {
           policies: [
             ...toUpdate(listResponse.body),
-            makeVm0Policy("gpt-5.5"),
-            makeVm0Policy("claude-sonnet-4-6"),
+            makeBuiltInPolicy("gpt-5.5"),
+            makeBuiltInPolicy("claude-sonnet-4-6"),
           ],
         },
       }),
@@ -826,7 +872,7 @@ describe("GET/PUT /api/model-policies", () => {
     const listed = await accept(client.list({ headers: authHeaders() }), [200]);
     const updates = [
       ...toUpdate(listed.body),
-      makeVm0Policy("claude-sonnet-5"),
+      makeBuiltInPolicy("claude-sonnet-5"),
     ].map((policy) => {
       return policy.model === "claude-sonnet-5"
         ? {
@@ -1374,7 +1420,7 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
+      makeBuiltInPolicy("claude-opus-5"),
     ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
@@ -1420,7 +1466,7 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
+      makeBuiltInPolicy("claude-opus-5"),
     ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
@@ -1486,7 +1532,7 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
+      makeBuiltInPolicy("claude-opus-5"),
     ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;

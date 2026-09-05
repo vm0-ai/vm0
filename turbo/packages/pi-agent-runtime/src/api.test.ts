@@ -1,5 +1,8 @@
+import { zstdDecompressSync } from "node:zlib";
 import { createServer, type ServerResponse } from "node:http";
 
+import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
+import { materializePiAgentModelConfig } from "./credential";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
@@ -309,115 +312,168 @@ describe("Pi API facade", () => {
     });
   });
 
-  it("normalizes legacy transport input and applies Terra request policy", async () => {
-    const providerRequests: Array<{
-      readonly url: string | undefined;
-      readonly body: unknown;
-    }> = [];
-    const server = createServer((request, response) => {
-      void (async () => {
-        const chunks: Buffer[] = [];
-        for await (const chunk of request) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        }
-        providerRequests.push({
-          url: request.url,
-          body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
-        });
-        responsesTextSse(response, "Terra API-first answer");
-      })().catch((error: unknown) => {
-        response.destroy(
-          error instanceof Error ? error : new Error(String(error)),
-        );
-      });
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    if (address === null || typeof address === "string") {
-      throw new Error("Terra API-first test server has no TCP address");
-    }
-
-    try {
-      const runTurn = async (
-        serviceTier: "priority" | undefined,
-        api: "openai-completions" | "openai-codex-responses",
-      ) => {
-        return runPiApiFirstTurn({
-          cwd: "/home/user/workspace",
-          agentDir: "/home/user/.pi/agent",
-          sessionId: SESSION_ID,
-          prompt: "answer through Terra",
-          appendSystemPrompt: null,
-          model: {
-            provider: "openai",
-            baseUrl: `http://127.0.0.1:${address.port}/v1`,
-            apiKey: "test-key",
-            model: "gpt-5.6-terra",
-            api,
-            dialect: "openai-responses",
-            thinkingLevel: "low",
-            ...(serviceTier ? { serviceTier } : {}),
-          },
-          resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
-          ownership: createPiApiFirstTurnOwnership(),
-        });
-      };
-      const standardResult = await runTurn(undefined, "openai-completions");
-      const priorityResult = await runTurn(
-        "priority",
-        "openai-codex-responses",
-      );
-
-      expect(providerRequests).toHaveLength(2);
-      expect(providerRequests[0]).toMatchObject({
-        url: "/v1/responses",
-        body: {
-          model: "gpt-5.6-terra",
-          reasoning: { effort: "low" },
-        },
-      });
-      expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
-      expect(providerRequests[1]).toMatchObject({
-        url: "/v1/responses",
-        body: {
-          model: "gpt-5.6-terra",
-          reasoning: { effort: "low" },
-          service_tier: "priority",
-        },
-      });
-      expect(standardResult.assistantMessage.content).toStrictEqual([
-        { type: "text", text: "Terra API-first answer" },
-      ]);
-      expect(priorityResult.assistantMessage.content).toStrictEqual([
-        { type: "text", text: "Terra API-first answer" },
-      ]);
-      expect(standardResult.observedServiceTier).toBeUndefined();
-      expect(priorityResult.observedServiceTier).toBeUndefined();
-      expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
-      expect(priorityResult.sessionJsonl).not.toContain("service_tier");
-      expect(
-        MemoryPiSession.fromJsonl(
-          priorityResult.sessionJsonl,
-        ).buildSessionContext().thinkingLevel,
-      ).toBe("low");
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
+  it.each(["public", "native"] as const)(
+    "applies %s Terra API-first request policy",
+    async (route) => {
+      const providerRequests: Array<{
+        readonly url: string | undefined;
+        readonly body: unknown;
+        readonly accountId: string | string[] | undefined;
+      }> = [];
+      const server = createServer((request, response) => {
+        void (async () => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of request) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           }
+          providerRequests.push({
+            url: request.url,
+            accountId: request.headers["chatgpt-account-id"],
+            body: JSON.parse(
+              (request.headers["content-encoding"] === "zstd"
+                ? zstdDecompressSync(Buffer.concat(chunks))
+                : Buffer.concat(chunks)
+              ).toString("utf8"),
+            ) as unknown,
+          });
+          responsesTextSse(response, "Terra API-first answer");
+        })().catch((error: unknown) => {
+          response.destroy(
+            error instanceof Error ? error : new Error(String(error)),
+          );
         });
       });
-    }
-  });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Terra API-first test server has no TCP address");
+      }
+
+      try {
+        const runTurn = async (
+          serviceTier: "priority" | "fast" | undefined,
+          api: "openai-completions" | "openai-codex-responses",
+        ) => {
+          return runPiApiFirstTurn({
+            cwd: "/home/user/workspace",
+            agentDir: "/home/user/.pi/agent",
+            sessionId: SESSION_ID,
+            prompt: "answer through Terra",
+            appendSystemPrompt: null,
+            model:
+              route === "native"
+                ? await materializePiAgentModelConfig({
+                    config: piModelConfigSchema.parse({
+                      schemaVersion: 3,
+                      dialect: "openai-codex-responses",
+                      transport: "sse",
+                      provider: "openai-codex",
+                      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                      model: "gpt-5.6-terra",
+                      thinkingLevel: "low",
+                      ...(serviceTier === undefined ? {} : { serviceTier }),
+                      credentialBindings: [
+                        {
+                          kind: "access-token",
+                          environment: "CHATGPT_ACCESS_TOKEN",
+                          secretName: "CHATGPT_ACCESS_TOKEN",
+                        },
+                        {
+                          kind: "account-id",
+                          environment: "CHATGPT_ACCOUNT_ID",
+                          secretName: "CHATGPT_ACCOUNT_ID",
+                        },
+                      ],
+                    }),
+                    target: "direct",
+                    resolveCredential(binding) {
+                      return binding.kind === "account-id"
+                        ? "exact-account-id"
+                        : "opaque-access-token";
+                    },
+                  })
+                : {
+                    provider: "openai",
+                    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                    apiKey: "test-key",
+                    model: "gpt-5.6-terra",
+                    api,
+                    dialect: "openai-responses",
+                    thinkingLevel: "low",
+                    ...(serviceTier ? { serviceTier } : {}),
+                  },
+            resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+            ownership: createPiApiFirstTurnOwnership(),
+          });
+        };
+        const standardResult = await runTurn(undefined, "openai-completions");
+        const priorityResult = await runTurn(
+          route === "native" ? "fast" : "priority",
+          "openai-codex-responses",
+        );
+
+        expect(providerRequests).toHaveLength(2);
+        if (route === "native") {
+          expect(
+            providerRequests.map((request) => {
+              return request.accountId;
+            }),
+          ).toEqual(["exact-account-id", "exact-account-id"]);
+          for (const request of providerRequests) {
+            expect(request.body).toMatchObject({ store: false, stream: true });
+            expect(request.body).not.toHaveProperty("previous_response_id");
+          }
+        }
+        expect(providerRequests[0]).toMatchObject({
+          url: route === "native" ? "/v1/codex/responses" : "/v1/responses",
+          body: {
+            model: "gpt-5.6-terra",
+            reasoning: { effort: "low" },
+          },
+        });
+        expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
+        expect(providerRequests[1]).toMatchObject({
+          url: route === "native" ? "/v1/codex/responses" : "/v1/responses",
+          body: {
+            model: "gpt-5.6-terra",
+            reasoning: { effort: "low" },
+            service_tier: route === "native" ? "fast" : "priority",
+          },
+        });
+        expect(standardResult.assistantMessage.content).toStrictEqual([
+          { type: "text", text: "Terra API-first answer" },
+        ]);
+        expect(priorityResult.assistantMessage.content).toStrictEqual([
+          { type: "text", text: "Terra API-first answer" },
+        ]);
+        expect(standardResult.observedServiceTier).toBeUndefined();
+        expect(priorityResult.observedServiceTier).toBeUndefined();
+        expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
+        expect(priorityResult.sessionJsonl).not.toContain("service_tier");
+        expect(
+          MemoryPiSession.fromJsonl(
+            priorityResult.sessionJsonl,
+          ).buildSessionContext().thinkingLevel,
+        ).toBe("low");
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+    },
+  );
 
   it("sends direct DeepSeek through Responses with the stable Pi identity and no Chat fields", async () => {
     const providerRequests: Array<{

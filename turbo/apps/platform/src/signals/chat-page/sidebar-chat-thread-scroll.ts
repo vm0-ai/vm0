@@ -24,16 +24,9 @@ export interface SidebarChatThreadWindow {
   readonly items: readonly SidebarChatThreadItemSignals[];
 }
 
-export interface SidebarChatThreadScrollMetrics {
+interface SidebarChatThreadScrollMetrics {
   readonly scrollTop: number;
-  readonly scrollHeight: number;
   readonly clientHeight: number;
-}
-
-export interface SidebarChatThreadScrollThumbStyle {
-  readonly top: number;
-  readonly height: number;
-  readonly visible: boolean;
 }
 
 export interface ScrollToThreadRequest {
@@ -43,9 +36,9 @@ export interface ScrollToThreadRequest {
 
 export interface SidebarChatThreadScrollSignals {
   readonly isScrolled$: Computed<boolean>;
-  readonly thumbStyle$: Computed<SidebarChatThreadScrollThumbStyle>;
   readonly window$: Computed<Promise<SidebarChatThreadWindow>>;
   readonly setScrollMetrics$: Command<void, [SidebarChatThreadScrollMetrics]>;
+  readonly refreshScrollViewport$: Command<void, []>;
   readonly setScrollViewport$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
@@ -63,33 +56,21 @@ export interface SidebarChatThreadScrollSignals {
 function emptyScrollMetrics(): SidebarChatThreadScrollMetrics {
   return {
     scrollTop: 0,
-    scrollHeight: 0,
     clientHeight: 0,
   };
 }
 
-function getScrollThumbStyle({
-  scrollTop,
-  scrollHeight,
-  clientHeight,
-}: SidebarChatThreadScrollMetrics): SidebarChatThreadScrollThumbStyle {
-  if (scrollHeight <= clientHeight) {
-    return { top: 0, height: 0, visible: false };
-  }
-  const ratio = clientHeight / scrollHeight;
-  const height = Math.max(ratio * clientHeight, 24);
-  const maxTop = clientHeight - height;
-  const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
-  return { top, height, visible: true };
-}
-
 function createSidebarChatThreadDomSignals() {
-  const internalScrollViewport$ = state<HTMLElement | null>(null);
+  const internalViewportRuntime$ = state<{
+    readonly element: HTMLElement;
+    readonly signal: AbortSignal;
+    resizeScheduled: boolean;
+  } | null>(null);
   const internalScrollMetrics$ =
     state<SidebarChatThreadScrollMetrics>(emptyScrollMetrics());
 
   const scrollViewport$ = computed((get) => {
-    return get(internalScrollViewport$);
+    return get(internalViewportRuntime$)?.element ?? null;
   });
   const scrollMetrics$ = computed((get) => {
     return get(internalScrollMetrics$);
@@ -97,30 +78,63 @@ function createSidebarChatThreadDomSignals() {
   const isScrolled$ = computed((get) => {
     return get(internalScrollMetrics$).scrollTop > 0;
   });
-  const thumbStyle$ = computed((get) => {
-    return getScrollThumbStyle(get(internalScrollMetrics$));
-  });
 
-  const bindScrollViewport$ = command(({ set }, viewport: HTMLElement) => {
-    set(internalScrollViewport$, viewport);
-    set(internalScrollMetrics$, {
-      scrollTop: viewport.scrollTop,
-      scrollHeight: viewport.scrollHeight,
-      clientHeight: viewport.clientHeight,
-    });
+  const measureScrollViewport$ = command(
+    ({ get, set }, viewport: HTMLElement) => {
+      const metrics = {
+        scrollTop: viewport.scrollTop,
+        clientHeight: viewport.clientHeight,
+      };
+      const previous = get(internalScrollMetrics$);
+      if (
+        previous.scrollTop === metrics.scrollTop &&
+        previous.clientHeight === metrics.clientHeight
+      ) {
+        return;
+      }
+      set(internalScrollMetrics$, metrics);
+    },
+  );
+  const refreshScrollViewport$ = command(({ get, set }) => {
+    const runtime = get(internalViewportRuntime$);
+    if (!runtime || runtime.resizeScheduled) {
+      return;
+    }
+    runtime.resizeScheduled = true;
+    // Layout refs and window resize events share one pending measurement.
+    // Read after the DOM commit, using the latest layout in this frame.
+    animationFrame(
+      () => {
+        runtime.resizeScheduled = false;
+        set(measureScrollViewport$, runtime.element);
+      },
+      { signal: runtime.signal },
+    );
   });
   const clearScrollViewport$ = command(
     ({ get, set }, viewport: HTMLElement) => {
-      if (get(internalScrollViewport$) !== viewport) {
+      if (get(internalViewportRuntime$)?.element !== viewport) {
         return;
       }
-      set(internalScrollViewport$, null);
+      set(internalViewportRuntime$, null);
       set(internalScrollMetrics$, emptyScrollMetrics());
     },
   );
   const setScrollViewport$ = onRef(
     command(({ set }, viewport: HTMLElement, signal: AbortSignal) => {
-      set(bindScrollViewport$, viewport);
+      set(internalViewportRuntime$, {
+        element: viewport,
+        signal,
+        resizeScheduled: false,
+      });
+      set(measureScrollViewport$, viewport);
+      window.addEventListener(
+        "resize",
+        () => {
+          set(refreshScrollViewport$);
+        },
+        { signal },
+      );
       signal.addEventListener(
         "abort",
         () => {
@@ -138,11 +152,11 @@ function createSidebarChatThreadDomSignals() {
 
   return {
     isScrolled$,
-    thumbStyle$,
     scrollViewport$,
     scrollMetrics$,
     setScrollViewport$,
     setScrollMetrics$,
+    refreshScrollViewport$,
   };
 }
 
@@ -277,7 +291,6 @@ function createScrollVirtualListToIndexCommand(
       scrollViewport.scrollTop = nextScrollTop;
       set(dom.setScrollMetrics$, {
         scrollTop: nextScrollTop,
-        scrollHeight: scrollViewport.scrollHeight,
         clientHeight: scrollViewport.clientHeight,
       });
       return true;
@@ -335,10 +348,10 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
 
   return {
     isScrolled$: dom.isScrolled$,
-    thumbStyle$: dom.thumbStyle$,
     window$: createSidebarChatThreadWindowSignal(dom),
     setScrollMetrics$: dom.setScrollMetrics$,
     setScrollViewport$: dom.setScrollViewport$,
+    refreshScrollViewport$: dom.refreshScrollViewport$,
     scrollToThread$,
     scrollCurrentChatThreadOnRef$,
   };
@@ -348,6 +361,27 @@ export const responsiveSidebarChatThreadScrollSignals =
   createSidebarChatThreadScrollSignals();
 export const threeColumnSidebarChatThreadScrollSignals =
   createSidebarChatThreadScrollSignals();
+
+const refreshSidebarChatThreadLayout$ = command(({ set }) => {
+  set(responsiveSidebarChatThreadScrollSignals.refreshScrollViewport$);
+  set(threeColumnSidebarChatThreadScrollSignals.refreshScrollViewport$);
+});
+
+// Pinned entries and upgrade cards consume space beside the chat viewport.
+// Their committed insertion/removal, including async data updates, determines
+// when the remaining height needs to be measured again.
+export const refreshSidebarChatThreadLayoutOnRef$ = onRef(
+  command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
+    set(refreshSidebarChatThreadLayout$);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(refreshSidebarChatThreadLayout$);
+      },
+      { once: true },
+    );
+  }),
+);
 
 export const scrollToThread$ = command(
   async (

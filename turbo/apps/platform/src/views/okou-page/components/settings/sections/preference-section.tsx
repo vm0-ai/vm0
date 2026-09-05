@@ -39,6 +39,7 @@ import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
 import { LanguageSettings } from "../language-settings.tsx";
 import { ColorThemeSettings } from "../color-theme-settings.tsx";
+import { PreferenceCardRow } from "../preference-card-row.tsx";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
@@ -63,26 +64,15 @@ function AppearanceBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <Palette size={22} className="text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.preferences.appearance.theme.title;
-              })}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t(($) => {
-                return $.settings.preferences.appearance.theme.description;
-              })}
-            </div>
-          </div>
-        </div>
+      <PreferenceCardRow
+        icon={Palette}
+        title={t(($) => {
+          return $.settings.preferences.appearance.theme.title;
+        })}
+        description={t(($) => {
+          return $.settings.preferences.appearance.theme.description;
+        })}
+      >
         <div className="flex flex-wrap gap-2 shrink-0">
           {THEME_OPTIONS.map(({ value, icon: Icon }) => {
             const isActive = current === value;
@@ -110,7 +100,7 @@ function AppearanceBlock() {
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isActive
                     ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
-                    : "zero-chip text-muted-foreground hover:text-foreground",
+                    : "okou-chip text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon size={15} />
@@ -119,7 +109,7 @@ function AppearanceBlock() {
             );
           })}
         </div>
-      </div>
+      </PreferenceCardRow>
     </div>
   );
 }
@@ -144,30 +134,21 @@ function EnterBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <Keyboard size={22} className="text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.preferences.send.title;
-              })}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {effective === "enter"
-                ? t(($) => {
-                    return $.settings.preferences.send.enterDescription;
-                  })
-                : t(($) => {
-                    return $.settings.preferences.send.cmdEnterDescription;
-                  })}
-            </div>
-          </div>
-        </div>
+      <PreferenceCardRow
+        icon={Keyboard}
+        title={t(($) => {
+          return $.settings.preferences.send.title;
+        })}
+        description={
+          effective === "enter"
+            ? t(($) => {
+                return $.settings.preferences.send.enterDescription;
+              })
+            : t(($) => {
+                return $.settings.preferences.send.cmdEnterDescription;
+              })
+        }
+      >
         <div className="flex flex-wrap gap-2 shrink-0">
           {SEND_OPTIONS.map((value) => {
             const isActive =
@@ -193,7 +174,7 @@ function EnterBlock() {
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isActive
                     ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
-                    : "zero-chip text-muted-foreground hover:text-foreground",
+                    : "okou-chip text-muted-foreground hover:text-foreground",
                   saving !== null && "opacity-60 cursor-not-allowed",
                 )}
               >
@@ -205,7 +186,7 @@ function EnterBlock() {
             );
           })}
         </div>
-      </div>
+      </PreferenceCardRow>
     </div>
   );
 }
@@ -229,26 +210,15 @@ function CloudBrowserBlock() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <Globe size={22} className="text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.preferences.chat.cloudBrowser.title;
-              })}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t(($) => {
-                return $.settings.preferences.chat.cloudBrowser.description;
-              })}
-            </div>
-          </div>
-        </div>
+      <PreferenceCardRow
+        icon={Globe}
+        title={t(($) => {
+          return $.settings.preferences.chat.cloudBrowser.title;
+        })}
+        description={t(($) => {
+          return $.settings.preferences.chat.cloudBrowser.description;
+        })}
+      >
         <Switch
           aria-label={t(($) => {
             return $.settings.preferences.chat.cloudBrowser.title;
@@ -257,7 +227,7 @@ function CloudBrowserBlock() {
           onCheckedChange={handleToggle}
           disabled={preferenceLoadable.state !== "hasData" || mutating}
         />
-      </div>
+      </PreferenceCardRow>
     </div>
   );
 }

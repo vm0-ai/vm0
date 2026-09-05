@@ -22,8 +22,9 @@ export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILES = 200;
 export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES = 25 * 1024 * 1024;
 export const PRESENTATION_TEMPLATE_URL_TTL_SECONDS = 15 * 60;
 
-/** A deck the user uploaded. Both are rendered to page images the same way. */
+/** An original deck the user uploaded alongside its rendered page images. */
 export const PRESENTATION_TEMPLATE_SOURCE_CONTENT_TYPES = [
+  "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/pdf",
 ] as const;

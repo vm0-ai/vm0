@@ -1,5 +1,4 @@
 import type {
-  DraftVoice,
   GenerationTemplateRequest,
   ImageAnnotation,
   PersistedAttachment,
@@ -17,7 +16,6 @@ interface DraftAttachmentSnapshot extends PersistedAttachment {
 
 export interface DraftPersistencePayload {
   readonly userMessage: UserMessageInputDocument | null;
-  readonly draftVoice: DraftVoice | null;
   readonly attachments: PersistedAttachment[] | null;
 }
 
@@ -50,7 +48,6 @@ export function buildDraftPersistencePayload(
     attachments !== null;
 
   let userMessage: UserMessageInputDocument | null = null;
-  let draftVoice: DraftVoice | null = null;
   if (source.editorDocument) {
     const serialized = source.editorDocument.toDraft({
       selectedTemplate: source.generationTemplate,
@@ -61,7 +58,6 @@ export function buildDraftPersistencePayload(
     }
     if (serialized) {
       userMessage = serialized.userMessage;
-      draftVoice = serialized.draftVoice;
     }
   } else if (hasFallbackUserMessageDraft) {
     userMessage = textToMessageDocument(
@@ -74,5 +70,5 @@ export function buildDraftPersistencePayload(
     }
   }
 
-  return { userMessage, draftVoice, attachments };
+  return { userMessage, attachments };
 }

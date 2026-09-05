@@ -182,7 +182,9 @@ function createTelemetryClientCache(): (token: string) => Axiom {
 
 const telemetryClient = createTelemetryClientCache();
 
-function outcomeForError(error: unknown): ClientTelemetryOutcome {
+export function clientTelemetryOutcomeForError(
+  error: unknown,
+): ClientTelemetryOutcome {
   return typeof error === "object" &&
     error !== null &&
     "name" in error &&
@@ -198,7 +200,7 @@ export function startClientTelemetryMeasurement(): ClientTelemetryMeasurement {
   };
 }
 
-function ingestClientTelemetry(
+export function recordClientTelemetry(
   measurement: ClientTelemetryMeasurement,
   operation: ClientTelemetryOperation,
   outcome: ClientTelemetryOutcome,
@@ -237,28 +239,18 @@ function ingestClientTelemetry(
   ]);
 }
 
-export function recordClientTelemetry(
-  measurement: ClientTelemetryMeasurement,
-  operation: ClientTelemetryOperation,
-  outcome: ClientTelemetryOutcome,
-): void {
-  ingestClientTelemetry(measurement, operation, outcome);
-}
-
 export async function observeClientOperation<TResult>(
   operation: ClientTelemetryOperation,
   execute: () => Promise<TResult>,
 ): Promise<TResult> {
   const measurement = startClientTelemetryMeasurement();
   const result = await onRejection(execute, (error) => {
-    recordClientTelemetry(measurement, operation, outcomeForError(error));
+    recordClientTelemetry(
+      measurement,
+      operation,
+      clientTelemetryOutcomeForError(error),
+    );
   });
   recordClientTelemetry(measurement, operation, "success");
   return result;
-}
-
-export function clientTelemetryOutcomeForError(
-  error: unknown,
-): ClientTelemetryOutcome {
-  return outcomeForError(error);
 }

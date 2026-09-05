@@ -1383,7 +1383,7 @@ export function FeishuCard() {
     <Link
       pathname={ROUTES.settingsFeishu}
       data-testid="feishu-setup-button"
-      className="zero-card block transition-colors hover:bg-state-hover"
+      className="okou-card block transition-colors hover:bg-state-hover"
     >
       <div className="flex items-center gap-4 p-4">
         <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
@@ -1755,7 +1755,7 @@ function FeishuBotsCard({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="zero-card overflow-hidden">
+    <section className="okou-card overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
         <h2 className="text-sm font-medium text-foreground">
           {t(($) => {
@@ -1790,7 +1790,7 @@ function FeishuSetupFaq() {
   const { t } = useTranslation();
   return (
     <section
-      className="zero-card overflow-hidden"
+      className="okou-card overflow-hidden"
       aria-labelledby="feishu-setup-faq-title"
     >
       <div className="border-b border-border/50 px-4 py-3">
@@ -1852,7 +1852,7 @@ function FeishuSetupFaq() {
 function FeishuSettingsSkeleton() {
   return (
     <section
-      className="zero-card overflow-hidden"
+      className="okou-card overflow-hidden"
       data-testid="feishu-settings-loading"
     >
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
@@ -2232,10 +2232,10 @@ export function FeishuSettingsPage() {
           </div>
         </div>
       </header>
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
+      <main className="flex-1 overflow-auto px-4 pb-[max(2rem,var(--sab))] pt-3 sm:px-6">
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
           {hasError ? (
-            <div className="zero-card px-6 py-10 text-center text-sm text-destructive">
+            <div className="okou-card px-6 py-10 text-center text-sm text-destructive">
               {t(($) => {
                 return $.connectors.providerSettings.feishu.loadError;
               })}

@@ -629,7 +629,6 @@
       "renameImportedTemplate": "Rename template",
       "searchConnector": "Search templates",
       "searchConnectors": "Search templates",
-      "selected": "Template: {{title}}",
       "selectStyle": "Select style {{style}}",
       "selectTemplate": "Select template {{title}}",
       "selectVideo": "Select video template {{title}}",
@@ -1360,38 +1359,22 @@
     },
     "plans": {
       "cancellationNotice": "Your {{plan}} plan has been cancelled and will end on {{date}}.",
-      "changeAnytime": "Upgrade or downgrade anytime.",
       "compare": "Compare plans",
       "compareAll": "Compare all plans",
-      "currentPlan": "Current plan",
       "custom": {
         "name": "Custom"
       },
       "customAccess": "Custom access with {{value}} concurrent runs",
       "customCancellationNotice": "Your custom plan will end on {{date}}.",
-      "customCheckoutUnavailable": "Custom workspaces cannot switch to Pro or Team checkout.",
       "downgrade": "Downgrade",
       "downgradeNotice": "Your {{currentPlan}} plan will downgrade to {{targetPlan}} on {{date}}.",
       "downgradesOn": "Downgrades to {{plan}} on {{date}}",
       "downgradeTo": "Downgrade to {{plan}}",
       "endsOn": "Ends on {{date}}",
       "features": {
-        "byok": "Bring your own LLM keys",
-        "communitySupport": "Community support",
-        "emailSupport": "Email support",
-        "existingCredits": "Existing free credits only",
-        "oneConcurrentRun": "1 concurrent run",
-        "prioritySupport": "Priority support",
-        "sharedAndPrivateAgents": "7 shared agents, unlimited private",
-        "tenConcurrentRuns": "10 concurrent runs",
-        "twoConcurrentRuns": "2 concurrent runs",
-        "unlimitedAgents": "Unlimited total agents",
-        "voiceInputFree": "Voice input (10 lifetime requests · 10 min/day per member)",
-        "voiceInputPro": "Voice input (300 requests/day · 200 min/day per member)",
-        "voiceInputTeam": "Voice input (500 requests/day · 500 min/day per member)"
+        "byok": "Bring your own LLM keys"
       },
       "free": {
-        "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
       "highlights": {
@@ -1418,7 +1401,6 @@
         "name": "Limited free"
       },
       "loadError": "Could not load billing status.",
-      "manageSubscription": "Manage subscription",
       "namedPlan": "{{plan}} plan",
       "noActivePlan": "No active plan",
       "noActiveSubscription": "No active subscription",
@@ -1426,11 +1408,9 @@
         "name": "No plan"
       },
       "perMonth": "/month",
-      "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
         "description": "Everyday agent work, priced per member.",
-        "legacyDescription": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -1439,7 +1419,6 @@
       "selectedPlan": "the selected plan",
       "team": {
         "description": "For a team that keeps agents running all day.",
-        "legacyDescription": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
@@ -1542,13 +1521,11 @@
       "subscriptionChangeConfirmed": "Subscription change confirmed."
     },
     "usage": {
-      "added": "Added {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} left",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} credits",
         "remainingAria": "Usage allowance {{label}} remaining",
         "resets": "Resets {{date}}",
         "resetsRaw": "Resets {{value}}",
@@ -1569,15 +1546,12 @@
         "teamPlan": "Team plan"
       },
       "creditAdditions": "Credit additions",
-      "creditsRemaining_one": "{{value}} credit remaining",
-      "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
       "grantsTable": {
         "credits": "Credits",
         "date": "Date",
         "left": "Left"
       },
-      "left": "{{value}} left",
       "member": "Member",
       "neverExpires": "Never expires",
       "orgCredits": "Org credits",
@@ -1866,7 +1840,6 @@
       "threadSuggestions": "Chat threads",
       "useForFutureChats": "Use this for future chats",
       "videoModelForThisChat": "Video model for this chat",
-      "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
         "empty": "No matching workflows",
         "loading": "Loading workflows...",
@@ -2397,10 +2370,6 @@
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "confirmRecording": "OK",
-      "draft": "Voice draft",
-      "draftTooLong": "This voice draft is too long to finish. Start a new recording.",
-      "finishDraft": "Finish",
-      "finishingDraft": "Finishing...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
       "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
@@ -2409,7 +2378,6 @@
       "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
-      "removeDraft": "Remove voice draft",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
       "transcribing": "Transcribing",
@@ -2760,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "More options",
-      "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
-        "disconnected": "Disconnected",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2806,7 +2772,6 @@
       "always": "Always",
       "clearSearch": "Clear permission search",
       "descriptionAgent": "Configure which actions this agent is allowed to perform via this connector.",
-      "descriptionWorkflow": "Configure which actions this workflow is allowed to perform via this connector.",
       "find": "Find permissions",
       "findPlaceholder": "Find permissions...",
       "forTarget": "for {{target}}",
@@ -3270,15 +3235,13 @@
       "redirectTitle": "Redirecting to {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connected",
-      "disconnected": "{{connector}} disconnected"
+      "connected": "{{connector}} connected"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Request failed",
-      "sharedDatabaseUnavailable": "The app ran into a problem. Please wait a moment, then refresh the page to try again."
+      "requestFailed": "Request failed"
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page.",

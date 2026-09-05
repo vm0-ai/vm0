@@ -1160,7 +1160,7 @@ export class SharedDatabaseWorkerRuntime {
     let entry = this.databaseEntry;
     if (!entry) {
       const opener = createChatIdbOpener({
-        reload: () => {
+        onVersionChange: () => {
           if (this.databaseEntry) {
             this.databaseEntry.invalidated = true;
           }

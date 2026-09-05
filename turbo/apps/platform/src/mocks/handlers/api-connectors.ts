@@ -688,34 +688,6 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ body, respond }) => {
-      if (body.target.kind === "custom") {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      }
-
-      const connectorSlug = body.target.connectorSlug;
-      const existing = mockConnectors.find((c) => {
-        return c.slug === connectorSlug;
-      });
-
-      if (!existing) {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      }
-
-      mockConnectors = mockConnectors.filter((c) => {
-        return c.slug !== connectorSlug;
-      });
-      mockConnectorRequestedScopes.delete(existing.id);
-      return respond(204);
-    },
-  ),
-
   mockApi(connectorManualGrantContract.connect, ({ body, params, respond }) => {
     const connector = createMockLocalGrantConnector(
       params.connectorSlug,

@@ -292,6 +292,7 @@ interface CodexDeviceAuthProviderRecorder {
   readonly userCode: unknown[];
   readonly deviceToken: unknown[];
   readonly oauthToken: URLSearchParams[];
+  readonly oauthTokenResponses: ReturnType<typeof makeCodexTokenResponse>[];
 }
 
 export function mockCodexDeviceAuthProvider(
@@ -308,6 +309,7 @@ export function mockCodexDeviceAuthProvider(
     userCode: [],
     deviceToken: [],
     oauthToken: [],
+    oauthTokenResponses: [],
   };
 
   server.use(
@@ -341,8 +343,9 @@ export function mockCodexDeviceAuthProvider(
         ? new URLSearchParams(JSON.parse(rawBody) as Record<string, string>)
         : new URLSearchParams(rawBody);
       recorded.oauthToken.push(body);
-      return HttpResponse.json(
-        makeCodexTokenResponse(options.tokenScope ?? "org", {
+      const tokenResponse = makeCodexTokenResponse(
+        options.tokenScope ?? "org",
+        {
           ...options,
           ...(body.get("grant_type") === "refresh_token" &&
           options.refreshedAccessTokenExpiresAt !== undefined
@@ -350,8 +353,10 @@ export function mockCodexDeviceAuthProvider(
                 accessTokenExpiresAt: options.refreshedAccessTokenExpiresAt,
               }
             : {}),
-        }),
+        },
       );
+      recorded.oauthTokenResponses.push(tokenResponse);
+      return HttpResponse.json(tokenResponse);
     }),
   );
 

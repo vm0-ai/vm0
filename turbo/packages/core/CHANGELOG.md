@@ -1,5 +1,68 @@
 # Changelog
 
+## [8.624.0](https://github.com/vm0-ai/vm0/compare/core-v8.623.2...core-v8.624.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Bug Fixes
+
+* **api:** reuse sessions by runtime and model family ([#31796](https://github.com/vm0-ai/vm0/issues/31796)) ([6fd1c6f](https://github.com/vm0-ai/vm0/commit/6fd1c6ff18aa9bbeaf7d55c833bb1336d193be7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+
+## [8.623.2](https://github.com/vm0-ai/vm0/compare/core-v8.623.1...core-v8.623.2) (2026-09-05)
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+* **platform:** roll out base ui sidebar scroll area ([#31822](https://github.com/vm0-ai/vm0/issues/31822)) ([eae726c](https://github.com/vm0-ai/vm0/commit/eae726c7761929845a30c58286dd8a28af3f0622))
+* **platform:** roll out markdown hex color previews ([#31826](https://github.com/vm0-ai/vm0/issues/31826)) ([82f7578](https://github.com/vm0-ai/vm0/commit/82f7578886827deb17f678c0e90c7d7d977ebee2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+
+## [8.623.1](https://github.com/vm0-ai/vm0/compare/core-v8.623.0...core-v8.623.1) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.1
+
+## [8.623.0](https://github.com/vm0-ai/vm0/compare/core-v8.622.0...core-v8.623.0) (2026-09-05)
+
+
+### Features
+
+* **platform:** give composer avatars a neck and sweater ([#31740](https://github.com/vm0-ai/vm0/issues/31740)) ([26067de](https://github.com/vm0-ai/vm0/commit/26067de1c1cf4378675cb31b5c30b6fae7efb5df))
+
+
+### Refactoring
+
+* **eslint:** rename the internal lint plugin namespace to okou ([#31806](https://github.com/vm0-ai/vm0/issues/31806)) ([314590e](https://github.com/vm0-ai/vm0/commit/314590ea8d2671714555db2a4cfeb035994eb779)), closes [#31799](https://github.com/vm0-ai/vm0/issues/31799)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.0
+
 ## [8.622.0](https://github.com/vm0-ai/vm0/compare/core-v8.621.2...core-v8.622.0) (2026-09-04)
 
 

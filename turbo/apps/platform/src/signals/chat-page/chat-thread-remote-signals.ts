@@ -7,7 +7,6 @@ import {
   chatThreadImageModelContract,
   chatThreadModelSelectionContract,
   chatThreadVideoModelContract,
-  type DraftVoice,
   type PersistedAttachment,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -25,7 +24,6 @@ import {
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
-import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
 interface ChatThreadRealtimeHandlers {
@@ -51,7 +49,6 @@ interface ChatThreadRealtimeHandlers {
 interface PatchDraftArgs {
   readonly threadId: string;
   readonly userMessage: UserMessageInputDocument | null;
-  readonly draftVoice: DraftVoice | null;
   readonly attachments: PersistedAttachment[] | null;
 }
 
@@ -89,7 +86,7 @@ type ChatRealtimeSubscription = {
 export const patchChatThreadDraft$ = command(
   async (
     { get, set },
-    { threadId, userMessage, draftVoice, attachments }: PatchDraftArgs,
+    { threadId, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(apiClient$)(chatThreadByIdContract);
@@ -98,7 +95,6 @@ export const patchChatThreadDraft$ = command(
         params: { id: threadId },
         body: {
           draftUserMessage: userMessage,
-          ...(draftVoice ? { draftVoice } : {}),
           draftAttachments: attachments,
         },
         fetchOptions: { signal },
@@ -126,30 +122,18 @@ export const patchChatThreadModelSelection$ = command(
         kind: "model_selection_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
         selectedModel: modelSelection?.selectedModel ?? null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
         createdAt,
-      } satisfies OptimisticChatThreadEvent);
+      });
       set(registerOptimisticChatThreadEvent$, {
         id: serviceTierEventId,
         kind: "service_tier_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
         serviceTier:
           modelSelection?.codexServiceTier === "fast" ? "priority" : null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
         createdAt,
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
 
     const client = get(apiClient$)(chatThreadModelSelectionContract);
@@ -187,15 +171,9 @@ export const patchChatThreadComputerUseHost$ = command(
         kind: "computer_use_host_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
         computerUseHostId,
         cloudBrowserEnabled,
-        selectedVideoModel: null,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadComputerUseHostContract);
     await accept(
@@ -223,15 +201,8 @@ export const patchChatThreadVideoModel$ = command(
         kind: "video_model_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
         selectedVideoModel: videoModel,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadVideoModelContract);
     await accept(
@@ -259,15 +230,8 @@ export const patchChatThreadImageModel$ = command(
         kind: "image_model_updated",
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
         selectedImageModel: imageModel,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadImageModelContract);
     await accept(

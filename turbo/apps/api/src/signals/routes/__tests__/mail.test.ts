@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -405,9 +404,7 @@ async function addGmailAccount(
     readonly subject: string;
   },
 ): Promise<string> {
-  await connectors.updateFeatureSwitches(fixture.actor, {
-    [FeatureSwitchKey.ConnectorAccounts]: true,
-  });
+  await connectors.updateFeatureSwitches(fixture.actor, {});
   mockGmailConnectorOAuth(args);
   const start = await connectors.startOauth(
     fixture.actor,
@@ -534,9 +531,7 @@ describe("POST /api/mail/drafts/link", () => {
   it("uses a healthy Gmail connection with unknown historical grants", async () => {
     const fixture = await seedGmailMailCardFixture();
     await setGmailOAuthScopeFacts(fixture, null);
-    await connectors.updateFeatureSwitches(fixture.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(fixture.actor, {});
     const gmail = mockGmailDraftApi();
 
     await expect(

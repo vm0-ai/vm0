@@ -43,7 +43,7 @@ const createAgentRunFixture$ = command(
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     const body = await timing.measure(
-      "api_dispatch_pre_create_zero_parse_body",
+      "api_dispatch_pre_create_agent_parse_body",
       "nested",
       async () => {
         return await get(agentRunFixtureBody$);
@@ -55,7 +55,7 @@ const createAgentRunFixture$ = command(
     }
 
     const args = await timing.measure(
-      "api_dispatch_pre_create_zero_prepare_args",
+      "api_dispatch_pre_create_agent_prepare_args",
       "nested",
       () => {
         const auth = get(organizationAuthContext$);
@@ -75,7 +75,7 @@ const createAgentRunFixture$ = command(
 );
 
 /**
- * Test-only Zero run creation adapter. This route is intentionally omitted
+ * Test-only agent run creation adapter. This route is intentionally omitted
  * from every production and E2E route registry.
  */
 export const runFixtureRoutes: readonly RouteEntry[] = [

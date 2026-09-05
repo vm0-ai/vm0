@@ -104,7 +104,7 @@ function textNodeContaining(
       node instanceof Text &&
       node.data.includes(text) &&
       node.parentElement?.closest(
-        ".zero-chat-bubble-assistant, [data-feedback-source]",
+        ".okou-chat-bubble-assistant, [data-feedback-source]",
       )
     ) {
       matches.push(node);

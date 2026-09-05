@@ -19,7 +19,6 @@ import {
   redactSharedDatabaseClientMessageForLog,
   serializeSharedDatabaseError,
   sharedDatabaseClientMessageSchema,
-  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseClientMessage,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
@@ -34,7 +33,6 @@ type RequestMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "get-computed" | "query" }
 >;
-type RoutedMessage = RequestMessage;
 type TokenResponseMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "token-error" | "token-result" }
@@ -47,13 +45,6 @@ interface PendingTokenRequest {
 
 const L = logger("SharedDatabaseWorker");
 const BridgeL = logger("SharedWorkerBridge");
-
-class SharedDatabaseClientNotConnectedError extends Error {
-  constructor() {
-    super("Shared database tab registration is required before query");
-    this.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
-  }
-}
 
 export class SharedDatabaseMessagePortServer {
   private readonly connectionId = crypto.randomUUID();
@@ -145,11 +136,13 @@ export class SharedDatabaseMessagePortServer {
   }
 
   private routeStoreMessage(
-    message: RoutedMessage,
+    message: RequestMessage,
     signal: AbortSignal,
   ): Promise<unknown> | unknown {
     if (this.registeredSignal !== signal) {
-      throw new SharedDatabaseClientNotConnectedError();
+      throw new Error(
+        "Shared database tab registration is required before query",
+      );
     }
     switch (message.type) {
       case "query": {
@@ -197,7 +190,9 @@ export class SharedDatabaseMessagePortServer {
   ) => {
     const registeredSignal = this.registeredSignal;
     if (!registeredSignal) {
-      throw new SharedDatabaseClientNotConnectedError();
+      throw new Error(
+        "Shared database tab registration is required before query",
+      );
     }
     const signal = AbortSignal.any([callerSignal, registeredSignal]);
     signal.throwIfAborted();
@@ -300,7 +295,9 @@ export class SharedDatabaseMessagePortServer {
       if (!registeredSignal) {
         if ("requestId" in message) {
           await this.startRequest(message, this.connectionSignal, () => {
-            throw new SharedDatabaseClientNotConnectedError();
+            throw new Error(
+              "Shared database tab registration is required before query",
+            );
           });
         }
         return;

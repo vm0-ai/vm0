@@ -9,7 +9,7 @@ import { logger } from "../../signals/log.ts";
 import { throwIfAbort } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 
-const log = logger("zero-attachment-url");
+const log = logger("okou-attachment-url");
 
 const LEGACY_FILE_PATH_PATTERN = /^\/f\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/([^/]+)\/([^/]+)\/([^/]+)$/;
@@ -245,9 +245,9 @@ async function fetchBlobForDownload(
 
 export async function downloadAttachmentUrl(
   url: string,
-  signal: AbortSignal = AbortSignal.any([]),
-  filename = attachmentFilenameFromUrl(url),
-  mode: "blob" | "native" = "blob",
+  signal: AbortSignal,
+  filename: string,
+  mode: "blob" | "native",
 ): Promise<void> {
   if (mode === "native") {
     signal.throwIfAborted();

@@ -49,7 +49,6 @@ const SUPPORT_ID = "c0000000-0000-4000-a000-000000000052";
 
 function setupCustomPage(
   options: {
-    readonly accounts?: boolean;
     readonly mcp?: boolean;
   } = {},
 ): Promise<void> {
@@ -58,7 +57,6 @@ function setupCustomPage(
     context,
     path: "/connectors?tab=custom",
     featureSwitches: {
-      [FeatureSwitchKey.ConnectorAccounts]: options.accounts ?? false,
       [FeatureSwitchKey.CustomConnectorMcp]: options.mcp ?? false,
     },
   });
@@ -102,6 +100,32 @@ function customAccount(
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function mockCustomAccountSummary(
+  readConnector: () => CustomConnectorResponse | null,
+): void {
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    const connector = readConnector();
+    if (!connector?.connected) {
+      return respond(200, { summaries: [] });
+    }
+    const account = customAccount(
+      connector.id,
+      "66666666-6666-4666-8666-666666666666",
+      { authMethod: connector.authMode === "manual" ? "manual" : "oauth" },
+    );
+    return respond(200, {
+      summaries: [
+        {
+          target: account.target,
+          accountCount: 1,
+          attentionCount: 0,
+          defaultConnection: account,
+        },
+      ],
+    });
+  });
 }
 
 function accountAction(container: ParentNode): HTMLElement {
@@ -221,7 +245,7 @@ test("Add and optionally name a custom connector account", async () => {
     grantMutations += 1;
     return respond(200, { grants: [] });
   });
-  await setupCustomPage({ accounts: true, mcp: true });
+  await setupCustomPage({ mcp: true });
 
   for (const name of ["Acme Search", "Acme MCP"]) {
     click(
@@ -296,7 +320,7 @@ test("Enable custom connector access when an account becomes available", async (
       });
     },
   );
-  await setupCustomPage({ accounts: true });
+  await setupCustomPage();
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Manage Acme Search access");
@@ -389,6 +413,9 @@ test("Manage agent access and permissions for a custom connector", async () => {
       return respond(200, grants);
     },
   );
+  mockCustomAccountSummary(() => {
+    return connector;
+  });
   await setupCustomPage();
   click(
     await waitFor(() => {
@@ -547,7 +574,7 @@ test("Complete a custom connector’s declared fields", async () => {
   expect(within(dialog).getByLabelText("Backup token")).toHaveValue("");
   expect(
     within(dialog).getByLabelText("Backup token"),
-  ).toHaveAccessibleDescription("Optional · Configured");
+  ).toHaveAccessibleDescription("Optional");
   const save = getConnectorAction("button", "Save", dialog);
   expect(save).toBeDisabled();
 
@@ -575,9 +602,6 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
   await setupPage({
     context,
     path: "/connectors",
-    featureSwitches: {
-      [FeatureSwitchKey.ConnectorAccounts]: false,
-    },
   });
   click(
     await waitFor(() => {
@@ -614,7 +638,7 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
   });
   expect(card).toHaveTextContent("HTTP API");
   expect(card).toHaveTextContent("https://api.acme.test/v1/");
-  expect(card).toHaveTextContent("Not connected");
+  expect(card).toHaveTextContent("No accounts");
 
   click(getConnectorAction("button", "Connect Acme API", card));
   const connect = await screen.findByRole("dialog", {
@@ -622,15 +646,19 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
   });
   await fill(within(connect).getByLabelText("Secret"), "acme-secret");
   click(getConnectorAction("button", "Save", connect));
+  const naming = await screen.findByRole("dialog", {
+    name: "Name your Acme API account",
+  });
+  click(getConnectorAction("button", "Skip", naming));
   await waitFor(() => {
-    expect(getConnectorCard("Acme API")).toHaveTextContent("Connected");
+    expect(getConnectorCard("Acme API")).toHaveTextContent("Unnamed account");
     expect(
       getConnectorAction(
         "button",
         "Manage Acme API access",
         getConnectorCard("Acme API"),
       ),
-    ).toHaveTextContent("Used by 2 agents");
+    ).toHaveTextContent("Add access");
   });
 
   click(
@@ -651,33 +679,12 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
   await expect(
     screen.findByText("Acme Billing API"),
   ).resolves.toBeInTheDocument();
-  expect(getConnectorCard("Acme Billing API")).toHaveTextContent("Connected");
+  expect(getConnectorCard("Acme Billing API")).toHaveTextContent(
+    "Unnamed account",
+  );
   expect(getConnectorCard("Acme Billing API")).toHaveTextContent(
     "https://api.acme.test/v1/",
   );
-
-  click(
-    await waitFor(() => {
-      return getConnectorAction("button", "More options");
-    }),
-  );
-  click(
-    await waitFor(() => {
-      return getConnectorAction("menuitem", "Disconnect");
-    }),
-  );
-  await waitFor(() => {
-    expect(
-      getConnectorAction("button", "Connect Acme Billing API"),
-    ).toBeInTheDocument();
-  });
-  expect(
-    queryConnectorAction(
-      "button",
-      "Manage Acme Billing API access",
-      getConnectorCard("Acme Billing API"),
-    ),
-  ).toBeNull();
 
   click(
     await waitFor(() => {
@@ -751,7 +758,7 @@ test("Configure and maintain OAuth for a custom HTTP connector", async () => {
   context.mocks.api(
     customConnectorOAuth2Contract.start,
     ({ body, respond }) => {
-      expect(body.account).toStrictEqual({ intent: "single-account" });
+      expect(body.account).toStrictEqual({ intent: "add" });
       if (!connector) {
         throw new Error("Expected OAuth connector");
       }
@@ -763,6 +770,9 @@ test("Configure and maintain OAuth for a custom HTTP connector", async () => {
       });
     },
   );
+  mockCustomAccountSummary(() => {
+    return connector;
+  });
   await setupCustomPage();
   click(
     await waitFor(() => {
@@ -832,7 +842,7 @@ test("Configure and maintain OAuth for a custom HTTP connector", async () => {
   const card = await waitFor(() => {
     return getConnectorCard("Acme API");
   });
-  expect(card).toHaveTextContent("Not connected");
+  expect(card).toHaveTextContent("No accounts");
   expect(created[0]).toMatchObject({
     authMode: "oauth",
     prefixTemplates: ["https://api.acme.test/v1/"],
@@ -896,14 +906,14 @@ test("Configure and maintain OAuth for a custom HTTP connector", async () => {
     expect(authWindow.location.href).toBe(
       "https://oauth.acme.test/authorize?state=ui-test",
     );
-    expect(getConnectorCard("Acme API")).toHaveTextContent("Connected");
+    expect(getConnectorCard("Acme API")).toHaveTextContent("Unnamed account");
     expect(
       getConnectorAction(
         "button",
         "Manage Acme API access",
         getConnectorCard("Acme API"),
       ),
-    ).toHaveTextContent("Used by Research");
+    ).toHaveTextContent("Add access");
   });
 });
 
@@ -985,16 +995,9 @@ test("Manage a manual MCP connector through its lifecycle", async () => {
     };
     return respond(200, connector);
   });
-  context.mocks.api(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ respond }) => {
-      if (!connector) {
-        throw new Error("Expected MCP connector");
-      }
-      connector = { ...connector, connected: false };
-      return respond(204);
-    },
-  );
+  mockCustomAccountSummary(() => {
+    return connector;
+  });
   await setupCustomPage({ mcp: true });
   click(
     await waitFor(() => {
@@ -1025,7 +1028,7 @@ test("Manage a manual MCP connector through its lifecycle", async () => {
   });
   expect(card).toHaveTextContent("MCP");
   expect(card).toHaveTextContent("https://mcp.acme.test/server");
-  expect(card).toHaveTextContent("Not connected");
+  expect(card).toHaveTextContent("No accounts");
 
   click(getConnectorAction("button", "Connect Acme MCP", card));
   const connect = await screen.findByRole("dialog", {
@@ -1034,7 +1037,7 @@ test("Manage a manual MCP connector through its lifecycle", async () => {
   await fill(within(connect).getByLabelText("Secret"), "mcp-secret");
   click(getConnectorAction("button", "Save", connect));
   await waitFor(() => {
-    expect(getConnectorCard("Acme MCP")).toHaveTextContent("Connected");
+    expect(getConnectorCard("Acme MCP")).toHaveTextContent("Unnamed account");
     expect(
       getConnectorAction(
         "button",
@@ -1103,22 +1106,6 @@ test("Manage a manual MCP connector through its lifecycle", async () => {
     ],
     queryInjections: [],
   });
-
-  click(
-    await waitFor(() => {
-      return getConnectorAction("button", "More options");
-    }),
-  );
-  click(
-    await waitFor(() => {
-      return getConnectorAction("menuitem", "Disconnect");
-    }),
-  );
-  await waitFor(() => {
-    return expect(
-      getConnectorAction("button", "Connect Acme MCP v2"),
-    ).toBeInTheDocument();
-  });
 });
 
 test("Create and connect an MCP server with automatic authentication", async () => {
@@ -1152,7 +1139,7 @@ test("Create and connect an MCP server with automatic authentication", async () 
   context.mocks.api(
     customConnectorOAuth2Contract.start,
     ({ body, respond }) => {
-      expect(body.account).toStrictEqual({ intent: "single-account" });
+      expect(body.account).toStrictEqual({ intent: "add" });
       if (!connector) {
         throw new Error("Expected automatic MCP connector");
       }
@@ -1169,6 +1156,9 @@ test("Create and connect an MCP server with automatic authentication", async () 
     },
   );
 
+  mockCustomAccountSummary(() => {
+    return connector;
+  });
   await setupCustomPage({ mcp: true });
   click(
     await waitFor(() => {
@@ -1205,12 +1195,14 @@ test("Create and connect an MCP server with automatic authentication", async () 
     headerInjections: [],
     queryInjections: [],
   });
-  expect(card).toHaveTextContent("Not connected");
+  expect(card).toHaveTextContent("No accounts");
 
   click(getConnectorAction("button", "Connect Discovery MCP", card));
 
   await waitFor(() => {
-    expect(getConnectorCard("Discovery MCP")).toHaveTextContent("Connected");
+    expect(getConnectorCard("Discovery MCP")).toHaveTextContent(
+      "Unnamed account",
+    );
     expect(authWindow.closed).toBeTruthy();
   });
 });
@@ -1308,7 +1300,7 @@ test("Create, edit, and connect an OAuth MCP connector", async () => {
     return getConnectorCard("OAuth MCP");
   });
   expect(createdCard).toHaveTextContent("MCP");
-  expect(createdCard).toHaveTextContent("Not connected");
+  expect(createdCard).toHaveTextContent("No accounts");
   expect(created[0]).toMatchObject({
     kind: "mcp",
     endpoint: "https://mcp.acme.test/oauth",
@@ -1428,7 +1420,7 @@ test("Add and optionally name a custom OAuth account", async () => {
     grantMutations += 1;
     return respond(200, { grants: [] });
   });
-  await setupCustomPage({ accounts: true });
+  await setupCustomPage();
 
   click(
     await waitFor(() => {
@@ -1635,11 +1627,14 @@ test("Manage a custom connector before it is connected", async () => {
     return getConnectorCard("Acme Search");
   });
   expect(card).toHaveTextContent("HTTP API");
-  expect(card).toHaveTextContent("Not connected");
+  expect(card).toHaveTextContent("No accounts");
   expect(card).toHaveTextContent("https://api.acme.test/v1/");
   expect(
     queryConnectorAction("button", "Manage Acme Search access", card),
   ).toBeNull();
+  expect(
+    getConnectorAction("button", "Connect Acme Search", card),
+  ).toBeInTheDocument();
 
   click(
     await waitFor(() => {
@@ -1647,11 +1642,7 @@ test("Manage a custom connector before it is connected", async () => {
     }),
   );
 
-  await expect(
-    waitFor(() => {
-      return getConnectorAction("menuitem", "Connect");
-    }),
-  ).resolves.toBeInTheDocument();
+  expect(queryConnectorAction("menuitem", "Connect")).toBeNull();
   expect(getConnectorAction("menuitem", "Edit")).toBeInTheDocument();
   expect(getConnectorAction("menuitem", "Delete")).toBeInTheDocument();
 });
@@ -1679,7 +1670,7 @@ test("Restrict MCP account actions when MCP is unavailable", async () => {
   context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
     return respond(200, { connections: [account], nextCursor: null });
   });
-  await setupCustomPage({ accounts: true, mcp: false });
+  await setupCustomPage();
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Manage Acme MCP accounts");
@@ -1699,7 +1690,7 @@ test("Restrict MCP account actions when MCP is unavailable", async () => {
 });
 
 test("Allow safe MCP reductions when new MCP actions are unavailable", async () => {
-  let connector = mcpCustomConnector();
+  const connector = mcpCustomConnector();
   const grants = new Map<string, AgentCustomConnectorGrant[]>([
     [RESEARCH_ID, [{ customConnectorId: connector.id, permissionNames: [] }]],
     [SUPPORT_ID, []],
@@ -1735,17 +1726,9 @@ test("Allow safe MCP reductions when new MCP actions are unavailable", async () 
       return respond(200, { grants: next });
     },
   );
-  context.mocks.api(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ body, respond }) => {
-      expect(body.target).toStrictEqual({
-        kind: "custom",
-        customConnectorId: connector.id,
-      });
-      connector = { ...connector, connected: false };
-      return respond(204);
-    },
-  );
+  mockCustomAccountSummary(() => {
+    return connector;
+  });
   await setupCustomPage({ mcp: false });
   click(
     await waitFor(() => {
@@ -1764,7 +1747,7 @@ test("Allow safe MCP reductions when new MCP actions are unavailable", async () 
   });
   expect(card).toHaveTextContent("MCP");
   expect(card).toHaveTextContent("https://mcp.acme.test/server");
-  expect(card).toHaveTextContent("Connected");
+  expect(card).toHaveTextContent("Unnamed account");
   expect(
     getConnectorAction("button", "Manage Acme MCP access", card),
   ).toHaveTextContent("Used by Research");
@@ -1792,20 +1775,6 @@ test("Allow safe MCP reductions when new MCP actions are unavailable", async () 
     return expect(access).not.toBeInTheDocument();
   });
 
-  click(
-    await waitFor(() => {
-      return getConnectorAction("button", "More options");
-    }),
-  );
-  click(
-    await waitFor(() => {
-      return getConnectorAction("menuitem", "Disconnect");
-    }),
-  );
-  await waitFor(() => {
-    expect(getConnectorCard("Acme MCP")).toHaveTextContent("Not connected");
-  });
-  expect(queryConnectorAction("button", "Connect Acme MCP")).toBeNull();
   click(
     await waitFor(() => {
       return getConnectorAction("button", "More options");
@@ -1861,7 +1830,7 @@ test("Validate new and reconnecting custom accounts appropriately", async () => 
     submitted = body.account;
     return respond(200, { ...connector, connectedAccountId: existing.id });
   });
-  await setupCustomPage({ accounts: true });
+  await setupCustomPage();
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Manage Acme Search accounts");
@@ -1974,6 +1943,9 @@ test("Preserve custom connector grants when credentials are added", async () => 
       missingRequiredFields: [],
     });
   });
+  mockCustomAccountSummary(() => {
+    return connected ? { ...connector, connected: true } : null;
+  });
   await setupCustomPage();
   click(
     await waitFor(() => {
@@ -1988,7 +1960,9 @@ test("Preserve custom connector grants when credentials are added", async () => 
   click(getConnectorAction("button", "Save", dialog));
 
   await waitFor(() => {
-    expect(getConnectorCard("Acme Search")).toHaveTextContent("Connected");
+    expect(getConnectorCard("Acme Search")).toHaveTextContent(
+      "Unnamed account",
+    );
     expect(
       getConnectorAction(
         "button",

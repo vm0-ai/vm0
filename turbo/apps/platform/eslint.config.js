@@ -49,7 +49,7 @@ export default [
     ...pluginReact.configs.flat.recommended,
     settings: {
       react: { version: "detect" },
-      "vm0/eslint-cache-fingerprint": eslintCacheFingerprint,
+      "okou/eslint-cache-fingerprint": eslintCacheFingerprint,
     },
   },
   {
@@ -134,7 +134,7 @@ export default [
       "src/signals/fetch.ts",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": "error",
+      "okou/no-abort-signal-in-object-params": "error",
     },
   },
   {
@@ -285,7 +285,6 @@ export default [
       "src/signals/__tests__/test-helpers.ts",
       "src/signals/__tests__/utils.test.ts",
       "src/signals/__tests__/realtime.test.ts",
-      "src/signals/zero-page/__tests__/poll-slack-connection.test.ts",
     ],
     rules: {
       "ccstate/no-new-abort-controller": "off",

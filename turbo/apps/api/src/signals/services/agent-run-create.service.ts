@@ -41,7 +41,7 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   hasAuthMethods,
   isBuiltInModelProviderType,
   isSupportedRunModel,
@@ -339,11 +339,14 @@ import {
   type RunMetadataValues,
 } from "./agent-run-metadata-write.service";
 import {
-  hasIncompatibleBuiltInModelRuntimeRoute,
   builtInModelRuntimeTarget,
-  type ModelRuntimeSessionRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
+
+import {
+  canReuseSession,
+  type SessionExecutionIdentity,
+} from "./session-compatibility";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -584,7 +587,7 @@ interface ResolvedAgentExecution {
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
-  readonly resumeSessionModelRoute?: ModelRuntimeSessionRoute;
+  readonly resumeSessionIdentity?: SessionExecutionIdentity;
 }
 
 interface ProductAgentExecutionPlan {
@@ -1003,7 +1006,7 @@ export interface CreateAgentRunArgs {
   readonly validateEnvironmentReferences?: boolean;
   readonly agentRunMetadata?: AgentRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
-  readonly enforceVm0Credits?: boolean;
+  readonly enforceBuiltInCredits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly queueFirstAssociation?: QueueFirstRunAssociation;
   readonly agentRunModelPin?: AgentRunModelPin;
@@ -1441,7 +1444,7 @@ function frameworkForProviderSelection(
   if (!vm0Model) {
     return null;
   }
-  return getFrameworkForType(getVm0ConcreteProviderType(vm0Model));
+  return getFrameworkForType(getBuiltInConcreteProviderType(vm0Model));
 }
 
 async function resolveRequestedRunFramework(
@@ -5753,12 +5756,12 @@ async function checkFinalRunAdmission(
     readonly userId: string;
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
-    readonly enforceVm0Credits: boolean;
+    readonly enforceBuiltInCredits: boolean;
     readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
 ): Promise<CreateRunErrorResult | null> {
-  if (args.enforceVm0Credits) {
+  if (args.enforceBuiltInCredits) {
     return await args.timing.measure(
       "api_dispatch_check_vm0_credits",
       "nested",
@@ -5936,12 +5939,6 @@ function resolvedSessionStorage(session: {
   };
 }
 
-function resolvedSessionModelRoute(
-  previousRun: ModelRuntimeSessionRoute | null,
-): Pick<ResolvedAgentExecution, "resumeSessionModelRoute"> {
-  return previousRun ? { resumeSessionModelRoute: previousRun } : {};
-}
-
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -5971,6 +5968,7 @@ function resolveBySessionId(
               conversation: {
                 id: conversations.id,
                 runId: conversations.runId,
+                cliAgentType: conversations.cliAgentType,
                 cliAgentSessionId: conversations.cliAgentSessionId,
                 cliAgentSessionHistory: conversations.cliAgentSessionHistory,
                 cliAgentSessionHistoryHash:
@@ -5984,9 +5982,7 @@ function resolveBySessionId(
                 id: agentRuns.id,
                 vars: agentRuns.vars,
                 storageMounts: agentRuns.storageMounts,
-                modelProvider: agentRuns.modelProvider,
-                modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-                modelRuntimeModel: agentRuns.modelRuntimeModel,
+                selectedModel: agentRuns.selectedModel,
               },
             })
             .from(agentSessions)
@@ -6049,7 +6045,10 @@ function resolveBySessionId(
         agentSessionId: snapshot.session.id,
         continuedFromAgentSessionId: snapshot.session.id,
         resumeSession,
-        ...resolvedSessionModelRoute(snapshot.previousRun),
+        resumeSessionIdentity: {
+          selectedModel: snapshot.previousRun?.selectedModel ?? null,
+          cliAgentType: conversation?.cliAgentType ?? null,
+        },
       };
     },
   );
@@ -6720,7 +6719,7 @@ function recordQueuedRunEnqueueTelemetry(args: {
   const result = safeSync(() => {
     recordSandboxOperation({
       sandboxType: "runner",
-      actionType: "enqueue_zero_run",
+      actionType: "enqueue_agent_run",
       durationMs: 0,
       success: true,
       runId: args.runId,
@@ -8641,7 +8640,7 @@ async function resolveRunModelProvider(
   }
 
   if (
-    args.enforceVm0Credits &&
+    args.enforceBuiltInCredits &&
     isBuiltInModelProviderType(args.modelProviderType)
   ) {
     const creditGate =
@@ -9288,18 +9287,11 @@ async function resolvePreparedThreadConnectorSelections(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
 ): Promise<ThreadConnectorSelectionIds | CreateRunErrorResult | undefined> {
   const chatThreadId = args.createArgs.chatThreadId;
-  if (
-    chatThreadId === undefined ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.ConnectorAccounts,
-      args.featureSwitchContext,
-    )
-  ) {
+  if (chatThreadId === undefined) {
     return undefined;
   }
   const resolved = await resolveChatThreadConnectorSelections(args.db, {
@@ -9351,7 +9343,6 @@ async function prepareRunRuntimeContext(
         db: args.db,
         createArgs: args.createArgs,
         connectorScope: args.connectorScope,
-        featureSwitchContext,
       },
       signal,
     ),
@@ -9663,23 +9654,12 @@ function prepareRunContexts(
 
 function resolveCompatibleDirectResumeSession(args: {
   readonly resolved: ResolvedAgentExecution;
-  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly next: SessionExecutionIdentity;
 }): ResolvedAgentExecution {
-  if (!args.resolved.resumeSessionModelRoute) {
-    return args.resolved;
-  }
-  const runtimeRoute = args.modelProvider?.builtInModelRuntimeRoute;
-  const incompatible = hasIncompatibleBuiltInModelRuntimeRoute({
-    previous: args.resolved.resumeSessionModelRoute,
-    next: {
-      modelProvider: args.modelProvider?.type ?? null,
-      modelRuntimeProvider: runtimeRoute?.providerType ?? null,
-      modelRuntimeModel: runtimeRoute?.upstreamModel ?? null,
-    },
-  });
-  return incompatible
-    ? { ...args.resolved, resumeSession: undefined }
-    : args.resolved;
+  const previous = args.resolved.resumeSessionIdentity;
+  return previous && canReuseSession(previous, args.next)
+    ? args.resolved
+    : { ...args.resolved, resumeSession: undefined };
 }
 
 async function resolvePreparedOfficialWorkflowRun(
@@ -9758,13 +9738,16 @@ function prepareRunContext(
       }
       const { bodyContext, runtimeContext } = contexts;
       const { body } = bodyContext;
-      const resolved = resolveCompatibleDirectResumeSession({
-        resolved: bodyContext.resolved,
-        modelProvider: runtimeContext.modelProvider,
-      });
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         modelProvider: runtimeContext.modelProvider,
+      });
+      const resolved = resolveCompatibleDirectResumeSession({
+        resolved: bodyContext.resolved,
+        next: {
+          selectedModel: runtimeContext.modelProvider?.selectedModel ?? null,
+          cliAgentType: piSandbox ? "pi" : runtimeContext.framework,
+        },
       });
 
       const validation = await timing.measure(
@@ -10373,7 +10356,7 @@ export const completeAgentRun$ = command(
     const selectedModel =
       context.modelProvider?.selectedModel ?? args.selectedModelOverride;
     const creditAdmitted =
-      args.enforceVm0Credits === true &&
+      args.enforceBuiltInCredits === true &&
       isBuiltInModelProviderType(context.modelProvider?.type);
     const admissionGate = await timing.measure(
       "api_dispatch_check_run_admission",
@@ -10386,7 +10369,7 @@ export const completeAgentRun$ = command(
             userId: args.userId,
             modelProviderType,
             selectedModel,
-            enforceVm0Credits: creditAdmitted,
+            enforceBuiltInCredits: creditAdmitted,
             timing,
           },
           signal,

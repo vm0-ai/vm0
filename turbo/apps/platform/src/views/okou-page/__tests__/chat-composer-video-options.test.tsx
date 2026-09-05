@@ -33,7 +33,7 @@ interface SubmittedMessage {
 
 function installVideoEnvironment(): void {
   const preference: UserModelPreferenceResponse = {
-    selectedModel: "claude-fable-5",
+    selectedModel: "claude-fable-5-1",
     serviceTier: null,
     selectedImageModel: "fal-ai/nano-banana-2",
     selectedVideoModel: "dreamina-seedance-2-0-260128",
@@ -52,7 +52,7 @@ function installVideoEnvironment(): void {
   });
   context.mocks.data.userModelPreference(preference);
   mockAgent();
-  mockOrgModelRoutes("claude-fable-5");
+  mockOrgModelRoutes("claude-fable-5-1");
   mockBillingCapabilities({
     supportByok: true,
     restrictedVm0Models: false,
@@ -203,7 +203,7 @@ test("Submit a video template with its default generation options", async () => 
 
   const prompt = "Generate the first cinematic clip.";
   const editor = await enterText(prompt);
-  await enterVideoMode("Claude Fable 5");
+  await enterVideoMode("Claude Fable 5.1");
   const template = await selectVideoTemplate();
   await expect(
     openVideoOptions("16:9 · 8s · 720p"),
@@ -233,7 +233,7 @@ test("Submit the video ratio selected by the user", async () => {
 
   const prompt = "Generate the portrait cinematic clip.";
   const editor = await enterText(prompt);
-  await enterVideoMode("Claude Fable 5");
+  await enterVideoMode("Claude Fable 5.1");
   const template = await selectVideoTemplate();
   const options = await openVideoOptions("16:9 · 8s · 720p");
   const ratioGroup = screen.getByRole("radiogroup", { name: "Ratio" });

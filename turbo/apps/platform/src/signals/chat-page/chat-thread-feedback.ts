@@ -34,7 +34,7 @@ import {
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Quote interaction.
 const FEEDBACK_SOURCE_SELECTOR =
-  ".zero-chat-bubble-assistant, [data-feedback-source]";
+  ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";

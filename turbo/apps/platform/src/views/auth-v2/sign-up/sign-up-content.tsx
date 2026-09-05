@@ -16,7 +16,11 @@ import type { AuthV2OAuthStrategy } from "../../../signals/auth-v2/oauth-strateg
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
-import { Link } from "../../router/link.tsx";
+import {
+  AuthV2CompleteStep,
+  AuthV2LoadingStep,
+  AuthV2SwitchLink,
+} from "../auth-v2-status-steps.tsx";
 import {
   AUTH_V2_LINK_ACTION_CLASS,
   AUTH_V2_PRIMARY_ACTION_CLASS,
@@ -148,34 +152,6 @@ function FlowErrorAlert({
       focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
       message={signUpErrorMessage(error, copy)}
     />
-  );
-}
-
-function signInLinkOptions(signInHref: string) {
-  const url = new URL(signInHref, location.origin);
-  return {
-    hash: url.hash,
-    searchParams: url.searchParams,
-  };
-}
-
-function SignInLink({
-  children,
-  className,
-  signInHref,
-}: {
-  readonly children: ReactNode;
-  readonly className?: string;
-  readonly signInHref: string;
-}) {
-  return (
-    <Link
-      className={className}
-      options={signInLinkOptions(signInHref)}
-      pathname={ROUTES.signIn}
-    >
-      {children}
-    </Link>
   );
 }
 
@@ -687,32 +663,6 @@ function EmailCodeStep({
   );
 }
 
-function LoadingStep({ copy }: { readonly copy: AuthV2SignUpCopy }) {
-  return (
-    <div
-      className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
-      role="status"
-    >
-      <Loader2 className="animate-spin" aria-hidden="true" />
-      <span>{copy.loading}</span>
-    </div>
-  );
-}
-
-function CompleteStep() {
-  return (
-    <div
-      className="flex flex-col items-center gap-3 py-8 text-center"
-      role="status"
-    >
-      <Loader2
-        className="animate-spin text-muted-foreground"
-        aria-hidden="true"
-      />
-    </div>
-  );
-}
-
 function RestartAction({
   copy,
   signals,
@@ -750,7 +700,9 @@ function TransferStep({ copy, signInHref, signals }: SignUpStepProps) {
   return (
     <div className="space-y-3">
       <Button className={cn("w-full", AUTH_V2_PRIMARY_ACTION_CLASS)} asChild>
-        <SignInLink signInHref={signInHref}>{copy.signIn}</SignInLink>
+        <AuthV2SwitchLink href={signInHref} pathname={ROUTES.signIn}>
+          {copy.signIn}
+        </AuthV2SwitchLink>
       </Button>
       <RestartAction
         copy={copy}
@@ -776,7 +728,9 @@ function UnknownStep({ copy, signInHref, signals }: SignUpStepProps) {
         asChild
         variant="ghost"
       >
-        <SignInLink signInHref={signInHref}>{copy.signIn}</SignInLink>
+        <AuthV2SwitchLink href={signInHref} pathname={ROUTES.signIn}>
+          {copy.signIn}
+        </AuthV2SwitchLink>
       </Button>
     </div>
   );
@@ -789,10 +743,10 @@ export function SignUpCardContent({
   state,
 }: SignUpStepProps & { readonly state: AuthV2SignUpState }) {
   if (state.status === "loading") {
-    return <LoadingStep copy={copy} />;
+    return <AuthV2LoadingStep copy={copy} />;
   }
   if (state.status === "complete") {
-    return <CompleteStep />;
+    return <AuthV2CompleteStep />;
   }
   if (state.status === "transfer") {
     return (
@@ -834,15 +788,16 @@ export function SignUpSwitch({
   return (
     <p className="text-center text-sm text-muted-foreground">
       {copy.alreadyHaveAccount}{" "}
-      <SignInLink
+      <AuthV2SwitchLink
         className={cn(
           "font-medium underline underline-offset-4",
           AUTH_V2_LINK_ACTION_CLASS,
         )}
-        signInHref={signInHref}
+        href={signInHref}
+        pathname={ROUTES.signIn}
       >
         {copy.signIn}
-      </SignInLink>
+      </AuthV2SwitchLink>
     </p>
   );
 }

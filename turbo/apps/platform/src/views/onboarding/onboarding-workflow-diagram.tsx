@@ -17,7 +17,7 @@ const ZERO_AVATAR_FACE_IMG = platformStaticAssetUrl(
   "views/onboarding/assets/zero-avatar-face-19a2ae88c11d.svg",
 );
 
-function DiagramConnectorIcon({
+export function WorkflowConnectorIcon({
   connectorSlug,
   size,
 }: {
@@ -251,7 +251,7 @@ function WorkflowDiagramNode({
               {visibleConnectorSlugs.map((item) => {
                 return (
                   <span key={item} className="owf-diagram-icon-stack-item">
-                    <DiagramConnectorIcon connectorSlug={item} size={22} />
+                    <WorkflowConnectorIcon connectorSlug={item} size={22} />
                   </span>
                 );
               })}
@@ -262,7 +262,7 @@ function WorkflowDiagramNode({
               ) : null}
             </span>
           ) : connectorSlug ? (
-            <DiagramConnectorIcon connectorSlug={connectorSlug} size={34} />
+            <WorkflowConnectorIcon connectorSlug={connectorSlug} size={34} />
           ) : null)}
       </span>
     </div>
@@ -368,7 +368,7 @@ export function WorkflowPreviewDiagram({
           className="owf-diagram-node-zero"
           iconClassName="owf-diagram-avatar"
         >
-          <span className="owf-diagram-zero-icon" aria-hidden="true">
+          <span className="owf-diagram-okou-icon" aria-hidden="true">
             <img src={ZERO_AVATAR_HEAD_IMG} alt="" aria-hidden />
             <img src={ZERO_AVATAR_HAIR_IMG} alt="" aria-hidden />
             <img src={ZERO_AVATAR_FACE_IMG} alt="" aria-hidden />

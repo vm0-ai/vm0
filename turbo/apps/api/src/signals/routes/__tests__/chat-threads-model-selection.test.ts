@@ -109,6 +109,32 @@ function metadataClient() {
 }
 
 describe("POST /api/chat-threads/:id/model-selection", () => {
+  it("preserves the thread selection when an old client requests a retired model", async () => {
+    const fixture = await seedChatThread("Model retirement");
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+    const headers = { authorization: `Bearer ${token}` };
+    const rejected = await accept(
+      modelSelectionClient().update({
+        headers,
+        params: { id: fixture.threadId },
+        body: { model: "claude-fable-5" },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Claude Fable 5 has been retired. Select Claude Fable 5.1.",
+    );
+    const thread = await accept(
+      metadataClient().get({ headers, params: { id: fixture.threadId } }),
+      [200],
+    );
+    expect(thread.body.selectedModel).toBe("claude-sonnet-5");
+  });
+
   it("updates thread model selection with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedChatThread("Launch plan");
     const token = okouToken({

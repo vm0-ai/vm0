@@ -346,7 +346,7 @@ export function AgentPhoneCard() {
 
   return (
     <>
-      <div className="zero-card flex flex-col">
+      <div className="okou-card flex flex-col">
         <div className="flex items-center gap-4 p-4">
           <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
             <img src={imessageIconImg} alt="" className="h-7 w-7" />

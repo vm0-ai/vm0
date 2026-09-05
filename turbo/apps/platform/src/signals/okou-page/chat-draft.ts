@@ -17,7 +17,6 @@ import { rootSignal$ } from "../root-signal.ts";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import type {
-  DraftVoice,
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
@@ -35,7 +34,7 @@ import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
 
 // ---------------------------------------------------------------------------
-// Attachment types (moved from zero-chat.ts)
+// Attachment types
 // ---------------------------------------------------------------------------
 
 interface FileInfo {
@@ -578,7 +577,6 @@ export interface DraftSignals {
   appendInput$: Command<void, [string]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
   takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
-  takeRestoredDraftVoice$: Command<DraftVoice | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
   setEditorDocument$: Command<void, [EditorDocumentSnapshot | null]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
@@ -613,17 +611,13 @@ export interface DraftSignals {
 interface DraftSeed {
   content: string;
   userMessage: UserMessageDocument | null;
-  draftVoice: DraftVoice | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   attachments: ChatAttachment[];
 }
 
 export interface DraftInputSyncTarget {
   syncInput(value: string): void;
-  syncUserMessage(
-    value: UserMessageDocument | null,
-    draftVoice: DraftVoice | null,
-  ): void;
+  syncUserMessage(value: UserMessageDocument | null): void;
 }
 
 /**
@@ -754,16 +748,12 @@ function createDraftInputSignals() {
     get(internalInputSyncTarget$)?.syncInput(value);
   });
   const syncUserMessage$ = command(
-    (
-      { get },
-      value: UserMessageDocument | null,
-      draftVoice: DraftVoice | null,
-    ) => {
+    ({ get }, value: UserMessageDocument | null) => {
       const target = get(internalInputSyncTarget$);
       if (!target) {
         return false;
       }
-      target.syncUserMessage(value, draftVoice);
+      target.syncUserMessage(value);
       return true;
     },
   );
@@ -798,7 +788,6 @@ function createDraftInputSignals() {
 
 function createDraftDocumentSignals() {
   let restoredUserMessage: UserMessageDocument | null = null;
-  let restoredDraftVoice: DraftVoice | null = null;
   let editorDocument: EditorDocumentSnapshot | null = null;
   const setRestoredUserMessage$ = command(
     (_context, value: UserMessageDocument | null) => {
@@ -808,16 +797,6 @@ function createDraftDocumentSignals() {
   const takeRestoredUserMessage$ = command(() => {
     const value = restoredUserMessage;
     restoredUserMessage = null;
-    return value;
-  });
-  const setRestoredDraftVoice$ = command(
-    (_context, value: DraftVoice | null) => {
-      restoredDraftVoice = value;
-    },
-  );
-  const takeRestoredDraftVoice$ = command(() => {
-    const value = restoredDraftVoice;
-    restoredDraftVoice = null;
     return value;
   });
   const readEditorDocument$ = command(() => {
@@ -831,8 +810,6 @@ function createDraftDocumentSignals() {
   return {
     setRestoredUserMessage$,
     takeRestoredUserMessage$,
-    setRestoredDraftVoice$,
-    takeRestoredDraftVoice$,
     readEditorDocument$,
     setEditorDocument$,
   };
@@ -905,7 +882,6 @@ function createDraftLifecycleSignals({
   const clear$ = command(({ get, set }) => {
     set(draftInput.setInput$, "");
     set(draftDocument.setRestoredUserMessage$, null);
-    set(draftDocument.setRestoredDraftVoice$, null);
     set(draftDocument.setEditorDocument$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
@@ -926,16 +902,14 @@ function createDraftLifecycleSignals({
     ): Promise<boolean> => {
       set(draftDocument.setEditorDocument$, null);
       set(draftDocument.setRestoredUserMessage$, value.userMessage);
-      set(draftDocument.setRestoredDraftVoice$, value.draftVoice);
       set(internalGenerationTemplate$, value.generationTemplate);
       set(internalAttachments$, value.attachments);
       set(draftInput.setInput$, value.content);
       if (
-        (value.userMessage || value.draftVoice) &&
-        set(draftInput.syncUserMessage$, value.userMessage, value.draftVoice)
+        value.userMessage &&
+        set(draftInput.syncUserMessage$, value.userMessage)
       ) {
         set(draftDocument.takeRestoredUserMessage$);
-        set(draftDocument.takeRestoredDraftVoice$);
       }
       return await set(pruneUnavailableAttachments$, value.attachments, signal);
     },
@@ -1046,7 +1020,6 @@ export function createDraftSignals(): DraftSignals {
   return {
     ...draftInput,
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
-    takeRestoredDraftVoice$: draftDocument.takeRestoredDraftVoice$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,
     generationTemplate$,

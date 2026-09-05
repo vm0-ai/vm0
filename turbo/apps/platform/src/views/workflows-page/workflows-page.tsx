@@ -666,7 +666,7 @@ function WorkflowRowList({
   if (!framed) {
     return <div>{rows}</div>;
   }
-  return <div className="zero-card overflow-hidden">{rows}</div>;
+  return <div className="okou-card overflow-hidden">{rows}</div>;
 }
 
 function WorkflowNextRunGroups({
@@ -696,7 +696,7 @@ function WorkflowNextRunGroups({
   });
 
   return (
-    <div className="zero-card overflow-hidden">
+    <div className="okou-card overflow-hidden">
       {visibleSections.map(({ section, sectionWorkflows }, index) => {
         return (
           <section key={section.key}>
@@ -753,7 +753,7 @@ function WorkflowListPanel({
           />
         )
       ) : (
-        <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+        <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
           <img
             src={emptyWorkflowImg}
             alt={i18n.t(($) => {
@@ -857,7 +857,7 @@ function SortDropdown({
           type="button"
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="okou-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
           <ArrowUpDown size={15} className="" />
           {current?.label ??
@@ -904,7 +904,7 @@ function AgentFilterDropdown({
           type="button"
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="okou-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
           {selected ? (
             <AgentAvatarImg
@@ -1120,7 +1120,7 @@ export function WorkflowsPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+                className="okou-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
               >
                 <Link pathname={ROUTES.officialWorkflows}>
                   <BadgeCheck size={14} />
@@ -1134,7 +1134,7 @@ export function WorkflowsPage() {
               type="button"
               variant="outline"
               size="sm"
-              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+              className="okou-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
               onClick={() => {
                 openCreateWorkflowDialog();
               }}
@@ -1148,7 +1148,7 @@ export function WorkflowsPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 [scrollbar-gutter:stable] sm:px-6">
+      <main className="flex-1 overflow-auto px-4 pb-[max(2rem,var(--sab))] pt-3 [scrollbar-gutter:stable] sm:px-6">
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
           <WorkflowFilterBar
             filter={filter}
@@ -1181,7 +1181,7 @@ export function WorkflowsPage() {
 
 function WorkflowIndexSkeleton() {
   return (
-    <div className="zero-card overflow-hidden" data-testid="workflows-loading">
+    <div className="okou-card overflow-hidden" data-testid="workflows-loading">
       {[0, 1, 2, 3].map((rowIndex) => {
         return (
           <div key={rowIndex}>

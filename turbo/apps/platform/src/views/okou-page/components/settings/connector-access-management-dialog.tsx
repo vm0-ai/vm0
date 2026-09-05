@@ -431,7 +431,6 @@ function AgentPermissionDialog({
       displayName={agentName(row.agent)}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
-      resetEnabled
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies(

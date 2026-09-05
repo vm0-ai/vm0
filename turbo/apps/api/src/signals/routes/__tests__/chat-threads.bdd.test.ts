@@ -20,7 +20,6 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -71,9 +70,8 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
-import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -2484,7 +2482,7 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {
-    const fixture = await seedVm0BuiltInDefaultModelKey(context);
+    const fixture = await seedBuiltInDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     expect(fixture.selectedModel).toBe(selectedModel);
 
@@ -3643,10 +3641,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     if (!actor.orgId) {
       throw new Error("Expected an entitled chat actor with an organization");
     }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
 

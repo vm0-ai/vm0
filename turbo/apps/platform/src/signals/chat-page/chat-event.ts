@@ -16,11 +16,9 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { nowDate } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
-import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 
@@ -124,6 +122,8 @@ export type EnrichedChatEvent = ChatEvent & {
   /** The current rich body failed to load and can be retried locally. */
   richContentError: boolean;
   isQueued: boolean;
+  /** The user's submission time, preserved across delivery replacement events. */
+  inputCreatedAt?: string;
   userMessageRenderDocument: UserMessageRenderDocument | undefined;
 };
 
@@ -153,15 +153,7 @@ export const deleteChatThread$ = command(
         kind: "deleted",
         chatThreadId: threadId,
         agentId: existingThread.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
 
     const client = get(apiClient$)(chatThreadByIdContract);
@@ -216,15 +208,7 @@ export const pinChatThread$ = command(
         kind: "pinned",
         chatThreadId: threadId,
         agentId: existingThread.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadPinContract);
     await accept(
@@ -253,15 +237,7 @@ export const unpinChatThread$ = command(
         kind: "unpinned",
         chatThreadId: threadId,
         agentId: existingThread.agentId,
-        title: null,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
     const client = get(apiClient$)(chatThreadUnpinContract);
     await accept(
@@ -307,14 +283,7 @@ export const renameChatThread$ = command(
         chatThreadId: threadId,
         agentId: optimisticAgentId,
         title,
-        selectedModel: null,
-        serviceTier: null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: null,
-        selectedImageModel: null,
-        createdAt: nowDate().toISOString(),
-      } satisfies OptimisticChatThreadEvent);
+      });
     }
 
     const client = get(apiClient$)(chatThreadRenameContract);

@@ -227,7 +227,7 @@ function ExpandedSidebar() {
         return $.appShell.sidebar.ariaLabel;
       })}
       className={cn(
-        "zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
+        "okou-nav okou-mobile-sidebar okou-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
         "hidden data-[sidebar-expanded]:max-md:flex md:hidden",
       )}
     >
@@ -247,9 +247,9 @@ function ExpandedHeader() {
     return $.appShell.sidebar.collapse;
   });
   return (
-    <div className="zero-sidebar-header shrink-0 px-2 pb-0">
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
-      <div className="zero-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
+    <div className="okou-sidebar-header shrink-0 px-2 pb-0">
+      <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
+      <div className="okou-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
         <div className="min-w-0 flex-1">
           <OrgSwitcher />
         </div>
@@ -308,7 +308,7 @@ function ExpandedManageSection() {
           return setManageCollapsed(!manageCollapsed);
         }}
       >
-        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        <span className="okou-nav-copy-muted okou-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.appShell.sidebar.manage;
           })}
@@ -346,7 +346,7 @@ function ExpandedManageSection() {
                   }`}
                 >
                   <Icon size={16} className="shrink-0" />
-                  <span className="zero-nav-copy truncate">{label}</span>
+                  <span className="okou-nav-copy truncate">{label}</span>
                 </Link>
               );
             },
@@ -366,6 +366,7 @@ function ExpandedSidebarSections() {
       <ChatThreadsSection
         scrollSignals={responsiveSidebarChatThreadScrollSignals}
         contentClassName="px-2"
+        showMarkAllRead
       />
     </div>
   );
@@ -431,7 +432,7 @@ function ExpandedFooter() {
                 ) : (
                   <Icon size={16} className="shrink-0" />
                 )}
-                <span className="zero-nav-copy flex-1 truncate">{label}</span>
+                <span className="okou-nav-copy flex-1 truncate">{label}</span>
                 {id === "works" && slackScopeMismatch && (
                   <span
                     data-testid="slack-scope-mismatch-indicator"
@@ -539,8 +540,8 @@ function LabeledRailLink({
       <span
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive
-            ? "zero-nav-copy text-sidebar-foreground"
-            : "zero-nav-copy-muted text-sidebar-foreground/60 new-ui:text-sidebar-foreground/70"
+            ? "okou-nav-copy text-sidebar-foreground"
+            : "okou-nav-copy-muted text-sidebar-foreground/60 new-ui:text-sidebar-foreground/70"
         }`}
       >
         {caption}
@@ -642,9 +643,9 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 pb-2 pt-3"
+      className="okou-nav okou-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 pb-2 pt-3"
     >
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
+      <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
         <OrgSwitcherCompact />
       </div>
@@ -761,7 +762,7 @@ function ChatListColumn() {
     <aside
       data-testid="chat-list-column"
       className={cn(
-        "zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar",
+        "okou-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar",
         // Under the new shell this column and the gutter around the workspace
         // card are one surface, so a divider here would run parallel to the
         // card's own border eight pixels away and read as a double rule.
@@ -769,7 +770,7 @@ function ChatListColumn() {
       )}
     >
       <div className={cn("flex shrink-0 items-center gap-1 pb-2 pt-3", inset)}>
-        <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
+        <span className="okou-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
           {t(($) => {
             return $.appShell.sidebar.chat;
           })}

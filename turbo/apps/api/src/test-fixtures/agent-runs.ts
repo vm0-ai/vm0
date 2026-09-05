@@ -283,6 +283,7 @@ async function loadDirectSessionSnapshot(
           conversation: {
             id: conversations.id,
             runId: conversations.runId,
+            cliAgentType: conversations.cliAgentType,
             cliAgentSessionId: conversations.cliAgentSessionId,
             cliAgentSessionHistory: conversations.cliAgentSessionHistory,
             cliAgentSessionHistoryHash:
@@ -292,9 +293,7 @@ async function loadDirectSessionSnapshot(
           previousRun: {
             id: agentRuns.id,
             vars: agentRuns.vars,
-            modelProvider: agentRuns.modelProvider,
-            modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-            modelRuntimeModel: agentRuns.modelRuntimeModel,
+            selectedModel: agentRuns.selectedModel,
           },
         })
         .from(agentSessions)
@@ -366,9 +365,10 @@ async function resolveDirectSessionRun(
     agentSessionId: snapshot.session.id,
     continuedFromAgentSessionId: snapshot.session.id,
     resumeSession,
-    ...(snapshot.previousRun
-      ? { resumeSessionModelRoute: snapshot.previousRun }
-      : {}),
+    resumeSessionIdentity: {
+      selectedModel: snapshot.previousRun?.selectedModel ?? null,
+      cliAgentType: conversation?.cliAgentType ?? null,
+    },
   };
 }
 
@@ -601,10 +601,14 @@ export async function setRunModelRuntimeRouteFixture(args: {
   readonly runId: string;
   readonly modelRuntimeProvider: string | null;
   readonly modelRuntimeModel: string | null;
+  readonly selectedModel?: string;
 }): Promise<void> {
   const updated = await db()
     .update(agentRuns)
     .set({
+      ...(args.selectedModel !== undefined && {
+        selectedModel: args.selectedModel,
+      }),
       modelRuntimeProvider: args.modelRuntimeProvider,
       modelRuntimeModel: args.modelRuntimeModel,
     })

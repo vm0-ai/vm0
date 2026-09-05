@@ -1,5 +1,80 @@
 # Changelog
 
+## [9.313.0](https://github.com/vm0-ai/vm0/compare/cli-v9.312.0...cli-v9.313.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.1
+    * @okouai/core bumped to 8.624.0
+    * @okouai/pi-agent-runtime bumped to 1.17.1
+
+## [9.312.0](https://github.com/vm0-ai/vm0/compare/cli-v9.311.1...cli-v9.312.0) (2026-09-05)
+
+
+### Features
+
+* **pi:** add dialect-aware fast carrier compatibility ([#31839](https://github.com/vm0-ai/vm0/issues/31839)) ([444bfe5](https://github.com/vm0-ai/vm0/commit/444bfe5a6f04edb5ba3ccbc90a0895e7ca4a44d8))
+
+
+### Bug Fixes
+
+* **cli:** show a standalone mail link reply example ([#31832](https://github.com/vm0-ai/vm0/issues/31832)) ([d759114](https://github.com/vm0-ai/vm0/commit/d759114eed81674ad0f1b4d0e96d9b7677996d0e))
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.0
+    * @okouai/core bumped to 8.623.2
+    * @okouai/pi-agent-runtime bumped to 1.17.0
+
+## [9.311.1](https://github.com/vm0-ai/vm0/compare/cli-v9.311.0...cli-v9.311.1) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.404.1
+    * @okouai/core bumped to 8.623.1
+    * @okouai/pi-agent-runtime bumped to 1.16.6
+
+## [9.311.0](https://github.com/vm0-ai/vm0/compare/cli-v9.310.4...cli-v9.311.0) (2026-09-05)
+
+
+### Features
+
+* **cli:** support legacy ppt template sources ([#31755](https://github.com/vm0-ai/vm0/issues/31755)) ([6eeb085](https://github.com/vm0-ai/vm0/commit/6eeb0852534423737b6d14e0b2235cbbb3ed4ff0))
+
+
+### Refactoring
+
+* **eslint:** rename the internal lint plugin namespace to okou ([#31806](https://github.com/vm0-ai/vm0/issues/31806)) ([314590e](https://github.com/vm0-ai/vm0/commit/314590ea8d2671714555db2a4cfeb035994eb779)), closes [#31799](https://github.com/vm0-ai/vm0/issues/31799)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.404.0
+    * @okouai/connectors bumped to 3.3.4
+    * @okouai/core bumped to 8.623.0
+    * @okouai/pi-agent-runtime bumped to 1.16.5
+
 ## [9.310.4](https://github.com/vm0-ai/vm0/compare/cli-v9.310.3...cli-v9.310.4) (2026-09-04)
 
 

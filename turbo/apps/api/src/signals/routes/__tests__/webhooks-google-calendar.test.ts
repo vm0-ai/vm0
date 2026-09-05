@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { expect, onTestFinished } from "vitest";
 
@@ -607,9 +606,7 @@ describe("POST /api/webhooks/google-calendar", () => {
 
     const scenario = await setupFixture();
     const { runnerGroup, workflowId } = scenario;
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, scenario.actor, {});
     await connectGoogleCalendar(scenario);
     const created = await accept(
       automationsClient().create({
@@ -664,21 +661,21 @@ describe("POST /api/webhooks/google-calendar", () => {
       }),
     );
     for (const actionType of [
-      "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_automation_event_load_source_state",
-      "api_dispatch_pre_create_zero_automation_event_load_external_events",
-      "api_dispatch_pre_create_zero_automation_event_load_automations",
-      "api_dispatch_pre_create_zero_automation_event_match_automations",
-      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
-      "api_dispatch_pre_create_zero_automation_event_build_run_input",
-      "api_dispatch_pre_create_zero_automation_event_handoff_run",
+      "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
+      "api_dispatch_pre_create_agent_automation_event_load_source_state",
+      "api_dispatch_pre_create_agent_automation_event_load_external_events",
+      "api_dispatch_pre_create_agent_automation_event_load_automations",
+      "api_dispatch_pre_create_agent_automation_event_match_automations",
+      "api_dispatch_pre_create_agent_automation_event_record_processed_event",
+      "api_dispatch_pre_create_agent_automation_event_build_run_input",
+      "api_dispatch_pre_create_agent_automation_event_handoff_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
+          op_type: "api_dispatch_pre_create_agent_automation_event_handoff_run",
           automation_event_source: "google_calendar",
           trigger_source: "automation-event",
           agent_run_origin: "workflow_automation",
@@ -736,9 +733,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
 
     const scenario = await setupFixture();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, scenario.actor, {});
     mockGoogleCalendarConnectorOAuth({
       accessToken: firstAccessToken,
       email: "calendar-first@example.com",
@@ -852,9 +847,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
 
     const scenario = await setupFixture();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, scenario.actor, {});
     mockGoogleCalendarConnectorOAuth({
       accessToken: firstAccessToken,
       email: "calendar-admission-first@example.com",
@@ -939,9 +932,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
 
     const scenario = await setupFixture();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, scenario.actor, {});
     mockGoogleCalendarConnectorOAuth({
       accessToken: firstAccessToken,
       email: "calendar-lifecycle-first@example.com",
@@ -1126,9 +1117,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       resourcePrefix: "calendar-cleanup-abort",
     });
     const scenario = await setupFixture();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, scenario.actor, {});
 
     mockGoogleCalendarConnectorOAuth({
       accessToken,

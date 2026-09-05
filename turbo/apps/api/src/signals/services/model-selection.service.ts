@@ -1,9 +1,10 @@
 import {
   getFrameworkForType,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   isCodexFastModeModel,
   isBuiltInModelProviderType,
-  isLimitedFree1RestrictedRunModel,
+  getRunModelAccess,
+  RETIRED_RUN_MODEL_MESSAGE,
   isSupportedRunModel,
   isModelSupportedByProvider,
   modelProviderTypeSchema,
@@ -137,8 +138,10 @@ function modelAllowedForOrgPlan(args: {
   readonly selectedModel: string | null | undefined;
 }): boolean {
   return (
-    !args.capabilities.restrictedVm0Models ||
-    !isLimitedFree1RestrictedRunModel(args.selectedModel)
+    getRunModelAccess(
+      args.selectedModel,
+      args.capabilities.restrictedVm0Models,
+    ) === "allowed"
   );
 }
 
@@ -525,6 +528,9 @@ export async function resolveModelSelectionPin(params: {
   | ReturnType<typeof insufficientCredits>
 > {
   const { db, orgId, userId, modelSelection } = params;
+  if (getRunModelAccess(modelSelection.selectedModel) === "retired") {
+    return badRequestMessage(RETIRED_RUN_MODEL_MESSAGE);
+  }
   const capabilities = modelRouteCapabilities(
     await loadOrgPlanCapabilities(db, orgId),
   );
@@ -671,7 +677,7 @@ export async function resolveModelFirstProviderAdmission(params: {
     ? getFrameworkForType(
         isBuiltInModelProviderType(knownProvider) &&
           isSupportedRunModel(selectedModel)
-          ? getVm0ConcreteProviderType(selectedModel)
+          ? getBuiltInConcreteProviderType(selectedModel)
           : knownProvider,
       )
     : null;

@@ -25,7 +25,7 @@ import {
 } from "./runner-primitives";
 
 /**
- * Zero run request schema — subset of unified schema.
+ * Agent run request schema — subset of unified schema.
  * Server-side defaults are injected by agent-runs-create.service.ts:
  * artifacts, disallowedTools.
  * Fields not used by unattended workflow runs are omitted:
@@ -61,7 +61,7 @@ const networkLogPaginationQuerySchema = createLogPaginationQuerySchema({
 });
 
 /**
- * Zero runs by ID contract (GET /api/runs/:id)
+ * Agent runs by ID contract (GET /api/runs/:id)
  */
 export const runsByIdContract = c.router({
   getById: {
@@ -83,7 +83,7 @@ export const runsByIdContract = c.router({
 });
 
 /**
- * Zero runs cancel contract (POST /api/runs/:id/cancel)
+ * Agent runs cancel contract (POST /api/runs/:id/cancel)
  */
 export const runsCancelContract = c.router({
   cancel: {
@@ -106,7 +106,7 @@ export const runsCancelContract = c.router({
 });
 
 /**
- * Zero runs queue contract (GET /api/runs/queue)
+ * Agent runs queue contract (GET /api/runs/queue)
  */
 export const runsQueueContract = c.router({
   getQueue: {
@@ -123,7 +123,7 @@ export const runsQueueContract = c.router({
 });
 
 /**
- * Zero run agent events contract (GET /api/runs/:id/telemetry/agent)
+ * Agent run telemetry events contract (GET /api/runs/:id/telemetry/agent)
  */
 export const runAgentEventsContract = c.router({
   getAgentEvents: {
@@ -216,7 +216,7 @@ export const runContextResponseSchema = z.object({
 });
 
 /**
- * Zero run context contract (GET /api/runs/:id/context)
+ * Agent run context contract (GET /api/runs/:id/context)
  * Returns a launch-time execution context snapshot for debugging
  */
 export const runContextContract = c.router({
@@ -239,7 +239,7 @@ export const runContextContract = c.router({
 });
 
 /**
- * Zero run network logs contract (GET /api/runs/:id/network)
+ * Agent run network logs contract (GET /api/runs/:id/network)
  * Returns mitmproxy network logs for a run
  */
 export const runNetworkLogsContract = c.router({
@@ -263,7 +263,7 @@ export const runNetworkLogsContract = c.router({
 });
 
 /**
- * Zero run runner contract (GET /api/runs/:id/runner)
+ * Agent run runner contract (GET /api/runs/:id/runner)
  * Returns runner-level metadata about how the run was provisioned
  * (sandbox reuse decision, etc.). Kept separate from logDetailSchema
  * so runner-tab fields can grow without polluting the generic log

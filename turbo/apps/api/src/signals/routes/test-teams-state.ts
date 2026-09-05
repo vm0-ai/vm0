@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
+  getBuiltInVendor,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTeamsStateContract,
@@ -239,7 +239,7 @@ async function seedDefaultAgent(
       });
   });
 
-  await seedVm0BuiltInModelKeys(db, agent.id);
+  await seedBuiltInModelKeys(db, agent.id);
   signal.throwIfAborted();
   await ensureAgentInstructionsStorageFixture(
     db,
@@ -253,7 +253,7 @@ async function seedDefaultAgent(
   return { agentId: agent.id };
 }
 
-async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
+async function seedBuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await db.delete(builtInModelKeys).where(eq(builtInModelKeys.label, agentId));
   await db
     .insert(builtInModelKeys)
@@ -264,7 +264,7 @@ async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
 function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
-      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+      vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
       apiKey: `vm0-key-default-${agentId}`,
       label: agentId,
     },
@@ -281,7 +281,7 @@ function vm0BuiltInModelKeyRows(agentId: string) {
   ];
 }
 
-async function deleteVm0BuiltInModelKeysForSeededDefaultAgent(
+async function deleteBuiltInModelKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
@@ -907,7 +907,7 @@ const deleteTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const orgIds = orgIdsForTeamsStateDelete(installationRows, query.org_id);
   for (const orgId of orgIds) {
-    await deleteVm0BuiltInModelKeysForSeededDefaultAgent(db, orgId);
+    await deleteBuiltInModelKeysForSeededDefaultAgent(db, orgId);
     signal.throwIfAborted();
   }
 

@@ -720,12 +720,14 @@ function placementPreview(placement: IntroVideoPlacement): {
 
 function PlacementOption({
   cutoutUrl,
+  showAvatarPlaceholder,
   label,
   placement,
   selected,
   onSelect,
 }: {
   readonly cutoutUrl: string | undefined;
+  readonly showAvatarPlaceholder: boolean;
   readonly label: string;
   readonly placement: IntroVideoPlacement;
   readonly selected: boolean;
@@ -760,6 +762,12 @@ function PlacementOption({
             className="absolute"
             style={preview.avatar}
           />
+        ) : showAvatarPlaceholder ? (
+          <span
+            aria-hidden="true"
+            className="absolute aspect-[3/5] rounded-t-full bg-muted-foreground/35"
+            style={preview.avatar}
+          />
         ) : null}
       </div>
       <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
@@ -781,8 +789,10 @@ function PlacementOption({
 
 function PlacementSelector({
   cutoutUrl,
+  showAvatarPlaceholder,
 }: {
   readonly cutoutUrl: string | undefined;
+  readonly showAvatarPlaceholder: boolean;
 }) {
   const { t } = useTranslation();
   const placement = useGet(introVideoWizardSignals.placement$);
@@ -823,6 +833,7 @@ function PlacementSelector({
             <PlacementOption
               key={option.value}
               cutoutUrl={cutoutUrl}
+              showAvatarPlaceholder={showAvatarPlaceholder}
               label={option.label}
               placement={option.value}
               selected={placement === option.value}
@@ -837,17 +848,11 @@ function PlacementSelector({
   );
 }
 
-function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
+function AvatarPage() {
   const { t } = useTranslation();
   const avatar = useGet(introVideoWizardSignals.avatar$);
   const source = useGet(introVideoWizardSignals.source$);
   const setAvatar = useSet(introVideoWizardSignals.setAvatar$);
-  const selectAvatarForVoice = useSet(
-    composer.template.selectAvatarTemplateForVoice$,
-  );
-  const clearAvatarForVoice = useSet(
-    composer.template.clearAvatarTemplateVoiceSelection$,
-  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-5">
@@ -863,17 +868,20 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
         </p>
       </div>
       {avatar && source?.kind === "presentation" ? (
-        <PlacementSelector cutoutUrl={avatar.coverUrl} />
+        <PlacementSelector
+          cutoutUrl={
+            avatar.provider === "joggai" ? avatar.cutoutUrl : undefined
+          }
+          showAvatarPlaceholder={avatar.provider === "heygen"}
+        />
       ) : null}
       <AvatarLibraryContent
-        selectedAvatarId={avatar?.id}
+        selectedAvatarKey={avatar?.key}
         onSelect={(nextAvatar) => {
           setAvatar(nextAvatar);
-          selectAvatarForVoice(nextAvatar);
         }}
         onClear={() => {
           setAvatar(null);
-          clearAvatarForVoice();
         }}
       />
     </div>
@@ -923,13 +931,7 @@ function VoiceUtilityCard({
   );
 }
 
-function VoicePage({
-  composer,
-  source,
-}: {
-  readonly composer: ComposerSignals;
-  readonly source: IntroVideoSource;
-}) {
+function VoicePage({ source }: { readonly source: IntroVideoSource }) {
   const { t } = useTranslation();
   const voice = useGet(introVideoWizardSignals.voice$);
   const setVoice = useSet(introVideoWizardSignals.setVoice$);
@@ -949,7 +951,7 @@ function VoicePage({
             })}
           </p>
         </div>
-        <VoiceLibraryToolbar signals={composer} />
+        <VoiceLibraryToolbar />
       </div>
       <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {originalAudioAvailable ? (
@@ -982,7 +984,6 @@ function VoicePage({
         />
       </div>
       <VoiceLibraryContent
-        signals={composer}
         selectionActive={voice !== null}
         selectedVoiceId={voice?.kind === "catalog" ? voice.voice.id : undefined}
         onSelect={(selectedVoice) => {
@@ -1285,11 +1286,9 @@ function WizardFooter({
 }
 
 function WizardContent({
-  composer,
   source,
   step,
 }: {
-  readonly composer: ComposerSignals;
   readonly source: IntroVideoSource | null;
   readonly step: IntroVideoWizardStep;
 }) {
@@ -1304,14 +1303,10 @@ function WizardContent({
       return source ? <SourceReviewPage source={source} /> : <SourcePage />;
     }
     case "avatar": {
-      return <AvatarPage composer={composer} />;
+      return <AvatarPage />;
     }
     case "voice": {
-      return source ? (
-        <VoicePage composer={composer} source={source} />
-      ) : (
-        <SourcePage />
-      );
+      return source ? <VoicePage source={source} /> : <SourcePage />;
     }
     case "review": {
       return source ? <ReviewPage source={source} /> : <SourcePage />;
@@ -1417,11 +1412,11 @@ export function IntroVideoWizard({
     >
       <DialogContent
         aria-describedby="intro-video-wizard-description"
-        className="zero-app flex h-[min(88vh,820px)] w-[calc(100vw-1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 [&>button]:right-4 [&>button]:top-4"
+        className="okou-app flex h-[min(88vh,820px)] w-[calc(100vw-1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 [&>button]:right-4 [&>button]:top-4"
       >
         <WizardHeader busy={busy} source={source} step={step} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background px-5 py-6 sm:px-6">
-          <WizardContent composer={composer} source={source} step={step} />
+          <WizardContent source={source} step={step} />
         </div>
         <WizardFooter
           busy={busy}
