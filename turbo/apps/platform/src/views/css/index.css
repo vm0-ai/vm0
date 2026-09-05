@@ -247,7 +247,7 @@ body {
    box that holds glyphs, so the text cannot shift.
 
    `contain: paint` keeps the per-frame repaint inside the label. */
-@keyframes zero-shimmer {
+@keyframes okou-shimmer {
   from {
     background-position: 100% center;
   }
@@ -270,10 +270,10 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   contain: paint;
-  animation: zero-shimmer 3.5s linear infinite;
+  animation: okou-shimmer 3.5s linear infinite;
 }
 
-@keyframes zero-thinking-in {
+@keyframes okou-thinking-in {
   from {
     opacity: 0;
     transform: translateY(0.5rem);
@@ -284,7 +284,7 @@ body {
   }
 }
 .okou-thinking-enter {
-  animation: zero-thinking-in 0.3s ease-out;
+  animation: okou-thinking-in 0.3s ease-out;
 }
 
 .okou-thinking-spinner {
@@ -304,7 +304,7 @@ body {
 }
 
 /* Conversation locator: mark where a rail jump landed, then fade back out. */
-@keyframes zero-locator-landed {
+@keyframes okou-locator-landed {
   from {
     background-color: hsl(var(--primary) / 0.1);
     box-shadow: 0 0 0 0.75rem hsl(var(--primary) / 0.1);
@@ -316,7 +316,7 @@ body {
 }
 [data-locator-landed] {
   border-radius: 0.75rem;
-  animation: zero-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: okou-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @media (prefers-reduced-motion: reduce) {
   [data-locator-landed] {
@@ -338,21 +338,21 @@ body {
   background: var(--zb-c1);
   grid-column: 2;
   grid-row: 1;
-  animation: zero-block-pop 1.4s ease-in-out infinite;
+  animation: okou-block-pop 1.4s ease-in-out infinite;
 }
 .okou-blocks span:nth-child(2) {
   background: var(--zb-c2);
   grid-column: 1;
   grid-row: 2;
-  animation: zero-block-pop 1.4s ease-in-out 0.2s infinite;
+  animation: okou-block-pop 1.4s ease-in-out 0.2s infinite;
 }
 .okou-blocks span:nth-child(3) {
   background: var(--zb-c3);
   grid-column: 2;
   grid-row: 2;
-  animation: zero-block-pop 1.4s ease-in-out 0.4s infinite;
+  animation: okou-block-pop 1.4s ease-in-out 0.4s infinite;
 }
-@keyframes zero-block-pop {
+@keyframes okou-block-pop {
   0%,
   100% {
     transform: scale(0.8);
@@ -634,7 +634,7 @@ body {
 
 .okou-realtime-status-reconnecting {
   opacity: 0;
-  animation: zero-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
+  animation: okou-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
     300ms forwards;
 }
 
@@ -643,7 +643,7 @@ body {
   animation: okou-realtime-cloud-flow 1.05s linear infinite;
 }
 
-@keyframes zero-realtime-status-reveal {
+@keyframes okou-realtime-status-reveal {
   to {
     opacity: 0.8;
   }
@@ -1787,7 +1787,7 @@ details > summary {
   padding: 4px;
 }
 
-.owf-diagram-zero-icon {
+.owf-diagram-okou-icon {
   position: relative;
   display: inline-block;
   width: 64px;
@@ -1795,7 +1795,7 @@ details > summary {
   overflow: hidden;
 }
 
-.owf-diagram-zero-icon img {
+.owf-diagram-okou-icon img {
   position: absolute;
   top: -9.73px;
   left: -6.4px;
