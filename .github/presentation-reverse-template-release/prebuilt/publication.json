@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "0a52be7338612763f87ac7eaa344ef04145927c9",
+    "directory": "reverse-template"
+  },
+  "resource": {
+    "id": "skill:presentation-reverse-template",
+    "slug": "reverse-template",
+    "storageId": "f4141103-c73c-4469-93f9-8438b0cb7b34",
+    "versionId": "2037e27e217c21a5adac76efdd3298e3e8149de030840c8f40521433e22a1c49",
+    "archive": {
+      "path": "reverse-template.tar.gz",
+      "sha256": "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec",
+      "byteSize": 4187
+    },
+    "totalSize": 10577,
+    "fileCount": 3,
+    "files": [
+      {
+        "path": "reverse-template/assets/template/layouts/shared-shell.html",
+        "hash": "83b8b3ef189ade31a79a05e436d7b45f41ece56968812eab21286de910679e71",
+        "size": 3466
+      },
+      {
+        "path": "reverse-template/assets/template/layouts/shell-contract.md",
+        "hash": "40e8ccbf9ee20bb756279561c9caf5d5567d887c2b8a46c9751b50f667c76ba6",
+        "size": 2139
+      },
+      {
+        "path": "reverse-template/SKILL.md",
+        "hash": "c309e395a2b1c401c046259d071b0ec9be7e4c508f0e617071b5999a397f33a5",
+        "size": 4972
+      }
+    ]
+  }
+}
