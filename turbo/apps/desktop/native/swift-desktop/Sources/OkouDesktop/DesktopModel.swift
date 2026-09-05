@@ -96,6 +96,11 @@ final class DesktopModel: ObservableObject {
         online: ["online", "recovering"].contains(self.host.status))
       self.changed()
     }
+    host.onError = { phase, error in
+      SentrySDK.capture(error: error) { scope in
+        scope.setTag(value: phase.rawValue, key: "desktop.runtime.phase")
+      }
+    }
     auth.onChange = { [weak self] in self?.changed() }
     mcp.onChange = { [weak self] in self?.changed() }
     recorder.onChange = { [weak self] in self?.changed() }

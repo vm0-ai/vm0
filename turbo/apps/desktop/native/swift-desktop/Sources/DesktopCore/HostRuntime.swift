@@ -2,15 +2,35 @@ import Foundation
 
 @MainActor
 public final class HostRuntime {
+  public enum Phase: String, Sendable {
+    case start, stop, heartbeat
+    case commandPoll = "command_poll"
+  }
+  public struct RuntimeError: Identifiable, Sendable {
+    public let id = UUID()
+    public let phase: Phase
+    public let message: String
+    public let occurredAt: Date
+    public let hostID: String?
+  }
+  public struct Recovery: Sendable {
+    public let phase: Phase
+    public let attempt: Int
+    public let lastRetryAt: Date
+    public let nextRetryAt: Date
+    public let retryDelay: Double
+  }
   public private(set) var status = "offline"
   public private(set) var hostID: String?
   public private(set) var lastError: String?
   public private(set) var lastHeartbeat: Date?
   public private(set) var lastCommand: Date?
   public private(set) var commands: [JSON] = []
-  public private(set) var errors: [String] = []
+  public private(set) var errors: [RuntimeError] = []
+  public private(set) var recovery: Recovery?
   public private(set) var executing = false
   public var onChange: @MainActor () -> Void = {}
+  public var onError: @MainActor (Phase, any Error) -> Void = { _, _ in }
   public var capabilities: @MainActor () -> [String] = { ComputerCommands.capabilities }
   public var execute: @MainActor (JSON, JSON) async -> JSON
   public var permissions: @MainActor () async throws -> JSON
@@ -45,6 +65,7 @@ public final class HostRuntime {
     let next = Connection()
     connection = next
     hostID = nil
+    recovery = nil
     status = "connecting"
     onChange()
     next.startTask = Task { [weak self] in
@@ -68,13 +89,16 @@ public final class HostRuntime {
           self.hostID = try response.requireString("hostId")
           self.status = "online"
           self.lastError = nil
+          self.recovery = nil
           self.lastHeartbeat = Date()
           self.onChange()
           next.heartbeatTask = Task { await self.heartbeatLoop(next) }
           next.commandTask = Task { await self.commandLoop(next) }
           return
         } catch {
-          guard await self.recover(error, attempt: &attempt, connection: next) else { return }
+          guard await self.recover(error, phase: .start, attempt: &attempt, connection: next) else {
+            return
+          }
         }
       }
     }
@@ -90,6 +114,7 @@ public final class HostRuntime {
     executing = false
     hostID = nil
     status = "offline"
+    recovery = nil
     onChange()
   }
 
@@ -125,7 +150,7 @@ public final class HostRuntime {
       } catch let error as DesktopHTTPError where error.status == 401 {
         // The server has already revoked this host.
       } catch {
-        if connection === stopped { record(error) }
+        if connection === stopped { record(error, phase: .stop) }
       }
     }
   }
@@ -148,11 +173,16 @@ public final class HostRuntime {
         _ = try await api.request(
           "api/computer-use/heartbeat", method: "POST", body: runtimeBody(), hostToken: token,
           timeout: 10)
-        if connection === current { lastHeartbeat = Date() }
+        if connection === current {
+          lastHeartbeat = Date()
+          recovered(.heartbeat, connection: current)
+        }
         attempt = 0
         onChange()
       } catch {
-        if !(await recover(error, attempt: &attempt, connection: current)) { return }
+        if !(await recover(error, phase: .heartbeat, attempt: &attempt, connection: current)) {
+          return
+        }
       }
     }
   }
@@ -172,6 +202,9 @@ public final class HostRuntime {
           let start = Date()
           var log = command
           log["status"] = .string("running")
+          log["startedAt"] = .string(start.ISO8601Format())
+          log["app"] = command["payload"]["app"]
+          commands.removeAll { $0["id"].string == id }
           commands.insert(log, at: 0)
           commands = Array(commands.prefix(20))
           onChange()
@@ -187,10 +220,13 @@ public final class HostRuntime {
           if let index = commands.firstIndex(where: { $0["id"].string == id }) {
             commands[index]["status"] = result["status"]
             commands[index]["durationMs"] = .number(Date().timeIntervalSince(start) * 1000)
+            commands[index]["completedAt"] = .string(Date().ISO8601Format())
             var summary = result
-            for key in ["screenshot", "appState", "elements", "visibleElements", "pluginContent"] {
-              var fields = summary["result"].object ?? [:]
-              fields.removeValue(forKey: key)
+            if var fields = summary["result"].object {
+              let omitted = ["appState", "elements", "screenshot", "visibleElements"].filter {
+                fields.removeValue(forKey: $0) != nil
+              }
+              if !omitted.isEmpty { fields["omittedResultFields"] = .strings(omitted) }
               summary["result"] = .object(fields)
             }
             commands[index]["response"] = summary
@@ -199,12 +235,9 @@ public final class HostRuntime {
           current.executing = false
           if connection === current { executing = false }
           lastCommand = Date()
-          if connection === current, current.accepting {
-            status = "online"
-            lastError = nil
-          }
           onChange()
         }
+        recovered(.commandPoll, connection: current)
         guard current.accepting else { return }
         attempt = 0
         let elapsed = lastCommand.map { Date().timeIntervalSince($0) } ?? .infinity
@@ -212,7 +245,9 @@ public final class HostRuntime {
       } catch {
         current.executing = false
         if connection === current { executing = false }
-        if !(await recover(error, attempt: &attempt, connection: current)) { return }
+        if !(await recover(error, phase: .commandPoll, attempt: &attempt, connection: current)) {
+          return
+        }
       }
     }
   }
@@ -232,36 +267,59 @@ public final class HostRuntime {
     }
   }
 
-  private func recover(_ error: any Error, attempt: inout Int, connection current: Connection)
+  private func recover(
+    _ error: any Error, phase: Phase, attempt: inout Int, connection current: Connection
+  )
     async -> Bool
   {
     if error is CancellationError || Task.isCancelled { return false }
-    if connection === current { record(error) }
+    if connection === current { record(error, phase: phase) }
     if let http = error as? DesktopHTTPError, !http.retryable {
       current.accepting = false
       if connection === current {
         status = http.status == 401 ? "unauthenticated" : http.status == 403 ? "disabled" : "error"
         hostID = nil
+        recovery = nil
         onChange()
       }
       return false
     }
     guard current.accepting || current.executing else { return false }
     attempt += 1
-    if connection === current { status = "recovering" }
-    onChange()
     let delay =
       (error as? DesktopHTTPError)?.retryAfter ?? min(60, 2 * pow(2, Double(min(attempt - 1, 5))))
+    if connection === current {
+      let now = Date()
+      status = "recovering"
+      recovery = Recovery(
+        phase: phase, attempt: attempt, lastRetryAt: now,
+        nextRetryAt: now.addingTimeInterval(delay), retryDelay: delay)
+      onChange()
+    }
     do {
       try await Task.sleep(for: .seconds(delay))
       return true
     } catch { return false }
   }
 
-  private func record(_ error: any Error) {
+  private func recovered(_ phase: Phase, connection current: Connection) {
+    guard connection === current, current.accepting,
+      recovery == nil || recovery?.phase == phase
+    else { return }
+    recovery = nil
+    status = "online"
+    lastError = nil
+    onChange()
+  }
+
+  private func record(_ error: any Error, phase: Phase) {
     lastError = error.localizedDescription
-    errors.insert(error.localizedDescription, at: 0)
+    errors.insert(
+      RuntimeError(
+        phase: phase, message: error.localizedDescription, occurredAt: Date(), hostID: hostID),
+      at: 0)
     errors = Array(errors.prefix(20))
+    onError(phase, error)
     onChange()
   }
 }

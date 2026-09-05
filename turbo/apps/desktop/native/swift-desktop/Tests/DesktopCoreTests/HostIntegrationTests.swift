@@ -15,6 +15,7 @@ import Testing
       completed = {}
       issued = False
       permission_calls = 0
+      registrations = 0
       fail_permissions = sys.argv[1] == 'true'
       class Handler(BaseHTTPRequestHandler):
           def log_message(self, *args): pass
@@ -22,6 +23,7 @@ import Testing
               data=json.dumps(body).encode()
               self.send_response(status)
               self.send_header('Content-Type','application/json')
+              if status==503: self.send_header('Retry-After','0.01')
               self.send_header('Content-Length',str(len(data)))
               self.end_headers()
               self.wfile.write(data)
@@ -32,9 +34,11 @@ import Testing
                   else: self.respond(completed)
               else: self.respond({'userId':'user-test','email':'test@example.invalid'})
           def do_POST(self):
-              global issued,completed
+              global issued,completed,registrations
               body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))) or b'{}')
               if self.path == '/api/computer-use/hosts/start':
+                  registrations+=1
+                  if registrations==1: self.respond({},503);return
                   if self.headers.get('Authorization') != 'Bearer user-token':
                       self.respond({},401); return
                   self.respond({'hostId':'host-test','hostToken':'host-token'}); return
@@ -62,11 +66,11 @@ import Testing
           if request['kind']=='server.start': result={'port':server.server_port}
           elif request['kind']=='permissions.state':
               permission_calls += 1
-              if fail_permissions and permission_calls > 1:
+              if fail_permissions and issued:
                   print(json.dumps({'id':request['id'],'status':'failed','error':{'code':'helper_unavailable','message':'Permission probe failed'}}),flush=True)
                   continue
               result={'accessibility':True,'screenRecording':True}
-          elif request['kind']=='apps.list': result={'apps':[{'name':'Notes','bundleId':'com.apple.Notes'}]}
+          elif request['kind']=='apps.list': result={'apps':[{'name':'Notes','bundleId':'com.apple.Notes'}],'appState':'fixture-state','screenshot':'fixture-image','elements':[],'visibleElements':[],'pluginContent':'plugin-summary'}
           else: raise RuntimeError('Unexpected helper command')
           print(json.dumps({'id':request['id'],'status':'succeeded','result':result}),flush=True)
       """
@@ -87,15 +91,33 @@ import Testing
       execute: { command, permissions in
         await commands.execute(command, permissions: permissions)
       })
+    var retry: HostRuntime.Recovery?
+    host.onChange = { if let current = host.recovery { retry = current } }
     host.start()
     let completion = try await api.request("api/test/wait-complete")
     await host.stop()
+    let recovery = try #require(retry)
+    #expect(recovery.phase == .start && recovery.attempt == 1)
+    #expect(recovery.retryDelay == 0.01)
+    #expect(recovery.nextRetryAt > recovery.lastRetryAt)
+    #expect(host.recovery == nil)
+    #expect(host.errors.first?.phase == .start)
+    let log = try #require(host.commands.first)
+    #expect(log["startedAt"].string != nil && log["completedAt"].string != nil)
+    #expect(try #require(log["durationMs"].number) >= 0)
     if permissionFailure {
       #expect(completion["body"]["status"].string == "failed")
       #expect(completion["body"]["error"]["code"].string == "accessibility_unavailable")
     } else {
       #expect(completion["body"]["status"].string == "succeeded")
       #expect(completion["body"]["result"]["apps"].array.first?["name"].string == "Notes")
+      #expect(completion["body"]["result"]["screenshot"].string == "fixture-image")
+      let summary = log["response"]["result"]
+      #expect(summary["screenshot"] == .null && summary["appState"] == .null)
+      #expect(summary["pluginContent"].string == "plugin-summary")
+      #expect(
+        summary["omittedResultFields"]
+          == .strings(["appState", "elements", "screenshot", "visibleElements"]))
     }
     #expect(completion["clientType"].string == "Desktop")
     #expect(completion["product"].string == "okou")

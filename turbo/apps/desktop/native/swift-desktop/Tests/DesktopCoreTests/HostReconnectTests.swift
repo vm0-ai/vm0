@@ -24,6 +24,8 @@ import Testing
       execute: { command, permissions in await commands.execute(command, permissions: permissions) }
     )
     let (states, continuation) = AsyncStream<String>.makeStream()
+    var errorPhases: [HostRuntime.Phase] = []
+    host.onError = { phase, _ in errorPhases.append(phase) }
     host.onChange = { [weak host] in
       if let host { continuation.yield(host.status) }
     }
@@ -34,6 +36,9 @@ import Testing
         if state == "unauthenticated" { break }
       }
       #expect(host.executing)
+      #expect(host.errors.first?.phase == .heartbeat)
+      #expect(host.errors.first?.hostID == "host-1")
+      #expect(host.recovery == nil)
       host.start()
       _ = try await api.request("api/test/release-command")
       let pending = try await api.request("api/test/wait-completion")
@@ -44,6 +49,7 @@ import Testing
       let result = try await api.request("api/test/wait-finished")
       #expect(result["events"] == .strings(["start-1", "complete-1", "start-2", "complete-2"]))
       #expect(host.hostID == "host-2")
+      #expect(errorPhases == [.heartbeat])
       await host.stop()
       #expect(host.status == "offline")
       #expect(!host.executing)

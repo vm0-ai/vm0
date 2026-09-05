@@ -232,19 +232,48 @@ struct DesktopView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         LabeledContent("Host", value: model.host.hostID ?? "Offline")
+        LabeledContent("Status", value: model.host.status.capitalized)
         if let heartbeat = model.host.lastHeartbeat {
           LabeledContent("Last heartbeat", value: heartbeat.formatted())
         }
-        ForEach(Array(model.host.errors.enumerated()), id: \.offset) { _, error in
-          Text(error).foregroundStyle(.orange).textSelection(.enabled)
+        if let command = model.host.lastCommand {
+          LabeledContent("Last command", value: command.formatted())
+        }
+        if let recovery = model.host.recovery {
+          GroupBox("Connection recovery") {
+            VStack(alignment: .leading, spacing: 8) {
+              LabeledContent("Phase", value: recovery.phase.rawValue)
+              LabeledContent("Attempt", value: String(recovery.attempt))
+              LabeledContent("Last retry", value: recovery.lastRetryAt.formatted())
+              LabeledContent("Next retry", value: recovery.nextRetryAt.formatted())
+              LabeledContent("Delay", value: "\(Int(recovery.retryDelay)) seconds")
+            }.padding(8)
+          }
+        }
+        ForEach(model.host.errors) { error in
+          VStack(alignment: .leading, spacing: 4) {
+            Text("\(error.phase.rawValue) · \(error.occurredAt.formatted())").font(.caption)
+            Text(error.message).foregroundStyle(.orange)
+            Text(error.hostID ?? "No registered host").font(.caption).foregroundStyle(.secondary)
+          }.textSelection(.enabled)
         }
         ForEach(Array(model.host.commands.enumerated()), id: \.offset) { _, command in
           DisclosureGroup(
             "\(command["kind"].string ?? "Command") · \(command["status"].string ?? "")"
           ) {
-            Text((try? command.text(pretty: true)) ?? "").font(
-              .system(.caption, design: .monospaced)
-            ).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+              if let app = command["app"].string { LabeledContent("App", value: app) }
+              LabeledContent("Started", value: command["startedAt"].string ?? "")
+              if let completed = command["completedAt"].string {
+                LabeledContent("Completed", value: completed)
+              }
+              if let duration = command["durationMs"].number {
+                LabeledContent("Duration", value: "\(Int(duration)) ms")
+              }
+              Text((try? command.text(pretty: true)) ?? "").font(
+                .system(.caption, design: .monospaced)
+              ).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            }
           }
         }
       }.padding(20)
