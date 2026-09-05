@@ -1,17 +1,118 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import tailwindcss from "@tailwindcss/postcss";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import postcss from "postcss";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { Switch } from "../switch";
 
-describe("Switch", () => {
-  it("uses the new UI Amber and segment track tokens", () => {
-    render(<Switch aria-label="Notifications" />);
+let compiledSwitchCss = "";
 
-    expect(screen.getByRole("switch", { name: "Notifications" })).toHaveClass(
-      "data-checked:bg-primary",
-      "new-ui:data-checked:bg-primary-400",
-      "data-unchecked:bg-muted",
-      "new-ui:data-unchecked:bg-segment-track",
-    );
+function globalCssPath(): string {
+  const candidates = [
+    join(process.cwd(), "src/styles/globals.css"),
+    join(process.cwd(), "packages/ui/src/styles/globals.css"),
+  ];
+  const path = candidates.find((candidate) => {
+    return existsSync(candidate);
+  });
+  if (path === undefined) {
+    throw new Error("Unable to locate UI global CSS");
+  }
+  return path;
+}
+
+async function compileSwitchCss(): Promise<string> {
+  const path = globalCssPath();
+  const source = `${readFileSync(path, "utf8")}\n@source "../components/ui/switch.tsx";`;
+  const result = await postcss([tailwindcss()]).process(source, { from: path });
+  const rules: string[] = [];
+
+  postcss.parse(result.css).walkRules((rule) => {
+    const isSwitchState =
+      rule.selector.includes("[data-checked]") ||
+      rule.selector.includes("[data-unchecked]");
+    const setsBackground = rule.nodes.some((node) => {
+      return node.type === "decl" && node.prop === "background-color";
+    });
+    if (isSwitchState && setsBackground) {
+      rules.push(rule.toString());
+    }
+  });
+
+  if (rules.length === 0) {
+    throw new Error("Tailwind did not compile switch state backgrounds");
+  }
+  return rules.join("\n");
+}
+
+function installSwitchStyles(segmentTrack: string): () => void {
+  const style = document.createElement("style");
+  style.textContent = `${compiledSwitchCss}
+    :root {
+      --color-primary: rgb(237, 78, 1);
+      --color-primary-400: rgb(225, 145, 0);
+      --color-muted: rgb(231, 235, 240);
+      --color-segment-track: ${segmentTrack};
+    }
+  `;
+  document.head.append(style);
+  return () => {
+    style.remove();
+  };
+}
+
+beforeAll(async () => {
+  compiledSwitchCss = await compileSwitchCss();
+});
+
+describe("Switch", () => {
+  it.each([
+    { name: "light", segmentTrack: "rgb(240, 236, 234)" },
+    { name: "dark", segmentTrack: "rgb(62, 61, 60)" },
+  ])(
+    "renders the new UI $name track and checked Amber",
+    async ({ segmentTrack }) => {
+      const removeStyles = installSwitchStyles(segmentTrack);
+      try {
+        const user = userEvent.setup();
+        render(<Switch data-new-ui aria-label="Notifications" />);
+        const toggle = screen.getByRole("switch", { name: "Notifications" });
+
+        expect(toggle).not.toBeChecked();
+        expect(getComputedStyle(toggle).backgroundColor).toBe(segmentTrack);
+
+        await user.click(toggle);
+
+        expect(toggle).toBeChecked();
+        expect(getComputedStyle(toggle).backgroundColor).toBe(
+          "rgb(225, 145, 0)",
+        );
+      } finally {
+        removeStyles();
+      }
+    },
+  );
+
+  it("preserves the legacy switch colors", async () => {
+    const removeStyles = installSwitchStyles("rgb(240, 236, 234)");
+    try {
+      const user = userEvent.setup();
+      render(<Switch aria-label="Notifications" />);
+      const toggle = screen.getByRole("switch", { name: "Notifications" });
+
+      expect(getComputedStyle(toggle).backgroundColor).toBe(
+        "rgb(231, 235, 240)",
+      );
+
+      await user.click(toggle);
+
+      expect(getComputedStyle(toggle).backgroundColor).toBe("rgb(237, 78, 1)");
+    } finally {
+      removeStyles();
+    }
   });
 });
