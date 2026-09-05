@@ -8,7 +8,7 @@ import { noAbortSignalInObjectParams } from "./no-abort-signal-in-object-params.
 
 export { oxlint };
 
-const vm0Plugin = {
+const okouPlugin = {
   rules: {
     "no-abort-signal-in-object-params": noAbortSignalInObjectParams,
     "no-msw-bypass": {
@@ -148,14 +148,14 @@ export const config = [
   {
     plugins: {
       turbo: turboPlugin,
-      vm0: vm0Plugin,
+      okou: okouPlugin,
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
       "arrow-body-style": ["error", "always"],
       complexity: ["error", { max: 20 }],
-      "vm0/no-msw-bypass": "error",
-      "vm0/no-re-export": "error",
+      "okou/no-msw-bypass": "error",
+      "okou/no-re-export": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
@@ -165,7 +165,7 @@ export const config = [
   {
     files: ["**/*.ts", "**/*.tsx"],
     rules: {
-      "vm0/no-legacy-automation-identifiers": "error",
+      "okou/no-legacy-automation-identifiers": "error",
       "@typescript-eslint/naming-convention": [
         "error",
         // Variables and parameters: camelCase, UPPER_CASE, or PascalCase
@@ -206,7 +206,7 @@ export const config = [
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
     rules: {
-      "vm0/no-fetch-spy": "error",
+      "okou/no-fetch-spy": "error",
     },
   },
   {

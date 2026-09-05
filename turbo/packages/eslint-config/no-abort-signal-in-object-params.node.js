@@ -21,9 +21,9 @@ function lint(code, options) {
         sourceType: "module",
         parser: tseslint.parser,
       },
-      plugins: { vm0: plugin },
+      plugins: { okou: plugin },
       rules: {
-        "vm0/no-abort-signal-in-object-params": ["error", options ?? {}],
+        "okou/no-abort-signal-in-object-params": ["error", options ?? {}],
       },
     },
   ]);
