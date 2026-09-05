@@ -56,7 +56,6 @@ export enum FeatureSwitchKey {
   ChatRunWorkFolding = "chatRunWorkFolding",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
-  MarkdownHexColorPreview = "markdownHexColorPreview",
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   BaseUiSidebarScrollArea = "baseUiSidebarScrollArea",

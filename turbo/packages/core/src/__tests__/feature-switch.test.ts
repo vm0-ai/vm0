@@ -27,9 +27,6 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
       "progressiveArtifactPreview",
     );
-    expect(FeatureSwitchKey.MarkdownHexColorPreview).toBe(
-      "markdownHexColorPreview",
-    );
   });
 });
 
@@ -191,7 +188,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -224,9 +220,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
