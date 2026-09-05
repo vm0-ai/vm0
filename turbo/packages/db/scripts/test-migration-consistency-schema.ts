@@ -68,6 +68,7 @@ import { validateBuiltInProviderDiscriminatorContract } from "./test-built-in-pr
 import { validateBuiltInProviderDiscriminatorMigration } from "./test-built-in-provider-discriminator-migration";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
+import { validateSingleAccountAuthorizationCleanup } from "./test-single-account-authorization-cleanup";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
@@ -11203,6 +11204,8 @@ async function main(): Promise<void> {
     const dbUrl1 = createTestDbUrl(TEST_DB_1);
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
+
+    await validateSingleAccountAuthorizationCleanup(dbUrl1);
 
     console.log("=== Phase 2.1: Validate database reset ===\n");
     await resetDatabase(dbUrl1);

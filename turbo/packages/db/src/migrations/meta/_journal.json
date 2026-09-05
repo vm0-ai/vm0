@@ -1891,6 +1891,13 @@
       "when": 1788601324475,
       "tag": "1077_unknown_orphan",
       "breakpoints": true
+    },
+    {
+      "idx": 1078,
+      "version": "7",
+      "when": 1788622035564,
+      "tag": "1078_delete_single_account_authorization_state",
+      "breakpoints": true
     }
   ]
 }
