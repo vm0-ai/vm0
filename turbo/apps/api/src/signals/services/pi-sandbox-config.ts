@@ -155,6 +155,7 @@ function isFastTerraPiProvider(
 ): boolean {
   return (
     modelProviderType === "codex-oauth-token" ||
+    isStandardTerraApiKeyPiProviderType(modelProviderType) ||
     (isBuiltInModelProviderType(modelProviderType) &&
       (builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
         builtInModelRuntimeRoute?.providerType === "openrouter-codex"))
@@ -188,7 +189,7 @@ export function shouldUsePiExecution(args: {
     (args.modelProviderType === "codex-oauth-token" &&
       (isStandardTerra || isFastTerra)) ||
     (standardTerraApiKeyPiRoute(args.modelProviderType) !== null &&
-      isStandardTerra);
+      (isStandardTerra || isFastTerra));
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
@@ -333,7 +334,6 @@ function resolveStandardTerraApiKeyPiModelConfig(
   if (
     !route ||
     provider.selectedModel !== "gpt-5.6-terra" ||
-    codexServiceTier !== undefined ||
     provider.inlineFirewall === true ||
     provider.credentialHeader !== undefined ||
     (provider.concreteType !== undefined &&
@@ -354,8 +354,14 @@ function resolveStandardTerraApiKeyPiModelConfig(
   ) {
     return null;
   }
+  const serviceTier = codexServiceTier === "fast" ? "priority" : undefined;
   const config = {
-    schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION,
+    ...(serviceTier === undefined
+      ? { schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION }
+      : {
+          schemaVersion: PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+          serviceTier,
+        }),
     dialect: "openai-responses",
     transport: "sse",
     provider: route.provider,
@@ -382,6 +388,7 @@ function resolveStandardTerraApiKeyPiModelConfig(
     dialect: config.dialect,
     transport: config.transport,
     thinkingLevel: config.thinkingLevel,
+    serviceTier,
   })
     ? config
     : null;
