@@ -9288,18 +9288,11 @@ async function resolvePreparedThreadConnectorSelections(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
 ): Promise<ThreadConnectorSelectionIds | CreateRunErrorResult | undefined> {
   const chatThreadId = args.createArgs.chatThreadId;
-  if (
-    chatThreadId === undefined ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.ConnectorAccounts,
-      args.featureSwitchContext,
-    )
-  ) {
+  if (chatThreadId === undefined) {
     return undefined;
   }
   const resolved = await resolveChatThreadConnectorSelections(args.db, {
@@ -9351,7 +9344,6 @@ async function prepareRunRuntimeContext(
         db: args.db,
         createArgs: args.createArgs,
         connectorScope: args.connectorScope,
-        featureSwitchContext,
       },
       signal,
     ),

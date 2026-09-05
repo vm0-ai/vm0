@@ -9868,9 +9868,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     const connected = await connectors.connectManualGrant(
       actor,
@@ -9988,9 +9986,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await installApiTestConnectorCatalog();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
     const connected = await connectors.connectManualGrant(
       actor,
       "lark",
@@ -12511,9 +12507,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",
@@ -15620,40 +15614,17 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
   });
 
-  it("advertises connector account switching only while the feature is enabled", async () => {
+  it("advertises connector account switching", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: false,
-    });
-    const gatedOff = await api.createRun(actor, {
-      agentId,
-      prompt: "switch my connector account",
-      modelProvider: "anthropic-api-key",
-    });
-    const gatedOffPrompt =
-      (await api.readRun(actor, gatedOff.runId)).appendSystemPrompt ?? "";
-    expect(gatedOffPrompt).not.toContain(
-      "okou connector account switch-request",
-    );
-    expect(gatedOffPrompt).toContain("return that exact URL verbatim");
-    expect(gatedOffPrompt).toContain(
-      "Never rewrite, shorten, reconstruct, or omit any query parameters",
-    );
-    await api.requestCancelRun(actor, gatedOff.runId, [200]);
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
-    const gatedOn = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "switch my connector account",
       modelProvider: "anthropic-api-key",
     });
     const appendSystemPrompt =
-      (await api.readRun(actor, gatedOn.runId)).appendSystemPrompt ?? "";
+      (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
       "okou connector account list <slug> --json",
     );
@@ -15673,7 +15644,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       "only after the user confirms and the selection succeeds",
     );
 
-    await api.requestCancelRun(actor, gatedOn.runId, [200]);
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("advertises managed SEO tools by default", async () => {

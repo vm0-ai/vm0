@@ -2,14 +2,10 @@ import {
   type ConnectorAccountConnection,
   connectorAccountsContract,
 } from "@okouai/api-contracts/contracts/connector-accounts";
-import {
-  connectorOauthStartContract,
-  connectorScopeDiffContract,
-} from "@okouai/api-contracts/contracts/connectors";
+import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -32,10 +28,6 @@ import {
 } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
-
-function legacyConnectorFeatureSwitches() {
-  return { [FeatureSwitchKey.ConnectorAccounts]: false };
-}
 
 function createAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
@@ -91,7 +83,6 @@ function setupAccountsPage(): Promise<void> {
   return setupPage({
     context,
     path: "/connectors",
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
 }
 
@@ -330,41 +321,6 @@ test("Summarize connector access on its card", async () => {
   ).toBeEnabled();
 });
 
-test("Keep a connector connected when an account must be chosen", async () => {
-  mockConnectors(context, [
-    { connectorSlug: "github", externalUsername: "octocat" },
-  ]);
-  context.mocks.api(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ respond }) => {
-      return respond(409, {
-        error: {
-          code: "CONFLICT",
-          message: "Choose an account before disconnecting",
-        },
-      });
-    },
-  );
-  await setupPage({
-    context,
-    path: "/connectors",
-    featureSwitches: legacyConnectorFeatureSwitches(),
-  });
-  const card = await waitFor(() => {
-    return getConnectorCard("GitHub");
-  });
-
-  click(getConnectorAction("button", "More options", card));
-  click(getConnectorAction("menuitem", "Disconnect"));
-
-  await expect(
-    screen.findByText("Choose an account before disconnecting"),
-  ).resolves.toBeInTheDocument();
-  expect(within(card).getByText("@octocat")).toBeInTheDocument();
-  click(getConnectorAction("button", "More options", card));
-  expect(getConnectorAction("menuitem", "Disconnect")).toBeInTheDocument();
-});
-
 test("Make another connector account the default", async () => {
   const [connector] = mockConnectors(context, [
     { connectorSlug: "github", externalUsername: "work" },
@@ -532,34 +488,6 @@ test("Discard a pending account deletion when its manager closes", async () => {
   });
 });
 
-test("Disconnect a connected connector", async () => {
-  mockConnectors(context, [
-    { connectorSlug: "github", externalUsername: "octocat" },
-  ]);
-  context.mocks.api(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ respond }) => {
-      context.mocks.data.connectors([]);
-      return respond(204);
-    },
-  );
-  await setupPage({
-    context,
-    path: "/connectors",
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: false },
-  });
-  const card = await waitFor(() => {
-    return getConnectorCard("GitHub");
-  });
-
-  click(getConnectorAction("button", "More options", card));
-  click(getConnectorAction("menuitem", "Disconnect"));
-
-  await waitFor(() => {
-    expect(getConnectorAction("button", "Connect GitHub")).toBeInTheDocument();
-  });
-});
-
 test("Exclude deleted agents from connector access", async () => {
   const activeId = "c0000000-0000-4000-a000-000000000001";
   const deletedId = "c0000000-0000-4000-a000-000000000002";
@@ -719,55 +647,6 @@ test("Load connector accounts progressively", async () => {
   expect(queryConnectorAction("button", "Load more", dialog)).toBeNull();
   expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
   expect(accountActions(dialog)).toHaveLength(8);
-});
-
-test("Reconnect an expired connection", async () => {
-  mockConnectors(context, [
-    {
-      connectorSlug: "meta-ads",
-      connectionStatus: "reconnect-required",
-      reconnectReason: "authorization_expired_or_revoked",
-    },
-  ]);
-  const authWindow = createAuthWindow();
-  context.mocks.browser.open(authWindow);
-  context.mocks.browser.standaloneDisplayMode(true);
-  context.mocks.api(
-    connectorOauthStartContract.start,
-    ({ body, params, respond }) => {
-      expect(params.connectorSlug).toBe("meta-ads");
-      expect(body.account).toStrictEqual({ intent: "single-account" });
-      expect(body.callbackTarget).toBe("app");
-      return respond(200, {
-        authorizationUrl: "https://oauth.test/meta-ads/authorize",
-      });
-    },
-  );
-  await setupPage({
-    context,
-    path: "/connectors",
-    featureSwitches: legacyConnectorFeatureSwitches(),
-  });
-  const card = await waitFor(() => {
-    return getConnectorCard("Meta Ads");
-  });
-  expect(within(card).getByText("Connection expired")).toBeInTheDocument();
-  expect(
-    queryConnectorAction("button", "Why this connection expired", card),
-  ).toBeNull();
-
-  click(getConnectorAction("button", "More options", card));
-  click(getConnectorAction("menuitem", "Reconnect"));
-
-  await waitFor(() => {
-    expect(authWindow.location.href).toBe(
-      "https://oauth.test/meta-ads/authorize",
-    );
-  });
-  expect(within(card).getByText("Connecting…")).toBeInTheDocument();
-  expect(
-    within(card).queryByText("Switch back here after completing sign-in."),
-  ).not.toBeInTheDocument();
 });
 
 test("Reconnect the selected non-default account", async () => {
@@ -1043,44 +922,6 @@ test("Rename and delete a specific connector account", async () => {
     expect(within(manager).getByText("No accounts found")).toBeInTheDocument();
     expect(getConnectorAction("button", "Add account", manager)).toBeEnabled();
   });
-});
-
-test("Review newly requested connector permissions", async () => {
-  const storedScopes = ["https://www.googleapis.com/auth/adwords"];
-  const addedScopes = [
-    "https://www.googleapis.com/auth/datamanager",
-    "https://www.googleapis.com/auth/userinfo.email",
-  ];
-  mockConnectors(context, [
-    { connectorSlug: "google-ads", oauthScopes: storedScopes },
-  ]);
-  context.mocks.api(connectorScopeDiffContract.getScopeDiff, ({ respond }) => {
-    return respond(200, {
-      addedScopes,
-      removedScopes: [],
-      currentScopes: [...storedScopes, ...addedScopes],
-      storedScopes,
-    });
-  });
-  await setupPage({
-    context,
-    path: "/connectors",
-    featureSwitches: legacyConnectorFeatureSwitches(),
-  });
-  const card = await waitFor(() => {
-    return getConnectorCard("Google Ads");
-  });
-  expect(within(card).getByText("Update permissions")).toBeInTheDocument();
-
-  click(getConnectorAction("button", "More options", card));
-  click(getConnectorAction("menuitem", "Review permissions"));
-
-  const dialog = await screen.findByRole("dialog", {
-    name: "Google Ads permissions update",
-  });
-  expect(within(dialog).getByText("New permissions")).toBeInTheDocument();
-  expect(within(dialog).getByText(addedScopes[0] ?? "")).toBeInTheDocument();
-  expect(within(dialog).getByText(addedScopes[1] ?? "")).toBeInTheDocument();
 });
 
 test("Review and reconnect the connector account the user selected", async () => {

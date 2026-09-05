@@ -8003,7 +8003,6 @@ function ConnectorsPopoverButton({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
-  const connectorAccountsEnabled = useGet(signals.connector.accounts.enabled$);
   const stablePopoverPlacementEnabled =
     useGet(featureSwitch$)[
       FeatureSwitchKey.ComposerConnectorPopoverPlacement
@@ -8066,7 +8065,6 @@ function ConnectorsPopoverButton({
     });
   const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
     if (
-      !connectorAccountsEnabled ||
       !item.connector.authorized ||
       (item.kind === "custom" &&
         isIntegrationManagedCustomConnector(item.connector))

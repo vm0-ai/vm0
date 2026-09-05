@@ -93,10 +93,7 @@ import {
   type ReadyConnectorConnectionMutation,
   writeConnectorConnectionMetadata,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
+import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2844,7 +2841,6 @@ async function prepareCustomConnectorValueWrite(args: {
   readonly request: SetCustomConnectorValuesArgs;
   readonly expectedConnector: CustomConnectorRow;
   readonly expectedValues: readonly CustomConnectorValueInput[];
-  readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg>;
 }): Promise<
   | CustomConnectorValueWriteState
   | BadRequestResponse
@@ -2895,9 +2891,7 @@ async function prepareCustomConnectorValueWrite(args: {
       customConnectorId: args.request.connectorId,
     },
     mutation: normalizeConnectorAccountMutation(args.request.account),
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
   });
   if (resolution.kind !== "ready") {
     return resolution.kind === "missing"
@@ -2905,7 +2899,7 @@ async function prepareCustomConnectorValueWrite(args: {
       : conflict(
           resolution.kind === "ambiguous"
             ? "Multiple connector accounts require an exact choice"
-            : "Additional connector accounts are not enabled yet",
+            : "This connector does not support additional accounts",
         );
   }
   const storedConnector =
@@ -2951,7 +2945,6 @@ async function persistCustomConnectorValues(
     readonly expectedConnector: CustomConnectorRow;
     readonly expectedValues: readonly CustomConnectorValueInput[];
     readonly preparedValues: readonly PreparedCustomConnectorValue[];
-    readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg>;
   },
   signal: AbortSignal,
 ): Promise<
@@ -3093,7 +3086,6 @@ export const setCustomConnectorValues$ = command(
           expectedConnector: connector,
           expectedValues: values,
           preparedValues,
-          featureSwitchContext,
         },
         signal,
       );

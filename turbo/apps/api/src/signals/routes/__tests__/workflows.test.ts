@@ -1375,9 +1375,7 @@ describe("workflows", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      },
+      {},
     );
     const sourceAgent = await createAgent(actor, {
       displayName: "Gmail Copy Source Agent",
@@ -1529,11 +1527,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Calendar Copy Source Agent",
       visibility: "private",
@@ -1657,7 +1650,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.NotionWorkflowAutomations]: true,
       },
     );
@@ -1878,7 +1870,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
       },
     );
@@ -2019,7 +2010,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
       },
     );

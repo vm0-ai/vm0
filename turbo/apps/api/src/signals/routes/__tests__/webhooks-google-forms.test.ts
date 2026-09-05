@@ -338,7 +338,6 @@ async function setupGoogleFormsAutomation() {
     { orgId: actor.orgId, userId: actor.userId },
     {
       [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
     },
   );
   mockGoogleFormsConnectorOAuth();
@@ -695,7 +694,6 @@ describe("Google Forms Pub/Sub webhook", () => {
       { orgId: actor.orgId, userId: actor.userId },
       {
         [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
       },
     );
     mockGoogleFormsConnectorOAuth();

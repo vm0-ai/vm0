@@ -13,11 +13,9 @@ import type {
   ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { withCleanup } from "../utils.ts";
 import {
   connectorAccountSummaryByTarget$,
@@ -32,7 +30,6 @@ export interface ComposerConnectorAccountPreferenceState {
 }
 
 export interface ComposerConnectorAccountSignals {
-  readonly enabled$: Computed<boolean>;
   readonly preferenceState$: Computed<
     Promise<ComposerConnectorAccountPreferenceState>
   >;
@@ -189,14 +186,8 @@ export function createComposerConnectorAccountSignals(
     emptyPreferenceState(),
   );
   const savingTargetKey$ = state<string | null>(null);
-  const enabled$ = computed((get): boolean => {
-    return get(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
-  });
   const preferenceState$ = computed(
     async (get): Promise<ComposerConnectorAccountPreferenceState> => {
-      if (!get(enabled$)) {
-        return emptyPreferenceState();
-      }
       if (!threadId) {
         return get(pendingState$);
       }
@@ -264,7 +255,6 @@ export function createComposerConnectorAccountSignals(
   });
 
   return {
-    enabled$,
     preferenceState$,
     summaryByTarget$: connectorAccountSummaryByTarget$,
     menuTarget$: computed((get) => {
