@@ -290,8 +290,9 @@ actual target app before posting foreground input. Earlier helper-reported
 frontmost fields alone do not establish independent focus-preservation evidence.
 
 A real TextEdit foreground Command-A followed by typing replaced the complete
-owned document. Background Command-A did not select that document and remains
-an acceptance gap; disabled menu state alone is not a reliable general guard.
+owned document. Background Command-A initially did not select that document;
+the subsequent native text-selection repair is recorded below. Disabled menu
+state alone is not a reliable general guard.
 These tests use the separate acceptance app and are not a new packaged
 Desktop/server round trip.
 [Candidate keyboard evidence](https://cdn.vm0.io/artifacts/stq01jmtrp.json).
@@ -301,6 +302,43 @@ ownership before any recovery policy can activate an app. Immediate request/EOF
 also exposed a helper that stayed alive; queuing the stop on its main run loop
 fixes the startup/EOF race, and the integration test bounds process exit.
 The PR check and subsequent release acceptance record the downloadable revision.
+
+### Native text selection and input acceptance
+
+The next candidate identifies the actual standard Select All menu binding and
+sets the focused native text control's AX selection range. It checks the target
+window, focus, character count, and resulting range. Unicode text including
+Chinese, emoji, and combining characters selected all 51 UTF-16 units and was
+replaced completely under both background policies without changing frontmost.
+A second AppKit application passed the same operation. Its custom Command-A
+binding retained key-event dispatch and did not acquire select-all semantics.
+Unrecognized localized menu bindings retain the existing keyboard path.
+
+An owned Safari page's JavaScript Command-A handler ran in the background, but
+typing initially failed because Safari omitted the app-level focused-element
+attribute. Input now validates the focused editable field within the addressed
+window. All three recovery policies inserted text at the caret chosen by that
+custom handler; background policies preserved frontmost without restoration.
+Web controls retain key-event semantics. Direct typing into an older window
+snapshot rejects a conflicting focused window under `never`; explicit recovery
+focuses and types only into the requested window, leaving the other intact.
+Snapshot preflight now covers both key and text requests before activation.
+
+The downloaded `0961405` helper returned its 10-second typing timeout while
+continuing to type: an independent AX observer measured 1497 then 1815 characters
+after the error, and 3540 later. The candidate bounds both text dispatch loops
+and reports how many characters it dispatched before its limit. A real background
+4000-character request returned an explicit partial-input error in 9.23 seconds
+after dispatching 1177 characters. Two settled snapshots stayed at 1191 total
+characters, and the next character completed in 0.99 seconds. Long foreground
+typing has not yet received the same live deadline check.
+
+All 122 helper tests pass, including nine real-process snapshot-preflight cases.
+[Native keyboard candidate evidence](https://cdn.vm0.io/artifacts/4qf9kkmnu6.json)
+records helper SHA-256
+`6e1b752f2cf748904455bfec5dec2b6a9968dba5ca2b569ee1f117067a5f12be`.
+These remain separate helper tests; complete current packaged Desktop/server
+acceptance and the rest of this inventory remain open.
 
 ## Feature inventory and evidence
 

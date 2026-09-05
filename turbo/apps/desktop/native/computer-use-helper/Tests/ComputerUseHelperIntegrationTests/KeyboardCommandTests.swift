@@ -4,8 +4,8 @@ import Testing
 private final class KeyboardTestBundle: NSObject {}
 
 struct KeyboardCommandTests {
-    @Test(arguments: ["never", "on-window-unavailable", "always"])
-    func rejectsUnknownSnapshotBeforeAppActivation(policy: String) throws {
+    @Test(arguments: ["never", "on-window-unavailable", "always"], ["CMD+w", "CMD+a", "text"])
+    func rejectsUnknownSnapshotBeforeAppActivation(policy: String, key: String) throws {
         let bundle = Bundle(for: KeyboardTestBundle.self)
         let executable = bundle.bundleURL.deletingLastPathComponent().appendingPathComponent("computer-use-helper")
         let process = Process()
@@ -20,8 +20,8 @@ struct KeyboardCommandTests {
         process.terminationHandler = { _ in ended.signal() }
         try process.run()
         let request: [String: Any] = [
-            "id": "keyboard-snapshot", "kind": "keyboard.press_key",
-            "app": "ai.vm0.test.keyboard-not-running", "key": "CMD+w",
+            "id": "keyboard-snapshot", "kind": key == "text" ? "keyboard.type_text" : "keyboard.press_key",
+            "app": "ai.vm0.test.keyboard-not-running", "key": key, "text": "Owned text",
             "snapshotId": "expired-snapshot", "foregroundRecovery": policy,
         ]
         var data = try JSONSerialization.data(withJSONObject: request)

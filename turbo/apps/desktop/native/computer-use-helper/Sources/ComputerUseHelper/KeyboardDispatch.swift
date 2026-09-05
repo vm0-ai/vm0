@@ -48,6 +48,31 @@ struct SafariCloseTabTarget {
     let countBefore: Int
 }
 
+enum NativeKeyboardShortcut {
+    case closeSafariTab(SafariCloseTabTarget)
+    case selectAllText(TextSelectionShortcut)
+
+    var dispatchMode: String {
+        switch self {
+        case .closeSafariTab: return "accessibility_action"
+        case .selectAllText: return "accessibility_value"
+        }
+    }
+
+    func perform(target: WindowTarget, deadline: TimeInterval) throws -> [String: Any] {
+        switch self {
+        case let .closeSafariTab(close): return try performSafariCloseTab(close, target: target, deadline: deadline)
+        case let .selectAllText(selection): return try performTextSelection(selection, target: target, deadline: deadline)
+        }
+    }
+}
+
+func nativeKeyboardShortcut(_ parsed: ParsedKeyPress, target: WindowTarget, deadline: TimeInterval) throws -> NativeKeyboardShortcut? {
+    if let close = try safariCloseTabTarget(parsed, target: target, deadline: deadline) { return .closeSafariTab(close) }
+    if let selection = try textSelectionShortcut(parsed, target: target, deadline: deadline) { return .selectAllText(selection) }
+    return nil
+}
+
 func safariCloseTabTarget(_ parsed: ParsedKeyPress, target: WindowTarget, deadline: TimeInterval) throws -> SafariCloseTabTarget? {
     guard NSRunningApplication(processIdentifier: target.pid)?.bundleIdentifier == "com.apple.Safari",
           parsed.keyCode == keyCodes["w"], menuModifierMask(parsed) == 0 else { return nil }
@@ -150,4 +175,50 @@ func prepareForegroundKeyboardWindow(_ target: WindowTarget, deadline: TimeInter
         }
         usleep(50_000)
     } while true
+}
+
+func ensureFocusedElementEditable(target: WindowTarget, deadline: TimeInterval) throws {
+    let app = applicationElement(forProcessIdentifier: target.pid)
+    let window = try keyboardAXWindow(target)
+    if let focused = axElementValue(attribute(app, kAXFocusedUIElementAttribute as CFString)),
+       role(focused) != "AXWebArea" {
+        guard axElementsEqual(axElementValue(attribute(focused, kAXWindowAttribute as CFString)), window) else {
+            throw HelperFailure(code: "window_unavailable", message: "Keyboard focus is outside the target window; no text was sent")
+        }
+        guard attributeIsSettable(focused, kAXValueAttribute as CFString) == true else {
+            throw HelperFailure(code: "element_not_editable", message: "The focused element is not editable; click into a text field before typing")
+        }
+        return
+    }
+
+    // Safari can omit the application's focused-UI-element attribute while
+    // its background web content still exposes the actual focused text field.
+    // Search only the addressed window and require an unambiguous editable
+    // field; never activate or click a different control to manufacture focus.
+    let readDeadline = min(deadline, ProcessInfo.processInfo.systemUptime + 2)
+    var pending = [window]
+    var seen = Set<CFHashCode>()
+    var editable: [AXUIElement] = []
+    while let element = pending.popLast() {
+        try ensureKeyboardDeliveryDeadline(readDeadline)
+        guard seen.insert(CFHash(element)).inserted else { continue }
+        guard seen.count <= 2_000 else {
+            throw HelperFailure(code: "element_not_editable", message: "The target window is too large to validate keyboard focus; no text was sent")
+        }
+        if [kAXTextAreaRole, kAXTextFieldRole].contains(role(element) ?? ""),
+           boolValue(attribute(element, kAXFocusedAttribute as CFString)) == true,
+           attributeIsSettable(element, kAXValueAttribute as CFString) == true {
+            editable.append(element)
+        }
+        pending.append(contentsOf: traversalChildCandidates(element).map(\.element))
+    }
+    guard editable.count == 1 else {
+        throw HelperFailure(code: "element_not_editable", message: "No unambiguous editable element has keyboard focus in the target window; no text was sent")
+    }
+}
+
+func ensureTextInputDeadline(_ deadline: TimeInterval, dispatchedCharacters: Int) throws {
+    guard ProcessInfo.processInfo.systemUptime < deadline else {
+        throw HelperFailure(code: "target_app_unresponsive", message: "Text input exceeded its time limit after dispatching \(dispatchedCharacters) characters; no additional input was sent")
+    }
 }

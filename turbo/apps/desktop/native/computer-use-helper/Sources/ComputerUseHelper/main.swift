@@ -1375,8 +1375,9 @@ struct AddressedEventDispatcher {
         event.postToPid(target.pid)
     }
 
-    func postText(_ text: String) throws {
-        for character in text {
+    func postText(_ text: String, deadline: TimeInterval) throws {
+        for (index, character) in text.enumerated() {
+            try ensureTextInputDeadline(deadline, dispatchedCharacters: index)
             try postTextCharacter(character)
             usleep(5_000)
         }
@@ -1458,8 +1459,9 @@ func foregroundTextKeyboardEvent(keyDown: Bool, utf16: [UInt16]) throws -> CGEve
     return event
 }
 
-func postForegroundText(_ text: String) throws {
-    for character in text {
+func postForegroundText(_ text: String, deadline: TimeInterval) throws {
+    for (index, character) in text.enumerated() {
+        try ensureTextInputDeadline(deadline, dispatchedCharacters: index)
         let utf16 = Array(String(character).utf16)
         guard !utf16.isEmpty else {
             continue
@@ -4529,14 +4531,14 @@ func performBackgroundKeyPress(
     let deadline = ProcessInfo.processInfo.systemUptime + commandTimeoutPolicy.timeoutSeconds - 1.5
     func currentSpaceKeyPress() throws -> [String: Any] {
         let target = try resolveTarget()
-        let close = try safariCloseTabTarget(parsed, target: target, deadline: deadline)
+        let shortcut = try nativeKeyboardShortcut(parsed, target: target, deadline: deadline)
         return try withFrontmostPreservation(
-            dispatchMode: close == nil ? "background_keyboard_event" : "accessibility_action",
-            dispatchTarget: close == nil ? "app_process" : "element",
-            inputRisk: close == nil ? "background_app_shortcut" : "targeted_app_action"
+            dispatchMode: shortcut?.dispatchMode ?? "background_keyboard_event",
+            dispatchTarget: shortcut == nil ? "app_process" : "element",
+            inputRisk: shortcut == nil ? "background_app_shortcut" : "targeted_app_action"
         ) {
-            if let close {
-                var result = try performSafariCloseTab(close, target: target, deadline: deadline)
+            if let shortcut {
+                var result = try shortcut.perform(target: target, deadline: deadline)
                 result["normalizedKey"] = parsed.normalizedKey
                 return (targetPID: target.pid, result: result)
             }
@@ -4589,6 +4591,7 @@ func performBackgroundTextInput(
     foregroundRecovery: ForegroundRecoveryPolicy,
     resolveTarget: () throws -> WindowTarget
 ) throws -> [String: Any] {
+    let deadline = ProcessInfo.processInfo.systemUptime + commandTimeoutPolicy.timeoutSeconds - 1.5
     func currentSpaceTextInput() throws -> [String: Any] {
         return try withFrontmostPreservation(
             dispatchMode: "background_keyboard_text",
@@ -4596,9 +4599,10 @@ func performBackgroundTextInput(
             inputRisk: "background_app_text"
         ) {
             let target = try resolveTarget()
+            try ensureFocusedElementEditable(target: target, deadline: deadline)
             let dispatcher = AddressedEventDispatcher(target: target)
-            try dispatcher.postText(inputText)
-            return (targetPID: target.pid, result: ["characterCount": inputText.count])
+            try dispatcher.postText(inputText, deadline: deadline)
+            return (targetPID: target.pid, result: ["characterCount": inputText.count, "targetWindowId": target.windowNumber])
         }
     }
 
@@ -4620,9 +4624,11 @@ func performBackgroundTextInput(
         dispatchTarget: "app_process",
         inputRisk: "foreground_app_text",
         resolveTarget: resolveTarget
-    ) { _ in
-        try postForegroundText(inputText)
-        return ["characterCount": inputText.count]
+    ) { target in
+        try prepareForegroundKeyboardWindow(target, deadline: deadline)
+        try ensureFocusedElementEditable(target: target, deadline: deadline)
+        try postForegroundText(inputText, deadline: deadline)
+        return ["characterCount": inputText.count, "targetWindowId": target.windowNumber]
     }
 }
 
@@ -4966,35 +4972,17 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
 // instead of being entered as text, so the input silently disappears. Resolve the
 // focused element up front and refuse with a clear error so the caller knows to focus
 // an editable field before typing.
-func ensureFocusedElementEditable(appName: String) throws {
-    let root = try appElement(named: appName)
-    guard let focused = axElementValue(attribute(root, kAXFocusedUIElementAttribute as CFString)) else {
-        throw HelperFailure(
-            code: "element_not_editable",
-            message:
-                "No element in \(appName) currently has keyboard focus. "
-                + "Click into a text field or editable area before typing."
-        )
-    }
-    guard attributeIsSettable(focused, kAXValueAttribute as CFString) == true else {
-        let roleSuffix = role(focused).map { focusedRole in
-            " The focused element role is \(focusedRole)."
-        } ?? ""
-        throw HelperFailure(
-            code: "element_not_editable",
-            message:
-                "The focused element in \(appName) is not editable.\(roleSuffix) "
-                + "Click into a text field or editable area before typing."
-        )
-    }
-}
-
 func handleTypeText(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
     let policy = try foregroundRecoveryPolicy(request)
     let snapshotId = optionalString(request, "snapshotId")
-    try ensureFocusedElementEditable(appName: appName)
+    if let snapshotId {
+        guard let session else {
+            throw HelperFailure(code: "unsupported_command", message: "Snapshot targeting requires a runtime session snapshot: \(snapshotId)")
+        }
+        _ = try session.snapshot(appName: appName, snapshotId: snapshotId)
+    }
     return try performBackgroundTextInput(
         appName: appName,
         inputText: inputText,
