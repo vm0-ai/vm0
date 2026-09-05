@@ -143,9 +143,9 @@ export const baseUiSidebarScrollAreaEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.BaseUiSidebarScrollArea] ?? false;
 });
 
-export const chatThreadNumberShortcutsEnabled$ = computed((get): boolean => {
+export const searchResultNumberShortcutsEnabled$ = computed((get): boolean => {
   return (
-    get(featureSwitch$)[FeatureSwitchKey.ChatThreadNumberShortcuts] ?? false
+    get(featureSwitch$)[FeatureSwitchKey.SearchResultNumberShortcuts] ?? false
   );
 });
 

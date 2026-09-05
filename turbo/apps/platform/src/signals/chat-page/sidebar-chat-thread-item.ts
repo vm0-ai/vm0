@@ -47,34 +47,6 @@ interface SidebarChatThreadItemSignalsRegistry {
   ): readonly SidebarChatThreadItemSignals[];
 }
 
-export const selectSidebarChatThread$ = command(
-  ({ get, set }, threadId: string, pane: SidebarChatThreadTargetPane) => {
-    const mainThreadId = get(pathParams$)?.threadId;
-    if (typeof mainThreadId !== "string") {
-      set(setSidebarExpanded$, false);
-      return false;
-    }
-
-    if (pane === "sidebar") {
-      const currentLeftId = get(currentLeftThread$)?.threadId ?? null;
-      const currentRightId = get(currentRightThread$)?.threadId ?? null;
-      if (threadId === currentLeftId) {
-        return true;
-      }
-      if (threadId === currentRightId) {
-        set(unloadRightThread$);
-      } else {
-        set(loadRightThread$, threadId);
-      }
-    } else if (get(currentLeftThread$)?.threadId !== threadId) {
-      set(loadLeftThread$, threadId);
-    }
-
-    set(setSidebarExpanded$, false);
-    return true;
-  },
-);
-
 function createSidebarChatThreadItemSignals(
   threadId: string,
 ): SidebarChatThreadItemSignals {
@@ -134,8 +106,30 @@ function createSidebarChatThreadItemSignals(
           : null;
       },
     ),
-    select$: command(({ set }, pane: SidebarChatThreadTargetPane) => {
-      return set(selectSidebarChatThread$, threadId, pane);
+    select$: command(({ get, set }, pane: SidebarChatThreadTargetPane) => {
+      const mainThreadId = get(pathParams$)?.threadId;
+      if (typeof mainThreadId !== "string") {
+        set(setSidebarExpanded$, false);
+        return false;
+      }
+
+      if (pane === "sidebar") {
+        const currentLeftId = get(currentLeftThread$)?.threadId ?? null;
+        const currentRightId = get(currentRightThread$)?.threadId ?? null;
+        if (threadId === currentLeftId) {
+          return true;
+        }
+        if (threadId === currentRightId) {
+          set(unloadRightThread$);
+        } else {
+          set(loadRightThread$, threadId);
+        }
+      } else if (get(currentLeftThread$)?.threadId !== threadId) {
+        set(loadLeftThread$, threadId);
+      }
+
+      set(setSidebarExpanded$, false);
+      return true;
     }),
     togglePinned$: command(async ({ get, set }, signal: AbortSignal) => {
       const pinnedAt = get(meta$)?.pinnedAt;

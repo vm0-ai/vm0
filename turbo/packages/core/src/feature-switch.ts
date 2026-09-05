@@ -444,10 +444,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadNumberShortcuts]: {
+  [FeatureSwitchKey.SearchResultNumberShortcuts]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Use Ctrl+Shift+1-9 to open the first nine chats instead of setting their icons.",
+      "Show current chats in empty workspace search and use numbered shortcuts inside the search dialog.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

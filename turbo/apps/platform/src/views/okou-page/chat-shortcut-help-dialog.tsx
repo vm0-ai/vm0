@@ -1,10 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import {
-  chatThreadNumberShortcutsEnabled$,
-  composerVoiceInputShortcutEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { composerVoiceInputShortcutEnabled$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   chatShortcutHelpOpen$,
@@ -22,7 +19,6 @@ type ShortcutLabelId =
   | "nextAgent"
   | "nextThread"
   | "openFirstThread"
-  | "openNumberedThread"
   | "previousAgent"
   | "previousThread"
   | "renameChat"
@@ -106,41 +102,32 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
 function shortcutSectionsForRoute(
   route: RouteKey | null,
   voiceInputShortcutEnabled: boolean,
-  numberShortcutsEnabled: boolean,
 ): readonly ShortcutSectionDefinition[] {
-  const filterShortcuts = (
+  const removeVoiceInputShortcut = (
     sections: readonly ShortcutSectionDefinition[],
   ): readonly ShortcutSectionDefinition[] => {
+    if (voiceInputShortcutEnabled) {
+      return sections;
+    }
     return sections.map((section) => {
+      if (section.titleId !== "composer") {
+        return section;
+      }
       return {
         ...section,
-        shortcuts: [
-          ...section.shortcuts.filter((shortcut) => {
-            return (
-              (shortcut.labelId !== "voiceInput" ||
-                voiceInputShortcutEnabled) &&
-              (shortcut.labelId !== "setIcon" || !numberShortcutsEnabled)
-            );
-          }),
-          ...(section.titleId === "global" && numberShortcutsEnabled
-            ? [
-                {
-                  key: "ctrl+shift+1-9",
-                  labelId: "openNumberedThread",
-                } satisfies ShortcutDefinition,
-              ]
-            : []),
-        ],
+        shortcuts: section.shortcuts.filter((shortcut) => {
+          return shortcut.labelId !== "voiceInput";
+        }),
       };
     });
   };
   if (route === "chat") {
-    return filterShortcuts(CHAT_THREAD_SHORTCUT_SECTIONS);
+    return removeVoiceInputShortcut(CHAT_THREAD_SHORTCUT_SECTIONS);
   }
   if (route === "agentChat" || route === "home") {
-    return filterShortcuts(AGENT_CHAT_SHORTCUT_SECTIONS);
+    return removeVoiceInputShortcut(AGENT_CHAT_SHORTCUT_SECTIONS);
   }
-  return filterShortcuts(SIDEBAR_SHORTCUT_SECTIONS);
+  return SIDEBAR_SHORTCUT_SECTIONS;
 }
 
 function translatedSectionTitles(): Readonly<
@@ -181,9 +168,6 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     }),
     openFirstThread: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.openFirstThread;
-    }),
-    openNumberedThread: i18n.t(($) => {
-      return $.appShell.shortcutHelp.shortcuts.openNumberedThread;
     }),
     previousAgent: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.previousAgent;
@@ -245,13 +229,8 @@ export function ChatShortcutHelpDialog() {
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
   const activeRoute = useGet(activeRoute$);
   const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
-  const numberShortcutsEnabled = useGet(chatThreadNumberShortcutsEnabled$);
   const shortcutSections = localizeShortcutSections(
-    shortcutSectionsForRoute(
-      activeRoute,
-      voiceInputShortcutEnabled,
-      numberShortcutsEnabled,
-    ),
+    shortcutSectionsForRoute(activeRoute, voiceInputShortcutEnabled),
   );
 
   return (

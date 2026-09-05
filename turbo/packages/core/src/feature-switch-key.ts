@@ -61,7 +61,7 @@ export enum FeatureSwitchKey {
   ResponsiveFollowupCards = "responsiveFollowupCards",
   BaseUiSidebarScrollArea = "baseUiSidebarScrollArea",
   PinnedChatThreadSort = "pinnedChatThreadSort",
-  ChatThreadNumberShortcuts = "chatThreadNumberShortcuts",
+  SearchResultNumberShortcuts = "searchResultNumberShortcuts",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   ConnectorAccounts = "connectorAccounts",

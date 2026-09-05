@@ -92,7 +92,6 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./okou-page/nav.ts";
-import { setupChatThreadNumberShortcuts$ } from "./okou-page/chat-thread-number-shortcuts.ts";
 import { bootstrapOnboardingGuard$ } from "./okou-page/onboard-guard.ts";
 import {
   featureSwitch$,
@@ -520,7 +519,6 @@ const completeBootstrap$ = command(
       set(setupNotificationListener$, signal),
 
       set(setupGlobalKeyboardShortcuts$, signal),
-      set(setupChatThreadNumberShortcuts$, signal),
       set(watchOrgSwitch$, signal),
       set(setupFeatureSwitches$, signal),
     ]);
