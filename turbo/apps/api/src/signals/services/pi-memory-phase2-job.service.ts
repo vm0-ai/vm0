@@ -10,10 +10,6 @@ import {
   PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES,
   piMemoryPhase2Jobs,
 } from "@okouai/db/schema/pi-memory-phase2-job";
-import {
-  piMemoryPublicationProvenance,
-  type PiMemoryPublicationWriter,
-} from "@okouai/db/schema/pi-memory-publication-provenance";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import {
@@ -32,11 +28,6 @@ import {
 } from "drizzle-orm";
 
 import type { ApiDb, Tx } from "../../lib/db-types";
-import { enqueueMemorySummaryProjection } from "./memory-summary-projection.service";
-import {
-  storageVersionMatches,
-  type PreparedStorageVersion,
-} from "./storage-version-registration.service";
 
 export const PI_MEMORY_PHASE2_LEASE_DURATION_MS = 60 * 60 * 1000;
 export const PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS = 90 * 1000;
@@ -46,13 +37,13 @@ export const PI_MEMORY_PHASE2_MAX_UNUSED_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const PI_MEMORY_PHASE2_SELECTION_ENCODING = "vm0.pi-memory.phase2.selection.v1";
 
-interface PiMemoryPhase2OwnerScope {
+export interface PiMemoryPhase2OwnerScope {
   readonly memoryStorageId: string;
   readonly orgId: string;
   readonly userId: string;
 }
 
-interface PiMemoryPhase2SelectedCandidate {
+export interface PiMemoryPhase2SelectedCandidate {
   readonly piSessionId: string;
   readonly sourceRunId: string;
   readonly sourceHistoryHash: string;
@@ -71,7 +62,7 @@ interface ClaimedPiMemoryPhase2BaseVersion {
   readonly fileCount: number;
 }
 
-interface ClaimedPiMemoryPhase2Job extends PiMemoryPhase2OwnerScope {
+export interface ClaimedPiMemoryPhase2Job extends PiMemoryPhase2OwnerScope {
   readonly s3Prefix: string;
   readonly leaseToken: string;
   readonly leaseExpiresAt: Date;
@@ -86,24 +77,12 @@ interface ClaimPiMemoryPhase2JobArgs {
   readonly scope?: PiMemoryPhase2OwnerScope;
 }
 
-interface PiMemoryPhase2LeaseFence extends PiMemoryPhase2OwnerScope {
+export interface PiMemoryPhase2LeaseFence extends PiMemoryPhase2OwnerScope {
   readonly leaseToken: string;
   readonly claimedRevision: number;
   readonly claimedBaseVersionId: string;
   readonly currentTime: Date;
 }
-
-type FinalizePiMemoryPhase2JobResult =
-  | { readonly outcome: "stale" }
-  | {
-      readonly outcome: "conflicted";
-      readonly currentHeadVersionId: string;
-    }
-  | { readonly outcome: "no_diff"; readonly headVersionId: string }
-  | {
-      readonly outcome: "published";
-      readonly publishedVersionId: string;
-    };
 
 interface PiMemoryPhase2SelectionMetadata {
   readonly digest: string;
@@ -223,6 +202,16 @@ export async function advancePiMemoryPhase2InputRevision(
           THEN ${piMemoryPhase2Jobs.leaseExpiresAt}
           ELSE NULL
         END`,
+        sandboxLeaseToken: sql`CASE
+          WHEN ${piMemoryPhase2Jobs.status} = 'leased'
+          THEN ${piMemoryPhase2Jobs.sandboxLeaseToken}
+          ELSE NULL
+        END`,
+        maintenanceRunId: sql`CASE
+          WHEN ${piMemoryPhase2Jobs.status} = 'leased'
+          THEN ${piMemoryPhase2Jobs.maintenanceRunId}
+          ELSE NULL
+        END`,
         retryCount: sql`CASE
           WHEN ${piMemoryPhase2Jobs.status} = 'leased'
           THEN ${piMemoryPhase2Jobs.retryCount}
@@ -259,6 +248,7 @@ export async function notifyPiMemoryPhase2ExternalHeadChange(
   args: PiMemoryPhase2OwnerScope & {
     readonly observedHeadVersionId: string;
     readonly changedAt: Date;
+    readonly sourceRunId?: string;
   },
 ): Promise<boolean> {
   const [memory] = await tx
@@ -284,14 +274,34 @@ export async function notifyPiMemoryPhase2ExternalHeadChange(
     .update(piMemoryPhase2Jobs)
     .set({
       status: sql`CASE
+        WHEN ${piMemoryPhase2Jobs.maintenanceRunId} = ${args.sourceRunId ?? null}
+        THEN ${piMemoryPhase2Jobs.status}
         WHEN ${piMemoryPhase2Jobs.status} = 'leased' THEN 'leased'
         ELSE 'pending'
       END`,
-      inputRevision: sql`${piMemoryPhase2Jobs.inputRevision} + 1`,
-      reconciliationRevision: sql`${piMemoryPhase2Jobs.inputRevision} + 1`,
+      inputRevision: sql`CASE
+        WHEN ${piMemoryPhase2Jobs.maintenanceRunId} = ${args.sourceRunId ?? null}
+        THEN ${piMemoryPhase2Jobs.inputRevision}
+        ELSE ${piMemoryPhase2Jobs.inputRevision} + 1
+      END`,
+      reconciliationRevision: sql`CASE
+        WHEN ${piMemoryPhase2Jobs.maintenanceRunId} = ${args.sourceRunId ?? null}
+        THEN ${piMemoryPhase2Jobs.reconciliationRevision}
+        ELSE ${piMemoryPhase2Jobs.inputRevision} + 1
+      END`,
       claimedRevision: sql`CASE
         WHEN ${piMemoryPhase2Jobs.status} = 'leased'
         THEN ${piMemoryPhase2Jobs.claimedRevision}
+        ELSE NULL
+        END`,
+      sandboxLeaseToken: sql`CASE
+        WHEN ${piMemoryPhase2Jobs.status} = 'leased'
+        THEN ${piMemoryPhase2Jobs.sandboxLeaseToken}
+        ELSE NULL
+      END`,
+      maintenanceRunId: sql`CASE
+        WHEN ${piMemoryPhase2Jobs.status} = 'leased'
+        THEN ${piMemoryPhase2Jobs.maintenanceRunId}
         ELSE NULL
       END`,
       claimedBaseVersionId: sql`CASE
@@ -526,7 +536,9 @@ export async function claimPiMemoryPhase2Job(
           claimedRevision: null,
           claimedBaseVersionId: null,
           leaseToken: null,
+          sandboxLeaseToken: null,
           leaseExpiresAt: null,
+          maintenanceRunId: null,
           retryCount: PI_MEMORY_PHASE2_MAX_ATTEMPTS,
           retryAt: null,
           lastErrorClass: "lease_expired",
@@ -560,7 +572,10 @@ export async function claimPiMemoryPhase2Job(
         claimedRevision: job.inputRevision,
         claimedBaseVersionId: baseVersion.versionId,
         leaseToken,
+        legacyLeaseToken: null,
+        sandboxLeaseToken: leaseToken,
         leaseExpiresAt,
+        maintenanceRunId: null,
         retryCount,
         retryAt: null,
         lastErrorClass: null,
@@ -632,6 +647,7 @@ function claimableJobCondition(args: ClaimPiMemoryPhase2JobArgs) {
       and(
         eq(piMemoryPhase2Jobs.status, "leased"),
         lte(piMemoryPhase2Jobs.leaseExpiresAt, args.currentTime),
+        isNull(piMemoryPhase2Jobs.maintenanceRunId),
       ),
     ),
     or(
@@ -789,7 +805,9 @@ export async function failPiMemoryPhase2Job(
         claimedRevision: null,
         claimedBaseVersionId: null,
         leaseToken: null,
+        sandboxLeaseToken: null,
         leaseExpiresAt: null,
+        maintenanceRunId: null,
         retryCount,
         retryAt:
           hasNewerInput || terminal
@@ -806,422 +824,5 @@ export async function failPiMemoryPhase2Job(
       .where(exactLeaseCondition(args))
       .returning({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId });
     return failed !== undefined;
-  });
-}
-
-function selectionMatchesJob(
-  job: {
-    readonly claimedSelectionDigest: string | null;
-    readonly claimedSelectedCount: number | null;
-    readonly claimedSelectedUtf8Bytes: number | null;
-  },
-  metadata: PiMemoryPhase2SelectionMetadata,
-): boolean {
-  return (
-    job.claimedSelectionDigest === metadata.digest &&
-    job.claimedSelectedCount === metadata.count &&
-    job.claimedSelectedUtf8Bytes === metadata.utf8Bytes
-  );
-}
-
-interface LockedPiMemoryPhase2PublicationJob {
-  readonly inputRevision: number;
-  readonly completedRevision: number;
-  readonly reconciliationRevision: number;
-  readonly claimedSelectionDigest: string | null;
-  readonly claimedSelectedCount: number | null;
-  readonly claimedSelectedUtf8Bytes: number | null;
-  readonly lastObservedHeadVersionId: string | null;
-}
-
-async function lockCanonicalMemoryStorage(
-  tx: Tx,
-  scope: PiMemoryPhase2OwnerScope,
-) {
-  const [storage] = await tx
-    .select({
-      id: storages.id,
-      orgId: storages.orgId,
-      userId: storages.userId,
-      name: storages.name,
-      headVersionId: storages.headVersionId,
-    })
-    .from(storages)
-    .where(
-      and(
-        eq(storages.id, scope.memoryStorageId),
-        eq(storages.orgId, scope.orgId),
-        eq(storages.userId, scope.userId),
-        ne(storages.userId, VOLUME_ORG_USER_ID),
-        eq(storages.name, MEMORY_ARTIFACT_NAME),
-        isNotNull(storages.headVersionId),
-      ),
-    )
-    .limit(1)
-    .for("update", { of: storages });
-  return storage ?? null;
-}
-
-async function lockPublicationJob(
-  tx: Tx,
-  args: PiMemoryPhase2LeaseFence,
-): Promise<LockedPiMemoryPhase2PublicationJob | null> {
-  const [job] = await tx
-    .select({
-      inputRevision: piMemoryPhase2Jobs.inputRevision,
-      completedRevision: piMemoryPhase2Jobs.completedRevision,
-      reconciliationRevision: piMemoryPhase2Jobs.reconciliationRevision,
-      claimedSelectionDigest: piMemoryPhase2Jobs.claimedSelectionDigest,
-      claimedSelectedCount: piMemoryPhase2Jobs.claimedSelectedCount,
-      claimedSelectedUtf8Bytes: piMemoryPhase2Jobs.claimedSelectedUtf8Bytes,
-      lastObservedHeadVersionId: piMemoryPhase2Jobs.lastObservedHeadVersionId,
-    })
-    .from(piMemoryPhase2Jobs)
-    .where(exactLeaseCondition(args))
-    .limit(1)
-    .for("update", { of: piMemoryPhase2Jobs });
-  return job ?? null;
-}
-
-function publicationWriter(
-  job: LockedPiMemoryPhase2PublicationJob,
-  claimedRevision: number,
-): PiMemoryPublicationWriter {
-  return job.reconciliationRevision > job.completedRevision &&
-    job.reconciliationRevision <= claimedRevision
-    ? "reconciler"
-    : "pi";
-}
-
-async function readPreparedStorageVersion(
-  tx: Tx,
-  prepared: PreparedStorageVersion,
-): Promise<PreparedStorageVersion | null> {
-  const [stored] = await tx
-    .select({
-      storageId: storageVersions.storageId,
-      versionId: storageVersions.id,
-      s3Key: storageVersions.s3Key,
-      size: storageVersions.size,
-      archiveSize: storageVersions.archiveSize,
-      fileCount: storageVersions.fileCount,
-      message: storageVersions.message,
-      createdBy: storageVersions.createdBy,
-    })
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, prepared.storageId),
-        eq(storageVersions.id, prepared.versionId),
-      ),
-    )
-    .limit(1);
-  return stored ?? null;
-}
-
-async function updateSelectionWatermarks(
-  tx: Tx,
-  scope: PiMemoryPhase2OwnerScope,
-  selected: readonly PiMemoryPhase2SelectedCandidate[],
-): Promise<void> {
-  await tx
-    .update(piMemoryStage1Candidates)
-    .set({ lastSelectedSourceHistoryHash: null })
-    .where(
-      and(
-        eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-        eq(piMemoryStage1Candidates.orgId, scope.orgId),
-        eq(piMemoryStage1Candidates.userId, scope.userId),
-        isNotNull(piMemoryStage1Candidates.lastSelectedSourceHistoryHash),
-      ),
-    );
-  for (const candidate of selected) {
-    await tx
-      .update(piMemoryStage1Candidates)
-      .set({ lastSelectedSourceHistoryHash: candidate.sourceHistoryHash })
-      .where(
-        and(
-          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-          eq(piMemoryStage1Candidates.orgId, scope.orgId),
-          eq(piMemoryStage1Candidates.userId, scope.userId),
-          eq(piMemoryStage1Candidates.status, "succeeded"),
-          eq(piMemoryStage1Candidates.piSessionId, candidate.piSessionId),
-          eq(
-            piMemoryStage1Candidates.sourceHistoryHash,
-            candidate.sourceHistoryHash,
-          ),
-        ),
-      );
-  }
-}
-
-async function completePublicationJob(
-  tx: Tx,
-  args: PiMemoryPhase2LeaseFence,
-  metadata: PiMemoryPhase2SelectionMetadata,
-  publishedVersionId?: string,
-): Promise<void> {
-  const [completed] = await tx
-    .update(piMemoryPhase2Jobs)
-    .set({
-      status: sql`CASE
-        WHEN ${piMemoryPhase2Jobs.inputRevision} = ${args.claimedRevision}
-        THEN 'idle'
-        ELSE 'pending'
-      END`,
-      completedRevision: args.claimedRevision,
-      claimedRevision: null,
-      claimedBaseVersionId: null,
-      leaseToken: null,
-      leaseExpiresAt: null,
-      retryCount: 0,
-      retryAt: null,
-      lastErrorClass: null,
-      lastSucceededAt: args.currentTime,
-      claimedSelectionDigest: null,
-      claimedSelectedCount: null,
-      claimedSelectedUtf8Bytes: null,
-      ...(publishedVersionId
-        ? {
-            lastObservedHeadVersionId: publishedVersionId,
-            lastPublishedVersionId: publishedVersionId,
-            lastPublishedAt: args.currentTime,
-          }
-        : {}),
-      updatedAt: args.currentTime,
-    })
-    .where(
-      and(
-        exactLeaseCondition(args),
-        eq(piMemoryPhase2Jobs.claimedSelectionDigest, metadata.digest),
-        eq(piMemoryPhase2Jobs.claimedSelectedCount, metadata.count),
-        eq(piMemoryPhase2Jobs.claimedSelectedUtf8Bytes, metadata.utf8Bytes),
-      ),
-    )
-    .returning({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId });
-  if (!completed) {
-    throw new Error("Locked Pi memory Phase 2 job could not be completed");
-  }
-}
-
-async function recordPublicationProvenance(input: {
-  readonly tx: Tx;
-  readonly args: PiMemoryPhase2LeaseFence;
-  readonly job: LockedPiMemoryPhase2PublicationJob;
-  readonly metadata: PiMemoryPhase2SelectionMetadata;
-  readonly prepared: PreparedStorageVersion;
-  readonly observedHeadVersionId: string;
-  readonly outcome: "published" | "conflicted";
-}): Promise<void> {
-  await input.tx
-    .insert(piMemoryPublicationProvenance)
-    .values({
-      memoryStorageId: input.args.memoryStorageId,
-      orgId: input.args.orgId,
-      userId: input.args.userId,
-      claimedRevision: input.args.claimedRevision,
-      inputRevision: input.job.inputRevision,
-      reconciliationRevision: input.job.reconciliationRevision,
-      selectionDigest: input.metadata.digest,
-      selectedCount: input.metadata.count,
-      selectedUtf8Bytes: input.metadata.utf8Bytes,
-      baseVersionId: input.args.claimedBaseVersionId,
-      preparedVersionId: input.prepared.versionId,
-      observedHeadVersionId: input.observedHeadVersionId,
-      writer: publicationWriter(input.job, input.args.claimedRevision),
-      outcome: input.outcome,
-      size: input.prepared.size,
-      archiveSize: input.prepared.archiveSize,
-      fileCount: input.prepared.fileCount,
-      createdAt: input.args.currentTime,
-    })
-    .onConflictDoNothing();
-}
-
-async function transitionPublicationConflict(
-  tx: Tx,
-  args: PiMemoryPhase2LeaseFence,
-  job: LockedPiMemoryPhase2PublicationJob,
-  currentHeadVersionId: string,
-): Promise<void> {
-  const observedConflictAlreadyQueued =
-    job.lastObservedHeadVersionId === currentHeadVersionId &&
-    job.reconciliationRevision > job.completedRevision;
-  const inputRevision = observedConflictAlreadyQueued
-    ? job.inputRevision
-    : job.inputRevision + 1;
-  const reconciliationRevision = observedConflictAlreadyQueued
-    ? job.reconciliationRevision
-    : inputRevision;
-  const [conflicted] = await tx
-    .update(piMemoryPhase2Jobs)
-    .set({
-      status: "pending",
-      inputRevision,
-      reconciliationRevision,
-      claimedRevision: null,
-      claimedBaseVersionId: null,
-      leaseToken: null,
-      leaseExpiresAt: null,
-      retryCount: 0,
-      retryAt: null,
-      lastErrorClass: null,
-      claimedSelectionDigest: null,
-      claimedSelectedCount: null,
-      claimedSelectedUtf8Bytes: null,
-      lastObservedHeadVersionId: currentHeadVersionId,
-      conflictCount: sql`${piMemoryPhase2Jobs.conflictCount} + 1`,
-      lastConflictAt: args.currentTime,
-      lastConflictingHeadVersionId: currentHeadVersionId,
-      updatedAt: args.currentTime,
-    })
-    .where(exactLeaseCondition(args))
-    .returning({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId });
-  if (!conflicted) {
-    throw new Error("Locked Pi memory Phase 2 conflict could not be recorded");
-  }
-}
-
-function snapshotSelectedCandidates(
-  selected: readonly PiMemoryPhase2SelectedCandidate[],
-): readonly PiMemoryPhase2SelectedCandidate[] {
-  return selected.map((candidate) => {
-    return {
-      ...candidate,
-      sourceCompletedAt: new Date(candidate.sourceCompletedAt),
-    };
-  });
-}
-
-export async function finalizePiMemoryPhase2Job(
-  db: ApiDb,
-  args: PiMemoryPhase2LeaseFence & {
-    readonly selected: readonly PiMemoryPhase2SelectedCandidate[];
-    readonly result:
-      | { readonly kind: "no_diff" }
-      | {
-          readonly kind: "prepared";
-          readonly version: PreparedStorageVersion;
-        };
-  },
-): Promise<FinalizePiMemoryPhase2JobResult> {
-  const selectedSnapshot = snapshotSelectedCandidates(args.selected);
-  const metadata = selectionMetadata(selectedSnapshot);
-  if (metadata === null) {
-    return { outcome: "stale" };
-  }
-  const resultSnapshot =
-    args.result.kind === "prepared"
-      ? { kind: "prepared" as const, version: { ...args.result.version } }
-      : { kind: "no_diff" as const };
-
-  return await db.transaction(async (tx) => {
-    const storage = await lockCanonicalMemoryStorage(tx, args);
-    if (!storage?.headVersionId) {
-      return { outcome: "stale" };
-    }
-    await lockPhase2CandidateSet(tx, args);
-    const job = await lockPublicationJob(tx, args);
-    if (!job || !selectionMatchesJob(job, metadata)) {
-      return { outcome: "stale" };
-    }
-
-    if (resultSnapshot.kind === "no_diff") {
-      if (storage.headVersionId !== args.claimedBaseVersionId) {
-        await transitionPublicationConflict(
-          tx,
-          args,
-          job,
-          storage.headVersionId,
-        );
-        return {
-          outcome: "conflicted",
-          currentHeadVersionId: storage.headVersionId,
-        };
-      }
-      await updateSelectionWatermarks(tx, args, selectedSnapshot);
-      await completePublicationJob(tx, args, metadata);
-      return {
-        outcome: "no_diff",
-        headVersionId: storage.headVersionId,
-      };
-    }
-
-    const prepared = resultSnapshot.version;
-    const registered = await readPreparedStorageVersion(tx, prepared);
-    if (
-      prepared.storageId !== args.memoryStorageId ||
-      prepared.versionId === args.claimedBaseVersionId ||
-      !registered ||
-      !storageVersionMatches(registered, prepared)
-    ) {
-      return { outcome: "stale" };
-    }
-
-    if (storage.headVersionId !== args.claimedBaseVersionId) {
-      await recordPublicationProvenance({
-        tx,
-        args,
-        job,
-        metadata,
-        prepared,
-        observedHeadVersionId: storage.headVersionId,
-        outcome: "conflicted",
-      });
-      await transitionPublicationConflict(tx, args, job, storage.headVersionId);
-      return {
-        outcome: "conflicted",
-        currentHeadVersionId: storage.headVersionId,
-      };
-    }
-
-    const [published] = await tx
-      .update(storages)
-      .set({
-        headVersionId: prepared.versionId,
-        size: prepared.size,
-        fileCount: prepared.fileCount,
-        updatedAt: args.currentTime,
-      })
-      .where(
-        and(
-          eq(storages.id, args.memoryStorageId),
-          eq(storages.orgId, args.orgId),
-          eq(storages.userId, args.userId),
-          ne(storages.userId, VOLUME_ORG_USER_ID),
-          eq(storages.name, MEMORY_ARTIFACT_NAME),
-          eq(storages.headVersionId, args.claimedBaseVersionId),
-        ),
-      )
-      .returning({
-        id: storages.id,
-        orgId: storages.orgId,
-        userId: storages.userId,
-        name: storages.name,
-      });
-    if (!published) {
-      throw new Error("Locked Pi memory Phase 2 HEAD CAS did not publish");
-    }
-
-    await recordPublicationProvenance({
-      tx,
-      args,
-      job,
-      metadata,
-      prepared,
-      observedHeadVersionId: prepared.versionId,
-      outcome: "published",
-    });
-    await enqueueMemorySummaryProjection({
-      db: tx,
-      storage: published,
-      storageVersionId: prepared.versionId,
-    });
-    await updateSelectionWatermarks(tx, args, selectedSnapshot);
-    await completePublicationJob(tx, args, metadata, prepared.versionId);
-    return {
-      outcome: "published",
-      publishedVersionId: prepared.versionId,
-    };
   });
 }

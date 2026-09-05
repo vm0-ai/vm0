@@ -39,9 +39,9 @@ function responseForPhase2Result(
     success: true,
     claimed,
     noWork: result.outcome === "no_work" ? 1 : 0,
-    noDiff: result.outcome === "no_diff" ? 1 : 0,
-    published: result.outcome === "published" ? 1 : 0,
-    conflicted: result.outcome === "conflicted" ? 1 : 0,
+    noDiff: 0,
+    published: 0,
+    conflicted: 0,
     stale: result.outcome === "stale" ? 1 : 0,
     failed: result.outcome === "failed" ? 1 : 0,
   };

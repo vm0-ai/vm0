@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { blobs } from "@okouai/db/schema/blob";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages } from "@okouai/db/schema/storage";
 
@@ -13,8 +14,8 @@ import {
   advancePiMemoryPhase2InputRevision,
   claimPiMemoryPhase2Job,
   failPiMemoryPhase2Job,
-  finalizePiMemoryPhase2Job,
   heartbeatPiMemoryPhase2Job,
+  notifyPiMemoryPhase2ExternalHeadChange,
   PI_MEMORY_PHASE2_RETRY_DELAY_MS,
   PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS,
 } from "../pi-memory-phase2-job.service";
@@ -22,22 +23,12 @@ import {
   createPhase2TestScope,
   insertPendingPhase2Job,
   insertPhase2Candidates,
+  insertPhase2StorageVersion,
   readPhase2Job,
-  replacePhase2CandidateSource,
+  setPhase2StorageHead,
 } from "./pi-memory-phase2-job.test-fixture";
 
 const NOW = Object.freeze(new Date("2026-09-03T04:00:00.000Z"));
-
-async function succeedPiMemoryPhase2Job(
-  database: Parameters<typeof finalizePiMemoryPhase2Job>[0],
-  args: Omit<Parameters<typeof finalizePiMemoryPhase2Job>[1], "result">,
-): Promise<boolean> {
-  const result = await finalizePiMemoryPhase2Job(database, {
-    ...args,
-    result: { kind: "no_diff" },
-  });
-  return result.outcome === "no_diff";
-}
 
 describe("Pi memory Phase 2 job transitions", () => {
   it("transactionally advances exactly once per fresh successful Stage 1 commit", async () => {
@@ -472,12 +463,6 @@ describe("Pi memory Phase 2 job transitions", () => {
           errorClass: "rejected_fence",
         }),
       ).resolves.toBeFalsy();
-      await expect(
-        succeedPiMemoryPhase2Job(db(), {
-          ...fence,
-          selected: claimed.selected,
-        }),
-      ).resolves.toBeFalsy();
     }
     await expect(readPhase2Job(scope)).resolves.toStrictEqual(before);
 
@@ -571,16 +556,6 @@ describe("Pi memory Phase 2 job transitions", () => {
         errorClass: "stale_owner",
       }),
     ).resolves.toBeFalsy();
-    await expect(
-      succeedPiMemoryPhase2Job(db(), {
-        ...scope,
-        leaseToken: second.leaseToken,
-        claimedRevision: second.claimedRevision,
-        claimedBaseVersionId: second.baseVersion.versionId,
-        currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
-        selected: second.selected,
-      }),
-    ).resolves.toBeFalsy();
     expect((await readPhase2Job(scope))?.leaseToken).toBe(third.leaseToken);
   });
 
@@ -609,218 +584,56 @@ describe("Pi memory Phase 2 job transitions", () => {
     ).resolves.not.toBeNull();
   });
 
-  it("finalizes only the frozen tuple set and preserves newer input", async () => {
-    const scope = await createPhase2TestScope("success");
-    const oldHash = (
-      await insertPhase2Candidates(scope, [
-        {
-          piSessionId: "old-unselected",
-          sourceCompletedAt: new Date(NOW.getTime() - 31 * 24 * 60 * 60 * 1000),
-        },
-      ])
-    )[0] as string;
-    await db()
-      .update(piMemoryStage1Candidates)
-      .set({ lastSelectedSourceHistoryHash: oldHash })
-      .where(
-        and(
-          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-          eq(piMemoryStage1Candidates.piSessionId, "old-unselected"),
-        ),
-      );
-    await insertPhase2Candidates(scope, [
-      { piSessionId: "selected-a", rawMemory: "A" },
-      { piSessionId: "selected-b", rawMemory: "BB" },
-    ]);
+  it("suppresses its own checkpoint HEAD notification without a recursive revision", async () => {
+    const scope = await createPhase2TestScope("self-notification");
     await insertPendingPhase2Job(scope);
-    const claimed = await claimPiMemoryPhase2Job(db(), {
+    const claim = await claimPiMemoryPhase2Job(db(), {
       currentTime: NOW,
       scope,
     });
-    expect(
-      claimed?.selected.map((candidate) => {
-        return candidate.piSessionId;
-      }),
-    ).toStrictEqual(["selected-a", "selected-b"]);
-    if (!claimed) {
-      throw new Error("Expected selection claim");
+    if (!claim) {
+      throw new Error("Expected maintenance claim");
     }
+    const maintenanceRunId = randomUUID();
+    await db()
+      .update(piMemoryPhase2Jobs)
+      .set({ maintenanceRunId })
+      .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId));
+    const published = await insertPhase2StorageVersion(scope, "self-published");
+    await setPhase2StorageHead(scope, published, new Date(NOW.getTime() + 1));
 
     await expect(
-      succeedPiMemoryPhase2Job(db(), {
-        ...scope,
-        leaseToken: claimed.leaseToken,
-        claimedRevision: claimed.claimedRevision,
-        claimedBaseVersionId: claimed.baseVersion.versionId,
-        currentTime: new Date(NOW.getTime() + 1),
-        selected: [...claimed.selected].reverse(),
+      db().transaction(async (tx) => {
+        return await notifyPiMemoryPhase2ExternalHeadChange(tx, {
+          ...scope,
+          observedHeadVersionId: published.versionId,
+          changedAt: new Date(NOW.getTime() + 1),
+          sourceRunId: maintenanceRunId,
+        });
+      }),
+    ).resolves.toBeTruthy();
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "leased",
+      inputRevision: 1,
+      reconciliationRevision: 0,
+      claimedRevision: 1,
+      maintenanceRunId,
+      lastObservedHeadVersionId: published.versionId,
+    });
+    await expect(
+      db().transaction(async (tx) => {
+        return await notifyPiMemoryPhase2ExternalHeadChange(tx, {
+          ...scope,
+          observedHeadVersionId: published.versionId,
+          changedAt: new Date(NOW.getTime() + 2),
+          sourceRunId: maintenanceRunId,
+        });
       }),
     ).resolves.toBeFalsy();
-    await replacePhase2CandidateSource({
-      scope,
-      piSessionId: "selected-a",
-      sourceCompletedAt: new Date(NOW.getTime() + 2),
-    });
-    await db().transaction(async (tx) => {
-      await advancePiMemoryPhase2InputRevision(tx, {
-        ...scope,
-        enqueuedAt: new Date(NOW.getTime() + 2),
-      });
-    });
-    await expect(
-      succeedPiMemoryPhase2Job(db(), {
-        ...scope,
-        leaseToken: claimed.leaseToken,
-        claimedRevision: claimed.claimedRevision,
-        claimedBaseVersionId: claimed.baseVersion.versionId,
-        currentTime: new Date(NOW.getTime() + 3),
-        selected: claimed.selected,
-      }),
-    ).resolves.toBeTruthy();
-
     await expect(readPhase2Job(scope)).resolves.toMatchObject({
-      status: "pending",
-      inputRevision: 2,
-      completedRevision: 1,
-      claimedRevision: null,
-      retryCount: 0,
-      lastSucceededAt: new Date(NOW.getTime() + 3),
-    });
-    const markers = await db()
-      .select({
-        piSessionId: piMemoryStage1Candidates.piSessionId,
-        sourceHistoryHash: piMemoryStage1Candidates.sourceHistoryHash,
-        marker: piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
-      })
-      .from(piMemoryStage1Candidates)
-      .where(
-        and(
-          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-          eq(piMemoryStage1Candidates.orgId, scope.orgId),
-          eq(piMemoryStage1Candidates.userId, scope.userId),
-        ),
-      );
-    expect(
-      Object.fromEntries(
-        markers.map((candidate) => {
-          return [candidate.piSessionId, candidate.marker];
-        }),
-      ),
-    ).toStrictEqual({
-      "old-unselected": null,
-      "selected-a": null,
-      "selected-b": markers.find((row) => {
-        return row.piSessionId === "selected-b";
-      })?.sourceHistoryHash,
-    });
-  });
-
-  it("accepts an empty selection and clears every old marker", async () => {
-    const scope = await createPhase2TestScope("empty-success");
-    const [oldHash] = await insertPhase2Candidates(scope, [
-      {
-        piSessionId: "old-marker",
-        sourceCompletedAt: new Date(NOW.getTime() - 31 * 24 * 60 * 60 * 1000),
-      },
-    ]);
-    await db()
-      .update(piMemoryStage1Candidates)
-      .set({ lastSelectedSourceHistoryHash: oldHash as string })
-      .where(
-        eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-      );
-    await insertPendingPhase2Job(scope);
-    const claimed = await claimPiMemoryPhase2Job(db(), {
-      currentTime: NOW,
-      scope,
-    });
-    expect(claimed?.selected).toStrictEqual([]);
-    if (!claimed) {
-      throw new Error("Expected empty selection claim");
-    }
-    await expect(
-      succeedPiMemoryPhase2Job(db(), {
-        ...scope,
-        leaseToken: claimed.leaseToken,
-        claimedRevision: claimed.claimedRevision,
-        claimedBaseVersionId: claimed.baseVersion.versionId,
-        currentTime: new Date(NOW.getTime() + 1),
-        selected: [],
-      }),
-    ).resolves.toBeTruthy();
-    await expect(readPhase2Job(scope)).resolves.toMatchObject({
-      status: "idle",
       inputRevision: 1,
-      completedRevision: 1,
+      reconciliationRevision: 0,
     });
-    const [candidate] = await db()
-      .select({
-        marker: piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
-      })
-      .from(piMemoryStage1Candidates)
-      .where(
-        eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-      );
-    expect(candidate?.marker).toBeNull();
-  });
-
-  it("finalizes the immutable selection snapshot validated before lock waits", async () => {
-    const scope = await createPhase2TestScope("immutable-success-input");
-    const [sourceHistoryHash] = await insertPhase2Candidates(scope, [
-      { piSessionId: "immutable-selected" },
-    ]);
-    await insertPendingPhase2Job(scope);
-    const claimed = await claimPiMemoryPhase2Job(db(), {
-      currentTime: NOW,
-      scope,
-    });
-    expect(claimed).not.toBeNull();
-    if (!claimed) {
-      throw new Error("Expected immutable selection claim");
-    }
-    const mutableSelection = [...claimed.selected];
-    let completion: Promise<boolean> | undefined;
-    await db().transaction(async (tx) => {
-      await tx
-        .select({ piSessionId: piMemoryStage1Candidates.piSessionId })
-        .from(piMemoryStage1Candidates)
-        .where(
-          and(
-            eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-            eq(piMemoryStage1Candidates.orgId, scope.orgId),
-            eq(piMemoryStage1Candidates.userId, scope.userId),
-          ),
-        )
-        .for("update", { of: piMemoryStage1Candidates });
-      completion = succeedPiMemoryPhase2Job(db(), {
-        ...scope,
-        leaseToken: claimed.leaseToken,
-        claimedRevision: claimed.claimedRevision,
-        claimedBaseVersionId: claimed.baseVersion.versionId,
-        currentTime: new Date(NOW.getTime() + 1),
-        selected: mutableSelection,
-      });
-      mutableSelection.splice(0);
-    });
-    if (!completion) {
-      throw new Error("Expected in-flight completion");
-    }
-    await expect(completion).resolves.toBeTruthy();
-
-    const [candidate] = await db()
-      .select({
-        marker: piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
-      })
-      .from(piMemoryStage1Candidates)
-      .where(
-        and(
-          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-          eq(piMemoryStage1Candidates.orgId, scope.orgId),
-          eq(piMemoryStage1Candidates.userId, scope.userId),
-          eq(piMemoryStage1Candidates.piSessionId, "immutable-selected"),
-        ),
-      );
-    expect(candidate?.marker).toBe(sourceHistoryHash);
   });
 
   it("cascades control state without deleting the referenced history blob", async () => {

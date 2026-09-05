@@ -20,6 +20,7 @@ import {
 
 import {
   baseHasValidConsolidatedArtifacts,
+  applyValidatedPiMemoryPhase2Result,
   createPiMemoryPhase2Workspace,
   mapsEqual,
   Phase2InputInvalidError,
@@ -27,6 +28,7 @@ import {
   preparedSetFromSnapshot,
   removePiMemoryPhase2Workspace,
   snapshotPiMemoryPhase2Input,
+  snapshotMountedPiMemoryPhase2Base,
   type Phase2PrivateWorkspace,
   type SnapshotPhase2Input,
   validatePiMemoryPhase2Output,
@@ -904,4 +906,98 @@ export async function runPiMemoryPhase2Consolidation(
   signal: AbortSignal,
 ): Promise<PiMemoryPhase2ConsolidationResult> {
   return await runPiMemoryPhase2ConsolidationForTest(args, undefined, signal);
+}
+
+export interface PiMemoryPhase2MountedConsolidationArgs {
+  readonly memoryRoot: string;
+  readonly memoryStorageId: string;
+  readonly claimedRevision: number;
+  readonly claimedBaseVersionId: string;
+  readonly leaseToken: string;
+  readonly selectionDigest: string;
+  readonly selected: readonly PiMemoryPhase2ConsolidationArgs["selected"][number][];
+  readonly model: PiMemoryPhase2ConsolidationArgs["model"];
+}
+
+/**
+ * Run Phase 2 from the exact mounted Storage epoch and apply only a fully
+ * validated result back to that mount. Durable publication remains owned by
+ * the ordinary terminal artifact checkpoint.
+ */
+export async function runPiMemoryPhase2MountedConsolidation(
+  args: PiMemoryPhase2MountedConsolidationArgs,
+  signal: AbortSignal,
+): Promise<{
+  readonly status: "no_diff" | "prepared";
+  readonly validatedVersionId: string;
+}> {
+  const baseFiles = await snapshotMountedPiMemoryPhase2Base(args.memoryRoot);
+  const mountedBaseVersionId = createHash("sha256")
+    .update(
+      `storage:${args.memoryStorageId}\n${baseFiles
+        .map((file) => {
+          return `${file.path}:${file.hash}`;
+        })
+        .sort()
+        .join("\n")}`,
+    )
+    .digest("hex");
+  if (mountedBaseVersionId !== args.claimedBaseVersionId) {
+    throw new PiMemoryPhase2EngineError("input_invalid", {
+      candidateCount: args.selected.length,
+      fileCount: baseFiles.length,
+      totalBytes: baseFiles.reduce((sum, file) => {
+        return sum + file.size;
+      }, 0),
+      heartbeatCount: 0,
+    });
+  }
+  const result = await runPiMemoryPhase2Consolidation(
+    {
+      orgId: "sandbox",
+      userId: "sandbox",
+      memoryStorageId: args.memoryStorageId,
+      claimedRevision: args.claimedRevision,
+      leaseToken: args.leaseToken,
+      baseFiles,
+      selected: args.selected,
+      model: args.model,
+      heartbeat: async () => {
+        return true;
+      },
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (result.selectionDigest !== args.selectionDigest) {
+    throw new PiMemoryPhase2EngineError("input_invalid", {
+      candidateCount: args.selected.length,
+      fileCount: baseFiles.length,
+      totalBytes: baseFiles.reduce((sum, file) => {
+        return sum + file.size;
+      }, 0),
+      heartbeatCount: 0,
+    });
+  }
+  try {
+    await applyValidatedPiMemoryPhase2Result({
+      memoryRoot: args.memoryRoot,
+      memoryStorageId: args.memoryStorageId,
+      baseFiles,
+      files: result.files,
+      contentIdentity: result.contentIdentity,
+    });
+  } catch {
+    throw new PiMemoryPhase2EngineError("agent_output_invalid", {
+      candidateCount: args.selected.length,
+      fileCount: result.manifest.fileCount,
+      totalBytes: result.manifest.totalBytes,
+      heartbeatCount: 0,
+    });
+  }
+  signal.throwIfAborted();
+  return {
+    status: result.status,
+    validatedVersionId: result.contentIdentity,
+  };
 }

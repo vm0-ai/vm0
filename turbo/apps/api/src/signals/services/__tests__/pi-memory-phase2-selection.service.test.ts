@@ -5,7 +5,6 @@ import {
   PI_MEMORY_PHASE2_MAX_ATTEMPTS,
   PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES,
   PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES,
-  piMemoryPhase2Jobs,
 } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 
@@ -13,7 +12,6 @@ import { db } from "../../../lib/db";
 import {
   claimPiMemoryPhase2Job,
   failPiMemoryPhase2Job,
-  finalizePiMemoryPhase2Job,
   PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
   PI_MEMORY_PHASE2_LEASE_DURATION_MS,
   PI_MEMORY_PHASE2_MAX_UNUSED_AGE_MS,
@@ -30,17 +28,6 @@ import {
 
 const NOW = Object.freeze(new Date("2026-09-03T04:00:00.000Z"));
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-async function succeedPiMemoryPhase2Job(
-  database: Parameters<typeof finalizePiMemoryPhase2Job>[0],
-  args: Omit<Parameters<typeof finalizePiMemoryPhase2Job>[1], "result">,
-): Promise<boolean> {
-  const result = await finalizePiMemoryPhase2Job(database, {
-    ...args,
-    result: { kind: "no_diff" },
-  });
-  return result.outcome === "no_diff";
-}
 
 describe("Pi memory Phase 2 selection", () => {
   it("pins every timing, attempt, count, byte, and digest constant", () => {
@@ -278,109 +265,5 @@ describe("Pi memory Phase 2 selection", () => {
         return candidate.piSessionId === "session-001";
       }),
     ).toBeFalsy();
-  });
-
-  it("rejects every invalid completion selection without partial mutation", async () => {
-    const scope = await createPhase2TestScope("completion-metadata");
-    const [sourceHistoryHash] = await insertPhase2Candidates(scope, [
-      { piSessionId: "selected", rawMemory: "exact bytes" },
-    ]);
-    await db()
-      .update(piMemoryStage1Candidates)
-      .set({ lastSelectedSourceHistoryHash: sourceHistoryHash as string })
-      .where(
-        and(
-          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
-          eq(piMemoryStage1Candidates.orgId, scope.orgId),
-          eq(piMemoryStage1Candidates.userId, scope.userId),
-          eq(piMemoryStage1Candidates.piSessionId, "selected"),
-        ),
-      );
-    await insertPendingPhase2Job(scope);
-    const claimed = await claimPiMemoryPhase2Job(db(), {
-      currentTime: NOW,
-      scope,
-    });
-    expect(claimed?.selected).toHaveLength(1);
-    if (!claimed) {
-      throw new Error("Expected completion metadata claim");
-    }
-    const fence = {
-      ...scope,
-      leaseToken: claimed.leaseToken,
-      claimedRevision: claimed.claimedRevision,
-      claimedBaseVersionId: claimed.baseVersion.versionId,
-      currentTime: new Date(NOW.getTime() + 1),
-    };
-    const jobBefore = await db()
-      .select()
-      .from(piMemoryPhase2Jobs)
-      .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId));
-    async function expectRejected(
-      selected: Parameters<typeof succeedPiMemoryPhase2Job>[1]["selected"],
-    ): Promise<void> {
-      await expect(
-        succeedPiMemoryPhase2Job(db(), {
-          ...fence,
-          selected,
-        }),
-      ).resolves.toBeFalsy();
-      await expect(
-        db()
-          .select()
-          .from(piMemoryPhase2Jobs)
-          .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId)),
-      ).resolves.toStrictEqual(jobBefore);
-      await expect(
-        db()
-          .select({
-            marker: piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
-          })
-          .from(piMemoryStage1Candidates)
-          .where(
-            and(
-              eq(
-                piMemoryStage1Candidates.memoryStorageId,
-                scope.memoryStorageId,
-              ),
-              eq(piMemoryStage1Candidates.piSessionId, "selected"),
-            ),
-          ),
-      ).resolves.toStrictEqual([{ marker: sourceHistoryHash }]);
-    }
-
-    await expectRejected([
-      {
-        ...(claimed.selected[0] as (typeof claimed.selected)[number]),
-        rawMemory: "changed byte count",
-      },
-    ]);
-    await expectRejected([
-      claimed.selected[0] as (typeof claimed.selected)[number],
-      claimed.selected[0] as (typeof claimed.selected)[number],
-    ]);
-    await expectRejected([
-      {
-        ...(claimed.selected[0] as (typeof claimed.selected)[number]),
-        rawMemory: "x".repeat(PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES + 1),
-      },
-    ]);
-    await expectRejected(
-      Array.from(
-        { length: PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES + 1 },
-        (_, index) => {
-          return {
-            ...(claimed.selected[0] as (typeof claimed.selected)[number]),
-            piSessionId: `unique-${index.toString().padStart(3, "0")}`,
-          };
-        },
-      ),
-    );
-    await expect(
-      succeedPiMemoryPhase2Job(db(), {
-        ...fence,
-        selected: claimed.selected,
-      }),
-    ).resolves.toBeTruthy();
   });
 });

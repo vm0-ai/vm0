@@ -523,6 +523,17 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     ])
 }
 
+fn is_pi_memory_maintenance(runtime: &CliRuntimeConfig<'_>) -> Result<bool, AgentError> {
+    if !matches!(runtime.framework, env::Framework::Pi) {
+        return Ok(false);
+    }
+    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
+        .map_err(|_| AgentError::Execution("Pi launch config is invalid".to_string()))?;
+    Ok(launch_config
+        .get("maintenance")
+        .is_some_and(|value| !value.is_null()))
+}
+
 /// Write the private launch payload the Pi CLI child reads at startup.
 ///
 /// Prompt-sized launch inputs travel through this file so the child's argv and
@@ -1090,20 +1101,21 @@ async fn execute_cli_inner(
 
     let active_input_controller = active_input.controller();
     let pi_execution = matches!(runtime.framework, env::Framework::Pi);
+    let pi_rpc_execution = pi_execution && !is_pi_memory_maintenance(runtime)?;
     let (pi_rpc_response_tx, pi_rpc_response_rx) = pi_rpc::response_channel();
     let (pi_rpc_startup_tx, pi_rpc_startup_rx) = tokio::sync::oneshot::channel();
-    let mut pi_rpc_startup_tx = pi_execution.then_some(pi_rpc_startup_tx);
+    let mut pi_rpc_startup_tx = pi_rpc_execution.then_some(pi_rpc_startup_tx);
     let pi_rpc_cancellation = CancellationToken::new();
-    let mut pi_rpc_projection = pi_execution.then(|| {
+    let mut pi_rpc_projection = pi_rpc_execution.then(|| {
         pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
     });
-    let mut pi_rpc_startup_boundary = pi_execution.then(pi_rpc::PiRpcStartupBoundary::default);
+    let mut pi_rpc_startup_boundary = pi_rpc_execution.then(pi_rpc::PiRpcStartupBoundary::default);
     let mut stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         let pi_rpc_cancellation = pi_rpc_cancellation.clone();
         tokio::spawn(async move {
-            if pi_execution {
+            if pi_rpc_execution {
                 pi_rpc::write_commands(
                     cli_stdin,
                     &run_id,
@@ -1114,6 +1126,9 @@ async fn execute_cli_inner(
                     pi_rpc_cancellation,
                 )
                 .await
+            } else if pi_execution {
+                drop(cli_stdin);
+                Ok(())
             } else {
                 drop(pi_rpc_response_rx);
                 write_claude_stream_json_to_stdin(cli_stdin, &run_id, &prompt, active_input).await
@@ -1189,7 +1204,7 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let mut event_pipeline = if pi_execution {
+    let mut event_pipeline = if pi_rpc_execution {
         None
     } else {
         Some(CliEventPipeline::start(
@@ -1227,7 +1242,7 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 user_cancellation_handled = true;
-                if pi_execution {
+                if pi_rpc_execution {
                     pi_user_cancelled = true;
                     active_input_controller.close_terminal();
                     pi_rpc_cancellation.cancel();
@@ -1589,7 +1604,7 @@ async fn execute_cli_inner(
                                 }
                                 let active_input_idle =
                                     active_input_controller.close_for_result_if_idle();
-                                if pi_execution && active_input_idle {
+                                if pi_rpc_execution && active_input_idle {
                                     active_input_controller.close_terminal();
                                 }
                                 // Arm the post-result reap deadline once per
@@ -2005,7 +2020,8 @@ async fn execute_cli_inner(
         );
     }
     let (mut exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
-    if pi_execution && jsonl_result.is_some_and(|result| result.status == JsonlResultStatus::Error)
+    if pi_rpc_execution
+        && jsonl_result.is_some_and(|result| result.status == JsonlResultStatus::Error)
     {
         exit_code = 1;
     }
@@ -2438,7 +2454,9 @@ mod tests {
     fn pi_child_env_omits_launch_config_value() {
         let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+        runtime.pi_launch_config = Cow::Borrowed(
+            r#"{"schemaVersion":2,"maintenance":{"rawMemory":"PRIVATE_MAINTENANCE_CANDIDATE_31891"}}"#,
+        );
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
         let values = child_env::normalize_values(values);
@@ -2451,7 +2469,8 @@ mod tests {
         assert!(
             !values
                 .iter()
-                .any(|(_, value)| value.contains("schemaVersion"))
+                .any(|(_, value)| value.contains("schemaVersion")
+                    || value.contains("PRIVATE_MAINTENANCE_CANDIDATE_31891"))
         );
     }
 
