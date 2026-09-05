@@ -49,9 +49,9 @@ function storageServiceNotConfigured() {
 }
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
-  // Presentation reverse-template guide from vm0-ai/Template-artifact@0a52be7.
+  // Presentation reverse-template guide from vm0-ai/Template-artifact@4eea556.
   "skill:presentation-reverse-template":
-    "2037e27e217c21a5adac76efdd3298e3e8149de030840c8f40521433e22a1c49",
+    "b6d3a4aa37657dadad2e90e25ddc74a469def40be547fff6bd9f178f5f097c9e",
   "color-system:bauhaus-primary":
     "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
   "color-system:berry-pop":

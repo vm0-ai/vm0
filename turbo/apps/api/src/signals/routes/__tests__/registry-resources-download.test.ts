@@ -209,16 +209,16 @@ describe("registry resource download", () => {
   it("downloads the presentation reverse-template guide through the route", async () => {
     const id = "skill:presentation-reverse-template";
     const sha256 =
-      "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec";
+      "7ceafa78d5e2a420521a911e542d8f3e4e1f313d9eaa36ed0389c6321d2c2ac8";
     const versionId =
-      "2037e27e217c21a5adac76efdd3298e3e8149de030840c8f40521433e22a1c49";
+      "b6d3a4aa37657dadad2e90e25ddc74a469def40be547fff6bd9f178f5f097c9e";
     const s3Key = "registry-fixture/presentation-reverse-template/version";
     const fixture = await seedPrivateRegistryResourceVersionFixture({
       storageName: `registry-resource@${id}`,
       versionId,
       s3Key,
-      size: 10_577,
-      archiveSize: 4187,
+      size: 11_000,
+      archiveSize: 4330,
       fileCount: 3,
     });
     onTestFinished(fixture.cleanup);
@@ -241,7 +241,7 @@ describe("registry resource download", () => {
       sha256,
       versionId,
       fileCount: 3,
-      size: 10_577,
+      size: 11_000,
     });
     const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
     expect(signedCommand).toMatchObject({
@@ -258,7 +258,7 @@ describe("registry resource download", () => {
       resolvePrivateRegistryResourceArchive(
         id,
         "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
-        "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec",
+        "7ceafa78d5e2a420521a911e542d8f3e4e1f313d9eaa36ed0389c6321d2c2ac8",
       ),
     ).toStrictEqual({
       storageName: `registry-resource@${id}`,
@@ -274,7 +274,7 @@ describe("registry resource download", () => {
       resolvePrivateRegistryResourceArchive(
         "skill:presentation-reverse-template",
         "0".repeat(64),
-        "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec",
+        "7ceafa78d5e2a420521a911e542d8f3e4e1f313d9eaa36ed0389c6321d2c2ac8",
       ),
     ).toBeUndefined();
   });
