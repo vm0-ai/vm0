@@ -370,6 +370,257 @@ pub mod runners {
             pub credential_bindings: Vec<PiModelConfigV2CredentialBinding>,
         }
 
+        /// Required Responses streaming transport.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesTransport {
+            /// Server-sent events only.
+            #[serde(rename = "sse")]
+            Sse,
+        }
+
+        /// Native Pi catalog providers for this dialect.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesProvider {
+            /// DeepSeek provider.
+            #[serde(rename = "deepseek")]
+            Deepseek,
+            /// OpenAI public API provider.
+            #[serde(rename = "openai")]
+            Openai,
+            /// OpenRouter provider.
+            #[serde(rename = "openrouter")]
+            Openrouter,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Dialect-constrained request service tiers.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesServiceTier {
+            /// Public Responses priority service tier.
+            #[serde(rename = "priority")]
+            Priority,
+        }
+
+        /// Non-secret custom gateway credential header policy.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigV3OpenaiResponsesCredentialBindingApiKeyCredentialHeader {
+            /// Request header name.
+            pub name: String,
+            /// Header value template containing the credential placeholder exactly once.
+            pub value_template: String,
+        }
+
+        /// One non-secret execution-edge credential binding.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "kind", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV3OpenaiResponsesCredentialBinding {
+            /// Public Responses API-key binding.
+            #[serde(rename = "api-key")]
+            ApiKey {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+                /// Optional non-secret custom gateway header policy.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                credential_header:
+                    Option<PiModelConfigV3OpenaiResponsesCredentialBindingApiKeyCredentialHeader>,
+            },
+            /// ChatGPT access-token binding.
+            #[serde(rename = "access-token")]
+            AccessToken {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+            /// ChatGPT account-ID binding.
+            #[serde(rename = "account-id")]
+            AccountId {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+        }
+
+        /// Required Responses streaming transport.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesTransport {
+            /// Server-sent events only.
+            #[serde(rename = "sse")]
+            Sse,
+        }
+
+        /// Native Pi catalog providers for this dialect.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesProvider {
+            /// OpenAI Codex subscription provider.
+            #[serde(rename = "openai-codex")]
+            OpenaiCodex,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Dialect-constrained request service tiers.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesServiceTier {
+            /// Native Codex Responses fast service tier.
+            #[serde(rename = "fast")]
+            Fast,
+        }
+
+        /// Non-secret custom gateway credential header policy.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigV3OpenaiCodexResponsesCredentialBindingApiKeyCredentialHeader {
+            /// Request header name.
+            pub name: String,
+            /// Header value template containing the credential placeholder exactly once.
+            pub value_template: String,
+        }
+
+        /// One non-secret execution-edge credential binding.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "kind", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV3OpenaiCodexResponsesCredentialBinding {
+            /// Public Responses API-key binding.
+            #[serde(rename = "api-key")]
+            ApiKey {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+                /// Optional non-secret custom gateway header policy.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                credential_header: Option<
+                    PiModelConfigV3OpenaiCodexResponsesCredentialBindingApiKeyCredentialHeader,
+                >,
+            },
+            /// ChatGPT access-token binding.
+            #[serde(rename = "access-token")]
+            AccessToken {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+            /// ChatGPT account-ID binding.
+            #[serde(rename = "account-id")]
+            AccountId {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+        }
+
+        /// API-owned dialect-aware non-secret Pi model configuration.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "dialect", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV3 {
+            /// Public Responses route with optional priority tier.
+            #[serde(rename = "openai-responses")]
+            OpenaiResponses {
+                /// Pi model configuration generation.
+                schema_version: i64,
+                /// Transport policy selected by the route.
+                transport: PiModelConfigV3OpenaiResponsesTransport,
+                /// Native Pi catalog provider selected by the route.
+                provider: PiModelConfigV3OpenaiResponsesProvider,
+                /// Exact base URL used for model requests.
+                base_url: String,
+                /// Exact provider model identifier sent with requests.
+                model: String,
+                /// Optional native Pi catalog model used for trusted public Responses metadata.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                catalog_model: Option<String>,
+                /// Explicit Pi thinking level.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                thinking_level: Option<PiModelConfigV3OpenaiResponsesThinkingLevel>,
+                /// Optional dialect-constrained request service tier.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                service_tier: Option<PiModelConfigV3OpenaiResponsesServiceTier>,
+                /// Bounded non-secret credential bindings materialized only at an execution edge.
+                credential_bindings: Vec<PiModelConfigV3OpenaiResponsesCredentialBinding>,
+            },
+            /// Native Codex Responses route with optional fast tier.
+            #[serde(rename = "openai-codex-responses")]
+            OpenaiCodexResponses {
+                /// Pi model configuration generation.
+                schema_version: i64,
+                /// Transport policy selected by the route.
+                transport: PiModelConfigV3OpenaiCodexResponsesTransport,
+                /// Native Pi catalog provider selected by the route.
+                provider: PiModelConfigV3OpenaiCodexResponsesProvider,
+                /// Exact base URL used for model requests.
+                base_url: String,
+                /// Exact provider model identifier sent with requests.
+                model: String,
+                /// Optional native Pi catalog model used for trusted public Responses metadata.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                catalog_model: Option<String>,
+                /// Explicit Pi thinking level.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                thinking_level: Option<PiModelConfigV3OpenaiCodexResponsesThinkingLevel>,
+                /// Optional dialect-constrained request service tier.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                service_tier: Option<PiModelConfigV3OpenaiCodexResponsesServiceTier>,
+                /// Bounded non-secret credential bindings materialized only at an execution edge.
+                credential_bindings: Vec<PiModelConfigV3OpenaiCodexResponsesCredentialBinding>,
+            },
+        }
+
         /// DTOs for durable active-input delivery.
         pub mod active_inputs {
             /// DTOs for recording active-input acceptance receipts.

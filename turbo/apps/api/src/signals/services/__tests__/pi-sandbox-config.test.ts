@@ -280,6 +280,44 @@ describe("Pi sandbox model configuration", () => {
     ).toBeNull();
   });
 
+  it.each(STANDARD_TERRA_API_KEY_ROUTES)(
+    "keeps $type Fast on Codex before Pi ownership",
+    (route) => {
+      expect(
+        resolvePiSandboxModelConfig(
+          {
+            type: route.type,
+            environment: {
+              OPENAI_API_KEY: "opaque-provider-placeholder",
+              OPENAI_BASE_URL: route.baseUrl,
+              OPENAI_MODEL: route.model,
+            },
+            selectedModel: "gpt-5.6-terra",
+          },
+          "fast",
+        ),
+      ).toBeNull();
+      expect(
+        shouldUsePiExecution({
+          modelProviderType: route.type,
+          selectedModel: "gpt-5.6-terra",
+          codexServiceTier: "fast",
+          triggerSource: "web",
+          chatThreadId: "thread-1",
+          builtInModelRuntimeRoute: undefined,
+          featureSwitchContext: {
+            userId: "user-1",
+            orgId: "org-1",
+            overrides: {
+              [FeatureSwitchKey.PiLoop]: true,
+              [FeatureSwitchKey.CodexFastMode]: true,
+            },
+          },
+        }),
+      ).toBeFalsy();
+    },
+  );
+
   it("rejects mismatched API-key provider identity and endpoint", () => {
     expect(
       resolvePiSandboxModelConfig({

@@ -9,7 +9,8 @@ index 704476da084be53d6aa194a5f774fa3ad47f5e9a..ffd6c5bde0ddd3b480af7bac0b49492a
 +    accountId?: string;
      reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
      reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
-     serviceTier?: ResponseCreateParamsStreaming["service_tier"];
+-    serviceTier?: ResponseCreateParamsStreaming["service_tier"];
++    serviceTier?: ResponseCreateParamsStreaming["service_tier"] | "fast";
 diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
 index 603ab2e3b082669045b7ecb849bd33f45918bce5..7ba136bcec10b3319108a6748fe1b0c5b3bb8a97 100644
 --- a/dist/api/openai-codex-responses.js

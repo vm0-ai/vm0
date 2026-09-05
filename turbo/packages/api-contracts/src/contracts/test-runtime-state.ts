@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { initContract } from "./base";
-import {
-  connectorRuntimeTargetsSchema,
-  piModelConfigV2Schema,
-} from "./runners";
+import { connectorRuntimeTargetsSchema } from "./runners";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 
 const c = initContract();
@@ -115,9 +112,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
-    action: z.literal("set-runner-job-pi-context-as-v2-writer"),
+    action: z.literal("set-runner-job-pi-context-as-versioned-writer"),
     run_id: z.uuid(),
-    pi_model_config: piModelConfigV2Schema,
+    // Stored rows can come from a future or invalid writer. The claim boundary
+    // must validate them, not this test-only fixture endpoint.
+    pi_model_config: z.record(z.string(), z.unknown()),
   }),
   z.object({
     action: z.literal("enable-queued-pi-ownership-transfer"),
