@@ -17,7 +17,7 @@ import {
 } from "../chat-threads";
 
 describe("google drive artifact recovery contract", () => {
-  it("keeps account readiness additive across API and Platform versions", () => {
+  it("requires account readiness on every connected sync status", () => {
     const legacyNotSynced = { status: "not_synced" } as const;
     const accountReadyNotSynced = {
       status: "not_synced",
@@ -28,8 +28,10 @@ describe("google drive artifact recovery contract", () => {
     });
 
     expect(
-      chatThreadArtifactGoogleDriveSyncSchema.parse(legacyNotSynced),
-    ).toStrictEqual(legacyNotSynced);
+      chatThreadArtifactGoogleDriveSyncSchema.safeParse(legacyNotSynced)
+        .success,
+    ).toBe(false);
+    // An App bundle built before the marker keeps its own tolerant parser.
     expect(previousNotSyncedSchema.parse(accountReadyNotSynced)).toStrictEqual(
       legacyNotSynced,
     );
