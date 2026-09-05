@@ -218,7 +218,7 @@ describe("registry resource download", () => {
       versionId,
       s3Key,
       size: 10_577,
-      archiveSize: 4_187,
+      archiveSize: 4187,
       fileCount: 3,
     });
     onTestFinished(fixture.cleanup);
