@@ -227,7 +227,7 @@ describe("okou resource pull command", () => {
 
   it("resolves the pull-only presentation reverse-template guide through the command", async () => {
     const reverseTemplateSha256 =
-      "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11";
+      "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec";
     server.use(
       http.get(
         "http://localhost:3000/api/registry/resources/download",
@@ -250,7 +250,7 @@ describe("okou resource pull command", () => {
             expiresInSeconds: 900,
             versionId,
             fileCount: 3,
-            size: 30_489,
+            size: 10_577,
           });
         },
       ),

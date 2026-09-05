@@ -49,9 +49,9 @@ function storageServiceNotConfigured() {
 }
 
 const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
-  // Presentation reverse-template guide from vm0-ai/Template-artifact@7daba24.
+  // Presentation reverse-template guide from vm0-ai/Template-artifact@0a52be7.
   "skill:presentation-reverse-template":
-    "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
+    "2037e27e217c21a5adac76efdd3298e3e8149de030840c8f40521433e22a1c49",
   "color-system:bauhaus-primary":
     "26c34a2a33a5c7b751b6741da5e4013020d5dbe138e60f5b3a444f4a5d3a351b",
   "color-system:berry-pop":
@@ -221,11 +221,13 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
  * CLI built past the republication that added it.
  */
 const PREVIOUS_PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS_BY_SHA256 = {
-  // Pre-refactor guide from vm0-ai/Template-artifact@fc829f4, replaced when the
-  // extractor pipeline was removed.
+  // Superseded reverse guides from vm0-ai/Template-artifact. Keep each digest
+  // bound to its immutable version while commit-addressed CLI contexts drain.
   "skill:presentation-reverse-template": {
     "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5":
       "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
+    "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11":
+      "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
   },
 } as const satisfies Readonly<Record<string, Readonly<Record<string, string>>>>;
 
