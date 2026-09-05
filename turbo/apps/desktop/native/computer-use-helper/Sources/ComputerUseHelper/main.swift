@@ -4987,15 +4987,9 @@ func handlePressKey(_ request: [String: Any], session: ComputerUseRuntimeSession
 }
 
 func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
+    let scrollRequest = try AccessibilityScrollRequest(request)
     let appName = try requiredString(request, "app")
     let elementId = try resolveElementId(request, session: session, commandName: "element.scroll")
-    let direction = try requiredString(request, "direction")
-    let pages = request["pages"] as? NSNumber
-    let step = pages?.doubleValue ?? 1
-    let axis = direction == "left" || direction == "right"
-        ? "AXHorizontalScrollBar"
-        : "AXVerticalScrollBar"
-    let sign = direction == "up" || direction == "left" ? -1.0 : 1.0
     let app = try resolveRunningApp(named: appName)
     return try withFrontmostPreservation(
         dispatchMode: "accessibility_action",
@@ -5010,23 +5004,7 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
                 point: CGPoint(x: frame.midX, y: frame.midY)
             )
         }
-        guard let scrollBar = attributeArray(element, kAXChildrenAttribute as CFString).first(where: { child in
-            role(child) == axis
-        }) else {
-            var result: [String: Any] = [:]
-            if let visualPointerShown {
-                result["visualPointerShown"] = visualPointerShown
-            }
-            return (targetPID: app.processIdentifier, result: result)
-        }
-        if let current = numberValue(attribute(scrollBar, kAXValueAttribute as CFString)) {
-            try setAttribute(
-                scrollBar,
-                kAXValueAttribute as CFString,
-                NSNumber(value: current + sign * step)
-            )
-        }
-        var result: [String: Any] = [:]
+        var result = try performAccessibilityScroll(element, request: scrollRequest)
         if let visualPointerShown {
             result["visualPointerShown"] = visualPointerShown
         }

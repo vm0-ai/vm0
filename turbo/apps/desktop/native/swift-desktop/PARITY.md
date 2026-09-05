@@ -161,15 +161,42 @@ An unsupported element click returned an explicit error; a coordinate click on
 the same text area worked. This is not cold-launch or general foreground-recovery
 acceptance.
 
-**Live failure: `element.scroll` silently does nothing.** One-page and two-page
+**Reproduced baseline failure: `element.scroll` silently does nothing.** One-page and two-page
 requests reported success, but the TextEdit scrollbar remained at zero and the
 downloaded before/after images were identical. The unchanged helper's
 `handleScrollElement` compares child roles against `AXVerticalScrollBar` or
 `AXHorizontalScrollBar`, which are attribute names rather than scrollbar roles,
 then returns success when it finds no match. Calling the advertised
 `AXScrollDownByPage` action directly also failed with `-25205` on this TextEdit
-scroll area. Correct target discovery, page semantics, explicit unsupported
-results, and real scrolling acceptance remain required.
+scroll area.
+
+A separate native acceptance app (`ai.vm0.swift-desktop.acceptance`) now runs
+the actual helper JSONL protocol with its own visibly granted Accessibility and
+Screen Recording permissions, preserving the installed Zero bundle. Its baseline
+helper reproduced the unchanged TextEdit content position and zero scroll value.
+The repaired helper resolves the axis through the proper AX attribute and presses
+the scrollbar's native increment/decrement page button. It waits for animation
+to settle before issuing another page or reporting the final position. A missing
+bar, missing page action, invalid input, or action that fails to move is an error.
+An already reached boundary reports zero completed pages and `atBoundary: true`.
+
+Real TextEdit window 1140 moved 374 points for one page, 748 for two more, and
+374 back up. The scrollbar values were 0, 0.188698, 0.566095, and 0.377397;
+window-only images show the corresponding text. Bottom/top clamping, repeated
+boundary requests, and finding the scroll area from its text child also passed.
+The acceptance app remained frontmost throughout. The repaired debug helper's
+SHA-256 is `e76baaa867eff83d21c22b0b18b432d82003027b3bc17638598c3bb755c7f630`.
+All 121 helper tests passed, including actual process/protocol input regressions.
+[Window comparison](https://cdn.vm0.io/artifacts/mwbqq0j6ce.png) and
+[sanitized command/state evidence](https://cdn.vm0.io/artifacts/gjqeu8vfpr.json)
+record the baseline and candidate attribution.
+
+This establishes integer page scrolling through the real helper, not a new
+packaged Desktop/server round trip. Fractional pages currently return an explicit
+unsupported error; preserving that accepted API input still requires work.
+Horizontal scrolling and apps without native scrollbar page buttons also require
+implementation/acceptance. The old installed `f0b3b92` Desktop remains unchanged;
+do not mark all nine authenticated Desktop command kinds accepted from this test.
 
 A second shared staging deployment (run `33965940210`, job `101306017261`)
 reset `preview/staging` at 12:25:32 UTC. The native poll received 401 and returned
@@ -190,7 +217,7 @@ Sleep behavior, quit cleanup, and the remaining menu/Dock interactions are open.
 | Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity               |
 | System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes       |
 | Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                            |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, unchanged native helper                                         | Repair live scroll failure; cold launch, foreground recovery, and broader target coverage |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Packaged scroll round trip, fractional/horizontal pages, cold launch, foreground recovery, broader targets |
 | AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                    |
 | Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges              |
 | MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load        |
@@ -225,8 +252,9 @@ Continue with:
    exercise account/workspace changes during capture and active delivery.
 3. Complete TCC onboarding/revocation, real app commands, multi-display/Retina
    selection, floating controls, system audio, microphone, source loss, and the
-   complete upload/review handoff on both product identities. Repair and repeat
-   the real TextEdit scroll reproduction above before accepting all nine commands.
+   complete upload/review handoff on both product identities. Complete packaged
+   scroll round trips and the remaining scroll input/target support above before
+   accepting all nine commands.
 4. Finish the remaining filesystem/MCP and menu/activation walkthroughs in the
    table. Automated fixtures and rendered windows do not establish actual
    capture, signed updates, or live end-to-end parity.
