@@ -33,14 +33,8 @@ interface AuthedClientOptions {
   ) => Promise<string> | string;
 }
 
-// Surface: new app bundle -> old serving artifact. The app Worker that injects
-// this script deploys independently from the bundle that reads it, because
-// `app-worker/wrangler.jsonc` reads hashed assets from the R2 origin, so the
-// selector also accepts the pre-rename spelling. Drop the legacy half once the
-// Worker release carrying this change is live and outside its rollback window;
-// follow-up #31824.
 const API_BOOTSTRAP_SELECTOR =
-  'script[type="application/json"][data-okou-api-bootstrap],script[type="application/json"][data-vm0-api-bootstrap]';
+  'script[type="application/json"][data-okou-api-bootstrap]';
 
 function takeBootstrapResponse(
   method: string,
