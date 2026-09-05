@@ -1096,25 +1096,47 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the Office preview reader floor before route matching", async () => {
+    it.each([
+      { method: "POST", path: "/api/connectors/github/oauth/start" },
+      { method: "PUT", path: "/api/custom-connectors/example/values" },
+      { method: "DELETE", path: "/api/connectors/github" },
+    ])(
+      "force-upgrades singleton-producing App bundles before $method $path route matching",
+      async ({ method, path }) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const response = await app.request(path, {
+          method,
+          headers: {
+            [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+            [CLIENT_VERSION_HEADER]: "0.843.0",
+          },
+        });
+
+        expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.843.1");
+        expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+        await expect(response.json()).resolves.toStrictEqual({
+          error: "Client update required",
+        });
+        expect(response.headers.get("cache-control")).toBe("no-store");
+      },
+    );
+
+    it("force-upgrades prereleases below the supported App release", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/connectors/github", {
-        method: "DELETE",
+      const response = await app.request("/health", {
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.830.0",
+          [CLIENT_VERSION_HEADER]: `${MINIMUM_WEB_CLIENT_VERSION}-rc.1`,
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.831.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
-      await expect(response.json()).resolves.toStrictEqual({
-        error: "Client update required",
-      });
-      expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
     it("rejects pre-MCP-reader app clients before custom connector route matching", async () => {
@@ -1157,7 +1179,10 @@ describe("createApp", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
-    it("allows the canonical web client floor", async () => {
+    it.each([
+      MINIMUM_WEB_CLIENT_VERSION,
+      `${MINIMUM_WEB_CLIENT_VERSION}+build.1`,
+    ])("allows the canonical web client floor %s", async (version) => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1166,7 +1191,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
+          [CLIENT_VERSION_HEADER]: version,
         },
       });
 
@@ -1189,7 +1214,42 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("does not force upgrade other client types", async () => {
+    it.each([CLIENT_TYPE_CLI, CLIENT_TYPE_DESKTOP])(
+      "does not force upgrade %s clients",
+      async (clientType) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const response = await app.request("/health", {
+          headers: {
+            [CLIENT_TYPE_HEADER]: clientType,
+            [CLIENT_VERSION_HEADER]: "0.599.18",
+          },
+        });
+
+        expect(response.status).toBe(200);
+      },
+    );
+
+    it.each([undefined, "", "development"])(
+      "preserves App requests without a parseable version (%s)",
+      async (version) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const headers = new Headers({ [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP });
+        if (version !== undefined) {
+          headers.set(CLIENT_VERSION_HEADER, version);
+        }
+        const response = await app.request("/health", { headers });
+
+        expect(response.status).toBe(200);
+      },
+    );
+
+    it("preserves requests without a client type", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1197,8 +1257,7 @@ describe("createApp", () => {
       const response = await app.request("/health", {
         method: "GET",
         headers: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
-          [CLIENT_VERSION_HEADER]: "0.599.18",
+          [CLIENT_VERSION_HEADER]: "0.843.0",
         },
       });
 
