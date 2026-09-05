@@ -1,7 +1,7 @@
 {
   "source": {
     "repo": "vm0-ai/Template-artifact",
-    "commit": "0a52be7338612763f87ac7eaa344ef04145927c9",
+    "commit": "4eea5563def834670948c9bdfdf96dbe4cd4192f",
     "directory": "reverse-template"
   },
   "resource": {
@@ -9,7 +9,7 @@
     "slug": "reverse-template",
     "storageId": "f4141103-c73c-4469-93f9-8438b0cb7b34",
     "supersedesVersionId": "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
-    "expectedVersionId": "2037e27e217c21a5adac76efdd3298e3e8149de030840c8f40521433e22a1c49",
-    "expectedSha256": "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec"
+    "expectedVersionId": "b6d3a4aa37657dadad2e90e25ddc74a469def40be547fff6bd9f178f5f097c9e",
+    "expectedSha256": "7ceafa78d5e2a420521a911e542d8f3e4e1f313d9eaa36ed0389c6321d2c2ac8"
   }
 }
