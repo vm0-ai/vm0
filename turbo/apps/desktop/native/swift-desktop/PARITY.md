@@ -14,13 +14,13 @@ networking/processes, IOKit power assertions, and the official Swift MCP SDK.
 
 ## Verified automated evidence
 
-- [macOS run 33960631686](https://github.com/vm0-ai/vm0/actions/runs/33960631686)
-  for `e4928c2` passed 30 app/core tests and all 118 unchanged helper tests,
+- [macOS run 33965482461](https://github.com/vm0-ai/vm0/actions/runs/33965482461)
+  for `f578ebd` passed 31 app/core tests and all 118 unchanged helper tests,
   release compilation, bundle signature/architecture checks, packaged launch,
   a native permission probe, and a settings-window screenshot. The PR check
   records the commit and download URL for each later successful build.
 - Its app and independent project ZIPs were downloaded and integrity-checked.
-  Desktop 0.46.17 contains four arm64 Mach-O executables and eleven notices;
+  Desktop 0.46.18 contains four arm64 Mach-O executables and eleven notices;
   the project includes both pinned Swift packages and matches the tested source.
 - A real HTTP regression reproduces an old claimed command completing after
   host revocation. The replacement registers only after that work drains; an
@@ -91,7 +91,7 @@ shared Okou development installation, this walkthrough established a separate
 `ai.vm0.zero.desktop.dev`, version 0.46.17, built from `f0b3b92` in the extracted
 independent project. The running executable SHA-256 is
 `179bb351fa0b3faf70ff507fdf2dca0e57a636fe70f85f60a1b294a9d8e775a2`.
-Subsequent test-only and startup-cancellation changes have CI evidence but have
+Subsequent authentication and preview-access changes have CI evidence but have
 not replaced that installation, preserving its current TCC identity.
 
 The current staging Worker frontend maps to `staging-api.vm6.ai` and
@@ -122,7 +122,7 @@ test document correctly. Accessibility initially remained false despite an enabl
 switch. Removing only the Zero entry and adding the exact current application
 restored the helper's granted state without restarting the process; the native
 UI then reported ready to connect. This verifies recovery of that consent
-record, not live Computer Use commands or general grant/revocation coverage.
+record, not general grant/revocation coverage.
 During the later picker walkthrough the
 recording/plugin tabs disappeared on refresh; no completed video was present at
 inspection. A subsequent walkthrough observed the same account's actual feature
@@ -149,7 +149,39 @@ password, and the development OTP reached the sign-in-complete screen, but the
 next page stalled and a later navigation returned to sign-in. Browser session
 persistence and final review remain unaccepted. This is separate from the hosted
 desktop login factor-route problem above. Audio, multi-display/area capture,
-source loss, full upload/review, real app control, and TCC revocation remain open.
+source loss, full upload/review, and TCC revocation remain open.
+
+The same installed package subsequently executed real staging API commands
+against the dedicated TextEdit document. Eight command kinds completed API/helper
+round trips: app listing/state/open, coordinate click, value assignment, an AX
+action, text typing, and key presses. Post-action AX state confirmed typed and
+assigned text; downloaded window-only screenshots show the actual changed
+document. Background input preserved the native Desktop as the frontmost app.
+An unsupported element click returned an explicit error; a coordinate click on
+the same text area worked. This is not cold-launch or general foreground-recovery
+acceptance.
+
+**Live failure: `element.scroll` silently does nothing.** One-page and two-page
+requests reported success, but the TextEdit scrollbar remained at zero and the
+downloaded before/after images were identical. The unchanged helper's
+`handleScrollElement` compares child roles against `AXVerticalScrollBar` or
+`AXHorizontalScrollBar`, which are attribute names rather than scrollbar roles,
+then returns success when it finds no match. Calling the advertised
+`AXScrollDownByPage` action directly also failed with `-25205` on this TextEdit
+scroll area. Correct target discovery, page semantics, explicit unsupported
+results, and real scrolling acceptance remain required.
+
+A second shared staging deployment (run `33965940210`, job `101306017261`)
+reset `preview/staging` at 12:25:32 UTC. The native poll received 401 and returned
+to ready; the user API listed no linked host. Reconnecting registered a new host
+and real commands resumed. This does not establish general network recovery.
+
+The actual keep-awake switch created a `PreventUserIdleDisplaySleep` assertion
+owned by the identified native process; switching it off released that assertion.
+Closing the settings window left the host online, and LaunchServices reopened
+the window in the existing process. The test document was restored with native
+commands and saved, then verified byte-for-byte against its original contents.
+Sleep behavior, quit cleanup, and the remaining menu/Dock interactions are open.
 
 ## Feature inventory and evidence
 
@@ -157,8 +189,8 @@ source loss, full upload/review, real app control, and TCC revocation remain ope
 | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity               |
 | System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes       |
-| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Live command round trip, competing hosts, and prolonged network recovery                  |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, unchanged native helper                                         | Live app action/foreground recovery acceptance and broader snapshot fixtures              |
+| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                            |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, unchanged native helper                                         | Repair live scroll failure; cold launch, foreground recovery, and broader target coverage |
 | AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                    |
 | Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges              |
 | MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load        |
@@ -193,7 +225,8 @@ Continue with:
    exercise account/workspace changes during capture and active delivery.
 3. Complete TCC onboarding/revocation, real app commands, multi-display/Retina
    selection, floating controls, system audio, microphone, source loss, and the
-   complete upload/review handoff on both product identities.
+   complete upload/review handoff on both product identities. Repair and repeat
+   the real TextEdit scroll reproduction above before accepting all nine commands.
 4. Finish the remaining filesystem/MCP and menu/activation walkthroughs in the
    table. Automated fixtures and rendered windows do not establish actual
    capture, signed updates, or live end-to-end parity.
