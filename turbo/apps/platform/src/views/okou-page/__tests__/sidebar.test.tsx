@@ -934,7 +934,9 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
-    indicatorRequestStarted.resolve();
+    if (!indicatorRequestStarted.settled()) {
+      indicatorRequestStarted.resolve();
+    }
     await indicatorResponse.promise;
     return respond(200, { agents: {}, threads: {} });
   });
@@ -1400,6 +1402,7 @@ test("Mark all of an agent’s chats read", async () => {
   const nav = await waitFor(() => {
     const current = mobileSidebar();
     expect(within(current).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(current).getByText("Support Agent")).toBeInTheDocument();
     return current;
   });
   const researchSidebarRow = agentRowByName(nav, "Research Agent");
