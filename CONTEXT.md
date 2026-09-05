@@ -2,15 +2,14 @@
 
 ## Voice draft
 
-A composer-owned, durable block containing raw speech transcription that is
-not yet ready to send. It is stored as draft state outside user-message
-documents and therefore never becomes part of a formal user event. The block
-remains hidden while a composer-owned footer shows recording and automatic
-cleanup progress, becomes visible if cleanup fails, and turns into selected
-ordinary composer text at the last editor selection only after cleanup
-succeeds. A composer containing a voice draft cannot be sent.
+A transient ComposerSignals-owned voice-input lifecycle. It moves from idle to
+recording to transcribing, blocks submission while active, and inserts only the
+successful polished text into TipTap at the existing selection before returning
+to idle. Recording data, transcription state, and failures are never TipTap
+nodes or persisted draft state. Failures show a toast and return directly to
+idle so the user can record again.
 
-_Avoid_: Voice loading state, live transcript
+_Avoid_: Voice draft block, persisted voice draft, live transcript
 
 ## Archived chat history
 

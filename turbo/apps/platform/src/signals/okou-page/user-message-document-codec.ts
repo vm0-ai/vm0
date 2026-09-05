@@ -1,12 +1,10 @@
 import type { JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
-  draftVoiceSchema,
   generationTemplateRequestSchema,
   userMessageDocumentSchema,
   userMessageInputDocumentSchema,
   type FeedbackNotePart,
-  type DraftVoice,
   type GenerationTemplateRequest,
   type ImageAnnotation,
   type PersistedAttachment,
@@ -28,7 +26,6 @@ export const AGENT_MENTION_NODE_NAME = "agentMention";
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
-export const VOICE_DRAFT_NODE_NAME = "voiceDraft";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export type MessageDocumentAttachment = PersistedAttachment & {
@@ -52,8 +49,7 @@ export interface EditorDocumentSnapshot {
 }
 
 export interface EditorDraftDocument {
-  readonly userMessage: UserMessageInputDocument | null;
-  readonly draftVoice: DraftVoice | null;
+  readonly userMessage: UserMessageInputDocument;
 }
 
 export function shouldUseUserMessage(
@@ -147,13 +143,6 @@ function inlineTemplatePart(
     titleSnapshot: title,
     template: parsedTemplate.data,
   };
-}
-
-function draftVoiceFromNode(node: ProseMirrorNode): DraftVoice | null {
-  const id: unknown = node.attrs.id;
-  const transcript: unknown = node.attrs.transcript;
-  const parsed = draftVoiceSchema.safeParse({ version: 1, id, transcript });
-  return parsed.success ? parsed.data : null;
 }
 
 function appendParagraphParts(
@@ -330,11 +319,7 @@ function selectedTemplateNodeCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
-    if (
-      nodeName === "paragraph" ||
-      nodeName === FEEDBACK_ITEM_NODE_NAME ||
-      nodeName === VOICE_DRAFT_NODE_NAME
-    ) {
+    if (nodeName === "paragraph" || nodeName === FEEDBACK_ITEM_NODE_NAME) {
       continue;
     }
     if (nodeName !== TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -370,16 +355,15 @@ function appendFeedbackGroup(
 
 function completedEditorDraft(
   parts: readonly UserMessagePart[],
-  draftVoice: DraftVoice | null,
 ): EditorDraftDocument | null {
   if (parts.length === 0) {
-    return draftVoice ? { userMessage: null, draftVoice } : null;
+    return null;
   }
   const parsed = userMessageInputDocumentSchema.safeParse({
     version: 1,
     parts,
   });
-  return parsed.success ? { userMessage: parsed.data, draftVoice } : null;
+  return parsed.success ? { userMessage: parsed.data } : null;
 }
 
 function editorDocToDraftDocument(
@@ -391,7 +375,6 @@ function editorDocToDraftDocument(
   }
 
   const parts: UserMessagePart[] = [];
-  let draftVoice: DraftVoice | null = null;
   const attachments = context.attachments ?? [];
   let filesAppended = false;
   const documentTemplateCount = selectedTemplateNodeCount(document);
@@ -399,7 +382,7 @@ function editorDocToDraftDocument(
     return null;
   }
 
-  let previousPromptSection: "paragraph" | "feedback" | "voice" | null = null;
+  let previousPromptSection: "paragraph" | "feedback" | null = null;
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -425,17 +408,6 @@ function editorDocToDraftDocument(
       }
       continue;
     }
-    if (node.type.name === VOICE_DRAFT_NODE_NAME) {
-      if (draftVoice !== null) {
-        return null;
-      }
-      draftVoice = draftVoiceFromNode(node);
-      if (draftVoice === null) {
-        return null;
-      }
-      previousPromptSection = "voice";
-      continue;
-    }
     if (previousPromptSection === "paragraph") {
       appendTextPart(parts, "\n");
     }
@@ -451,7 +423,7 @@ function editorDocToDraftDocument(
     return null;
   }
 
-  return completedEditorDraft(parts, draftVoice);
+  return completedEditorDraft(parts);
 }
 
 /**
@@ -683,37 +655,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
   }
 }
 
-function appendRestoredVoiceDraft(
-  state: RestoredEditorState,
-  draftVoice: DraftVoice,
-): void {
-  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
-    flushRestoredParagraph(state);
-  }
-  state.content.push({
-    type: VOICE_DRAFT_NODE_NAME,
-    attrs: {
-      id: draftVoice.id,
-      transcript: draftVoice.transcript,
-      status: "failed",
-      visible: true,
-    },
-  });
-}
-
-function appendOptionalRestoredVoiceDraft(
-  state: RestoredEditorState,
-  draftVoice: DraftVoice | null,
-): void {
-  if (draftVoice) {
-    appendRestoredVoiceDraft(state, draftVoice);
-  }
-}
-
-function restoredEditorDoc(
-  userMessage: UserMessageDocument | null,
-  draftVoice: DraftVoice | null,
-): JSONContent {
+function restoredEditorDoc(userMessage: UserMessageDocument): JSONContent {
   const state: RestoredEditorState = {
     content: [],
     paragraphContent: [],
@@ -787,11 +729,7 @@ function restoredEditorDoc(
   if (state.paragraphContent.length > 0 || state.trailingParagraph) {
     flushRestoredParagraph(state);
   }
-  appendOptionalRestoredVoiceDraft(state, draftVoice);
-  if (
-    state.content.length === 0 ||
-    state.content.at(-1)?.type === VOICE_DRAFT_NODE_NAME
-  ) {
+  if (state.content.length === 0) {
     state.content.push({ type: "paragraph" });
   }
   return { type: "doc", content: state.content };
@@ -804,24 +742,14 @@ function restoredEditorDoc(
  */
 export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
   const parsed = userMessageDocumentSchema.safeParse(value);
-  return parsed.success ? restoredEditorDoc(parsed.data, null) : null;
+  return parsed.success ? restoredEditorDoc(parsed.data) : null;
 }
 
-/** Restores a saved composer draft whose voice input is stored separately. */
-export function draftToEditorDoc(
-  userMessage: unknown,
-  voice: unknown,
-): JSONContent | null {
-  const parsedVoice = draftVoiceSchema.nullable().safeParse(voice);
-  if (!parsedVoice.success) {
-    return null;
-  }
-  if (userMessage === null) {
-    return parsedVoice.data ? restoredEditorDoc(null, parsedVoice.data) : null;
-  }
+/** Restores only the persisted user message portion of a composer draft. */
+export function draftToEditorDoc(userMessage: unknown): JSONContent | null {
   const parsedUserMessage = userMessageDocumentSchema.safeParse(userMessage);
   return parsedUserMessage.success
-    ? restoredEditorDoc(parsedUserMessage.data, parsedVoice.data)
+    ? restoredEditorDoc(parsedUserMessage.data)
     : null;
 }
 

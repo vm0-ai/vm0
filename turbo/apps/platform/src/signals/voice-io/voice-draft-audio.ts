@@ -5,15 +5,12 @@ import * as ort from "onnxruntime-web/wasm";
 import ortWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url";
 import { VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 
-import { logger } from "../log";
-import { bestEffort, settle, withCleanup } from "../utils";
+import { bestEffort, withCleanup } from "../utils";
 import {
   decodeVoiceDraftPcmWav,
   encodeVoiceDraftPcmWav,
   VOICE_DRAFT_PCM_SAMPLE_RATE,
 } from "./voice-draft-pcm";
-
-const L = logger("VoiceIO:DraftAudio");
 
 const CHUNK_MINIMUM_SECONDS = 45;
 const CHUNK_TARGET_SECONDS = 60;
@@ -36,13 +33,13 @@ interface VoiceDraftSpeechRange {
   readonly endSample: number;
 }
 
-export interface VoiceDraftPause {
+interface VoiceDraftPause {
   readonly seconds: number;
   readonly duration: number;
   readonly depth: number;
 }
 
-export interface VoiceDraftChunkRange {
+interface VoiceDraftChunkRange {
   readonly startSample: number;
   readonly endSample: number;
 }
@@ -301,17 +298,9 @@ async function pausesForSamples(
   samples: Float32Array,
   signal: AbortSignal,
 ): Promise<readonly VoiceDraftPause[]> {
-  const detected = await settle(detectSileroPauses(samples, signal), signal);
+  const detected = await detectSileroPauses(samples, signal);
   signal.throwIfAborted();
-  if (detected.ok && detected.value.speechFound) {
-    return detected.value.pauses;
-  }
-  if (!detected.ok) {
-    L.warn("Silero VAD unavailable; preserving the recording as one chunk", {
-      error: detected.error,
-    });
-  }
-  return [];
+  return detected.speechFound ? detected.pauses : [];
 }
 
 async function recordingSamples(

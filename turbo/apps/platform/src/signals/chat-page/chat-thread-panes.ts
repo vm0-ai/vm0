@@ -1,7 +1,6 @@
 import { command, type Command } from "ccstate";
 import type {
   ChatThreadDraft,
-  DraftVoice,
   PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -88,7 +87,6 @@ interface PaneSpec {
 interface RestoredDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly draftVoice: DraftVoice | null;
   readonly attachments: RestorableAttachment[];
 }
 
@@ -124,10 +122,9 @@ function userMessageDraftState(
   threadDraft: ChatThreadDraft,
 ): RestoredDraftState | null {
   const document = threadDraft.draftUserMessage;
-  // A new App may receive a pre-#31562 API response during serving or rollback.
-  // Remove this new-App -> old-API bridge with #31612 after that window closes.
-  const draftVoice = threadDraft.draftVoice ?? null;
-  if (draftToEditorDoc(document, draftVoice) === null) {
+  // Compatibility-only draftVoice responses from old App clients are ignored.
+  // Remove the API/DB field with #31612 after the two-day client-skew window.
+  if (draftToEditorDoc(document) === null) {
     return null;
   }
   const content = document ? messageDocumentToPrompt(document) : "";
@@ -137,7 +134,6 @@ function userMessageDraftState(
   return {
     content,
     userMessage: document,
-    draftVoice,
     attachments: document
       ? userMessageDraftAttachments(
           document,
@@ -168,7 +164,6 @@ const loadDraft$ = command(
     const hasDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
-      restoredDraft.draftVoice !== null ||
       restoredDraft.attachments.length > 0;
     if (isNew && hasDraft) {
       const restoredAttachments = restoredDraft.attachments.map(
@@ -179,7 +174,6 @@ const loadDraft$ = command(
         {
           content: restoredDraft.content,
           userMessage: restoredDraft.userMessage,
-          draftVoice: restoredDraft.draftVoice,
           generationTemplate: undefined,
           attachments: restoredAttachments,
         },

@@ -2441,10 +2441,6 @@
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
       "confirmRecording": "OK",
-      "draft": "Bozza vocale",
-      "draftTooLong": "Questa bozza vocale è troppo lunga. Avvia una nuova registrazione.",
-      "finishDraft": "Completa",
-      "finishingDraft": "Completamento...",
       "input": "Ingresso vocale",
       "inputLimitReached": "Limite di input vocale raggiunto. Passa a Pro o Team per limiti più alti.",
       "inputLimitReachedMember": "Limite di input vocale raggiunto. Chiedi a un amministratore dell'area di lavoro di effettuare l'upgrade per ottenere limiti più alti.",
@@ -2453,7 +2449,6 @@
       "inputLimitReachedReset": "Limite di input vocale raggiunto. Attendi che il limite venga reimpostato.",
       "microphoneAccessDenied": "L'accesso al microfono è stato negato. Consenti l'accesso al microfono e riprova.",
       "openingMicrophone": "Apertura del microfono...",
-      "removeDraft": "Rimuovi bozza vocale",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",
       "transcribing": "Trascrizione",

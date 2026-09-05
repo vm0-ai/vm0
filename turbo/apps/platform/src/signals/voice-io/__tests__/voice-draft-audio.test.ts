@@ -2,10 +2,7 @@ import { vi } from "vitest";
 
 import { testContext } from "../../__tests__/test-helpers";
 import { createChildAbortController, createDeferredPromise } from "../../utils";
-import {
-  voiceDraftChunkRanges,
-  type VoiceDraftPause,
-} from "../voice-draft-audio";
+import { voiceDraftChunkRanges } from "../voice-draft-audio";
 import {
   decodeVoiceDraftPcmWav,
   encodeVoiceDraftPcmWav,
@@ -19,7 +16,7 @@ function samples(seconds: number): number {
   return seconds * SAMPLE_RATE;
 }
 
-function pause(seconds: number, duration = 0.8): VoiceDraftPause {
+function pause(seconds: number, duration = 0.8) {
   return { seconds, duration, depth: 20 };
 }
 

@@ -1,11 +1,12 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import {
   assistantEvent,
   context,
@@ -40,6 +41,20 @@ function currentComposer(): HTMLElement {
 
 function normalizedComposerText(): string {
   return currentComposer().textContent?.replace(/\s+/gu, " ").trim() ?? "";
+}
+
+function expectNoVoiceDraftNode(): void {
+  const thread = context.store.get(currentLeftThread$);
+  if (!thread) {
+    throw new Error("Expected the current chat thread");
+  }
+  let found = false;
+  thread.composer.editor.editor.state.doc.descendants((node) => {
+    if (node.type.name === "voiceDraft") {
+      found = true;
+    }
+  });
+  expect(found).toBeFalsy();
 }
 
 async function activeVoiceStopButton(): Promise<HTMLElement> {
@@ -237,11 +252,13 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   await fill(currentComposer(), "Opening  closing");
   click(voiceInput);
   const stop = await activeVoiceDraftStopButton();
+  expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   click(stop);
   await transcriptionStarted.promise;
 
   expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   placeCaret(currentComposer(), "Opening  closing", 8);
 
@@ -255,11 +272,12 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   expect(window.getSelection()?.toString()).toBe(
     "Send the launch update tomorrow.",
   );
+  expectNoVoiceDraftNode();
   await expect(findButton("Send")).resolves.toBeEnabled();
-  expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
+  expect(queryButton("Finish")).toBeNull();
 });
 
-test("Enter voice-draft recording only after the microphone starts", async () => {
+test("Keep voice-draft recording outside TipTap while the microphone starts", async () => {
   const microphoneReady = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({
     getUserMediaReady: microphoneReady.promise,
@@ -276,25 +294,30 @@ test("Enter voice-draft recording only after the microphone starts", async () =>
 
   click(await readyVoiceInput());
 
-  await expect(findButton("Starting voice input")).resolves.toBeDisabled();
-  expect(
-    document.querySelector("[data-voice-level-waveform]"),
-  ).not.toBeInTheDocument();
+  await expect(findButton("Stop recording")).resolves.toBeDisabled();
+  expectNoVoiceDraftNode();
 
   microphoneReady.resolve(undefined);
 
   await activeVoiceDraftStopButton();
+  expectNoVoiceDraftNode();
   expect(
     document.querySelector("[data-voice-level-waveform]"),
   ).toBeInTheDocument();
 });
 
 test("Keep a silent voice draft recording until the user stops it", async () => {
+  const voiceActivityObserved = context.mocks.deferred<void>();
   let recorderStops = 0;
   let multimodalCalls = 0;
   let legacySttCalls = 0;
   context.mocks.browser.voiceInput({
-    rms: 0,
+    rms: () => {
+      if (!voiceActivityObserved.settled()) {
+        voiceActivityObserved.resolve(undefined);
+      }
+      return 0;
+    },
     onRecorderStop() {
       recorderStops += 1;
     },
@@ -321,25 +344,8 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   });
 
   const voiceInput = await readyVoiceInput();
-  vi.useFakeTimers();
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      vi.useRealTimers();
-    },
-    { once: true },
-  );
-
   click(voiceInput);
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(40);
-  });
-
-  expect(queryButton("Stop recording")).toBeEnabled();
-
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(100);
-  });
+  await voiceActivityObserved.promise;
 
   const stop = queryButton("Stop recording");
   if (!stop) {
@@ -351,19 +357,19 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   expect(recorderStops).toBe(0);
   expect(multimodalCalls).toBe(0);
   expect(legacySttCalls).toBe(0);
+  expectNoVoiceDraftNode();
 
   click(stop);
-  await act(async () => {
-    await vi.runOnlyPendingTimersAsync();
-  });
-  vi.useRealTimers();
 
-  expect(recorderStops).toBe(1);
+  await waitFor(() => {
+    expect(recorderStops).toBe(1);
+  });
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Extended voice draft.");
   });
   expect(multimodalCalls).toBe(1);
   expect(legacySttCalls).toBe(0);
+  expectNoVoiceDraftNode();
   await expect(findButton("Voice input")).resolves.toBeEnabled();
 });
 
@@ -394,14 +400,16 @@ test("Show recent voice levels at the end of the waveform", async () => {
   });
 });
 
-test("Let the user retry or remove a voice draft when transcription fails", async () => {
-  const user = userEvent.setup({ delay: null });
+test("Return to idle without a draft node when transcription fails", async () => {
+  const transcriptionFailed = context.mocks.deferred<void>();
+  vi.spyOn(console, "error").mockImplementation(() => {});
   let transcriptionAttempts = 0;
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
     transcriptionAttempts += 1;
     if (transcriptionAttempts === 1) {
+      transcriptionFailed.resolve(undefined);
       return HttpResponse.json(
         {
           error: {
@@ -428,36 +436,26 @@ test("Let the user retry or remove a voice draft when transcription fails", asyn
 
   click(await readyVoiceInput());
   click(await activeVoiceDraftStopButton());
+  await transcriptionFailed.promise;
 
-  const draft = await screen.findByLabelText("Voice draft");
-  expect(draft).toBeVisible();
+  await expect(
+    screen.findByText("Voice transcription failed. Try again."),
+  ).resolves.toBeVisible();
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
   expect(transcriptionAttempts).toBe(1);
-  await expect(findButton("Finish")).resolves.toBeEnabled();
-  await expect(findButton("Remove voice draft")).resolves.toBeEnabled();
-  await expect(findButton("Send")).resolves.toBeDisabled();
+  expectNoVoiceDraftNode();
+  expect(queryButton("Finish")).toBeNull();
+  expect(queryButton("Remove voice draft")).toBeNull();
 
-  click(await findButton("Finish"));
+  click(await findButton("Voice input"));
+  click(await activeVoiceDraftStopButton());
 
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Polished launch update.");
   });
   expect(transcriptionAttempts).toBe(2);
+  expectNoVoiceDraftNode();
   await expect(findButton("Send")).resolves.toBeEnabled();
-
-  currentComposer().focus();
-  await user.keyboard("{Control>}z{/Control}");
-
-  const restoredDraft = await screen.findByLabelText("Voice draft");
-  expect(restoredDraft).toBeVisible();
-  expect(restoredDraft).toHaveTextContent("raw launch update");
-  await expect(findButton("Finish")).resolves.toBeEnabled();
-  await expect(findButton("Remove voice draft")).resolves.toBeEnabled();
-  await expect(findButton("Send")).resolves.toBeDisabled();
-
-  click(await findButton("Remove voice draft"));
-  await waitFor(() => {
-    expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
-  });
 });
 
 test("Make voice-input startup and silent cancellation clear", async () => {

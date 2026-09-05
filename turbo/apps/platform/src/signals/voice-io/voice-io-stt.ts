@@ -95,7 +95,7 @@ interface VoiceRecordingOptions {
   readonly autoStopOnSilence: boolean;
 }
 
-export interface VoiceRecordingCapture {
+interface VoiceRecordingCapture {
   readonly blob: Blob;
   readonly mimeType: string;
 }

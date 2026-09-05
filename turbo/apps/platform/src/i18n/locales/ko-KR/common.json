@@ -2393,10 +2393,6 @@
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
       "confirmRecording": "OK",
-      "draft": "음성 초안",
-      "draftTooLong": "이 음성 초안은 너무 깁니다. 새 녹음을 시작하세요.",
-      "finishDraft": "완료",
-      "finishingDraft": "완료 중...",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",
       "inputLimitReachedMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 업그레이드를 요청하세요.",
@@ -2405,7 +2401,6 @@
       "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
-      "removeDraft": "음성 초안 삭제",
       "starting": "음성 입력 시작",
       "stopRecording": "녹음 중지",
       "transcribing": "전사 중",
