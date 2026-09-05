@@ -23,27 +23,35 @@ import Testing
     #expect(response["error"]["message"].string == "Native target failed")
   }
 
-  @Test @MainActor func commandsPreserveSnapshotTargetsAndPostActionState() async throws {
-    let script = """
-      import json,sys
-      for line in sys.stdin:
-          request=json.loads(line)
-          kind=request['kind']
-          if kind=='apps.list': result={'apps':[{'name':'Notes'}]}
-          elif kind=='app.state':
-              result={'app':'Notes','snapshotId':request['snapshotId'],'screenshot':'aW1hZ2U=','screenshotSource':'window','screenshotWidth':100,'screenshotHeight':100,'screenshotSourceBounds':{'x':0,'y':0,'width':100,'height':100},'windowId':1,'windowFrame':{'x':0,'y':0,'width':100,'height':100},'elements':[{'role':'AXButton','id':'opaque-button','name':'Save','actions':['AXPress']}],'settled':request.get('settle',False)}
-          else:
-              if 'elementIndex' in request:
-                  assert request['elementId']=='opaque-button'
-                  assert request.get('snapshotId')
-              if kind=='element.click' and 'x' in request:
-                  assert request['screenshotSource']=='window'
-                  assert request['sourceBounds']['width']==100
-              result={'received':request,'normalizedKey':request.get('key')}
-          print(json.dumps({'id':request['id'],'status':'succeeded','result':result}),flush=True)
-      """
+  @Test(arguments: ["app", "snapshotId", "elements", "windowFrame", "screenshotWidth"])
+  @MainActor func malformedSnapshotsNeverBecomeElementTargets(field: String) async throws {
+    let script = try #require(
+      Bundle.module.url(
+        forResource: "computer-command", withExtension: "py", subdirectory: "Fixtures"))
     let helper = HelperProcess(
-      executable: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["python3", "-u", "-c", script])
+      executable: URL(fileURLWithPath: "/usr/bin/env"),
+      arguments: ["python3", "-u", script.path, field])
+    defer { helper.close() }
+    let runtime = ComputerCommands(helper: helper)
+    let permissions: JSON = .object(["accessibility": .bool(true), "screenRecording": .bool(true)])
+    let state = await runtime.execute(
+      .object(["kind": .string("app.state"), "payload": .object(["app": .string("Notes")])]),
+      permissions: permissions)
+    #expect(state["error"]["code"].string == "accessibility_unavailable")
+    let click = await runtime.execute(
+      .object([
+        "kind": .string("element.click"),
+        "payload": .object(["app": .string("Notes"), "elementIndex": .number(0)]),
+      ]), permissions: permissions)
+    #expect(click["error"]["code"].string == "unsupported_command")
+  }
+
+  @Test @MainActor func commandsPreserveSnapshotTargetsAndPostActionState() async throws {
+    let script = try #require(
+      Bundle.module.url(
+        forResource: "computer-command", withExtension: "py", subdirectory: "Fixtures"))
+    let helper = HelperProcess(
+      executable: URL(fileURLWithPath: "/usr/bin/env"), arguments: ["python3", "-u", script.path])
     defer { helper.close() }
     let runtime = ComputerCommands(helper: helper)
     let permissions: JSON = .object(["accessibility": .bool(true), "screenRecording": .bool(true)])

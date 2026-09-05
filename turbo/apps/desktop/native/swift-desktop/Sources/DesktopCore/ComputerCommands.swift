@@ -35,132 +35,13 @@ public final class ComputerCommands {
         throw DesktopFailure(
           "screen_recording_unavailable", "macOS Screen Recording permission is required")
       }
-      var payload = command["payload"]
-      for key in [
-        "app", "elementId", "snapshotId", "foregroundRecovery", "text", "key", "value", "action",
-        "direction",
-      ] {
-        if let raw = payload[key].string {
-          payload[key] = .string(raw.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-      }
+      var payload = try normalizedPayload(command["payload"], kind: kind)
       let app = try payload.requireString("app")
-      if payload["elementIndex"] != .null {
-        guard let index = payload["elementIndex"].number, index >= 0, index.rounded() == index
-        else {
-          throw DesktopFailure("unsupported_command", "elementIndex must be a non-negative integer")
-        }
-      }
-      let requiredFields = [
-        "keyboard.type_text": "text", "keyboard.press_key": "key", "element.set_value": "value",
-        "element.perform_action": "action", "element.scroll": "direction",
-      ]
-      if let field = requiredFields[kind] { _ = try payload.requireString(field) }
-      if kind == "element.scroll", payload["pages"].number == nil { payload["pages"] = .number(1) }
       if kind == "app.state" { return .success(try await appState(app)) }
-      if kind == "element.click" || kind == "element.scroll" || kind == "element.set_value"
-        || kind == "element.perform_action"
-      {
-        if payload["elementId"].string == nil && payload["elementIndex"].number != nil {
-          let snapshot = try snapshot(app: app, id: payload["snapshotId"].string)
-          guard let number = payload["elementIndex"].number, number >= 0,
-            number.rounded() == number,
-            number < Double(snapshot["elementIdsByIndex"].array.count)
-          else {
-            throw DesktopFailure(
-              "unsupported_command", "Element index is not in the selected snapshot")
-          }
-          payload["elementId"] = snapshot["elementIdsByIndex"].array[Int(number)]
-          payload["snapshotId"] = snapshot["snapshotId"]
-        }
-        if kind == "element.click", payload["elementId"].string == nil {
-          guard let x = payload["x"].number, let y = payload["y"].number, x.isFinite, y.isFinite
-          else {
-            throw DesktopFailure(
-              "invalid_arguments", "element.click requires an element or coordinates")
-          }
-          if payload["snapshotId"].string == nil && latestByApp[app.lowercased()] == nil {
-            _ = try await appState(app)
-          }
-          let snapshot = try snapshot(app: app, id: payload["snapshotId"].string)
-          for key in [
-            "snapshotId", "screenshotSource", "screenshotWidth", "screenshotHeight", "windowId",
-            "windowFrame",
-          ] { payload[key] = snapshot[key] }
-          payload["sourceBounds"] = snapshot["screenshotSourceBounds"]
-        }
-        if kind != "element.click", payload["elementId"].string == nil {
-          throw DesktopFailure("unsupported_command", "\(kind) requires elementId or elementIndex")
-        }
-      }
-      if ["element.click", "keyboard.type_text", "keyboard.press_key"].contains(kind),
-        payload["foregroundRecovery"].string == nil
-      {
-        payload["foregroundRecovery"] = .string("on-window-unavailable")
-      }
-      if kind == "element.click" {
-        if !["right", "middle"].contains(payload["button"].string ?? "") {
-          payload["button"] = .string("left")
-        }
-        if let count = payload["clickCount"].number, count.rounded() == count,
-          (1...3).contains(count)
-        {
-        } else {
-          payload["clickCount"] = .number(1)
-        }
-        if payload["elementId"].string != nil, payload["button"].string != "left" {
-          throw DesktopFailure(
-            "unsupported_command",
-            "Element targets support only left clicks; use coordinates for other buttons")
-        }
-      }
-      if let recovery = payload["foregroundRecovery"].string,
-        !["never", "on-window-unavailable", "always"].contains(recovery)
-      {
-        throw DesktopFailure(
-          "unsupported_command",
-          "foregroundRecovery must be never, on-window-unavailable, or always")
-      }
-      var action = try await helper.request(kind, fields: payload)
-      action["app"] = .string(app)
-      if payload["elementIndex"].number != nil {
-        action["elementIndex"] = payload["elementIndex"]
-        action["snapshotId"] = payload["snapshotId"]
-      } else if payload["elementId"].string != nil {
-        action["elementId"] = payload["elementId"]
-      }
-      let targetText =
-        payload["elementIndex"].number.map { "elementIndex=\(Int($0))" } ?? payload["elementId"]
-        .string ?? "element"
-      switch kind {
-      case "app.open": action["summary"] = .string("Opened \(app)")
-      case "keyboard.type_text": action["summary"] = .string("Typed text")
-      case "keyboard.press_key":
-        action["key"] = action["normalizedKey"]
-        action["summary"] = .string("Pressed \(action["key"].string ?? "")")
-      case "element.click":
-        action["button"] = payload["button"]
-        action["clickCount"] = payload["clickCount"]
-        if let x = payload["x"].number, let y = payload["y"].number,
-          payload["elementId"].string == nil
-        {
-          action["x"] = .number(x)
-          action["y"] = .number(y)
-          action["snapshotId"] = payload["snapshotId"]
-          action["summary"] = .string("Clicked \(x),\(y)")
-        } else {
-          action["summary"] = .string("Clicked " + targetText)
-        }
-      case "element.scroll":
-        action["direction"] = payload["direction"]
-        action["pages"] = payload["pages"]
-        action["summary"] = .string("Scrolled " + targetText)
-      case "element.set_value": action["summary"] = .string("Set " + targetText)
-      case "element.perform_action":
-        action["action"] = payload["action"]
-        action["summary"] = .string("Performed " + (payload["action"].string ?? ""))
-      default: break
-      }
+      payload = try await resolvedTarget(payload, kind: kind, app: app)
+      payload = try actionOptions(payload, kind: kind)
+      let action = try actionResult(
+        await helper.request(kind, fields: payload), kind: kind, app: app, payload: payload)
       var result = try await appState(app, settle: true)
       result["action"] = action
       return .success(result)
@@ -178,6 +59,151 @@ public final class ComputerCommands {
     }
   }
 
+  private func normalizedPayload(_ input: JSON, kind: String) throws -> JSON {
+    var payload = input
+    for key in [
+      "app", "elementId", "snapshotId", "foregroundRecovery", "text", "key", "value", "action",
+      "direction",
+    ] {
+      if let raw = payload[key].string {
+        payload[key] = .string(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+      }
+    }
+    _ = try payload.requireString("app")
+    if payload["elementIndex"] != .null {
+      guard let index = payload["elementIndex"].number, index >= 0, index.rounded() == index
+      else {
+        throw DesktopFailure("unsupported_command", "elementIndex must be a non-negative integer")
+      }
+    }
+    let requiredFields = [
+      "keyboard.type_text": "text", "keyboard.press_key": "key", "element.set_value": "value",
+      "element.perform_action": "action", "element.scroll": "direction",
+    ]
+    if let field = requiredFields[kind] { _ = try payload.requireString(field) }
+    if kind == "element.scroll", payload["pages"].number == nil { payload["pages"] = .number(1) }
+    return payload
+  }
+
+  private func resolvedTarget(_ input: JSON, kind: String, app: String) async throws -> JSON {
+    var payload = input
+    if kind == "element.click" || kind == "element.scroll" || kind == "element.set_value"
+      || kind == "element.perform_action"
+    {
+      if payload["elementId"].string == nil && payload["elementIndex"].number != nil {
+        let snapshot = try snapshot(app: app, id: payload["snapshotId"].string)
+        guard let number = payload["elementIndex"].number, number >= 0,
+          number.rounded() == number,
+          number < Double(snapshot["elementIdsByIndex"].array.count)
+        else {
+          throw DesktopFailure(
+            "unsupported_command", "Element index is not in the selected snapshot")
+        }
+        payload["elementId"] = snapshot["elementIdsByIndex"].array[Int(number)]
+        payload["snapshotId"] = snapshot["snapshotId"]
+      }
+      if kind == "element.click", payload["elementId"].string == nil {
+        guard let x = payload["x"].number, let y = payload["y"].number, x.isFinite, y.isFinite
+        else {
+          throw DesktopFailure(
+            "invalid_arguments", "element.click requires an element or coordinates")
+        }
+        if payload["snapshotId"].string == nil && latestByApp[app.lowercased()] == nil {
+          _ = try await appState(app)
+        }
+        let snapshot = try snapshot(app: app, id: payload["snapshotId"].string)
+        for key in [
+          "snapshotId", "screenshotSource", "screenshotWidth", "screenshotHeight", "windowId",
+          "windowFrame",
+        ] { payload[key] = snapshot[key] }
+        payload["sourceBounds"] = snapshot["screenshotSourceBounds"]
+      }
+      if kind != "element.click", payload["elementId"].string == nil {
+        throw DesktopFailure("unsupported_command", "\(kind) requires elementId or elementIndex")
+      }
+    }
+    return payload
+  }
+
+  private func actionOptions(_ input: JSON, kind: String) throws -> JSON {
+    var payload = input
+    if ["element.click", "keyboard.type_text", "keyboard.press_key"].contains(kind),
+      payload["foregroundRecovery"].string == nil
+    {
+      payload["foregroundRecovery"] = .string("on-window-unavailable")
+    }
+    if kind == "element.click" {
+      if !["right", "middle"].contains(payload["button"].string ?? "") {
+        payload["button"] = .string("left")
+      }
+      if let count = payload["clickCount"].number, count.rounded() == count,
+        (1...3).contains(count)
+      {
+      } else {
+        payload["clickCount"] = .number(1)
+      }
+      if payload["elementId"].string != nil, payload["button"].string != "left" {
+        throw DesktopFailure(
+          "unsupported_command",
+          "Element targets support only left clicks; use coordinates for other buttons")
+      }
+    }
+    if let recovery = payload["foregroundRecovery"].string,
+      !["never", "on-window-unavailable", "always"].contains(recovery)
+    {
+      throw DesktopFailure(
+        "unsupported_command",
+        "foregroundRecovery must be never, on-window-unavailable, or always")
+    }
+    return payload
+  }
+
+  private func actionResult(_ input: JSON, kind: String, app: String, payload: JSON) throws -> JSON
+  {
+    var action = input
+    action["app"] = .string(app)
+    if payload["elementIndex"].number != nil {
+      action["elementIndex"] = payload["elementIndex"]
+      action["snapshotId"] = payload["snapshotId"]
+    } else if payload["elementId"].string != nil {
+      action["elementId"] = payload["elementId"]
+    }
+    let targetText =
+      payload["elementIndex"].number.map { "elementIndex=\(Int($0))" } ?? payload["elementId"]
+      .string ?? "element"
+    switch kind {
+    case "app.open": action["summary"] = .string("Opened \(app)")
+    case "keyboard.type_text": action["summary"] = .string("Typed text")
+    case "keyboard.press_key":
+      let key = try action.requireString("normalizedKey")
+      action["key"] = .string(key)
+      action["summary"] = .string("Pressed \(key)")
+    case "element.click":
+      action["button"] = payload["button"]
+      action["clickCount"] = payload["clickCount"]
+      if let x = payload["x"].number, let y = payload["y"].number,
+        payload["elementId"].string == nil
+      {
+        action["x"] = .number(x)
+        action["y"] = .number(y)
+        action["snapshotId"] = payload["snapshotId"]
+        action["summary"] = .string("Clicked \(x),\(y)")
+      } else {
+        action["summary"] = .string("Clicked " + targetText)
+      }
+    case "element.scroll":
+      action["direction"] = payload["direction"]
+      action["pages"] = payload["pages"]
+      action["summary"] = .string("Scrolled " + targetText)
+    case "element.set_value": action["summary"] = .string("Set " + targetText)
+    case "element.perform_action":
+      action["action"] = payload["action"]
+      action["summary"] = .string("Performed " + (payload["action"].string ?? ""))
+    default: break
+    }
+    return action
+  }
+
   private func snapshot(app: String, id: String?) throws -> JSON {
     let appKey = app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     let key = id.map { appKey + "\0" + $0 } ?? latestByApp[appKey]
@@ -190,20 +216,14 @@ public final class ComputerCommands {
 
   private func appState(_ app: String, settle: Bool = false) async throws -> JSON {
     let start = Date()
+    let snapshotID = UUID().uuidString
     var snapshot = try await helper.request(
       "app.state",
       fields: .object([
-        "app": .string(app), "snapshotId": .string(UUID().uuidString), "settle": .bool(settle),
+        "app": .string(app), "snapshotId": .string(snapshotID), "settle": .bool(settle),
       ]))
-    guard snapshot["screenshotSource"].string == "window",
-      snapshot["screenshot"].string?.isEmpty == false,
-      (snapshot["screenshotWidth"].number ?? 0) > 0, (snapshot["screenshotHeight"].number ?? 0) > 0,
-      snapshot["screenshotSourceBounds"].object != nil
-    else {
-      throw DesktopFailure(
-        "screen_recording_unavailable",
-        "app.state must return a target-window screenshot with bounds")
-    }
+    let native = try JSONDecoder().decode(NativeSnapshot.self, from: snapshot.encoded())
+    try native.validate(app: app, snapshotID: snapshotID)
     func nodeCount(_ elements: [JSON]) -> Int {
       elements.reduce(0) { $0 + 1 + nodeCount($1["children"].array) }
     }
@@ -219,7 +239,7 @@ public final class ComputerCommands {
     fields.removeValue(forKey: "elements")
     snapshot = .object(fields)
     let appKey = app.lowercased()
-    let key = appKey + "\0" + (snapshot["snapshotId"].string ?? "")
+    let key = appKey + "\0" + native.snapshotId
     var metadata = fields
     for field in ["screenshot", "appState", "metrics"] { metadata.removeValue(forKey: field) }
     snapshots[key] = .object(metadata)
