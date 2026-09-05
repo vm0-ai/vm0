@@ -14,8 +14,8 @@ networking/processes, IOKit power assertions, and the official Swift MCP SDK.
 
 ## Verified automated evidence
 
-- [macOS run 33951499997](https://github.com/vm0-ai/vm0/actions/runs/33951499997)
-  for `a56a67d` passed 25 app/core tests and all 118 unchanged helper tests,
+- [macOS run 33954326712](https://github.com/vm0-ai/vm0/actions/runs/33954326712)
+  for `e958e0d` passed 26 app/core tests and all 118 unchanged helper tests,
   release compilation, bundle signature/architecture checks, packaged launch,
   a native permission probe, and a settings-window screenshot. The PR check
   records the commit and download URL for each later successful build.
@@ -42,29 +42,51 @@ networking/processes, IOKit power assertions, and the official Swift MCP SDK.
   process cleanup when recording availability is withdrawn. These use real
   processes, HTTP requests, and WebKit; they do not capture actual audio/video.
 
-The authenticated Computer Use command returned **403: Computer Use is not
-authorized for this run** on September 5. No real desktop was inspected or
-operated. This environment limitation leaves live acceptance outstanding; it
-does not prevent continuing the implementation and regression work.
+Additional boundary regressions cover expired recording credentials, cancelled
+and superseded WebKit requests, account changes before delivery, late feature
+switch responses after sign-out, malformed TCC/source/capability replies, stale
+source loading, cancellation during preparation, source loss with a failed first
+finalization, and recovery after a cancelled quit or workspace switch. The PR's
+native check is the authority for their result on each subsequent commit.
+
+## Live macOS evidence and limits
+
+On September 5 the Computer Use connector returned **403: Computer Use is not
+authorized for this run**. The separately configured staging Mac was subsequently
+accessible through its documented SSH/VNC workflow. The verified `3eec82a` app
+ZIP was installed and launched on that arm64 macOS 26.6.2 host. The native app
+opened its settings window, and after the visible TCC grant/restart sequence it
+reported Screen Recording as granted. Accessibility was still reported as
+ungranted, and anonymous WebKit session restoration timed out. This establishes
+packaged launch and a screen-permission transition, not successful authentication
+or Computer Use acceptance.
+
+The installed app was then replaced during the walkthrough: its executable
+changed from this PR's `okou-desktop` to `Okou Dev`, with a different settings UI.
+Testing on that shared desktop stopped to avoid attributing another build's
+behavior to this PR. The remaining live checks need a stable, identified test
+installation. The current staging Worker frontend origin is also now supported
+by the native API/auth origin resolver; that configuration has not yet undergone
+a live Clerk handoff.
 
 ## Feature inventory and evidence
 
 | Existing behavior                                                                                | Native implementation                                        | Acceptance still required                                                           |
 | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                     | Both product bundles, URL scheme registration, icon and permission identity         |
-| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                  | Live Clerk handoff and renewal after long captures; cancel/late-completion races    |
+| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                  | Live Clerk handoff and renewal after long captures; concurrent live account changes    |
 | Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                | Live command round trip, competing hosts, and prolonged network recovery            |
 | Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, unchanged native helper                  | Live app action/foreground recovery acceptance and broader snapshot fixtures        |
 | AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                              | TCC onboarding, grant changes while running, denied browser automation              |
 | Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                           | Concurrent filesystem changes and remaining platform-specific matching edges        |
 | MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`         | Transport loss during calls, exhausted restart budget, and cancellation under load  |
-| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                               | Broader concurrent refresh, account changes, and recording preparation races        |
+| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                               | Live account changes and rapid feature withdrawal during capture/delivery        |
 | Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                       | Packaged second-launch UI walkthrough and complete menu/Dock behavior               |
 | Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                        | Sleep/display behavior and quit cleanup                                             |
 | Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper  | Multi-display/Retina capture and area picker walkthrough                            |
-| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, Carbon shortcut, unchanged recorder helper | Floating recorder controls, real audio/source loss, and area capture without app UI |
+| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI |
 | Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                               | End-to-end delivery and account/workspace changes during upload                     |
-| Logs and Sentry without screenshots/default PII                                                  | `DesktopView`, Sentry Cocoa                                  | Full developer-tools content, error context parity, and bounded log behavior        |
+| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                  | Native diagnostics walkthrough and actual Sentry event context (without capture contents)        |
 | Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                           | Developer ID signed native upgrade and rollback; release promotion integration      |
 | Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                   | Verified; keep the PR download link on the newest successful build                  |
 
@@ -80,15 +102,18 @@ verdict remains open.
 
 Continue with:
 
-1. Authentication refresh-task ownership and cancel/late-completion races;
-   account/workspace changes during capture and delivery.
-2. Native floating recorder controls and placement outside a selected area;
-   source-loss/poll-error recovery and rapid prepare/disable transitions.
-3. Quit/update failure recovery after the model has started shutting down,
-   diagnostic parity, and the remaining producer-owned permission/source fields.
-4. Live macOS acceptance for every remaining item in the table, including both
-   product identities and signed updates. Automated fixtures are not evidence
-   of live Clerk, TCC grants, actual app control, or audio capture.
+1. Review the new authentication/account-change, recording lifecycle, typed
+   permission/source decoding, and diagnostic changes against their latest CI
+   evidence. Confirm the updater can recover after installer startup failure,
+   including a real signed native update/rollback.
+2. Complete live Clerk handoff and renewal on a stable native installation;
+   exercise account/workspace changes during capture and active delivery.
+3. Complete TCC onboarding/revocation, real app commands, multi-display/Retina
+   selection, floating controls, system audio, microphone, source loss, and the
+   complete upload/review handoff on both product identities.
+4. Finish the remaining filesystem/MCP and menu/activation walkthroughs in the
+   table. Automated fixtures and rendered windows do not establish actual
+   capture, signed updates, or live end-to-end parity.
 
 ## Completion gate
 
