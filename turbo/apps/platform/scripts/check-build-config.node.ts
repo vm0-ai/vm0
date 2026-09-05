@@ -378,7 +378,9 @@ function clerkDiscoveryFixture(): string {
 
 function assertClerkDiscoveryOrder(htmlSource: string): void {
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
-  const clerkBootstrapIndex = htmlSource.indexOf('data-okou-clerk-bootstrap=""');
+  const clerkBootstrapIndex = htmlSource.indexOf(
+    'data-okou-clerk-bootstrap=""',
+  );
   const appModuleIndex = htmlSource.indexOf('<script type="module"');
   assert.notEqual(clerkCoreIndex, -1);
   assert.ok(clerkBootstrapIndex > clerkCoreIndex);
@@ -394,7 +396,9 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
     'id="vm0-main-stylesheet-loader"',
   );
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
-  const clerkBootstrapIndex = htmlSource.indexOf('data-okou-clerk-bootstrap=""');
+  const clerkBootstrapIndex = htmlSource.indexOf(
+    'data-okou-clerk-bootstrap=""',
+  );
   const headEndIndex = htmlSource.indexOf("</head>");
   const skeletonIndex = htmlSource.indexOf('id="app-bootstrap-skeleton"');
   const appModuleIndex = htmlSource.indexOf('<script type="module"');
