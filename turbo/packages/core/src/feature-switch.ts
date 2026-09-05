@@ -366,13 +366,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.BatchChatEventCatchUp]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Catch up unread, active, and recent ChatEvent threads through one throttled SharedWorker batch.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatRunWorkFolding]: {
     maintainer: "ethan@vm0.ai",
     description:

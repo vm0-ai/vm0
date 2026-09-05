@@ -252,6 +252,18 @@ export const apiAgentsHandlers = [
     });
   }),
 
+  // POST /api/chat/events/catch-up
+  mockApi(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+  }),
+
   // GET /api/chat-threads/:threadId/event-snapshot
   mockApi(chatThreadEventsContract.snapshot, ({ respond }) => {
     return respond(404, {
