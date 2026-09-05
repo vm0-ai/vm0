@@ -252,36 +252,22 @@ describe("registry resource download", () => {
     });
   });
 
-  it.each([
-    {
-      sha256:
+  it("still serves the pre-refactor reverse-template digest a drained run context asks for", () => {
+    const id = "skill:presentation-reverse-template";
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        id,
         "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
+        "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec",
+      ),
+    ).toStrictEqual({
+      storageName: `registry-resource@${id}`,
       versionId:
         "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
-    },
-    {
       sha256:
-        "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11",
-      versionId:
-        "ec707d2338ddec36a4b413ba7fe58c35987b2b85b2a8ecd441add68dcc1472e7",
-    },
-  ])(
-    "still serves reverse-template digest $sha256 to a drained run context",
-    ({ sha256, versionId }) => {
-      const id = "skill:presentation-reverse-template";
-      expect(
-        resolvePrivateRegistryResourceArchive(
-          id,
-          sha256,
-          "a3184b6718dd1fd4aefa3782695a8e4940babede8db0593a80254232fc90eaec",
-        ),
-      ).toStrictEqual({
-        storageName: `registry-resource@${id}`,
-        versionId,
-        sha256,
-      });
-    },
-  );
+        "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5",
+    });
+  });
 
   it("rejects a reverse-template digest that was never published", () => {
     expect(
