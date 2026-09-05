@@ -190,6 +190,7 @@ async function expectReadyChat(title: string): Promise<HTMLElement> {
 
 test("Late thread details do not replace the conversation the user chose", async () => {
   const availableThreadList = context.mocks.deferred<void>();
+  const abandonedDetailsRequested = context.mocks.deferred<void>();
   const abandonedDetails = context.mocks.deferred<void>();
   const user = userEvent.setup({ delay: null });
 
@@ -209,6 +210,7 @@ test("Late thread details do not replace the conversation the user chose", async
     chatThreadMetadataContract.get,
     async ({ params, respond }) => {
       if (params.id === FIRST_THREAD_ID) {
+        abandonedDetailsRequested.resolve();
         await abandonedDetails.promise;
         return respond(
           200,
@@ -222,13 +224,16 @@ test("Late thread details do not replace the conversation the user chose", async
     },
   );
 
-  await startPage({
+  const page = await startPage({
     context,
     path: `/chats/${FIRST_THREAD_ID}`,
     auth: isolatedAuth(),
   });
 
+  // Keep the old details in flight before making another conversation available.
+  await abandonedDetailsRequested.promise;
   availableThreadList.resolve(undefined);
+  await page.ready;
   const chosenLink = await findLink("Chosen conversation");
   await user.click(chosenLink);
   const chosenRegion = await expectReadyChat("Chosen conversation");

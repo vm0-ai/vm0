@@ -173,6 +173,37 @@ export const rustTypeBindings = [
           memoryRecall: [
             "Optional frozen memory-summary selection for API and Sandbox parity.",
           ],
+          maintenance: [
+            "Optional authenticated input for a first-party Pi memory maintenance run.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMaintenance",
+        rustDoc: ["Private input for one sandbox Pi memory maintenance run."],
+        fields: {
+          schemaVersion: ["Pi memory maintenance input version."],
+          memoryStorageId: ["Canonical mounted memory Storage identity."],
+          claimedRevision: ["Exact claimed Phase 2 input revision."],
+          claimedBaseVersionId: ["Exact memory version mounted for the claim."],
+          leaseToken: ["Opaque token fencing this maintenance claim."],
+          selectionDigest: ["Digest of the bounded selected candidate set."],
+          selected: [
+            "Bounded Stage 1 candidate snapshots selected by the claim.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMaintenanceSelected",
+        rustDoc: ["One bounded Stage 1 candidate snapshot."],
+        fields: {
+          piSessionId: ["Canonical Pi session identity."],
+          sourceRunId: ["Run that produced the candidate."],
+          sourceHistoryHash: ["Exact source session-history hash."],
+          sourceCompletedAt: ["Completion time of the source run."],
+          rawMemory: ["Restricted Stage 1 memory candidate."],
+          rolloutSummary: ["Restricted Stage 1 rollout summary."],
+          rolloutSlug: ["Optional safe rollout evidence slug."],
         },
       },
       {
@@ -1054,6 +1085,18 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
+        rustTypeName: "RequestMaintenanceAttestation",
+        rustDoc: ["Private proof of a validated Pi memory maintenance tree."],
+        fields: {
+          schemaVersion: ["Maintenance checkpoint attestation version."],
+          leaseToken: ["Opaque token fencing the maintenance claim."],
+          claimedRevision: ["Exact claimed Phase 2 input revision."],
+          claimedBaseVersionId: ["Exact memory version mounted for the claim."],
+          selectionDigest: ["Digest of the bounded selected candidate set."],
+          validatedVersionId: ["Content hash of the validated mounted tree."],
+        },
+      },
+      {
         rustTypeName: "RequestChanges",
         rustDoc: [
           "Incremental file change set sent while preparing a partial storage upload.",
@@ -1083,6 +1126,9 @@ export const rustTypeBindings = [
             "Optional base version identifier for an incremental upload.",
           ],
           changes: ["Optional incremental file changes from the base version."],
+          maintenanceAttestation: [
+            "Private validation proof required for Pi memory maintenance publication.",
+          ],
         },
       },
     ],
@@ -1146,6 +1192,18 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
+        rustTypeName: "RequestMaintenanceAttestation",
+        rustDoc: ["Private proof of a validated Pi memory maintenance tree."],
+        fields: {
+          schemaVersion: ["Maintenance checkpoint attestation version."],
+          leaseToken: ["Opaque token fencing the maintenance claim."],
+          claimedRevision: ["Exact claimed Phase 2 input revision."],
+          claimedBaseVersionId: ["Exact memory version mounted for the claim."],
+          selectionDigest: ["Digest of the bounded selected candidate set."],
+          validatedVersionId: ["Content hash of the validated mounted tree."],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: [
           "Request body for committing a direct sandbox storage upload.",
@@ -1164,6 +1222,9 @@ export const rustTypeBindings = [
           ],
           message: [
             "Optional commit message associated with the storage version.",
+          ],
+          maintenanceAttestation: [
+            "Private validation proof required for Pi memory maintenance publication.",
           ],
         },
       },

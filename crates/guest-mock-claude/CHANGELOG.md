@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.21.130](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.129...guest-mock-claude-v0.21.130) (2026-09-05)
+
 ## [0.21.129](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.128...guest-mock-claude-v0.21.129) (2026-09-05)
 
 ## [0.21.128](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.127...guest-mock-claude-v0.21.128) (2026-09-04)

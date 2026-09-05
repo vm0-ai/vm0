@@ -195,6 +195,7 @@ fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
             sandbox_event_sequence_start: 1,
         },
         memory_recall: None,
+        maintenance: None,
     };
     let model = PiModelConfig {
         provider: PiModelConfigProvider::Deepseek,
@@ -691,6 +692,7 @@ fn generated_prepare_request_serializes_wire_shape() {
         force: None,
         base_version: None,
         changes: None,
+        maintenance_attestation: None,
     };
 
     let value = serde_json::to_value(request).unwrap();
@@ -726,6 +728,7 @@ fn generated_prepare_request_serializes_optional_fields() {
             modified: vec!["changed.txt".to_string()],
             deleted: vec!["old.txt".to_string()],
         }),
+        maintenance_attestation: None,
     };
 
     let value = serde_json::to_value(request).unwrap();
@@ -794,6 +797,7 @@ fn generated_commit_request_serializes_wire_shape() {
             size: 34,
         }],
         message: Some("checkpoint".to_string()),
+        maintenance_attestation: None,
     };
 
     let value = serde_json::to_value(request).unwrap();
@@ -823,6 +827,7 @@ fn generated_commit_request_preserves_empty_message() {
         parent_version_id: None,
         files: vec![],
         message: Some(String::new()),
+        maintenance_attestation: None,
     };
 
     let value = serde_json::to_value(request).unwrap();
