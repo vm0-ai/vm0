@@ -727,7 +727,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
   });
 
   it("rejects host-token routes with missing or invalid host tokens", async () => {
-    const garbageToken = "vm0-bdd-garbage-host-token";
+    const garbageToken = "okou-bdd-garbage-host-token";
     const commandId = randomUUID();
     const completeBody = {
       status: "succeeded" as const,
@@ -862,7 +862,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       "Multiple active computer-use hosts are online",
     );
 
-    // Zero-token auth resolves the organization role through Clerk membership lookup.
+    // Okou-token auth resolves the organization role through Clerk membership lookup.
     mockClerkMembership(context, actor, "org:admin");
 
     const missingCapability = await api.requestCreateComputerUseReadCommand(

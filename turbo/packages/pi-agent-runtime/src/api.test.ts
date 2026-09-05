@@ -196,8 +196,11 @@ describe("Pi API facade", () => {
         );
         responsesToolSse(response, {
           callId: "memory-call-1",
-          name: "memories_read",
-          arguments: { path: "MEMORY.md" },
+          name: "add_ad_hoc_note",
+          arguments: {
+            filename: "2026-09-05T16-05-00-api-handoff.md",
+            note: "API-first must hand this write to the sandbox.",
+          },
         });
       })().catch((error: unknown) => {
         response.destroy(
@@ -222,7 +225,7 @@ describe("Pi API facade", () => {
         cwd: "/home/user/workspace",
         agentDir: "/home/user/.pi/agent",
         sessionId: SESSION_ID,
-        prompt: "read the frozen memory index",
+        prompt: "remember this through the sandbox",
         appendSystemPrompt: null,
         model: {
           provider: "openai",
@@ -254,16 +257,50 @@ describe("Pi API facade", () => {
             return tool.name;
           })
           .filter((name) => {
-            return name?.startsWith("memories_");
+            return name?.startsWith("memories_") || name === "add_ad_hoc_note";
           }),
-      ).toStrictEqual(["memories_list", "memories_search", "memories_read"]);
+      ).toStrictEqual([
+        "memories_list",
+        "memories_search",
+        "memories_read",
+        "add_ad_hoc_note",
+      ]);
+      expect(
+        (
+          requestTools as Array<{
+            name?: string;
+            parameters?: unknown;
+          }>
+        ).find((tool) => {
+          return tool.name === "add_ad_hoc_note";
+        }),
+      ).toMatchObject({
+        parameters: {
+          additionalProperties: false,
+          properties: {
+            filename: {
+              maxLength: 128,
+              minLength: 24,
+              pattern:
+                "^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-[a-z0-9][a-z0-9-]{0,79}\\.md$",
+              type: "string",
+            },
+            note: { maxLength: 65_536, minLength: 1, type: "string" },
+          },
+          required: ["filename", "note"],
+          type: "object",
+        },
+      });
       expect(result.handoffRequired).toBe(true);
       expect(result.assistantMessage.content).toStrictEqual([
         {
           type: "toolCall",
           id: "memory-call-1|fc_pi_memory_tool",
-          name: "memories_read",
-          arguments: { path: "MEMORY.md" },
+          name: "add_ad_hoc_note",
+          arguments: {
+            filename: "2026-09-05T16-05-00-api-handoff.md",
+            note: "API-first must hand this write to the sandbox.",
+          },
         },
       ]);
       expect(inspectPiSessionJsonl(result.sessionJsonl)).toMatchObject({
@@ -319,6 +356,7 @@ describe("Pi API facade", () => {
         readonly url: string | undefined;
         readonly body: unknown;
         readonly accountId: string | string[] | undefined;
+        readonly authorization: string | undefined;
       }> = [];
       const server = createServer((request, response) => {
         void (async () => {
@@ -329,6 +367,7 @@ describe("Pi API facade", () => {
           providerRequests.push({
             url: request.url,
             accountId: request.headers["chatgpt-account-id"],
+            authorization: request.headers.authorization,
             body: JSON.parse(
               (request.headers["content-encoding"] === "zstd"
                 ? zstdDecompressSync(Buffer.concat(chunks))
@@ -356,21 +395,23 @@ describe("Pi API facade", () => {
       }
 
       try {
+        let sessionJsonl: string | undefined;
         const runTurn = async (
           serviceTier: "priority" | "fast" | undefined,
           api: "openai-completions" | "openai-codex-responses",
         ) => {
-          return runPiApiFirstTurn({
+          const result = await runPiApiFirstTurn({
             cwd: "/home/user/workspace",
             agentDir: "/home/user/.pi/agent",
             sessionId: SESSION_ID,
+            sessionJsonl,
             prompt: "answer through Terra",
             appendSystemPrompt: null,
             model:
               route === "native"
                 ? await materializePiAgentModelConfig({
                     config: piModelConfigSchema.parse({
-                      schemaVersion: 3,
+                      schemaVersion: serviceTier === undefined ? 2 : 3,
                       dialect: "openai-codex-responses",
                       transport: "sse",
                       provider: "openai-codex",
@@ -411,21 +452,32 @@ describe("Pi API facade", () => {
             resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
             ownership: createPiApiFirstTurnOwnership(),
           });
+          sessionJsonl = result.sessionJsonl;
+          return result;
         };
         const standardResult = await runTurn(undefined, "openai-completions");
         const priorityResult = await runTurn(
           route === "native" ? "fast" : "priority",
           "openai-codex-responses",
         );
+        const standardReturnResult = await runTurn(
+          undefined,
+          "openai-completions",
+        );
 
-        expect(providerRequests).toHaveLength(2);
+        expect(providerRequests).toHaveLength(3);
         if (route === "native") {
           expect(
             providerRequests.map((request) => {
               return request.accountId;
             }),
-          ).toEqual(["exact-account-id", "exact-account-id"]);
+          ).toEqual([
+            "exact-account-id",
+            "exact-account-id",
+            "exact-account-id",
+          ]);
           for (const request of providerRequests) {
+            expect(request.authorization).toBe("Bearer opaque-access-token");
             expect(request.body).toMatchObject({ store: false, stream: true });
             expect(request.body).not.toHaveProperty("previous_response_id");
           }
@@ -443,8 +495,15 @@ describe("Pi API facade", () => {
           body: {
             model: "gpt-5.6-terra",
             reasoning: { effort: "low" },
-            service_tier: route === "native" ? "fast" : "priority",
+            service_tier: "priority",
           },
+        });
+        expect(providerRequests[2]?.body).not.toHaveProperty("service_tier");
+        expect(
+          inspectPiSessionJsonl(standardReturnResult.sessionJsonl),
+        ).toMatchObject({
+          sessionId: SESSION_ID,
+          messageCount: 6,
         });
         expect(standardResult.assistantMessage.content).toStrictEqual([
           { type: "text", text: "Terra API-first answer" },
@@ -454,8 +513,9 @@ describe("Pi API facade", () => {
         ]);
         expect(standardResult.observedServiceTier).toBeUndefined();
         expect(priorityResult.observedServiceTier).toBeUndefined();
-        expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
-        expect(priorityResult.sessionJsonl).not.toContain("service_tier");
+        expect(standardReturnResult.sessionJsonl).not.toMatch(
+          /serviceTier|service_tier|exact-account-id|opaque-access-token|test-key/,
+        );
         expect(
           MemoryPiSession.fromJsonl(
             priorityResult.sessionJsonl,

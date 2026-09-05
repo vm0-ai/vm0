@@ -336,7 +336,7 @@ async function seedGmailMailCardFixture() {
     throw new Error("Expected Gmail OAuth state");
   }
   await connectors.completeOauthCallback("gmail", {
-    code: "zero-mail-code",
+    code: "okou-mail-code",
     state,
   });
   const gmail = await connectors.readConnectorBySlug(actor, "gmail");
@@ -1027,7 +1027,7 @@ describe("POST /api/mail/drafts/link", () => {
       throw new Error("Expected Gmail OAuth state");
     }
     await connectors.completeOauthCallback("gmail", {
-      code: "zero-mail-reconnect-code",
+      code: "okou-mail-reconnect-code",
       state,
     });
 
@@ -1064,7 +1064,7 @@ describe("POST /api/mail/drafts/link", () => {
       throw new Error("Expected Gmail OAuth state");
     }
     await connectors.completeOauthCallback("gmail", {
-      code: "zero-mail-replacement-account-code",
+      code: "okou-mail-replacement-account-code",
       state,
     });
 

@@ -217,7 +217,7 @@ test("Keep a recorded draft retryable when transcription exhausts the quota", as
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
   click(await readyVoiceInput());
   const stop = await findButton("Stop recording");

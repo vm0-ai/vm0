@@ -42,7 +42,7 @@ const mocks = createRouteMocks(context);
 const storages = createStoragesBddApi(context);
 
 const OFFICIAL_BOT_TOKEN = "9876543210:fake-test-token";
-const OFFICIAL_BOT_USERNAME = "official_zero_bot";
+const OFFICIAL_BOT_USERNAME = "official_okou_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-test-webhook-secret";
 
 function configureOfficialBotEnv(): void {

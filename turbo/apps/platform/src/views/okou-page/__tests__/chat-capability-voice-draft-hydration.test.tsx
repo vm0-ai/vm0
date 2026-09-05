@@ -129,7 +129,7 @@ test.each([
         signal: initialPage.signal,
       },
       path,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     await waitFor(() => {
       expect(
@@ -149,7 +149,7 @@ test.each([
         signal: refreshedPage.signal,
       },
       path,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     await hydrationRequested.promise;
     await user.click(await findEnabledButton("Retry"));
@@ -174,7 +174,7 @@ test.each([
     await setupPage({
       context: savedContext,
       path,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     await findButton("Voice input");
     await waitFor(() => {

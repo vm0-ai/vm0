@@ -23,7 +23,7 @@ import {
 import { onDomEventFn, onRef, settle, withCleanup } from "../utils.ts";
 import {
   featureSwitch$,
-  voiceDraftEnabled$,
+  voiceInputV2Enabled$,
 } from "../external/feature-switch.ts";
 import {
   audioInputAvailable$,
@@ -749,7 +749,7 @@ function createVoiceDraftRecoverySignals(
       async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
         const status = get(state$).status;
         if (
-          get(voiceDraftEnabled$) &&
+          get(voiceInputV2Enabled$) &&
           (status === "idle" || status === "restoring")
         ) {
           await set(restore$, signal);
@@ -832,7 +832,7 @@ function createComposerVoiceInputSignals(
       if (!get(audioInputAvailable$) || get(sttStarting$)) {
         return;
       }
-      if (get(voiceDraftEnabled$)) {
+      if (get(voiceInputV2Enabled$)) {
         const status = get(state$).status;
         if (status === "failed") {
           await set(retry$, signal);

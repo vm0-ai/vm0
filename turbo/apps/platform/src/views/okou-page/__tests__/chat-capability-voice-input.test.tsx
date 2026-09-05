@@ -148,9 +148,15 @@ test("Add voice transcription to the current message draft", async () => {
   });
   installRunChat();
 
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: false },
+  });
 
-  click(await readyVoiceInput());
+  const voiceInput = await readyVoiceInput();
+  expect(voiceInput).not.toHaveAttribute("aria-keyshortcuts");
+  click(voiceInput);
   click(await activeVoiceStopButton());
 
   await waitFor(() => {
@@ -177,11 +183,15 @@ test("Add voice transcription to the current message draft", async () => {
   await expect(findButton("Voice input")).resolves.toBeEnabled();
 });
 
-test("Toggle voice input from the focused composer shortcut", async () => {
+test("Toggle voice input v2 from the focused composer shortcut", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/stt", () => {
-    return HttpResponse.json({ text: "Shortcut voice note" });
+  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    return HttpResponse.json({
+      transcript: "um shortcut voice note",
+      polishedText: "Shortcut voice note",
+      language: "en-US",
+    });
   });
   installRunChat();
 
@@ -189,7 +199,7 @@ test("Toggle voice input from the focused composer shortcut", async () => {
     context,
     path: RUN_PATH,
     featureSwitches: {
-      [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      [FeatureSwitchKey.VoiceInputV2]: true,
     },
   });
 
@@ -212,7 +222,7 @@ test("Toggle voice input from the focused composer shortcut", async () => {
   composer.dispatchEvent(startEvent);
 
   expect(startEvent.defaultPrevented).toBeTruthy();
-  const stopRecording = await activeVoiceStopButton();
+  const stopRecording = await activeVoiceDraftStopButton();
   expect(stopRecording).toHaveAttribute(
     "aria-keyshortcuts",
     "Meta+Shift+E Control+Shift+E",
@@ -274,7 +284,7 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   const voiceInput = await readyVoiceInput();
@@ -325,8 +335,7 @@ test.each(["button", "keyboard"])(
       context,
       path: RUN_PATH,
       featureSwitches: {
-        [FeatureSwitchKey.VoiceDraft]: true,
-        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+        [FeatureSwitchKey.VoiceInputV2]: true,
       },
     });
 
@@ -390,7 +399,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   const voiceInput = await readyVoiceInput();
@@ -429,7 +438,7 @@ test("Show recent voice levels at the end of the waveform", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   click(await readyVoiceInput());
@@ -499,7 +508,7 @@ test.each([
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   const voiceInput = await readyVoiceInput();
@@ -553,7 +562,7 @@ test.each([
   await setupPage({
     context: refreshedContext,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
   await expect(findButton("Voice input")).resolves.toBeEnabled();
   expect(queryButton("Retry")).toBeNull();
@@ -607,7 +616,7 @@ test.each([
     await setupPage({
       context,
       path,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     click(await findButton("Voice input"));
     click(await activeVoiceDraftStopButton());
@@ -626,7 +635,7 @@ test.each([
     await setupPage({
       context: refreshedContext,
       path,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
 
     await screen.findByRole("textbox", { name: "Message" });
@@ -659,7 +668,7 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
   click(await readyVoiceInput());
   click(await activeVoiceDraftStopButton());
@@ -672,7 +681,7 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
     context: refreshedContext,
     path: RUN_PATH,
     auth: { user: { id: "other-voice-user", fullName: "Other User" } },
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
   await expect(findButton("Voice input")).resolves.toBeEnabled();
   expect(queryButton("Retry")).toBeNull();
@@ -699,7 +708,7 @@ test("Discard a failed recording without removing typed notes", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
   const voiceInput = await readyVoiceInput();
   await fill(currentComposer(), "Keep typed notes");
@@ -715,7 +724,7 @@ test("Discard a failed recording without removing typed notes", async () => {
   await setupPage({
     context: refreshedContext,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
   await expect(findButton("Voice input")).resolves.toBeEnabled();
   expect(queryButton("Retry")).toBeNull();
@@ -739,7 +748,7 @@ test("Release a late microphone stream after navigating away during voice startu
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   click(await readyVoiceInput());
@@ -793,7 +802,7 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   const voiceInput = await readyVoiceInput();
@@ -862,7 +871,7 @@ test("Restore the composer when PCM capture finishes without audio", async () =>
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
   const voiceInput = await readyVoiceInput();

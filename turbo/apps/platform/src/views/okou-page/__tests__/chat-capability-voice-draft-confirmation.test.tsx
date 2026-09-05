@@ -159,7 +159,7 @@ test.each([false, true])(
       context: { ...context, signal: initialPage.signal },
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
       auth,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     await fill(
       await screen.findByRole("textbox", { name: "Message" }),
@@ -194,7 +194,7 @@ test.each([false, true])(
         context: { ...refreshedContext, signal: refreshedPage.signal },
         path: `/chats/${createdThreadId}`,
         auth,
-        featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+        featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
       });
     } else {
       publishThreadConfirmation();
@@ -214,7 +214,7 @@ test.each([false, true])(
       context: savedContext,
       path: `/chats/${createdThreadId}`,
       auth,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     await enabledButton("Voice input");
     await waitFor(() => {

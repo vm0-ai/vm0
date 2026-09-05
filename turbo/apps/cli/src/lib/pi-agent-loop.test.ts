@@ -355,7 +355,7 @@ class RpcHost {
 }
 
 beforeEach(async () => {
-  launchPayloadDirectory = await mkdtemp(join(tmpdir(), "vm0-pi-launch-"));
+  launchPayloadDirectory = await mkdtemp(join(tmpdir(), "okou-pi-launch-"));
   launchPayloadFile = join(launchPayloadDirectory, "payload.json");
   await writeFile(launchPayloadFile, JSON.stringify(CONFIG.launchPayload));
 });
@@ -886,7 +886,7 @@ describe("sandbox Pi agent loop", () => {
   it.each(["openrouter-terra", "codex-terra"] as const)(
     "restores %s H1, executes its pending tool, and checkpoints H2",
     async (route) => {
-      const root = await mkdtemp(join(tmpdir(), "vm0-pi-terra-handoff-rpc-"));
+      const root = await mkdtemp(join(tmpdir(), "okou-pi-terra-handoff-rpc-"));
       const sourceFile = join(root, "terra-handoff-source.txt");
       const prompt = "read the Terra handoff source exactly once";
       const provider = await ProviderHarness.start();
@@ -980,7 +980,7 @@ describe("sandbox Pi agent loop", () => {
         expect(continuationBody).toContain("rs_terra_okou_handoff");
         expect(occurrences(continuationBody, prompt)).toBe(1);
         expect(continuationRequest.body).toMatchObject({
-          service_tier: route === "codex-terra" ? "fast" : "priority",
+          service_tier: "priority",
         });
         continuationRequest.respond("Terra Okou handoff complete");
         await host.waitFor((record) => {
@@ -993,7 +993,7 @@ describe("sandbox Pi agent loop", () => {
         });
         const nextRequest = await provider.nextRequest();
         expect(nextRequest.body).toMatchObject({
-          service_tier: route === "codex-terra" ? "fast" : "priority",
+          service_tier: "priority",
         });
         nextRequest.respond("Terra followup complete");
         await host.waitFor((record) => {
@@ -1028,7 +1028,7 @@ describe("sandbox Pi agent loop", () => {
   );
 
   it("keeps standard Terra tierless on the sandbox-first AgentSession call", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-sandbox-first-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-sandbox-first-rpc-"));
     const prompt = "execute this sandbox-owned first turn once";
     const provider = await ProviderHarness.start();
     const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
@@ -1082,7 +1082,7 @@ describe("sandbox Pi agent loop", () => {
   }, 20_000);
 
   it("keeps OpenRouter priority on an official AgentSession retry", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-retry-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-retry-rpc-"));
     const prompt = "retry this sandbox-owned prompt exactly once";
     const provider = await ProviderHarness.start();
     const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
@@ -1136,7 +1136,7 @@ describe("sandbox Pi agent loop", () => {
   }, 20_000);
 
   it("keeps priority on compaction and the original AgentSession prompt", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-compaction-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-compaction-rpc-"));
     const priorPrompt = "prior context that requires official compaction";
     const prompt = "run this original prompt after official compaction";
     const compactionSummary = "official compacted context summary";
@@ -1303,7 +1303,7 @@ describe("sandbox Pi agent loop", () => {
   }, 20_000);
 
   it("acknowledges a settled transfer without replaying its original prompt", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-settled-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-settled-rpc-"));
     const originalPrompt = "the API already completed this prompt";
     const continuation = "start the newly owned continuation";
     const provider = await ProviderHarness.start();

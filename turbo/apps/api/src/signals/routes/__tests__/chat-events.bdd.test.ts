@@ -286,7 +286,7 @@ const USER_OWNED_TERRA_FAST_BDD_ROUTES = [
     type: "codex-oauth-token",
     endpoint: "https://chatgpt.com/backend-api/codex/responses",
     runtimeModel: "gpt-5.6-terra",
-    wireTier: "fast",
+    wireTier: "priority",
   },
   ...STANDARD_TERRA_API_KEY_BDD_ROUTES.map((route) => {
     return {
@@ -5301,7 +5301,7 @@ function expectNativeSubscriptionRequest(
   const { body } = z
     .object({ body: z.record(z.string(), z.unknown()) })
     .parse(request);
-  expect(body.service_tier).toBe(tier);
+  expect(body.service_tier).toBe(tier === undefined ? undefined : "priority");
   expect(body).not.toHaveProperty("previous_response_id");
 }
 
@@ -10353,7 +10353,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("publishes OpenRouter Responses blocks and hands fast Sandbox tool turns to H2", async () => {
+  it("publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
@@ -10371,6 +10371,9 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     mockPiResourceArchiveDownloads();
     const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou --help`;
+    const adHocNoteFilename = "2026-09-05T16-15-00-api-first-checkpoint.md";
+    const adHocNote =
+      "# API-first checkpoint\n\nPersist this staged sandbox note.\n";
     let modelCalls = 0;
     const terraModelRequests: unknown[] = [];
     server.use(
@@ -10395,10 +10398,10 @@ describe("CHAT-02: model-first provider policies", () => {
                     {
                       type: "toolCall",
                       callId: "call_pi_write",
-                      name: "write",
+                      name: "add_ad_hoc_note",
                       arguments: {
-                        path: "/home/user/workspace/***/handoff-copy.txt",
-                        content: "PI_API_FIRST_WRITE_CONTENT_SECRET",
+                        filename: adHocNoteFilename,
+                        note: adHocNote,
                       },
                     },
                     { type: "text", text: "after parallel tools" },
@@ -10454,7 +10457,13 @@ describe("CHAT-02: model-first provider policies", () => {
         return tool.name;
       });
     expect(terraTools).toStrictEqual(
-      expect.arrayContaining(["read", "write", "edit", "bash"]),
+      expect.arrayContaining([
+        "read",
+        "write",
+        "edit",
+        "bash",
+        "add_ad_hoc_note",
+      ]),
     );
     const manifestBytes = checkpointObjects.get(manifestKey);
     if (!manifestBytes) {
@@ -10528,12 +10537,12 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected Terra storage manifest");
     }
     const terraMounts = terraStorageManifest.storageMounts;
-    expect(terraMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: PI_MEMORY_ROOT,
-      }),
-    );
+    const terraMemoryMount = terraMounts.find((mount) => {
+      return mount.name === "memory" && mount.mountPath === PI_MEMORY_ROOT;
+    });
+    if (!terraMemoryMount) {
+      throw new Error("Expected the Pi memory mount");
+    }
     expect(claimed.claim.prompt).toBe(prompt);
     const sandboxUsageEvent = {
       idempotencyKey: randomUUID(),
@@ -10623,7 +10632,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         type: "toolCall",
         id: "call_pi_write|fc_pi_content_1_2",
-        name: "write",
+        name: "add_ad_hoc_note",
       },
       { type: "text", text: "after parallel tools" },
     ]);
@@ -10662,10 +10671,10 @@ describe("CHAT-02: model-first provider policies", () => {
                 {
                   type: "tool_use",
                   id: "call_pi_write|fc_pi_content_1_2",
-                  name: "write",
+                  name: "add_ad_hoc_note",
                   input: {
-                    path: "/home/user/workspace/***/handoff-copy.txt",
-                    content: "PI_REPLAY_WRITE_CONTENT_SECRET",
+                    filename: adHocNoteFilename,
+                    note: adHocNote,
                   },
                 },
               ],
@@ -10710,8 +10719,13 @@ describe("CHAT-02: model-first provider policies", () => {
     h2Session.appendMessage({
       role: "toolResult",
       toolCallId: "call_pi_write|fc_pi_content_1_2",
-      toolName: "write",
-      content: [{ type: "text", text: "Sandbox write output" }],
+      toolName: "add_ad_hoc_note",
+      content: [
+        {
+          type: "text",
+          text: `{"status":"staged","path":"extensions/ad_hoc/notes/${adHocNoteFilename}"}`,
+        },
+      ],
       details: {},
       isError: false,
       timestamp: 3,
@@ -10754,6 +10768,25 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
       Buffer.from(h2, "utf8"),
     );
+    const checkpointedMemory = await commitMemoryVersion(context, actor, [
+      {
+        path: `extensions/ad_hoc/notes/${adHocNoteFilename}`,
+        content: adHocNote,
+      },
+    ]);
+    expect(checkpointedMemory.storageId).toBe(terraMemoryMount.storageId);
+    const memoryArtifactSnapshots = [
+      {
+        name: terraMemoryMount.name,
+        version: checkpointedMemory.versionId,
+        mountPath: terraMemoryMount.mountPath,
+        ...(terraMemoryMount.missingRootPolicy === undefined
+          ? {}
+          : {
+              missingRootPolicy: terraMemoryMount.missingRootPolicy,
+            }),
+      },
+    ];
     const combinedH2 = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
@@ -10762,6 +10795,7 @@ describe("CHAT-02: model-first provider policies", () => {
           cliAgentType: "pi",
           cliAgentSessionId: run.threadId,
           cliAgentSessionHistoryHash: h2Hash,
+          artifactSnapshots: memoryArtifactSnapshots,
         },
       },
       claimed.sandboxHeaders,
@@ -10775,6 +10809,11 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed");
     await flushWaitUntilForTest();
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      result: {
+        artifact: { memory: checkpointedMemory.versionId },
+      },
+    });
     const combinedUsage = await readRunUsageEventsFixture(run.runId);
     expect(
       combinedUsage.filter((row) => {
@@ -10808,6 +10847,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cliAgentType: "pi",
         cliAgentSessionId: run.threadId,
         cliAgentSessionHistoryHash: h2Hash,
+        artifactSnapshots: memoryArtifactSnapshots,
       },
       claimed.sandboxHeaders,
       [200],
@@ -10853,6 +10893,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cliAgentType: "pi",
         cliAgentSessionId: run.threadId,
         cliAgentSessionHistoryHash: h2Hash,
+        artifactSnapshots: memoryArtifactSnapshots,
       },
       claimed.sandboxHeaders,
       [200],
@@ -11251,6 +11292,7 @@ describe("CHAT-02: model-first provider policies", () => {
           cliAgentType: "pi",
           cliAgentSessionId: run.threadId,
           cliAgentSessionHistoryHash: h2Hash,
+          artifactSnapshots: memoryArtifactSnapshots,
         },
       },
       claimed.sandboxHeaders,
@@ -13718,7 +13760,7 @@ describe("CHAT-02: run-level model overrides", () => {
       accountId: "captured-subscription-account",
       body: {
         model: "gpt-5.6-terra",
-        service_tier: "fast",
+        service_tier: "priority",
         stream: true,
         store: false,
       },
@@ -13813,7 +13855,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(
         requests.map(({ body }) => {
           return z
-            .object({ service_tier: z.enum(["fast", "priority"]).optional() })
+            .object({ service_tier: z.literal("priority").optional() })
             .parse(body).service_tier;
         }),
       ).toStrictEqual([undefined, route.wireTier, undefined]);

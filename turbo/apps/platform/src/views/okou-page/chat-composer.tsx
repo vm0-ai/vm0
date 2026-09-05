@@ -223,10 +223,9 @@ import {
 import {
   chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
-  composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
   featureSwitch$,
-  voiceDraftEnabled$,
+  voiceInputV2Enabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -8555,20 +8554,19 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const quotaState = useLoadableState(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const quotaResolved = quota !== null;
-  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraftStatus = useGet(signals.voice.status$);
   const sttRecording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
   const sttTranscribing = useGet(sttTranscribing$);
-  const recording = voiceDraftEnabled
+  const recording = voiceInputV2Enabled
     ? voiceDraftStatus === "recording" && sttRecording
     : sttRecording;
-  const transcribing = voiceDraftEnabled
+  const transcribing = voiceInputV2Enabled
     ? voiceDraftStatus === "transcribing"
     : sttTranscribing;
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
-  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const toggleVoiceInput = useSet(signals.voice.toggle$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
@@ -8606,7 +8604,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             aria-label={micButtonAriaLabel(status)}
             aria-busy={starting || transcribing}
             aria-keyshortcuts={
-              voiceInputShortcutEnabled
+              voiceInputV2Enabled
                 ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
                 : undefined
             }
@@ -8633,7 +8631,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {micButtonTooltip(status)}
-          {voiceInputShortcutEnabled
+          {voiceInputV2Enabled
             ? ` (${getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})`
             : null}
         </TooltipContent>
@@ -8664,7 +8662,6 @@ function VoiceDraftFooter({
   const recordingStartedAt = useGet(sttRecordingStartedAt$);
   const toggleVoiceInput = useSet(signals.voice.toggle$);
   const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
-  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const signal = useGet(pageSignal$);
   const retry = useSet(signals.voice.retry$);
   const discard = useSet(signals.voice.discard$);
@@ -8769,11 +8766,7 @@ function VoiceDraftFooter({
         size="sm"
         className="ml-auto min-w-14 shrink-0 bg-background"
         aria-label={stopRecordingLabel}
-        aria-keyshortcuts={
-          voiceInputShortcutEnabled
-            ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
-            : undefined
-        }
+        aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
         disabled={starting || !recording}
         onClick={() => {
           detach(toggleVoiceInput(signal), Reason.DomCallback);
@@ -10611,16 +10604,16 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
 }
 
 function ComposerFooter({ signals }: { signals: ComposerSignals }) {
-  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraftStatus = useGet(signals.voice.status$);
   const recording = useGet(sttRecording$);
   const setVoiceLifecycleRef = useSet(signals.voice.setLifecycleRef$);
   return (
     <div
-      ref={voiceDraftEnabled ? setVoiceLifecycleRef : undefined}
+      ref={voiceInputV2Enabled ? setVoiceLifecycleRef : undefined}
       className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2"
     >
-      {voiceDraftEnabled &&
+      {voiceInputV2Enabled &&
       voiceDraftStatus !== "idle" &&
       (voiceDraftStatus !== "recording" || recording) ? (
         <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />

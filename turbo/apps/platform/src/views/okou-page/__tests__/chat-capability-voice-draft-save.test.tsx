@@ -88,7 +88,7 @@ test.each([
     await setupPage({
       context: { ...context, signal: initialPage.signal },
       path,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
     click(await findEnabledButton("Voice input"));
     click(await findEnabledButton("Stop recording"));
@@ -120,7 +120,7 @@ test.each([
       await setupPage({
         context: refreshedContext,
         path,
-        featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+        featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
       });
       await findEnabledButton("Retry");
     }

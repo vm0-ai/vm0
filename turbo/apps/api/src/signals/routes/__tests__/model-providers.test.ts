@@ -1073,7 +1073,7 @@ describe("POST /api/model-providers", () => {
   });
 
   it("rejects the exact vm0 provider discriminator", async () => {
-    const fixture = uniqueOrgUser("zmp-vm0");
+    const fixture = uniqueOrgUser("zmp-okou");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const response = await setupRawAppRequest({
       context,

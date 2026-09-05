@@ -32,7 +32,7 @@ const TEST_APP_ROUTES = Object.freeze([
   ...featureSwitchesRoutes,
 ]);
 
-const GITHUB_APP_SLUG = "vm0-test";
+const GITHUB_APP_SLUG = "okou-test";
 const GITHUB_APP_CLIENT_ID = "github-app-client-id";
 const GITHUB_APP_CLIENT_SECRET = "github-app-client-secret";
 

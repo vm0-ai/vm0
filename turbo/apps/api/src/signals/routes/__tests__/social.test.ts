@@ -354,7 +354,7 @@ describe("managed SocialKit route", () => {
       scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
-      runId: "run_zero_social_missing_capability",
+      runId: "run_social_missing_capability",
       capabilities: [],
       iat: seconds,
       exp: seconds + 60,

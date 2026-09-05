@@ -57,10 +57,11 @@ type ConnectorCatalogRawSizeBucket =
   | "2_4_mib"
   | "4_8_mib"
   | "8_16_mib"
-  | "16_32_mib";
+  | "16_32_mib"
+  | "32_64_mib";
 type ConnectorCatalogCompressedSizeBucket =
   | ConnectorCatalogRawSizeBucket
-  | "32_64_mib";
+  | "64_128_mib";
 type ConnectorCatalogResolvedConnectorFractionBucket =
   | "not_applicable"
   | "none"
@@ -111,13 +112,16 @@ function rawSizeBucket(size: number): ConnectorCatalogRawSizeBucket {
   if (size < 16 * 1024 * 1024) {
     return "8_16_mib";
   }
-  return "16_32_mib";
+  if (size < 32 * 1024 * 1024) {
+    return "16_32_mib";
+  }
+  return "32_64_mib";
 }
 
 function compressedSizeBucket(
   size: number,
 ): ConnectorCatalogCompressedSizeBucket {
-  return size < 32 * 1024 * 1024 ? rawSizeBucket(size) : "32_64_mib";
+  return size < 64 * 1024 * 1024 ? rawSizeBucket(size) : "64_128_mib";
 }
 
 function resolvedConnectorFractionBucket(

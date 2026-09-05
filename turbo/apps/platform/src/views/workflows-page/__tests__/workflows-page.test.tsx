@@ -3068,7 +3068,7 @@ test("Offer GitHub App installation when GitHub is unavailable", async () => {
   await waitFor(() => {
     expect(linkByText("Install GitHub App", form)).toHaveAttribute(
       "href",
-      "https://github.com/apps/vm0-test/installations/new?state=abc",
+      "https://github.com/apps/okou-test/installations/new?state=abc",
     );
   });
 });

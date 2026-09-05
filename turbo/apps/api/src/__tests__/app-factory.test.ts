@@ -1275,7 +1275,7 @@ describe("createApp", () => {
       const response = await app.request("https://api.vm0.test/health", {
         method: "GET",
         headers: {
-          "user-agent": "zero-test-agent",
+          "user-agent": "okou-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
           "x-client-version": MINIMUM_WEB_CLIENT_VERSION,
           "x-client-type": CLIENT_TYPE_DESKTOP,
@@ -1295,7 +1295,7 @@ describe("createApp", () => {
         host: "api.vm0.test",
         path_template: "/health",
         remote_addr: "203.0.113.10",
-        user_agent: "zero-test-agent",
+        user_agent: "okou-test-agent",
         x_client_version: MINIMUM_WEB_CLIENT_VERSION,
         x_client_type: CLIENT_TYPE_DESKTOP,
         x_client_product: DESKTOP_PRODUCT_OKOU,

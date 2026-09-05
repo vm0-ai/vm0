@@ -218,7 +218,7 @@ describe("okou web-search route", () => {
       scope: "okou",
       userId: actor.userId,
       orgId: actor.orgId,
-      runId: "run_zero_web_search_missing_capability",
+      runId: "run_web_search_missing_capability",
       capabilities: [],
       iat: seconds,
       exp: seconds + 60,

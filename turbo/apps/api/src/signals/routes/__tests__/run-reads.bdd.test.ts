@@ -643,9 +643,9 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     });
     expect(queuedForeign.status).toBe("queued");
 
-    const zeroQueue = await api.readRunQueue(actor);
-    expect(zeroQueue.body.queue).toHaveLength(2);
-    expect(zeroQueue.body.queue[0]).toMatchObject({
+    const privacyQueue = await api.readRunQueue(actor);
+    expect(privacyQueue.body.queue).toHaveLength(2);
+    expect(privacyQueue.body.queue[0]).toMatchObject({
       position: 1,
       isOwner: true,
       runId: queuedOwn.runId,
@@ -653,7 +653,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       userEmail: actor.email,
       sessionLink: `/chat/${seedRun.sessionId}`,
     });
-    expect(zeroQueue.body.queue[1]).toMatchObject({
+    expect(privacyQueue.body.queue[1]).toMatchObject({
       position: 2,
       isOwner: false,
       runId: null,
@@ -663,7 +663,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       triggerSource: null,
       sessionLink: null,
     });
-    expect(JSON.stringify(zeroQueue.body)).not.toContain(
+    expect(JSON.stringify(privacyQueue.body)).not.toContain(
       "member queued secret",
     );
 
@@ -2101,13 +2101,13 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    const zeroNetwork = await reads.requestAgentRunNetworkLogs(
+    const networkLogsRead = await reads.requestAgentRunNetworkLogs(
       actor,
       agentRun.runId,
       { limit: 4, order: "asc" },
       [200],
     );
-    if (zeroNetwork.status !== 200) {
+    if (networkLogsRead.status !== 200) {
       throw new Error("Expected the zero network log read to succeed");
     }
 
@@ -2161,7 +2161,7 @@ describe("RUN-04: agent run telemetry families", () => {
       "cursor-0003",
     );
 
-    expect(zeroNetwork.body).toStrictEqual({
+    expect(networkLogsRead.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
       hasMore: true,
       nextCursor: expectedNextCursor,
@@ -3486,7 +3486,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
       {},
       [200],
     );
-    mustOk(tokenList, "the zero-token log list");
+    mustOk(tokenList, "the Okou-token log list");
     expect(
       tokenList.body.data.map((entry) => {
         return entry.id;

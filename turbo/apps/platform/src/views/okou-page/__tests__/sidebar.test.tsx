@@ -1729,7 +1729,7 @@ test("Show current shortcuts without stacking help over workspace search", async
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      [FeatureSwitchKey.VoiceInputV2]: true,
     },
   });
 

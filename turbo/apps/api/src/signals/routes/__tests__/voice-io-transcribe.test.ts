@@ -137,7 +137,7 @@ async function enabledActor() {
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-    { [FeatureSwitchKey.VoiceDraft]: true },
+    { [FeatureSwitchKey.VoiceInputV2]: true },
   );
   return actor;
 }
@@ -613,7 +613,7 @@ describe("POST /api/voice-io/transcribe", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: false },
+      { [FeatureSwitchKey.VoiceInputV2]: false },
     );
     const disabled = await client().post({
       headers: { authorization: "Bearer clerk-session" },
@@ -625,7 +625,7 @@ describe("POST /api/voice-io/transcribe", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: true },
+      { [FeatureSwitchKey.VoiceInputV2]: true },
     );
     const oversized = await client().post({
       headers: { authorization: "Bearer clerk-session" },
