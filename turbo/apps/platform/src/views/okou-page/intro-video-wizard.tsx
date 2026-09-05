@@ -124,8 +124,8 @@ function FileDropzone({
       <div
         data-intro-video-dropzone=""
         className={cn(
-          "rounded-2xl border border-dashed border-border bg-muted/35 px-4 text-center transition-colors hover:border-foreground/25 hover:bg-muted/50 sm:px-5",
-          sources.length === 0 ? "py-4 sm:py-6" : "py-3 sm:py-4",
+          "rounded-2xl border border-dashed border-border bg-muted/35 px-4 text-center transition-colors hover:border-foreground/25 hover:bg-muted/50 sm:flex sm:items-center sm:justify-center sm:gap-4 sm:px-5",
+          sources.length === 0 ? "py-4 sm:py-5" : "py-3 sm:py-4",
         )}
         onDragOver={(event) => {
           event.preventDefault();
@@ -141,14 +141,14 @@ function FileDropzone({
           onChange={onFileChange}
         />
         {sources.length === 0 ? (
-          <span className="mx-auto grid size-10 place-items-center rounded-xl bg-primary/10 text-brand-text">
+          <span className="mx-auto grid size-10 place-items-center rounded-xl bg-primary/10 text-brand-text sm:mx-0 sm:shrink-0">
             <Upload size={19} />
           </span>
         ) : null}
         <p
           className={cn(
             "text-sm font-semibold text-foreground",
-            sources.length === 0 && "mt-3",
+            sources.length === 0 && "mt-3 sm:mt-0",
           )}
         >
           {t(($) => {
@@ -159,7 +159,7 @@ function FileDropzone({
           type="button"
           variant="outline"
           size="sm"
-          className="mt-3 bg-background"
+          className="mt-3 bg-background sm:mt-0 sm:shrink-0"
           onClick={openFileInput}
         >
           {t(($) => {
