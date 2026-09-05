@@ -44,12 +44,14 @@ open it with right-click → Open or clear quarantine with
 | Identities, runtime config, API/web URL derivation | Ported, tested |
 | Client headers, preferences, installation id       | Ported, tested |
 | Auth hand-off URLs and callback parsing            | Ported, tested |
+| WebKit auth session (consume, token, select-org)   | Ported         |
+| Computer Use host runtime and helper client        | Ported, tested |
+| Accessibility snapshot normalization/rendering     | Ported, tested |
+| Permissions, automation probing and prompt         | Ported         |
 | Tray icon states and menu matrix                   | Ported, tested |
 | Keep awake, quit confirmation, app menu            | Ported         |
-| Main window shell (account + permissions steps)    | First pass     |
-| WebKit auth session (consume, token, select-org)   | Pending        |
-| Computer Use host runtime and helper client        | Pending        |
-| Accessibility snapshot normalization/rendering     | Pending        |
+| Main window (setup wizard, hero, dev panels)       | Ported         |
+| Feature switches (developer tools)                 | Ported         |
 | Filesystem and MCP plugin managers                 | Pending        |
 | Screen recorder windows, controller, delivery      | Pending        |
 | Auto-update from the Squirrel JSON feed            | Pending        |
