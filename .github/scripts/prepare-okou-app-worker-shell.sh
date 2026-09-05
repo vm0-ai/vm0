@@ -58,7 +58,7 @@ cp "${worker_shell}/icons/icon-512.png" \
 cp "${worker_shell}/icons/icon-512-maskable.png" \
   "${worker_shell}/icons/icon-512-maskable.bin"
 
-clerk_primary_app_domain_marker="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__"
+clerk_primary_app_domain_marker="__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__"
 if grep -Fq "$clerk_primary_app_domain_marker" "${worker_shell}/index.html"; then
   sed -i \
     "s|${clerk_primary_app_domain_marker}|${production_primary_app_domain}|g" \

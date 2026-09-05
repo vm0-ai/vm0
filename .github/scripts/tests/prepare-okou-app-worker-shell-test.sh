@@ -12,7 +12,7 @@ mkdir -p "${canonical_dist}/icons" "$worker_shell"
 
 printf '%s\n' \
   '<!doctype html>' \
-  '<script>window.testPrimary="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";</script>' \
+  '<script>window.testPrimary="__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";</script>' \
   '<script type="module" src="https://static.okou.io/okou-app/assets/app-123.js"></script>' \
   > "${canonical_dist}/index.html"
 printf 'service worker\n' > "${canonical_dist}/sw.js"
