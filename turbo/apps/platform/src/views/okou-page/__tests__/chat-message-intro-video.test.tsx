@@ -246,6 +246,7 @@ test("Style previews can play and pause without selecting a style", async () => 
   fireEvent.playing(video);
   const card = video.closest("[data-intro-video-style-preview]");
   expect(card).toHaveAttribute("data-preview-playing", "true");
+  expect(video.closest("button")).toBeNull();
 
   await user.click(
     within(picker).getByLabelText("Pause video style preview Thriller"),
@@ -256,6 +257,10 @@ test("Style previews can play and pause without selecting a style", async () => 
   expect(
     within(picker).getByLabelText("Select style Thriller"),
   ).toHaveAttribute("aria-pressed", "false");
+  await user.click(within(picker).getByLabelText("Select style Thriller"));
+  await waitFor(() => {
+    expect(requiredButtonNamed("Video style: Thriller")).toBeVisible();
+  });
 });
 
 test("A prompt alone creates an Intro Video chat", async () => {

@@ -481,7 +481,7 @@ function StylePreviewControl({ style }: { readonly style: IntroVideoStyle }) {
           },
           { title: style.name },
         )}
-        className="absolute inset-x-px top-px flex aspect-video items-center justify-center rounded-t-[11px] bg-black/10 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:hidden"
+        className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:hidden"
         onClick={(event) => {
           const preview = event.currentTarget.closest<HTMLElement>(
             "[data-intro-video-style-preview]",
@@ -518,7 +518,7 @@ function StylePreviewControl({ style }: { readonly style: IntroVideoStyle }) {
           },
           { title: style.name },
         )}
-        className="absolute inset-x-px top-px hidden aspect-video items-end justify-end rounded-t-[11px] p-2 text-white transition-colors hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:flex"
+        className="absolute inset-0 hidden items-end justify-end p-2 text-white transition-colors hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:flex"
         onClick={(event) => {
           event.currentTarget
             .closest("[data-intro-video-style-preview]")
@@ -549,8 +549,15 @@ function StyleCard({
       data-intro-video-style-preview=""
       data-preview-playing="false"
       data-loading="false"
-      className="group/style-preview relative min-w-0 transition-transform hover:-translate-y-0.5"
+      className={cn(
+        "group/style-preview min-w-0 overflow-hidden rounded-xl border bg-card transition-colors hover:border-foreground/20",
+        selected ? "border-primary" : "border-border",
+      )}
     >
+      <div className="relative">
+        <StyleCardMedia style={style} />
+        <StylePreviewControl style={style} />
+      </div>
       <button
         type="button"
         aria-pressed={selected}
@@ -560,25 +567,18 @@ function StyleCard({
           },
           { style: style.name },
         )}
-        className={cn(
-          "group w-full min-w-0 overflow-hidden rounded-xl border bg-card text-left transition-all hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          selected ? "border-primary" : "border-border",
-        )}
+        className="flex min-h-11 w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-12 sm:px-3 sm:py-2.5"
         onClick={onSelect}
       >
-        <StyleCardMedia style={style} />
-        <div className="flex min-h-11 items-center gap-2 px-2.5 py-2 sm:min-h-12 sm:px-3 sm:py-2.5">
-          <strong className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            {style.name}
-          </strong>
-          {selected ? (
-            <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-              <Check size={12} />
-            </span>
-          ) : null}
-        </div>
+        <strong className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {style.name}
+        </strong>
+        {selected ? (
+          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+            <Check size={12} />
+          </span>
+        ) : null}
       </button>
-      <StylePreviewControl style={style} />
     </div>
   );
 }
