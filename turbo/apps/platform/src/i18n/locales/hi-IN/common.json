@@ -5156,6 +5156,26 @@
           "workerLoading": "लोड हो रहा है",
           "workerTitle": "शेयर्ड वर्कर कनेक्शन डायग्नोस्टिक्स",
           "workerUnavailable": "अनुपलब्ध"
+        },
+        "indexedDb": {
+          "countExplanation": "गिनती के लिए रीड-ओनली ट्रांज़ैक्शन का उपयोग होता है और रिकॉर्ड का डेटा नहीं पढ़ा जाता।",
+          "description": "Shared Worker के स्थानीय चैट कैश में रिकॉर्ड की संख्या देखें।",
+          "loading": "IndexedDB स्टोरेज लोड हो रहा है...",
+          "measurementUnavailable": "स्नैपशॉट का मापन विफल हुआ। फिर से कोशिश करें।",
+          "measureSnapshot": "स्नैपशॉट मापें",
+          "measuring": "मापा जा रहा है...",
+          "records": "रिकॉर्ड",
+          "refresh": "रीफ़्रेश करें",
+          "schema": "स्कीमा",
+          "snapshotDescription": "एक रिकॉर्ड में कई थ्रेड हो सकते हैं। आकार UTF-8 JSON का अनुमान है, जिसमें डेटाबेस का अतिरिक्त स्थान शामिल नहीं है; पढ़ने के समय में आकार का अनुमान शामिल नहीं है।",
+          "snapshotEmpty": "कैश में कोई थ्रेड स्नैपशॉट नहीं है।",
+          "snapshotPayload": "अनुमानित डेटा आकार",
+          "snapshotReadDuration": "IndexedDB पढ़ने का समय",
+          "snapshotThreads": "स्नैपशॉट में थ्रेड",
+          "snapshotTitle": "थ्रेड स्नैपशॉट",
+          "stores": "ऑब्जेक्ट स्टोर",
+          "title": "IndexedDB स्टोरेज",
+          "unavailable": "IndexedDB स्टोरेज उपलब्ध नहीं है।"
         }
       },
       "language": {

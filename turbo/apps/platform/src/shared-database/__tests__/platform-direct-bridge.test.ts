@@ -22,10 +22,19 @@ import {
   CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_STORE,
   CHAT_IDB_VERSION,
+  CHAT_THREAD_EVENTS_STORE,
+  CHAT_THREAD_EVENT_SYNC_STORE,
+  CHAT_THREAD_SNAPSHOT_STORE,
   upgradeChatIdb,
 } from "../../signals/external/chat-idb-schema.ts";
 import { openDB } from "idb";
-import { setSharedDatabaseConnectionStatus$ } from "../../signals/shared-database.ts";
+import {
+  indexedDbDiagnosticsFromWorker$,
+  indexedDbSnapshotMeasurementFromWorker$,
+  measureIndexedDbSnapshotFromWorker$,
+  reloadIndexedDbDiagnosticsFromWorker$,
+  setSharedDatabaseConnectionStatus$,
+} from "../../signals/shared-database.ts";
 import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 const context = testContext();
@@ -85,6 +94,50 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
     db.close();
   }
 }
+
+test("Report IndexedDB record counts through the worker", async () => {
+  const cachedRow = row(crypto.randomUUID(), 1);
+  await seedChatEventCache(cachedRow);
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
+  });
+
+  await setupPage({
+    context,
+    path: "/error",
+    sharedWorkerTestTransport: "message-port",
+    auth: {
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      organization: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+    },
+  });
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasChannelSubscriptionOnChannel(realtimeChannel()),
+    ).toBeTruthy();
+  });
+
+  await expect(
+    context.store.get(indexedDbDiagnosticsFromWorker$),
+  ).resolves.toStrictEqual({
+    version: CHAT_IDB_VERSION,
+    stores: [
+      { name: CHAT_EVENT_ROWS_STORE, recordCount: 1 },
+      { name: CHAT_EVENT_CURSOR_STORE, recordCount: 1 },
+      { name: CHAT_THREAD_SNAPSHOT_STORE, recordCount: 0 },
+      { name: CHAT_THREAD_EVENTS_STORE, recordCount: 0 },
+      { name: CHAT_THREAD_EVENT_SYNC_STORE, recordCount: 0 },
+    ],
+  });
+  context.store.set(measureIndexedDbSnapshotFromWorker$);
+  await expect(
+    context.store.get(indexedDbSnapshotMeasurementFromWorker$),
+  ).resolves.toBeNull();
+});
 
 test("Show cached chat data before catching up live", async () => {
   const threadId = crypto.randomUUID();
@@ -433,7 +486,7 @@ test("Keep the chat list current with realtime thread changes", async () => {
   const snapshotThread: ChatThreadSnapshotProjection = {
     id: threadId,
     agentId,
-    title: "Snapshot title",
+    title: "Snapshot 文 😀",
     sortAt: CREATED_AT,
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
@@ -500,6 +553,28 @@ test("Keep the chat list current with realtime thread changes", async () => {
       })?.title,
     ).toBe("First remote title");
   });
+
+  context.store.set(measureIndexedDbSnapshotFromWorker$);
+  const measurement = await context.store.get(
+    indexedDbSnapshotMeasurementFromWorker$,
+  );
+  expect(measurement).toStrictEqual({
+    threadCount: 1,
+    payloadBytes: new Blob([
+      JSON.stringify({
+        id: "current",
+        chatThreads: [snapshotThread],
+        latestEventId: snapshotEventId,
+        latestSeqId: 1,
+      }),
+    ]).size,
+    readDurationMs: expect.any(Number),
+  });
+  expect(measurement?.readDurationMs).toBeGreaterThanOrEqual(0);
+  context.store.set(reloadIndexedDbDiagnosticsFromWorker$);
+  await expect(
+    context.store.get(indexedDbSnapshotMeasurementFromWorker$),
+  ).resolves.toBeUndefined();
 
   availableEvents = [firstRename, secondRename];
   context.mocks.ably.triggerOnChannel(realtimeChannel(), "threadListChanged");

@@ -693,6 +693,18 @@ export const getComputedStoreMessage$ = command(
     if (message.computedKey === "connection-diagnostics") {
       return get(connectionDiagnostics$);
     }
+    if (message.computedKey === "indexeddb-diagnostics") {
+      const diagnostics = await requireRuntime(
+        get(workerRuntimeState$),
+      ).getIndexedDbDiagnostics(signal);
+      signal.throwIfAborted();
+      return diagnostics;
+    }
+    if (message.computedKey === "indexeddb-snapshot-measurement") {
+      return await requireRuntime(
+        get(workerRuntimeState$),
+      ).measureIndexedDbSnapshot(signal);
+    }
     const value =
       message.computedKey === "chat-thread-indicators"
         ? await set(readWorkerChatThreadIndicators$)

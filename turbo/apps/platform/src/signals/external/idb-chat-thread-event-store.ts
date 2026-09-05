@@ -9,11 +9,11 @@ import {
   CHAT_THREAD_EVENT_SYNC_STORE,
   CHAT_THREAD_EVENTS_ORDER_INDEX,
   CHAT_THREAD_EVENTS_STORE,
+  CHAT_THREAD_SNAPSHOT_ID,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "./chat-idb-schema.ts";
 import { runIndexedDbTransaction } from "./indexeddb-client.ts";
 
-const SINGLETON_ID = "current";
 const EVENT_READ_PAGE_SIZE = 300;
 
 const TRANSACTION_TEMPLATES = {
@@ -45,7 +45,7 @@ interface ChatThreadEventReadBoundary {
 }
 
 interface StoredChatThreadSnapshot extends ChatThreadSnapshotRecord {
-  readonly id: typeof SINGLETON_ID;
+  readonly id: typeof CHAT_THREAD_SNAPSHOT_ID;
 }
 
 type GetDb = () => Promise<IDBPDatabase>;
@@ -173,7 +173,7 @@ function createStrictReadStore(getDb: GetDb) {
           return db.transaction(CHAT_THREAD_SNAPSHOT_STORE, "readonly");
         },
         async (tx, trackRequest) => {
-          const raw = await trackRequest(tx.store.get(SINGLETON_ID));
+          const raw = await trackRequest(tx.store.get(CHAT_THREAD_SNAPSHOT_ID));
           return validateSnapshot(raw);
         },
       );
@@ -245,7 +245,7 @@ function createStrictWriteStore(getDb: GetDb) {
           await Promise.all([
             trackRequest(
               tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
-                id: SINGLETON_ID,
+                id: CHAT_THREAD_SNAPSHOT_ID,
                 chatThreads: [...snapshot.chatThreads],
                 latestEventId: snapshot.latestEventId,
                 latestSeqId: snapshot.latestSeqId,

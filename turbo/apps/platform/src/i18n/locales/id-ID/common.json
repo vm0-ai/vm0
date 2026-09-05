@@ -5147,6 +5147,26 @@
           "workerLoading": "Memuat",
           "workerTitle": "Diagnostik koneksi shared worker",
           "workerUnavailable": "Tidak tersedia"
+        },
+        "indexedDb": {
+          "countExplanation": "Penghitungan menggunakan transaksi hanya-baca dan tidak membaca isi rekaman.",
+          "description": "Periksa jumlah rekaman dalam cache chat lokal yang dikelola shared worker.",
+          "loading": "Memuat penyimpanan IndexedDB...",
+          "measurementUnavailable": "Pengukuran snapshot gagal. Coba lagi.",
+          "measureSnapshot": "Ukur snapshot",
+          "measuring": "Mengukur...",
+          "records": "rekaman",
+          "refresh": "Segarkan",
+          "schema": "skema",
+          "snapshotDescription": "Satu rekaman dapat berisi banyak thread. Ukuran memperkirakan JSON UTF-8 tanpa overhead database; waktu baca tidak termasuk perkiraan ukuran.",
+          "snapshotEmpty": "Tidak ada snapshot thread dalam cache.",
+          "snapshotPayload": "Perkiraan ukuran data",
+          "snapshotReadDuration": "Waktu baca IndexedDB",
+          "snapshotThreads": "Thread dalam snapshot",
+          "snapshotTitle": "Snapshot thread",
+          "stores": "penyimpanan objek",
+          "title": "Penyimpanan IndexedDB",
+          "unavailable": "Penyimpanan IndexedDB tidak tersedia."
         }
       },
       "language": {

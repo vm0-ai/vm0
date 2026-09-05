@@ -15,6 +15,7 @@ import { ConnectionDiagnosticsBlock } from "../connection-diagnostics-block.tsx"
 import { ConnectorCatalogDiagnosticsBlock } from "../connector-catalog-diagnostics-block.tsx";
 import { WorkerConnectionDiagnosticsBlock } from "../worker-connection-diagnostics-block.tsx";
 import { BuiltInModelCooldownDiagnosticsBlock } from "../built-in-model-cooldown-diagnostics-block.tsx";
+import { IndexedDbDiagnosticsBlock } from "../indexeddb-diagnostics-block.tsx";
 
 const CAPTURE_RUN_COUNT = 3;
 
@@ -82,6 +83,7 @@ export function DebugSection() {
       <BuildInfoBlock />
       <ConnectionDiagnosticsBlock />
       <WorkerConnectionDiagnosticsBlock />
+      <IndexedDbDiagnosticsBlock />
       <ConnectorCatalogDiagnosticsBlock />
       <BuiltInModelCooldownDiagnosticsBlock />
       <CaptureNetworkBodiesBlock />

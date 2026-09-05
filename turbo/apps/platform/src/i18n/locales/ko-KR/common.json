@@ -5147,6 +5147,26 @@
           "workerLoading": "로딩 중",
           "workerTitle": "공유 워커 연결 진단",
           "workerUnavailable": "사용 불가"
+        },
+        "indexedDb": {
+          "countExplanation": "읽기 전용 트랜잭션으로 개수를 집계하며 레코드 본문은 읽지 않습니다.",
+          "description": "Shared Worker가 관리하는 로컬 채팅 캐시의 레코드 수를 확인합니다.",
+          "loading": "IndexedDB 저장소를 불러오는 중...",
+          "measurementUnavailable": "스냅샷 측정에 실패했습니다. 다시 시도하세요.",
+          "measureSnapshot": "스냅샷 측정",
+          "measuring": "측정 중...",
+          "records": "레코드",
+          "refresh": "새로고침",
+          "schema": "스키마",
+          "snapshotDescription": "하나의 레코드에 여러 스레드가 포함될 수 있습니다. 크기는 데이터베이스 오버헤드를 제외한 UTF-8 JSON 추정치이며, 읽기 시간에는 크기 추정 시간이 포함되지 않습니다.",
+          "snapshotEmpty": "캐시된 스레드 스냅샷이 없습니다.",
+          "snapshotPayload": "예상 데이터 크기",
+          "snapshotReadDuration": "IndexedDB 읽기 시간",
+          "snapshotThreads": "스냅샷의 스레드 수",
+          "snapshotTitle": "스레드 스냅샷",
+          "stores": "객체 저장소",
+          "title": "IndexedDB 저장소",
+          "unavailable": "IndexedDB 저장소를 사용할 수 없습니다."
         }
       },
       "language": {

@@ -5214,6 +5214,26 @@
           "workerLoading": "Caricamento in corso",
           "workerTitle": "Diagnostica di connessione dello shared worker",
           "workerUnavailable": "Non disponibile"
+        },
+        "indexedDb": {
+          "countExplanation": "Il conteggio usa transazioni di sola lettura e non legge il contenuto dei record.",
+          "description": "Controlla il numero di record nella cache chat locale gestita dallo shared worker.",
+          "loading": "Caricamento dello spazio IndexedDB...",
+          "measurementUnavailable": "Misurazione dello snapshot non riuscita. Riprova.",
+          "measureSnapshot": "Misura snapshot",
+          "measuring": "Misurazione...",
+          "records": "record",
+          "refresh": "Aggiorna",
+          "schema": "schema",
+          "snapshotDescription": "Un record può contenere molte conversazioni. La dimensione stima il JSON UTF-8 senza overhead del database; il tempo di lettura esclude la stima.",
+          "snapshotEmpty": "Nessuno snapshot delle conversazioni nella cache.",
+          "snapshotPayload": "Dimensione stimata",
+          "snapshotReadDuration": "Tempo di lettura IndexedDB",
+          "snapshotThreads": "Conversazioni nello snapshot",
+          "snapshotTitle": "Snapshot delle conversazioni",
+          "stores": "object store",
+          "title": "Spazio IndexedDB",
+          "unavailable": "Lo spazio IndexedDB non è disponibile."
         }
       },
       "language": {

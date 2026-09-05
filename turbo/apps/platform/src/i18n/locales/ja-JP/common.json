@@ -5147,6 +5147,26 @@
           "workerLoading": "読み込み中",
           "workerTitle": "共有ワーカーの接続診断",
           "workerUnavailable": "利用不可"
+        },
+        "indexedDb": {
+          "countExplanation": "件数は読み取り専用トランザクションで取得し、レコード本体は読み取りません。",
+          "description": "Shared Worker が管理するローカルチャットキャッシュのレコード件数を確認します。",
+          "loading": "IndexedDB ストレージを読み込んでいます...",
+          "measurementUnavailable": "スナップショットの測定に失敗しました。再試行してください。",
+          "measureSnapshot": "スナップショットを測定",
+          "measuring": "測定中...",
+          "records": "レコード",
+          "refresh": "更新",
+          "schema": "スキーマ",
+          "snapshotDescription": "1件のレコードに多数のスレッドが含まれる場合があります。サイズはデータベースの管理領域を除く UTF-8 JSON の推定値で、読み取り時間にはサイズの推定処理を含みません。",
+          "snapshotEmpty": "キャッシュにスレッドのスナップショットがありません。",
+          "snapshotPayload": "推定データサイズ",
+          "snapshotReadDuration": "IndexedDB 読み取り時間",
+          "snapshotThreads": "スナップショット内のスレッド数",
+          "snapshotTitle": "スレッドのスナップショット",
+          "stores": "オブジェクトストア",
+          "title": "IndexedDB ストレージ",
+          "unavailable": "IndexedDB ストレージを利用できません。"
         }
       },
       "language": {

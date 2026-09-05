@@ -5156,6 +5156,26 @@
           "workerLoading": "Laden",
           "workerTitle": "Verbindungsdiagnose des Shared Workers",
           "workerUnavailable": "Nicht verfügbar"
+        },
+        "indexedDb": {
+          "countExplanation": "Die Zählung verwendet schreibgeschützte Transaktionen und liest keine Datensatzinhalte.",
+          "description": "Datensatzanzahlen im lokalen Chat-Cache des Shared Workers prüfen.",
+          "loading": "IndexedDB-Speicher wird geladen...",
+          "measurementUnavailable": "Snapshot-Messung fehlgeschlagen. Erneut versuchen.",
+          "measureSnapshot": "Snapshot messen",
+          "measuring": "Messung läuft...",
+          "records": "Datensätze",
+          "refresh": "Aktualisieren",
+          "schema": "Schema",
+          "snapshotDescription": "Ein Datensatz kann viele Threads enthalten. Die Größe schätzt UTF-8-JSON ohne Datenbank-Overhead; die Lesezeit schließt die Größenschätzung aus.",
+          "snapshotEmpty": "Kein Thread-Snapshot im Cache.",
+          "snapshotPayload": "Geschätzte Datengröße",
+          "snapshotReadDuration": "IndexedDB-Lesezeit",
+          "snapshotThreads": "Threads im Snapshot",
+          "snapshotTitle": "Thread-Snapshot",
+          "stores": "Objektspeicher",
+          "title": "IndexedDB-Speicher",
+          "unavailable": "IndexedDB-Speicher ist nicht verfügbar."
         }
       },
       "language": {

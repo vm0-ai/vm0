@@ -5148,6 +5148,26 @@
           "workerLoading": "Loading",
           "workerTitle": "Shared worker connection diagnostics",
           "workerUnavailable": "Unavailable"
+        },
+        "indexedDb": {
+          "countExplanation": "Counts use read-only transactions and do not read record bodies.",
+          "description": "Inspect record counts in the local chat cache owned by the shared worker.",
+          "loading": "Loading IndexedDB storage...",
+          "measurementUnavailable": "Snapshot measurement failed. Try again.",
+          "measureSnapshot": "Measure snapshot",
+          "measuring": "Measuring...",
+          "records": "records",
+          "refresh": "Refresh",
+          "schema": "schema",
+          "snapshotDescription": "One record can contain many threads. Size estimates UTF-8 JSON, excluding database overhead; read time excludes size estimation.",
+          "snapshotEmpty": "No cached thread snapshot.",
+          "snapshotPayload": "Estimated payload",
+          "snapshotReadDuration": "IndexedDB read time",
+          "snapshotThreads": "Threads in snapshot",
+          "snapshotTitle": "Thread snapshot",
+          "stores": "object stores",
+          "title": "IndexedDB storage",
+          "unavailable": "IndexedDB storage is unavailable."
         }
       },
       "language": {
