@@ -281,7 +281,7 @@ export async function prepareVoiceDraftAudio(
 ): Promise<readonly File[]> {
   const samples = await recordingSamples(recording, signal);
   if (samples.length === 0) {
-    throw new Error("Voice recording did not contain audio samples");
+    return [];
   }
   const durationSeconds = samples.length / VOICE_DRAFT_PCM_SAMPLE_RATE;
   const pauses =

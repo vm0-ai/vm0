@@ -547,6 +547,10 @@ function createVoiceDraftTranscriptionCommand(
       reportVoiceDraftTranscriptionFailure(prepared.error);
       return;
     }
+    if (prepared.value.length === 0) {
+      set(state$, idleVoiceInputState());
+      return;
+    }
 
     const formData = new FormData();
     for (const file of prepared.value) {
@@ -563,7 +567,7 @@ function createVoiceDraftTranscriptionCommand(
     const result = await settle(
       accept(
         client.post({ body: formData, fetchOptions: { signal } }),
-        [200, 402, 429],
+        [200, 204, 402, 429],
         signal,
         { showErrorToast: false },
       ),
@@ -573,6 +577,10 @@ function createVoiceDraftTranscriptionCommand(
     if (!result.ok) {
       set(state$, idleVoiceInputState());
       reportVoiceDraftTranscriptionFailure(result.error);
+      return;
+    }
+    if (result.value.status === 204) {
+      set(state$, idleVoiceInputState());
       return;
     }
     if (result.value.status !== 200) {
