@@ -553,6 +553,251 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     tokens: ["VM0_API_BACKEND_URL"],
   },
   {
+    category: "external-identity",
+    id: "external-identity/api-service-deployment-identity",
+    reason:
+      "vm0-api is the API service's identity in three places outside this repository: the OpenTelemetry service.name and tracer name every span Axiom has already ingested is filed under, the Vercel project slug in the log URL e2e/helpers/runner-chat.bash prints, and the vm0-api.vm6.ai internal origin lib/internal-api-url.ts dials. None of the three moves when this repository changes.",
+    tokens: ["vm0-api"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/design-file-slug",
+    reason:
+      "VM0-Cloud is the title segment of the Figma design file URL the UI package README and its stylesheet header cite; the file lives in Figma and the segment only resolves against their service.",
+    tokens: ["VM0-Cloud"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/axiom-dataset",
+    reason:
+      "Axiom datasets are provisioned in Axiom, not here. vm0-traces, vm0-web-logs, vm0-sandbox-op-log, and vm0-client-telemetry-prod are the names ingestion writes to and every saved query, dashboard, and monitor reads from, so renaming one starts writing to a dataset that does not exist and leaves the recorded history stranded under the old name.",
+    tokens: [
+      "vm0-client-telemetry-prod",
+      "vm0-sandbox-op-log",
+      "vm0-traces",
+      "vm0-web-logs",
+    ],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/third-party-client-identity",
+    reason:
+      "Each name identifies this client to a third party that keys behaviour on it: web:vm0-reddit-connector:v1.0 is the User-Agent Reddit's API terms require and rate-limit by, vm0-stripe-connector is the device name the CLI authorization flow registers on the Stripe account, and vm0-zero-maps/1.0 is the User-Agent the OpenStreetMap usage policy requires. Changing one re-identifies this client to a service that has already recorded the old value.",
+    tokens: ["vm0-reddit-connector", "vm0-stripe-connector", "vm0-zero-maps"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/skills-repository-source",
+    reason:
+      "VM0_SKILLS_REPO holds vm0-ai/vm0-skills and VM0_SKILLS_REF holds the ref the resource registry fetches video templates and illustration styles from. The repository is a GitHub identity this repository cannot rename, so the constants keep naming what they point at.",
+    tokens: ["VM0_SKILLS_REF", "VM0_SKILLS_REPO"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/stored-secret-kms-encryption-context",
+    reason:
+      "vm0-stored-secret is the purpose field of KMS_ENCRYPTION_CONTEXT, the KMS encryption context passed to every stored-secret encrypt and decrypt. Encryption context is authenticated additional data, so KMS fails a decrypt whose context does not match the one used to encrypt. Changing this string makes every stored secret already in the database undecryptable, including the custom-connector credentials the executed 012 backfill wrote with the identical constant. It cannot be renamed at all, only retired by re-encrypting every ciphertext under a new context.",
+    tokens: ["vm0-stored-secret"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/stored-secret-envelope-prefix",
+    reason:
+      "vm0secret:v1: is the literal prefix every stored-secret envelope already in the database begins with, and decodeStoredSecretEnvelope refuses a value that does not start with it. The API service, its encryption test helper, and the executed 012 backfill each pin the same prefix, so a rename strands the stored ciphertexts rather than failing loudly.",
+    tokens: ["vm0secret"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/browser-cookie-name",
+    reason:
+      "vm0_artifact_preview is the artifact-preview WAF cookie and vm0_attribution is the acquisition attribution cookie. Both are already set in browsers this deploy cannot reach, and the reader only ever sees the name the writer used when it set them.",
+    tokens: ["vm0_artifact_preview", "vm0_attribution"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/authorization-request-url-prefix",
+    reason:
+      "The browser and Computer Use authorization services build their authorization URLs from these prefixes, so the prefix is part of every link already handed to a user or an agent run and is matched again when that link is opened.",
+    tokens: [
+      "vm0_browser_authorization_request",
+      "vm0_computer_use_authorization_request",
+    ],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/opaque-token-prefix",
+    reason:
+      "generateOpaqueToken bakes these prefixes into the Computer Use host tokens it issues, and computer-use.bdd.test.ts asserts an issued token matches /^vm0_computer_use_host_/. An issued token carries its prefix for its whole lifetime and the stopped-host token is stored only as a hash, so neither can be rewritten after the fact.",
+    tokens: ["vm0_computer_use_host", "vm0_computer_use_host_stopped"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/stripe-metadata-key",
+    reason:
+      "vm0_org_delete_at and vm0_org_delete_org_id are metadata keys written onto Stripe objects. Stripe holds the key names, the org-deletion billing service reads them back from objects earlier deploys created, and a rename silently stops matching the metadata already stored there.",
+    tokens: ["vm0_org_delete_at", "vm0_org_delete_org_id"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/stripe-idempotency-key",
+    reason:
+      "vm0-payment-method-portal-v1 is the idempotency key for creating the payment-method billing portal configuration. Stripe deduplicates against the key it has already recorded, so changing the string makes the create call execute a second time and produce a duplicate configuration instead of returning the existing one.",
+    tokens: ["vm0-payment-method-portal-v1"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/documented-credential-format",
+    reason:
+      "The cli_tokens.token column comment shows the shape of the values the column already holds, and vm0_pat_ is an approved credential prefix issued tokens keep for life. Rewriting the example would describe a token format that was never issued.",
+    tokens: ["vm0_pat_xxxxx"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/pi-handoff-control-record",
+    reason:
+      "vm0_pi_api_first_turn_boundary is the control-record type the CLI's Pi agent loop emits and crates/guest-agent recognises by string comparison. The guest agent ships inside sandbox images built and rolled out separately from the CLI, so the two sides cannot change the literal in the same deploy.",
+    tokens: ["vm0_pi_api_first_turn_boundary"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/firewall-hostname-policy-version",
+    reason:
+      "vm0-uts46-16.0-v1 is FIREWALL_HOSTNAME_POLICY_VERSION, the identity of the hostname policy the API applies before firewall values cross to a runner. It is recorded in the committed base-URL validation contract and quoted in the rejection messages callers receive, and the constant's own documentation says the version changes only after a deliberate Unicode-data and runner-compatibility review.",
+    tokens: ["vm0-uts46-16"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/external-workspace-folder-name",
+    reason:
+      "vm0-artifact is the Drive root folder name the artifact sync resolves by name in the user's own Google Drive before creating it. Those folders already exist in accounts this repository cannot edit, so a rename starts a second folder tree beside the one holding every artifact synced so far.",
+    tokens: ["vm0-artifact"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/browser-provider-profile-name",
+    reason:
+      "vm0-browser-profile-<threadId> is the profile name created in the Browser Use provider's own records. The provider holds every profile already created under that name and this repository cannot rewrite them, so a rename splits the operator-visible profile list across two names.",
+    tokens: ["vm0-browser-profile"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/chat-offline-database-name",
+    reason:
+      "vm0-chat-<userId>-<orgId> is the IndexedDB database name held on the user's own device. Renaming it opens an empty database beside the one holding the cached chat history, the same failure docs/residual-platform-brand-names.md records for the zero-* persisted keys.",
+    tokens: ["vm0-chat"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/renamed-feature-switch-key",
+    paths: /^turbo\/packages\/db\/scripts\//u,
+    reason:
+      "zeroDebug is the feature-switch key stored in the user_feature_switches JSONB column before migration 0977 renamed it. The verification script seeds the literal legacy key so the rename has something to rewrite; changing it there would make the script verify a migration path production never took.",
+    tokens: ["zeroDebug"],
+  },
+  {
+    category: "dual-brand-product-contract",
+    id: "dual-brand-product-contract/brand-scoped-constant",
+    reason:
+      "Each constant holds the VM0 brand's own value beside an Okou counterpart in the same file: VM0_APP_METADATA next to OKOU_APP_METADATA, VM0_PRODUCTION_DOMAIN next to OKOU_PRODUCTION_DOMAIN, and PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS next to the okou.ai satellite redirect pattern. The VM0 in the name is the brand discriminator that makes the pair readable, and VM0 stays a supported public presentation brand until #27750 records the product decision.",
+    tokens: [
+      "PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS",
+      "VM0_APP_METADATA",
+      "VM0_PRODUCTION_DOMAIN",
+    ],
+  },
+  {
+    category: "dual-brand-product-contract",
+    id: "dual-brand-product-contract/brand-selected-literal",
+    reason:
+      "vm0-data-export.zip is the filename dataExportFilename returns for the vm0 public brand, chosen against okou-data-export.zip on the line above it; it is the VM0 half of a brand-selected pair rather than a name left behind.",
+    tokens: ["vm0-data-export"],
+  },
+  {
+    category: "dual-brand-product-contract",
+    id: "dual-brand-product-contract/hyphenated-brand-adjective",
+    reason:
+      "The supported brand word used as an adjective in prose and contract documentation: a VM0-hosted file, a VM0-managed guest directory, a vm0-owned type or host, the VM0-brand hosted site, the VM0-primary Clerk branch, vm0-style illustrations. Each reads correctly while VM0 remains a supported public presentation brand and retires with the brand rather than ahead of it, exactly as the bare brand word does.",
+    tokens: [
+      "VM0-brand",
+      "VM0-hosted",
+      "VM0-managed",
+      "VM0-owned",
+      "VM0-primary",
+      "vm0-owned",
+      "vm0-style",
+    ],
+  },
+  {
+    category: "protocol-compatibility",
+    id: "protocol-compatibility/zero-scope-environment-prefix",
+    reason:
+      'ZERO_ is the prefix itself rather than one variable. agent-run-create.service.ts and the agent execution plan match key.startsWith("ZERO_") against environments and stored run templates that deployed clients wrote, and the cutover notes name the ZERO_* family so operators can recognise it. The prefix retires with those variables under #26701 and #28278.',
+    tokens: ["ZERO_"],
+  },
+  {
+    category: "immutable-history",
+    id: "immutable-history/retired-run-event-name",
+    line: /replaces vm0_start\/vm0_result\/vm0_error events/u,
+    paths: /^turbo\/packages\/api-contracts\/src\/contracts\/runs\.ts$/u,
+    reason:
+      "The run-state schema comment names the three run events it replaced. Those events are retired and were never re-emitted under another name, so rewriting the note would claim the schema replaced something that never existed.",
+    tokens: ["vm0_error", "vm0_result", "vm0_start"],
+  },
+  {
+    category: "immutable-history",
+    id: "immutable-history/executed-migration-script",
+    paths: /^turbo\/packages\/db\/scripts\/migrations\/[^/]+\//u,
+    reason:
+      "A one-off migration script that has already been executed against production; its source is the record of what ran, for the same reason the README beside it is one. zeroAgentId is the local name the executed 005 Clerk-metadata backfill gave the default agent id it wrote.",
+    tokens: ["zeroAgentId"],
+  },
+  {
+    category: "physical-schema-identity",
+    id: "physical-schema-identity/legacy-relation-name-prefix",
+    paths: /^turbo\/packages\/db\/scripts\//u,
+    reason:
+      "idx_zero_, zero_, and zero_workflow_ are the prefixes of physical index, primary key, check, and relation names committed migrations created. The workflow compatibility script derives each canonical name by stripping the prefix and counts RENAME statements by matching it, so the literal has to keep spelling the identifiers that are in the database.",
+    tokens: ["idx_zero_", "zero_", "zero_workflow_"],
+  },
+  {
+    category: "physical-schema-identity",
+    id: "physical-schema-identity/legacy-relation-name",
+    paths: /^turbo\/packages\/db\/scripts\//u,
+    reason:
+      "Each is a physical name a committed migration created: the zero_agent_schedules relation the executed 006 cleanup deletes from, the zero_workflow_agents relation the executed 007 backfill records as dropped, the agent_runs_workflow_automation_id_zero_workflow_automations_id_ foreign key the stage-2 scripts assert on, and archive_zero_workflows and zero_workflows_archive, deliberate near-miss spellings of zero_workflows inside a probe routine that exists to prove the catalog scanner does not match them.",
+    tokens: [
+      "agent_runs_workflow_automation_id_zero_workflow_automations_id_",
+      "archive_zero_workflows",
+      "zero_agent_schedules",
+      "zero_workflow_agents",
+      "zero_workflows_archive",
+    ],
+  },
+  {
+    category: "physical-schema-identity",
+    id: "physical-schema-identity/legacy-column-property-mirror",
+    paths: /^turbo\/packages\/db\/scripts\//u,
+    reason:
+      'acquisitionVm0Source is the Drizzle property for the physical column acquisition_vm0_source in the previous-release schema the first-party-source expansion script pins, and that script asserts the executed 011 backfill still contains the literal ["vm0_source", "acquisitionVm0Source"] while no application file matches it. The column is still the legacy half of the expand/contract, so the property has to keep naming it.',
+    tokens: ["acquisitionVm0Source"],
+  },
+  {
+    category: "physical-schema-identity",
+    id: "physical-schema-identity/legacy-relation-result-alias",
+    paths: /^turbo\/packages\/db\/scripts\//u,
+    reason:
+      "zeroDigest and zeroOnly are result-set aliases for values computed from the physical relation zero_runs: the digest of its rows and the count of rows present only in it. #31819 records that a local name whose SQL genuinely targets zero_runs keeps its name, because renaming it would make the code read as though it targeted the canonical table.",
+    tokens: ["zeroDigest", "zeroOnly"],
+  },
+  {
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/synthetic-sql-placeholder",
+    paths: /^turbo\/packages\/eslint-rules\/src\//u,
+    reason:
+      'prefer-drizzle-apis substitutes "vm0_table_<n>" and "vm0_column_<n>" into a SQL template before parsing it, then recognises them again by /^vm0_table_\\d+$/ and /^vm0_column_\\d+$/ in the parse tree. The prefix is a reserved namespace whose only job is to be a spelling no real relation or column uses — a collision would make the rule approve an expression it never checked — so it is not the brand used as a name. Nothing outside this file observes it, and renaming the writer and both readers together would change no behaviour.',
+    tokens: ["vm0_column_", "vm0_table_"],
+  },
+  {
     category: "dual-brand-product-contract",
     id: "dual-brand-product-contract/supported-brand-word",
     reason:
@@ -709,26 +954,12 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
   ...baselineNames(
     [
       "1-vm0",
-      "PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS",
       "RetiredZeroScopePayload",
       "SharedWorkerVM0State",
-      "VM0-Cloud",
-      "VM0-DEVICE",
-      "VM0-brand",
-      "VM0-hosted",
-      "VM0-managed",
-      "VM0-owned",
-      "VM0-primary",
       "VM0ClerkBootstrap",
       "VM0ClerkBootstrapLoadOptions",
       "VM0Global",
-      "VM0_APP_METADATA",
-      "VM0_ONBOARDING_PATH",
-      "VM0_PRODUCTION_DOMAIN",
-      "VM0_SKILLS_REF",
-      "VM0_SKILLS_REPO",
       "Vm0BrandMark",
-      "ZERO_",
       "ZeroChatEventRowsPage",
       "ZeroChatEventSendResult",
       "ZeroChatEventSnapshotResult",
@@ -747,10 +978,7 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "__vm0UserFriendlyAutomationMessageV1",
       "_vm0",
       "_vm0Cursor",
-      "acquisitionVm0Source",
-      "agent_runs_workflow_automation_id_zero_workflow_automations_id_",
       "all-vm0",
-      "archive_zero_workflows",
       "atelier-zero",
       "brand-from-zero",
       "buildVm0OnboardingEntryUrl",
@@ -758,7 +986,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "checkpointZero",
       "createAgentRunAfterZeroPreCreate",
       "e2e-zero-bot",
-      "idx_zero_",
       "isVm0Host",
       "loadZeroAgent",
       "measureZeroPreCreate",
@@ -767,39 +994,12 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "reconcileZeroBrowsersWithScope",
       "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
       "talk-to-zero",
-      "vm0-api",
-      "vm0-api-skill",
-      "vm0-api-volume",
-      "vm0-api-volume-validation",
-      "vm0-artifact",
-      "vm0-browser-profile",
-      "vm0-chat",
       "vm0-clerk-core-script",
       "vm0-clerk-edge-session",
-      "vm0-client-telemetry-prod",
-      "vm0-data-export",
-      "vm0-deck-metadata",
-      "vm0-dev-artifact-fetch-proxy",
-      "vm0-host",
       "vm0-key-anthropic",
       "vm0-key-default",
       "vm0-key-moonshot",
       "vm0-key-runtime-fixture",
-      "vm0-migration-runner",
-      "vm0-owned",
-      "vm0-payment-method-portal-v1",
-      "vm0-reddit-connector",
-      "vm0-sandbox-op-log",
-      "vm0-stage2-runner",
-      "vm0-stored-secret",
-      "vm0-stripe-connector",
-      "vm0-style",
-      "vm0-test",
-      "vm0-traces",
-      "vm0-user-linked",
-      "vm0-uts46-16",
-      "vm0-web-logs",
-      "vm0-zero-maps",
       "vm01",
       "vm0Artifact",
       "vm0EditId",
@@ -810,51 +1010,23 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "vm0NodeId",
       "vm0OriginalWrite",
       "vm0Preference",
-      "vm0Run",
       "vm0RunId",
       "vm0Theme",
-      "vm0Thread",
       "vm0ThreadId",
-      "vm0_artifact_preview",
-      "vm0_attribution",
-      "vm0_browser_authorization_request",
-      "vm0_column_",
-      "vm0_computer_use_authorization_request",
-      "vm0_computer_use_host",
-      "vm0_computer_use_host_stopped",
       "vm0_e2e_bot",
-      "vm0_error",
-      "vm0_org_delete_at",
-      "vm0_org_delete_org_id",
-      "vm0_pat_xxxxx",
-      "vm0_pi_api_first_turn_boundary",
-      "vm0_result",
-      "vm0_start",
-      "vm0_table_",
-      "vm0secret",
       "withoutLegacyZeroEntries",
       "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
       "zero-copy",
       "zero-page",
-      "zeroAgentId",
       "zeroBlock",
-      "zeroDebug",
-      "zeroDigest",
       "zeroHostDomain",
-      "zeroOnly",
-      "zeroResidual",
-      "zero_",
-      "zero_agent_schedules",
       "zero_browser",
       "zero_browser_profile",
-      "zero_workflow_",
-      "zero_workflow_agents",
-      "zero_workflows_archive",
     ],
     {
       ownerIssue: "#31801",
       reason:
-        "Production-code residual identifier that no boundary rule approves; R5 triages it against this classifier and either renames it or promotes it to a boundary rule with evidence.",
+        "Production TypeScript identifier or platform browser global that no boundary rule approves; #31867 triaged the infrastructure, wire, and db-script names out of this list, and the follow-up R5 rename slice renames what remains.",
       workstream: "R5",
     },
   ),
@@ -1080,5 +1252,56 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
     reason:
       "Dead custom property in the onboarding diagram declaration block that nothing reads; docs/residual-platform-brand-names.md records it as undecided and #31840 can delete rather than rename it.",
     workstream: "R1",
+  }),
+  ...baselineNames(["vm0-deck-metadata"], {
+    ownerIssue: "#31824",
+    reason:
+      "The legacy deck metadata script id the presentation preview still reads for deck HTML stored or externally generated before the okou rename; #31815 kept it deliberately and #31824 drops it together with the data-vm0-* readers beside it.",
+    workstream: "R7",
+  }),
+  ...baselineNames(["vm0Run", "vm0Thread"], {
+    ownerIssue: "#31801",
+    reason:
+      "Fixture id for the row carrying the legacy vm0 built-in-provider discriminator in the provider discriminator migration script, beside vm0Policy and vm0Provider in the same object; R3 renames the Vm0 provider vocabulary in one pass.",
+    workstream: "R3",
+  }),
+  ...baselineNames(["VM0-DEVICE", "vm0-test"], {
+    ownerIssue: "#31801",
+    reason:
+      "Fixture value that exists only in mocks and tests: the OAuth device user code the connector handler returns and the GITHUB_APP_SLUG the GitHub BDD helper pins, which is not a registered app slug. R6 renames both with the rest of the fixture vocabulary.",
+    workstream: "R6",
+  }),
+  ...baselineNames(
+    ["vm0-migration-runner", "vm0-stage2-runner", "zeroResidual"],
+    {
+      ownerIssue: "#31801",
+      reason:
+        "Local naming inside a packages/db/scripts verification script — two scratch-directory prefixes and a variable holding an offset into migration SQL — that no SQL text or physical name depends on; #31819 records that these rename freely, so R6 renames them with the rest of the test-only vocabulary.",
+      workstream: "R6",
+    },
+  ),
+  ...baselineNames(
+    ["vm0-api-skill", "vm0-api-volume", "vm0-api-volume-validation"],
+    {
+      ownerIssue: "#31801",
+      reason:
+        "#31867 triaged this name and found no boundary: it prefixes a scratch directory the owning service creates under os.tmpdir(), which nothing else reads and which does not outlive the process, so the R5 rename slice renames it with its service.",
+      workstream: "R5",
+    },
+  ),
+  ...baselineNames(
+    ["VM0_ONBOARDING_PATH", "vm0-dev-artifact-fetch-proxy", "vm0-host"],
+    {
+      ownerIssue: "#31801",
+      reason:
+        "#31867 triaged this name and found no boundary: it is internal to the module declaring it — the onboarding path constant beside buildVm0OnboardingEntryUrl, the dev-only Vite plugin name beside __vm0-dev-artifact-fetch, and the reserved .invalid placeholder the firewall base-URL parser substitutes for the real authority — so the R5 rename slice renames it with the identifier it sits next to.",
+      workstream: "R5",
+    },
+  ),
+  ...baselineNames(["vm0-user-linked"], {
+    ownerIssue: "#31801",
+    reason:
+      "#31867 triaged this name and found no boundary: the conflict reason never leaves the API process, the Telegram link route turns it into a message before responding, and no contract, client, or stored row carries the literal; the R5 rename slice renames it with its union.",
+    workstream: "R5",
   }),
 ] as const satisfies readonly ResidualBrandNameBaselineEntry[];
