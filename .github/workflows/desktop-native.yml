@@ -1,0 +1,128 @@
+name: Desktop Native
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-native.yml"
+      - "turbo/apps/desktop/native/**"
+      - "turbo/apps/desktop/assets/**"
+      - "turbo/apps/desktop/src/desktop-identities.json"
+      - "turbo/apps/desktop/src/desktop-brand-assets.json"
+      - "turbo/apps/desktop/package.json"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/desktop-native.yml"
+      - "turbo/apps/desktop/native/**"
+      - "turbo/apps/desktop/assets/**"
+      - "turbo/apps/desktop/src/desktop-identities.json"
+      - "turbo/apps/desktop/src/desktop-brand-assets.json"
+      - "turbo/apps/desktop/package.json"
+
+concurrency:
+  group: desktop-native-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: build-native-macos-arm64
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show toolchain
+        run: |
+          uname -m
+          xcodebuild -version
+          swift --version
+
+      - name: Cache SwiftPM build products
+        uses: actions/cache@v4
+        with:
+          path: |
+            turbo/apps/desktop/native/OkouDesktop/.build
+            turbo/apps/desktop/native/computer-use-helper/.build
+          key: desktop-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('turbo/apps/desktop/native/OkouDesktop/Package.swift', 'turbo/apps/desktop/native/OkouDesktop/Package.resolved', 'turbo/apps/desktop/native/computer-use-helper/Package.swift', 'turbo/apps/desktop/native/computer-use-helper/Package.resolved') }}
+          restore-keys: |
+            desktop-native-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Test OkouDesktopKit
+        run: swift test --package-path turbo/apps/desktop/native/OkouDesktop
+
+      - name: Build Okou production bundle
+        id: bundle
+        run: |
+          out="$RUNNER_TEMP/okou-desktop-swift"
+          mkdir -p "$out"
+          bash turbo/apps/desktop/native/OkouDesktop/scripts/build-app-bundle.sh \
+            --out "$out" \
+            --product okou \
+            --platform-url https://app.okou.ai | tee "$RUNNER_TEMP/bundle.log"
+          {
+            echo "app=$(grep '^app=' "$RUNNER_TEMP/bundle.log" | tail -1 | cut -d= -f2-)"
+            echo "zip=$(grep '^zip=' "$RUNNER_TEMP/bundle.log" | tail -1 | cut -d= -f2-)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify bundle identity
+        env:
+          APP_DIR: ${{ steps.bundle.outputs.app }}
+          ZIP_PATH: ${{ steps.bundle.outputs.zip }}
+        run: |
+          set -euo pipefail
+          plist="$APP_DIR/Contents/Info.plist"
+          test -d "$APP_DIR"
+          test -f "$ZIP_PATH"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.okou.desktop"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$plist" | grep -qx "14.0"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Okou Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.okou.desktop"
+          file "$APP_DIR/Contents/MacOS/Okou" | grep -q "arm64"
+          file "$APP_DIR/Contents/Resources/native/computer-use-helper" | grep -q "arm64"
+          file "$APP_DIR/Contents/Resources/native/screen-recorder-helper" | grep -q "arm64"
+          cmp -s turbo/apps/desktop/assets/icon.icns "$APP_DIR/Contents/Resources/icon.icns"
+          jq -e '.product == "okou" and .platformUrl == "https://app.okou.ai"' \
+            "$APP_DIR/Contents/Resources/desktop-runtime-config.json"
+          unzip -l "$ZIP_PATH" | grep -q "Okou.app/Contents/MacOS/Okou"
+          unzip -l "$ZIP_PATH" | grep -q "Okou.app/Contents/Resources/native/computer-use-helper"
+
+      - name: Smoke test bundle launch
+        env:
+          APP_DIR: ${{ steps.bundle.outputs.app }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/smoke.log"
+          OKOU_DESKTOP_SMOKE_TEST=1 "$APP_DIR/Contents/MacOS/Okou" > "$log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" || true
+            echo "Desktop smoke test did not exit within 60s"
+            cat "$log"
+            exit 1
+          fi
+          wait "$pid" || { echo "Desktop smoke test exited with an error"; cat "$log"; exit 1; }
+          grep -q "\[smoke-test\] desktop main ready" "$log" || { echo "Desktop smoke test did not report ready"; cat "$log"; exit 1; }
+          cat "$log"
+
+      - name: Upload unsigned Swift macOS artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: okou-desktop-swift-macos-arm64-unsigned
+          path: ${{ steps.bundle.outputs.zip }}
+          if-no-files-found: error
+          retention-days: 14
