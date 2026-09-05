@@ -106,8 +106,12 @@ The installed app was launched through LaunchServices so TCC identifies Zero,
 not the SSH launcher. Visible Screen Recording consent, app restart, and the
 additional direct-capture prompt resulted in a granted native permission state.
 The picker listed actual displays/windows and rendered the dedicated TextEdit
-test document correctly. Accessibility remains false in the helper despite its
-System Settings switch being enabled. During the later picker walkthrough the
+test document correctly. Accessibility initially remained false despite an enabled System Settings
+switch. Removing only the Zero entry and adding the exact current application
+restored the helper's granted state without restarting the process; the native
+UI then reported ready to connect. This verifies recovery of that consent
+record, not live Computer Use commands or general grant/revocation coverage.
+During the later picker walkthrough the
 recording/plugin tabs disappeared on refresh; no recording helper or completed
 video was present at inspection. The cause remains unconfirmed. Actual capture,
 audio, upload, real app control, and TCC revocation are therefore still open.
