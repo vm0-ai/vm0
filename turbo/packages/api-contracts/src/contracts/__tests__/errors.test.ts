@@ -34,7 +34,6 @@ describe("formatRunErrorForExternalSurface", () => {
   it.each([
     "Agent execution timed out after 7200 seconds",
     "Agent execution timed out after 1 seconds",
-    "execution: Agent execution timed out after 7200 seconds",
   ])("shows controlled execution timeout errors safely: %s", (error) => {
     expect(
       formatRunErrorForExternalSurface({

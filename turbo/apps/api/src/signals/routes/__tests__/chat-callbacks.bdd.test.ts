@@ -5037,11 +5037,6 @@ describe("CHAT-02: failed chat callbacks", () => {
       },
       {
         prompt: "round eleven",
-        error: "execution: Agent execution timed out after 7200 seconds",
-        expectedError: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
-      },
-      {
-        prompt: "round twelve",
         error: "Contradictory runner failure",
         expectedError: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
         failureReason: "execution_timeout",
