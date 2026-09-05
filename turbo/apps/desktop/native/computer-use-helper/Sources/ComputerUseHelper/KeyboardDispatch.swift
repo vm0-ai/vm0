@@ -41,6 +41,18 @@ func keyboardAXWindow(_ target: WindowTarget) throws -> AXUIElement {
     return window
 }
 
+func ensureBackgroundKeyboardWindow(_ target: WindowTarget, deadline: TimeInterval) throws {
+    try ensureKeyboardDeliveryDeadline(deadline)
+    let app = applicationElement(forProcessIdentifier: target.pid)
+    let window = try keyboardAXWindow(target)
+    // CGEvent's window fields do not pin keyboard delivery in an inactive app:
+    // AppKit can send the key to its most recently focused window instead.
+    guard axElementsEqual(axElementValue(attribute(app, kAXFocusedWindowAttribute as CFString)), window) else {
+        throw HelperFailure(code: "window_unavailable", message: "Keyboard focus is outside the target window; no input was sent")
+    }
+    try ensureKeyboardDeliveryDeadline(deadline)
+}
+
 struct SafariCloseTabTarget {
     let tab: AXUIElement
     let parent: AXUIElement

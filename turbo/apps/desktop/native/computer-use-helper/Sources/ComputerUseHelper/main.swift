@@ -2646,9 +2646,10 @@ func resolveBackgroundWindowTarget(appName: String) throws -> WindowTarget {
     return target
 }
 
-// Keyboard dispatch is addressed to a concrete window via postToPid, so it must
-// target the same window the agent inspected. When a snapshotId is supplied we
-// pin to that snapshot's window (matching click/scroll); otherwise we fall back
+// Keyboard dispatch must target the same window the agent inspected. Event
+// window fields alone do not pin delivery, so dispatch also validates focus.
+// When a snapshotId is supplied we pin to its window (matching click/scroll);
+// otherwise we fall back
 // to the heuristic best window for the app. The snapshot windowFrame is not
 // enforced here because keyboard input has no screenshot-coordinate dependency,
 // so a window that merely moved should still receive the key.
@@ -4542,7 +4543,7 @@ func performBackgroundKeyPress(
                 result["normalizedKey"] = parsed.normalizedKey
                 return (targetPID: target.pid, result: result)
             }
-            try ensureKeyboardDeliveryDeadline(deadline)
+            try ensureBackgroundKeyboardWindow(target, deadline: deadline)
             try postParsedKeyPress(parsed, to: target)
             return (targetPID: target.pid, result: ["normalizedKey": parsed.normalizedKey])
         }

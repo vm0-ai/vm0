@@ -381,26 +381,74 @@ new snapshots selected and replaced the intended text in the background without
 changing the frontmost process. [Candidate lifecycle evidence](https://cdn.vm0.io/artifacts/nuawqxywkh.json) records
 this debug helper separately from downloaded release and full-app acceptance.
 
+The downloaded `db44cc9` release repeated both lifecycle cycles and input checks.
+Its configured Desktop copy also completed 24 authenticated owner API requests
+through the same app/helper processes: 20 succeeded, two correctly rejected exited
+apps, and two rejected snapshots from previous processes. Eight input mutations
+preserved the same actual frontmost process without restoration; four exact text
+results and the API screenshot were verified. Native Stop made the host offline
+before confirmed Quit. [Release and configured Desktop/server evidence](https://cdn.vm0.io/artifacts/5v8xbk61o4.json)
+closes this discovery requirement for the two tested apps. The configured test
+identity and grants remain distinct from production identity acceptance.
+
+### Background editing and keyboard window ownership
+
+The downloaded `db44cc9` helper passed eleven ordinary navigation/editing keys
+under all three recovery policies on an owned AppKit text view. Both background
+policies preserved frontmost without restoration. However, an older snapshot of
+window A followed by focusing window B exposed a different defect: Left and
+Shift-Left changed B's caret/selection, and Backspace deleted B's text. The event's
+window fields did not constrain AppKit's keyboard delivery. All three requests
+reported success. Standard Command-A already rejected this mismatch.
+
+Generic key-event dispatch now compares the resolved snapshot window with the
+application's current AX keyboard window immediately before posting any key.
+`never` rejects mismatches before input; the existing recovery policies activate
+the addressed window and verify focus before dispatch. Independently addressed
+native AX shortcuts retain their existing target validation.
+
+The unchanged real regression fails on the downloaded baseline and passes on the
+candidate: nine window/policy cases leave B unchanged, reject under `never`, and
+correctly edit A after explicit recovery. Eighteen additional background commands
+preserve selection direction and UTF-16 boundaries across emoji skin-tone/ZWJ
+sequences, combining accents, and Chinese. Real TextEdit also rejects a mismatched
+Backspace and deletes only A after recovery. Safari passes navigation/selection,
+one custom JavaScript Command-A handler, exact replacement at its chosen range,
+and owned-tab cleanup without changing frontmost. All 123 helper tests pass.
+[Baseline and candidate evidence](https://cdn.vm0.io/artifacts/alzntsqnfr.json)
+records debug helper SHA-256
+`269e48dfd4128c09717f148b53cc9307e42c1ada9f2330ff8e2f8897b43369cc`;
+the PR check/progress record identifies the subsequent downloaded release.
+
+**Background undo/redo remains a reproduced parity defect.** The downloaded
+baseline's Command-Z and Shift-Command-Z report success without changing the
+owned AppKit text; explicit foreground controls correctly undo and redo the same
+edit. The text receiver records `noop:` for the background command. TextEdit
+reproduces background Undo with a passing foreground control. A disabled native
+Undo menu also returns success for AXPress without undoing, so direct menu dispatch
+is not an accepted repair. This window-ownership fix does not close that gap or
+establish a new full Desktop/server command round trip.
+
 ## Feature inventory and evidence
 
-| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                    |
-| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                  |
-| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes          |
-| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                               |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | External launch/relaunch discovery, broader app/recovery cases, targets without AX axis bars |
-| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                       |
-| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges                 |
-| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load           |
-| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                    |
-| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                        |
-| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                      |
-| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                     |
-| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                   |
-| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                              |
-| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents)    |
-| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration               |
-| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                           |
+| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                 |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity               |
+| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes       |
+| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                            |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Background undo/redo, broader app/recovery cases, targets without AX axis bars            |
+| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                    |
+| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges              |
+| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load        |
+| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                 |
+| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                     |
+| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                   |
+| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                  |
+| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                |
+| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                           |
+| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents) |
+| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration            |
+| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                        |
 
 ## Remaining implementation review
 
@@ -424,8 +472,9 @@ Continue with:
 3. Complete TCC onboarding/revocation, real app commands, multi-display/Retina
    selection, floating controls, system audio, microphone, source loss, and the
    complete upload/review handoff on both product identities. The current configured
-   app passed all nine command kinds on its owned fixture; external launch/relaunch
-   discovery and broader app/input/recovery cases still require acceptance.
+   app passed all nine command kinds on its owned fixture, and the `db44cc9`
+   configured app passed external launch/relaunch discovery. Background undo/redo
+   and broader app/input/recovery cases still require acceptance.
 4. Finish the remaining filesystem/MCP and menu/activation walkthroughs in the
    table. Automated fixtures and rendered windows do not establish actual
    capture, signed updates, or live end-to-end parity.
