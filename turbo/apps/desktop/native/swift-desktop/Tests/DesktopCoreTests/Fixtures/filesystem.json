@@ -1,0 +1,2147 @@
+{
+  "source": "@modelcontextprotocol/server-filesystem@2026.1.14 and minimatch@10.2.6",
+  "globs": [
+    {
+      "pattern": "*.txt",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "*.txt",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "*.txt",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "sub/a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/*.txt",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "A.TXT",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "sub/a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "a.log",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "sub/a.log",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "node_modules",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "src/node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "src/a.swift",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "src/b.swift",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "src/c.swift",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "ab.c",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "a2.h",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "src/main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "**",
+      "path": "src/main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "node_modules",
+      "expected": true
+    },
+    {
+      "pattern": "node_modules",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "node_modules",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "src/a.swift",
+      "expected": true
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "src/b.swift",
+      "expected": true
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/{a,b}.swift",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "ab.c",
+      "expected": true
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "a2.h",
+      "expected": true
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "a?.[ch]",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "[!a-c]*.txt",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "@(a|b).txt",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "A.TXT",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "sub/a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "a.log",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "sub/a.log",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "node_modules",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "src/node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "src/a.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "src/b.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "src/c.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "ab.c",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "a2.h",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "src/main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!(a).txt",
+      "path": "src/main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "+(ab).txt",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "*.{js,ts}",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "A.TXT",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "sub/a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "node_modules",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "src/node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "src/a.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "src/b.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "src/c.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "ab.c",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "a2.h",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "src/main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!**/*.log",
+      "path": "src/main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "\\*.txt",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "#comment",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "A.TXT",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": ".hidden.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "sub/a.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "a.log",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "sub/a.log",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "node_modules",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "src/node_modules/a.js",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "src/a.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "src/b.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "src/c.swift",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "ab.c",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "a2.h",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "b.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "z.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "ab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "abab.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "*.txt",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "src/main.test.ts",
+      "expected": true
+    },
+    {
+      "pattern": "!(*.test).ts",
+      "path": "src/main.ts",
+      "expected": true
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "src/b.swift",
+      "expected": true
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "src/c.swift",
+      "expected": true
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(a).swift",
+      "path": "src/main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "A.TXT",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": ".hidden.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "sub/a.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "a.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "sub/a.log",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "node_modules",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "src/node_modules/a.js",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "src/a.swift",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "src/b.swift",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "src/c.swift",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "ab.c",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "a2.h",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "b.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "z.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "ab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "abab.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "main.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "*.txt",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "src/main.test.ts",
+      "expected": false
+    },
+    {
+      "pattern": "src/!(*.test).ts",
+      "path": "src/main.ts",
+      "expected": true
+    }
+  ],
+  "edits": [
+    {
+      "name": "exact first occurrence",
+      "original": "hello hello\n",
+      "edits": [
+        {
+          "oldText": "hello",
+          "newText": "changed"
+        }
+      ],
+      "expected": "changed hello\n"
+    },
+    {
+      "name": "whitespace relative indentation",
+      "original": "  function run() {\n    return true;\n  }\n",
+      "edits": [
+        {
+          "oldText": "function run() {\n  return true;\n}",
+          "newText": "function run() {\n    return false;\n}"
+        }
+      ],
+      "expected": "  function run() {\n    return false;\n}\n"
+    },
+    {
+      "name": "line ending normalization",
+      "original": "one\r\ntwo\r\n",
+      "edits": [
+        {
+          "oldText": "one\r\ntwo",
+          "newText": "three\r\nfour"
+        }
+      ],
+      "expected": "three\nfour\n"
+    },
+    {
+      "name": "empty insertion",
+      "original": "existing",
+      "edits": [
+        {
+          "oldText": "",
+          "newText": "prefix "
+        }
+      ],
+      "expected": "prefix existing"
+    },
+    {
+      "name": "sequential edits",
+      "original": "one two",
+      "edits": [
+        {
+          "oldText": "one",
+          "newText": "three"
+        },
+        {
+          "oldText": "three two",
+          "newText": "done"
+        }
+      ],
+      "expected": "done"
+    },
+    {
+      "name": "delete content",
+      "original": "hello",
+      "edits": [
+        {
+          "oldText": "hello",
+          "newText": ""
+        }
+      ],
+      "expected": ""
+    }
+  ]
+}

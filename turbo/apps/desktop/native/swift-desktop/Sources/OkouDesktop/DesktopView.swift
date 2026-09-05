@@ -43,8 +43,8 @@ struct DesktopView: View {
       }.padding([.horizontal, .bottom], 16)
     }
     .frame(minWidth: 620, idealWidth: 680, minHeight: 640, idealHeight: 760)
+    .background(Color(nsColor: .windowBackgroundColor))
     .tint(.orange)
-    .preferredColorScheme(.dark)
   }
 
   private var overview: some View {

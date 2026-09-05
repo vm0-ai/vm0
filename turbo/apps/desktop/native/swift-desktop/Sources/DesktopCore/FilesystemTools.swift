@@ -39,9 +39,11 @@ public actor FilesystemTools {
         guard !paths.isEmpty, paths.count <= 100 else {
           throw DesktopFailure("invalid_arguments", "paths must contain 1 to 100 files")
         }
-        let text = try paths.map { path in
-          let url = try allowed(path, roots: roots)
-          return path + ":\n" + (try readText(url))
+        let text = paths.map { path in
+          do {
+            let url = try allowed(path, roots: roots)
+            return path + ":\n" + (try readText(url)) + "\n"
+          } catch { return path + ": Error - " + error.localizedDescription }
         }.joined(separator: "\n---\n")
         return try PluginResult.text(text, context: context)
       }
@@ -50,29 +52,23 @@ public actor FilesystemTools {
         let destination = try allowed(args.requireString("destination"), roots: roots)
         try manager.moveItem(at: source, to: destination)
         return try PluginResult.text(
-          "Moved \(source.path) to \(destination.path)", context: context)
+          "Successfully moved \(source.path) to \(destination.path)", context: context)
       }
       let path = try allowed(args.requireString("path"), roots: roots)
-      let result: String
+      var result: String
       switch tool {
       case "read_text_file":
-        let text = try readText(path)
-        let lines = text.components(separatedBy: "\n")
         if args["head"].number != nil && args["tail"].number != nil {
           throw DesktopFailure("invalid_arguments", "Use head or tail, not both")
         }
-        if let head = args["head"].number {
-          guard head > 0, head.rounded() == head else {
-            throw DesktopFailure("invalid_arguments", "head must be a positive integer")
+        if let count = args["head"].number ?? args["tail"].number {
+          guard count > 0, count.rounded() == count else {
+            throw DesktopFailure("invalid_arguments", "Line count must be a positive integer")
           }
-          result = lines.prefix(Int(min(head, Double(lines.count)))).joined(separator: "\n")
-        } else if let tail = args["tail"].number {
-          guard tail > 0, tail.rounded() == tail else {
-            throw DesktopFailure("invalid_arguments", "tail must be a positive integer")
-          }
-          result = lines.suffix(Int(min(tail, Double(lines.count)))).joined(separator: "\n")
+          result = try readLines(
+            path, count: Int(min(count, Double(Int32.max))), tail: args["tail"].number != nil)
         } else {
-          result = text
+          result = try readText(path)
         }
       case "read_media_file":
         let data = try readBounded(path)
@@ -97,29 +93,16 @@ public actor FilesystemTools {
         result = "Successfully wrote to \(path.path)"
       case "edit_file":
         let original = try readText(path)
-        var edited = original
         let edits = args["edits"].array
         guard !edits.isEmpty, edits.count <= 1000 else {
           throw DesktopFailure("invalid_arguments", "edits must contain 1 to 1000 edits")
         }
-        for edit in edits {
-          let old = try edit.requireString("oldText")
-          guard let replacement = edit["newText"].string else {
-            throw DesktopFailure("invalid_arguments", "newText must be a string")
-          }
-          guard let range = edited.range(of: old) else {
-            throw DesktopFailure("mcp_error", "Could not find oldText in \(path.path)")
-          }
-          edited.replaceSubrange(range, with: replacement)
-        }
+        let edited = try FilesystemMatching.edit(original, edits: edits)
         guard edited.utf8.count <= PluginResult.maximumBytes else {
           throw DesktopFailure("input_too_large", "Edited content exceeds 10 MiB")
         }
         if !args["dryRun"].bool { try Data(edited.utf8).write(to: path, options: .atomic) }
-        result =
-          "--- \(path.path)\n+++ \(path.path)\n"
-          + original.components(separatedBy: "\n").map { "-" + $0 }.joined(separator: "\n") + "\n"
-          + edited.components(separatedBy: "\n").map { "+" + $0 }.joined(separator: "\n")
+        result = unifiedDiff(original, edited, path: path.path)
       case "create_directory":
         try manager.createDirectory(at: path, withIntermediateDirectories: true)
         result = "Successfully created directory \(path.path)"
@@ -128,18 +111,32 @@ public actor FilesystemTools {
           at: path, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey])
         var rows: [(name: String, size: Int, directory: Bool)] = []
         for child in children {
-          let safe = try allowed(child.path, roots: roots)
-          let values = try safe.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
-          rows.append((child.lastPathComponent, values.fileSize ?? 0, values.isDirectory == true))
+          let values = try child.resourceValues(forKeys: [
+            .isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey,
+          ])
+          rows.append(
+            (
+              child.lastPathComponent, values.fileSize ?? 0,
+              values.isDirectory == true && values.isSymbolicLink != true
+            ))
         }
         rows.sort {
           args["sortBy"].string == "size"
             ? $0.size > $1.size : $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
         result = rows.map {
-          "[\($0.directory ? "DIR" : "FILE")] \($0.name)"
-            + (tool == "list_directory_with_sizes" ? "  \($0.size) bytes" : "")
+          let prefix = "[\($0.directory ? "DIR" : "FILE")] "
+          if tool == "list_directory" { return prefix + $0.name }
+          let name = $0.name.padding(toLength: max(30, $0.name.count), withPad: " ", startingAt: 0)
+          let size = $0.directory ? "" : formatSize($0.size)
+          return prefix + name + " "
+            + String(repeating: " ", count: $0.directory ? 0 : max(0, 10 - size.count)) + size
         }.joined(separator: "\n")
+        if tool == "list_directory_with_sizes" {
+          let files = rows.filter { !$0.directory }
+          result +=
+            "\n\nTotal: \(files.count) files, \(rows.count - files.count) directories\nCombined size: \(formatSize(files.reduce(0) { $0 + $1.size }))"
+        }
       case "directory_tree", "search_files":
         var visited = 0
         var matches: [String] = []
@@ -162,20 +159,29 @@ public actor FilesystemTools {
             ).sorted { $0.path < $1.path }
             var entries: [JSON] = []
             for child in children {
-              if excludes.contains(where: {
-                glob($0, matches: child.lastPathComponent)
-                  || glob($0, matches: String(child.path.dropFirst(path.path.count + 1)))
+              let relative = String(child.path.dropFirst(path.path.count + 1))
+              if excludes.contains(where: { pattern in
+                FilesystemMatching.matches(pattern, path: relative)
+                  || (tool == "directory_tree" && !pattern.contains("*")
+                    && (FilesystemMatching.matches("**/" + pattern, path: relative)
+                      || FilesystemMatching.matches("**/" + pattern + "/**", path: relative)))
               }) {
                 continue
               }
-              // Never traverse a symlink: its target could leave the selected directory.
               let value = try child.resourceValues(forKeys: [.isSymbolicLinkKey])
-              if value.isSymbolicLink == true { continue }
+              if value.isSymbolicLink == true {
+                if tool == "directory_tree" {
+                  entries.append(
+                    .object(["name": .string(child.lastPathComponent), "type": .string("file")]))
+                } else if (try? allowed(child.path, roots: roots)) != nil,
+                  FilesystemMatching.matches(pattern, path: relative)
+                {
+                  matches.append(child.path)
+                }
+                continue
+              }
               _ = try allowed(child.path, roots: roots)
-              if tool == "search_files",
-                glob(pattern, matches: child.lastPathComponent)
-                  || child.lastPathComponent.localizedCaseInsensitiveContains(pattern)
-              {
+              if tool == "search_files", FilesystemMatching.matches(pattern, path: relative) {
                 matches.append(child.path)
               }
               entries.append(try visit(child, depth: depth + 1))
@@ -187,12 +193,24 @@ public actor FilesystemTools {
         let tree = try visit(path, depth: 0)
         result =
           tool == "search_files"
-          ? matches.joined(separator: "\n")
+          ? (matches.isEmpty ? "No matches found" : matches.joined(separator: "\n"))
           : try JSON.array(tree["children"].array).text(pretty: true)
       case "get_file_info":
         let attributes = try manager.attributesOfItem(atPath: path.path)
-        result = attributes.map { "\($0.key.rawValue): \($0.value)" }.sorted().joined(
-          separator: "\n")
+        let values = try path.resourceValues(forKeys: [.contentAccessDateKey])
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE MMM dd yyyy HH:mm:ss 'GMT'Z (zzzz)"
+        func date(_ value: Any?) -> String { (value as? Date).map(formatter.string) ?? "unknown" }
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0
+        result = [
+          "size: \(attributes[.size] ?? 0)", "created: " + date(attributes[.creationDate]),
+          "modified: " + date(attributes[.modificationDate]),
+          "accessed: " + date(values.contentAccessDate),
+          "isDirectory: \(attributes[.type] as? FileAttributeType == .typeDirectory)",
+          "isFile: \(attributes[.type] as? FileAttributeType == .typeRegular)",
+          "permissions: " + String(format: "%03o", permissions & 0o777),
+        ].joined(separator: "\n")
       default: throw DesktopFailure("unknown_tool", "Unknown filesystem tool")
       }
       return try PluginResult.text(result, context: context)
@@ -238,19 +256,72 @@ public actor FilesystemTools {
   }
 
   private func readText(_ file: URL) throws -> String {
-    guard let text = String(data: try readBounded(file), encoding: .utf8) else {
-      throw DesktopFailure("mcp_error", "File is not UTF-8 text")
-    }
-    return text
+    String(decoding: try readBounded(file), as: UTF8.self)
   }
 
-  private func glob(_ pattern: String, matches name: String) -> Bool {
-    let expression =
-      "^"
-      + NSRegularExpression.escapedPattern(for: pattern).replacingOccurrences(
-        of: "\\*\\*", with: ".*"
-      ).replacingOccurrences(of: "\\*", with: "[^/]*").replacingOccurrences(of: "\\?", with: ".")
-      + "$"
-    return name.range(of: expression, options: [.regularExpression, .caseInsensitive]) != nil
+  private func readLines(_ file: URL, count: Int, tail: Bool) throws -> String {
+    let handle = try FileHandle(forReadingFrom: file)
+    defer { handle.closeFile() }
+    var data = Data()
+    var position = tail ? try handle.seekToEnd() : 0
+    while true {
+      if tail {
+        if position == 0 { break }
+        let length = min(position, 65536)
+        position -= length
+        try handle.seek(toOffset: position)
+        let chunk = try handle.read(upToCount: Int(length)) ?? Data()
+        data.insert(contentsOf: chunk, at: data.startIndex)
+      } else {
+        let chunk = try handle.read(upToCount: 65536) ?? Data()
+        if chunk.isEmpty { break }
+        data.append(chunk)
+      }
+      if data.lazy.filter({ $0 == 10 }).prefix(count).count >= count { break }
+      guard data.count <= PluginResult.maximumBytes else {
+        throw DesktopFailure("result_too_large", "Requested lines exceed 10 MiB")
+      }
+    }
+    var text = String(decoding: data, as: UTF8.self)
+    if tail { text = text.replacingOccurrences(of: "\r\n", with: "\n") }
+    var lines = text.components(separatedBy: "\n")
+    if !tail && lines.last == "" { lines.removeLast() }
+    let selected = tail ? Array(lines.suffix(count)) : Array(lines.prefix(count))
+    return selected.joined(separator: "\n")
+  }
+
+  private func formatSize(_ bytes: Int) -> String {
+    guard bytes > 0 else { return "0 B" }
+    let units = ["B", "KB", "MB", "GB", "TB"]
+    let index = min(4, Int(log(Double(bytes)) / log(1024)))
+    return index == 0
+      ? "\(bytes) B"
+      : String(format: "%.2f %@", Double(bytes) / pow(1024, Double(index)), units[index])
+  }
+
+  private func unifiedDiff(_ original: String, _ edited: String, path: String) -> String {
+    func lines(_ text: String) -> [String] {
+      var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+      if lines.last == "" { lines.removeLast() }
+      return lines
+    }
+    let before = lines(original)
+    let after = lines(edited)
+    var diff =
+      "Index: \(path)\n" + String(repeating: "=", count: 67)
+      + "\n--- \(path)\toriginal\n+++ \(path)\tmodified\n"
+    if original != edited {
+      diff +=
+        "@@ -\(before.isEmpty ? 0 : 1),\(before.count) +\(after.isEmpty ? 0 : 1),\(after.count) @@\n"
+      for (prefix, content, ended) in [
+        ("-", before, original.hasSuffix("\n")), ("+", after, edited.hasSuffix("\n")),
+      ] {
+        for line in content { diff += prefix + line + "\n" }
+        if !content.isEmpty && !ended { diff += "\\ No newline at end of file\n" }
+      }
+    }
+    var fence = "```"
+    while diff.contains(fence) { fence += "`" }
+    return fence + "diff\n" + diff + fence + "\n\n"
   }
 }

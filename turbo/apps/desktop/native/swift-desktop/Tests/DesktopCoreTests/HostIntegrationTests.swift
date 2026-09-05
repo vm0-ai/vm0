@@ -3,7 +3,8 @@ import Foundation
 import Testing
 
 @Suite struct HostIntegrationTests {
-  @Test @MainActor func registeredHostExecutesAndCompletesQueuedCommand() async throws {
+  @Test(arguments: [false, true]) @MainActor
+  func registeredHostExecutesAndCompletesQueuedCommand(permissionFailure: Bool) async throws {
     // The fake boundary is a real HTTP server and a real JSON-lines process.
     // DesktopAPI, HostRuntime and ComputerCommands all use their production paths.
     let script = """
@@ -12,6 +13,8 @@ import Testing
       done = threading.Event()
       completed = {}
       issued = False
+      permission_calls = 0
+      fail_permissions = sys.argv[1] == 'true'
       class Handler(BaseHTTPRequestHandler):
           def log_message(self, *args): pass
           def respond(self, body, status=200):
@@ -51,14 +54,19 @@ import Testing
       for line in sys.stdin:
           request=json.loads(line)
           if request['kind']=='server.start': result={'port':server.server_port}
-          elif request['kind']=='permissions.state': result={'accessibility':True,'screenRecording':True}
+          elif request['kind']=='permissions.state':
+              permission_calls += 1
+              if fail_permissions and permission_calls > 1:
+                  print(json.dumps({'id':request['id'],'status':'failed','error':{'code':'helper_unavailable','message':'Permission probe failed'}}),flush=True)
+                  continue
+              result={'accessibility':True,'screenRecording':True}
           elif request['kind']=='apps.list': result={'apps':[{'name':'Notes','bundleId':'com.apple.Notes'}]}
           else: raise RuntimeError('Unexpected helper command')
           print(json.dumps({'id':request['id'],'status':'succeeded','result':result}),flush=True)
       """
     let helper = HelperProcess(
       executable: URL(fileURLWithPath: "/usr/bin/env"),
-      arguments: ["python3", "-u", "-c", script])
+      arguments: ["python3", "-u", "-c", script, String(permissionFailure)])
     defer { helper.close() }
     let server = try await helper.request("server.start")
     let port = Int(try #require(server["port"].number))
@@ -76,8 +84,13 @@ import Testing
     host.start()
     let completion = try await api.request("api/test/wait-complete")
     await host.stop()
-    #expect(completion["body"]["status"].string == "succeeded")
-    #expect(completion["body"]["result"]["apps"].array.first?["name"].string == "Notes")
+    if permissionFailure {
+      #expect(completion["body"]["status"].string == "failed")
+      #expect(completion["body"]["error"]["code"].string == "helper_unavailable")
+    } else {
+      #expect(completion["body"]["status"].string == "succeeded")
+      #expect(completion["body"]["result"]["apps"].array.first?["name"].string == "Notes")
+    }
     #expect(completion["clientType"].string == "Desktop")
     #expect(completion["product"].string == "okou")
     #expect(completion["version"].string == "0.46.12")

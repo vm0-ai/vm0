@@ -2,6 +2,8 @@ node_modules
 .pnpm-store/
 dist
 apps/desktop/native/computer-use-helper/.build/
+apps/desktop/native/swift-desktop/.build/
+apps/desktop/native/swift-desktop/out/
 packages/sandbox-scripts/src/dist/bundled.ts
 pnpm-lock.yaml
 coverage

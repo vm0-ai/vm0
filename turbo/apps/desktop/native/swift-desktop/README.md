@@ -17,7 +17,8 @@ summary links the **okou-swift-desktop-macos-arm64** artifact, containing:
 
 - `Okou-Swift-macos-arm64.zip`: the Apple silicon `Okou Dev.app` bundle.
 - `Okou-Swift-Project.zip`: a self-contained source tree with this Swift package,
-  both native helpers, the app icon, and packaging scripts.
+  both native helpers, app icons, pinned dependencies, and packaging scripts.
+- `Okou-Swift-Desktop.png`: the settings window rendered by the packaged app.
 
 Artifacts expire after 30 days. The PR source remains available in GitHub.
 The app uses the `ai.okou.desktop.dev` development identity against
@@ -27,7 +28,7 @@ System Settings. Preview builds do not install production updates.
 
 ## Open and build
 
-Requirements: Apple silicon Mac, macOS 14+, Xcode 16.3+ / Swift 6.1+, and the
+Requirements: Apple silicon Mac, macOS 14+, Xcode 26+ / Swift 6.2+, and the
 Xcode command-line tools. Microphone capture requires macOS 15+.
 
 Open `native/swift-desktop/Package.swift` in Xcode from the downloaded project.
@@ -71,6 +72,11 @@ bash native/swift-desktop/scripts/build.sh
 
 The core integration tests also run on Linux. macOS CI compiles the actual
 SwiftUI/WebKit/MCP app, tests both Swift packages, packages and verifies the
-ad-hoc signature, launches the packaged executable, and uploads the two ZIPs.
+ad-hoc signature, launches the packaged executable, and uploads the ZIPs and window image.
 Core tests alone do not verify UI behavior, TCC permissions, live authentication,
 recording delivery, or signed self-update installation.
+
+The filesystem editing behavior is ported from
+`@modelcontextprotocol/server-filesystem@2026.1.14`; its MIT notice is retained in
+`Resources/filesystem-server-LICENSE.txt`. The packaged app also includes the
+licenses from the resolved Swift dependencies.

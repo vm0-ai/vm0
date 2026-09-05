@@ -19,7 +19,7 @@ while (( $# )); do
   esac
 done
 if [[ "$(uname -s)" != Darwin ]]; then
-  echo "Building the app requires macOS 14+ and Xcode 16.3+ (Swift 6.1)." >&2
+  echo "Building the app requires macOS 14+ and Xcode 26+ (Swift 6.2)." >&2
   exit 1
 fi
 if [[ "$product" != okou && "$product" != zero ]]; then
@@ -64,6 +64,17 @@ cp "$helper_bin/computer-use-helper" "$helper_bin/screen-recorder-helper" "$app_
 cp "$app_bin/okou-desktop-updater" "$app_dir/Contents/Resources/native/"
 if [[ "$product" == zero ]]; then icon=icon-zero.icns; else icon=icon.icns; fi
 cp "$desktop_dir/assets/$icon" "$app_dir/Contents/Resources/icon.icns"
+mkdir -p "$app_dir/Contents/Resources/Licenses"
+cp "$package_dir/Resources/filesystem-server-LICENSE.txt" "$app_dir/Contents/Resources/Licenses/"
+for dependency in "$package_dir/.build/checkouts/"* "$helper_dir/.build/checkouts/"*; do
+  if [[ ! -d "$dependency" ]]; then continue; fi
+  dependency_name="$(basename "$dependency")"
+  for license in "$dependency"/LICENSE* "$dependency"/COPYING*; do
+    if [[ -f "$license" ]]; then
+      cp "$license" "$app_dir/Contents/Resources/Licenses/$dependency_name-$(basename "$license").txt"
+    fi
+  done
+done
 # SwiftPM resource bundles retain their module names inside Resources.
 for bundle in "$app_bin"/*.bundle "$helper_bin"/*.bundle; do
   if [[ -d "$bundle" ]]; then cp -R "$bundle" "$app_dir/Contents/Resources/"; fi

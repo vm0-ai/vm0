@@ -25,10 +25,7 @@
                   "name": "Continue",
                   "pressable": true,
                   "clickableKind": "press",
-                  "actions": [
-                    "AXPress",
-                    "AXShowMenu"
-                  ],
+                  "actions": ["AXPress", "AXShowMenu"],
                   "children": [
                     {
                       "id": "label",
@@ -59,11 +56,7 @@
     },
     "expected": {
       "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 standard window Example\n\t1 button Continue\n\t2 text field (settable, string) Title, Value: Hello, Placeholder: Untitled\n\nThe focused UI element is 2 text field (settable, string) Title, Value: Hello, Placeholder: Untitled.\n</app_state>",
-      "elementIdsByIndex": [
-        "window",
-        "button",
-        "entry"
-      ],
+      "elementIdsByIndex": ["window", "button", "entry"],
       "focusedElementIndex": 2,
       "nodeCount": 3,
       "truncationReasons": null
@@ -88,11 +81,7 @@
               "id": "file",
               "role": "AXMenuBarItem",
               "name": "File",
-              "actions": [
-                "AXPress",
-                "AXPick",
-                "AXCancel"
-              ],
+              "actions": ["AXPress", "AXPick", "AXCancel"],
               "children": [
                 {
                   "id": "new",
@@ -107,10 +96,7 @@
     },
     "expected": {
       "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 menu bar\n\t1 menu bar item File\n</app_state>",
-      "elementIdsByIndex": [
-        "menu",
-        "file"
-      ],
+      "elementIdsByIndex": ["menu", "file"],
       "focusedElementIndex": null,
       "nodeCount": 2,
       "truncationReasons": null
@@ -136,11 +122,7 @@
           "help": "Use this",
           "selected": true,
           "expanded": true,
-          "actions": [
-            "AXPress",
-            "AXDelete",
-            "AXShowMenu"
-          ],
+          "actions": ["AXPress", "AXDelete", "AXShowMenu"],
           "children": [
             {
               "id": "independent",
@@ -160,11 +142,7 @@
     },
     "expected": {
       "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 button (selected, expanded) Shared title, Value: 1, Help: Use this, Secondary Actions: Delete\n\t1 link Shared title, URL: https://example.com\n\t2 image (disabled) Shared title\n</app_state>",
-      "elementIdsByIndex": [
-        "button",
-        "independent",
-        "disabled"
-      ],
+      "elementIdsByIndex": ["button", "independent", "disabled"],
       "focusedElementIndex": null,
       "nodeCount": 3,
       "truncationReasons": null
@@ -233,12 +211,7 @@
     },
     "expected": {
       "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 heading News • Today\n1 text Root hidden nodes remain visible\n2 standard window\n\t3 text entry area Still focused\n\nThe focused UI element is 3 text entry area Still focused.\n</app_state>",
-      "elementIdsByIndex": [
-        "heading",
-        "hidden",
-        "window",
-        "focus-hidden"
-      ],
+      "elementIdsByIndex": ["heading", "hidden", "window", "focus-hidden"],
       "focusedElementIndex": 3,
       "nodeCount": 4,
       "truncationReasons": null
@@ -271,14 +244,9 @@
             {
               "id": "table",
               "role": "AXTable",
-              "columnTitles": [
-                "Name",
-                "Value"
-              ],
+              "columnTitles": ["Name", "Value"],
               "identifier": "settings",
-              "actions": [
-                "AXRaise"
-              ]
+              "actions": ["AXRaise"]
             }
           ]
         },
@@ -293,12 +261,7 @@
     },
     "expected": {
       "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\n0 dialog Preferences\n1 HTML content A web page, URL: https://example.com\n\t2 table settings, Columns: Name, Value, Secondary Actions: Raise\n3 custom thing (clickable) Custom\n</app_state>",
-      "elementIdsByIndex": [
-        "dialog",
-        "web",
-        "table",
-        "custom"
-      ],
+      "elementIdsByIndex": ["dialog", "web", "table", "custom"],
       "focusedElementIndex": null,
       "nodeCount": 4,
       "truncationReasons": null
@@ -1075,9 +1038,7 @@
       ],
       "focusedElementIndex": null,
       "nodeCount": 121,
-      "truncationReasons": [
-        "max_children_per_node"
-      ]
+      "truncationReasons": ["max_children_per_node"]
     }
   },
   {
@@ -1092,10 +1053,7 @@
       "snapshotId": "fixture",
       "windowOnCurrentSpace": false,
       "currentSpaceId": 1,
-      "windowSpaceIds": [
-        2,
-        3
-      ],
+      "windowSpaceIds": [2, 3],
       "elements": [
         {
           "id": "window",
@@ -1113,10 +1071,7 @@
     },
     "expected": {
       "appState": "Computer Use state\n<app_state>\nApp=/System/Applications/Notes.app (bundleID com.apple.Notes, pid 42)\nWindow: \"Example\", App: Notes.\nWindow is on another macOS Space (current Space 1, window Spaces 2, 3). Screenshot capture can still work, but macOS may expose only a reduced Accessibility tree until the window is moved to the current Space.\n0 standard window Elsewhere\n\t1 text xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...\n</app_state>",
-      "elementIdsByIndex": [
-        "window",
-        "text"
-      ],
+      "elementIdsByIndex": ["window", "text"],
       "focusedElementIndex": null,
       "nodeCount": 2,
       "truncationReasons": null

@@ -89,6 +89,9 @@ public final class ComputerCommands {
           ] { payload[key] = snapshot[key] }
           payload["sourceBounds"] = snapshot["screenshotSourceBounds"]
         }
+        if kind != "element.click", payload["elementId"].string == nil {
+          throw DesktopFailure("unsupported_command", "\(kind) requires elementId or elementIndex")
+        }
       }
       if ["element.click", "keyboard.type_text", "keyboard.press_key"].contains(kind),
         payload["foregroundRecovery"].string == nil

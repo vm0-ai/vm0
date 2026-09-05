@@ -6,9 +6,13 @@ public enum PluginResult {
   public static func text(_ text: String, context: JSON) throws -> JSON {
     let data = Data(text.utf8)
     if data.count > 64 * 1024 {
-      return try binary(
+      let name = (context["tool"].string ?? "plugin-result").replacingOccurrences(
+        of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression)
+      var response = try binary(
         data, mimeType: "text/plain; charset=utf-8",
-        fileName: (context["tool"].string ?? "plugin-result") + ".txt", context: context)
+        fileName: name + ".txt", context: context)
+      response["result"]["summary"] = .string("Saved \(data.count) bytes")
+      return response
     }
     var result = context
     result["content"] = .string(text)
@@ -60,7 +64,10 @@ public enum PluginResult {
         throw DesktopFailure("mcp_error", "Invalid MCP resource content")
       }
       return try binary(
-        bytes, mimeType: resource["mimeType"].string ?? "application/octet-stream",
+        bytes,
+        mimeType: resource["mimeType"].string
+          ?? (resource["text"].string == nil
+            ? "application/octet-stream" : "text/plain; charset=utf-8"),
         fileName: URL(string: resource["uri"].string ?? "")?.lastPathComponent
           ?? "plugin-result.txt", context: context)
     }

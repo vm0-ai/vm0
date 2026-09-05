@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  npm_config_audit: "false"
+
 concurrency:
   group: desktop-swift-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -22,7 +25,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify Swift core and existing native helpers
         run: |
           swift test --package-path turbo/apps/desktop/native/swift-desktop
@@ -45,7 +48,7 @@ jobs:
         run: bash turbo/apps/desktop/native/swift-desktop/scripts/archive-source.sh
       - name: Upload native app and Swift project
         id: artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: okou-swift-desktop-macos-arm64
           path: |

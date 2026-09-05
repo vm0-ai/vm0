@@ -126,6 +126,7 @@ public final class HelperProcess {
 
   public func close(error: any Error = CancellationError()) {
     let child = process
+    if child != nil { generation += 1 }
     process = nil
     output?.readabilityHandler = nil
     input?.closeFile()
