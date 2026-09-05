@@ -4159,9 +4159,7 @@ function createChatThreadComposerSignals(
     },
     chatEvents$: options.chatEvents.chatEvents$,
     threadId: options.chatEvents.threadId,
-    voiceDraftTarget: options.forward
-      ? null
-      : `thread:${options.chatEvents.threadId}`,
+    voiceDraftTarget: `thread:${options.chatEvents.threadId}`,
     singleLineOnMobile: true,
     modelSelection$: composerModelSelection$,
     selectedModelOauthAvailable$: modelSelection.selectedModelOauthAvailable$,

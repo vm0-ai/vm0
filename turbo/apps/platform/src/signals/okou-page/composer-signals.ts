@@ -289,7 +289,7 @@ interface CreateComposerSignalsOptions {
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
-  readonly voiceDraftTarget: string | null;
+  readonly voiceDraftTarget: string;
   readonly connector?: ComposerConnectorSignals;
   readonly singleLineOnMobile: boolean;
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
@@ -538,7 +538,7 @@ function createComposerInputLifecycle(
         await Promise.all([
           ready,
           get(voiceInputV2Enabled$)
-            ? set(voice.restore$, signal)
+            ? set(voice.initialize$, signal)
             : Promise.resolve(),
         ]);
       },

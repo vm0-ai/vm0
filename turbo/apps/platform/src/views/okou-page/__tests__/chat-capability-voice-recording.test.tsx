@@ -1,7 +1,7 @@
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { openDB, type DBSchema } from "idb";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -274,29 +274,47 @@ test("Keep the active tab's recording until its owner closes", async () => {
     });
   });
   const original = await savedRecording();
-  // A second browser runtime mounts while the first recording owner stays alive.
-  releasePageDom();
+  const firstComposer = screen.getByRole("textbox", { name: "Message" });
+  const firstRoot = Array.from(document.body.children).find((element) => {
+    return element.contains(firstComposer);
+  })!;
+  // Keep the first committed composer mounted, as a separate live tab would.
+  vi.mocked(window.history.pushState).mockRestore();
+  vi.mocked(window.history.replaceState).mockRestore();
+  vi.mocked(window.history.back).mockRestore();
   await setupPage({
     context: secondContext,
     path: RUN_PATH,
     featureSwitches: flags,
   });
-  await screen.findByText(
+  const secondRoot = await waitFor(() => {
+    const root = Array.from(document.body.children).find((element) => {
+      return (
+        element !== firstRoot &&
+        within(element as HTMLElement).queryByRole("textbox", {
+          name: "Message",
+        })
+      );
+    });
+    expect(root).toBeDefined();
+    return root!;
+  });
+  await within(secondRoot as HTMLElement).findByText(
     "This conversation has an active recording in another tab. Retry after it stops.",
   );
-  click(await findEnabledButton("Retry"));
-  await screen.findByText(
+  click(await findEnabledButton("Retry", secondRoot));
+  await within(secondRoot as HTMLElement).findByText(
     "This conversation has an active recording in another tab. Retry after it stops.",
   );
   await expect(savedRecording()).resolves.toStrictEqual(original);
-  expect(queryButton("Voice input")).toBeNull();
+  expect(queryButton("Voice input", secondRoot)).toBeNull();
   const error = new Error("First tab closed");
   error.name = "AbortError";
   firstPage.abort(error);
-  click(await findEnabledButton("Retry"));
-  await findEnabledButton("Remove voice draft");
-  click(await findEnabledButton("Remove voice draft"));
-  await findEnabledButton("Voice input");
+  click(await findEnabledButton("Retry", secondRoot));
+  await findEnabledButton("Remove voice draft", secondRoot);
+  click(await findEnabledButton("Remove voice draft", secondRoot));
+  await findEnabledButton("Voice input", secondRoot);
   await expect(savedRecording()).resolves.toBeNull();
   expect(consoleErrors).toStrictEqual([]);
 });

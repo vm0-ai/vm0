@@ -20,6 +20,7 @@ import {
   onDomEventFn,
   settle,
   withCleanup,
+  createChildAbortController,
   createDeferredPromise,
 } from "../utils.ts";
 import { voiceInputV2Enabled$ } from "../external/feature-switch.ts";
@@ -60,7 +61,7 @@ export interface ComposerVoiceInputSignals {
   readonly recordingAvailable$: Computed<boolean>;
   readonly retry$: Command<Promise<void>, [AbortSignal]>;
   readonly discard$: Command<Promise<void>, [AbortSignal]>;
-  readonly restore$: Command<Promise<void>, [AbortSignal]>;
+  readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly message$: Computed<string | null>;
   readonly toggle$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -71,7 +72,6 @@ type DeliverVoiceTextCommand = Command<Promise<void>, [string, AbortSignal]>;
 interface ComposerVoiceInputState {
   readonly status: ComposerVoiceInputStatus;
   readonly recording: VoiceDraftRecordingRecord | null;
-  readonly audio?: Blob;
   readonly message?: string;
   readonly attempt?: symbol;
 }
@@ -106,14 +106,9 @@ function voiceDraftRecoveryMessage(error: unknown): string {
 }
 
 async function lockVoiceDraft(
-  key: string | null,
+  key: string,
   signal: AbortSignal,
 ): Promise<() => Promise<void>> {
-  if (!key) {
-    return () => {
-      return Promise.resolve();
-    };
-  }
   const release = await acquireVoiceDraftLock(key, signal);
   if (!release) {
     throw new VoiceDraftBusyError(
@@ -129,7 +124,7 @@ function createVoiceDraftTranscriptionCommand(
   deliverText$: DeliverVoiceTextCommand,
   lastAssistantMessage$: Computed<string | undefined>,
   state$: ComposerVoiceInputStateSignal,
-  storageKey$: Computed<Promise<string | null>>,
+  storageKey$: Computed<Promise<string>>,
 ): VoiceDraftTranscriptionCommand {
   const transcribe$ = command(async ({ get, set }, signal: AbortSignal) => {
     const current = get(state$);
@@ -138,13 +133,8 @@ function createVoiceDraftTranscriptionCommand(
     }
     const key = await get(storageKey$);
     signal.throwIfAborted();
-    const blob = key
-      ? await readVoiceDraftAudio(key, current.recording.id)
-      : current.audio;
+    const blob = await readVoiceDraftAudio(key, current.recording.id);
     signal.throwIfAborted();
-    if (!blob) {
-      throw new Error("Voice recording has no audio");
-    }
     const files = await prepareVoiceDraftAudio(blob, signal);
     signal.throwIfAborted();
     if (files.length > 0) {
@@ -187,12 +177,7 @@ function createVoiceDraftTranscriptionCommand(
     signal.throwIfAborted();
     set(state$, { ...current, status: "discarding" });
     const removed = await withCleanup(
-      settle(
-        key
-          ? deleteVoiceDraftRecording(key, current.recording.id)
-          : Promise.resolve(),
-        signal,
-      ),
+      settle(deleteVoiceDraftRecording(key, current.recording.id), signal),
       () => {
         if (get(state$).attempt === current.attempt) {
           set(state$, idleVoiceInputState());
@@ -236,7 +221,7 @@ function createVoiceDraftTranscriptionCommand(
 
 function createVoiceDraftRecoverySignals(
   state$: ComposerVoiceInputStateSignal,
-  storageKey$: Computed<Promise<string | null>>,
+  storageKey$: Computed<Promise<string>>,
 ) {
   const restore$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
@@ -247,10 +232,7 @@ function createVoiceDraftRecoverySignals(
         const key = await get(storageKey$);
         signal.throwIfAborted();
         const release = await lockVoiceDraft(key, signal);
-        return await withCleanup(
-          key ? readVoiceDraftRecording(key) : Promise.resolve(null),
-          release,
-        );
+        return await withCleanup(readVoiceDraftRecording(key), release);
       })(),
       signal,
     );
@@ -293,10 +275,7 @@ function createVoiceDraftRecoverySignals(
         const key = await get(storageKey$);
         signal.throwIfAborted();
         const release = await lockVoiceDraft(key, signal);
-        await withCleanup(
-          key ? deleteVoiceDraftRecording(key, recordingId) : Promise.resolve(),
-          release,
-        );
+        await withCleanup(deleteVoiceDraftRecording(key, recordingId), release);
       })(),
       signal,
     );
@@ -320,7 +299,7 @@ function createVoiceDraftCaptureCommand(
   return command(
     async (
       { get, set },
-      key: string | null,
+      key: string,
       recording: VoiceDraftRecordingRecord,
       release: () => Promise<void>,
       signal: AbortSignal,
@@ -349,12 +328,10 @@ function createVoiceDraftCaptureCommand(
         failed = true;
         await withCleanup(
           (async () => {
-            const saved = key ? await readVoiceDraftRecording(key) : null;
+            const saved = await readVoiceDraftRecording(key);
             signal.throwIfAborted();
             if (!storageFailed && (!saved || saved.sampleCount === 0)) {
-              if (key) {
-                await deleteVoiceDraftRecording(key, id);
-              }
+              await deleteVoiceDraftRecording(key, id);
               signal.throwIfAborted();
               set(state$, idleVoiceInputState());
             } else {
@@ -376,26 +353,24 @@ function createVoiceDraftCaptureCommand(
         onDomEventFn(() => {}),
         { autoSegment: false, autoStopOnSilence: false },
         {
-          persistence: key
-            ? {
-                append: (samples, sequence) => {
-                  return appendVoiceDraftSamples(key, id, sequence, samples);
-                },
-                fail: (error) => {
-                  failed = true;
-                  storageFailed = true;
-                  L.error("Voice recording could not be saved", error);
-                  toast.error(voiceDraftStorageFailedMessage());
-                  set(state$, {
-                    ...get(state$),
-                    message: voiceDraftStorageFailedMessage(),
-                  });
-                  if (!writeFailure.settled()) {
-                    writeFailure.resolve();
-                  }
-                },
+          persistence: {
+            append: (samples, sequence) => {
+              return appendVoiceDraftSamples(key, id, sequence, samples);
+            },
+            fail: (error) => {
+              failed = true;
+              storageFailed = true;
+              L.error("Voice recording could not be saved", error);
+              toast.error(voiceDraftStorageFailedMessage());
+              set(state$, {
+                ...get(state$),
+                message: voiceDraftStorageFailedMessage(),
+              });
+              if (!writeFailure.settled()) {
+                writeFailure.resolve();
               }
-            : undefined,
+            },
+          },
           finish: async (captured) => {
             signal.throwIfAborted();
             if (!captured || failed) {
@@ -407,7 +382,6 @@ function createVoiceDraftCaptureCommand(
             set(state$, {
               status: "transcribing",
               recording,
-              audio: captured.blob ?? undefined,
             });
             await withCleanup(set(transcribe$, signal), finishOwnership);
           },
@@ -426,7 +400,7 @@ function createVoiceDraftCaptureCommand(
 
 function createStartVoiceDraftRecordingCommand(
   state$: ComposerVoiceInputStateSignal,
-  storageKey$: Computed<Promise<string | null>>,
+  storageKey$: Computed<Promise<string>>,
   transcribe$: VoiceDraftTranscriptionCommand,
 ): Command<Promise<void>, [AbortSignal]> {
   const capture$ = createVoiceDraftCaptureCommand(state$, transcribe$);
@@ -447,12 +421,7 @@ function createStartVoiceDraftRecordingCommand(
     }
     const release = locked.value;
     const id = crypto.randomUUID();
-    const created = await settle(
-      key
-        ? createVoiceDraftRecording(key, id)
-        : Promise.resolve({ id, chunkCount: 0, sampleCount: 0 }),
-      signal,
-    );
+    const created = await settle(createVoiceDraftRecording(key, id), signal);
     signal.throwIfAborted();
     if (!created.ok || created.value.id !== id) {
       await release();
@@ -470,7 +439,7 @@ function createStartVoiceDraftRecordingCommand(
 
 function createVoiceDraftRetryCommand(
   state$: ComposerVoiceInputStateSignal,
-  storageKey$: Computed<Promise<string | null>>,
+  storageKey$: Computed<Promise<string>>,
   transcribe$: VoiceDraftTranscriptionCommand,
   restore$: VoiceDraftTranscriptionCommand,
 ) {
@@ -492,9 +461,7 @@ function createVoiceDraftRetryCommand(
         const release = await lockVoiceDraft(key, signal);
         await withCleanup(
           (async () => {
-            const saved = key
-              ? await readVoiceDraftRecording(key)
-              : current.recording;
+            const saved = await readVoiceDraftRecording(key);
             signal.throwIfAborted();
             if (saved?.id !== current.recording?.id) {
               set(
@@ -523,11 +490,34 @@ function createVoiceDraftRetryCommand(
   return retry$;
 }
 
+function createVoiceDraftOwner(restore$: VoiceDraftTranscriptionCommand) {
+  const owner$ = state<AbortController | null>(null);
+  const initialize$ = command(async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    get(owner$)?.abort();
+    const owner = createChildAbortController(signal);
+    set(owner$, owner);
+    await set(restore$, owner.signal);
+  });
+  const bind = (action$: VoiceDraftTranscriptionCommand) => {
+    return command(async ({ get, set }, signal: AbortSignal) => {
+      const owner = get(owner$);
+      if (!owner) {
+        throw new Error("Voice composer has not initialized");
+      }
+      // A dialog may disappear while its page remains mounted. Stop its work
+      // with the committed composer so saved audio can be recovered elsewhere.
+      await set(action$, AbortSignal.any([owner.signal, signal]));
+    });
+  };
+  return { initialize$, bind };
+}
+
 export function createComposerVoiceInputSignals(
   appendText$: Command<void, [string]>,
   deliverText$: DeliverVoiceTextCommand,
   lastAssistantMessage$: Computed<string | undefined>,
-  draftTarget: string | null,
+  draftTarget: string,
 ): ComposerVoiceInputSignals {
   const state$ = state<ComposerVoiceInputState>({
     status: "restoring",
@@ -536,14 +526,12 @@ export function createComposerVoiceInputSignals(
   const status$ = computed((get): ComposerVoiceInputStatus => {
     return get(voiceInputV2Enabled$) ? get(state$).status : "idle";
   });
-  const storageKey$ = computed(async (get): Promise<string | null> => {
-    if (!draftTarget) {
-      return null;
-    }
+  const storageKey$ = computed(async (get): Promise<string> => {
     const identity = await get(authenticatedIdentity$);
     return JSON.stringify([identity.userId, identity.orgId, draftTarget]);
   });
   const recovery = createVoiceDraftRecoverySignals(state$, storageKey$);
+  const owner = createVoiceDraftOwner(recovery.restore$);
   const transcribe$ = createVoiceDraftTranscriptionCommand(
     deliverText$,
     lastAssistantMessage$,
@@ -613,6 +601,7 @@ export function createComposerVoiceInputSignals(
       );
     },
   );
+  const ownedToggle$ = owner.bind(toggle$);
   return {
     status$,
     message$: computed((get) => {
@@ -621,9 +610,11 @@ export function createComposerVoiceInputSignals(
     recordingAvailable$: computed((get) => {
       return get(state$).recording !== null;
     }),
-    toggle$,
-    retry$,
-    discard$: recovery.discard$,
-    restore$: recovery.restore$,
+    toggle$: command(async ({ get, set }, signal: AbortSignal) => {
+      await set(get(voiceInputV2Enabled$) ? ownedToggle$ : toggle$, signal);
+    }),
+    retry$: owner.bind(retry$),
+    discard$: owner.bind(recovery.discard$),
+    initialize$: owner.initialize$,
   };
 }

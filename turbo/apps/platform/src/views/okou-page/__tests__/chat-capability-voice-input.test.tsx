@@ -1066,12 +1066,25 @@ test("Transcribe long voice dictation in ordered segments", async () => {
   type SpeechPhase = "first" | "pause" | "second" | "silence";
   let phase: SpeechPhase = "first";
   let requestNumber = 0;
+  let recorderStarts = 0;
   const firstRequestStarted = context.mocks.deferred<void>();
   const firstTranscriptReady = context.mocks.deferred<void>();
   const secondRequestStarted = context.mocks.deferred<void>();
   const secondTranscriptReady = context.mocks.deferred<void>();
+  const secondSpeechCaptured = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({
+    onRecorderStart: () => {
+      recorderStarts += 1;
+      if (recorderStarts === 2) {
+        // Resume speech at the capture boundary. Waiting for HTTP dispatch
+        // would let the simulated pause reach the real silence-stop timer.
+        phase = "second";
+      }
+    },
     rms: () => {
+      if (phase === "second" && !secondSpeechCaptured.settled()) {
+        secondSpeechCaptured.resolve();
+      }
       return phase === "first" || phase === "second" ? 0.12 : 0;
     },
   });
@@ -1096,7 +1109,7 @@ test("Transcribe long voice dictation in ordered segments", async () => {
 
   phase = "pause";
   await firstRequestStarted.promise;
-  phase = "second";
+  await secondSpeechCaptured.promise;
 
   expect(normalizedComposerText()).toBe("");
   await expect(findButton("Stop recording")).resolves.toBeEnabled();

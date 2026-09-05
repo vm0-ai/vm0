@@ -7,7 +7,10 @@ through AudioWorklet and continuously appends ordered chunks to IndexedDB,
 isolated by user, organization, and thread or agent. IndexedDB is the sole
 persistent recording source; recording identity and state are never TipTap
 nodes or text-draft fields. A browser Web Lock owns each target, and writes and
-deletions check the recording identity.
+deletions check the recording identity. Forwarding composers use the selected
+thread or agent target too; their temporary text does not opt audio out of
+persistence. Closing a composer releases its recording and transcription work,
+even when the surrounding page remains open.
 
 Recording and transcription block submission. Failures retain saved audio for
 Retry; composer initialization restores interrupted work as retryable without

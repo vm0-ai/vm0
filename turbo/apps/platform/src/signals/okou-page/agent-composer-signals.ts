@@ -301,7 +301,7 @@ function createAgentComposerSignalsWithDraft(
       save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,
     },
     chatEvents$,
-    voiceDraftTarget: options.forward ? null : `agent:${agentId}`,
+    voiceDraftTarget: `agent:${agentId}`,
     singleLineOnMobile: false,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
