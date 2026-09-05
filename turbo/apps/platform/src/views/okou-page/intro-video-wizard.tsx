@@ -315,7 +315,7 @@ function SettingTrigger({
         <small className="block text-[11px] text-muted-foreground">
           {label}
         </small>
-        <strong className="mt-0.5 block truncate text-sm font-medium text-foreground">
+        <strong className="mt-0.5 line-clamp-2 min-h-8 text-xs font-medium leading-4 text-foreground sm:block sm:min-h-0 sm:truncate sm:text-sm sm:leading-normal">
           {value}
         </strong>
       </span>
