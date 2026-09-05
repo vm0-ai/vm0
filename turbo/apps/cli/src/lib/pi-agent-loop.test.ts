@@ -2,7 +2,14 @@ import { zstdDecompressSync } from "node:zlib";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,8 +22,25 @@ import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import {
   piSandboxAgentConfigFromEnv,
   recordPiMemoryToolSourceUse,
+  runPiSandboxAgentLoop,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
+
+const runtimeMocks = vi.hoisted(() => {
+  return {
+    runPiMemoryPhase2MountedConsolidation: vi.fn(),
+  };
+});
+
+vi.mock("@okouai/pi-agent-runtime/node", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@okouai/pi-agent-runtime/node")>();
+  return {
+    ...original,
+    runPiMemoryPhase2MountedConsolidation:
+      runtimeMocks.runPiMemoryPhase2MountedConsolidation,
+  };
+});
 
 const RUN_ID = "00000000-0000-4000-8000-000000000123";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -355,6 +379,7 @@ class RpcHost {
 }
 
 beforeEach(async () => {
+  runtimeMocks.runPiMemoryPhase2MountedConsolidation.mockReset();
   launchPayloadDirectory = await mkdtemp(join(tmpdir(), "okou-pi-launch-"));
   launchPayloadFile = join(launchPayloadDirectory, "payload.json");
   await writeFile(launchPayloadFile, JSON.stringify(CONFIG.launchPayload));
@@ -604,6 +629,122 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 describe("sandbox Pi agent loop", () => {
+  it("writes the private maintenance attestation only after mounted validation", async () => {
+    const validationFile = join(
+      launchPayloadDirectory,
+      "maintenance-validation.json",
+    );
+    const validatedVersionId = "c".repeat(64);
+    const maintenance = {
+      schemaVersion: 1 as const,
+      memoryStorageId: "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63",
+      claimedRevision: 7,
+      claimedBaseVersionId: "a".repeat(64),
+      leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+      selectionDigest: "b".repeat(64),
+      selected: [
+        {
+          piSessionId: SESSION_ID,
+          sourceRunId: "22222222-2222-4222-8222-222222222222",
+          sourceHistoryHash: "d".repeat(64),
+          sourceCompletedAt: "2026-09-05T02:00:00.000Z",
+          rawMemory: "private memory",
+          rolloutSummary: "private evidence",
+          rolloutSlug: null,
+        },
+      ],
+    };
+    runtimeMocks.runPiMemoryPhase2MountedConsolidation.mockResolvedValue({
+      status: "prepared",
+      validatedVersionId,
+    });
+    await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
+
+    await runPiSandboxAgentLoop({
+      config: {
+        ...CONFIG,
+        launchPayload: {
+          ...CONFIG.launchPayload,
+          launchConfig: {
+            ...CONFIG.launchPayload.launchConfig,
+            maintenance,
+          },
+        },
+      },
+      maintenanceValidationFile: validationFile,
+    });
+
+    expect(
+      runtimeMocks.runPiMemoryPhase2MountedConsolidation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memoryStorageId: maintenance.memoryStorageId,
+        claimedRevision: maintenance.claimedRevision,
+        claimedBaseVersionId: maintenance.claimedBaseVersionId,
+        leaseToken: maintenance.leaseToken,
+        selectionDigest: maintenance.selectionDigest,
+        selected: [
+          expect.objectContaining({
+            rawMemory: "private memory",
+            sourceCompletedAt: new Date("2026-09-05T02:00:00.000Z"),
+          }),
+        ],
+      }),
+      expect.any(AbortSignal),
+    );
+    await expect(readFile(validationFile, "utf8")).resolves.toBe(
+      JSON.stringify({
+        schemaVersion: 1,
+        runId: RUN_ID,
+        memoryStorageId: maintenance.memoryStorageId,
+        claimedRevision: maintenance.claimedRevision,
+        claimedBaseVersionId: maintenance.claimedBaseVersionId,
+        leaseToken: maintenance.leaseToken,
+        selectionDigest: maintenance.selectionDigest,
+        validatedVersionId,
+      }),
+    );
+    expect((await stat(validationFile)).mode & 0o777).toBe(0o600);
+  });
+
+  it("removes a stale maintenance attestation when validation fails", async () => {
+    const validationFile = join(
+      launchPayloadDirectory,
+      "maintenance-validation.json",
+    );
+    await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
+    runtimeMocks.runPiMemoryPhase2MountedConsolidation.mockRejectedValue(
+      new Error("provider failed"),
+    );
+
+    await expect(
+      runPiSandboxAgentLoop({
+        config: {
+          ...CONFIG,
+          launchPayload: {
+            ...CONFIG.launchPayload,
+            launchConfig: {
+              ...CONFIG.launchPayload.launchConfig,
+              maintenance: {
+                schemaVersion: 1,
+                memoryStorageId: "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63",
+                claimedRevision: 7,
+                claimedBaseVersionId: "a".repeat(64),
+                leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+                selectionDigest: "b".repeat(64),
+                selected: [],
+              },
+            },
+          },
+        },
+        maintenanceValidationFile: validationFile,
+      }),
+    ).rejects.toThrow("provider failed");
+    await expect(readFile(validationFile)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("records content-free memory source use with run and session correlation", () => {
     const writes: string[] = [];
     const write = vi
