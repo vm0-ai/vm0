@@ -133,7 +133,7 @@ function mockBillingTier(
 async function findComposerEditor(): Promise<HTMLElement> {
   return await waitFor(() => {
     const editor = document.querySelector(
-      '.zero-composer [contenteditable="true"]',
+      '.okou-composer [contenteditable="true"]',
     );
     if (!(editor instanceof HTMLElement)) {
       throw new Error("Composer editor not found");

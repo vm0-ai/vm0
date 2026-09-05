@@ -15,7 +15,6 @@ import {
   workflowAutomationsContract,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -656,9 +655,7 @@ interface MultiAccountGmailTestFixture extends GmailTestFixture {
 
 async function setupMultiAccountGmailFixture(): Promise<MultiAccountGmailTestFixture> {
   const fixture = await setupFixture();
-  await updateFeatureSwitchesForUser(context, fixture.actor, {
-    [FeatureSwitchKey.ConnectorAccounts]: true,
-  });
+  await updateFeatureSwitchesForUser(context, fixture.actor, {});
   const firstEmail = uniqueGmailEmail();
   const secondEmail = uniqueGmailEmail();
   const firstConnectorId = await connectGmail(
@@ -1759,9 +1756,7 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailEnv();
     const recorder = configureGmailWatchLifecycleMock();
     const { actor, agentId, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, actor, {});
     const firstConnectorId = await connectGmail(
       actor,
       uniqueGmailEmail(),

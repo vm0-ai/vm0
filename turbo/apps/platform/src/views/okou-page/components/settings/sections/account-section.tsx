@@ -26,7 +26,7 @@ export function AccountSection() {
   const initial = (displayName || email || "U").charAt(0).toUpperCase();
 
   return (
-    <div className="flex items-center gap-4 bg-card rounded-xl zero-border p-5">
+    <div className="flex items-center gap-4 bg-card rounded-xl okou-border p-5">
       <UserAvatar
         imageUrl={user?.imageUrl}
         name={displayName}

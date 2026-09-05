@@ -125,6 +125,8 @@ _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 # Release: auth marker is popped by terminal cleanup.
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
 _HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+# Match the existing 64 KiB HTTP/2/SigV4 minimum per-field accounting budget.
+_MAX_REQUEST_HEADER_FIELDS = 2048
 _MAX_REQUEST_HEADER_NAME_BYTES = 4096
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
@@ -748,6 +750,13 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
     request_header_fields = flow.request.headers.fields
+    if len(request_header_fields) > _MAX_REQUEST_HEADER_FIELDS:
+        # A local response waits for body completion. Kill before mitmproxy's
+        # Expect lookup instead of retaining or rescanning the rejected tuple.
+        flow.request.headers.fields = ()
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        flow.kill()
+        return None
     if any(len(name) > _MAX_REQUEST_HEADER_NAME_BYTES for name, _value in request_header_fields):
         # Mitmproxy performs an Expect lookup after this hook, so rejected names
         # must be gone before control returns while ordinary protocol fields stay.

@@ -250,7 +250,7 @@ function ArtifactSharedConversationList({
   const { t } = useTranslation();
   const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
   return (
-    <ul className="zero-card divide-y divide-border overflow-hidden">
+    <ul className="okou-card divide-y divide-border overflow-hidden">
       {artifacts.map((artifact) => {
         return (
           <li key={artifact.id}>
@@ -338,7 +338,7 @@ export function ArtifactCatalogSkeleton({
   if (layout === "list") {
     return (
       <div
-        className="zero-card divide-y divide-border overflow-hidden"
+        className="okou-card divide-y divide-border overflow-hidden"
         aria-label={loadingLabel}
       >
         {Array.from({ length: 8 }, (_, index) => {

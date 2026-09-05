@@ -49,7 +49,7 @@ export default [
     ...pluginReact.configs.flat.recommended,
     settings: {
       react: { version: "detect" },
-      "vm0/eslint-cache-fingerprint": eslintCacheFingerprint,
+      "okou/eslint-cache-fingerprint": eslintCacheFingerprint,
     },
   },
   {
@@ -134,7 +134,7 @@ export default [
       "src/signals/fetch.ts",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": "error",
+      "okou/no-abort-signal-in-object-params": "error",
     },
   },
   {

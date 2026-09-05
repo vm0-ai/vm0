@@ -9,8 +9,6 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronLeft,
-  ChevronRight,
   Columns2,
   FileMusic,
   Image,
@@ -81,8 +79,12 @@ import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   ArtifactActionSeparator,
   ArtifactDownloadMenu,
+  ArtifactImageNavigationControls,
+  ArtifactImageNavigationKeydown,
+  ArtifactImageZoomControls,
   ArtifactShareButton,
   type ArtifactDownloadSyncTarget,
+  type ArtifactImageNavigationActions,
 } from "./artifact-actions.tsx";
 import {
   artifactFallbackSubtitle,
@@ -92,12 +94,8 @@ import {
   currentEventImageArtifactNavigation,
   equalEventImageGroups,
   type ImageArtifactNavigationItem,
-  shouldIgnoreImageArtifactNavigationKey,
 } from "./artifact-image-navigation.ts";
-import {
-  ZoomableArtifactImageCanvas,
-  type ZoomableImageControls,
-} from "./zoomable-image-canvas.tsx";
+import { ZoomableArtifactImageCanvas } from "./zoomable-image-canvas.tsx";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
@@ -307,11 +305,6 @@ type ArtifactDialogItem = {
   file: ChatThreadArtifactFile;
 };
 
-type ArtifactImageNavigationActions = {
-  readonly onNext?: () => void;
-  readonly onPrevious?: () => void;
-};
-
 function artifactDialogKindLabel(
   preview: AttachmentLightboxState,
   artifact: AttachmentArtifactMetadata | undefined,
@@ -482,171 +475,12 @@ function ArtifactDialogCard({
       className={`flex w-full flex-1 flex-col overflow-hidden ${
         fillHeight
           ? "h-full min-h-0 bg-transparent"
-          : "zero-chat-card min-h-[420px]"
+          : "okou-chat-card min-h-[420px]"
       }`}
       data-testid="artifact-dialog-card"
     >
       {children}
     </div>
-  );
-}
-
-function ArtifactDialogImageZoomControls({
-  controls,
-}: {
-  controls: ZoomableImageControls;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
-      data-testid="artifact-dialog-image-zoom-controls"
-    >
-      <button
-        type="button"
-        onClick={controls.zoomOut}
-        disabled={!controls.canZoomOut}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label={t(($) => {
-          return $.artifacts.actions.zoomOut;
-        })}
-        title={t(($) => {
-          return $.artifacts.actions.zoomOut;
-        })}
-      >
-        -
-      </button>
-      <span className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground">
-        {Math.round(controls.zoom * 100)}%
-      </span>
-      <button
-        type="button"
-        onClick={controls.zoomIn}
-        disabled={!controls.canZoomIn}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label={t(($) => {
-          return $.artifacts.actions.zoomIn;
-        })}
-        title={t(($) => {
-          return $.artifacts.actions.zoomIn;
-        })}
-      >
-        +
-      </button>
-      <button
-        type="button"
-        onClick={controls.resetZoom}
-        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
-        aria-label={t(($) => {
-          return $.artifacts.actions.resetZoom;
-        })}
-        title={t(($) => {
-          return $.artifacts.actions.resetZoom;
-        })}
-      >
-        <RotateCcw size={15} />
-      </button>
-    </div>
-  );
-}
-
-function ArtifactDialogImageNavigationControls({
-  navigation,
-}: {
-  navigation?: ArtifactImageNavigationActions;
-}) {
-  const { t } = useTranslation();
-  if (!navigation?.onPrevious && !navigation?.onNext) {
-    return null;
-  }
-
-  return (
-    <>
-      {navigation.onPrevious && (
-        <Button
-          showTooltip
-          type="button"
-          onClick={navigation.onPrevious}
-          aria-label={t(($) => {
-            return $.artifacts.actions.previousImage;
-          })}
-          title={t(($) => {
-            return $.artifacts.actions.previousImage;
-          })}
-          data-testid="artifact-dialog-previous-image"
-          variant="quiet"
-          size="icon-lg"
-          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
-        >
-          <ChevronLeft size={22} />
-        </Button>
-      )}
-      {navigation.onNext && (
-        <Button
-          showTooltip
-          type="button"
-          onClick={navigation.onNext}
-          aria-label={t(($) => {
-            return $.artifacts.actions.nextImage;
-          })}
-          title={t(($) => {
-            return $.artifacts.actions.nextImage;
-          })}
-          data-testid="artifact-dialog-next-image"
-          variant="quiet"
-          size="icon-lg"
-          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
-        >
-          <ChevronRight size={22} />
-        </Button>
-      )}
-    </>
-  );
-}
-
-function ArtifactDialogImageNavigationKeydown({
-  navigation,
-}: {
-  navigation?: ArtifactImageNavigationActions;
-}) {
-  let cleanup: (() => void) | null = null;
-
-  return (
-    <span
-      ref={(node) => {
-        cleanup?.();
-        cleanup = null;
-        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
-          return;
-        }
-
-        const onKeyDown = (event: KeyboardEvent) => {
-          // The lightbox modal is an immersive overlay: arrow keys always
-          // navigate, regardless of focus.
-          if (
-            shouldIgnoreImageArtifactNavigationKey(event, {
-              considerFocus: false,
-            })
-          ) {
-            return;
-          }
-          if (event.key === "ArrowLeft" && navigation.onPrevious) {
-            event.preventDefault();
-            navigation.onPrevious();
-          }
-          if (event.key === "ArrowRight" && navigation.onNext) {
-            event.preventDefault();
-            navigation.onNext();
-          }
-        };
-
-        document.addEventListener("keydown", onKeyDown, true);
-        cleanup = () => {
-          document.removeEventListener("keydown", onKeyDown, true);
-        };
-      }}
-      hidden
-    />
   );
 }
 
@@ -822,11 +656,20 @@ function ArtifactDialogImageStage({
               }
             >
               {(controls) => {
-                return <ArtifactDialogImageZoomControls controls={controls} />;
+                return (
+                  <ArtifactImageZoomControls
+                    controls={controls}
+                    nativeTitle
+                    testIdPrefix="artifact-dialog"
+                  />
+                );
               }}
             </ZoomableArtifactImageCanvas>
           )}
-          <ArtifactDialogImageNavigationControls navigation={imageNavigation} />
+          <ArtifactImageNavigationControls
+            navigation={imageNavigation}
+            testIdPrefix="artifact-dialog"
+          />
         </div>
       </ArtifactDialogCard>
     </ArtifactDialogStage>
@@ -866,7 +709,7 @@ function ArtifactDialogVideoBody({
   return (
     <ArtifactDialogStage centered>
       <div
-        className="zero-chat-frame w-full overflow-hidden bg-black"
+        className="okou-chat-frame w-full overflow-hidden bg-black"
         data-testid="artifact-dialog-video-stage"
       >
         {resourceUrl !== null && (
@@ -902,7 +745,7 @@ function ArtifactDialogAudioBody({
 
   return (
     <ArtifactDialogStage centered>
-      <div className="zero-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
+      <div className="okou-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
         <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
           <FileMusic size={28} />
         </span>
@@ -949,7 +792,7 @@ function ArtifactDialogDocumentFrameBody({
   return (
     <ArtifactDialogStage scrollable={false}>
       <div
-        className="zero-chat-card flex h-full min-h-0 w-full flex-1 overflow-hidden"
+        className="okou-chat-card flex h-full min-h-0 w-full flex-1 overflow-hidden"
         data-testid="artifact-dialog-document-frame"
       >
         {src !== null && (
@@ -974,7 +817,7 @@ function ArtifactDialogGenericFileBody({ filename }: { filename: string }) {
   const { t } = useTranslation();
   return (
     <ArtifactDialogStage centered>
-      <div className="zero-chat-card flex w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
+      <div className="okou-chat-card flex w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
         <p className="text-sm">
           {t(($) => {
             return $.artifacts.preview.noInline;
@@ -1433,7 +1276,7 @@ function ArtifactPreviewDialogContent({
       <DialogContent
         ref={dialogMountRef}
         showCloseButton={false}
-        overlayClassName="zero-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
+        overlayClassName="okou-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
         className={cn(
           "fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
           fullscreen ? "p-0" : "p-6",
@@ -1446,7 +1289,10 @@ function ArtifactPreviewDialogContent({
         )}
         data-testid="attachment-lightbox"
       >
-        <ArtifactDialogImageNavigationKeydown
+        {/* An immersive overlay: arrow keys always navigate, regardless of focus. */}
+        <ArtifactImageNavigationKeydown
+          capture
+          considerFocus={false}
           navigation={preview.kind === "image" ? imageNavigation : undefined}
         />
         {/*
@@ -1466,7 +1312,7 @@ function ArtifactPreviewDialogContent({
           className={cn(
             "relative flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
             fullscreen
-              ? "zero-fixed-viewport-shell w-dvw rounded-none"
+              ? "okou-fixed-viewport-shell w-dvw rounded-none"
               : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-xl",
           )}
           data-testid="attachment-lightbox-panel"

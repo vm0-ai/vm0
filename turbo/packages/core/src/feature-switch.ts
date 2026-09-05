@@ -324,6 +324,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the background-free avatar composer for new agents and avatar customization.",
     enabled: true,
   },
+  [FeatureSwitchKey.AvatarNeckSweater]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
+    enabled: false,
+    // Staff first: this redraws every avatar that already exists, not just
+    // newly created ones, so the whole population changes the moment it widens.
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -388,13 +397,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Replace the three-block chat thinking loader with a rotating Okou mark.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MarkdownHexColorPreview]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -463,12 +465,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorAccounts]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable multiple credential accounts per built-in or custom connector.",
-    enabled: true,
   },
   [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: {
     maintainer: "bingjie@vm0.ai",

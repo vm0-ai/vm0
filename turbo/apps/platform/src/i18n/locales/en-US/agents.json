@@ -53,7 +53,8 @@
       "face": "Face",
       "hair": "Hair",
       "mood": "Mood",
-      "skin": "Skin"
+      "skin": "Skin",
+      "sweater": "Sweater"
     },
     "title": "Give your agent a face",
     "use": "Use this avatar"
@@ -76,7 +77,6 @@
   "detail": {
     "chatWith": "Chat with {{agentName}}",
     "defaultDescription": "Your AI teammate, tuned to you",
-    "noSelection": "No agent selected",
     "notFound": {
       "back": "Back to team",
       "description": "The agent “{{agentId}}” doesn't exist or you don't have access to it.",

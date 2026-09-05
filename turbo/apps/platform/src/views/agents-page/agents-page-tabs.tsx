@@ -222,7 +222,7 @@ function AgentTabsView({
         <Button
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+          className="okou-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
           disabled={createDisabled}
           onClick={() => {
             return onCreate(activeTab);
@@ -254,7 +254,7 @@ function AgentTabsView({
 function PrivateEmptyState() {
   const { t } = useTranslation("agents");
   return (
-    <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+    <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
       <img
         src={platformEmptyPrivateAgentsImg}
         alt=""
@@ -321,7 +321,7 @@ function AgentGridSkeleton() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {[1, 2, 3].map((i) => {
         return (
-          <Card key={i} className="zero-card">
+          <Card key={i} className="okou-card">
             <CardContent className="p-4">
               <div className="flex items-center gap-3 animate-pulse">
                 <div className="h-10 w-10 rounded-full bg-muted" />
@@ -708,7 +708,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
           }))
     : "";
   return (
-    <Card className="zero-card cursor-pointer flex flex-col hover:bg-state-hover transition-colors h-full">
+    <Card className="okou-card cursor-pointer flex flex-col hover:bg-state-hover transition-colors h-full">
       <CardContent className="flex flex-1 flex-col gap-3 px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="relative h-10 w-10 shrink-0">
@@ -735,8 +735,8 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                     style={{
                       backgroundColor: "hsl(var(--popover))",
                       color: "hsl(var(--popover-foreground))",
-                      // Matches --zero-card-shadow; inlined because the tooltip
-                      // portal renders outside .zero-app where the var is scoped.
+                      // Matches --okou-card-shadow; inlined because the tooltip
+                      // portal renders outside .okou-app where the var is scoped.
                       boxShadow:
                         "0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025)",
                       whiteSpace: "normal",

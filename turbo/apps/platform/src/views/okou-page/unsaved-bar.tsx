@@ -20,10 +20,10 @@ export function UnsavedBar({
   saveLabel = "Save",
 }: UnsavedBarProps) {
   const bar = (
-    <div className="zero-app fixed bottom-[max(1.5rem,var(--sab))] left-0 right-0 z-40 flex justify-center px-4">
+    <div className="okou-app fixed bottom-[max(1.5rem,var(--sab))] left-0 right-0 z-40 flex justify-center px-4">
       <div
         data-testid="unsaved-bar"
-        className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
+        className="okou-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
           <Pencil size={18} className="shrink-0" />

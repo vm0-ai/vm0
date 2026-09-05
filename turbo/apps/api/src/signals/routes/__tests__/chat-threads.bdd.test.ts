@@ -20,7 +20,6 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -71,7 +70,6 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
 import {
@@ -3643,10 +3641,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     if (!actor.orgId) {
       throw new Error("Expected an entitled chat actor with an organization");
     }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
 

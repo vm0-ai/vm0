@@ -13,7 +13,6 @@ import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@okouai/ui";
 import {
@@ -21,25 +20,18 @@ import {
   type CustomConnectorResponse,
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
-  disconnectCustomConnector$,
   closeCustomConnectorDialog$,
   connectCustomConnectorAccountAuthorization$,
-  connectCustomConnectorAuthorization$,
   customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
   customConnectors$,
   openCustomConnectorAccessDialog$,
-  openCustomConnectorConnectDialog$,
   openCustomConnectorDeleteDialog$,
   openCustomConnectorEditDialog$,
 } from "../../../../signals/okou-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-import {
-  customConnectorMcpEnabled$,
-  featureSwitch$,
-} from "../../../../signals/external/feature-switch.ts";
+import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
@@ -82,13 +74,11 @@ interface CustomConnectorRowProps {
   readonly isAdmin: boolean;
   readonly mcpEnabled: boolean;
   readonly onConnect: () => void;
-  readonly onDisconnect: () => void;
   readonly onEdit: () => void;
   readonly onManageAccess: () => void;
   readonly onDelete: () => void;
   readonly accountSummary?: ConnectorAccountSummary;
   readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
-  readonly accountManagement: boolean;
   readonly onManageAccounts: () => void;
 }
 
@@ -127,7 +117,6 @@ interface CustomConnectorCardContentProps {
   readonly onManageAccess: () => void;
   readonly accountSummary?: ConnectorAccountSummary;
   readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
-  readonly accountManagement: boolean;
 }
 
 function CustomConnectorHeaderContent({
@@ -184,30 +173,6 @@ function CustomConnectorCardHeader({
   );
 }
 
-function CustomConnectorConnectionStatus({
-  connected,
-}: {
-  readonly connected: boolean;
-}) {
-  const { t } = useTranslation();
-  return (
-    <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
-      <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          connected ? "bg-emerald-500" : "bg-muted-foreground/50"
-        }`}
-      />
-      {connected
-        ? t(($) => {
-            return $.connectors.custom.statusConnected;
-          })
-        : t(($) => {
-            return $.connectors.catalog.filters.notConnected;
-          })}
-    </span>
-  );
-}
-
 function CustomConnectorCardFooter({
   connector,
   hasActions,
@@ -215,32 +180,25 @@ function CustomConnectorCardFooter({
   onManageAccess,
   accountSummary,
   accountSummaryStatus,
-  accountManagement,
-}: Omit<CustomConnectorCardContentProps, "canConnect">) {
+}: CustomConnectorCardContentProps) {
   return (
     <div
       className={`flex h-11 items-center justify-between gap-2 border-t border-border/50 pl-5 ${
         hasActions ? "pr-12" : "pr-2"
       }`}
     >
-      {accountManagement ? (
-        <ConnectorAccountSummaryText
-          summary={accountSummary}
-          status={accountSummaryStatus}
-          className="min-w-0 flex-1 text-xs text-muted-foreground"
+      <ConnectorAccountSummaryText
+        summary={accountSummary}
+        status={accountSummaryStatus}
+        className="min-w-0 flex-1 text-xs text-muted-foreground"
+      />
+      <div className="relative z-20 min-w-0 max-w-full">
+        <CustomConnectorAgentAccess
+          connector={connector}
+          allowAccessIncrease={allowAccessIncrease}
+          onManageAccess={onManageAccess}
         />
-      ) : (
-        <CustomConnectorConnectionStatus connected={connector.connected} />
-      )}
-      {connector.connected || accountManagement ? (
-        <div className="relative z-20 min-w-0 max-w-full">
-          <CustomConnectorAgentAccess
-            connector={connector}
-            allowAccessIncrease={allowAccessIncrease}
-            onManageAccess={onManageAccess}
-          />
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -270,7 +228,7 @@ function CustomConnectorActivationCard({
   const { t } = useTranslation();
   return (
     <div
-      className={`zero-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
+      className={`okou-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
     >
       {canActivate ? (
         <button
@@ -293,25 +251,15 @@ function CustomConnectorActivationCard({
 }
 
 function CustomConnectorActions({
-  connector,
   hasActions,
-  canActivate,
-  accountManagement,
   adminCanEdit,
   adminCanDelete,
-  onConnect,
-  onDisconnect,
   onEdit,
   onDelete,
 }: {
-  readonly connector: CustomConnectorResponse;
   readonly hasActions: boolean;
-  readonly canActivate: boolean;
-  readonly accountManagement: boolean;
   readonly adminCanEdit: boolean;
   readonly adminCanDelete: boolean;
-  readonly onConnect: () => void;
-  readonly onDisconnect: () => void;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }) {
@@ -319,7 +267,6 @@ function CustomConnectorActions({
   if (!hasActions) {
     return null;
   }
-  const directAuthorization = connectsDirectlyWithAuthorization(connector);
   return (
     <div className="absolute bottom-2 right-2 z-20">
       <DropdownMenu>
@@ -337,27 +284,6 @@ function CustomConnectorActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
-          {canActivate && !accountManagement && directAuthorization ? (
-            <DropdownMenuItem onClick={onConnect}>
-              {t(($) => {
-                return $.connectors.actions.connect;
-              })}
-            </DropdownMenuItem>
-          ) : null}
-          {canActivate && !accountManagement && !directAuthorization ? (
-            <DropdownMenuModalItem onModalSelect={onConnect}>
-              {t(($) => {
-                return $.connectors.actions.connect;
-              })}
-            </DropdownMenuModalItem>
-          ) : null}
-          {connector.connected && !accountManagement ? (
-            <DropdownMenuItem onClick={onDisconnect}>
-              {t(($) => {
-                return $.connectors.actions.disconnect;
-              })}
-            </DropdownMenuItem>
-          ) : null}
           {adminCanEdit ? (
             <DropdownMenuModalItem onModalSelect={onEdit}>
               {t(($) => {
@@ -386,13 +312,11 @@ function CustomConnectorRow({
   isAdmin,
   mcpEnabled,
   onConnect,
-  onDisconnect,
   onEdit,
   onManageAccess,
   onDelete,
   accountSummary,
   accountSummaryStatus,
-  accountManagement,
   onManageAccounts,
 }: CustomConnectorRowProps) {
   const adminCanDelete = isAdmin;
@@ -400,25 +324,20 @@ function CustomConnectorRow({
   const connectionActionsEnabled = mcpActionsEnabled;
   const adminCanEdit = adminCanDelete && mcpActionsEnabled;
   const accountCount = accountSummary?.accountCount ?? 0;
-  const canActivate = accountManagement
-    ? accountSummaryStatus === "ready" &&
-      (accountCount > 0 || connectionActionsEnabled)
-    : connectionActionsEnabled && !connector.connected;
-  const activate =
-    accountManagement && accountCount > 0 ? onManageAccounts : onConnect;
-  const managesAccounts = accountManagement && accountCount > 0;
-  const hasActions = connector.connected || adminCanDelete;
+  const canActivate =
+    accountSummaryStatus === "ready" &&
+    (accountCount > 0 || connectionActionsEnabled);
+  const activate = accountCount > 0 ? onManageAccounts : onConnect;
+  const managesAccounts = accountCount > 0;
+  const hasActions = adminCanDelete;
   const cardContent = (
     <CustomConnectorCardContent
       connector={connector}
       hasActions={hasActions}
-      allowAccessIncrease={
-        connectionActionsEnabled && (!accountManagement || accountCount > 0)
-      }
+      allowAccessIncrease={connectionActionsEnabled && accountCount > 0}
       onManageAccess={onManageAccess}
       accountSummary={accountSummary}
       accountSummaryStatus={accountSummaryStatus}
-      accountManagement={accountManagement}
     />
   );
 
@@ -433,14 +352,9 @@ function CustomConnectorRow({
         {cardContent}
       </CustomConnectorActivationCard>
       <CustomConnectorActions
-        connector={connector}
         hasActions={hasActions}
-        canActivate={canActivate}
-        accountManagement={accountManagement}
         adminCanEdit={adminCanEdit}
         adminCanDelete={adminCanDelete}
-        onConnect={onConnect}
-        onDisconnect={onDisconnect}
         onEdit={onEdit}
         onDelete={onDelete}
       />
@@ -455,8 +369,6 @@ function CustomConnectorDialogs({
 }) {
   const dialog = useGet(customConnectorDialog$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
-  const accountManagement =
-    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
   );
@@ -467,17 +379,13 @@ function CustomConnectorDialogs({
   const allowAccessIncrease =
     dialog.kind === "access" &&
     (dialog.connector.kind === "http" || mcpEnabled) &&
-    (!accountManagement ||
-      (accountSummariesLoadable.state === "hasData" &&
-        (accessAccountSummary?.accountCount ?? 0) > 0));
+    accountSummariesLoadable.state === "hasData" &&
+    (accessAccountSummary?.accountCount ?? 0) > 0;
   return (
     <>
       {dialog.kind === "create" && <CustomConnectorCreateDialog />}
       {dialog.kind === "edit" && (
         <CustomConnectorCreateDialog connector={dialog.connector} />
-      )}
-      {dialog.kind === "connect" && (
-        <CustomConnectorConnectDialog connector={dialog.connector} />
       )}
       {dialog.kind === "access" && (
         <CustomConnectorAccessManagementDialog
@@ -499,7 +407,7 @@ function CustomConnectorDialogs({
 function CustomConnectorEmptyState({ isAdmin }: { readonly isAdmin: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="zero-card py-12 flex flex-col items-center gap-3">
+    <div className="okou-card py-12 flex flex-col items-center gap-3">
       <img
         src={noConnectorImg}
         alt={t(($) => {
@@ -529,8 +437,6 @@ function CustomConnectorGrid({
   readonly isAdmin: boolean;
   readonly mcpEnabled: boolean;
 }) {
-  const connectorAccountsEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
   );
@@ -539,21 +445,14 @@ function CustomConnectorGrid({
   );
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openAccess = useSet(openCustomConnectorAccessDialog$);
-  const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
-  const connectAuthorization = useSet(connectCustomConnectorAuthorization$);
   const connectAccountAuthorization = useSet(
     connectCustomConnectorAccountAuthorization$,
   );
-  const disconnect = useSet(disconnectCustomConnector$);
   const signal = useGet(pageSignal$);
   const openAccountManager = useSet(openCustomAccountManager$);
   const openAccountConnect = useSet(openCustomAccountConnectDialog$);
   const finishAccountConnection = useSet(finishConnectorAccountConnection$);
-  const handleDisconnect = (connector: CustomConnectorResponse) => {
-    detach(disconnect(connector.id, signal), Reason.DomCallback);
-  };
-
   const finishExplicitAccountAdd = async (
     connector: CustomConnectorResponse,
     connectionId: string | null,
@@ -569,33 +468,22 @@ function CustomConnectorGrid({
     );
   };
   const handleConnect = (connector: CustomConnectorResponse) => {
-    if (connectorAccountsEnabled) {
-      if (connectsDirectlyWithAuthorization(connector)) {
-        detach(
-          (async () => {
-            const result = await connectAccountAuthorization(
-              { id: connector.id, account: { intent: "add" } },
-              signal,
-            );
-            if (result.connected) {
-              await finishExplicitAccountAdd(connector, result.connectionId);
-            }
-          })(),
-          Reason.DomCallback,
-        );
-        return;
-      }
-      openAccountConnect(connector, { kind: "add" });
-      return;
-    }
     if (connectsDirectlyWithAuthorization(connector)) {
       detach(
-        connectAuthorization({ id: connector.id }, signal),
+        (async () => {
+          const result = await connectAccountAuthorization(
+            { id: connector.id, account: { intent: "add" } },
+            signal,
+          );
+          if (result.connected) {
+            await finishExplicitAccountAdd(connector, result.connectionId);
+          }
+        })(),
         Reason.DomCallback,
       );
       return;
     }
-    openConnect(connector);
+    openAccountConnect(connector, { kind: "add" });
   };
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -613,9 +501,6 @@ function CustomConnectorGrid({
             onConnect={() => {
               return handleConnect(connector);
             }}
-            onDisconnect={() => {
-              return handleDisconnect(connector);
-            }}
             onEdit={() => {
               return openEdit(connector);
             }}
@@ -627,7 +512,6 @@ function CustomConnectorGrid({
             }}
             accountSummary={accountSummary}
             accountSummaryStatus={accountSummaryStatus}
-            accountManagement={connectorAccountsEnabled}
             onManageAccounts={() => {
               return openAccountManager(connector, signal);
             }}
@@ -659,6 +543,15 @@ function CustomAccountDialogs({
         <CustomConnectorConnectDialog
           connector={accountConnect.connector}
           accountMode={accountConnect.mode}
+          accountOptions={{
+            account:
+              accountConnect.mode.kind === "add"
+                ? { intent: "add" }
+                : {
+                    intent: "reconnect",
+                    connectionId: accountConnect.mode.connectionId,
+                  },
+          }}
           onClose={closeAccountConnect}
           onSuccess={async (connectionId) => {
             await finishAccountConnection(

@@ -43,7 +43,7 @@ import {
 } from "@okouai/ui";
 import {
   MODEL_PROVIDER_TYPES,
-  SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
   isBuiltInModelProviderType,
@@ -107,6 +107,7 @@ import {
   type ModelPriceTier,
 } from "../settings/provider-ui-config.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
+import { ProBadge } from "../model-provider-picker.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 
 function isOAuthMemberType(type: ModelProviderType): boolean {
@@ -283,17 +284,6 @@ function filterPolicyUpdatesForPlan(
   return allowed.map((policy, index) => {
     return { ...policy, isDefault: index === 0 };
   });
-}
-
-function ProBadge() {
-  const { t } = useTranslation();
-  return (
-    <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary-foreground">
-      {t(($) => {
-        return $.settings.models.picker.pro;
-      })}
-    </span>
-  );
 }
 
 function DefaultModelRow({
@@ -607,7 +597,7 @@ function AddModelButton({
       type="button"
       variant="outline"
       size="sm"
-      className="zero-btn-morandi h-9 gap-2 rounded-lg border"
+      className="okou-btn-morandi h-9 gap-2 rounded-lg border"
       disabled={disabled}
       onClick={onClick}
     >
@@ -1762,14 +1752,14 @@ export function OrgModelPoliciesSection() {
 
   const policies = data.policies;
   const visiblePolicies = policies.filter((policy) => {
-    return SUPPORTED_RUN_MODELS.includes(policy.model);
+    return ACTIVE_RUN_MODELS.includes(policy.model);
   });
   const configuredModels = new Set(
     policies.map((policy) => {
       return policy.model;
     }),
   );
-  const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
+  const addableModels = ACTIVE_RUN_MODELS.filter((model) => {
     return isAddableBuiltInModel(model) && !configuredModels.has(model);
   });
 

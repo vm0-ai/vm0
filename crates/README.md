@@ -130,7 +130,10 @@ cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 
 ## Testing
 
+Use the `local` profile for routine local validation. Omit it when full debug information or
+incremental compilation is more useful.
+
 ```bash
-cargo test
-cargo clippy --all-targets
+cargo test --profile local
+cargo clippy --profile local --all-targets
 ```

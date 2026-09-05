@@ -27,8 +27,10 @@ import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogStartOption,
 } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
+import type {
+  PlatformConnectorAccountMutationIntent,
+  PlatformConnectorCatalogStatusItem,
+} from "../../../../signals/connector-domain.ts";
 import {
   connectFlowConnectorSlug$,
   pollingOAuthAuthCodeConnectorSlug$,
@@ -64,10 +66,9 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 import { i18n } from "../../../../i18n/index.ts";
-import {
-  connectorAccountOptionsFor,
-  type ConnectorAccountConnectMode,
-  type ConnectorAccountMutationOptions,
+import type {
+  ConnectorAccountConnectMode,
+  ConnectorAccountMutationOptions,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 // ---------------------------------------------------------------------------
@@ -115,7 +116,7 @@ type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly useDefaultConnectorProjection?: boolean;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
@@ -154,7 +155,7 @@ type ConnectExternalCodeFn = (
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly agentId?: string;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: PlatformConnectorAccountMutationIntent;
     readonly authorizeVisibleAgents?: boolean;
   },
   signal: AbortSignal,
@@ -1233,7 +1234,7 @@ function AuthMethodDivider() {
   return (
     <div className="relative py-1">
       <div className="absolute inset-0 flex items-center">
-        <span className="w-full zero-border-t" />
+        <span className="w-full okou-border-t" />
       </div>
       <div className="relative flex justify-center text-xs">
         <span className="bg-background px-2 text-muted-foreground">
@@ -1511,7 +1512,7 @@ export function ConnectModal({
   onSuccess?: (connectionId: string | null) => void | Promise<void>;
   authorizeVisibleAgentsOnConnect?: boolean;
   agentId?: string;
-  accountOptions?: ConnectorAccountMutationOptions;
+  accountOptions: ConnectorAccountMutationOptions;
   accountMode?: ConnectorAccountConnectMode;
   reconnectAuthMethod?: ConnectorAuthMethodId;
 }) {
@@ -1575,9 +1576,7 @@ export function ConnectModal({
           item={item}
           agentId={agentId}
           authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
-          accountOptions={
-            accountOptions ?? connectorAccountOptionsFor(accountMode)
-          }
+          accountOptions={accountOptions}
           accountMode={accountMode}
           reconnectAuthMethod={reconnectAuthMethod}
           onSuccess={async (connectionId) => {

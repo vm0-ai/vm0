@@ -601,10 +601,14 @@ export async function setRunModelRuntimeRouteFixture(args: {
   readonly runId: string;
   readonly modelRuntimeProvider: string | null;
   readonly modelRuntimeModel: string | null;
+  readonly selectedModel?: string;
 }): Promise<void> {
   const updated = await db()
     .update(agentRuns)
     .set({
+      ...(args.selectedModel !== undefined && {
+        selectedModel: args.selectedModel,
+      }),
       modelRuntimeProvider: args.modelRuntimeProvider,
       modelRuntimeModel: args.modelRuntimeModel,
     })

@@ -169,7 +169,7 @@ function PresentationTemplateCard({
   return (
     <article
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-background shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        "group relative overflow-hidden rounded-xl border bg-background shadow-[var(--okou-card-shadow)] transition-colors hover:border-primary",
         selected && "border-primary",
       )}
     >
@@ -333,7 +333,7 @@ function IllustrationTemplateCard({
         { title: template.title },
       )}
       className={cn(
-        "mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border bg-background shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        "mb-3 inline-block w-full break-inside-avoid overflow-hidden rounded-xl border bg-background shadow-[var(--okou-card-shadow)] transition-colors hover:border-primary",
         selected && "border-primary",
       )}
       onClick={onSelect}
@@ -501,7 +501,7 @@ function VideoTemplateCard({
         { title: template.title },
       )}
       className={cn(
-        "overflow-hidden rounded-xl border bg-background text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary",
+        "overflow-hidden rounded-xl border bg-background text-left shadow-[var(--okou-card-shadow)] transition-colors hover:border-primary",
         selected && "border-primary",
       )}
       onClick={onSelect}

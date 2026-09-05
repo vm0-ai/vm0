@@ -120,25 +120,34 @@ export function AgentDialogSearch({
           })}
           className={`pl-9 ${query ? "pr-9" : ""}`}
         />
-        {query && (
-          <Button
-            showTooltip
-            type="button"
-            onClick={() => {
-              return setQuery("");
-            }}
-            variant="quiet"
-            size="icon-xs"
-            className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
-            aria-label={t(($) => {
-              return $.sidebar.clearSearch;
-            })}
-          >
-            <X size={14} />
-          </Button>
-        )}
+        {query && <ClearSearchButton setQuery={setQuery} />}
       </div>
     </div>
+  );
+}
+
+function ClearSearchButton({
+  setQuery,
+}: {
+  readonly setQuery: (query: string) => void;
+}) {
+  const { t } = useTranslation("agents");
+  return (
+    <Button
+      showTooltip
+      type="button"
+      onClick={() => {
+        return setQuery("");
+      }}
+      variant="quiet"
+      size="icon-xs"
+      className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
+      aria-label={t(($) => {
+        return $.sidebar.clearSearch;
+      })}
+    >
+      <X size={14} />
+    </Button>
   );
 }
 
@@ -207,8 +216,6 @@ function AgentCommandSearch({
   readonly setQuery: (query: string) => void;
   readonly placeholder: string;
 }) {
-  const { t } = useTranslation("agents");
-
   return (
     <div className="px-5 pb-3">
       <div className="relative w-full">
@@ -216,23 +223,7 @@ function AgentCommandSearch({
           placeholder={placeholder}
           className={query ? "pr-7" : ""}
         />
-        {query && (
-          <Button
-            showTooltip
-            type="button"
-            onClick={() => {
-              return setQuery("");
-            }}
-            variant="quiet"
-            size="icon-xs"
-            className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
-            aria-label={t(($) => {
-              return $.sidebar.clearSearch;
-            })}
-          >
-            <X size={14} />
-          </Button>
-        )}
+        {query && <ClearSearchButton setQuery={setQuery} />}
       </div>
     </div>
   );
@@ -1231,7 +1222,7 @@ export function ThreeColumnSearchDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="zero-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
+      className="okou-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
       commandClassName="gap-0"
       commandProps={{
         shouldFilter: false,
@@ -1352,7 +1343,7 @@ export function PinAgentDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
+      className="okou-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
       commandProps={{
         shouldFilter: false,

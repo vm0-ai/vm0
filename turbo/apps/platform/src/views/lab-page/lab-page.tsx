@@ -122,7 +122,7 @@ function LabFeatureGroup(props: {
       <h2 className="mb-2 px-1 text-sm font-medium text-muted-foreground">
         {props.title}
       </h2>
-      <ul className="zero-card divide-y divide-border overflow-hidden">
+      <ul className="okou-card divide-y divide-border overflow-hidden">
         {props.keys.map((key) => {
           const enabled = props.features?.[key] ?? false;
           const featureMetadata = props.metadata[key];

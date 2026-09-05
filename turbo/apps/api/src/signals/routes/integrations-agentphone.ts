@@ -36,6 +36,7 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneMessageEvent,
 } from "../services/agentphone.service";
+import { isAgentPhoneMentionText } from "../services/agentphone-shared.service";
 import { safeJsonParse, tapError } from "../utils";
 
 interface AgentPhoneConfig {
@@ -642,13 +643,9 @@ function parseDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function isZeroMentionText(value: string): boolean {
-  return /(^|\s)@(zero|vm0)\b/iu.test(value);
-}
-
-function mentionMatchesZero(value: unknown): boolean {
+function mentionMatchesAgentPhoneHandle(value: unknown): boolean {
   if (typeof value === "string") {
-    return isZeroMentionText(value.startsWith("@") ? value : `@${value}`);
+    return isAgentPhoneMentionText(value.startsWith("@") ? value : `@${value}`);
   }
   if (typeof value !== "object" || value === null) {
     return false;
@@ -657,7 +654,7 @@ function mentionMatchesZero(value: unknown): boolean {
   const mention = value as Record<string, unknown>;
   return ["text", "name", "username", "handle", "value"].some((key) => {
     const field = mention[key];
-    return typeof field === "string" && mentionMatchesZero(field);
+    return typeof field === "string" && mentionMatchesAgentPhoneHandle(field);
   });
 }
 
@@ -715,12 +712,12 @@ function extractAgentPhoneMentioned(
 
   return (
     arrayValue(data, ["mentions", "mentionedUsers", "mentioned_users"]).some(
-      mentionMatchesZero,
+      mentionMatchesAgentPhoneHandle,
     ) ||
     arrayValue(body, ["mentions", "mentionedUsers", "mentioned_users"]).some(
-      mentionMatchesZero,
+      mentionMatchesAgentPhoneHandle,
     ) ||
-    isZeroMentionText(messageBody)
+    isAgentPhoneMentionText(messageBody)
   );
 }
 

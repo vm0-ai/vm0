@@ -20,6 +20,7 @@ import {
   getTimezoneLabel,
 } from "../../../../signals/okou-page/cron.ts";
 import { onDomEventFn } from "../../../../signals/utils.ts";
+import { PreferenceCardRow } from "./preference-card-row.tsx";
 
 function useTimezoneNames(): Readonly<Record<string, string>> {
   const { t } = useTranslation();
@@ -121,33 +122,22 @@ export function TimezoneSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
-        <div className="flex flex-1 items-center gap-4 min-w-0">
-          <div className="shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center">
-              <Clock size={22} className="text-muted-foreground" />
-            </div>
-          </div>
-          <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.preferences.timezone.rowTitle;
-              })}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {t(($) => {
-                return $.settings.preferences.timezone.rowDescription;
-              })}
-            </div>
-          </div>
-        </div>
+      <PreferenceCardRow
+        icon={Clock}
+        title={t(($) => {
+          return $.settings.preferences.timezone.rowTitle;
+        })}
+        description={t(($) => {
+          return $.settings.preferences.timezone.rowDescription;
+        })}
+      >
         <div className="relative w-full shrink-0 sm:w-64">
           <Select
             value={currentTimezone}
             onValueChange={handleChange}
             disabled={loading}
           >
-            <SelectTrigger className="zero-btn-morandi">
+            <SelectTrigger className="okou-btn-morandi">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -169,7 +159,7 @@ export function TimezoneSettings() {
             </div>
           )}
         </div>
-      </div>
+      </PreferenceCardRow>
     </div>
   );
 }

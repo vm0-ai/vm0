@@ -468,7 +468,7 @@ async function telegramPostRunState(
 
   return {
     run: runSnapshot(response.run),
-    agentRun: agentRunSnapshot(response.zero_run),
+    agentRun: agentRunSnapshot(response.agent_run),
     callbacks: stateRecords(response.callbacks).map(callbackSnapshot),
     jobExists: response.job_exists === true,
   };

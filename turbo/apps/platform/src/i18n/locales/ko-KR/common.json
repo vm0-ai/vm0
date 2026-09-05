@@ -628,7 +628,6 @@
       "renameImportedTemplate": "템플릿 이름 바꾸기",
       "searchConnector": "템플릿 검색",
       "searchConnectors": "템플릿 검색",
-      "selected": "템플릿: {{title}}",
       "selectStyle": "스타일 선택 {{style}}",
       "selectTemplate": "템플릿 선택 {{title}}",
       "selectVideo": "비디오 템플릿 선택 {{title}}",
@@ -1359,38 +1358,22 @@
     },
     "plans": {
       "cancellationNotice": "{{plan}} 플랜이 취소되어 {{date}}에 종료됩니다.",
-      "changeAnytime": "언제든지 업그레이드 또는 다운그레이드 가능.",
       "compare": "플랜 비교",
       "compareAll": "모든 플랜 비교",
-      "currentPlan": "현재 플랜",
       "custom": {
         "name": "사용자 지정"
       },
       "customAccess": "{{value}} 동시 실행이 포함된 사용자 지정 액세스",
       "customCancellationNotice": "사용자 지정 플랜이 {{date}}에 종료됩니다.",
-      "customCheckoutUnavailable": "사용자 지정 워크스페이스는 Pro 또는 Team 결제로 전환할 수 없습니다.",
       "downgrade": "다운그레이드",
       "downgradeNotice": "{{currentPlan}} 플랜이 {{date}}에 {{targetPlan}}으로 다운그레이드됩니다.",
       "downgradesOn": "{{date}}에 {{plan}}으로 다운그레이드됨",
       "downgradeTo": "{{plan}}으로 다운그레이드",
       "endsOn": "{{date}}에 종료",
       "features": {
-        "byok": "직접 LLM 키 사용",
-        "communitySupport": "커뮤니티 지원",
-        "emailSupport": "이메일 지원",
-        "existingCredits": "기존 무료 크레딧만",
-        "oneConcurrentRun": "1 동시 실행",
-        "prioritySupport": "우선 지원",
-        "sharedAndPrivateAgents": "공유 에이전트 7개, 비공개 에이전트 무제한",
-        "tenConcurrentRuns": "10 동시 실행",
-        "twoConcurrentRuns": "2 동시 실행",
-        "unlimitedAgents": "무제한 에이전트",
-        "voiceInputFree": "음성 입력 (회원당 총 10회 요청 · 하루 10분)",
-        "voiceInputPro": "음성 입력 (회원당 하루 300회 요청 · 200분)",
-        "voiceInputTeam": "음성 입력 (회원당 하루 500회 요청 · 500분)"
+        "byok": "직접 LLM 키 사용"
       },
       "free": {
-        "description": "기존 워크스페이스용 레거시 무료 액세스.",
         "name": "무료"
       },
       "highlights": {
@@ -1417,7 +1400,6 @@
         "name": "제한된 무료"
       },
       "loadError": "청구 상태를 불러올 수 없습니다.",
-      "manageSubscription": "구독 관리",
       "namedPlan": "{{plan}} 플랜",
       "noActivePlan": "활성 플랜 없음",
       "noActiveSubscription": "활성 구독 없음",
@@ -1425,11 +1407,9 @@
         "name": "플랜 없음"
       },
       "perMonth": "/월",
-      "popular": "인기",
       "pricePerMonth": "{{price}}/월",
       "pro": {
         "description": "일상적인 에이전트 작업, 멤버 단위 요금제.",
-        "legacyDescription": "매일 AI 에이전트를 실행하는 팀을 위한 더 많은 크레딧과 동시 실행 수.",
         "name": "Pro"
       },
       "renews": "{{date}}에 갱신됨",
@@ -1438,7 +1418,6 @@
       "selectedPlan": "선택한 플랜",
       "team": {
         "description": "하루 종일 에이전트를 돌리는 팀을 위해.",
-        "legacyDescription": "AI 직원 팀을 위한 충분한 공간: 많은 크레딧과 에이전트 10개 동시 실행.",
         "name": "팀"
       },
       "upgrade": "업그레이드",
@@ -1541,13 +1520,11 @@
       "subscriptionChangeConfirmed": "구독 변경이 확인되었습니다."
     },
     "usage": {
-      "added": "{{date}}에 추가됨",
       "allowance": {
         "day": "{{value}}일",
         "hour": "{{value}}시간",
         "left": "{{value}} 남음",
         "minute": "{{value}}분",
-        "remaining": "{{remaining}} / {{total}} 크레딧",
         "remainingAria": "사용 한도 {{label}} 남음",
         "resets": "{{date}}에 초기화됨",
         "resetsRaw": "{{value}}에 초기화됨",
@@ -1568,15 +1545,12 @@
         "teamPlan": "팀 플랜"
       },
       "creditAdditions": "크레딧 추가",
-      "creditsRemaining_one": "{{value}} 크레딧 남음",
-      "creditsRemaining_other": "{{value}} 크레딧 남음",
       "expires": "{{date}}에 만료",
       "grantsTable": {
         "credits": "크레딧",
         "date": "날짜",
         "left": "남음"
       },
-      "left": "{{value}} 남음",
       "member": "멤버",
       "neverExpires": "만료되지 않음",
       "orgCredits": "조직 크레딧",
@@ -1863,7 +1837,6 @@
       "threadSuggestions": "채팅 스레드",
       "useForFutureChats": "향후 채팅에도 사용",
       "videoModelForThisChat": "이 채팅의 동영상 모델",
-      "visualAttachmentsUnsupported": "{{modelName}}은 이미지나 비디오를 인식할 수 없습니다. 첨부하려면 비전 기능이 있는 모델로 전환하세요.",
       "workflows": {
         "empty": "일치하는 워크플로가 없습니다",
         "loading": "워크플로 로딩 중...",
@@ -2393,10 +2366,6 @@
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
       "confirmRecording": "OK",
-      "draft": "음성 초안",
-      "draftTooLong": "이 음성 초안은 너무 깁니다. 새 녹음을 시작하세요.",
-      "finishDraft": "완료",
-      "finishingDraft": "완료 중...",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",
       "inputLimitReachedMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 업그레이드를 요청하세요.",
@@ -2405,7 +2374,6 @@
       "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
-      "removeDraft": "음성 초안 삭제",
       "starting": "음성 입력 시작",
       "stopRecording": "녹음 중지",
       "transcribing": "전사 중",
@@ -2760,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "추가 옵션",
-      "statusConnected": "연결됨",
       "toasts": {
         "connected": "연결됨",
         "created": "\"{{connector}}\" 생성됨",
         "deleted": "커스텀 커넥터가 삭제되었습니다",
-        "disconnected": "연결 해제됨",
         "updated": "\"{{connector}}\" 업데이트됨"
       },
       "updateConfirm": {
@@ -2806,7 +2772,6 @@
       "always": "항상",
       "clearSearch": "권한 검색 지우기",
       "descriptionAgent": "이 에이전트가 이 커넥터를 통해 수행할 수 있는 작업을 구성하세요.",
-      "descriptionWorkflow": "이 워크플로가 이 커넥터를 통해 수행할 수 있는 작업을 구성하세요.",
       "find": "권한 찾기",
       "findPlaceholder": "권한 찾기...",
       "forTarget": "{{target}} 대상",
@@ -3270,8 +3235,7 @@
       "redirectTitle": "{{connector}}로 리디렉션 중…"
     },
     "toasts": {
-      "connected": "{{connector}} 연결됨",
-      "disconnected": "{{connector}} 연결 해제됨"
+      "connected": "{{connector}} 연결됨"
     }
   },
   "global": {

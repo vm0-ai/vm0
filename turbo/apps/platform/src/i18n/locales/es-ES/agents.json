@@ -53,7 +53,8 @@
       "face": "Rostro",
       "hair": "Cabello",
       "mood": "Estado de ánimo",
-      "skin": "Piel"
+      "skin": "Piel",
+      "sweater": "Suéter"
     },
     "title": "Dale un rostro a tu agente",
     "use": "Usa este avatar"
@@ -76,7 +77,6 @@
   "detail": {
     "chatWith": "Chatear con {{agentName}}",
     "defaultDescription": "Tu compañero de equipo con IA, adaptado a ti",
-    "noSelection": "Ningún agente seleccionado",
     "notFound": {
       "back": "Volver al equipo",
       "description": "El agente \"{{agentId}}\" no existe o no tienes acceso a él.",

@@ -628,7 +628,6 @@
       "renameImportedTemplate": "Ganti nama templat",
       "searchConnector": "Cari templat",
       "searchConnectors": "Cari templat",
-      "selected": "Templat: {{title}}",
       "selectStyle": "Pilih gaya {{style}}",
       "selectTemplate": "Pilih template {{title}}",
       "selectVideo": "Pilih template video {{title}}",
@@ -1359,38 +1358,22 @@
     },
     "plans": {
       "cancellationNotice": "Paket {{plan}} Anda telah dibatalkan dan akan berakhir pada {{date}}.",
-      "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
       "compare": "Bandingkan paket",
       "compareAll": "Bandingkan semua paket",
-      "currentPlan": "Paket saat ini",
       "custom": {
         "name": "Kustom"
       },
       "customAccess": "Akses kustom dengan {{value}} eksekusi concurrent",
       "customCancellationNotice": "Paket kustom Anda akan berakhir pada {{date}}.",
-      "customCheckoutUnavailable": "Ruang kerja kustom tidak dapat beralih ke checkout Pro atau Team.",
       "downgrade": "Turunkan",
       "downgradeNotice": "Paket {{currentPlan}} Anda akan diturunkan ke {{targetPlan}} pada {{date}}.",
       "downgradesOn": "Turun ke {{plan}} pada {{date}}",
       "downgradeTo": "Turun ke {{plan}}",
       "endsOn": "Berakhir pada {{date}}",
       "features": {
-        "byok": "Gunakan kunci LLM Anda sendiri",
-        "communitySupport": "Dukungan komunitas",
-        "emailSupport": "Dukungan email",
-        "existingCredits": "Hanya kredit gratis yang sudah ada",
-        "oneConcurrentRun": "1 eksekusi concurrent",
-        "prioritySupport": "Dukungan prioritas",
-        "sharedAndPrivateAgents": "7 agen bersama, agen privat tanpa batas",
-        "tenConcurrentRuns": "10 eksekusi concurrent",
-        "twoConcurrentRuns": "2 eksekusi concurrent",
-        "unlimitedAgents": "Agen total tidak terbatas",
-        "voiceInputFree": "Input suara (10 permintaan total · 10 mnt/hari per anggota)",
-        "voiceInputPro": "Input suara (300 permintaan/hari · 200 mnt/hari per anggota)",
-        "voiceInputTeam": "Input suara (500 permintaan/hari · 500 mnt/hari per anggota)"
+        "byok": "Gunakan kunci LLM Anda sendiri"
       },
       "free": {
-        "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
       "highlights": {
@@ -1417,7 +1400,6 @@
         "name": "Gratis terbatas"
       },
       "loadError": "Tidak dapat memuat status penagihan.",
-      "manageSubscription": "Kelola langganan",
       "namedPlan": "Paket {{plan}}",
       "noActivePlan": "Tidak ada paket aktif",
       "noActiveSubscription": "Tidak ada langganan aktif",
@@ -1425,11 +1407,9 @@
         "name": "Tidak ada paket"
       },
       "perMonth": "/bulan",
-      "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
         "description": "Kerja agen harian, dihitung per anggota.",
-        "legacyDescription": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -1438,7 +1418,6 @@
       "selectedPlan": "paket yang dipilih",
       "team": {
         "description": "Untuk tim yang menjalankan agen sepanjang hari.",
-        "legacyDescription": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",
@@ -1541,13 +1520,11 @@
       "subscriptionChangeConfirmed": "Perubahan langganan dikonfirmasi."
     },
     "usage": {
-      "added": "Ditambahkan {{date}}",
       "allowance": {
         "day": "{{value}} hari",
         "hour": "{{value}} jam",
         "left": "sisa {{value}}",
         "minute": "{{value}} m",
-        "remaining": "{{remaining}} / {{total}} kredit",
         "remainingAria": "Sisa jatah penggunaan {{label}}",
         "resets": "Diatur ulang {{date}}",
         "resetsRaw": "Diatur ulang {{value}}",
@@ -1568,15 +1545,12 @@
         "teamPlan": "Paket tim"
       },
       "creditAdditions": "Penambahan kredit",
-      "creditsRemaining_one": "{{value}} kredit tersisa",
-      "creditsRemaining_other": "{{value}} kredit tersisa",
       "expires": "Kedaluwarsa {{date}}",
       "grantsTable": {
         "credits": "Kredit",
         "date": "Tanggal",
         "left": "Sisa"
       },
-      "left": "Sisa {{value}}",
       "member": "Anggota",
       "neverExpires": "Tidak pernah kedaluwarsa",
       "orgCredits": "Kredit organisasi",
@@ -1863,7 +1837,6 @@
       "threadSuggestions": "Thread chat",
       "useForFutureChats": "Gunakan ini untuk chat berikutnya",
       "videoModelForThisChat": "Model video untuk chat ini",
-      "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",
       "workflows": {
         "empty": "Tidak ada alur kerja yang cocok",
         "loading": "Memuat alur kerja...",
@@ -2393,10 +2366,6 @@
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
       "confirmRecording": "OK",
-      "draft": "Draf suara",
-      "draftTooLong": "Draf suara ini terlalu panjang. Mulai rekaman baru.",
-      "finishDraft": "Selesaikan",
-      "finishingDraft": "Menyelesaikan...",
       "input": "Input suara",
       "inputLimitReached": "Batas input suara tercapai. Upgrade ke Pro atau Team untuk batas yang lebih tinggi.",
       "inputLimitReachedMember": "Batas input suara tercapai. Minta admin ruang kerja untuk upgrade agar mendapatkan batas yang lebih tinggi.",
@@ -2405,7 +2374,6 @@
       "inputLimitReachedReset": "Batas input suara tercapai. Tunggu hingga batas Anda direset.",
       "microphoneAccessDenied": "Akses mikrofon ditolak. Izinkan akses mikrofon dan coba lagi.",
       "openingMicrophone": "Membuka mikrofon...",
-      "removeDraft": "Hapus draf suara",
       "starting": "Memulai input suara",
       "stopRecording": "Berhenti merekam",
       "transcribing": "Mentranskripsi",
@@ -2760,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
-      "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
-        "disconnected": "Terputus",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2806,7 +2772,6 @@
       "always": "Selalu",
       "clearSearch": "Hapus pencarian izin",
       "descriptionAgent": "Konfigurasikan tindakan yang diizinkan dilakukan agen ini melalui konektor ini.",
-      "descriptionWorkflow": "Konfigurasikan tindakan yang diizinkan dilakukan workflow ini melalui konektor ini.",
       "find": "Cari izin",
       "findPlaceholder": "Cari izin...",
       "forTarget": "untuk {{target}}",
@@ -3270,8 +3235,7 @@
       "redirectTitle": "Mengarahkan ke {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} terhubung",
-      "disconnected": "{{connector}} terputus"
+      "connected": "{{connector}} terhubung"
     }
   },
   "global": {

@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@okouai/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@okouai/api-contracts/contracts/billing";
 import type { MemberUsage } from "@okouai/api-contracts/contracts/usage";
-import { ChevronRight } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -237,10 +236,7 @@ function formatAllowanceWindowLabel(window: UsageAllowanceWindow): string {
   return window.kind;
 }
 
-function formatAllowanceReset(
-  window: UsageAllowanceWindow,
-  shortReset: boolean,
-): string {
+function formatAllowanceReset(window: UsageAllowanceWindow): string {
   const text = window.expiresAt?.trim();
   if (!text) {
     return "";
@@ -260,18 +256,9 @@ function formatAllowanceReset(
   const resetsToday = date.toDateString() === new Date(now()).toDateString();
   const formatted = new Intl.DateTimeFormat(
     currentLocale(),
-    shortReset
-      ? resetsToday
-        ? { hour: "numeric", minute: "2-digit" }
-        : { month: "short", day: "numeric" }
-      : {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          timeZoneName: "short",
-        },
+    resetsToday
+      ? { hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric" },
   ).format(date);
   return i18n.t(
     ($) => {
@@ -281,13 +268,7 @@ function formatAllowanceReset(
   );
 }
 
-function UsageAllowanceWindowRow({
-  splitLayout,
-  window,
-}: {
-  splitLayout: boolean;
-  window: UsageAllowanceWindow;
-}) {
+function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
   const { t } = useTranslation();
   const remainingPercent = allowanceRemainingPercent(window);
   const tone = usageTone(remainingPercent);
@@ -300,32 +281,16 @@ function UsageAllowanceWindowRow({
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">{label}</div>
           <div className="mt-0.5 truncate text-[13px] text-muted-foreground">
-            {formatAllowanceReset(window, splitLayout)}
+            {formatAllowanceReset(window)}
           </div>
         </div>
-        <div
-          className={
-            splitLayout
-              ? "shrink-0 text-right text-sm font-semibold tabular-nums text-foreground"
-              : "shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground"
-          }
-        >
-          {splitLayout
-            ? t(
-                ($) => {
-                  return $.billing.usage.allowance.left;
-                },
-                { value: formatLocalizedNumber(window.remainingUnits) },
-              )
-            : t(
-                ($) => {
-                  return $.billing.usage.allowance.remaining;
-                },
-                {
-                  remaining: formatLocalizedNumber(window.remainingUnits),
-                  total: formatLocalizedNumber(window.unitLimit),
-                },
-              )}
+        <div className="shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
+          {t(
+            ($) => {
+              return $.billing.usage.allowance.left;
+            },
+            { value: formatLocalizedNumber(window.remainingUnits) },
+          )}
         </div>
       </div>
       <div
@@ -339,7 +304,7 @@ function UsageAllowanceWindowRow({
         aria-valuemin={0}
         aria-valuemax={window.unitLimit}
         aria-valuenow={window.remainingUnits}
-        className={`${splitLayout ? "h-2" : "h-2.5"} overflow-hidden rounded-full ${tone.trackClassName}`}
+        className={`h-2 overflow-hidden rounded-full ${tone.trackClassName}`}
       >
         <span
           className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
@@ -352,10 +317,8 @@ function UsageAllowanceWindowRow({
 
 function UsageAllowanceCard({
   allowance,
-  splitLayout,
 }: {
   allowance: UsageAllowance | null | undefined;
-  splitLayout: boolean;
 }) {
   const { t } = useTranslation();
   const windows = allowance?.windows.filter((window) => {
@@ -368,7 +331,7 @@ function UsageAllowanceCard({
   return (
     <div
       data-testid="usage-allowance-section"
-      className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
+      className="overflow-hidden rounded-xl bg-card px-5 py-4 okou-border"
     >
       <p className="text-sm font-semibold text-foreground">
         {t(($) => {
@@ -377,169 +340,10 @@ function UsageAllowanceCard({
       </p>
       <div className="mt-3 flex flex-col gap-4">
         {windows.map((window) => {
-          return (
-            <UsageAllowanceWindowRow
-              key={window.kind}
-              splitLayout={splitLayout}
-              window={window}
-            />
-          );
+          return <UsageAllowanceWindowRow key={window.kind} window={window} />;
         })}
       </div>
     </div>
-  );
-}
-
-function CreditGrantRow({
-  grant,
-  showExpiryTooltip,
-  testIdPrefix,
-}: {
-  grant: CreditAddition;
-  showExpiryTooltip: boolean;
-  testIdPrefix: string;
-}) {
-  const { t } = useTranslation();
-  const hasPartialBalance = grant.remaining !== grant.amount;
-  const row = (
-    <div
-      tabIndex={showExpiryTooltip ? 0 : undefined}
-      data-testid={`${testIdPrefix}-${grant.id}`}
-      className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <div className="min-w-0">
-        <div className="truncate text-[13px] font-medium text-foreground">
-          {grant.label}
-        </div>
-        <div className="text-xs text-muted-foreground">
-          {t(
-            ($) => {
-              return $.billing.usage.added;
-            },
-            { date: formatCreditDate(grant.createdAt) },
-          )}
-        </div>
-      </div>
-      <div className="shrink-0 text-right">
-        <div className="text-[13px] font-medium tabular-nums text-foreground">
-          {formatLocalizedNumber(grant.amount)}
-        </div>
-        {hasPartialBalance ? (
-          <div className="text-xs tabular-nums text-muted-foreground">
-            {t(
-              ($) => {
-                return $.billing.usage.left;
-              },
-              { value: formatLocalizedNumber(grant.remaining) },
-            )}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-  if (!showExpiryTooltip) {
-    return row;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{row}</TooltipTrigger>
-      <TooltipContent
-        side="top"
-        sideOffset={8}
-        style={{
-          backgroundColor: "hsl(var(--popover))",
-          color: "hsl(var(--popover-foreground))",
-        }}
-        className="border shadow-md"
-      >
-        <div className="font-medium text-foreground">{expiresLabel(grant)}</div>
-        <div className="mt-0.5 text-muted-foreground">
-          {t(
-            ($) => {
-              return $.billing.usage.creditsRemaining;
-            },
-            {
-              count: grant.remaining,
-              value: formatLocalizedNumber(grant.remaining),
-            },
-          )}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function CreditAdditionItems({
-  grants,
-  showExpiryTooltip = true,
-  testIdPrefix = "credit-grants",
-}: {
-  grants: readonly CreditAddition[];
-  showExpiryTooltip?: boolean;
-  testIdPrefix?: string;
-}) {
-  if (grants.length === 0) {
-    return null;
-  }
-
-  return (
-    <TooltipProvider delayDuration={100}>
-      <div className="flex flex-col">
-        {grants.map((grant) => {
-          return (
-            <CreditGrantRow
-              key={grant.id}
-              grant={grant}
-              showExpiryTooltip={showExpiryTooltip}
-              testIdPrefix={testIdPrefix}
-            />
-          );
-        })}
-      </div>
-    </TooltipProvider>
-  );
-}
-
-function CreditAdditionList({
-  grants,
-  testIdPrefix = "credit-grants",
-}: {
-  grants: readonly CreditAddition[];
-  testIdPrefix?: string;
-}) {
-  const { t } = useTranslation();
-  if (grants.length === 0) {
-    return null;
-  }
-
-  return (
-    <details
-      data-testid={`${testIdPrefix}-section`}
-      className="group mt-4 border-t border-border/50 pt-3"
-    >
-      <summary
-        data-testid={`${testIdPrefix}-toggle`}
-        className="mb-1 cursor-pointer list-none px-2"
-        aria-label={`${t(($) => {
-          return $.billing.usage.creditAdditions;
-        })}: ${grants.length}`}
-      >
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <ChevronRight
-            size={13}
-            className="shrink-0 transition-transform group-open:rotate-90"
-          />
-          <span>
-            {t(($) => {
-              return $.billing.usage.creditAdditions;
-            })}
-          </span>
-          <span className="tabular-nums">({grants.length})</span>
-        </div>
-      </summary>
-      <CreditAdditionItems grants={grants} testIdPrefix={testIdPrefix} />
-    </details>
   );
 }
 
@@ -636,30 +440,16 @@ export function CreditAdditionTable({
   );
 }
 
-function OrgCreditHeader({
-  splitLayout,
-  total,
-}: {
-  splitLayout: boolean;
-  total: number;
-}) {
+function OrgCreditHeader({ total }: { total: number }) {
   const { t } = useTranslation();
   return (
-    <div
-      className={`flex justify-between gap-3 ${splitLayout ? "items-baseline" : "items-center"}`}
-    >
+    <div className="flex justify-between gap-3 items-baseline">
       <p className="text-sm font-semibold text-foreground">
         {t(($) => {
           return $.billing.usage.orgCredits;
         })}
       </p>
-      <p
-        className={
-          splitLayout
-            ? "text-xl font-medium tabular-nums text-foreground"
-            : "text-sm font-medium tabular-nums text-foreground"
-        }
-      >
+      <p className="text-xl font-medium tabular-nums text-foreground">
         {formatLocalizedNumber(total)}
       </p>
     </div>
@@ -667,18 +457,15 @@ function OrgCreditHeader({
 }
 
 /**
- * The composition of the balance. The split layout gaps the segments so it
- * cannot be mistaken for the filled allowance meter above it; the previous
- * layout keeps the joined track and spells the numbers out in a legend.
+ * The composition of the balance. The segments are gapped so it cannot be
+ * mistaken for the filled allowance meter above it.
  */
 function CreditBreakdownBar({
   segments,
-  splitLayout,
   tier,
   total,
 }: {
   segments: readonly CreditSegment[];
-  splitLayout: boolean;
   tier: string;
   total: number;
 }) {
@@ -686,69 +473,41 @@ function CreditBreakdownBar({
     return null;
   }
   return (
-    <>
-      <TooltipProvider delayDuration={100}>
-        <div
-          className={
-            splitLayout
-              ? "mt-4 flex h-2 w-full gap-[3px]"
-              : "mt-3 flex h-2.5 w-full rounded-full bg-muted/40"
-          }
-        >
-          {segments.map((s) => {
-            const color = colorForSegment(s);
-            const desc = descriptionForSegment(s, tier);
-            return (
-              <Tooltip key={segmentKey(s)}>
-                <TooltipTrigger asChild>
-                  <div
-                    data-testid={`credit-balance-segment-${segmentKey(s)}`}
-                    className={`${splitLayout ? "h-2" : "h-2.5"} first:rounded-l-full last:rounded-r-full ${color} cursor-default ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
-                    style={{
-                      width: `${(s.credits / total) * 100}%`,
-                    }}
-                  />
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  sideOffset={8}
+    <TooltipProvider delayDuration={100}>
+      <div className="mt-4 flex h-2 w-full gap-[3px]">
+        {segments.map((s) => {
+          const color = colorForSegment(s);
+          const desc = descriptionForSegment(s, tier);
+          return (
+            <Tooltip key={segmentKey(s)}>
+              <TooltipTrigger asChild>
+                <div
+                  data-testid={`credit-balance-segment-${segmentKey(s)}`}
+                  className={`h-2 first:rounded-l-full last:rounded-r-full ${color} cursor-default ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
                   style={{
-                    backgroundColor: "hsl(var(--popover))",
-                    color: "hsl(var(--popover-foreground))",
+                    width: `${(s.credits / total) * 100}%`,
                   }}
-                  className="border shadow-md"
-                >
-                  <div className="font-medium text-foreground">
-                    {labelForSegment(s)} — {formatLocalizedNumber(s.credits)}
-                  </div>
-                  <div className="text-muted-foreground mt-0.5">{desc}</div>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      </TooltipProvider>
-      {!splitLayout && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-          {segments.map((s) => {
-            return (
-              <div
-                key={segmentKey(s)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground"
-              >
-                <span
-                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${colorForSegment(s)}`}
                 />
-                <span>{labelForSegment(s)}</span>
-                <span className="tabular-nums">
-                  {formatLocalizedNumber(s.credits)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                sideOffset={8}
+                style={{
+                  backgroundColor: "hsl(var(--popover))",
+                  color: "hsl(var(--popover-foreground))",
+                }}
+                className="border shadow-md"
+              >
+                <div className="font-medium text-foreground">
+                  {labelForSegment(s)} — {formatLocalizedNumber(s.credits)}
+                </div>
+                <div className="text-muted-foreground mt-0.5">{desc}</div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -756,12 +515,10 @@ function CreditBalanceChart({
   billing,
   onBuyCredits,
   onComparePlans,
-  splitLayout,
 }: {
   billing: BillingStatusResponse;
   onBuyCredits: () => void;
   onComparePlans: () => void;
-  splitLayout: boolean;
 }) {
   const { t } = useTranslation();
   const segments = billing.creditBreakdown.filter((s) => {
@@ -781,7 +538,7 @@ function CreditBalanceChart({
   });
   return (
     <div className="px-5 py-4" data-testid="credit-balance-info">
-      <OrgCreditHeader splitLayout={splitLayout} total={total} />
+      <OrgCreditHeader total={total} />
 
       {showFreeEmptyPrompt ? (
         <div
@@ -816,18 +573,11 @@ function CreditBalanceChart({
 
       <CreditBreakdownBar
         segments={segments}
-        splitLayout={splitLayout}
         tier={billing.tier}
         total={total}
       />
-      {splitLayout ? (
-        <>
-          <CreditAdditionTable grants={grants} />
-          <CreditBalanceActions billing={billing} onBuyCredits={onBuyCredits} />
-        </>
-      ) : (
-        <CreditAdditionList grants={grants} />
-      )}
+      <CreditAdditionTable grants={grants} />
+      <CreditBalanceActions billing={billing} onBuyCredits={onBuyCredits} />
     </div>
   );
 }
@@ -886,11 +636,9 @@ function CreditBalanceActions({
 export function CreditBalanceCard({
   onBuyCredits,
   onComparePlans,
-  splitLayout,
 }: {
   onBuyCredits: () => void;
   onComparePlans: () => void;
-  splitLayout: boolean;
 }) {
   const { t } = useTranslation();
   const billingLoadable = useLoadable(billingStatusAsync$);
@@ -899,14 +647,11 @@ export function CreditBalanceCard({
   const billingLoading = billingLoadable.state === "loading";
 
   return (
-    <div className={`flex flex-col ${splitLayout ? "gap-4" : "gap-3"}`}>
+    <div className="flex flex-col gap-4">
       {billing ? (
-        <UsageAllowanceCard
-          allowance={billing.usageAllowance}
-          splitLayout={splitLayout}
-        />
+        <UsageAllowanceCard allowance={billing.usageAllowance} />
       ) : null}
-      <div className="overflow-hidden rounded-xl bg-card zero-border">
+      <div className="overflow-hidden rounded-xl bg-card okou-border">
         {billingLoading && !billing ? (
           <div className="px-5 py-4 space-y-2">
             <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
@@ -917,7 +662,6 @@ export function CreditBalanceCard({
             billing={billing}
             onBuyCredits={onBuyCredits}
             onComparePlans={onComparePlans}
-            splitLayout={splitLayout}
           />
         ) : (
           <div className="px-5 py-4">
@@ -946,7 +690,7 @@ export function MemberUsageTable({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="overflow-hidden rounded-xl bg-card zero-border">
+    <div className="overflow-hidden rounded-xl bg-card okou-border">
       {/* Header */}
       <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
         <span>
@@ -968,7 +712,7 @@ export function MemberUsageTable({
 
         return (
           <div key={member.userId}>
-            <div className="h-0 zero-border-t mx-5" />
+            <div className="h-0 okou-border-t mx-5" />
             <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-3">
               <div className="flex items-center gap-3 min-w-0">
                 <UserAvatar

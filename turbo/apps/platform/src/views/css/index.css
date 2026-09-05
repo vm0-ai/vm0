@@ -46,32 +46,32 @@
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
-  --zero-viewport-height: 100dvh;
-  --zero-desktop-titlebar-height: 48px;
+  --okou-viewport-height: 100dvh;
+  --okou-desktop-titlebar-height: 48px;
 }
 
 @supports (height: 100lvh) {
   @media (display-mode: standalone) {
     :root {
-      --zero-viewport-height: 100lvh;
+      --okou-viewport-height: 100lvh;
     }
   }
 }
 
 [data-chat-composer] {
-  --zero-composer-safe-bottom: var(--sab);
+  --okou-composer-safe-bottom: var(--sab);
 }
 
 :root[data-keyboard-open="true"] [data-chat-composer] {
-  --zero-composer-safe-bottom: 0px;
+  --okou-composer-safe-bottom: 0px;
 }
 
 html,
 body,
 #root {
   width: 100%;
-  height: var(--zero-viewport-height);
-  min-height: var(--zero-viewport-height);
+  height: var(--okou-viewport-height);
+  min-height: var(--okou-viewport-height);
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -121,16 +121,16 @@ body {
   #root::after {
     content: "";
     display: block;
-    height: var(--zero-keyboard-scroll-reserve, 0px);
+    height: var(--okou-keyboard-scroll-reserve, 0px);
     pointer-events: none;
   }
 
-  [data-chat-composer] .zero-composer {
+  [data-chat-composer] .okou-composer {
     scroll-margin-block-end: 16px;
   }
 }
 
-.zero-viewport-shell {
+.okou-viewport-shell {
   box-sizing: border-box;
   height: 100%;
   min-height: 100%;
@@ -141,21 +141,21 @@ body {
 
 /* Workspace scrollports reach the physical viewport edge. Their scroll content,
    composer, and other bottom interactions own the safe inset instead. */
-.zero-managed-bottom-safe-area {
+.okou-managed-bottom-safe-area {
   padding-bottom: 0;
 }
 
-.zero-fixed-viewport-shell {
+.okou-fixed-viewport-shell {
   box-sizing: border-box;
-  height: var(--zero-viewport-height);
-  min-height: var(--zero-viewport-height);
-  max-height: var(--zero-viewport-height);
+  height: var(--okou-viewport-height);
+  min-height: var(--okou-viewport-height);
+  max-height: var(--okou-viewport-height);
   overflow: hidden;
   padding: var(--sat) var(--sar) var(--sab) var(--sal);
 }
 
 @media (display-mode: standalone) {
-  .zero-pwa-fixed-cover {
+  .okou-pwa-fixed-cover {
     bottom: calc(-1 * var(--sab));
   }
 }
@@ -163,17 +163,17 @@ body {
 @media (max-width: 767px) {
   /* Fixed mobile surfaces escape the page shell, so their interactive content
      owns an immutable safe-area boundary. */
-  .zero-mobile-fixed-safe-area {
+  .okou-mobile-fixed-safe-area {
     box-sizing: border-box;
     padding: var(--sat) var(--sar) var(--sab) var(--sal);
   }
 }
 
-.zero-mobile-sidebar {
+.okou-mobile-sidebar {
   isolation: isolate;
 }
 
-.zero-mobile-sidebar::before {
+.okou-mobile-sidebar::before {
   position: absolute;
   z-index: -1;
   inset: 0;
@@ -184,41 +184,41 @@ body {
 
 @media (display-mode: standalone) {
   /* Paint may extend below the viewport without moving drawer content. */
-  .zero-mobile-sidebar::before {
+  .okou-mobile-sidebar::before {
     bottom: calc(-1 * var(--sab));
   }
 }
 
-.zero-sidebar-header {
+.okou-sidebar-header {
   padding-top: 0.375rem;
 }
 
-.zero-desktop-titlebar-drag-region {
+.okou-desktop-titlebar-drag-region {
   display: none;
 }
 
-.zero-desktop-no-drag {
+.okou-desktop-no-drag {
   -webkit-app-region: no-drag;
 }
 
 @media (min-width: 768px) {
-  .zero-app[data-desktop-shell] .zero-sidebar-header {
+  .okou-app[data-desktop-shell] .okou-sidebar-header {
     padding-top: 0;
   }
 
-  .zero-app[data-desktop-shell] .zero-desktop-titlebar-drag-region {
+  .okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region {
     display: block;
     flex-shrink: 0;
-    height: var(--zero-desktop-titlebar-height);
+    height: var(--okou-desktop-titlebar-height);
     -webkit-app-region: drag;
   }
 
-  .zero-app[data-desktop-shell] .zero-workspace-bg {
+  .okou-app[data-desktop-shell] .okou-workspace-bg {
     position: relative;
   }
 
-  .zero-app[data-desktop-shell]
-    .zero-workspace-bg
+  .okou-app[data-desktop-shell]
+    .okou-workspace-bg
     :where(
       button,
       a,
@@ -255,7 +255,7 @@ body {
     background-position: -100% center;
   }
 }
-.zero-shimmer-text {
+.okou-shimmer-text {
   background: linear-gradient(
     90deg,
     hsl(var(--muted-foreground) / 0.8) 0%,
@@ -283,24 +283,24 @@ body {
     transform: translateY(0);
   }
 }
-.zero-thinking-enter {
+.okou-thinking-enter {
   animation: zero-thinking-in 0.3s ease-out;
 }
 
-.zero-thinking-spinner {
+.okou-thinking-spinner {
   animation-duration: 1.4s;
   will-change: transform;
 }
 
-@keyframes zero-chat-skeleton-reveal {
+@keyframes okou-chat-skeleton-reveal {
   to {
     opacity: 1;
   }
 }
-.zero-chat-skeleton-reveal {
+.okou-chat-skeleton-reveal {
   /* Avoid flashing the skeleton when cached chat events resolve immediately. */
   opacity: 0;
-  animation: zero-chat-skeleton-reveal 0s 100ms forwards;
+  animation: okou-chat-skeleton-reveal 0s 100ms forwards;
 }
 
 /* Conversation locator: mark where a rail jump landed, then fade back out. */
@@ -325,28 +325,28 @@ body {
 }
 
 /* Thinking indicator: 3-block loader */
-.zero-blocks {
+.okou-blocks {
   display: inline-grid;
   grid-template-columns: repeat(2, 5px);
   grid-template-rows: repeat(2, 5px);
   gap: 1.5px;
 }
-.zero-blocks span {
+.okou-blocks span {
   border-radius: 1.5px;
 }
-.zero-blocks span:nth-child(1) {
+.okou-blocks span:nth-child(1) {
   background: var(--zb-c1);
   grid-column: 2;
   grid-row: 1;
   animation: zero-block-pop 1.4s ease-in-out infinite;
 }
-.zero-blocks span:nth-child(2) {
+.okou-blocks span:nth-child(2) {
   background: var(--zb-c2);
   grid-column: 1;
   grid-row: 2;
   animation: zero-block-pop 1.4s ease-in-out 0.2s infinite;
 }
-.zero-blocks span:nth-child(3) {
+.okou-blocks span:nth-child(3) {
   background: var(--zb-c3);
   grid-column: 2;
   grid-row: 2;
@@ -378,59 +378,59 @@ body {
    one anchor with one companion; the same pair drives the picker swatch and
    the low-concentration workspace ambience below. */
 [data-color-theme="golden-hour"] {
-  --zero-color-theme-anchor: #f7a102;
-  --zero-color-theme-companion: #f4e33c;
-  --zero-color-theme-hue: 38.9;
-  --zero-color-theme-ring: 39.1 73.6% 52.5%;
+  --okou-color-theme-anchor: #f7a102;
+  --okou-color-theme-companion: #f4e33c;
+  --okou-color-theme-hue: 38.9;
+  --okou-color-theme-ring: 39.1 73.6% 52.5%;
 }
 
 [data-color-theme="citrus-spark"] {
-  --zero-color-theme-anchor: #f4e33c;
-  --zero-color-theme-companion: #b5d329;
-  --zero-color-theme-hue: 54.5;
-  --zero-color-theme-ring: 65.4 58.7% 40.8%;
+  --okou-color-theme-anchor: #f4e33c;
+  --okou-color-theme-companion: #b5d329;
+  --okou-color-theme-hue: 54.5;
+  --okou-color-theme-ring: 65.4 58.7% 40.8%;
 }
 
 [data-color-theme="berry-blush"] {
-  --zero-color-theme-anchor: #e24e4a;
-  --zero-color-theme-companion: #e4abc8;
-  --zero-color-theme-hue: 1.6;
-  --zero-color-theme-ring: 351 39.7% 57.1%;
+  --okou-color-theme-anchor: #e24e4a;
+  --okou-color-theme-companion: #e4abc8;
+  --okou-color-theme-hue: 1.6;
+  --okou-color-theme-ring: 351 39.7% 57.1%;
 }
 
 [data-color-theme="cotton-sky"] {
-  --zero-color-theme-anchor: #e4abc8;
-  --zero-color-theme-companion: #b5d4e5;
-  --zero-color-theme-hue: 329.5;
-  --zero-color-theme-ring: 319.6 20.7% 56.5%;
+  --okou-color-theme-anchor: #e4abc8;
+  --okou-color-theme-companion: #b5d4e5;
+  --okou-color-theme-hue: 329.5;
+  --okou-color-theme-ring: 319.6 20.7% 56.5%;
 }
 
 [data-color-theme="blue-horizon"] {
-  --zero-color-theme-anchor: #3758a1;
-  --zero-color-theme-companion: #b5d4e5;
-  --zero-color-theme-hue: 221.3;
-  --zero-color-theme-ring: 221.3 35.4% 55.7%;
+  --okou-color-theme-anchor: #3758a1;
+  --okou-color-theme-companion: #b5d4e5;
+  --okou-color-theme-hue: 221.3;
+  --okou-color-theme-ring: 221.3 35.4% 55.7%;
 }
 
 [data-color-theme="daydream"] {
-  --zero-color-theme-anchor: #b5d4e5;
-  --zero-color-theme-companion: #e4abc8;
-  --zero-color-theme-hue: 201.3;
-  --zero-color-theme-ring: 205.1 19.8% 57.5%;
+  --okou-color-theme-anchor: #b5d4e5;
+  --okou-color-theme-companion: #e4abc8;
+  --okou-color-theme-hue: 201.3;
+  --okou-color-theme-ring: 205.1 19.8% 57.5%;
 }
 
 [data-color-theme="deep-lagoon"] {
-  --zero-color-theme-anchor: #017562;
-  --zero-color-theme-companion: #3758a1;
-  --zero-color-theme-hue: 170.2;
-  --zero-color-theme-ring: 171.8 47.1% 33.3%;
+  --okou-color-theme-anchor: #017562;
+  --okou-color-theme-companion: #3758a1;
+  --okou-color-theme-hue: 170.2;
+  --okou-color-theme-ring: 171.8 47.1% 33.3%;
 }
 
 [data-color-theme="limelight"] {
-  --zero-color-theme-anchor: #b5d329;
-  --zero-color-theme-companion: #f4e33c;
-  --zero-color-theme-hue: 70.6;
-  --zero-color-theme-ring: 74.2 53.8% 41.6%;
+  --okou-color-theme-anchor: #b5d329;
+  --okou-color-theme-companion: #f4e33c;
+  --okou-color-theme-hue: 70.6;
+  --okou-color-theme-ring: 74.2 53.8% 41.6%;
 }
 
 /* Full-system themes keep the existing lightness hierarchy and rotate only a
@@ -439,38 +439,38 @@ body {
    stay unchanged for contrast and hierarchy. Because these variables live on
    the document root, portaled dialogs and popovers inherit the same system. */
 :root[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 24% 98%;
-  --gray-50: var(--zero-color-theme-hue) 22% 96.5%;
-  --gray-100: var(--zero-color-theme-hue) 20% 93.5%;
-  --gray-200: var(--zero-color-theme-hue) 18% 91.5%;
-  --gray-300: var(--zero-color-theme-hue) 17% 88.5%;
-  --gray-400: var(--zero-color-theme-hue) 16% 84.5%;
-  --gray-500: var(--zero-color-theme-hue) 16% 76%;
+  --gray-0: var(--okou-color-theme-hue) 24% 98%;
+  --gray-50: var(--okou-color-theme-hue) 22% 96.5%;
+  --gray-100: var(--okou-color-theme-hue) 20% 93.5%;
+  --gray-200: var(--okou-color-theme-hue) 18% 91.5%;
+  --gray-300: var(--okou-color-theme-hue) 17% 88.5%;
+  --gray-400: var(--okou-color-theme-hue) 16% 84.5%;
+  --gray-500: var(--okou-color-theme-hue) 16% 76%;
 
   --divider: var(--gray-200);
-  --background: var(--zero-color-theme-hue) 24% 98.8%;
-  --card: var(--zero-color-theme-hue) 30% 99.4%;
+  --background: var(--okou-color-theme-hue) 24% 98.8%;
+  --card: var(--okou-color-theme-hue) 30% 99.4%;
   --popover: var(--card);
-  --secondary: var(--zero-color-theme-hue) 22% 96%;
+  --secondary: var(--okou-color-theme-hue) 22% 96%;
   --muted: var(--gray-100);
-  --accent: var(--zero-color-theme-hue) 24% 94.5%;
+  --accent: var(--okou-color-theme-hue) 24% 94.5%;
   --border: var(--gray-400);
   --input: var(--card);
-  --ring: var(--zero-color-theme-ring);
-  --sidebar: var(--zero-color-theme-hue) 30% 96%;
-  --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
-  --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
-  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
+  --ring: var(--okou-color-theme-ring);
+  --sidebar: var(--okou-color-theme-hue) 30% 96%;
+  --okou-nav-rail: var(--okou-color-theme-hue) 36% 93.5%;
+  --okou-nav-foreground: var(--okou-color-theme-hue) 24% 18%;
+  --okou-nav-muted-foreground: var(--okou-color-theme-hue) 18% 38%;
   --background-50: var(--gray-50);
-  --state-layer: var(--zero-color-theme-ring);
+  --state-layer: var(--okou-color-theme-ring);
   --segment-selected: var(--card);
-  --zero-color-theme-selected: color-mix(
+  --okou-color-theme-selected: color-mix(
     in srgb,
     #ffffff 84%,
     color-mix(
         in srgb,
-        var(--zero-color-theme-anchor) 82%,
-        var(--zero-color-theme-companion)
+        var(--okou-color-theme-anchor) 82%,
+        var(--okou-color-theme-companion)
       )
       16%
   );
@@ -480,129 +480,131 @@ body {
     .dark,
     [data-theme="dark"]
   )[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 5% 7%;
-  --gray-50: var(--zero-color-theme-hue) 6% 10%;
-  --gray-100: var(--zero-color-theme-hue) 8% 15%;
-  --gray-200: var(--zero-color-theme-hue) 9% 19%;
-  --gray-300: var(--zero-color-theme-hue) 10% 23%;
-  --gray-400: var(--zero-color-theme-hue) 11% 27%;
-  --gray-500: var(--zero-color-theme-hue) 12% 33%;
+  --gray-0: var(--okou-color-theme-hue) 5% 7%;
+  --gray-50: var(--okou-color-theme-hue) 6% 10%;
+  --gray-100: var(--okou-color-theme-hue) 8% 15%;
+  --gray-200: var(--okou-color-theme-hue) 9% 19%;
+  --gray-300: var(--okou-color-theme-hue) 10% 23%;
+  --gray-400: var(--okou-color-theme-hue) 11% 27%;
+  --gray-500: var(--okou-color-theme-hue) 12% 33%;
 
   --divider: var(--gray-200);
   --background: var(--gray-50);
-  --card: var(--zero-color-theme-hue) 8% 14%;
+  --card: var(--okou-color-theme-hue) 8% 14%;
   --popover: var(--gray-100);
-  --secondary: var(--zero-color-theme-hue) 9% 17%;
+  --secondary: var(--okou-color-theme-hue) 9% 17%;
   --muted: var(--gray-200);
-  --accent: var(--zero-color-theme-hue) 12% 23%;
+  --accent: var(--okou-color-theme-hue) 12% 23%;
   --border: var(--gray-300);
   --input: var(--gray-200);
-  --ring: var(--zero-color-theme-hue) 45% 62%;
-  --sidebar: var(--zero-color-theme-hue) 14% 12%;
-  --zero-nav-rail: var(--zero-color-theme-hue) 18% 8%;
-  --zero-nav-foreground: var(--zero-color-theme-hue) 22% 90%;
-  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 16% 64%;
+  --ring: var(--okou-color-theme-hue) 45% 62%;
+  --sidebar: var(--okou-color-theme-hue) 14% 12%;
+  --okou-nav-rail: var(--okou-color-theme-hue) 18% 8%;
+  --okou-nav-foreground: var(--okou-color-theme-hue) 22% 90%;
+  --okou-nav-muted-foreground: var(--okou-color-theme-hue) 16% 64%;
   --background-50: var(--gray-50);
-  --state-layer: var(--zero-color-theme-hue) 35% 82%;
+  --state-layer: var(--okou-color-theme-hue) 35% 82%;
   --segment-selected: var(--gray-400);
-  --zero-color-theme-selected: color-mix(
+  --okou-color-theme-selected: color-mix(
     in srgb,
     hsl(var(--card)) 86%,
     color-mix(
         in srgb,
-        var(--zero-color-theme-anchor) 82%,
-        var(--zero-color-theme-companion)
+        var(--okou-color-theme-anchor) 82%,
+        var(--okou-color-theme-companion)
       )
       14%
   );
 }
 
-.zero-color-theme-swatch {
-  background-color: var(--zero-color-theme-anchor);
+.okou-color-theme-swatch {
+  background-color: var(--okou-color-theme-anchor);
   background-image: linear-gradient(
     135deg,
-    var(--zero-color-theme-anchor) 0%,
+    var(--okou-color-theme-anchor) 0%,
     color-mix(
         in srgb,
-        var(--zero-color-theme-anchor),
-        var(--zero-color-theme-companion)
+        var(--okou-color-theme-anchor),
+        var(--okou-color-theme-companion)
       )
       52%,
-    var(--zero-color-theme-companion) 100%
+    var(--okou-color-theme-companion) 100%
   );
 }
 
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
-.zero-app {
-  --zero-card-radius: 1.25rem;
+.okou-app {
+  --okou-card-radius: 1.25rem;
   /* Cards rendered inside a chat message sit one level in from the page, so
      they take one step down the radius scale. */
-  --zero-chat-card-radius: 0.75rem;
+  --okou-chat-card-radius: 0.75rem;
   /* The composer is the largest surface on the page and leads the radius scale. */
-  --zero-composer-radius: 1.5rem;
-  --zero-card-shadow:
+  --okou-composer-radius: 1.5rem;
+  --okou-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
   /* A card inside a message is not elevated off the page the way a page-level
      card is, so it gets contact rather than lift: a 2px blur instead of 12px. */
-  --zero-chat-card-shadow: 0 1px 2px hsl(220 12% 50% / 0.04);
+  --okou-chat-card-shadow: 0 1px 2px hsl(220 12% 50% / 0.04);
   /* Static focus veil for the composer. Fading this layer through opacity lets
      the browser composite it without interpolating the wide blur every frame. */
-  --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
+  --okou-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
 }
 
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
    shape in black instead. The border step carries the state either way. */
-:where([data-theme="dark"]) .zero-app {
-  --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+:where([data-theme="dark"]) .okou-app {
+  --okou-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
-.zero-app[data-gradient-color-themes] {
-  --zero-card-shadow:
+.okou-app[data-gradient-color-themes] {
+  --okou-card-shadow:
     0 2px 12px hsl(var(--state-layer) / 0.035),
     0 0 0 0.5px hsl(var(--state-layer) / 0.018);
-  --zero-chat-card-shadow: 0 1px 2px hsl(var(--state-layer) / 0.035);
-  --zero-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
+  --okou-chat-card-shadow: 0 1px 2px hsl(var(--state-layer) / 0.035);
+  --okou-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
 }
 
-:where([data-theme="dark"]) .zero-app[data-gradient-color-themes] {
-  --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+:where([data-theme="dark"]) .okou-app[data-gradient-color-themes] {
+  --okou-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
-.zero-app[data-desktop-shell] {
+.okou-app[data-desktop-shell] {
   -webkit-user-select: none;
   user-select: none;
 }
 
-.zero-app[data-desktop-shell]
+.okou-app[data-desktop-shell]
   :where(
     input,
     textarea,
     select,
     [contenteditable]:not([contenteditable="false"]),
     [role="textbox"],
-    .zero-chat-bubble-user,
-    .zero-chat-bubble-assistant
+    .okou-chat-bubble-user,
+    .okou-chat-bubble-assistant
   ) {
   -webkit-user-select: text;
   user-select: text;
 }
 
 /* Pill/tag (e.g. status badge, "Super agent") */
-.zero-app .zero-pill {
+.okou-app .okou-pill {
   background-color: hsl(var(--gray-0));
   border: 0.7px solid hsl(var(--gray-400));
   color: hsl(var(--muted-foreground));
 }
 
 /* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
-   Scoped to [data-theme="dark"] only—not .zero-app—so portaled popovers/dropdowns still match. */
-:where([data-theme="dark"]) .zero-icon-mono {
+   Scoped to [data-theme="dark"] only—not .okou-app—so portaled popovers/dropdowns still match. */
+:where([data-theme="dark"]) .okou-icon-mono {
   filter: invert(1);
 }
 
-/* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"]) .zero-app [role="switch"][data-unchecked] {
+/* Keep the legacy dark track visible without overriding the new UI token. */
+:where([data-theme="dark"]:not([data-new-ui]))
+  .okou-app
+  [role="switch"][data-unchecked] {
   background-color: hsl(var(--gray-400));
 }
 
@@ -610,35 +612,35 @@ body {
 /* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
    glyphs render in color. Without this, dual-presentation codepoints fall back
    to a CJK text font and appear as flat black outlines. */
-.zero-emoji {
+.okou-emoji {
   font-family: var(--font-family-emoji);
 }
 
-.zero-border {
+.okou-border {
   border: 0.7px solid hsl(var(--gray-400));
 }
-.zero-border-t {
+.okou-border-t {
   border-top: 0.7px solid hsl(var(--gray-400));
 }
-.zero-border-r {
+.okou-border-r {
   border-right: 0.7px solid hsl(var(--gray-300));
 }
 
-/* Avatar / logo thumbnails: a hairline lighter than zero-border, so the edge of
+/* Avatar / logo thumbnails: a hairline lighter than okou-border, so the edge of
    a picture stays readable without the stroke reading as a frame. */
-.zero-thumb-border {
+.okou-thumb-border {
   border: 0.5px solid hsl(var(--gray-400));
 }
 
-.zero-realtime-status-reconnecting {
+.okou-realtime-status-reconnecting {
   opacity: 0;
   animation: zero-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
     300ms forwards;
 }
 
-.zero-realtime-cloud-flow {
+.okou-realtime-cloud-flow {
   stroke-dasharray: 3 6;
-  animation: zero-realtime-cloud-flow 1.05s linear infinite;
+  animation: okou-realtime-cloud-flow 1.05s linear infinite;
 }
 
 @keyframes zero-realtime-status-reveal {
@@ -647,36 +649,36 @@ body {
   }
 }
 
-@keyframes zero-realtime-cloud-flow {
+@keyframes okou-realtime-cloud-flow {
   to {
     stroke-dashoffset: -18;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .zero-realtime-status-reconnecting {
+  .okou-realtime-status-reconnecting {
     opacity: 0.8;
     animation: none;
   }
 
-  .zero-realtime-cloud-flow {
+  .okou-realtime-cloud-flow {
     stroke-dasharray: none;
     animation: none;
   }
 }
 
 /* Role / status badge: pill with 0.7px border on neutral background */
-.zero-badge {
+.okou-badge {
   border: 0.7px solid hsl(var(--gray-400));
   background-color: hsl(var(--gray-0));
 }
 
 /* Zero chip-style gray (tone options, skill tags, Add skill) */
-.zero-app .zero-chip {
+.okou-app .okou-chip {
   background-color: hsl(var(--gray-50));
   border: 0.7px solid hsl(var(--gray-400));
 }
-.zero-app .zero-chip:hover {
+.okou-app .okou-chip:hover {
   background-image: linear-gradient(
     var(--color-state-hover),
     var(--color-state-hover)
@@ -685,51 +687,51 @@ body {
 }
 
 /* Zero left nav */
-.zero-nav {
+.okou-nav {
   --color-sidebar-border: hsl(var(--gray-200));
 }
 
 /* Shell surfaces, gated on the `newUi` switch. Off, both sidebars sit on the
    flats they had before the workspace became a card. On, they take the site's
    own two greys and the chat column doubles as the frame around that card. */
-.zero-app {
+.okou-app {
   --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-rail: hsl(var(--gray-50));
 }
-:where([data-new-ui]) .zero-app {
+:where([data-new-ui]) .okou-app {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-rail: hsl(var(--sidebar-rail));
 }
-.zero-app[data-gradient-color-themes] .zero-nav {
+.okou-app[data-gradient-color-themes] .okou-nav {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-border: hsl(var(--border) / 0.5);
 }
-.zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy {
-  color: hsl(var(--zero-nav-foreground));
+.okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy {
+  color: hsl(var(--okou-nav-foreground));
 }
-.zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy-muted {
-  color: hsl(var(--zero-nav-muted-foreground));
+.okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy-muted {
+  color: hsl(var(--okou-nav-muted-foreground));
 }
-.zero-app[data-gradient-color-themes] .group:hover .zero-nav-copy-muted-hover {
-  color: hsl(var(--zero-nav-foreground));
+.okou-app[data-gradient-color-themes] .group:hover .okou-nav-copy-muted-hover {
+  color: hsl(var(--okou-nav-foreground));
 }
-.zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
-  background-color: hsl(var(--zero-nav-rail));
+.okou-app[data-gradient-color-themes] .okou-nav.okou-nav-rail {
+  background-color: hsl(var(--okou-nav-rail));
 }
-:where([data-theme="dark"]) .zero-nav {
+:where([data-theme="dark"]) .okou-nav {
   --color-sidebar: hsl(240 5% 8%);
 }
-:where([data-new-ui][data-theme="dark"]) .zero-nav {
+:where([data-new-ui][data-theme="dark"]) .okou-nav {
   --color-sidebar: hsl(var(--sidebar));
 }
 
 /* Morandi outline buttons */
-.zero-app .zero-btn-morandi {
+.okou-app .okou-btn-morandi {
   background-color: hsl(var(--gray-50));
   border: 0.7px solid hsl(var(--gray-400));
   color: hsl(var(--foreground));
 }
-.zero-app .zero-btn-morandi:hover {
+.okou-app .okou-btn-morandi:hover {
   background-image: linear-gradient(
     var(--color-state-hover),
     var(--color-state-hover)
@@ -741,7 +743,7 @@ body {
    media frames. One surface, one hairline, one shadow, one radius — before this
    the transcript carried two radii, four border tokens and three fills.
 
-   `zero-chat-frame` is the same recipe without the fill, for the frames that
+   `okou-chat-frame` is the same recipe without the fill, for the frames that
    own their background (a video stage is black, not white).
 
    These live in `@layer components` on purpose. Unlayered rules outrank every
@@ -751,30 +753,30 @@ body {
    Inside `components`, the utilities layer still wins, so this stays a base
    that callers can override. */
 @layer components {
-  .zero-app .zero-chat-card,
-  .zero-app .zero-chat-frame {
+  .okou-app .okou-chat-card,
+  .okou-app .okou-chat-frame {
     border: 0.7px solid hsl(var(--gray-400));
-    border-radius: var(--zero-chat-card-radius);
-    box-shadow: var(--zero-chat-card-shadow);
+    border-radius: var(--okou-chat-card-radius);
+    box-shadow: var(--okou-chat-card-shadow);
   }
-  .zero-app .zero-chat-card {
+  .okou-app .okou-chat-card {
     background-color: hsl(var(--card));
   }
 }
 
 /* White card: shared border, radius (all white cards except chat bubbles) */
-.zero-app .zero-card {
+.okou-app .okou-card {
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
+  border-radius: var(--okou-card-radius);
+  box-shadow: var(--okou-card-shadow);
   transition: background-color 0.15s;
 }
-.zero-app .zero-card.cursor-pointer {
+.okou-app .okou-card.cursor-pointer {
   border-color: hsl(var(--gray-400));
-  box-shadow: var(--zero-card-shadow);
+  box-shadow: var(--okou-card-shadow);
 }
-.zero-app .zero-card.cursor-pointer:hover {
+.okou-app .okou-card.cursor-pointer:hover {
   background-image: linear-gradient(
     var(--color-state-hover),
     var(--color-state-hover)
@@ -782,61 +784,61 @@ body {
 }
 
 /* Message bubble (e.g. Meet Zero tone samples) */
-.zero-app .zero-bubble-cool {
+.okou-app .okou-bubble-cool {
   background-color: hsl(var(--gray-100) / 0.95);
   color: hsl(var(--foreground));
 }
 
 /* Chat: user message bubble */
-.zero-app .zero-chat-bubble-user {
+.okou-app .okou-chat-bubble-user {
   background-color: hsl(var(--gray-100));
   color: hsl(var(--foreground));
 }
-:where([data-theme="dark"]) .zero-app .zero-chat-bubble-user {
+:where([data-theme="dark"]) .okou-app .okou-chat-bubble-user {
   background-color: hsl(var(--gray-200));
 }
 /* Under the new palette gray-100 clears 1.06:1 against the white canvas, so
    the bubble stops reading as a bubble and the turn boundary disappears. Take
    the gray-200 step dark has always used here. */
-[data-new-ui] .zero-app .zero-chat-bubble-user {
+[data-new-ui] .okou-app .okou-chat-bubble-user {
   background-color: hsl(var(--gray-200));
 }
 
 /* Chat: assistant (Zero) message bubble */
-.zero-app .zero-chat-bubble-assistant {
+.okou-app .okou-chat-bubble-assistant {
   background-color: transparent;
   border: none;
 }
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
-.zero-app .zero-composer {
-  --zero-composer-ring: var(--gray-500);
+.okou-app .okou-composer {
+  --okou-composer-ring: var(--gray-500);
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-composer-radius);
-  box-shadow: var(--zero-card-shadow);
+  border-radius: var(--okou-composer-radius);
+  box-shadow: var(--okou-card-shadow);
 }
 
 /* Keep the finished border and shadow on their own layer so focus animates
    through compositor-friendly opacity instead of repainting the card. */
-.zero-app .zero-composer::after {
+.okou-app .okou-composer::after {
   content: "";
   position: absolute;
   inset: -0.7px;
-  border: 0.7px solid hsl(var(--zero-composer-ring));
+  border: 0.7px solid hsl(var(--okou-composer-ring));
   border-radius: inherit;
-  box-shadow: var(--zero-composer-focus-veil);
+  box-shadow: var(--okou-composer-focus-veil);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: opacity;
 }
-.zero-app .zero-composer:focus-within::after {
+.okou-app .okou-composer:focus-within::after {
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .zero-app .zero-composer::after {
+  .okou-app .okou-composer::after {
     transition: none;
   }
 }
@@ -1016,7 +1018,7 @@ body {
 }
 
 .wmde-markdown p,
-.wmde-markdown .zero-markdown-card {
+.wmde-markdown .okou-markdown-card {
   margin-top: 6px;
   margin-bottom: 6px;
 }
@@ -1024,10 +1026,10 @@ body {
 /* Chat bubbles: relax paragraph spacing so 15px text doesn't read cramped.
    Line-height is owned by the bubble container (leading-[1.7]) and inherited
    by the markdown body, mirroring how the bubble owns the font size. */
-.zero-chat-bubble-assistant .wmde-markdown p,
-.zero-chat-bubble-user .wmde-markdown p,
-.zero-chat-bubble-assistant .wmde-markdown .zero-markdown-card,
-.zero-chat-bubble-user .wmde-markdown .zero-markdown-card {
+.okou-chat-bubble-assistant .wmde-markdown p,
+.okou-chat-bubble-user .wmde-markdown p,
+.okou-chat-bubble-assistant .wmde-markdown .okou-markdown-card,
+.okou-chat-bubble-user .wmde-markdown .okou-markdown-card {
   margin-top: 8px;
   margin-bottom: 8px;
 }
@@ -1172,7 +1174,7 @@ body {
   border-bottom-color: hsl(var(--border));
 }
 
-.zero-chat-bubble-assistant .wmde-markdown hr {
+.okou-chat-bubble-assistant .wmde-markdown hr {
   display: none;
 }
 
@@ -1380,12 +1382,12 @@ details > summary {
 
 /* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
-.zero-workspace-bg {
+.okou-workspace-bg {
   position: relative;
   z-index: 0;
 }
 
-.zero-workspace-bg::before {
+.okou-workspace-bg::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1399,8 +1401,8 @@ details > summary {
   background-size: 100% 100%;
 }
 
-.dark .zero-workspace-bg::before,
-[data-theme="dark"] .zero-workspace-bg::before {
+.dark .okou-workspace-bg::before,
+[data-theme="dark"] .okou-workspace-bg::before {
   background-image: radial-gradient(
     ellipse 100% 70% at 50% 0%,
     hsl(var(--background-50) / 0.4),
@@ -1409,12 +1411,12 @@ details > summary {
   background-size: 100% 100%;
 }
 
-.zero-app[data-gradient-color-themes] .zero-workspace-bg::before {
+.okou-app[data-gradient-color-themes] .okou-workspace-bg::before {
   background-color: hsl(var(--card));
   background-image:
     radial-gradient(
       ellipse 58% 64% at 0% 0%,
-      color-mix(in srgb, hsl(var(--card)) 88%, var(--zero-color-theme-anchor))
+      color-mix(in srgb, hsl(var(--card)) 88%, var(--okou-color-theme-anchor))
         0%,
       transparent 70%
     ),
@@ -1423,7 +1425,7 @@ details > summary {
       color-mix(
           in srgb,
           hsl(var(--card)) 92%,
-          var(--zero-color-theme-companion)
+          var(--okou-color-theme-companion)
         )
         0%,
       transparent 70%
@@ -1431,13 +1433,13 @@ details > summary {
 }
 
 :where([data-theme="dark"])
-  .zero-app[data-gradient-color-themes]
-  .zero-workspace-bg::before {
+  .okou-app[data-gradient-color-themes]
+  .okou-workspace-bg::before {
   background-color: hsl(var(--card));
   background-image:
     radial-gradient(
       ellipse 58% 64% at 0% 0%,
-      color-mix(in srgb, hsl(var(--card)) 92%, var(--zero-color-theme-anchor))
+      color-mix(in srgb, hsl(var(--card)) 92%, var(--okou-color-theme-anchor))
         0%,
       transparent 70%
     ),
@@ -1446,7 +1448,7 @@ details > summary {
       color-mix(
           in srgb,
           hsl(var(--card)) 94%,
-          var(--zero-color-theme-companion)
+          var(--okou-color-theme-companion)
         )
         0%,
       transparent 70%
@@ -1963,14 +1965,14 @@ details > summary {
    every frame, for as long as the dialog is open. These are the app's
    always-on animations, so park them while a scrim is mounted. Anything
    rendered inside the dialog keeps running. */
-html:has(.zero-dialog-overlay)
+html:has(.okou-dialog-overlay)
   :is(
-    .zero-shimmer-text,
-    .zero-blocks span,
-    .zero-thinking-spinner,
+    .okou-shimmer-text,
+    .okou-blocks span,
+    .okou-thinking-spinner,
     .mic-starting-spinner,
     .owf-diagram-beam
-  ):not(.zero-dialog-content *) {
+  ):not(.okou-dialog-content *) {
   animation-play-state: paused;
 }
 
@@ -1999,25 +2001,25 @@ html:has(.zero-dialog-overlay)
    Desktop only. Below the sidebar breakpoint the columns are gone and a frame
    would just spend width the page does not have. */
 @media (min-width: 48rem) {
-  [data-new-ui] .zero-workspace-card {
-    --zero-workspace-card-gap: 8px;
-    --zero-workspace-card-radius: 12px;
+  [data-new-ui] .okou-workspace-card {
+    --okou-workspace-card-gap: 8px;
+    --okou-workspace-card-radius: 12px;
     background-color: hsl(var(--sidebar));
-    padding: var(--zero-workspace-card-gap);
+    padding: var(--okou-workspace-card-gap);
   }
 
-  [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
-    inset: var(--zero-workspace-card-gap);
-    border-radius: var(--zero-workspace-card-radius);
+  [data-new-ui] .okou-workspace-card.okou-workspace-bg::before {
+    inset: var(--okou-workspace-card-gap);
+    border-radius: var(--okou-workspace-card-radius);
   }
 
-  [data-new-ui] .zero-workspace-card.zero-workspace-bg::after {
+  [data-new-ui] .okou-workspace-card.okou-workspace-bg::after {
     content: "";
     position: absolute;
-    inset: var(--zero-workspace-card-gap);
+    inset: var(--okou-workspace-card-gap);
     border: 0.7px solid hsl(var(--border));
-    border-radius: var(--zero-workspace-card-radius);
-    box-shadow: 0 0 0 var(--zero-workspace-card-gap) hsl(var(--sidebar));
+    border-radius: var(--okou-workspace-card-radius);
+    box-shadow: 0 0 0 var(--okou-workspace-card-gap) hsl(var(--sidebar));
     pointer-events: none;
   }
 }
@@ -2028,9 +2030,9 @@ html:has(.zero-dialog-overlay)
    dark card does not: it lands on a bright grey that reads as a white outline
    rather than as focus, which is what `--ring` means on every other control.
    Saturation, not lightness, does the work, so the ring stays quieter than the
-   full Cobalt stop. */
-:where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
-  --zero-composer-ring: 222 38% 38%;
+   full Amber stop. */
+:where([data-theme="dark"][data-new-ui]) .okou-app .okou-composer {
+  --okou-composer-ring: 38.8 38% 38%;
 }
 
 /* ===================================================================
@@ -2064,60 +2066,63 @@ html:has(.zero-dialog-overlay)
 
 /* Shadows carry a hue of their own, so a cool one greys the warm surfaces. */
 :root[data-new-ui] {
-  --zero-card-shadow:
+  --okou-card-shadow:
     0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025);
-  --zero-chat-card-shadow: 0 1px 2px hsl(30 6% 45% / 0.05);
-  --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
+  --okou-chat-card-shadow: 0 1px 2px hsl(30 6% 45% / 0.05);
+  --okou-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* Markdown links read the brand tokens now that those carry Cobalt themselves.
-   They used to hardcode it, because Amber could not be a link colour, and the
-   dark pair below them never applied: `:where()` zeroes its own specificity, so
-   the light rule outweighed it. One theme-aware token settles both. */
+/* Markdown links use the palette's Cobalt rather than the Amber action color. */
 [data-new-ui] .wmde-markdown a {
-  color: hsl(var(--brand-text));
+  color: hsl(222 64% 45%);
 }
 [data-new-ui] .wmde-markdown a:hover {
-  color: hsl(var(--brand-text-hover));
+  color: hsl(222 65% 39%);
+}
+[data-theme="dark"][data-new-ui] .wmde-markdown a {
+  color: hsl(222 72% 70%);
+}
+[data-theme="dark"][data-new-ui] .wmde-markdown a:hover {
+  color: hsl(222 80% 88%);
 }
 
 /* Colour themes realigned to the new ramp's lightness steps. */
 :root[data-new-ui][data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 24% 98.3%;
-  --gray-50: var(--zero-color-theme-hue) 22% 97.7%;
-  --gray-100: var(--zero-color-theme-hue) 20% 96.7%;
-  --gray-200: var(--zero-color-theme-hue) 18% 86.9%;
-  --gray-300: var(--zero-color-theme-hue) 17% 79.4%;
-  --gray-400: var(--zero-color-theme-hue) 16% 71.2%;
-  --gray-500: var(--zero-color-theme-hue) 16% 62.2%;
+  --gray-0: var(--okou-color-theme-hue) 24% 98.3%;
+  --gray-50: var(--okou-color-theme-hue) 22% 97.7%;
+  --gray-100: var(--okou-color-theme-hue) 20% 96.7%;
+  --gray-200: var(--okou-color-theme-hue) 18% 86.9%;
+  --gray-300: var(--okou-color-theme-hue) 17% 79.4%;
+  --gray-400: var(--okou-color-theme-hue) 16% 71.2%;
+  --gray-500: var(--okou-color-theme-hue) 16% 62.2%;
 
   --divider: var(--gray-200);
-  --background: var(--zero-color-theme-hue) 24% 98.8%;
-  --card: var(--zero-color-theme-hue) 30% 99.4%;
+  --background: var(--okou-color-theme-hue) 24% 98.8%;
+  --card: var(--okou-color-theme-hue) 30% 99.4%;
   --popover: var(--card);
-  --secondary: var(--zero-color-theme-hue) 22% 96.7%;
+  --secondary: var(--okou-color-theme-hue) 22% 96.7%;
   --muted: var(--gray-100);
-  --accent: var(--zero-color-theme-hue) 24% 96.7%;
+  --accent: var(--okou-color-theme-hue) 24% 96.7%;
   --border: var(--gray-200);
   --input: var(--card);
-  --ring: var(--zero-color-theme-ring);
+  --ring: var(--okou-color-theme-ring);
   /* Halved with the neutral sidebar: this surface now frames the workspace
      card as well as backing the chat column, and a full-strength tint around a
      white sheet overpowers it. The rail keeps its depth and stays the anchor. */
-  --sidebar: var(--zero-color-theme-hue) 30% 98.4%;
-  --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
-  --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
-  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
+  --sidebar: var(--okou-color-theme-hue) 30% 98.4%;
+  --okou-nav-rail: var(--okou-color-theme-hue) 36% 93.5%;
+  --okou-nav-foreground: var(--okou-color-theme-hue) 24% 18%;
+  --okou-nav-muted-foreground: var(--okou-color-theme-hue) 18% 38%;
   --background-50: var(--gray-50);
-  --state-layer: var(--zero-color-theme-ring);
+  --state-layer: var(--okou-color-theme-ring);
   --segment-selected: var(--card);
-  --zero-color-theme-selected: color-mix(
+  --okou-color-theme-selected: color-mix(
     in srgb,
     #ffffff 84%,
     color-mix(
         in srgb,
-        var(--zero-color-theme-anchor) 82%,
-        var(--zero-color-theme-companion)
+        var(--okou-color-theme-anchor) 82%,
+        var(--okou-color-theme-companion)
       )
       16%
   );
@@ -2127,38 +2132,38 @@ html:has(.zero-dialog-overlay)
     .dark,
     [data-theme="dark"]
   )[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 5% 10.5%;
-  --gray-50: var(--zero-color-theme-hue) 6% 13.5%;
-  --gray-100: var(--zero-color-theme-hue) 8% 18.5%;
-  --gray-200: var(--zero-color-theme-hue) 9% 22.5%;
-  --gray-300: var(--zero-color-theme-hue) 10% 26.5%;
-  --gray-400: var(--zero-color-theme-hue) 11% 30.5%;
-  --gray-500: var(--zero-color-theme-hue) 12% 36.5%;
+  --gray-0: var(--okou-color-theme-hue) 5% 10.5%;
+  --gray-50: var(--okou-color-theme-hue) 6% 13.5%;
+  --gray-100: var(--okou-color-theme-hue) 8% 18.5%;
+  --gray-200: var(--okou-color-theme-hue) 9% 22.5%;
+  --gray-300: var(--okou-color-theme-hue) 10% 26.5%;
+  --gray-400: var(--okou-color-theme-hue) 11% 30.5%;
+  --gray-500: var(--okou-color-theme-hue) 12% 36.5%;
 
   --divider: var(--gray-200);
   --background: var(--gray-50);
-  --card: var(--zero-color-theme-hue) 8% 16.5%;
+  --card: var(--okou-color-theme-hue) 8% 16.5%;
   --popover: var(--gray-100);
-  --secondary: var(--zero-color-theme-hue) 9% 20.5%;
+  --secondary: var(--okou-color-theme-hue) 9% 20.5%;
   --muted: var(--gray-200);
-  --accent: var(--zero-color-theme-hue) 12% 26.5%;
+  --accent: var(--okou-color-theme-hue) 12% 26.5%;
   --border: var(--gray-200);
   --input: var(--gray-200);
-  --ring: var(--zero-color-theme-hue) 45% 62%;
-  --sidebar: var(--zero-color-theme-hue) 14% 12%;
-  --zero-nav-rail: var(--zero-color-theme-hue) 18% 8%;
-  --zero-nav-foreground: var(--zero-color-theme-hue) 22% 90%;
-  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 16% 64%;
+  --ring: var(--okou-color-theme-hue) 45% 62%;
+  --sidebar: var(--okou-color-theme-hue) 14% 12%;
+  --okou-nav-rail: var(--okou-color-theme-hue) 18% 8%;
+  --okou-nav-foreground: var(--okou-color-theme-hue) 22% 90%;
+  --okou-nav-muted-foreground: var(--okou-color-theme-hue) 16% 64%;
   --background-50: var(--gray-50);
-  --state-layer: var(--zero-color-theme-hue) 35% 82%;
+  --state-layer: var(--okou-color-theme-hue) 35% 82%;
   --segment-selected: var(--gray-400);
-  --zero-color-theme-selected: color-mix(
+  --okou-color-theme-selected: color-mix(
     in srgb,
     hsl(var(--card)) 86%,
     color-mix(
         in srgb,
-        var(--zero-color-theme-anchor) 82%,
-        var(--zero-color-theme-companion)
+        var(--okou-color-theme-anchor) 82%,
+        var(--okou-color-theme-companion)
       )
       14%
   );

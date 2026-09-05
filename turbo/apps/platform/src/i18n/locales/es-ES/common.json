@@ -648,7 +648,6 @@
       "renameImportedTemplate": "Cambiar nombre de la plantilla",
       "searchConnector": "Buscar plantillas",
       "searchConnectors": "Buscar plantillas",
-      "selected": "Plantilla: {{title}}",
       "selectStyle": "Selecciona el estilo {{style}}",
       "selectTemplate": "Seleccionar plantilla {{title}}",
       "selectVideo": "Seleccionar plantilla de vídeo {{title}}",
@@ -1383,38 +1382,22 @@
     },
     "plans": {
       "cancellationNotice": "Tu plan {{plan}} ha sido cancelado y terminará el {{date}}.",
-      "changeAnytime": "Actualiza o baja cuando quieras.",
       "compare": "Comparar planes",
       "compareAll": "Compara todos los planes",
-      "currentPlan": "Plan actual",
       "custom": {
         "name": "Personalizado"
       },
       "customAccess": "Acceso personalizado con ejecuciones concurrentes {{value}}",
       "customCancellationNotice": "Tu plan personalizado terminará en {{date}}.",
-      "customCheckoutUnavailable": "Los espacios de trabajo con un plan personalizado no pueden cambiar a Pro ni Team.",
       "downgrade": "Cambiar a un plan inferior",
       "downgradeNotice": "Tu plan cambiará de {{currentPlan}} a {{targetPlan}} el {{date}}.",
       "downgradesOn": "Cambio a {{plan}} el {{date}}",
       "downgradeTo": "Cambiar a {{plan}}",
       "endsOn": "Termina en {{date}}",
       "features": {
-        "byok": "Lleva tus propias llaves de LLM",
-        "communitySupport": "Soporte de la comunidad",
-        "emailSupport": "Soporte por correo electrónico",
-        "existingCredits": "Solo créditos gratuitos existentes",
-        "oneConcurrentRun": "1 ejecución simultánea",
-        "prioritySupport": "Soporte prioritario",
-        "sharedAndPrivateAgents": "7 agentes compartidos, agentes privados ilimitados",
-        "tenConcurrentRuns": "10 ejecuciones simultáneas",
-        "twoConcurrentRuns": "2 ejecuciones simultáneas",
-        "unlimitedAgents": "Agentes totales ilimitados",
-        "voiceInputFree": "Entrada de voz (10 solicitudes en total · 10 min/día por miembro)",
-        "voiceInputPro": "Entrada de voz (300 solicitudes/día · 200 min/día por miembro)",
-        "voiceInputTeam": "Entrada de voz (500 solicitudes/día · 500 min/día por miembro)"
+        "byok": "Lleva tus propias llaves de LLM"
       },
       "free": {
-        "description": "Acceso gratuito heredado para los espacios de trabajo existentes.",
         "name": "Gratis"
       },
       "highlights": {
@@ -1441,7 +1424,6 @@
         "name": "Gratis limitado"
       },
       "loadError": "No se pudo cargar el estado de facturación.",
-      "manageSubscription": "Gestionar la suscripción",
       "namedPlan": "Plan {{plan}}",
       "noActivePlan": "No hay plan activo",
       "noActiveSubscription": "Sin suscripción activa",
@@ -1449,11 +1431,9 @@
         "name": "Sin plan"
       },
       "perMonth": "/mes",
-      "popular": "Popular",
       "pricePerMonth": "{{price}}/mes",
       "pro": {
         "description": "Trabajo diario con agentes, con precio por miembro.",
-        "legacyDescription": "Más créditos y concurrencia para equipos que usan agentes de IA todos los días.",
         "name": "Pro"
       },
       "renews": "Renueva {{date}}",
@@ -1462,7 +1442,6 @@
       "selectedPlan": "El plan seleccionado",
       "team": {
         "description": "Para un equipo que mantiene agentes en marcha todo el día.",
-        "legacyDescription": "Espacio para un equipo de empleados de IA: gran volumen de créditos y 10 agentes ejecutándose a la vez.",
         "name": "Equipo"
       },
       "upgrade": "Actualización",
@@ -1565,13 +1544,11 @@
       "subscriptionChangeConfirmed": "Se confirmó el cambio de suscripción."
     },
     "usage": {
-      "added": "Añadido {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} restantes",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Límite de uso {{label}} restante",
         "resets": "Se restablece el {{date}}",
         "resetsRaw": "Se restablece {{value}}",
@@ -1592,16 +1569,12 @@
         "teamPlan": "Plan del equipo"
       },
       "creditAdditions": "Créditos añadidos",
-      "creditsRemaining_one": "{{value}} crédito restante",
-      "creditsRemaining_many": "{{value}} créditos restantes",
-      "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Caduca {{date}}",
       "grantsTable": {
         "credits": "Créditos",
         "date": "Fecha",
         "left": "Restante"
       },
-      "left": "{{value}} restante",
       "member": "Miembro",
       "neverExpires": "Nunca caduca",
       "orgCredits": "Créditos de la organización",
@@ -1896,7 +1869,6 @@
       "threadSuggestions": "Conversaciones",
       "useForFutureChats": "Usar este modelo en futuros chats",
       "videoModelForThisChat": "Modelo de vídeo para este chat",
-      "visualAttachmentsUnsupported": "{{modelName}} no reconoce imágenes ni vídeos. Cambia a un modelo con capacidad visual para adjuntarlos.",
       "workflows": {
         "empty": "No hay flujos de trabajo coincidentes",
         "loading": "Cargando flujos de trabajo...",
@@ -2441,10 +2413,6 @@
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
       "confirmRecording": "OK",
-      "draft": "Borrador de voz",
-      "draftTooLong": "Este borrador de voz es demasiado largo. Inicia una nueva grabación.",
-      "finishDraft": "Finalizar",
-      "finishingDraft": "Finalizando...",
       "input": "Entrada de voz",
       "inputLimitReached": "Límite de entrada de voz alcanzado. Actualiza a Pro o Team para límites más altos.",
       "inputLimitReachedMember": "Límite de entrada de voz alcanzado. Pide a un administrador del espacio de trabajo que actualice el plan para obtener límites más altos.",
@@ -2453,7 +2421,6 @@
       "inputLimitReachedReset": "Límite de entrada de voz alcanzado. Espera a que se restablezca tu límite.",
       "microphoneAccessDenied": "Se ha denegado el acceso al micrófono. Permite el acceso al micrófono e inténtalo de nuevo.",
       "openingMicrophone": "Abriendo el micrófono...",
-      "removeDraft": "Eliminar borrador de voz",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Detener la grabación",
       "transcribing": "Transcribiendo",
@@ -2816,12 +2783,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Más opciones",
-      "statusConnected": "Conectado",
       "toasts": {
         "connected": "Conectado",
         "created": "Se ha creado \"{{connector}}\"",
         "deleted": "Conector personalizado eliminado",
-        "disconnected": "Desconectado",
         "updated": "Se ha actualizado \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2864,7 +2829,6 @@
       "always": "Siempre",
       "clearSearch": "Borrar búsqueda de permisos",
       "descriptionAgent": "Configura qué acciones puede realizar este agente a través de este conector.",
-      "descriptionWorkflow": "Configura qué acciones puede realizar este flujo de trabajo a través de este conector.",
       "find": "Buscar permisos",
       "findPlaceholder": "Busca permisos...",
       "forTarget": "por {{target}}",
@@ -3329,8 +3293,7 @@
       "redirectTitle": "Redirigiendo a {{connector}}..."
     },
     "toasts": {
-      "connected": "{{connector}} conectado",
-      "disconnected": "{{connector}} desconectado"
+      "connected": "{{connector}} conectado"
     }
   },
   "global": {

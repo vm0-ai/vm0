@@ -10,11 +10,7 @@ import type {
   WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
 
-import { i18n } from "../../i18n/index.ts";
-
-function currentLocale(): string {
-  return i18n.resolvedLanguage ?? "en-US";
-}
+import { currentLocale, i18n } from "../../i18n/index.ts";
 
 export function workflowTitle(workflow: {
   readonly name: string;
@@ -261,7 +257,10 @@ export const GMAIL_TEXT_FIELDS: readonly {
   },
 ];
 
-function formTextValue(form: FormData, name: string): string | undefined {
+export function formTextValue(
+  form: FormData,
+  name: string,
+): string | undefined {
   const value = form.get(name);
   if (typeof value !== "string") {
     return undefined;
@@ -362,7 +361,7 @@ export function chatRunFinishedStatusLabel(
   }
 }
 
-export function chatRunFinishedAutomationSummary(
+function chatRunFinishedAutomationSummary(
   config: ChatRunFinishedEventConfig,
 ): string {
   const statusText = config.runStatuses

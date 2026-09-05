@@ -1,15 +1,8 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@okouai/ui/components/ui/dialog";
 import { Button } from "@okouai/ui/components/ui/button";
 import { CopyButton } from "@okouai/ui/components/ui/copy-button";
-import { Loader2 } from "lucide-react";
 
 import {
   closeCodexDeviceAuthDialog$,
@@ -27,7 +20,11 @@ import {
 import { brandName$ } from "../../../../signals/branding.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { ProviderIcon } from "./provider-icons.tsx";
+import {
+  DeviceAuthDialogShell,
+  DeviceAuthLoadingContent,
+  DeviceAuthRetryContent,
+} from "./device-auth-dialog-shell.tsx";
 
 type CodexDeviceAuthDialogState = {
   open: boolean;
@@ -99,43 +96,22 @@ function CodexDeviceAuthDialogView({
           return $.settings.models.deviceAuth.codex.connectTitle;
         });
 
-  function handleOpenChange(nextOpen: boolean): void {
-    if (nextOpen) {
-      return;
-    }
-    detach(close(pageSignal), Reason.DomCallback);
-  }
-
-  function handleStart(): void {
-    detach(run(pageSignal), Reason.DomCallback);
-  }
-
   return (
-    <Dialog open={dialog.open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className="max-w-md"
-        aria-describedby={undefined}
-        closeLabel={t(($) => {
-          return $.settings.shared.close;
-        })}
-      >
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <ProviderIcon type="codex-oauth-token" size={20} />
-            </div>
-            <DialogTitle>{title}</DialogTitle>
-          </div>
-        </DialogHeader>
-
-        <CodexDeviceAuthBody
-          flow={flow}
-          mode={dialog.mode}
-          onStart={handleStart}
-          openApprovalPage={openApprovalPage}
-        />
-      </DialogContent>
-    </Dialog>
+    <DeviceAuthDialogShell
+      open={dialog.open}
+      close={close}
+      iconType="codex-oauth-token"
+      title={title}
+    >
+      <CodexDeviceAuthBody
+        flow={flow}
+        mode={dialog.mode}
+        onStart={() => {
+          detach(run(pageSignal), Reason.DomCallback);
+        }}
+        openApprovalPage={openApprovalPage}
+      />
+    </DeviceAuthDialogShell>
   );
 }
 
@@ -154,11 +130,16 @@ function CodexDeviceAuthBody({
   const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   switch (flow.status) {
-    case "idle": {
-      return <CodexDeviceAuthLoadingContent />;
-    }
+    case "idle":
     case "starting": {
-      return <CodexDeviceAuthLoadingContent />;
+      return (
+        <DeviceAuthLoadingContent
+          testId="codex-device-auth-loading"
+          label={t(($) => {
+            return $.settings.models.deviceAuth.codex.preparing;
+          })}
+        />
+      );
     }
     case "pending":
     case "polling": {
@@ -239,58 +220,21 @@ function CodexDeviceAuthBody({
     case "expired":
     case "error": {
       return (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-destructive" role="alert">
-            {flow.message}
-          </p>
-          <CodexDeviceAuthStartButton mode={mode} onStart={onStart} />
-        </div>
+        <DeviceAuthRetryContent
+          message={flow.message}
+          testId="codex-device-auth-start"
+          onStart={onStart}
+          label={
+            mode === "reconnect"
+              ? t(($) => {
+                  return $.settings.models.deviceAuth.codex.reconnectAction;
+                })
+              : t(($) => {
+                  return $.settings.models.deviceAuth.codex.signIn;
+                })
+          }
+        />
       );
     }
   }
-}
-
-function CodexDeviceAuthLoadingContent() {
-  const { t } = useTranslation();
-  return (
-    <div
-      className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
-      role="status"
-      data-testid="codex-device-auth-loading"
-    >
-      <Loader2 size={16} className="animate-spin" />
-      <span>
-        {t(($) => {
-          return $.settings.models.deviceAuth.codex.preparing;
-        })}
-      </span>
-    </div>
-  );
-}
-
-function CodexDeviceAuthStartButton({
-  mode,
-  onStart,
-}: {
-  mode: "connect" | "reconnect";
-  onStart: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={onStart}
-      className="w-full gap-2"
-      data-testid="codex-device-auth-start"
-    >
-      {mode === "reconnect"
-        ? t(($) => {
-            return $.settings.models.deviceAuth.codex.reconnectAction;
-          })
-        : t(($) => {
-            return $.settings.models.deviceAuth.codex.signIn;
-          })}
-    </Button>
-  );
 }

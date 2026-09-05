@@ -40,13 +40,6 @@
         "**/*.{test,spec}.ts?(x)"
       ],
       "project": ["**/*.{ts,tsx}"],
-      "ignore": [
-        "src/views/zero-page/zero-sidebar-account.tsx",
-        "src/views/zero-page/zero-sidebar-chat-list.tsx",
-        "src/views/zero-page/zero-sidebar-pinned.tsx",
-        "src/views/zero-page/zero-sidebar-scroll.tsx",
-        "src/views/zero-page/zero-sidebar-upgrade.tsx"
-      ],
       "ignoreDependencies": [
         "@sentry/cli",
         "idb",
@@ -158,7 +151,6 @@
     "dist/**",
     "build/**",
     "coverage/**",
-    "apps/platform/src/mocks/mock-log-detail-data.ts",
     "apps/platform/src/mocks/ably.ts",
     "apps/platform/src/mocks/mermaid.ts",
     "scripts/rebuild-snapshots.ts",

@@ -24,9 +24,10 @@ import { logger } from "../log.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
+  isRecord,
   onRef,
-  setLoop,
   settle,
+  stringProperty,
   withCleanup,
 } from "../utils.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
@@ -35,6 +36,9 @@ import type { AuthV2OAuthStrategy } from "./oauth-strategies.ts";
 import {
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
+  createResendCooldownLifecycleRef,
+  createStartCooldownCommand,
+  type AuthV2ResendCooldown,
 } from "./resend-cooldown.ts";
 import {
   discoverAuthV2SignUpExternalCapabilities,
@@ -44,12 +48,13 @@ import {
 
 const L = logger("AuthV2SignUp");
 
-const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS = 30;
-const AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS =
-  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS * 1000;
 const signUpResendCooldownStorage = createAuthV2ResendCooldownStorage(
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
 );
+const signUpResendCooldown: Readonly<AuthV2ResendCooldown> = {
+  storage: signUpResendCooldownStorage,
+  seconds: 30,
+};
 
 const SUPPORTED_SIGN_UP_ATTRIBUTES = [
   "email_address",
@@ -533,20 +538,6 @@ function snapshotSignUpResource(
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function stringProperty(
-  value: Record<string, unknown>,
-  property: string,
-): string | undefined {
-  const candidate = value[property];
-  return typeof candidate === "string" && candidate.length > 0
-    ? candidate
-    : undefined;
-}
-
 function clerkErrorField(
   error: Record<string, unknown>,
   fallbackField: AuthV2SignUpErrorField,
@@ -884,57 +875,6 @@ function createScheduleExpiryCommand(
   );
 }
 
-function createStartCooldownCommand(
-  atoms: SignUpFlowAtoms,
-  runtime: SignUpFlowRuntime,
-): Command<void, [string, AbortSignal]> {
-  return command(({ set }, identity: string, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    const deadlineMs = now() + AUTH_V2_SIGN_UP_RESEND_COOLDOWN_MS;
-    set(signUpResendCooldownStorage.save$, identity, deadlineMs);
-    set(runtime.cooldownDeadlineMs$, deadlineMs);
-    set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_UP_RESEND_COOLDOWN_SECONDS);
-  });
-}
-
-function createResendCooldownLifecycleRef(
-  atoms: SignUpFlowAtoms,
-  runtime: SignUpFlowRuntime,
-) {
-  return onRef(
-    command(
-      async (
-        { get, set },
-        _element: HTMLSpanElement,
-        signal: AbortSignal,
-      ): Promise<void> => {
-        await setLoop(
-          () => {
-            const deadlineMs = get(runtime.cooldownDeadlineMs$);
-            if (deadlineMs === null) {
-              return true;
-            }
-            const remainingSeconds = Math.max(
-              0,
-              Math.ceil((deadlineMs - now()) / 1000),
-            );
-            set(atoms.resendRemainingSeconds$, remainingSeconds);
-            if (remainingSeconds > 0) {
-              return false;
-            }
-            set(signUpResendCooldownStorage.clear$);
-            set(runtime.cooldownDeadlineMs$, null);
-            return true;
-          },
-          1000,
-          signal,
-          { retryTransientErrors: false },
-        );
-      },
-    ),
-  );
-}
-
 function createInitializeCommand(
   atoms: SignUpFlowAtoms,
   dependencies: AuthV2SignUpFlowDependencies,
@@ -1018,7 +958,11 @@ function createResourceCommands(
   dependencies: AuthV2SignUpFlowDependencies,
 ): SignUpResourceCommands {
   const scheduleExpiry$ = createScheduleExpiryCommand(atoms, runtime);
-  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
+  const startCooldown$ = createStartCooldownCommand(
+    signUpResendCooldown,
+    atoms,
+    runtime,
+  );
 
   const applyResource$ = command(
     async (
@@ -1404,7 +1348,11 @@ function createResendOperation(
   runtime: SignUpFlowRuntime,
   applyResource$: ApplySignUpResourceCommand,
 ): Command<Promise<void>, [AbortSignal]> {
-  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
+  const startCooldown$ = createStartCooldownCommand(
+    signUpResendCooldown,
+    atoms,
+    runtime,
+  );
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const flowState = get(atoms.state$);
     if (
@@ -1591,6 +1539,7 @@ export function createAuthV2SignUpSignals(
   );
   const oauthOperation$ = createOAuthOperation(atoms, dependencies);
   const resendCooldownLifecycleRef$ = createResendCooldownLifecycleRef(
+    signUpResendCooldown,
     atoms,
     runtime,
   );

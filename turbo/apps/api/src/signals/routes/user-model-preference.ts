@@ -1,4 +1,8 @@
 import { command, computed } from "ccstate";
+import {
+  getRunModelAccess,
+  RETIRED_RUN_MODEL_MESSAGE,
+} from "@okouai/api-contracts/contracts/model-providers";
 import type { UserPreferenceChangedPayload } from "@okouai/api-contracts/contracts/realtime";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
@@ -35,6 +39,10 @@ const updateUserModelPreferenceInner$ = command(
     signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
+    }
+
+    if (getRunModelAccess(body.data.selectedModel) === "retired") {
+      return badRequestMessage(RETIRED_RUN_MODEL_MESSAGE);
     }
 
     const policies =

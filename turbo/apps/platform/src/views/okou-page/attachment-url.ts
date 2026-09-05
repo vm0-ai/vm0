@@ -245,9 +245,9 @@ async function fetchBlobForDownload(
 
 export async function downloadAttachmentUrl(
   url: string,
-  signal: AbortSignal = AbortSignal.any([]),
-  filename = attachmentFilenameFromUrl(url),
-  mode: "blob" | "native" = "blob",
+  signal: AbortSignal,
+  filename: string,
+  mode: "blob" | "native",
 ): Promise<void> {
   if (mode === "native") {
     signal.throwIfAborted();

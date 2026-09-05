@@ -12,6 +12,7 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
@@ -499,27 +500,25 @@ function eventNonContentPart(
   );
 }
 
-function ArtifactsButton({ thread }: { thread: ChatPanelSignals }) {
-  return <ArtifactsButtonInner thread={thread} />;
-}
-
-function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
-  const { t } = useTranslation();
-  const sidebarTarget = useGet(thread.sidebar.target$);
-  const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const openThreadArtifacts = useOpenThreadArtifacts(thread);
-  const open = sidebarTarget?.type === "artifacts";
-
+function ChatThreadHeaderIconButton({
+  icon,
+  label,
+  tooltip = label,
+  open,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  tooltip?: string;
+  open: boolean;
+  onClick: () => void;
+}) {
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             type="button"
-            onClick={() => {
-              reloadArtifacts();
-              openThreadArtifacts();
-            }}
             variant="quiet"
             size="icon-sm"
             iconSize="md"
@@ -527,21 +526,36 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
               "shrink-0 duration-150",
               open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
-            aria-label={t(($) => {
-              return $.chat.thread.openArtifacts;
-            })}
+            aria-label={label}
             aria-pressed={open}
+            onClick={onClick}
           >
-            <Package size={18} />
+            {icon}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t(($) => {
-            return $.chat.thread.openArtifacts;
-          })}
-        </TooltipContent>
+        <TooltipContent side="bottom">{tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function ArtifactsButton({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const sidebarTarget = useGet(thread.sidebar.target$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const openThreadArtifacts = useOpenThreadArtifacts(thread);
+  return (
+    <ChatThreadHeaderIconButton
+      icon={<Package size={18} />}
+      label={t(($) => {
+        return $.chat.thread.openArtifacts;
+      })}
+      open={sidebarTarget?.type === "artifacts"}
+      onClick={() => {
+        reloadArtifacts();
+        openThreadArtifacts();
+      }}
+    />
   );
 }
 // Loads automations and only renders once this thread has at least one linked
@@ -573,40 +587,23 @@ export function AutomationMenuButton({
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            iconSize="md"
-            className={cn(
-              "shrink-0 duration-150",
-              open && "bg-primary/10 text-brand-text hover:text-brand-text",
-            )}
-            aria-label={
-              ariaLabel ??
-              t(($) => {
-                return $.chat.automations.title;
-              })
-            }
-            aria-pressed={open}
-            onClick={() => {
-              reloadAutomations();
-              openAutomationSidebar(thread);
-            }}
-          >
-            <Clock size={18} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t(($) => {
-            return $.chat.automations.open;
-          })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <ChatThreadHeaderIconButton
+      icon={<Clock size={18} />}
+      label={
+        ariaLabel ??
+        t(($) => {
+          return $.chat.automations.title;
+        })
+      }
+      tooltip={t(($) => {
+        return $.chat.automations.open;
+      })}
+      open={open}
+      onClick={() => {
+        reloadAutomations();
+        openAutomationSidebar(thread);
+      }}
+    />
   );
 }
 
@@ -614,39 +611,17 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
-
-  const open = sidebarTarget?.type === "browser";
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            iconSize="md"
-            className={cn(
-              "shrink-0 duration-150",
-              open && "bg-primary/10 text-brand-text hover:text-brand-text",
-            )}
-            aria-label={t(($) => {
-              return $.chat.thread.openBrowser;
-            })}
-            aria-pressed={open}
-            onClick={() => {
-              openBrowserSidebar(thread.threadId);
-            }}
-          >
-            <Globe size={18} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {t(($) => {
-            return $.chat.thread.openBrowser;
-          })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <ChatThreadHeaderIconButton
+      icon={<Globe size={18} />}
+      label={t(($) => {
+        return $.chat.thread.openBrowser;
+      })}
+      open={sidebarTarget?.type === "browser"}
+      onClick={() => {
+        openBrowserSidebar(thread.threadId);
+      }}
+    />
   );
 }
 
@@ -885,7 +860,7 @@ function ChatThreadEmojiMenuButton({
                 {emoji ? (
                   <span
                     aria-hidden="true"
-                    className="zero-emoji text-base leading-none"
+                    className="okou-emoji text-base leading-none"
                   >
                     {emoji}
                   </span>
@@ -1279,7 +1254,7 @@ function ChatThreadEmojiPreview() {
     <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-2">
       {preview ? (
         <>
-          <span aria-hidden="true" className="zero-emoji text-lg leading-none">
+          <span aria-hidden="true" className="okou-emoji text-lg leading-none">
             {preview.emoji}
           </span>
           <span className="truncate text-xs font-medium text-muted-foreground">
@@ -1514,7 +1489,7 @@ function ChatThreadEmojiGrid({
               onSelect(item.emoji);
             }}
           >
-            <span aria-hidden="true" className="zero-emoji">
+            <span aria-hidden="true" className="okou-emoji">
               {item.emoji}
             </span>
             {shortcutDigit !== null && (
@@ -2122,7 +2097,7 @@ function HeaderWorkflowAutomationCard({
               type="button"
               variant="outline"
               size="sm"
-              className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
+              className="okou-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
               disabled={running}
               onClick={() => {
                 detach(
@@ -2384,25 +2359,38 @@ function HeaderScheduleAutomationEditForm({
           </span>
         </label>
       ) : null}
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          {t(($) => {
-            return $.chat.actions.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-          {t(($) => {
-            return $.chat.automations.save;
-          })}
-        </Button>
-      </DialogFooter>
+      <HeaderAutomationEditFooter saving={saving} onCancel={onDone} />
     </form>
+  );
+}
+
+function HeaderAutomationEditFooter({
+  saving,
+  onCancel,
+}: {
+  saving: boolean;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={saving}
+        onClick={onCancel}
+      >
+        {t(($) => {
+          return $.chat.actions.cancel;
+        })}
+      </Button>
+      <Button type="submit" disabled={saving}>
+        {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+        {t(($) => {
+          return $.chat.automations.save;
+        })}
+      </Button>
+    </DialogFooter>
   );
 }
 
@@ -2590,7 +2578,6 @@ function HeaderGmailNewMessageAutomationEditForm({
   readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
-  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
     headerAutomations.updateGmailNewMessage$,
@@ -2630,24 +2617,7 @@ function HeaderGmailNewMessageAutomationEditForm({
         eventConfig={automation.eventConfig}
         disabled={saving}
       />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          {t(($) => {
-            return $.chat.actions.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-          {t(($) => {
-            return $.chat.automations.save;
-          })}
-        </Button>
-      </DialogFooter>
+      <HeaderAutomationEditFooter saving={saving} onCancel={onDone} />
     </form>
   );
 }
@@ -2712,24 +2682,7 @@ function HeaderGmailLabelAutomationEditForm({
           })}
         />
       </label>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onDone}
-        >
-          {t(($) => {
-            return $.chat.actions.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-          {t(($) => {
-            return $.chat.automations.save;
-          })}
-        </Button>
-      </DialogFooter>
+      <HeaderAutomationEditFooter saving={saving} onCancel={onDone} />
     </form>
   );
 }
@@ -2954,13 +2907,8 @@ export function ChatThreadPage() {
   );
 }
 
-type LoadableValue<T> =
-  | { state: "loading" }
-  | { state: "hasData"; data: T }
-  | { state: "hasError"; error: unknown };
-
 function resolveSessionError(
-  renderedGroupsReadyLoadable: LoadableValue<boolean>,
+  renderedGroupsReadyLoadable: Loadable<boolean>,
 ): string | null {
   if (renderedGroupsReadyLoadable.state === "hasError") {
     return renderedGroupsReadyLoadable.error instanceof Error
@@ -4177,7 +4125,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
         <div
           className={cn(
-            "zero-chat-skeleton-reveal",
+            "okou-chat-skeleton-reveal",
             CHAT_THREAD_MESSAGE_LIST_CLASS,
           )}
         >
@@ -4542,7 +4490,7 @@ function RecommendedFollowupList({
             className={cn(
               "group flex text-left transition-colors",
               showFollowupCards
-                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--zero-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--okou-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover",
             )}
             onClick={() => {
@@ -4712,7 +4660,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       data-chat-composer
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
-        paddingBottom: "max(0.5rem, var(--zero-composer-safe-bottom))",
+        paddingBottom: "max(0.5rem, var(--okou-composer-safe-bottom))",
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
@@ -4809,7 +4757,7 @@ function ShimmerText({
     <p
       ref={setRef}
       className={cn(
-        "zero-shimmer-text h-5 min-w-0 flex-1 truncate text-[0.8125rem] leading-5",
+        "okou-shimmer-text h-5 min-w-0 flex-1 truncate text-[0.8125rem] leading-5",
         className,
       )}
       aria-label={ariaLabel}
@@ -4890,7 +4838,7 @@ function ThinkingLoader({
         <img
           src={thinkingSpinnerImg}
           alt=""
-          className="zero-thinking-spinner size-3.5 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+          className="okou-thinking-spinner size-3.5 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
         />
       </span>
     );
@@ -4899,7 +4847,7 @@ function ThinkingLoader({
   return (
     <span
       data-thinking-loader="blocks"
-      className="zero-blocks shrink-0"
+      className="okou-blocks shrink-0"
       style={blockStyle}
     >
       <span />
@@ -5007,7 +4955,7 @@ function WaitingForAssistantResponse({
       <div
         {...thinkingIndicatorProps}
         data-role="assistant-thinking"
-        className="zero-thinking-enter min-w-0"
+        className="okou-thinking-enter min-w-0"
       >
         <InlineThinkingRow
           blockStyle={blockStyle}
@@ -5024,7 +4972,7 @@ function WaitingForAssistantResponse({
     <div
       {...thinkingIndicatorProps}
       data-role="assistant"
-      className="zero-thinking-enter flex flex-col gap-1"
+      className="okou-thinking-enter flex flex-col gap-1"
     >
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
@@ -5034,7 +4982,7 @@ function WaitingForAssistantResponse({
               <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
             );
           })}
-          <div className="zero-chat-bubble-assistant min-w-0 overflow-hidden rounded-xl py-4 text-[0.9375rem] leading-[1.7]">
+          <div className="okou-chat-bubble-assistant min-w-0 overflow-hidden rounded-xl py-4 text-[0.9375rem] leading-[1.7]">
             <div className="flex h-5 min-w-0 items-center gap-2">
               <ThinkingLoader
                 blockStyle={blockStyle}
@@ -5100,7 +5048,7 @@ function AssistantThinkingStatusRow({
       <div
         {...thinkingIndicatorProps}
         data-role="assistant-thinking"
-        className="zero-thinking-enter min-w-0"
+        className="okou-thinking-enter min-w-0"
       >
         {content}
       </div>
@@ -5568,7 +5516,7 @@ function InsufficientCreditsCard() {
   };
 
   return (
-    <div className="zero-chat-card max-w-md px-3 py-3">
+    <div className="okou-chat-card max-w-md px-3 py-3">
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
@@ -5672,7 +5620,7 @@ function AssistantRecoveryActions({
           type="button"
           size="sm"
           variant="outline"
-          className="zero-btn-morandi"
+          className="okou-btn-morandi"
           disabled={retrying || resetting}
           onClick={() => {
             detach(resetAndRetry(pageSignal), Reason.DomCallback);
@@ -5693,7 +5641,6 @@ function AssistantRecoveryActions({
           })}
           triggerClassName="h-8 w-auto bg-background text-sm"
           compactTrigger
-          resolveDefaultSelection={false}
           {...(recovery.failedModel
             ? { excludedModel: recovery.failedModel }
             : {})}
@@ -5706,7 +5653,7 @@ function AssistantRecoveryActions({
           variant="outline"
           // Filled neutral leads; the plain outline reads as the secondary
           // action when reset is also offered.
-          className={hasResetAction ? undefined : "zero-btn-morandi"}
+          className={hasResetAction ? undefined : "okou-btn-morandi"}
           disabled={retrying || resetting}
           onClick={() => {
             detach(retry(pageSignal), Reason.DomCallback);
@@ -5788,7 +5735,7 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="zero-chat-card flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-foreground"
+      className="okou-chat-card flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-foreground"
     >
       <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2.5">
         {recovery.kind === "usage-limit" ||
@@ -7268,7 +7215,7 @@ function WorkflowUserMessage({
     messageDocumentToDisplayText(event.userMessage)?.trim() ||
     part.automationBrief?.trim();
   const bubbleClassName =
-    "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
+    "okou-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
   const body = workflowBody ? (
     <div className={bubbleClassName}>
       <div className="px-4 py-3">{workflowBody}</div>
@@ -7342,7 +7289,7 @@ function GoalUserMessage({
         <div className="flex w-full flex-col items-end">
           <MessageAnnotation renderPart={renderPart} />
           {goalBrief ? (
-            <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
+            <div className="okou-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
               <div className="px-4 py-3 whitespace-pre-wrap">{goalBrief}</div>
             </div>
           ) : null}
@@ -7697,7 +7644,7 @@ function PagedAssistantTimeline({
             >
               {item.artifactCards.map((card) => {
                 return (
-                  <div key={card.signals.url} className="zero-markdown-card">
+                  <div key={card.signals.url} className="okou-markdown-card">
                     <MarkdownCardView card={card} />
                   </div>
                 );
@@ -7997,14 +7944,12 @@ function UsageChip({
   usage,
   title,
   ariaLabel,
-  contentAlign = "start",
   open,
   setOpen,
 }: {
   usage: ChatEventUsagePayload;
   title: string;
   ariaLabel: string;
-  contentAlign?: "start" | "center" | "end";
   open: boolean;
   setOpen: (open: boolean) => void;
 }) {
@@ -8023,7 +7968,7 @@ function UsageChip({
           <span>{total}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent side="bottom" align={contentAlign} className="w-72 p-3">
+      <PopoverContent side="bottom" align="start" className="w-72 p-3">
         <div className="flex items-center justify-between gap-3 text-sm font-medium">
           <span>{title}</span>
           <span>{total}</span>
@@ -8173,10 +8118,6 @@ function PagedGroupActions({
   })?.runId;
   const usage = group.usage;
   const hasContent = content.length > 0;
-
-  if (group.role === "user") {
-    return null;
-  }
 
   const handleCopy = () => {
     if (!content) {

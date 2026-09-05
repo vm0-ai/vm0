@@ -18,6 +18,30 @@ export type AgentPhoneUserLink = typeof agentphoneUserLinks.$inferSelect;
 const AGENTPHONE_EMAIL_HANDLE_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/u;
 const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
 
+/**
+ * Handles that address the assistant in a group conversation. Every public
+ * brand answers to all of them, because group members do not know which brand
+ * the deployment presents and the VM0 brand still calls the assistant "Zero".
+ *
+ * Detection and stripping must stay in agreement, so both derive from this one
+ * pattern. If they drift, a message either wakes the agent with the mention
+ * still in the prompt, or is stripped without waking it.
+ */
+const AGENTPHONE_MENTION_PATTERN = /(^|\s)@(zero|vm0|okou)\b/iu;
+
+/** Whether free-form message text addresses the assistant by handle. */
+export function isAgentPhoneMentionText(value: string): boolean {
+  return AGENTPHONE_MENTION_PATTERN.test(value);
+}
+
+/** Removes the addressing handle so it never reaches the run prompt. */
+export function stripAgentPhoneMention(text: string): string {
+  return text
+    .replace(new RegExp(AGENTPHONE_MENTION_PATTERN.source, "giu"), " ")
+    .replace(/[ \t]{2,}/gu, " ")
+    .trim();
+}
+
 export function isAgentPhoneChannel(value: string): value is AgentPhoneChannel {
   return value === "imessage" || value === "sms" || value === "mms";
 }

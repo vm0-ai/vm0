@@ -292,9 +292,7 @@ test("Use the appropriate Enter behavior on touch devices", async () => {
       "Send with the hardware shortcut",
     ]);
   });
-  await expect(
-    screen.findByText("Send with the hardware shortcut"),
-  ).resolves.toBeVisible();
+  await expectSentPrompt("Send with the hardware shortcut");
 });
 
 test("Treat whitespace as an empty message", async () => {
@@ -313,7 +311,7 @@ test("Treat whitespace as an empty message", async () => {
   });
 
   const editor = await loadNewChatComposer();
-  const composer = editor.closest(".zero-composer");
+  const composer = editor.closest(".okou-composer");
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer surface not found");
   }
@@ -341,7 +339,7 @@ test("Hide the placeholder after adding an empty line", async () => {
   });
 
   const editor = await loadNewChatComposer();
-  const composer = editor.closest(".zero-composer");
+  const composer = editor.closest(".okou-composer");
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer surface not found");
   }

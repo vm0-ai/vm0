@@ -109,10 +109,6 @@ export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
 });
 
-export const imageRecognitionAvailable$ = computed((): boolean => {
-  return true;
-});
-
 export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
@@ -123,6 +119,10 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
 
 export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+});
+
+export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
 });
 
 export const customConnectorMcpEnabled$ = computed((get): boolean => {

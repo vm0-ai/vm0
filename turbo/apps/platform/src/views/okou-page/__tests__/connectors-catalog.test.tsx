@@ -411,7 +411,6 @@ test("Present a connector with no accounts", async () => {
   await setupPage({
     context,
     path: "/connectors",
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
   const card = await waitFor(() => {
     return getConnectorCard("GitHub");

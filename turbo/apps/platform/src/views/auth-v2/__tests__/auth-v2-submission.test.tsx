@@ -107,7 +107,7 @@ async function openAccountMenu(): Promise<HTMLElement> {
       return within(rail).getByLabelText("Alex Rivera");
     }
     const minimalSidebar = document.querySelector(
-      "aside.zero-nav:not(.zero-nav-rail)",
+      "aside.okou-nav:not(.okou-nav-rail)",
     );
     if (!(minimalSidebar instanceof HTMLElement)) {
       throw new Error("Account menu container not found");

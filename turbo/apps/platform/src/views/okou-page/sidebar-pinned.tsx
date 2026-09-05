@@ -45,6 +45,7 @@ import {
 } from "../../signals/okou-page/pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import { refreshSidebarChatThreadLayoutOnRef$ } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
@@ -66,8 +67,10 @@ const pinnedAgentGridCardFrameClassName =
 const pinnedAgentGridLabelFrameClassName = "h-3.5 leading-[14px]";
 
 function PinnedAgentGridSkeletonCard() {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   return (
     <div
+      ref={refreshLayoutRef}
       aria-hidden="true"
       data-testid="pinned-agent-skeleton"
       className={pinnedAgentGridCardFrameClassName}
@@ -267,6 +270,7 @@ function PinnedAgentGridCard({
   const setDropTarget = useSet(setPinnedAgentDropTarget$);
   const endDrag = useSet(endPinnedAgentDrag$);
   const [, moveAgent] = useLoadableSet(movePinnedAgent$);
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const displayName = agent.displayName ?? agent.agentId;
 
   const isDragging = draggingAgentId === agent.agentId;
@@ -278,6 +282,7 @@ function PinnedAgentGridCard({
 
   const card = (
     <Link
+      ref={refreshLayoutRef}
       pathname="/agents/:agentId/chat"
       options={{ pathParams: { agentId: agent.agentId } }}
       data-testid="pinned-agent-card"
@@ -370,7 +375,7 @@ function PinnedAgentGridCard({
       </span>
       <span
         data-testid="pinned-agent-label-frame"
-        className={`zero-nav-copy ${pinnedAgentGridLabelFrameClassName} w-full truncate text-center text-[11px] ${
+        className={`okou-nav-copy ${pinnedAgentGridLabelFrameClassName} w-full truncate text-center text-[11px] ${
           isPrimarySelected ? "font-medium" : ""
         } ${isDragging ? "opacity-0" : ""}`}
       >
@@ -451,6 +456,7 @@ export function PinnedAgentListSection({
 }: {
   layout?: "vertical" | "horizontal";
 }) {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const { t } = useTranslation("agents");
   const activeRoute = useGet(activeRoute$);
   const pathParams = useGet(pathParams$);
@@ -522,7 +528,7 @@ export function PinnedAgentListSection({
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="zero-nav-copy-muted flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
+        <span className="okou-nav-copy-muted flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
           {t(($) => {
             return $.sidebar.pinnedAgents;
           })}
@@ -548,7 +554,7 @@ export function PinnedAgentListSection({
               </span>
               <span
                 data-testid="pinned-agent-label-frame"
-                className={`zero-nav-copy-muted ${pinnedAgentGridLabelFrameClassName} text-[11px]`}
+                className={`okou-nav-copy-muted ${pinnedAgentGridLabelFrameClassName} text-[11px]`}
               >
                 {t(($) => {
                   return $.sidebar.addPin;
@@ -571,7 +577,7 @@ export function PinnedAgentListSection({
           return setCollapsed(!collapsed);
         }}
       >
-        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
+        <span className="okou-nav-copy-muted okou-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.sidebar.pinned;
           })}
@@ -584,10 +590,13 @@ export function PinnedAgentListSection({
         </span>
       </div>
       {!collapsed && (
-        <div className="flex flex-col gap-0.5 mt-1">
+        <div ref={refreshLayoutRef} className="flex flex-col gap-0.5 mt-1">
           {pinnedAgentsLoadable.state === "loading" && (
             <>
-              <div className="flex h-8 items-center gap-2 px-2">
+              <div
+                ref={refreshLayoutRef}
+                className="flex h-8 items-center gap-2 px-2"
+              >
                 <div className="h-5 w-5 shrink-0 rounded-md bg-muted animate-pulse" />
                 <div className="h-3 w-20 rounded bg-muted animate-pulse" />
               </div>
@@ -609,6 +618,7 @@ export function PinnedAgentListSection({
               return (
                 <div
                   key={agent.agentId}
+                  ref={refreshLayoutRef}
                   className="group relative"
                   data-testid="pinned-agent-card"
                 >
@@ -637,7 +647,7 @@ export function PinnedAgentListSection({
                       alt={agent.displayName ?? agent.agentId}
                       className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                     />
-                    <span className="zero-nav-copy truncate">
+                    <span className="okou-nav-copy truncate">
                       {agent.displayName ?? agent.agentId}
                     </span>
                   </Link>

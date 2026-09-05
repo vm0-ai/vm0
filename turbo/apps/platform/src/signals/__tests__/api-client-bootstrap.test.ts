@@ -17,7 +17,7 @@ test("uses a matching bootstrap response once before falling back to the network
   };
   const script = document.createElement("script");
   script.type = "application/json";
-  script.dataset.vm0ApiBootstrap = "";
+  script.dataset.okouApiBootstrap = "";
   script.dataset.method = "GET";
   script.dataset.path = encodeURIComponent(featureSwitchesContract.get.path);
   script.dataset.contentType = "application/json";

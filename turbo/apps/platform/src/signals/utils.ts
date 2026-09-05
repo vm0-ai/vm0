@@ -170,6 +170,26 @@ export function throwIfAbort(e: unknown) {
  * Parse JSON with a fallback value for untrusted input (e.g. localStorage).
  * Re-throws abort errors; swallows parse errors and returns `fallback`.
  */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function isNonArrayRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value);
+}
+
+export function stringProperty(
+  value: Record<string, unknown>,
+  property: string,
+): string | undefined {
+  const candidate = value[property];
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : undefined;
+}
+
 export function jsonParseOr<T>(value: string, fallback: T): T {
   // We must use this approach to silence the exception here. This is because
   // the function itself is designed to help the caller avoid having to handle

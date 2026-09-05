@@ -17,7 +17,7 @@ const directRunModelProviderTypeSchema = modelProviderWriteTypeSchema.refine(
   (type) => {
     return type !== "built-in";
   },
-  { message: "built-in model provider is only supported by zero runs" },
+  { message: "built-in model provider is only supported by agent runs" },
 );
 
 export const claudeToolEntrySchema = z

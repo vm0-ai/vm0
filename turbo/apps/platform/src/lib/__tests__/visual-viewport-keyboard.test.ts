@@ -108,7 +108,7 @@ function focusComposer(inExistingThread: boolean): {
   }
 
   const composer = document.createElement("div");
-  composer.className = "zero-composer";
+  composer.className = "okou-composer";
   const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
   Object.defineProperty(composer, "scrollIntoView", {
     configurable: true,
@@ -199,7 +199,7 @@ test("Repeated mobile keyboard sessions keep an existing-chat composer visible",
     expect(scrollIntoView).toHaveBeenCalledTimes(cycle + 1);
     expect(
       document.documentElement.style.getPropertyValue(
-        "--zero-keyboard-scroll-reserve",
+        "--okou-keyboard-scroll-reserve",
       ),
     ).toBe("340px");
     expect(scrollIntoView).toHaveBeenLastCalledWith({
@@ -225,7 +225,7 @@ test("Repeated mobile keyboard sessions keep an existing-chat composer visible",
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
     expect(
       document.documentElement.style.getPropertyValue(
-        "--zero-keyboard-scroll-reserve",
+        "--okou-keyboard-scroll-reserve",
       ),
     ).toBe("");
     if (document.activeElement !== editor) {

@@ -1417,7 +1417,7 @@ export function IntroVideoWizard({
     >
       <DialogContent
         aria-describedby="intro-video-wizard-description"
-        className="zero-app flex h-[min(88vh,820px)] w-[calc(100vw-1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 [&>button]:right-4 [&>button]:top-4"
+        className="okou-app flex h-[min(88vh,820px)] w-[calc(100vw-1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 [&>button]:right-4 [&>button]:top-4"
       >
         <WizardHeader busy={busy} source={source} step={step} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background px-5 py-6 sm:px-6">

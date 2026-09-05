@@ -1,9 +1,19 @@
 import { i18n } from "../../i18n/index.ts";
 
-const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
-const METADATA_SCRIPT_ID = "vm0-deck-metadata";
+// Surface: stored and externally authored deck HTML, not a deploy skew, so it
+// has no rollout window. The deck generator lives outside this repository and
+// decks are persisted, so the reader keeps accepting the pre-rename
+// `data-vm0-*` edit protocol alongside `data-okou-*`. Drop the legacy halves
+// once stored decks are migrated or regenerated and the generator emits only
+// `data-okou-*`; follow-up #31824.
+const EDITABLE_SELECTOR =
+  '[data-okou-editable="text"],[data-vm0-editable="text"]';
+const METADATA_SCRIPT_IDS = [
+  "okou-deck-metadata",
+  "vm0-deck-metadata",
+] as const;
 const SLIDE_SELECTORS = [
-  "[data-vm0-slide]",
+  "[data-okou-slide],[data-vm0-slide]",
   "[data-slide]",
   "[data-slide-index]",
   "[data-page]",
@@ -77,11 +87,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function deckMetadataScript(doc: Document): HTMLScriptElement | null {
-  const script = doc.getElementById(METADATA_SCRIPT_ID);
-  if (!(script instanceof HTMLScriptElement) || !script.textContent) {
-    return null;
+  for (const id of METADATA_SCRIPT_IDS) {
+    const script = doc.getElementById(id);
+    if (script instanceof HTMLScriptElement && script.textContent) {
+      return script;
+    }
   }
-  return script;
+  return null;
 }
 
 function parseDeckMetadata(doc: Document): DeckMetadata {
@@ -130,8 +142,12 @@ function editIdForElement(editable: Element, index: number): string | null {
     return `text-${index + 1}`;
   }
   return (
+    editable.dataset.okouEditId ??
+    // Legacy `data-vm0-edit-id` / `data-vm0-node-id`: drop once no stored deck
+    // HTML written before the okou rename remains.
     editable.dataset.vm0EditId ??
     editable.dataset.editId ??
+    editable.dataset.okouNodeId ??
     editable.dataset.vm0NodeId ??
     editable.dataset.nodeId ??
     `text-${index + 1}`
@@ -140,8 +156,14 @@ function editIdForElement(editable: Element, index: number): string | null {
 
 function ensureEditIdForElement(editable: Element, index: number): string {
   const editId = editIdForElement(editable, index) ?? `text-${index + 1}`;
-  if (editable instanceof HTMLElement && !editable.dataset.vm0EditId) {
-    editable.dataset.vm0EditId = editId;
+  if (
+    editable instanceof HTMLElement &&
+    !editable.dataset.okouEditId &&
+    // A legacy id already anchors this block; rewriting it would change the
+    // stored deck rather than annotate it.
+    !editable.dataset.vm0EditId
+  ) {
+    editable.dataset.okouEditId = editId;
   }
   return editId;
 }
@@ -317,9 +339,9 @@ export function parsePresentationPreviewDraft(
 
 function isTransientPresentationEditorAttribute(name: string): boolean {
   switch (name) {
-    case "data-vm0-editor-edit-id":
-    case "data-vm0-editor-slide-id":
-    case "data-vm0-editor-stage": {
+    case "data-okou-editor-edit-id":
+    case "data-okou-editor-slide-id":
+    case "data-okou-editor-stage": {
       return true;
     }
     default: {
@@ -629,7 +651,7 @@ function hexLuminance(hexColor: string): number {
   );
 }
 
-function contrastRatio(colorA: string, colorB: string): number {
+export function contrastRatio(colorA: string, colorB: string): number {
   const luminanceA = hexLuminance(colorA);
   const luminanceB = hexLuminance(colorB);
   return (
@@ -667,11 +689,11 @@ function mixRgb(
   ];
 }
 
-function previewTextColorOn(background: string): string {
+export function previewTextColorOn(background: string): string {
   return hexLuminance(background) > 0.45 ? "#15151A" : "#FFFFFF";
 }
 
-function safePreviewGround(accent: string): readonly [string, string] {
+export function safePreviewGround(accent: string): readonly [string, string] {
   const text = hexLuminance(accent) < 0.5 ? "#FFFFFF" : "#15131C";
   const target: readonly [number, number, number] =
     text === "#FFFFFF" ? [10, 9, 14] : [255, 255, 255];
@@ -742,7 +764,7 @@ function materializePresentationThemeSwitcherDefaults(doc: Document): void {
     return;
   }
   const style = doc.createElement("style");
-  style.dataset.vm0MaterializedTheme = "true";
+  style.dataset.okouMaterializedTheme = "true";
   style.textContent = materializedThemeCss({
     fontPair: selectedFontPairFromScript(scriptText),
     palette,
@@ -750,6 +772,9 @@ function materializePresentationThemeSwitcherDefaults(doc: Document): void {
   doc.head.append(style);
 }
 
+// The stage layout rules keep matching the legacy `[data-vm0-slide]` spelling so
+// decks authored before the okou rename still fill the stage. Same surface and
+// removal condition as the deck-protocol readers above; follow-up #31824.
 function appendPresentationPreviewStyle(previewDoc: Document): void {
   const style = previewDoc.createElement("style");
   style.textContent = `
@@ -762,7 +787,7 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
     body {
       display: block !important;
     }
-    [data-vm0-editor-stage] {
+    [data-okou-editor-stage] {
       width: 100%;
       height: 100%;
       display: flex !important;
@@ -770,7 +795,7 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       justify-content: center !important;
       overflow: hidden !important;
     }
-    [data-vm0-editor-stage] > * {
+    [data-okou-editor-stage] > * {
       visibility: visible !important;
       opacity: 1 !important;
       max-width: 100% !important;
@@ -778,16 +803,17 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       margin: 0 !important;
       box-sizing: border-box !important;
     }
-    [data-vm0-editor-stage] > .slide,
-    [data-vm0-editor-stage] > .ppt-slide,
-    [data-vm0-editor-stage] > .presentation-slide,
-    [data-vm0-editor-stage] > .deck-slide,
-    [data-vm0-editor-stage] > .slide-page,
-    [data-vm0-editor-stage] > section,
-    [data-vm0-editor-stage] > [data-vm0-slide],
-    [data-vm0-editor-stage] > [data-slide],
-    [data-vm0-editor-stage] > [data-slide-index],
-    [data-vm0-editor-stage] > [data-page] {
+    [data-okou-editor-stage] > .slide,
+    [data-okou-editor-stage] > .ppt-slide,
+    [data-okou-editor-stage] > .presentation-slide,
+    [data-okou-editor-stage] > .deck-slide,
+    [data-okou-editor-stage] > .slide-page,
+    [data-okou-editor-stage] > section,
+    [data-okou-editor-stage] > [data-okou-slide],
+    [data-okou-editor-stage] > [data-vm0-slide],
+    [data-okou-editor-stage] > [data-slide],
+    [data-okou-editor-stage] > [data-slide-index],
+    [data-okou-editor-stage] > [data-page] {
       width: 100% !important;
       height: 100% !important;
       min-width: 0 !important;
@@ -800,16 +826,17 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       overflow: hidden !important;
       box-sizing: border-box !important;
     }
-    [data-vm0-editor-stage] > .slide > .stage,
-    [data-vm0-editor-stage] > .ppt-slide > .stage,
-    [data-vm0-editor-stage] > .presentation-slide > .stage,
-    [data-vm0-editor-stage] > .deck-slide > .stage,
-    [data-vm0-editor-stage] > .slide-page > .stage,
-    [data-vm0-editor-stage] > section > .stage,
-    [data-vm0-editor-stage] > [data-vm0-slide] > .stage,
-    [data-vm0-editor-stage] > [data-slide] > .stage,
-    [data-vm0-editor-stage] > [data-slide-index] > .stage,
-    [data-vm0-editor-stage] > [data-page] > .stage {
+    [data-okou-editor-stage] > .slide > .stage,
+    [data-okou-editor-stage] > .ppt-slide > .stage,
+    [data-okou-editor-stage] > .presentation-slide > .stage,
+    [data-okou-editor-stage] > .deck-slide > .stage,
+    [data-okou-editor-stage] > .slide-page > .stage,
+    [data-okou-editor-stage] > section > .stage,
+    [data-okou-editor-stage] > [data-okou-slide] > .stage,
+    [data-okou-editor-stage] > [data-vm0-slide] > .stage,
+    [data-okou-editor-stage] > [data-slide] > .stage,
+    [data-okou-editor-stage] > [data-slide-index] > .stage,
+    [data-okou-editor-stage] > [data-page] > .stage {
       width: 100% !important;
       height: 100% !important;
       max-width: none !important;
@@ -821,7 +848,7 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       border-radius: 0 !important;
       box-sizing: border-box !important;
     }
-    [data-vm0-editor-edit-id] {
+    [data-okou-editor-edit-id] {
       cursor: text !important;
       outline: 4px solid transparent !important;
       outline-offset: 4px !important;
@@ -832,11 +859,11 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       -webkit-user-modify: read-write-plaintext-only !important;
       caret-color: auto !important;
     }
-    [data-vm0-editor-edit-id]:hover {
+    [data-okou-editor-edit-id]:hover {
       outline-color: #0f82ff !important;
       filter: none !important;
     }
-    [data-vm0-editor-edit-id]:focus {
+    [data-okou-editor-edit-id]:focus {
       outline-color: hsl(var(--ring, 15 80% 66%)) !important;
       filter: none !important;
     }
@@ -864,8 +891,8 @@ function annotatePresentationEditableElements(
     slide,
   ).entries()) {
     if (editable instanceof HTMLElement) {
-      editable.dataset.vm0EditorSlideId = slideId;
-      editable.dataset.vm0EditorEditId =
+      editable.dataset.okouEditorSlideId = slideId;
+      editable.dataset.okouEditorEditId =
         editIdForElement(editable, editableIndex) ?? "";
     }
   }
@@ -909,7 +936,7 @@ export function previewPresentationHtml(params: {
     }
   }
   sanitizePreviewDocument(previewDoc);
-  stage.dataset.vm0EditorStage = "true";
+  stage.dataset.okouEditorStage = "true";
   if (activeSlideClone) {
     annotatePresentationEditableElements(activeSlideClone, activeSlideId);
   }

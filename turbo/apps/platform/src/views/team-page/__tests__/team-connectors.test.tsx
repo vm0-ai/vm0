@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   connectorCatalogContract,
@@ -48,7 +49,7 @@ interface ConnectorSurfaceOptions {
     readonly agentId: string;
     readonly connectorSlugs: readonly string[];
     readonly operation: "add" | "remove" | "replace" | undefined;
-  }) => void;
+  }) => void | Promise<void>;
   readonly onCustomSave?: (args: {
     readonly agentId: string;
     readonly grants: readonly AgentCustomConnectorGrant[];
@@ -151,8 +152,8 @@ function mockConnectorSurface(
   );
   testContextValue.mocks.api(
     userConnectorsContract.update,
-    ({ body, params, respond }) => {
-      options.onBuiltInSave?.({
+    async ({ body, params, respond }) => {
+      await options.onBuiltInSave?.({
         agentId: params.id,
         connectorSlugs: body.enabledConnectorSlugs,
         operation: body.operation,
@@ -295,6 +296,60 @@ test("Connector changes for one agent never appear on another agent", async () =
   expect(
     screen.queryByLabelText("Revoke GitHub access"),
   ).not.toBeInTheDocument();
+});
+
+test("Connector search preserves keyboard focus while access is saved", async () => {
+  const user = userEvent.setup({ delay: null });
+  const save = context.mocks.deferred<void>();
+  mockConnectorSurface(context, {
+    catalog: [
+      catalogConnectorFixture("github", "GitHub", { hasPermissions: false }),
+      catalogConnectorFixture("axiom", "Axiom", { hasPermissions: false }),
+    ],
+    onBuiltInSave: () => {
+      return save.promise;
+    },
+  });
+  await setupTeamPage({
+    context,
+    path: `/agents/${RESEARCH_AGENT_ID}`,
+  });
+
+  await screen.findByText("GitHub");
+  click(screen.getByLabelText("Find connectors"));
+  const search = screen.getByPlaceholderText("Find connectors...");
+  expect(search).toHaveFocus();
+
+  await user.keyboard("{Tab}{Tab}");
+  expect(connectorAccessSwitch("Grant GitHub access")).toHaveFocus();
+  await user.keyboard(" ");
+  await waitFor(() => {
+    expect(connectorAccessSwitch("Revoke GitHub access")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+  expect(search).not.toHaveFocus();
+
+  const nextConnector = connectorAccessSwitch("Grant Axiom access");
+  nextConnector.focus();
+  expect(nextConnector).toHaveFocus();
+  save.resolve();
+  await screen.findByText("Connectors saved");
+  await waitFor(() => {
+    expect(connectorAccessSwitch("Revoke GitHub access")).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+  expect(nextConnector).toHaveFocus();
+
+  click(screen.getByLabelText("Close search"));
+  expect(
+    screen.queryByPlaceholderText("Find connectors..."),
+  ).not.toBeInTheDocument();
+  click(screen.getByLabelText("Find connectors"));
+  expect(screen.getByPlaceholderText("Find connectors...")).toHaveFocus();
 });
 
 test("An agent with no connected services guides the user to Connectors", async () => {

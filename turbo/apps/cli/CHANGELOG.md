@@ -1,5 +1,38 @@
 # Changelog
 
+## [9.311.1](https://github.com/vm0-ai/vm0/compare/cli-v9.311.0...cli-v9.311.1) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.404.1
+    * @okouai/core bumped to 8.623.1
+    * @okouai/pi-agent-runtime bumped to 1.16.6
+
+## [9.311.0](https://github.com/vm0-ai/vm0/compare/cli-v9.310.4...cli-v9.311.0) (2026-09-05)
+
+
+### Features
+
+* **cli:** support legacy ppt template sources ([#31755](https://github.com/vm0-ai/vm0/issues/31755)) ([6eeb085](https://github.com/vm0-ai/vm0/commit/6eeb0852534423737b6d14e0b2235cbbb3ed4ff0))
+
+
+### Refactoring
+
+* **eslint:** rename the internal lint plugin namespace to okou ([#31806](https://github.com/vm0-ai/vm0/issues/31806)) ([314590e](https://github.com/vm0-ai/vm0/commit/314590ea8d2671714555db2a4cfeb035994eb779)), closes [#31799](https://github.com/vm0-ai/vm0/issues/31799)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.404.0
+    * @okouai/connectors bumped to 3.3.4
+    * @okouai/core bumped to 8.623.0
+    * @okouai/pi-agent-runtime bumped to 1.16.5
+
 ## [9.310.4](https://github.com/vm0-ai/vm0/compare/cli-v9.310.3...cli-v9.310.4) (2026-09-04)
 
 

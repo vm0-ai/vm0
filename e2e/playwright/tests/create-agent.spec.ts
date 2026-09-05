@@ -122,5 +122,7 @@ test("avatar composer keeps a stable dialog and compact option rows", async ({
   await composer.getByRole("button", { name: "Next step" }).click();
   await expect(composer.getByText("Color", { exact: true })).toBeVisible();
   await expectStableDialog();
+  // The Sweater step only exists behind `avatarNeckSweater`, which is off for
+  // the non-staff org this runs against. Covered in settings-tab.test.tsx.
   await composer.getByRole("button", { name: "Cancel" }).click();
 });

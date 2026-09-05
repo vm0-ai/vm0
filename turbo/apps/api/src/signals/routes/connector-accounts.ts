@@ -4,8 +4,6 @@ import {
   connectorAccountsContract,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -34,19 +32,12 @@ import {
   disconnectCustomConnector$,
   integrationManagedCustomConnectorMutationForbidden,
 } from "../services/custom-connector.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 import { reconcileGoogleCalendarWatchesForUser } from "../services/google-calendar-automation-event.service";
 import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
 import { reconcileGoogleMeetSubscriptionsForUser } from "../services/google-meet-automation-event.service";
 
 const log = logger("api:connector-account-mutation");
-
-const connectorAccountsEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const context = await get(userFeatureSwitchContext(auth.orgId, auth.userId));
-  return isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, context);
-});
 
 function targetFromQuery(
   query: ConnectorAccountTarget,
@@ -58,9 +49,6 @@ function targetFromQuery(
 
 const inspectInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const body = await get(bodyResultOf(connectorAccountsContract.inspect));
   if (!body.ok) {
     return body.response;
@@ -108,18 +96,12 @@ const inspectInner$ = computed(async (get) => {
 
 const summariesInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const summaries = await listConnectorAccountSummaries(get(db$), auth);
   return { status: 200 as const, body: { summaries: [...summaries] } };
 });
 
 const connectionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const query = get(queryOf(connectorAccountsContract.connections));
   const result = await listConnectorAccountsForTarget(get(db$), {
     orgId: auth.orgId,
@@ -152,9 +134,6 @@ const connectionsInner$ = computed(async (get) => {
 
 const connectionInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(connectorAccountsContract.connection));
   const query = get(queryOf(connectorAccountsContract.connection));
   const account = await getConnectorAccount(get(db$), {
@@ -170,9 +149,6 @@ const connectionInner$ = computed(async (get) => {
 
 const scopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(connectorAccountsContract.scopeDiff));
   const query = get(queryOf(connectorAccountsContract.scopeDiff));
   const diff = await get(
@@ -191,9 +167,6 @@ const scopeDiffInner$ = computed(async (get) => {
 const renameInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(pathParamsOf(connectorAccountsContract.rename));
     const body = await get(bodyResultOf(connectorAccountsContract.rename));
     signal.throwIfAborted();
@@ -234,9 +207,6 @@ const renameInner$ = command(
 const setDefaultInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(pathParamsOf(connectorAccountsContract.setDefault));
     const body = await get(bodyResultOf(connectorAccountsContract.setDefault));
     signal.throwIfAborted();
@@ -314,9 +284,6 @@ const setDefaultInner$ = command(
 
 const deletionImpactInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(connectorAccountsContract.deletionImpact));
   const query = get(queryOf(connectorAccountsContract.deletionImpact));
   const request = {
@@ -462,9 +429,6 @@ const disconnectSingleAccountInner$ = command(
 const deleteInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(pathParamsOf(connectorAccountsContract.delete));
     const body = await get(bodyResultOf(connectorAccountsContract.delete));
     signal.throwIfAborted();

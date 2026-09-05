@@ -220,7 +220,7 @@ test("A failed language download falls back without blocking chat", async () => 
     return respond(200, storedPreferences);
   });
   chatContext.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-  mockOrgModelRoutes("claude-fable-5");
+  mockOrgModelRoutes("claude-fable-5-1");
   mockAgent();
   mockChatLifecycle(chatContext);
 
