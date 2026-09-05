@@ -344,7 +344,11 @@ mod tests {
     use httpmock::prelude::*;
     use serde_json::json;
     use sha2::{Digest, Sha256};
+    #[cfg(unix)]
+    use std::process::Stdio;
     use std::time::Duration;
+    #[cfg(unix)]
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
     struct CheckpointFilesGuard {
         guest_paths: crate::paths::GuestPaths,
@@ -536,6 +540,7 @@ mod tests {
         commit.assert_calls(0);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn maintenance_recovery_checkpoint_preserves_parent_after_partial_apply() {
         let server = MockServer::start();
@@ -561,13 +566,29 @@ mod tests {
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
         let _files_guard = CheckpointFilesGuard::new(&guest_paths);
         let memory_root = dir.path().join("memory");
-        std::fs::create_dir_all(memory_root.join("skills/interrupted")).unwrap();
-        std::fs::write(memory_root.join("MEMORY.md"), "partially applied").unwrap();
-        std::fs::write(
-            memory_root.join("skills/interrupted/SKILL.md"),
-            "half-written skill",
-        )
-        .unwrap();
+        std::fs::create_dir_all(&memory_root).unwrap();
+        let mut child = tokio::process::Command::new("sh")
+            .args([
+                "-c",
+                "mkdir -p \"$1/skills/interrupted\"; printf partial > \"$1/MEMORY.md\"; printf half > \"$1/skills/interrupted/SKILL.md\"; printf 'started\\n'; sleep 300; printf late > \"$1/memory_summary.md\"",
+                "sh",
+                &memory_root.to_string_lossy(),
+            ])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut reader = BufReader::new(stdout);
+        let mut started = String::new();
+        reader.read_line(&mut started).await.unwrap();
+        assert_eq!(started, "started\n");
+        child.kill().await.unwrap();
+        assert!(!child.wait().await.unwrap().success());
+        assert_eq!(
+            std::fs::read_to_string(memory_root.join("MEMORY.md")).unwrap(),
+            "partial"
+        );
+        assert!(!memory_root.join("memory_summary.md").exists());
         let storage_id = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
         let base_version = "a".repeat(64);
         let launch = json!({

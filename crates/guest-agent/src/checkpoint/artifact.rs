@@ -436,6 +436,7 @@ mod tests {
     use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
     use httpmock::prelude::*;
     use serde_json::json;
+    use sha2::{Digest, Sha256};
     #[cfg(target_os = "linux")]
     use std::ffi::CString;
     #[cfg(target_os = "linux")]
@@ -709,6 +710,128 @@ mod tests {
         assert_eq!(snapshots[0].version, base_version);
         prepare.assert_calls(0);
         commit.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn maintenance_success_forwards_exact_validation_attestation() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let storage_id = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+        let base_version = "a".repeat(64);
+        let selection_digest = "b".repeat(64);
+        let lease_token = "44754115-d375-4c46-aea7-a55bd1b61ec7";
+        let content = b"# Task Group: validated\n";
+        let file_hash = hex::encode(Sha256::digest(content));
+        let validated_version = content_hash::compute_content_hash(
+            storage_id,
+            std::iter::once(("MEMORY.md", file_hash.as_str())),
+        );
+        let expected_attestation = json!({
+            "schemaVersion": 1,
+            "leaseToken": lease_token,
+            "claimedRevision": 7,
+            "claimedBaseVersionId": base_version,
+            "selectionDigest": selection_digest,
+            "validatedVersionId": validated_version,
+        });
+        let server_version = validated_version.clone();
+        let server_attestation = expected_attestation.clone();
+        let server = tokio::spawn(async move {
+            let (mut prepare_socket, _) = listener.accept().await.unwrap();
+            let (prepare_path, prepare_body) = read_test_json_request(&mut prepare_socket).await;
+            assert_eq!(prepare_path, "/api/webhooks/agent/storages/prepare");
+            assert_eq!(prepare_body["maintenanceAttestation"], server_attestation);
+            write_test_json_response(
+                &mut prepare_socket,
+                &json!({
+                    "versionId": server_version,
+                    "existing": true,
+                }),
+            )
+            .await;
+
+            let (mut commit_socket, _) = listener.accept().await.unwrap();
+            let (commit_path, commit_body) = read_test_json_request(&mut commit_socket).await;
+            assert_eq!(commit_path, "/api/webhooks/agent/storages/commit");
+            assert_eq!(commit_body["maintenanceAttestation"], server_attestation);
+            assert_eq!(commit_body["versionId"], server_version);
+            write_test_json_response(
+                &mut commit_socket,
+                &json!({
+                    "success": true,
+                    "versionId": server_version,
+                    "storageName": "memory",
+                    "size": content.len(),
+                    "fileCount": 1,
+                }),
+            )
+            .await;
+        });
+
+        let http = HttpClient::with_api_config(
+            format!("http://{address}"),
+            "test-token",
+            "",
+            "maintenance-run-success",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let memory_root = dir.path().join("memory");
+        std::fs::create_dir_all(&memory_root).unwrap();
+        std::fs::write(memory_root.join("MEMORY.md"), content).unwrap();
+        let launch_payload_file = dir.path().join("pi-launch-payload/payload.json");
+        std::fs::create_dir_all(launch_payload_file.parent().unwrap()).unwrap();
+        std::fs::write(
+            launch_payload_file.with_file_name(PI_MEMORY_PHASE2_VALIDATION_FILENAME),
+            serde_json::to_vec(&json!({
+                "schemaVersion": 1,
+                "runId": "maintenance-run-success",
+                "memoryStorageId": storage_id,
+                "claimedRevision": 7,
+                "claimedBaseVersionId": base_version,
+                "leaseToken": lease_token,
+                "selectionDigest": selection_digest,
+                "validatedVersionId": validated_version,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let launch = json!({
+            "schemaVersion": 2,
+            "maintenance": {
+                "schemaVersion": 1,
+                "memoryStorageId": storage_id,
+                "claimedRevision": 7,
+                "claimedBaseVersionId": base_version,
+                "leaseToken": lease_token,
+                "selectionDigest": selection_digest,
+                "selected": [],
+            }
+        });
+        let entries = vec![env::ArtifactEnv {
+            name: "memory".to_string(),
+            mount_path: memory_root.to_string_lossy().into_owned(),
+            storage_id: storage_id.to_string(),
+            version_id: base_version,
+            missing_root_policy: Some(ArtifactEntryMissingRootPolicy::Fail),
+        }];
+
+        let snapshots = snapshot_artifact_entries_for_checkpoint(
+            &http,
+            "maintenance-run-success",
+            &entries,
+            CheckpointMode::Success,
+            &launch.to_string(),
+            &launch_payload_file.to_string_lossy(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].version, validated_version);
+        server.await.unwrap();
     }
 
     #[test]
