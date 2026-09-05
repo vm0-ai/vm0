@@ -108,7 +108,7 @@ const CommandInput = React.forwardRef<HTMLInputElement, CommandInputProps>(
           // so that clip ate its top and bottom ends and left the caret looking
           // notched.
           className={cn(
-            "flex h-full w-full bg-transparent text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-full w-full rounded-none bg-transparent text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
             className,
           )}
           {...props}

@@ -36,6 +36,17 @@ function BasicCommand({
 }
 
 describe("Command", () => {
+  it("keeps the caret outside a rounded input clipping boundary", () => {
+    render(<BasicCommand onSelect={vi.fn()} />);
+    const input = screen.getByRole("combobox", { name: "Search" });
+    const wrapper = input.closest<HTMLElement>(
+      '[data-slot="command-input-wrapper"]',
+    );
+
+    expect(input).toHaveClass("rounded-none");
+    expect(wrapper).toHaveClass("rounded-lg");
+  });
+
   it("selects with Enter and navigates up, down, and around the item loop", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
