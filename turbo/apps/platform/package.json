@@ -110,6 +110,6 @@
     "typescript-eslint": "^8.67.0",
     "unicode-emoji-json": "^0.9.0",
     "vite": "^8.0.16",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
