@@ -194,8 +194,12 @@ test("Browse completed work by conversation phase", async () => {
   });
 
   await readyChat();
-  expect(screen.getByText("Worked for 40s")).toBeVisible();
-  expect(screen.getByText("Worked for 1m")).toBeVisible();
+  expect(
+    assistantGroupFor(screen.getByText("Phase one outline")),
+  ).toHaveTextContent("Worked for 1m");
+  expect(
+    assistantGroupFor(screen.getByText("Phase one final plan")),
+  ).toHaveTextContent("Worked for 1m");
   expect(screen.getByText("Worked for 2m")).toBeVisible();
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();

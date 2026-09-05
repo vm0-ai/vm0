@@ -516,23 +516,13 @@ function eventTime(event: EnrichedChatEvent | undefined): number | null {
   if (event === undefined) {
     return null;
   }
-  const timestamp = Date.parse(event.createdAt);
+  const timestamp = Date.parse(event.inputCreatedAt ?? event.createdAt);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 function firstEventTime(events: readonly EnrichedChatEvent[]): number | null {
   for (const event of events) {
     const timestamp = eventTime(event);
-    if (timestamp !== null) {
-      return timestamp;
-    }
-  }
-  return null;
-}
-
-function lastEventTime(events: readonly EnrichedChatEvent[]): number | null {
-  for (let index = events.length - 1; index >= 0; index--) {
-    const timestamp = eventTime(events[index]);
     if (timestamp !== null) {
       return timestamp;
     }
@@ -553,25 +543,26 @@ function lastEventMatching(
   return undefined;
 }
 
-interface RunWorkPhaseFolding {
+interface RunWorkGroupFolding {
   readonly visibleEvents: readonly EnrichedChatEvent[];
   readonly section: RunWorkSection | null;
   readonly statusTail: RunWorkStatusTail;
 }
 
-interface RunWorkPhaseIdentity {
-  readonly key: string;
-  readonly runGroupId: string | undefined;
-  readonly runIds: readonly string[];
+// A work group is bounded by visible user inputs, independently of execution:
+// one run can span several groups, and goal continuations can span several runs.
+interface RunWorkGroup {
+  readonly unit: RunWorkUnit;
+  readonly events: readonly EnrichedChatEvent[];
+  readonly endTime: number | undefined;
 }
 
-function foldRunWorkPhase(
-  identity: RunWorkPhaseIdentity,
-  events: readonly EnrichedChatEvent[],
-  endTime: number | undefined,
-  hiddenUserEventIds: ReadonlySet<string>,
+function foldRunWorkGroup(
+  group: RunWorkGroup,
   foldedEventIds: ReadonlySet<string>,
-): RunWorkPhaseFolding {
+): RunWorkGroupFolding {
+  const { unit, events, endTime } = group;
+  const { hiddenUserEventIds } = unit;
   const outputMessages = events.filter(isRunWorkMessage);
   const anchorEvent = outputMessages.at(-1);
   const anchorIndex =
@@ -621,9 +612,9 @@ function foldRunWorkPhase(
     visibleEvents: [...userEvents, anchorEvent],
     statusTail,
     section: {
-      key: `${identity.key}:${events[0]!.id}`,
-      runGroupId: identity.runGroupId,
-      runIds: identity.runIds,
+      key: `${unit.key ?? events[0]!.id}:${events[0]!.id}`,
+      runGroupId: unit.runGroupId,
+      runIds: unit.runIds,
       anchorEventId: anchorEvent.id,
       collapsible: outputMessages.length > 1,
       hiddenGroups: groupEventsByRole(hiddenEvents),
@@ -674,18 +665,36 @@ function mergedUsageForRunIds(
   );
 }
 
-function phaseEndTime(
-  phase: readonly EnrichedChatEvent[],
-  isFinalPhase: boolean,
-  terminalEvent: EnrichedChatEvent | undefined,
-): number | undefined {
-  if (!isFinalPhase) {
-    return lastEventTime(phase) ?? undefined;
+function runWorkGroups(events: readonly EnrichedChatEvent[]): RunWorkGroup[] {
+  const groups = runWorkUnits(events).flatMap((unit) => {
+    return splitRunWorkEventsAtUsers(unit.events, unit.hiddenUserEventIds).map(
+      (events) => {
+        return { unit, events };
+      },
+    );
+  });
+  const workGroups: RunWorkGroup[] = [];
+  let nextInputTime: number | undefined;
+  for (let index = groups.length - 1; index >= 0; index--) {
+    const group = groups[index]!;
+    const terminalTime =
+      eventTime(terminalEventForLatestRun(group.events)) ?? undefined;
+    const endTime =
+      terminalTime === undefined
+        ? nextInputTime
+        : nextInputTime === undefined
+          ? terminalTime
+          : Math.min(terminalTime, nextInputTime);
+    workGroups.push({ ...group, endTime });
+
+    const input = group.events.find((event) => {
+      return visibleRunWorkUserEvent(event, group.unit.hiddenUserEventIds);
+    });
+    if (input !== undefined) {
+      nextInputTime = eventTime(input) ?? undefined;
+    }
   }
-  if (terminalEvent === undefined) {
-    return undefined;
-  }
-  return eventTime(terminalEvent) ?? lastEventTime(phase) ?? undefined;
+  return workGroups.reverse();
 }
 
 export function buildRunWorkFolding(
@@ -700,49 +709,33 @@ export function buildRunWorkFolding(
   const sections: RunWorkSection[] = [];
   let statusTail: RunWorkStatusTail | null = null;
   const usageByAnchorEventId = new Map<string, ChatEventUsagePayload>();
+  const finalSectionByUnit = new Map<RunWorkUnit, RunWorkSection>();
 
-  for (const unit of runWorkUnits(events)) {
-    const terminalEvent = terminalEventForLatestRun(unit.events);
-    const phases = splitRunWorkEventsAtUsers(
-      unit.events,
-      unit.hiddenUserEventIds,
-    );
-    const firstSectionIndex = sections.length;
-    for (const [phaseIndex, phase] of phases.entries()) {
-      const phaseFolding = foldRunWorkPhase(
-        {
-          key: unit.key ?? phase[0]!.id,
-          runGroupId: unit.runGroupId,
-          runIds: unit.runIds,
-        },
-        phase,
-        phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
-        unit.hiddenUserEventIds,
-        foldedEventIds,
-      );
-      visibleEvents.push(...phaseFolding.visibleEvents);
-      // Phases include pending user inputs without a run or output. The latest
-      // response therefore owns the tail before its first main result exists.
-      // An isolated bookkeeping marker does not start another response.
-      if (
-        phase.some((event) => {
-          return (
-            isChatInputEventType(event.eventType) ||
-            isRenderableAssistantEvent(event) ||
-            event.eventType === "output.thinking"
-          );
-        })
-      ) {
-        statusTail = phaseFolding.statusTail;
-      }
-      if (phaseFolding.section !== null) {
-        sections.push(phaseFolding.section);
-      }
+  for (const group of runWorkGroups(events)) {
+    const folding = foldRunWorkGroup(group, foldedEventIds);
+    visibleEvents.push(...folding.visibleEvents);
+    // Work groups exist before their first output, so a pending input retires
+    // the previous tail immediately. Bookkeeping alone does not start a group.
+    if (
+      group.events.some((event) => {
+        return (
+          isChatInputEventType(event.eventType) ||
+          isRenderableAssistantEvent(event) ||
+          event.eventType === "output.thinking"
+        );
+      })
+    ) {
+      statusTail = folding.statusTail;
     }
-    if (unit.runGroupId !== undefined && sections.length > firstSectionIndex) {
+    if (folding.section !== null) {
+      sections.push(folding.section);
+      finalSectionByUnit.set(group.unit, folding.section);
+    }
+  }
+  for (const [unit, finalSection] of finalSectionByUnit) {
+    if (unit.runGroupId !== undefined) {
       const mergedUsage = mergedUsageForRunIds(unit.runIds, usageByRunId);
-      const finalSection = sections[sections.length - 1];
-      if (mergedUsage !== undefined && finalSection !== undefined) {
+      if (mergedUsage !== undefined) {
         usageByAnchorEventId.set(finalSection.anchorEventId, mergedUsage);
       }
     }
