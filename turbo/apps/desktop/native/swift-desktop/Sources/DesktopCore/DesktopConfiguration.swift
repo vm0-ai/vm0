@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 public struct DesktopConfiguration: Sendable {
   public let platformURL: URL
   public let apiURL: URL
@@ -9,8 +13,12 @@ public struct DesktopConfiguration: Sendable {
   public let bundleID: String
   public let version: String
   public let production: Bool
+  public let previewBypass: String?
 
-  public init(platformURL: String, product: String = "okou", version: String, preview: Bool = false)
+  public init(
+    platformURL: String, product: String = "okou", version: String, preview: Bool = false,
+    previewBypass: String? = nil
+  )
     throws
   {
     guard ["okou", "zero"].contains(product),
@@ -31,6 +39,20 @@ public struct DesktopConfiguration: Sendable {
       (product == "okou" ? "ai.okou.desktop" : "ai.vm0.zero.desktop") + (production ? "" : ".dev")
     apiURL = try Self.serviceURL(url, target: "api")
     webURL = try Self.serviceURL(url, target: "www")
+    if let previewBypass {
+      let host = apiURL.host ?? ""
+      let previewHost =
+        host.range(
+          of: "^(staging|pr-[0-9]+)-api\\.vm6\\.ai$", options: .regularExpression) != nil
+      let loopback = ["127.0.0.1", "localhost", "::1"].contains(host)
+      guard preview, !production, (previewHost && apiURL.scheme == "https") || loopback,
+        !previewBypass.isEmpty,
+        previewBypass.unicodeScalars.allSatisfy({ (33...126).contains($0.value) })
+      else {
+        throw DesktopFailure("configuration", "Preview access requires an explicit preview origin")
+      }
+    }
+    self.previewBypass = previewBypass
   }
 
   public static func serviceURL(_ url: URL, target: String) throws -> URL {
@@ -75,7 +97,14 @@ public struct DesktopConfiguration: Sendable {
   }
 
   public var signInURL: URL {
-    webPath("desktop-auth/start", query: [.init(name: "callbackScheme", value: bundleID)])
+    var query = [URLQueryItem(name: "callbackScheme", value: bundleID)]
+    if let previewBypass {
+      query += [
+        .init(name: "x-vercel-protection-bypass", value: previewBypass),
+        .init(name: "x-vercel-set-bypass-cookie", value: "true"),
+      ]
+    }
+    return webPath("desktop-auth/start", query: query)
   }
 
   public func callback(_ url: URL) -> (code: String, handoffID: String?)? {
@@ -92,6 +121,20 @@ public struct DesktopConfiguration: Sendable {
   public func allowsAuthPage(_ url: URL) -> Bool {
     [webURL, platformURL].contains {
       $0.scheme == url.scheme && $0.host == url.host && $0.port == url.port
+    }
+  }
+
+  public var previewCookies: [HTTPCookie] {
+    guard let previewBypass else { return [] }
+    let value = previewBypass.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!
+    return Set([apiURL, webURL, platformURL]).map { url in
+      var properties: [HTTPCookiePropertyKey: Any] = [
+        .name: "x-vercel-protection-bypass", .value: value,
+        .domain: url.host!, .path: "/",
+        .expires: Date().addingTimeInterval(60 * 60),
+      ]
+      if url.scheme == "https" { properties[.secure] = "TRUE" }
+      return HTTPCookie(properties: properties)!
     }
   }
 }

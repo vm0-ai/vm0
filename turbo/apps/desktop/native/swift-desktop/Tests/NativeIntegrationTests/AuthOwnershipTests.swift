@@ -12,6 +12,7 @@ extension NativeIntegrationTests {
     defer { try? FileManager.default.removeItem(at: directory) }
     let script = """
       import json,sys,threading
+      from urllib.parse import unquote
       from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
       from socketserver import TCPServer
       condition=threading.Condition()
@@ -48,6 +49,9 @@ extension NativeIntegrationTests {
               else: self.reply(b'{}',404)
           def do_GET(self):
               global generation,requests,identity_started,expired,features_started
+              if 'x-vercel-protection-bypass=fixture-preview' not in unquote(self.headers.get('Cookie','')):
+                  self.reply(b'{"error":"Preview automation bypass required"}',403)
+                  return
               if self.path.startswith('/desktop-auth/'):
                   if anonymous:
                       self.reply(b'<script>window.Clerk={loaded:true,session:null};</script>',kind='text/html')
@@ -113,7 +117,7 @@ extension NativeIntegrationTests {
     let address = try await server.request("start")
     let configuration = try DesktopConfiguration(
       platformURL: "http://127.0.0.1:\(Int(try #require(address["port"].number)))",
-      version: "1.0.0", preview: true)
+      version: "1.0.0", preview: true, previewBypass: "fixture-preview")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let permissionHelper = directory.appendingPathComponent("computer-use-helper")
     let permissionScript = """

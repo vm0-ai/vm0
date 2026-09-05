@@ -51,7 +51,9 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         !version.isEmpty
       else { throw DesktopFailure("configuration", "The app bundle has no desktop version") }
       let config = try DesktopConfiguration(
-        platformURL: raw.platformUrl, product: raw.product, version: version, preview: raw.preview)
+        platformURL: raw.platformUrl, product: raw.product, version: version, preview: raw.preview,
+        previewBypass: raw.preview
+          ? ProcessInfo.processInfo.environment["OKOU_DESKTOP_PREVIEW_BYPASS"] : nil)
       if let dsn = raw.sentryDsn, !dsn.isEmpty {
         SentrySDK.start { options in
           options.dsn = dsn

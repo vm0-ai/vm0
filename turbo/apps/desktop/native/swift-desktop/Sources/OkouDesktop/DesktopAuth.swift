@@ -200,6 +200,12 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
 
   private func runWindow(_ url: URL, interactive: Bool) async throws {
     try Task.checkCancellation()
+    let currentEpoch = epoch
+    for cookie in configuration.previewCookies {
+      await WKWebsiteDataStore.default().httpCookieStore.setCookie(cookie)
+      try Task.checkCancellation()
+      guard epoch == currentEpoch else { throw CancellationError() }
+    }
     if completion != nil {
       throw DesktopFailure("auth_busy", "Another sign-in operation is already in progress")
     }
@@ -234,7 +240,6 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
       window.makeKeyAndOrderFront(nil)
       NSApp.activate(ignoringOtherApps: true)
     }
-    let currentEpoch = epoch
     let operationID = UUID()
     windowID = operationID
     try await withTaskCancellationHandler {
@@ -246,7 +251,11 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
           self.finish(
             .failure(DesktopFailure("auth_timeout", "Sign-in timed out. Please try again.")))
         }
-        view.load(URLRequest(url: url))
+        var request = URLRequest(url: url)
+        if let bypass = self.configuration.previewBypass {
+          request.setValue(bypass, forHTTPHeaderField: "x-vercel-protection-bypass")
+        }
+        view.load(request)
       }
     } onCancel: {
       Task { @MainActor [weak self] in

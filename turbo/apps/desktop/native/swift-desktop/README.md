@@ -51,6 +51,14 @@ bash turbo/apps/desktop/native/swift-desktop/scripts/build.sh
 packaging here remains ad-hoc signed; it does not publish a release. Signed
 release promotion and its compatibility audit remain separate acceptance work.
 
+Protected staging/PR environments also require their preview access credential.
+Supply it at launch through `OKOU_DESKTOP_PREVIEW_BYPASS` after building with the
+actual preview `--platform-url`. It is read from the process environment, never
+written into the bundle or preferences, and accepted only for preview service
+origins (or a local integration-test origin). Authentication pages receive
+host-scoped, one-hour cookies; API credentials are never forwarded through
+redirects. Production builds do not read this environment variable.
+
 User-selected filesystem folders, MCP configurations, keep-awake preference,
 and installation ID use the existing `desktop-preferences.json` format in the
 identity's Application Support directory. WebKit has its own cookie store;

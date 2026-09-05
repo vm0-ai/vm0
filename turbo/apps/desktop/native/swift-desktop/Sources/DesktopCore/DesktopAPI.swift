@@ -20,16 +20,26 @@ public struct DesktopUploadedFile: Sendable {
 
 @MainActor
 public final class DesktopAPI {
+  private final class RejectRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+      _ session: URLSession, task: URLSessionTask,
+      willPerformHTTPRedirection response: HTTPURLResponse,
+      newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+      // API endpoints have canonical origins. Do not forward bearers or preview
+      // access credentials to an origin supplied by a redirect response.
+      completionHandler(nil)
+    }
+  }
+
   public let configuration: DesktopConfiguration
   private let session: URLSession
   private let sessionID = UUID().uuidString.lowercased()
   public var tokenProvider: (@MainActor (Bool) async throws -> String?)?
 
-  public init(
-    configuration: DesktopConfiguration, session: URLSession = URLSession(configuration: .ephemeral)
-  ) {
+  public init(configuration: DesktopConfiguration) {
     self.configuration = configuration
-    self.session = session
+    session = URLSession(configuration: .ephemeral, delegate: RejectRedirects(), delegateQueue: nil)
   }
 
   public func request(
@@ -60,6 +70,12 @@ public final class DesktopAPI {
     request.setValue(sessionID, forHTTPHeaderField: "X-Client-Session-Id")
     request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Client-Request-Id")
     if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    if let bypass = configuration.previewBypass {
+      request.setValue(bypass, forHTTPHeaderField: "x-vercel-protection-bypass")
+      // Vercel can consume the header before the preview API middleware sees it.
+      let value = bypass.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!
+      request.setValue("x-vercel-protection-bypass=\(value)", forHTTPHeaderField: "Cookie")
+    }
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else {
       throw DesktopFailure("network", "Invalid API response")
