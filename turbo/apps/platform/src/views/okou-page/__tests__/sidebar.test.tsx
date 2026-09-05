@@ -338,8 +338,7 @@ function sidebar(): HTMLElement {
 }
 
 function queryMobileSidebar(): HTMLElement | null {
-  const drawer = document.querySelector("aside.okou-pwa-fixed-cover");
-  return drawer instanceof HTMLElement ? drawer : null;
+  return screen.queryByRole("complementary", { name: "Sidebar" });
 }
 
 function mobileSidebar(): HTMLElement {
