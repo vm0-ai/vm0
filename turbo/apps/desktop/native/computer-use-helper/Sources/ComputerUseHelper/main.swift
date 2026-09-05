@@ -1793,7 +1793,7 @@ func optionalRectPayload(_ request: [String: Any], _ key: String) throws -> CGRe
 /// resolve to an arbitrary process whose window tree differs from the user-facing
 /// app. Selection is delegated to the shared `selectRunningApp` policy.
 func findRunningApp(named bundleId: String) -> NSRunningApplication? {
-    let runningApplications = NSWorkspace.shared.runningApplications
+    let runningApplications = currentRunningApplications()
     let candidates = runningApplications.map { app in
         RunningAppCandidate(
             processIdentifier: Int(app.processIdentifier),
@@ -3848,7 +3848,7 @@ func handleAppsList() -> [String: Any] {
         )
     }
 
-    for app in NSWorkspace.shared.runningApplications {
+    for app in currentRunningApplications() {
         if app.activationPolicy == .regular,
            let name = nonEmpty(app.localizedName)
         {

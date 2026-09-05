@@ -305,61 +305,102 @@ The PR check and subsequent release acceptance record the downloadable revision.
 
 ### Native text selection and input acceptance
 
-The next candidate identifies the actual standard Select All menu binding and
-sets the focused native text control's AX selection range. It checks the target
-window, focus, character count, and resulting range. Unicode text including
-Chinese, emoji, and combining characters selected all 51 UTF-16 units and was
-replaced completely under both background policies without changing frontmost.
-A second AppKit application passed the same operation. Its custom Command-A
-binding retained key-event dispatch and did not acquire select-all semantics.
-Unrecognized localized menu bindings retain the existing keyboard path.
+The downloaded `da054dc` release identifies the actual standard Select All menu
+binding and sets the focused native text control's AX selection range. It checks
+the target window, focus, character count, and resulting range. Unicode text
+including Chinese, emoji, and combining characters selected all 51 UTF-16 units
+and was replaced completely under both background policies without changing the
+frontmost process. Repeated selection remained stable. A second real AppKit
+application passed the same operation; its custom Command-A binding retained
+key-event dispatch. Unrecognized localized bindings retain the existing path.
 
-An owned Safari page's JavaScript Command-A handler ran in the background, but
-typing initially failed because Safari omitted the app-level focused-element
-attribute. Input now validates the focused editable field within the addressed
-window. All three recovery policies inserted text at the caret chosen by that
-custom handler; background policies preserved frontmost without restoration.
-Web controls retain key-event semantics. Direct typing into an older window
-snapshot rejects a conflicting focused window under `never`; explicit recovery
-focuses and types only into the requested window, leaving the other intact.
-Snapshot preflight now covers both key and text requests before activation.
+Safari can omit the app-level focused-element attribute while a web text control
+has focus. Input now validates the focused editable field within the addressed
+window. All three recovery policies inserted text at the caret chosen by an owned
+page's custom JavaScript Command-A handler. Background policies preserved
+frontmost without restoration; explicit foreground recovery activated Safari.
+Web controls retained custom key-event semantics. With an older TextEdit window
+snapshot and a newly focused second window, `never` rejected typing before input;
+recovery typed only into the original window and left the second unchanged.
 
-The downloaded `0961405` helper returned its 10-second typing timeout while
-continuing to type: an independent AX observer measured 1497 then 1815 characters
-after the error, and 3540 later. The candidate bounds both text dispatch loops
-and reports how many characters it dispatched before its limit. A real background
-4000-character request returned an explicit partial-input error in 9.23 seconds
-after dispatching 1177 characters. Two settled snapshots stayed at 1191 total
-characters, and the next character completed in 0.99 seconds. Long foreground
-typing has not yet received the same live deadline check.
+The older downloaded `0961405` helper returned a 10-second typing timeout while
+continuing to type. An independent AX observer measured 1497 then 1815 characters
+after the error, and 3540 later. Both text dispatch loops now stop before the outer
+limit and report the number dispatched. The downloaded `da054dc` background test
+returned in 9.19 seconds after 1184 characters, with two later observations stable
+at 1198 total characters. The foreground test returned in 9.21 seconds after
+1161 characters, with two observations stable at 1175. Both accepted the next
+character in 0.61 seconds. No continued input was observed after either error.
 
-All 122 helper tests pass, including nine real-process snapshot-preflight cases.
-[Native keyboard candidate evidence](https://cdn.vm0.io/artifacts/4qf9kkmnu6.json)
+[Downloaded release keyboard acceptance](https://cdn.vm0.io/artifacts/x8nzbnmn5h.json)
 records helper SHA-256
-`6e1b752f2cf748904455bfec5dec2b6a9968dba5ca2b569ee1f117067a5f12be`.
-These remain separate helper tests; complete current packaged Desktop/server
-acceptance and the rest of this inventory remain open.
+`4a91d6a66e28dae47fddb6811a78127e5b8af135adbc1455a69e8322229cf166`.
+[Separate candidate red/green evidence](https://cdn.vm0.io/artifacts/4qf9kkmnu6.json)
+preserves the earlier debugging results and baseline timeout reproduction.
+
+### Current configured Desktop/server command acceptance
+
+The `da054dc` downloaded app was copied to an isolated test bundle with staging
+runtime configuration, its own home, and top-level ad-hoc re-signing. All 48
+file-backed Mach-O sections and all three bundled helpers match the download.
+The stable acceptance parent's own grants supplied AX and Screen Recording.
+This verifies a configured current app; production identity/TCC acceptance and
+the normal system-browser login flow remain separate requirements.
+
+A real native Clerk consumer handoff completed in the owned test workspace. The
+app registered one host and executed 11 authenticated owner API requests through
+that same app/helper, covering all nine command kinds: list, state, open,
+coordinate click, scroll, set value, AX action, type, and key. Every mutation kept
+the same frontmost process without restoration. Command-A and typing replaced
+the complete owned document; the post-action screenshot was downloaded from the
+API and visually checked. Half-page scrolling moved from 0 to 0.071179344.
+Native Stop Computer Use made the host offline before the app quit.
+
+[Configured Desktop/server acceptance and cleanup](https://cdn.vm0.io/artifacts/07ua3sgcik.json)
+and the [actual API screenshot](https://cdn.vm0.io/artifacts/5prdzb7hea.png) supersede
+historical packaged-scroll-pending entries above for this owned fixture only.
+Broader app/input/recovery scenarios and the rest of this inventory remain open.
+
+### External application lifecycle discovery
+
+The `da054dc` helper could list an app it opened itself, but repeatedly missed an
+existing app launched externally after exit and a newly installed app launched
+externally. A fresh system lookup saw the process while the persistent helper
+reported `running: false` and `app_not_found`. Restarting the helper made it visible.
+
+App listing and bundle-ID target resolution now read `NSWorkspace` on the helper's
+pumped main run loop. The command queue does not run a run loop. The existing
+case-insensitive bundle-ID and multiple-instance selection policy is unchanged.
+A real-process integration test builds an owned AppKit fixture and externally
+launches, exits, and relaunches it while the same JSONL helper stays alive. The test
+failed on the old code; all 123 helper tests pass with this change.
+
+Two real AppKit fixtures also passed live discovery, list removal on exit, and
+relaunch with new process IDs. Old window snapshots were rejected after relaunch;
+new snapshots selected and replaced the intended text in the background without
+changing the frontmost process. [Candidate lifecycle evidence](https://cdn.vm0.io/artifacts/nuawqxywkh.json) records
+this debug helper separately from downloaded release and full-app acceptance.
 
 ## Feature inventory and evidence
 
-| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                  |
-| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                |
-| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes        |
-| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                             |
-| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | Packaged scroll round trip, cold launch, foreground recovery, targets without AX axis bars |
-| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                     |
-| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges               |
-| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load         |
-| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                  |
-| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                      |
-| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                    |
-| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                   |
-| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                 |
-| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                            |
-| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents)  |
-| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration             |
-| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                         |
+| Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                    |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                  |
+| System-browser login, handoff code, workspace selection, token renewal, sign-out, restore        | `DesktopAuth`, `DesktopAPI`                                                         | Live Clerk handoff and renewal after long captures; concurrent live account changes          |
+| Host start/stop, registration, heartbeat, adaptive polling, retry, revoked credentials, draining | `HostRuntime`                                                                       | Competing hosts and prolonged network recovery                                               |
+| Nine Computer Use capabilities and post-action screenshot/state                                  | `ComputerCommands`, repaired native helper                                          | External launch/relaunch discovery, broader app/recovery cases, targets without AX axis bars |
+| AX, screen capture, Chrome/Safari Automation permissions                                         | Native helper and `DesktopView`                                                     | TCC onboarding, grant changes while running, denied browser automation                       |
+| Filesystem opt-in, selected directories, thirteen tools                                          | `FilesystemTools`, native settings                                                  | Concurrent filesystem changes and remaining platform-specific matching edges                 |
+| MCP JSON import, per-server opt-in, stdio/Streamable HTTP, tool discovery and binary results     | `MCPPlugins`, official Swift MCP SDK, `PluginResult`                                | Transport loss during calls, exhausted restart budget, and cancellation under load           |
+| `_debug`, `computerUseDesktopPlugins`, `introVideo` feature switches                             | `DesktopModel`                                                                      | Live account changes and rapid feature withdrawal during capture/delivery                    |
+| Menus, tray states, close-to-tray, Dock activation, confirmation on quit                         | `DesktopDelegate`, `DesktopActivation`                                              | Packaged second-launch UI walkthrough and complete menu/Dock behavior                        |
+| Keep-awake preference and assertion cleanup                                                      | `DesktopModel`, IOKit                                                               | Sleep/display behavior and quit cleanup                                                      |
+| Display/window/area capture; previews; secondary-display coordinates                             | `ScreenRecorder`, `AreaSelector`, unchanged recorder helper                         | Multi-display/Retina capture and area picker walkthrough                                     |
+| System audio, macOS 15 microphone, pause/resume/discard, global stop shortcut, source loss       | `ScreenRecorder`, `RecordingController`, Carbon shortcut, unchanged recorder helper | Real audio/source loss, floating controls, and area capture without app UI                   |
+| Video and click-track upload, token renewal, retry, browser review handoff                       | `DesktopAPI`, `ScreenRecorder`                                                      | End-to-end delivery and account/workspace changes during upload                              |
+| Logs and Sentry without screenshots/default PII                                                  | `HostRuntime`, `DesktopView`, Sentry Cocoa                                          | Native diagnostics walkthrough and actual Sentry event context (without capture contents)    |
+| Thirty-minute update check, idle deferral, verification, replacement and restart                 | `DesktopUpdater`, installer helper                                                  | Developer ID signed native upgrade and rollback; release promotion integration               |
+| Build and download app/project from PR                                                           | `desktop-swift.yml`, build/archive scripts                                          | Verified; keep the PR download link on the newest successful build                           |
 
 ## Remaining implementation review
 
@@ -382,9 +423,9 @@ Continue with:
    exercise account/workspace changes during capture and active delivery.
 3. Complete TCC onboarding/revocation, real app commands, multi-display/Retina
    selection, floating controls, system audio, microphone, source loss, and the
-   complete upload/review handoff on both product identities. Complete packaged
-   scroll round trips and the remaining scroll input/target support above before
-   accepting all nine commands.
+   complete upload/review handoff on both product identities. The current configured
+   app passed all nine command kinds on its owned fixture; external launch/relaunch
+   discovery and broader app/input/recovery cases still require acceptance.
 4. Finish the remaining filesystem/MCP and menu/activation walkthroughs in the
    table. Automated fixtures and rendered windows do not establish actual
    capture, signed updates, or live end-to-end parity.
