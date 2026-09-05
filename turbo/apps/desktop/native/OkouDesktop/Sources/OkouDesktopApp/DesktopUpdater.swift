@@ -187,7 +187,7 @@ final class DesktopUpdater {
         installer.standardOutput = FileHandle.nullDevice
         installer.standardError = FileHandle.nullDevice
         try installer.run()
-        NSApp.terminate(nil)
+        DesktopAppRuntime.terminateFromRunLoop()
     }
 
     private func showNoUpdateDialog() {

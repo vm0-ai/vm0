@@ -37,6 +37,11 @@ containing `Okou-darwin-arm64-swift.zip`. The artifact is ad-hoc signed, so
 open it with right-click → Open or clear quarantine with
 `xattr -dr com.apple.quarantine Okou.app`.
 
+## Testing an unsigned build
+
+- CI artifacts and local bundles are ad-hoc signed. macOS ties the Accessibility and Screen Recording grants to the binary's code hash, so every new build reports **Computer Use: Needs permissions** until the app is toggled off and on again under System Settings → Privacy & Security. Developer ID signing removes this for releases.
+- The bundle takes its version from `turbo/apps/desktop/package.json`. When the production update feed advertises a newer version, the built-in updater downloads that release and replaces the test build; bump the version to the feed's `currentRelease` before building a throwaway test bundle.
+
 ## Parity status
 
 | Area                                               | Status         |

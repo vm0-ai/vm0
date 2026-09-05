@@ -85,7 +85,7 @@ final class DesktopAppRuntime {
         )
         self.quitConfirmation = DesktopQuitConfirmationController(
             confirmQuit: { [weak self] in await self?.confirmQuit() ?? true },
-            quit: { NSApp.terminate(nil) }
+            quit: { [weak self] in self?.quitAfterPreparation() }
         )
         SentrySetup.start(resources: resources, version: appVersion)
         self.nativeBackend = NativeHelperProcessClient(
@@ -588,19 +588,18 @@ final class DesktopAppRuntime {
             Task { await self.quitConfirmation.requestQuit() }
             return .terminateCancel
         }
-        appIsQuitting = true
-        keepAwake.release()
         if quitPreparationComplete {
+            appIsQuitting = true
+            keepAwake.release()
             return .terminateNow
         }
-        if quitPreparation == nil {
-            quitPreparation = Task { @MainActor in
-                self.mcpPlugin.stop()
-                await self.computerUseController.stopForQuit()
-                await self.disposeNativeBackend(reason: .appQuit)
-                self.quitPreparationComplete = true
-                NSApp.reply(toApplicationShouldTerminate: true)
-            }
+        // Only reached when something other than `quitAfterPreparation` asks
+        // AppKit to terminate while Computer Use is still shutting down (for
+        // example a logout). Those requests arrive from the run loop, so the
+        // reply task below can run inside AppKit's wait.
+        Task { @MainActor in
+            await self.prepareForQuit(reason: .appQuit)
+            NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }
@@ -609,16 +608,51 @@ final class DesktopAppRuntime {
         Task { await self.quitConfirmation.requestQuit() }
     }
 
+    /// Runs once the user confirmed the quit: stop Computer Use first so the
+    /// delegate can answer `.terminateNow`, then terminate from the run loop.
+    private func quitAfterPreparation() {
+        Task { @MainActor in
+            await self.prepareForQuit(reason: .appQuit)
+            Self.terminateFromRunLoop()
+        }
+    }
+
+    /// Port of the Electron `before-quit` preparation: stop the host, dispose
+    /// the helper once, and remember that the app may now exit.
+    private func prepareForQuit(reason: ComputerUseNativeShutdownReason) async {
+        appIsQuitting = true
+        keepAwake.release()
+        if quitPreparation == nil {
+            quitPreparation = Task { @MainActor in
+                self.mcpPlugin.stop()
+                await self.computerUseController.stopForQuit()
+                await self.disposeNativeBackend(reason: reason)
+                self.quitPreparationComplete = true
+            }
+        }
+        await quitPreparation?.value
+    }
+
     /// Update restarts never prompt: allow the quit, stop the host and release
     /// the helper before the installer swaps the bundle.
     func prepareForQuitAndInstall() async {
         quitConfirmation.allowQuitWithoutConfirmation()
-        appIsQuitting = true
-        keepAwake.release()
-        mcpPlugin.stop()
-        await computerUseController.stopForQuit()
-        await disposeNativeBackend(reason: .updateRelaunch)
-        quitPreparationComplete = true
+        await prepareForQuit(reason: .updateRelaunch)
+    }
+
+    /// Asks AppKit to terminate from a run-loop callback instead of from the
+    /// Swift concurrency job that decided to quit. `terminate(_:)` spins a
+    /// nested event loop while the delegate answers `.terminateLater`, and
+    /// that nested loop does not drain the main dispatch queue when the call
+    /// started inside a main-actor task, so the task that would deliver
+    /// `reply(toApplicationShouldTerminate:)` never runs and the app hangs
+    /// with its menus still responding. Seen on a real Mac before this fix.
+    nonisolated static func terminateFromRunLoop() {
+        RunLoop.main.perform(inModes: [.common]) {
+            MainActor.assumeIsolated {
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     /// Shared by app quit and update relaunch; the helper is disposed once.
@@ -639,8 +673,11 @@ final class DesktopAppRuntime {
         for title in options.buttons {
             alert.addButton(withTitle: title)
         }
-        if let window = mainWindow?.window, window.isVisible {
-            let response = await alert.beginSheetModal(for: window)
+        if let mainWindow, mainWindow.window.isVisible {
+            // The tray can be used while another app covers the main window;
+            // bring it forward so the sheet is not attached behind that app.
+            mainWindow.showAndFocus()
+            let response = await alert.beginSheetModal(for: mainWindow.window)
             return DesktopQuitConfirmationOptions.isConfirmed(response: Self.buttonIndex(response))
         }
         NSApp.activate()

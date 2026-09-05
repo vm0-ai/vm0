@@ -26,7 +26,9 @@ public struct DesktopQuitConfirmationOptions: Equatable, Sendable {
 }
 
 /// Port of `DesktopQuitConfirmationController`: deduplicates concurrent
-/// confirmations and remembers that a quit was allowed.
+/// confirmations and remembers that a quit was allowed. `quit` is invoked
+/// from inside a main-actor task, so AppKit callers must hand the actual
+/// termination back to the run loop rather than terminating synchronously.
 public final class DesktopQuitConfirmationController {
     private let confirmQuit: () async -> Bool
     private let quit: () -> Void
