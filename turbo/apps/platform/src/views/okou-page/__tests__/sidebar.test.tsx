@@ -2087,11 +2087,28 @@ test("Refresh agent and thread unread indicators", async () => {
     createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
   ]);
   let hasUnread = false;
+  let unreadIndicatorsLoaded = false;
+  const unreadCatchUpReturned = context.mocks.deferred<void>();
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    unreadIndicatorsLoaded = hasUnread;
     return respond(200, {
       agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
       threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
     });
+  });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    const response = respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+    if (unreadIndicatorsLoaded && !unreadCatchUpReturned.settled()) {
+      unreadCatchUpReturned.resolve(undefined);
+    }
+    return response;
   });
   context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
     return respond(200, {
@@ -2129,6 +2146,9 @@ test("Refresh agent and thread unread indicators", async () => {
   hasUnread = true;
   changeChatThreadList();
 
+  // Indicator delivery follows the throttled batch, which may start after a
+  // trailing bootstrap request. Observe that response before checking the UI.
+  await unreadCatchUpReturned.promise;
   await waitFor(() => {
     expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
     expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
