@@ -1,11 +1,13 @@
 import { command, computed, state } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
 import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
@@ -116,10 +118,25 @@ const eventDrivenFilteredChatThreads$ = computed(
       return [];
     }
     const filteredThreadIds = await get(filteredThreadIds$);
-    return (await get(eventDrivenChatThreads$)).filter((thread) => {
+    const threads = get(eventDrivenChatThreads$).filter((thread) => {
       return (
         thread.agentId === agentId &&
         (filteredThreadIds === null || filteredThreadIds.has(thread.id))
+      );
+    });
+    if (!get(featureSwitch$)[FeatureSwitchKey.PinnedChatThreadSort]) {
+      return threads;
+    }
+    return threads.sort((left, right) => {
+      if (left.pinnedAt === null) {
+        return right.pinnedAt === null ? 0 : 1;
+      }
+      if (right.pinnedAt === null) {
+        return -1;
+      }
+      return (
+        right.pinnedAt.localeCompare(left.pinnedAt) ||
+        right.id.localeCompare(left.id)
       );
     });
   },

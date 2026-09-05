@@ -60,6 +60,8 @@ export enum FeatureSwitchKey {
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   BaseUiSidebarScrollArea = "baseUiSidebarScrollArea",
+  PinnedChatThreadSort = "pinnedChatThreadSort",
+  ChatThreadNumberShortcuts = "chatThreadNumberShortcuts",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   ConnectorAccounts = "connectorAccounts",

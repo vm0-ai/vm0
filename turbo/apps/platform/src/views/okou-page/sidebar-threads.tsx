@@ -34,6 +34,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  getShortcutLabel,
 } from "@okouai/ui";
 import {
   Dialog,
@@ -93,6 +94,7 @@ import {
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { equalArrays } from "../../lib/equality.ts";
+import { chatThreadNumberShortcutsEnabled$ } from "../../signals/external/feature-switch.ts";
 
 const CHAT_THREAD_ROW_ICON_CLASS = "[&_svg]:size-[17px] [&_svg]:opacity-70";
 
@@ -368,8 +370,10 @@ function ChatThreadSideDecorator({
 
 function ChatThreadItemLink({
   signals,
+  index,
 }: {
   signals: SidebarChatThreadItemSignals;
+  index: number;
 }) {
   const { t } = useTranslation();
   const title = useGet(signals.title$);
@@ -379,12 +383,17 @@ function ChatThreadItemLink({
   const select = useSet(signals.select$);
   const openRename = useSet(signals.openRename$);
   const pageSignal = useGet(pageSignal$);
+  const numberShortcutsEnabled = useGet(chatThreadNumberShortcutsEnabled$);
+  const shortcut =
+    numberShortcutsEnabled && index < 9 ? `ctrl+shift+${index + 1}` : null;
 
   return (
     <Link
       pathname="/chats/:threadId"
       options={{ pathParams: { threadId: signals.threadId } }}
       aria-current={isCurrentPage ? "page" : undefined}
+      aria-keyshortcuts={shortcut ? `Control+Shift+${index + 1}` : undefined}
+      title={shortcut ? getShortcutLabel(shortcut) : undefined}
       data-sidebar-chat-thread-id={signals.threadId}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -421,12 +430,14 @@ function ChatThreadItemLink({
 
 function ChatThreadItem({
   signals,
+  index,
 }: {
   signals: SidebarChatThreadItemSignals;
+  index: number;
 }) {
   return (
     <div className="group relative">
-      <ChatThreadItemLink signals={signals} />
+      <ChatThreadItemLink signals={signals} index={index} />
       <ChatThreadSideDecorator signals={signals} />
     </div>
   );
@@ -661,7 +672,7 @@ function VirtualizedChatThreads({
               }px)`,
             }}
           >
-            <ChatThreadItem signals={signals} />
+            <ChatThreadItem signals={signals} index={index} />
           </div>
         );
       })}

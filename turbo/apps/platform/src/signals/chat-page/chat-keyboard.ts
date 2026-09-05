@@ -22,7 +22,10 @@ import {
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { composerVoiceInputShortcutEnabled$ } from "../external/feature-switch.ts";
+import {
+  chatThreadNumberShortcutsEnabled$,
+  composerVoiceInputShortcutEnabled$,
+} from "../external/feature-switch.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -171,6 +174,7 @@ function setupKeyboardScrollPrepareListener(
 }
 
 interface ChatPageShortcutActions {
+  canSetEmojiByNumber: () => boolean;
   clearEmoji: () => void | Promise<void>;
   openEmojiMenu: () => void | Promise<void>;
   renameThread: () => void | Promise<void>;
@@ -244,6 +248,9 @@ const setupChatPageShortcutActions$ = command(
     setupChatPageGlobalShortcutListener(
       {
         actions: {
+          canSetEmojiByNumber: () => {
+            return !get(chatThreadNumberShortcutsEnabled$);
+          },
           clearEmoji: async () => {
             const thread = focusedThread();
             if (thread) {
@@ -343,9 +350,11 @@ const renameDialogRequestForThread$ = command(
 );
 
 function createEmojiShortcutBindings({
+  canSetEmojiByNumber,
   clearEmoji,
   setEmoji,
 }: {
+  canSetEmojiByNumber: () => boolean;
   clearEmoji: () => void | Promise<void>;
   setEmoji: (emoji: string) => void | Promise<void>;
 }): GlobalShortcutBindings {
@@ -356,6 +365,7 @@ function createEmojiShortcutBindings({
           `ctrl+shift+${index + 1}`,
           {
             allowInEditableTarget: true,
+            shouldHandle: canSetEmojiByNumber,
             run: async () => {
               await setEmoji(option.emoji);
             },
@@ -371,6 +381,7 @@ function createEmojiShortcutBindings({
 }
 
 function createChatPageShortcutBindings({
+  canSetEmojiByNumber,
   clearEmoji,
   openEmojiMenu,
   renameThread,
@@ -410,7 +421,11 @@ function createChatPageShortcutBindings({
       allowInEditableTarget: true,
       run: scrollBottom,
     },
-    ...createEmojiShortcutBindings({ clearEmoji, setEmoji }),
+    ...createEmojiShortcutBindings({
+      canSetEmojiByNumber,
+      clearEmoji,
+      setEmoji,
+    }),
   };
 }
 

@@ -400,6 +400,7 @@
         "nextAgent": "Agent suivant",
         "nextThread": "Fil suivant",
         "openFirstThread": "Ouvrir le premier fil",
+        "openNumberedThread": "Ouvrir la conversation 1–9",
         "previousAgent": "Agent précédent",
         "previousThread": "Fil précédent",
         "renameChat": "Renommer la discussion",

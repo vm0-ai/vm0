@@ -437,6 +437,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PinnedChatThreadSort]: {
+    maintainer: "ethan@okou.ai",
+    description:
+      "Keep pinned chats ordered by pin time, newest first, instead of recent activity.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatThreadNumberShortcuts]: {
+    maintainer: "ethan@okou.ai",
+    description:
+      "Use Ctrl+Shift+1-9 to open the first nine chats instead of setting their icons.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:

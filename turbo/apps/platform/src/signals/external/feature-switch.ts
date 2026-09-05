@@ -143,6 +143,12 @@ export const baseUiSidebarScrollAreaEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.BaseUiSidebarScrollArea] ?? false;
 });
 
+export const chatThreadNumberShortcutsEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ChatThreadNumberShortcuts] ?? false
+  );
+});
+
 const hydrateFeatureSwitch$ = command(
   async (
     { get, set },
