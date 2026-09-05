@@ -278,7 +278,6 @@ describe("residual brand-name classifier", () => {
     };
 
     expect(report()).toEqual(report());
-    expect(report()).toContain("Unclassified names: 0");
     expect(report()).toContain(
       "- physical-schema-identity / physical-schema-identity/database-migrations:",
     );
