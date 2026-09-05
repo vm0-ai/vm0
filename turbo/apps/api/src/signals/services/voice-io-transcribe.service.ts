@@ -136,7 +136,7 @@ function stitchTranscripts(
     })
     .join(" ")
     .trim();
-  if (!transcript || transcript.length > VOICE_IO_POLISH_MAX_TEXT_CHARS) {
+  if (transcript.length > VOICE_IO_POLISH_MAX_TEXT_CHARS) {
     throw new Error("Stitched voice transcript is invalid");
   }
   return transcript;
@@ -145,7 +145,7 @@ function stitchTranscripts(
 async function transcribeLongVoiceDraft(
   input: VoiceDraftTranscriptionInput,
   signal: AbortSignal,
-): Promise<VoiceIoTranscribeResponse> {
+): Promise<VoiceIoTranscribeResponse | null> {
   const pieces = await mapWithConcurrency(
     input.files,
     MAX_CONCURRENT_VOICE_TRANSCRIPTIONS,
@@ -165,6 +165,9 @@ async function transcribeLongVoiceDraft(
   );
   signal.throwIfAborted();
   const transcript = stitchTranscripts(pieces);
+  if (!transcript) {
+    return null;
+  }
   const polished = await polishLongVoiceTranscript(
     transcript,
     input.lastAssistantMessage,
@@ -218,12 +221,11 @@ export const transcribeVoiceDraft$ = command(
       return providerError(generated.error);
     }
     if (
+      generated.value === null ||
       generated.value.transcript === OPENROUTER_VOICE_NO_SPEECH ||
       generated.value.polishedText === OPENROUTER_VOICE_NO_SPEECH
     ) {
-      return providerError(
-        new Error("Voice recording contained no intelligible speech"),
-      );
+      return { status: 204 as const, body: undefined };
     }
     return { status: 200 as const, body: generated.value };
   },
