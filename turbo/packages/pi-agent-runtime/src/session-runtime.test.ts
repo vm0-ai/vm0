@@ -3,15 +3,18 @@ import { createServer, type ServerResponse } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { zstdDecompressSync } from "node:zlib";
 
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { piMemorySummaryTokenCount } from "./memory-recall";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
 import type { PiPreheatedResourceSnapshot } from "./api-types";
 import type { PiAgentRequestHeaders } from "./types";
+import { materializePiAgentModelConfig } from "./credential";
+import { resumePiApiFirstTurn } from "./rpc";
 
 const TERRA_MODEL = {
   provider: "openai" as const,
@@ -259,6 +262,7 @@ interface CapturedProviderRequest {
   readonly authorization: string | undefined;
   readonly apiKey: string | undefined;
   readonly userAgent: string | undefined;
+  readonly accountId: string | undefined;
 }
 
 async function startResponsesProvider(): Promise<{
@@ -273,12 +277,18 @@ async function startResponsesProvider(): Promise<{
       for await (const chunk of request) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
+      const bytes = Buffer.concat(chunks);
+      const body =
+        request.headers["content-encoding"] === "zstd"
+          ? zstdDecompressSync(bytes)
+          : bytes;
       requests.push({
         url: request.url,
-        body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+        body: JSON.parse(body.toString("utf8")) as unknown,
         authorization: request.headers.authorization,
         apiKey: request.headers["x-api-key"] as string | undefined,
         userAgent: request.headers["user-agent"],
+        accountId: request.headers["chatgpt-account-id"] as string | undefined,
       });
       responsesTextSse(response, "Sandbox answer");
     })().catch((error: unknown) => {
@@ -316,6 +326,117 @@ async function startResponsesProvider(): Promise<{
 }
 
 describe("official Pi AgentSession runtime", () => {
+  it("keeps generation-3 native Fast on every Sandbox turn after pending tools", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "pi-subscription-fast-"));
+    onTestFinished(async () => {
+      await rm(cwd, { recursive: true, force: true });
+    });
+    const toolFile = join(cwd, "subscription.txt");
+    await writeFile(toolFile, "subscription tool result", "utf8");
+    const provider = await startResponsesProvider();
+    onTestFinished(async () => {
+      await provider.close();
+    });
+    const sessionManager = SessionManager.inMemory(cwd, {
+      id: randomUUID(),
+    });
+    sessionManager.appendMessage({
+      role: "user",
+      content: "run the pending subscription tool",
+      timestamp: 1,
+    });
+    sessionManager.appendMessage({
+      ...fauxAssistantMessage(fauxToolCall("read", { path: toolFile }), {
+        stopReason: "toolUse",
+        timestamp: 2,
+      }),
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      model: "gpt-5.6-terra",
+    });
+    const model = await materializePiAgentModelConfig({
+      target: "sandbox-firewall",
+      config: {
+        schemaVersion: 3,
+        dialect: "openai-codex-responses",
+        transport: "sse",
+        provider: "openai-codex",
+        baseUrl: provider.baseUrl.replace(/\/v1$/, "/backend-api"),
+        model: "gpt-5.6-terra",
+        thinkingLevel: "low",
+        serviceTier: "fast",
+        credentialBindings: [
+          {
+            kind: "access-token",
+            environment: "CHATGPT_ACCESS_TOKEN",
+            secretName: "CHATGPT_ACCESS_TOKEN",
+          },
+          {
+            kind: "account-id",
+            environment: "CHATGPT_ACCOUNT_ID",
+            secretName: "CHATGPT_ACCOUNT_ID",
+          },
+        ],
+      },
+      resolveCredential(binding) {
+        return binding.kind === "access-token"
+          ? "opaque-subscription-token"
+          : "opaque-subscription-account";
+      },
+    });
+    const created = await createPiAgentSessionForRuntime({
+      cwd,
+      agentDir: join(cwd, ".pi"),
+      sessionManager,
+      model,
+      appendSystemPrompt: null,
+      resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+    });
+    try {
+      await resumePiApiFirstTurn(created.session);
+      await created.session.prompt("continue the same Sandbox session");
+      expect(provider.requests).toHaveLength(2);
+      for (const request of provider.requests) {
+        expect(request).toMatchObject({
+          url: "/backend-api/codex/responses",
+          authorization: "Bearer opaque-subscription-token",
+          accountId: "opaque-subscription-account",
+          body: {
+            model: "gpt-5.6-terra",
+            stream: true,
+            store: false,
+            service_tier: "fast",
+            reasoning: { effort: "low" },
+          },
+        });
+        expect(request.body).not.toHaveProperty("previous_response_id");
+        expect(JSON.stringify(request.body)).toContain(
+          "subscription tool result",
+        );
+      }
+      expect(
+        created.session.messages.filter((message) => {
+          return message.role === "toolResult";
+        }),
+      ).toMatchObject([
+        {
+          toolName: "read",
+          isError: false,
+          content: [{ type: "text", text: "subscription tool result" }],
+        },
+      ]);
+      expect(created.session.messages.at(-1)).toMatchObject({
+        role: "assistant",
+        content: [{ type: "text", text: "Sandbox answer" }],
+      });
+      expect(JSON.stringify(sessionManager.getEntries())).not.toMatch(
+        /serviceTier|service_tier/,
+      );
+    } finally {
+      created.session.dispose();
+    }
+  });
+
   it("registers one stable memory schema fixture only for valid V2 epochs", async () => {
     const content = "# Frozen memory\n\nExact API epoch.";
     const v1 = await registeredToolSchemas(EMPTY_RESOURCE_SNAPSHOT);
