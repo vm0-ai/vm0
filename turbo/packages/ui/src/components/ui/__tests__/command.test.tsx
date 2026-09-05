@@ -1,7 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import tailwindcss from "@tailwindcss/postcss";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import postcss from "postcss";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
 import {
   Command,
   CommandDialog,
@@ -36,6 +42,41 @@ function BasicCommand({
 }
 
 describe("Command", () => {
+  const style = document.createElement("style");
+  const packageRoot = existsSync(resolve(process.cwd(), "src/styles"))
+    ? process.cwd()
+    : resolve(process.cwd(), "packages/ui");
+  const globalStylesPath = resolve(packageRoot, "src/styles/globals.css");
+
+  beforeAll(async () => {
+    const globalStyles = await readFile(globalStylesPath, "utf8");
+    const compiledStyles = await postcss([
+      tailwindcss({ base: packageRoot }),
+    ]).process(globalStyles, { from: globalStylesPath });
+    const radiusRules: string[] = [];
+    compiledStyles.root.walkRules((rule) => {
+      const declarations: string[] = [];
+      rule.walkDecls((declaration) => {
+        if (
+          declaration.parent === rule &&
+          (declaration.prop === "border-radius" ||
+            declaration.prop.startsWith("--radius"))
+        ) {
+          declarations.push(declaration.toString());
+        }
+      });
+      if (declarations.length > 0) {
+        radiusRules.push(`${rule.selector} { ${declarations.join("; ")} }`);
+      }
+    });
+    style.textContent = radiusRules.join("\n");
+    document.head.append(style);
+  });
+
+  afterAll(() => {
+    style.remove();
+  });
+
   it("keeps the caret outside a rounded input clipping boundary", () => {
     render(<BasicCommand onSelect={vi.fn()} />);
     const input = screen.getByRole("combobox", { name: "Search" });
@@ -43,8 +84,11 @@ describe("Command", () => {
       '[data-slot="command-input-wrapper"]',
     );
 
-    expect(input).toHaveClass("rounded-none");
-    expect(wrapper).toHaveClass("rounded-lg");
+    if (wrapper === null) {
+      throw new Error("Command input wrapper was not rendered");
+    }
+    expect(getComputedStyle(input).borderRadius).toBe("0px");
+    expect(getComputedStyle(wrapper).borderRadius).not.toBe("0px");
   });
 
   it("selects with Enter and navigates up, down, and around the item loop", async () => {
