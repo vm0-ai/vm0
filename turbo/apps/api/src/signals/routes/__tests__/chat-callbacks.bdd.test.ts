@@ -81,33 +81,33 @@ function goalsClient() {
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
-  "api_dispatch_pre_create_zero_chat_callback_";
+  "api_dispatch_pre_create_agent_chat_callback_";
 const GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX =
-  "api_dispatch_pre_create_zero_goal_drain_";
+  "api_dispatch_pre_create_agent_goal_drain_";
 const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_notify_running_run",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_goal_handoff",
 ] as const;
 const GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
+  "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_built_in_route",
 ] as const;
 const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
   ...GOAL_SCHEDULER_TIMING_ACTION_TYPES,
-  "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
-  "api_dispatch_pre_create_zero_goal_drain_load_event",
-  "api_dispatch_pre_create_zero_goal_drain_load_event_lock_thread",
-  "api_dispatch_pre_create_zero_goal_drain_load_event_select_candidate",
-  "api_dispatch_pre_create_zero_goal_drain_load_target",
-  "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
-  "api_dispatch_pre_create_zero_goal_drain_model_context_load_initial_feature_switches",
-  "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_persisted_model_policy",
-  "api_dispatch_pre_create_zero_goal_drain_build_run_input",
-  "api_dispatch_pre_create_zero_goal_drain_handoff_run",
+  "api_dispatch_pre_create_agent_goal_drain_event_queue_age",
+  "api_dispatch_pre_create_agent_goal_drain_load_event",
+  "api_dispatch_pre_create_agent_goal_drain_load_event_lock_thread",
+  "api_dispatch_pre_create_agent_goal_drain_load_event_select_candidate",
+  "api_dispatch_pre_create_agent_goal_drain_load_target",
+  "api_dispatch_pre_create_agent_goal_drain_resolve_model_context",
+  "api_dispatch_pre_create_agent_goal_drain_model_context_load_initial_feature_switches",
+  "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_persisted_model_policy",
+  "api_dispatch_pre_create_agent_goal_drain_build_run_input",
+  "api_dispatch_pre_create_agent_goal_drain_handoff_run",
 ] as const;
 const GOAL_CAPABILITIES = [
   "goal:read",
@@ -868,16 +868,16 @@ function timingEventsForAction(
 function isGoalDrainWaitingTimingAction(actionType: string): boolean {
   return (
     actionType ===
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
-    actionType === "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap" ||
+    actionType === "api_dispatch_pre_create_agent_goal_drain_event_queue_age"
   );
 }
 
 function isGoalSchedulerTimingAction(actionType: string): boolean {
   return (
     actionType ===
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
-    actionType.startsWith("api_dispatch_pre_create_zero_goal_drain_scheduler_")
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap" ||
+    actionType.startsWith("api_dispatch_pre_create_agent_goal_drain_scheduler_")
   );
 }
 
@@ -944,7 +944,7 @@ async function expectGoalDrainPreCreateTiming(args: {
 
   const schedulerStartGap = timingEventsForAction(
     goalDrainEvents,
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
   )[0];
   if (!schedulerStartGap) {
     throw new Error("Expected goal scheduler start gap timing");
@@ -958,8 +958,8 @@ async function expectGoalDrainPreCreateTiming(args: {
   );
   expect(schedulerPhaseDuration).toBe(Number(schedulerStartGap.duration_ms));
   const higherPriorityDrainDurations = [
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
   ].map((actionType) => {
     return timingEventsForAction(goalDrainEvents, actionType)[0]?.duration_ms;
   });
@@ -976,7 +976,7 @@ async function expectGoalDrainPreCreateTiming(args: {
 
   const entrypointGapEvents = timingEventsForAction(
     allEvents,
-    "api_dispatch_pre_create_zero_entrypoint_gap",
+    "api_dispatch_pre_create_agent_entrypoint_gap",
   );
   expect(entrypointGapEvents).toHaveLength(1);
   const entrypointGap = entrypointGapEvents[0];
@@ -999,7 +999,7 @@ async function expectGoalDrainPreCreateTiming(args: {
   expect(
     timingEventsForAction(
       allEvents,
-      "api_dispatch_pre_create_zero_resolve_agent_id",
+      "api_dispatch_pre_create_agent_resolve_agent_id",
     ),
   ).toHaveLength(1);
   const preCreateEvents = timingEventsForAction(
@@ -1464,18 +1464,18 @@ describe("CHAT-02: completed chat callback", () => {
     expect(secondClaim.apiStartTime).toBe(apiStartedAt);
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
-      ["api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age"],
+      ["api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age"],
     );
     expect(
       timingEventsForAction(
         timingEvents,
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
       ),
     ).toStrictEqual([
       expect.objectContaining({
         duration_ms: dequeuedAt - queuedMessageCreatedAt,
         op_type:
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
       }),
     ]);
     const secondHeaders = {
@@ -2034,17 +2034,17 @@ describe("CHAT-02: completed chat callback", () => {
       "chat_callback_auto_send",
     );
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
-      "api_dispatch_pre_create_zero_chat_callback_load_terminal",
-      "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
-      "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
-      "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+      "api_dispatch_pre_create_agent_chat_callback_load_terminal",
+      "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
+      "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
+      "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
     ]);
 
     context.mocks.ably.publish.mockClear();
@@ -3035,8 +3035,8 @@ Goal CLI:
     }
     const lostGoalTiming = goalDrainPreCreateTimingEventsForRun(lostGoalRunId);
     for (const actionType of [
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
     ]) {
       expect(timingEventsForAction(lostGoalTiming, actionType)).toStrictEqual([
         expect.objectContaining({
@@ -3723,21 +3723,21 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
       [
-        "api_dispatch_pre_create_zero_chat_callback_load_terminal",
-        "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
-        "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-        "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
-        "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+        "api_dispatch_pre_create_agent_chat_callback_load_terminal",
+        "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
+        "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
+        "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
+        "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
       ],
     );
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
-      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "api_dispatch_pre_create_agent_chat_callback_insert_assistant_items",
     ]);
   }, 90_000);
 
@@ -5769,22 +5769,22 @@ describe("CHAT-02: auto-send after failures", () => {
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
       [
-        "api_dispatch_pre_create_zero_chat_callback_load_terminal",
-        "api_dispatch_pre_create_zero_chat_callback_prepare_failed",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+        "api_dispatch_pre_create_agent_chat_callback_load_terminal",
+        "api_dispatch_pre_create_agent_chat_callback_prepare_failed",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_agent",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
       ],
     );
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
-      "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
-      "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
-      "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
+      "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
+      "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
+      "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
     ]);
     expect(claimed.userMessage?.parts).toContainEqual(
       expect.objectContaining({

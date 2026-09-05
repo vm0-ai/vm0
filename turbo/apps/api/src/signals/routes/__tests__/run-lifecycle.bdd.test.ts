@@ -466,28 +466,28 @@ const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_direct_parse_body",
   "api_dispatch_pre_create_direct_prepare_args",
 ] as const;
-const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_parse_body",
-  "api_dispatch_pre_create_zero_prepare_args",
-  "api_dispatch_pre_create_zero_resolve_agent_id",
-  "api_dispatch_pre_create_zero_load_agent",
-  "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
-  "api_dispatch_pre_create_zero_materialize_bootstrap_context",
-  "api_dispatch_pre_create_zero_resolve_firewall_metadata",
-  "api_dispatch_pre_create_zero_build_create_run_args",
+const API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_parse_body",
+  "api_dispatch_pre_create_agent_prepare_args",
+  "api_dispatch_pre_create_agent_resolve_agent_id",
+  "api_dispatch_pre_create_agent_load_agent",
+  "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
+  "api_dispatch_pre_create_agent_materialize_bootstrap_context",
+  "api_dispatch_pre_create_agent_resolve_firewall_metadata",
+  "api_dispatch_pre_create_agent_build_create_run_args",
 ] as const;
-const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_entrypoint_gap",
+const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_entrypoint_gap",
 ] as const;
-const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-  "api_dispatch_pre_create_zero_web_chat_check_active_run",
-  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
-  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
+  "api_dispatch_pre_create_agent_web_chat_check_active_run",
+  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
+  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
 ] as const;
 const API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
@@ -1874,11 +1874,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
     expectNoApiDispatchActions(
@@ -1887,11 +1887,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expect(
       singleApiDispatchEvent(
@@ -3544,15 +3544,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expect(
       singleApiDispatchEvent(
@@ -7854,7 +7854,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         dataset === "vm0-sandbox-op-log-dev" &&
         Array.isArray(events) &&
         events.some((event) => {
-          return isRecord(event) && event.op_type === "enqueue_zero_run";
+          return isRecord(event) && event.op_type === "enqueue_agent_run";
         })
       ) {
         throw new Error("enqueue telemetry failed");
@@ -7875,7 +7875,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     expect(sandboxOperationEventsForRun(queued.runId)).toContainEqual(
       expect.objectContaining({
-        op_type: "enqueue_zero_run",
+        op_type: "enqueue_agent_run",
         run_id: queued.runId,
       }),
     );
@@ -15284,14 +15284,14 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
-      "api_dispatch_pre_create_zero_materialize_bootstrap_context",
-      "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+      "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
+      "api_dispatch_pre_create_agent_materialize_bootstrap_context",
+      "api_dispatch_pre_create_agent_resolve_firewall_metadata",
     ]);
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+        "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
       ),
     ).toStrictEqual(
       expect.objectContaining({
@@ -15302,7 +15302,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+        "api_dispatch_pre_create_agent_materialize_bootstrap_context",
       ),
     ).toStrictEqual(
       expect.objectContaining({

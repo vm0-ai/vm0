@@ -364,7 +364,7 @@ function workflowAutomationTiming(
   const timing = args.timing ?? new ApiDispatchTimingCollector();
   if (!args.timing) {
     timing.recordElapsed(
-      "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
+      "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
       "nested",
       args.apiStartTime,
     );
@@ -383,7 +383,7 @@ async function checkActivePreviousWorkflowRun(
 ): Promise<RunFailure | undefined> {
   return await measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_workflow_automation_check_active_run",
+    "api_dispatch_pre_create_agent_workflow_automation_check_active_run",
     "nested",
     async (): Promise<RunFailure | undefined> => {
       if (
@@ -420,7 +420,7 @@ async function checkWorkflowAutomationTargetReadable(
 ): Promise<RunFailure | undefined> {
   return await measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_workflow_automation_check_target_access",
+    "api_dispatch_pre_create_agent_workflow_automation_check_target_access",
     "nested",
     async (): Promise<RunFailure | undefined> => {
       const canFire = await workflowAutomationCanFire(
@@ -456,7 +456,7 @@ async function resolveTimedWorkflowModelContext(
 ): Promise<ModelContext> {
   return await measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_workflow_automation_resolve_model_context",
+    "api_dispatch_pre_create_agent_workflow_automation_resolve_model_context",
     "nested",
     async () => {
       return await resolveModelContext(
@@ -480,7 +480,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
 }): Promise<WorkflowAutomationRunInput> {
   return await measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
+    "api_dispatch_pre_create_agent_workflow_automation_build_run_input",
     "nested",
     () => {
       return {
@@ -638,7 +638,7 @@ export const launchQueuedWorkflowAutomation$ = command(
     });
     signal.throwIfAborted();
     timing.recordElapsed(
-      "api_dispatch_pre_create_zero_workflow_automation_create_run",
+      "api_dispatch_pre_create_agent_workflow_automation_create_run",
       "nested",
       now(),
     );

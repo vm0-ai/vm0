@@ -843,7 +843,7 @@ function serviceEntryTiming(args: {
   const timing = args.timing ?? new ApiDispatchTimingCollector();
   if (!args.timing) {
     timing.recordElapsed(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
       "nested",
       args.apiStartTime,
     );
@@ -881,7 +881,7 @@ async function loadAgentRunPostAuthorizationContext(
   let measuredSnapshotRows: RunBootstrapSnapshotRows | undefined;
   const snapshotRows = await measureZeroPreCreate(
     args.timing,
-    "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+    "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
     async () => {
       const loadedRows = await loadRunBootstrapSnapshotRows(db, {
         userId: args.userId,
@@ -901,7 +901,7 @@ async function loadAgentRunPostAuthorizationContext(
   let measuredBootstrapContext: RunBootstrapContext | undefined;
   const bootstrapContext = await measureZeroPreCreate(
     args.timing,
-    "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+    "api_dispatch_pre_create_agent_materialize_bootstrap_context",
     () => {
       const context = materializeRunBootstrapContext(snapshotRows, {
         userId: args.userId,
@@ -934,7 +934,7 @@ async function loadAgentRunPostAuthorizationContext(
   signal.throwIfAborted();
   const runPermissionPolicies = await measureZeroPreCreate(
     args.timing,
-    "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+    "api_dispatch_pre_create_agent_resolve_firewall_metadata",
     async () => {
       const storedPermissionPolicies = permissionGrantsToFirewallPolicies(
         bootstrapContext.permissionGrants,
@@ -1178,7 +1178,7 @@ async function resolveThreadSessionForAgentRun(
   }
   const resolution = await measureZeroPreCreate(
     input.timing,
-    "api_dispatch_pre_create_zero_resolve_thread_session",
+    "api_dispatch_pre_create_agent_resolve_thread_session",
     () => {
       return resolveChatThreadSession({
         db,
@@ -1198,7 +1198,7 @@ async function resolveThreadSessionForAgentRun(
   const sessionPrompt = webChatSessionPromptContext
     ? await measureZeroPreCreate(
         input.timing,
-        "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context",
+        "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context",
         () => {
           return resolveWebChatSessionPrompt({
             db,
@@ -1252,7 +1252,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
       signal.throwIfAborted();
       const baseCreateAgentRunArgs = await measureZeroPreCreate(
         capturedInput.timing,
-        "api_dispatch_pre_create_zero_build_create_run_args",
+        "api_dispatch_pre_create_agent_build_create_run_args",
         () => {
           return buildZeroCreateAgentRunArgs(attemptInput);
         },
@@ -1326,7 +1326,7 @@ const createAgentRunInternal$ = command(
 
     const agentId = await measureZeroPreCreate(
       timing,
-      "api_dispatch_pre_create_zero_resolve_agent_id",
+      "api_dispatch_pre_create_agent_resolve_agent_id",
       async () => {
         return await resolveAgentRunAgentId(db, args);
       },
@@ -1341,7 +1341,7 @@ const createAgentRunInternal$ = command(
 
     const agent = await measureZeroPreCreate(
       timing,
-      "api_dispatch_pre_create_zero_load_agent",
+      "api_dispatch_pre_create_agent_load_agent",
       async () => {
         return await loadZeroAgent(db, agentId);
       },

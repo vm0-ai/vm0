@@ -140,7 +140,7 @@ export async function loadNextGoalQueueEvent(
 ): Promise<PendingGoalQueueEvent | null> {
   return await db.transaction(async (tx) => {
     const threadExists = await args.timing.measure(
-      "api_dispatch_pre_create_zero_goal_drain_load_event_lock_thread",
+      "api_dispatch_pre_create_agent_goal_drain_load_event_lock_thread",
       "nested",
       async () => {
         return await lockChatQueueThread(tx, args.chatThreadId);
@@ -152,7 +152,7 @@ export async function loadNextGoalQueueEvent(
     }
 
     const [event] = await args.timing.measure(
-      "api_dispatch_pre_create_zero_goal_drain_load_event_select_candidate",
+      "api_dispatch_pre_create_agent_goal_drain_load_event_select_candidate",
       "nested",
       async () => {
         const queueHead = tx.$with("goal_queue_head").as(

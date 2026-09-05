@@ -1800,7 +1800,7 @@ const runAgentForTeams$ = command(
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult> => {
     args.timing.recordElapsed(
-      "api_dispatch_pre_create_zero_teams_create_run",
+      "api_dispatch_pre_create_agent_teams_create_run",
       "nested",
       nowDate().getTime(),
     );

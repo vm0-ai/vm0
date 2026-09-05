@@ -1368,22 +1368,22 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
           agent_run_origin: "direct",
         }),
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_entrypoint_gap",
+          op_type: "api_dispatch_pre_create_agent_entrypoint_gap",
           span_kind: "nested",
           trigger_source: "telegram",
         }),
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_load_agent",
+          op_type: "api_dispatch_pre_create_agent_load_agent",
           span_kind: "nested",
           trigger_source: "telegram",
         }),
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+          op_type: "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
           span_kind: "nested",
           trigger_source: "telegram",
         }),
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_build_create_run_args",
+          op_type: "api_dispatch_pre_create_agent_build_create_run_args",
           span_kind: "nested",
           trigger_source: "telegram",
         }),
@@ -1393,10 +1393,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       return event.op_type;
     });
     expect(timingActionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_parse_body",
+      "api_dispatch_pre_create_agent_parse_body",
     );
     expect(timingActionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_prepare_args",
+      "api_dispatch_pre_create_agent_prepare_args",
     );
   });
 
