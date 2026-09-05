@@ -1006,19 +1006,19 @@ async function mutateRunnerJobSecretValueEnvironmentKeys(
   signal.throwIfAborted();
 }
 
-type SetRunnerJobPiContextAsV2WriterAction = Extract<
+type SetRunnerJobPiContextAsVersionedWriterAction = Extract<
   TestRuntimeStateActionBody,
-  { action: "set-runner-job-pi-context-as-v2-writer" }
+  { action: "set-runner-job-pi-context-as-versioned-writer" }
 >;
 
-async function setRunnerJobPiContextAsV2Writer(
+async function setRunnerJobPiContextAsVersionedWriter(
   db: Db,
-  body: SetRunnerJobPiContextAsV2WriterAction,
+  body: SetRunnerJobPiContextAsVersionedWriterAction,
   signal: AbortSignal,
 ): Promise<void> {
-  // Current production writers stay legacy-only. This fixture models a queued
-  // row emitted by the later V2 activation slice so claim compatibility can be
-  // verified before that writer exists.
+  // Production writers still emit generations 1/2. This fixture models a
+  // stored route from each supported writer so claim compatibility is tested
+  // before generation 3 admission activates in #31803.
   const piContext = {
     cliAgentType: "pi",
     piSessionId: body.run_id,
@@ -1045,7 +1045,7 @@ async function setRunnerJobPiContextAsV2Writer(
     .returning({ runId: runnerJobQueue.runId });
   signal.throwIfAborted();
   if (!updated) {
-    throw new Error("Expected a queued runner job for Pi V2 context update");
+    throw new Error("Expected a queued runner job for Pi context update");
   }
 }
 
@@ -2634,8 +2634,8 @@ const postRuntimeStateAction$ = command(
         );
         return { status: 200 as const, body: { ok: true as const } };
       }
-      case "set-runner-job-pi-context-as-v2-writer": {
-        await setRunnerJobPiContextAsV2Writer(db, body, signal);
+      case "set-runner-job-pi-context-as-versioned-writer": {
+        await setRunnerJobPiContextAsVersionedWriter(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "set-runner-job-connector-runtime-targets": {

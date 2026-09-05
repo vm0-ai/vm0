@@ -64,6 +64,12 @@ function streamSimpleResponsesWithPolicy(
   context: Context,
   options?: PiAgentStreamOptions,
 ): AssistantMessageEventStream {
+  const serviceTier = options?.serviceTier;
+  if (serviceTier !== undefined && serviceTier !== "priority") {
+    throw new Error(
+      "Pi public Responses only accepts the priority service tier",
+    );
+  }
   const base = buildBaseOptions(model, context, options, options?.apiKey);
   const clampedReasoning =
     options?.reasoning === undefined
@@ -79,7 +85,7 @@ function streamSimpleResponsesWithPolicy(
             options.onObservedServiceTier,
           ),
     reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
-    serviceTier: options?.serviceTier,
+    serviceTier,
   });
 }
 
@@ -213,6 +219,10 @@ function piAgentCodexStream(
   accountId: string,
   options?: PiAgentStreamOptions,
 ): AssistantMessageEventStream {
+  const serviceTier = options?.serviceTier;
+  if (serviceTier !== undefined && serviceTier !== "fast") {
+    throw new Error("Pi Codex Responses only accepts the fast service tier");
+  }
   const base = buildBaseOptions(model, context, options, options?.apiKey);
   const clampedReasoning =
     options?.reasoning === undefined
@@ -228,7 +238,7 @@ function piAgentCodexStream(
             options.onObservedServiceTier,
           ),
     reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
-    serviceTier: options?.serviceTier,
+    serviceTier,
     accountId,
     maxRetries: 0,
     transport: "sse",
@@ -272,9 +282,8 @@ export function piAgentStreamForConfig(
         "User-Agent": PI_AGENT_USER_AGENT,
         ...config.requestHeaders,
       },
-      ...(config.serviceTier === undefined
-        ? {}
-        : { serviceTier: config.serviceTier }),
+      // The immutable route owns tier even when standard omits it.
+      serviceTier: config.serviceTier,
     };
     if (config.dialect === "openai-responses") {
       if (!isResponsesModel(model)) {
@@ -308,6 +317,13 @@ export function piAgentStreamForConfig(
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
 ): Model<"openai-responses"> | Model<"openai-codex-responses"> | null {
+  if (
+    config.serviceTier !== undefined &&
+    config.serviceTier !==
+      (config.dialect === "openai-codex-responses" ? "fast" : "priority")
+  ) {
+    return null;
+  }
   const source = sourceModel(
     config.provider,
     config.catalogModel ?? config.model,

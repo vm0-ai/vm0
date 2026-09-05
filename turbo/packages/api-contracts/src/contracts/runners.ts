@@ -81,7 +81,9 @@ export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
 export const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION = 1;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const PI_MODEL_CONFIG_LEGACY_GENERATION = 1;
+// Existing versioned writers stay on generation 2 until their activation slice.
 export const PI_MODEL_CONFIG_CURRENT_GENERATION = 2;
+export const PI_MODEL_CONFIG_DIALECT_TIER_GENERATION = 3;
 export const RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX = 8;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -1027,12 +1029,15 @@ const piModelCredentialBindingSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * Additive Pi route generation for dialect-aware readers. Current writers keep
- * emitting `piModelConfigLegacySchema` until a later activation slice.
+ * Shared strict route invariants. Generations are separate wire contracts;
+ * adding a reader must not move existing writers to a newer generation.
  */
-export const piModelConfigV2Schema = z
+const piModelConfigVersionedSchema = z
   .object({
-    schemaVersion: z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+    schemaVersion: z.union([
+      z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+      z.literal(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION),
+    ]),
     dialect: z.enum(["openai-responses", "openai-codex-responses"]),
     transport: z.literal("sse"),
     provider: z.enum(["deepseek", "openai", "openrouter", "openai-codex"]),
@@ -1042,7 +1047,7 @@ export const piModelConfigV2Schema = z
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
       .optional(),
-    serviceTier: z.enum(["priority"]).optional(),
+    serviceTier: z.enum(["priority", "fast"]).optional(),
     credentialBindings: z.array(piModelCredentialBindingSchema).min(1).max(2),
   })
   .strict()
@@ -1102,19 +1107,49 @@ export const piModelConfigV2Schema = z
         message: "Codex Responses uses its provider model as the catalog model",
       });
     }
-    if (config.serviceTier !== undefined) {
+    if (
+      config.schemaVersion === PI_MODEL_CONFIG_CURRENT_GENERATION &&
+      config.serviceTier !== undefined
+    ) {
       refinement.addIssue({
         code: "custom",
         path: ["serviceTier"],
         message: "Codex Responses does not accept a public API service tier",
       });
     }
+  });
+
+export const piModelConfigV2Schema = piModelConfigVersionedSchema
+  .safeExtend({
+    schemaVersion: z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+    serviceTier: z.enum(["priority"]).optional(),
   })
+  .readonly();
+
+/** Additive reader capability only; route writers activate separately in #31803. */
+export const piModelConfigV3Schema = z
+  .discriminatedUnion("dialect", [
+    piModelConfigVersionedSchema.safeExtend({
+      schemaVersion: z.literal(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION),
+      dialect: z.literal("openai-responses"),
+      transport: z.enum(["sse"]),
+      provider: z.enum(["deepseek", "openai", "openrouter"]),
+      serviceTier: z.enum(["priority"]).optional(),
+    }),
+    piModelConfigVersionedSchema.safeExtend({
+      schemaVersion: z.literal(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION),
+      dialect: z.literal("openai-codex-responses"),
+      transport: z.enum(["sse"]),
+      provider: z.enum(["openai-codex"]),
+      serviceTier: z.enum(["fast"]).optional(),
+    }),
+  ])
   .readonly();
 
 export const piModelConfigSchema = z.union([
   piModelConfigLegacySchema,
   piModelConfigV2Schema,
+  piModelConfigV3Schema,
 ]);
 
 /**
@@ -1687,6 +1722,7 @@ export type StoredExecutionContext = z.infer<
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiModelConfigLegacy = z.infer<typeof piModelConfigLegacySchema>;
 export type PiModelConfigV2 = z.infer<typeof piModelConfigV2Schema>;
+export type PiModelConfigV3 = z.infer<typeof piModelConfigV3Schema>;
 export type PiModelCredentialBinding = z.infer<
   typeof piModelCredentialBindingSchema
 >;
