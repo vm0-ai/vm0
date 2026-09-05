@@ -95,6 +95,20 @@ export const RESIDUAL_BRAND_BOUNDARY_FILE_RULES = [
   },
   {
     category: "immutable-history",
+    id: "immutable-history/typecheck-memory-experiment-log",
+    paths: /^turbo\/docs\/typecheck-memory-experiments\.md$/u,
+    reason:
+      "A dated measurement log. Every tsconfig chunk, route binding, and test file it quotes is the name that existed when the measurement ran, and the tsconfigs and CI jobs it names no longer exist; rewriting them would make each recorded number describe an experiment that was never run. The document states this in its own header note.",
+  },
+  {
+    category: "immutable-history",
+    id: "immutable-history/one-off-migration-runbook",
+    paths: /^turbo\/packages\/db\/scripts\/migrations\/[^/]+\/README\.md$/u,
+    reason:
+      "A runbook for a one-off migration that has already been executed against production; it records the relations, columns, and counts that existed at execution time, so editing a name there falsifies the record of what ran.",
+  },
+  {
+    category: "immutable-history",
     id: "immutable-history/mailmap",
     paths: /^\.mailmap$/u,
     reason:
@@ -192,6 +206,45 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     tokens: ["VM0", "vm0"],
   },
   {
+    after: /^\.(?:AI|bot|dev|slack\.com|workers\.dev)(?![A-Za-z0-9])/u,
+    category: "external-identity",
+    id: "external-identity/brand-service-domain",
+    reason:
+      "vm0.bot is the production mail sending domain, vm0.dev and vm0.workers.dev are the deployed tunnel and Cloudflare preview origins, vm0.slack.com is the workspace, and VM0.AI is the live domain spelled inside an address; none of them moves when this repository changes.",
+    tokens: ["VM0", "vm0"],
+  },
+  {
+    after: /^\.(?:invalid|local|test)(?![A-Za-z0-9])/u,
+    category: "external-identity",
+    id: "external-identity/reserved-brand-hostname",
+    reason:
+      "RFC 2606 and RFC 6761 reserved names stand in for the deployed vm0 origins so host-derived brand, cookie, and redirect behaviour is exercised without reaching them; the fixture host carries the identity of the origin it represents and can only move with it.",
+    tokens: ["vm0"],
+  },
+  {
+    after: /^\.yaml(?![A-Za-z0-9])/u,
+    category: "external-identity",
+    id: "external-identity/compose-manifest-file-name",
+    reason:
+      "vm0.yaml is the compose manifest a user keeps in their own repository, so the file name is theirs and renaming the literal here only makes the guidance wrong.",
+    tokens: ["vm0"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/url-encoded-repository-slug",
+    reason:
+      "Trendshift indexes this repository under the percent-encoded vm0-ai%2Fvm0 path, so the badge label resolves against their service rather than against anything here.",
+    tokens: ["2Fvm0"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/secret-manager-vault-path",
+    line: /\bop:\/\//u,
+    reason:
+      "A 1Password op:// reference names an item in the shared developer vault; the path exists outside this repository and a source edit only breaks the lookup.",
+    tokens: ["vm0"],
+  },
+  {
     before: /vm0-ai\/$/u,
     category: "external-identity",
     id: "external-identity/repository-slug",
@@ -257,6 +310,30 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
       "vm0_source",
       "vm0_variant",
     ],
+  },
+  {
+    after: /^\.(?:db|pg)\.[a-z]/u,
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/database-telemetry-attribute",
+    reason:
+      "vm0.db.* are OpenTelemetry span attribute names already ingested by Axiom and vm0.pg.pool-query-span is the context key carrying them; renaming one silently empties every saved query, dashboard, and alert built on the field.",
+    tokens: ["vm0"],
+  },
+  {
+    after: /^\.pi-memory\./u,
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/pi-memory-archive-key",
+    reason:
+      "The Pi memory phase-2 manifest and selection keys are written into stored archives, so a reader has to keep matching the key already on disk.",
+    tokens: ["vm0"],
+  },
+  {
+    after: /^\.(?:adAttribution|authV2\.|googleAds|signupAttributionRecorded)/u,
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/browser-storage-key",
+    reason:
+      "These are localStorage keys held on the user's own device; renaming one strands the attribution, conversion, and resend-cooldown state it holds, the same failure docs/residual-platform-brand-names.md records for the zero-* persisted keys.",
+    tokens: ["vm0"],
   },
   {
     category: "wire-and-persisted-value",
@@ -357,6 +434,130 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
       "The name uses zero as the number, not as the brand, so a brand rename must leave it alone.",
     tokenPattern:
       /^(?:all-zero|leading-zero|near-zero|non-?zero|non_?zero(?:_[a-z0-9_]+)?|zero-(?:amount|based|budget|cost|credit|filled|height|incident|length|lint|padded|price|quantity|row|size|sized|tolerance|width)|zero-usage|zero(?:Count|OrMore|OrOne)|isNegativeZero|zero100)$/iu,
+  },
+  {
+    after:
+      /^\s+(?:NULLs|additional|arguments|audio|balance|blocking|candidates|chunks|commits|creditExpiry|credits|delay|duration|elapsed|fill|final|for|items|legacy|lint|mutation|or\s+more|org\s+credits|outbound|props|remaining|rows|segments|state|tolerance|unresolved|visible|warnings)(?![A-Za-z0-9_-])/u,
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/english-number-quantity",
+    reason:
+      "The word counts the noun that follows it — zero rows, zero credits, zero segments, zero lint warnings — so it is the numeral and a brand rename must leave it alone. The list is closed on purpose: nouns the brand also takes, such as token, scope, capability, and Desktop, are deliberately absent.",
+    tokens: ["zero"],
+  },
+  {
+    after: /^\s+(?:Lint|Tolerance|lint|tolerance)(?![A-Za-z0-9_-])/u,
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/english-number-heading",
+    reason:
+      "Title-cased headings and bullets in the contributor guides say Zero Tolerance and Zero Lint; the capital is sentence casing of the numeral, not the assistant.",
+    tokens: ["Zero"],
+  },
+  {
+    before:
+      /\b(?:budget|charged|count\s+to|drop\s+to|drops\s+to|fell\s+to|mean|means|reach|reached|reaches|sequence|than|toward|towards|values\s+to|was)\s+$/u,
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/english-number-terminal",
+    reason:
+      "The word is the quantity a verb or comparison lands on — reaches zero, fell to zero, greater than zero — with no noun after it to key on, so the preceding phrase is what identifies the numeral.",
+    tokens: ["zero"],
+  },
+  {
+    before: /\b(?:da|do)\s+$/u,
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/translated-number-word",
+    reason:
+      "Italian da zero and Portuguese do zero mean from scratch in the translated onboarding copy; the word is the numeral in those locales and is not the brand at all.",
+    tokens: ["zero"],
+  },
+  {
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/cardinality-enum-value",
+    line: /Cardinality\b/u,
+    reason:
+      "The connector selection cardinality enum spells its counts zero, one, and multiple; the member is the numeral in a three-value set.",
+    tokens: ["zero"],
+  },
+  {
+    category: "semantic-non-brand",
+    id: "semantic-non-brand/book-title",
+    line: /\bZERO TO ONE\b/u,
+    reason:
+      "Zero to One is the book title inside an image-generation prompt fixture, so the word is the numeral in a quoted phrase.",
+    tokens: ["ZERO"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/runner-host-filesystem-identity",
+    reason:
+      "vm0-runner names the /etc and /var/lib directories and the systemd unit prefix the Ansible playbooks manage on deployed hosts, and vm0-exec is the /sys/fs/cgroup hierarchy crates/guest-contracts pins; both are renamed by an infrastructure migration, never by a source edit.",
+    tokens: ["vm0-exec", "vm0-runner"],
+  },
+  {
+    category: "external-identity",
+    id: "external-identity/transition-validator-marker",
+    reason:
+      "The marker prefix is the grep handle the #26938 and #28368 transition checklists use to find outstanding validator entries from outside this repository; the entries are still open, so renaming the prefix silently empties every one of those searches.",
+    tokens: ["vm0-transition-validator"],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/addon-event-envelope",
+    reason:
+      "VM0_ADDON_EVENT is the line prefix the mitmproxy addon writes to stderr and crates/runner parses back; the two processes ship separately, so the prefix is a wire contract between them.",
+    tokens: ["VM0_ADDON_EVENT"],
+  },
+  {
+    after: /^:non-transactional(?![A-Za-z0-9-])/u,
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/migration-directive-marker",
+    reason:
+      "-- vm0:non-transactional is read out of committed migration SQL by the migration runner to decide whether to open a transaction; the marker text is part of files that have already been applied.",
+    tokens: ["vm0"],
+  },
+  {
+    after: /^:[a-z0-9-]+(?:[:.][a-z0-9-]+)*(?![A-Za-z0-9])/u,
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/namespaced-key",
+    reason:
+      "A vm0: prefixed key outlives the deploy that writes it: a versioned localStorage entry on the user's own device, a Postgres advisory-lock key two overlapping deployments must spell identically to exclude each other, or a window event name already-loaded page code is still listening for. Renaming either side of one of these silently splits the pair instead of failing.",
+    tokens: ["vm0"],
+  },
+  {
+    before: /static\\?\.vm0\\?\.io\\?\/$/u,
+    category: "immutable-static-asset-key",
+    id: "immutable-static-asset-key/static-asset-path-pattern",
+    reason:
+      "The same first path segment of an append-only static.vm0.io object key, written with the escapes a regular expression literal needs; the pattern has to keep matching keys that are already published.",
+    tokens: ["vm0"],
+  },
+  {
+    before: /["'`]\.$/u,
+    category: "external-identity",
+    id: "external-identity/dot-vm0-directory",
+    reason:
+      "A .vm0 directory is owned outside this package: ~/.vm0 is the guest-agent workspace crates/guest-agent creates in the sandbox and excludes from artifact archives, and .vm0/official-workflow-definition.json is the manifest path an official workflow repository publishes. Both are read by name from somewhere this repository cannot edit.",
+    tokens: ["vm0"],
+  },
+  {
+    category: "desktop-identity",
+    id: "desktop-identity/desktop-preload-global",
+    reason:
+      "vm0DesktopAuth and vm0DesktopComputerUse are the contextBridge globals turbo/apps/desktop exposes to the renderer; the desktop app is a desktop-identity boundary and the testing guide only names what it exposes.",
+    tokens: ["vm0DesktopAuth", "vm0DesktopComputerUse"],
+  },
+  {
+    category: "protocol-compatibility",
+    id: "protocol-compatibility/legacy-backend-url-variable",
+    reason:
+      "VM0_API_BACKEND_URL is the legacy environment variable the migration note exists to record; the document names it precisely so operators can recognise the contract that is being retired, and #26701 and #28278 own the cutoff.",
+    tokens: ["VM0_API_BACKEND_URL"],
+  },
+  {
+    category: "dual-brand-product-contract",
+    id: "dual-brand-product-contract/supported-brand-word",
+    reason:
+      "The bare brand word is the VM0 and Zero identity itself: the assistant name the product renders, the presentation brand carried on runs, tokens, artifacts, and titles, the zero scope and /api/zero vocabulary deployed clients still speak, and the prose that names any of them. VM0 stays a supported public presentation brand until #27750 records the product decision, so these read correctly today and retire with the brand rather than ahead of it. The numeral senses are separated out by the semantic-non-brand rules above, and every longer identifier built on the brand stays outside this rule because the token must match exactly.",
+    tokens: ["VM0", "Vm0", "ZERO", "Zero", "vm0", "zero"],
   },
 ] as const satisfies readonly ResidualBrandBoundaryOccurrenceRule[];
 
@@ -471,7 +672,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "vm0PrimaryCandidate",
       "vm0Provider",
       "vm0UsageCredits",
-      "zero-built-in-generation",
       "zero-me-model-providers",
       "zero-model-providers",
       "zeroUsageEvent",
@@ -863,48 +1063,12 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       workstream: "R7",
     },
   ),
-  ...baselineNames(
-    [
-      "2Fvm0",
-      "VM0",
-      "VM0_ADDON_EVENT",
-      "VM0_API_BACKEND_URL",
-      "ZERO",
-      "Zero",
-      "__vm0ReactCommitProfiler",
-      "routes-zero-a-g",
-      "routes-zero-h-r",
-      "routes-zero-s-z",
-      "vm0",
-      "vm0-exec",
-      "vm0-measure-memory",
-      "vm0-runner",
-      "vm0-transition-validator",
-      "vm0DesktopAuth",
-      "vm0DesktopComputerUse",
-      "vm0DraftId",
-      "zero",
-      "zero-connectors-oauth-start",
-      "zero-email",
-      "zero-image-io-generate",
-      "zero-slack-browser-connect",
-      "zero-slack-oauth",
-      "zero-video-io-generate",
-      "zero-voice-io-post",
-      "zero-web-download",
-      "zeroComputerUseRoutes",
-      "zeroEmailCallbackRoutes",
-      "zeroHostRoutes",
-      "zeroMapsRoutes",
-      "zero_workflow_triggers",
-    ],
-    {
-      ownerIssue: "#31801",
-      reason:
-        "Bare brand literal or stale prose left in comments, documentation, and user-facing copy; R9 sweeps it and R5 or R6 pick up whatever the sweep proves is code.",
-      workstream: "R9",
-    },
-  ),
+  ...baselineNames([], {
+    ownerIssue: "#31801",
+    reason:
+      "Bare brand literals and stale prose in comments, documentation, and user-facing copy; #31856 classified all 32 names, so every remaining occurrence is either an approved boundary above or was rewritten because it described something that no longer exists.",
+    workstream: "R9",
+  }),
   ...baselineNames(["data-vm0", "data-vm0-edit-id", "data-vm0-node-id"], {
     ownerIssue: "#31824",
     reason:

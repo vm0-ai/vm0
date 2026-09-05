@@ -226,17 +226,21 @@ Focus tests on business logic and integration points, not on proving that librar
 Test CLI commands via `command.parseAsync()`, mock the Web API with MSW:
 
 ```typescript
-it("should create a compose", async () => {
+it("should scrape a page", async () => {
   server.use(
-    http.post("http://localhost:3000/api/composes", () => {
-      return HttpResponse.json({ id: "cmp-123" });
+    http.post("http://localhost:3000/api/scrape", () => {
+      return HttpResponse.json({
+        requestedUrl: "https://example.com",
+        provider: "firecrawl",
+        result: { markdown: "# Example" },
+      });
     }),
   );
 
-  await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+  await scrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
 
   expect(console.log).toHaveBeenCalledWith(
-    expect.stringContaining("Compose created"),
+    expect.stringContaining("# Example"),
   );
 });
 ```

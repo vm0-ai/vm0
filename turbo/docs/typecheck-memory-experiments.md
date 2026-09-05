@@ -9,6 +9,15 @@ Note: this document records historical experiments. The experimental `api`
 split tsconfig files referenced below were removed after validation because
 `apps/api/package.json` continued to use only `tsc --noEmit` for `check-types`.
 
+Every identifier quoted below — the `tsconfig.routes-zero-*.json` chunks, the
+`zeroHostRoutes`, `zeroComputerUseRoutes`, `zeroEmailCallbackRoutes`, and
+`zeroMapsRoutes` route bindings, the `zero-*.test.ts` files, and the
+`/tmp/vm0-measure-memory.mjs` harness — is the name that existed when the
+measurement ran. Several have since been renamed or deleted by the platform
+rebrand, and none of them is looked up by name today. They are kept verbatim so
+each recorded measurement still describes the thing that was measured; do not
+rewrite them to current names.
+
 ## Constraints
 
 - Do not reduce type strictness.
