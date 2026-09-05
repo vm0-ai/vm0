@@ -36,7 +36,7 @@ test("Cached conversations appear before remote synchronization", async () => {
   await seedChatListCache(1, auth, [cached], [rename]);
   const remote = context.mocks.deferred<void>();
   const agents = context.mocks.deferred<void>();
-  installChatListStream(context, {
+  const { eventsRequested } = installChatListStream(context, {
     caseId: 1,
     snapshot: [cached],
     events: [rename],
@@ -49,6 +49,8 @@ test("Cached conversations appear before remote synchronization", async () => {
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
   });
+  // Catch-up starts after cache hydration; its response remains blocked.
+  await eventsRequested;
 
   await waitFor(() => {
     expect(sidebarThreadTitles()).toStrictEqual(["Latest cached title"]);
