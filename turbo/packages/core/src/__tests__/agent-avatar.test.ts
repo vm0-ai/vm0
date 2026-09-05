@@ -6,6 +6,7 @@ import {
   AVATAR_COMPOSER_HAIR_COLORS,
   AVATAR_COMPOSER_HAIR_STYLES,
   AVATAR_COMPOSER_SKIN_TONES,
+  AVATAR_COMPOSER_SWEATER_COLORS,
   avatarComposerUrl,
   isAvatarComposerCombinationCompatible,
   parseAvatarComposerUrl,
@@ -31,6 +32,7 @@ describe("agent avatar composer", () => {
                 expression,
                 skin,
                 hairColor,
+                sweater: "lime",
               };
               const url = avatarComposerUrl(config);
 
@@ -46,6 +48,50 @@ describe("agent avatar composer", () => {
     expect(urls.size).toBe(33_150);
   });
 
+  it("dresses avatars saved before the sweater layer existed", () => {
+    const head = {
+      face: "round",
+      hair: "high-bun",
+      expression: "neutral-smile",
+      skin: "gold",
+      hairColor: "blue",
+    } as const;
+    const undressed = avatarComposerUrl({ ...head, sweater: "lime" }).replace(
+      "&sweater=lime",
+      "",
+    );
+
+    const inherited = parseAvatarComposerUrl(undressed);
+    expect(inherited?.sweater).toBeOneOf([...AVATAR_COMPOSER_SWEATER_COLORS]);
+    expect(parseAvatarComposerUrl(undressed)).toStrictEqual(inherited);
+
+    // A different head reads as a different sweater, so the palette spreads
+    // over avatars that were saved without one.
+    expect(
+      parseAvatarComposerUrl(
+        avatarComposerUrl({
+          ...head,
+          skin: "deep",
+          sweater: "lime",
+        }).replace("&sweater=lime", ""),
+      )?.sweater,
+    ).not.toBe(inherited?.sweater);
+
+    // An explicit choice always wins over the inherited one.
+    expect(
+      parseAvatarComposerUrl(avatarComposerUrl({ ...head, sweater: "pink" }))
+        ?.sweater,
+    ).toBe("pink");
+    expect(
+      parseAvatarComposerUrl(
+        avatarComposerUrl({ ...head, sweater: "lime" }).replace(
+          "sweater=lime",
+          "sweater=tweed",
+        ),
+      )?.sweater,
+    ).toBe(inherited?.sweater);
+  });
+
   it("repairs the hairstyle when a bearded expression is selected", () => {
     const config: AvatarComposerConfig = {
       face: "round",
@@ -53,6 +99,7 @@ describe("agent avatar composer", () => {
       expression: "neutral-smile",
       skin: "gold",
       hairColor: "blue",
+      sweater: "lime",
     };
 
     const next = updateAvatarComposerConfig(config, {
@@ -79,6 +126,7 @@ describe("agent avatar composer", () => {
       expression: "neutral-smile",
       skin: "gold",
       hairColor: "blue",
+      sweater: "lime",
     });
 
     expect(

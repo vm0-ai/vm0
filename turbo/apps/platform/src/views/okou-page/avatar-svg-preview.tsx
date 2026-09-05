@@ -1,5 +1,8 @@
+import { useGet } from "ccstate-react";
+import { avatarNeckSweaterEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
-  avatarSvgLayerUrls,
+  AVATAR_HEAD_TRANSFORM_ORIGIN,
+  avatarSvgComposition,
   isLegacyAvatarSvgConfig,
   type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
@@ -13,7 +16,7 @@ interface AvatarSvgPreviewProps {
 }
 
 /**
- * Renders a composite avatar by layering head, face, and hair SVG images.
+ * Renders a composite avatar by layering neck, head, and sweater SVG images.
  */
 export function AvatarSvgPreview({
   config,
@@ -22,8 +25,14 @@ export function AvatarSvgPreview({
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
-  const urls = avatarSvgLayerUrls(config);
+  const neckSweater = useGet(avatarNeckSweaterEnabled$);
+  const { behind, head, front, headScale } = avatarSvgComposition(config, {
+    neckSweater,
+  });
   const layerClassName = "absolute inset-0 h-full w-full object-cover";
+  const layer = (src: string) => {
+    return <img key={src} alt="" src={src} className={layerClassName} />;
+  };
 
   return (
     <div
@@ -35,9 +44,17 @@ export function AvatarSvgPreview({
       <div
         className={`absolute inset-0 ${isLegacyAvatarSvgConfig(config) ? "scale-[1.25]" : ""}`}
       >
-        {urls.map((src) => {
-          return <img key={src} alt="" src={src} className={layerClassName} />;
-        })}
+        {behind.map(layer)}
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `scale(${headScale})`,
+            transformOrigin: AVATAR_HEAD_TRANSFORM_ORIGIN,
+          }}
+        >
+          {head.map(layer)}
+        </div>
+        {front.map(layer)}
       </div>
     </div>
   );
