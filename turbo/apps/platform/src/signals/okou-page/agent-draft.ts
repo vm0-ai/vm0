@@ -32,14 +32,13 @@ const DRAFT_SYNC_DEBOUNCE_MS = 500;
 
 interface AgentDraftEntry {
   readonly draft: DraftSignals;
+  readonly load$: Command<Promise<void>, [AbortSignal]>;
   readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly cancelDraftSync$: Command<void, []>;
   readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export interface EnsuredAgentDraft extends AgentDraftEntry {
-  readonly isNew: boolean;
-}
+export type EnsuredAgentDraft = AgentDraftEntry;
 
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
 
@@ -145,8 +144,8 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 export function createAgentDraftSignals(agentId: string): EnsuredAgentDraft {
   const draft = createDraftSignals();
   const sync = createAgentDraftSync(agentId, draft);
-  const entry: AgentDraftEntry = { draft, ...sync };
-  return { ...entry, isNew: true };
+  const load$ = createAgentDraftLoad(agentId, draft, sync.queueDraftSync$);
+  return { draft, load$, ...sync };
 }
 
 export const ensureAgentDraft$ = command(
@@ -154,12 +153,13 @@ export const ensureAgentDraft$ = command(
     const cache = get(agentDraftCache$);
     const existing = cache.get(agentId);
     if (existing) {
-      return { ...existing, isNew: false };
+      return existing;
     }
 
     const created = createAgentDraftSignals(agentId);
     const entry: AgentDraftEntry = {
       draft: created.draft,
+      load$: created.load$,
       queueDraftSync$: created.queueDraftSync$,
       cancelDraftSync$: created.cancelDraftSync$,
       flushDraftClear$: created.flushDraftClear$,
@@ -171,18 +171,12 @@ export const ensureAgentDraft$ = command(
   },
 );
 
-export const loadAgentDraft$ = command(
-  async (
-    { get, set },
-    agentId: string,
-    agentDraft: EnsuredAgentDraft,
-    signal: AbortSignal,
-  ) => {
-    const { draft, isNew } = agentDraft;
-    if (!isNew) {
-      return;
-    }
-
+function createAgentDraftLoad(
+  agentId: string,
+  draft: DraftSignals,
+  queueDraftSync$: AgentDraftEntry["queueDraftSync$"],
+): AgentDraftEntry["load$"] {
+  const load$ = command(async ({ get, set }, signal: AbortSignal) => {
     const hasLocalDraft = (): boolean => {
       return (
         get(draft.input$).trim() !== "" ||
@@ -235,10 +229,13 @@ export const loadAgentDraft$ = command(
       signal,
     );
     if (removedUnavailableAttachments) {
-      await set(agentDraft.queueDraftSync$, signal);
+      await set(queueDraftSync$, signal);
     }
-  },
-);
+  });
+  return command(async ({ set }, signal: AbortSignal) => {
+    await set(draft.hydrate$, load$, signal);
+  });
+}
 
 export const clearAgentDraftById$ = command(
   async ({ set }, agentId: string, signal: AbortSignal) => {

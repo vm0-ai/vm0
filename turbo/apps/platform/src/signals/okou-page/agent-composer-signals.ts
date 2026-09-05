@@ -297,6 +297,7 @@ function createAgentComposerSignalsWithDraft(
     connector,
     draft: {
       signals: agentDraft.draft,
+      load$: options.forward ? noOpAction$ : agentDraft.load$,
       save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,
     },
     chatEvents$,

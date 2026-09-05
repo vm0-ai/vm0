@@ -44,6 +44,7 @@ import {
   type DraftSignals,
 } from "../okou-page/chat-draft.ts";
 import { buildDraftPersistencePayload } from "../okou-page/draft-persistence.ts";
+import { createThreadDraftLoad } from "./chat-thread-draft.ts";
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
@@ -67,6 +68,7 @@ import {
   type FeedbackNotePart,
   type ResolvedAttachFile,
   type ChatThreadArtifactRun,
+  type ChatThreadDraft,
   type UserMessageDocument,
   type UserMessageInputDocument,
   type UserMessagePart,
@@ -4008,6 +4010,7 @@ interface CreateChatThreadComposerSignalsOptions {
   readonly chatEvents: ChatEventSignals;
   readonly agentId: string;
   readonly draft: DraftSignals;
+  readonly loadDraft$: Command<Promise<void>, [AbortSignal]>;
   readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly modelSelection: ReturnType<typeof createModelSelection>;
   readonly imageModelSelection: ReturnType<typeof createImageModelSelection>;
@@ -4024,6 +4027,7 @@ interface CreateChatThreadComposerSignalsOptions {
 
 interface ChatThreadComposerContext {
   readonly threadMeta$: Computed<ThreadMeta | null>;
+  readonly threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   readonly agentId: string;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
   readonly forward?: ChatForwardContext;
@@ -4146,6 +4150,7 @@ function createChatThreadComposerSignals(
     connector: options.connector,
     draft: {
       signals: options.draft,
+      load$: options.forward ? noOpComposerDraftSave$ : options.loadDraft$,
       save$: options.forward ? noOpComposerDraftSave$ : options.queueDraftSync$,
     },
     chatEvents$: options.chatEvents.chatEvents$,
@@ -4202,6 +4207,11 @@ function createThreadComposerSignalsWithContext(
   );
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft);
+  const loadDraft$ = createThreadDraftLoad(
+    context.threadDraft$,
+    draft,
+    queueDraftSync$,
+  );
   const messageActions = createThreadMessageActions({
     threadId,
     agentId: context.agentId,
@@ -4217,6 +4227,7 @@ function createThreadComposerSignalsWithContext(
     chatEvents,
     agentId: context.agentId,
     draft,
+    loadDraft$,
     queueDraftSync$,
     modelSelection,
     imageModelSelection,
@@ -4251,6 +4262,7 @@ export function createThreadComposerSignals(
     chatEvents,
     {
       threadMeta$,
+      threadDraft$: createRemoteChatThreadDraft(threadId),
       agentId,
       cancellationRecoveryPending$: cancellationRecovery.pending$,
       forward: options.forward,
@@ -4279,6 +4291,7 @@ function createChatPanelSignalsWithDraft(
     chatEvents,
     {
       threadMeta$,
+      threadDraft$,
       agentId,
       cancellationRecoveryPending$: cancellationRecovery.pending$,
     },

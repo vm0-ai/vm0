@@ -32,6 +32,7 @@ import { logger } from "../log.ts";
 import { pageAttachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
 import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
+import { createDraftHydrationCommand } from "./draft-hydration.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -570,6 +571,7 @@ function createChatAttachment(file: File): ChatAttachment {
 // ---------------------------------------------------------------------------
 
 export interface DraftSignals {
+  hydrate$: ReturnType<typeof createDraftHydrationCommand>;
   input$: Computed<string>;
   hasInput$: Computed<boolean>;
   readInput$: Command<string, []>;
@@ -1019,6 +1021,7 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
+    hydrate$: createDraftHydrationCommand(),
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,

@@ -167,6 +167,7 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
 }
 
 interface ComposerDraftSignals {
+  readonly load$: Command<Promise<void>, [AbortSignal]>;
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
   readonly attachments$: Computed<ChatAttachment[]>;
@@ -331,6 +332,7 @@ interface CreateComposerSignalsOptions {
   readonly agentId: string;
   readonly draft: {
     readonly signals: DraftSignals;
+    readonly load$: ComposerDraftSignals["load$"];
     readonly save$: ComposerDraftSignals["save$"];
   };
   readonly chatEvents$: Computed<ChatEvent[]>;
@@ -547,7 +549,7 @@ function reportVoiceDraftTranscriptionFailure(error: unknown): void {
 
 function createVoiceDraftTranscriptionCommand(
   workflowComposer: WorkflowComposerSignals,
-  draft: Pick<CreateComposerSignalsOptions["draft"], "save$">,
+  draft: Pick<CreateComposerSignalsOptions["draft"], "load$" | "save$">,
   lastAssistantMessage$: Computed<string | undefined>,
   state$: ComposerVoiceInputStateSignal,
   storageKey$: Computed<Promise<string | null>>,
@@ -621,6 +623,9 @@ function createVoiceDraftTranscriptionCommand(
         return;
       }
 
+      // A restored recording can be retried before the remote text draft
+      // arrives. Finish that hydration before inserting or saving its text.
+      await set(draft.load$, signal);
       set(workflowComposer.insertText$, result.value.body.polishedText);
       set(state$, { ...voiceInput, transcriptInserted: true });
     }
@@ -770,7 +775,7 @@ function createVoiceDraftRecoverySignals(
 
 function createComposerVoiceInputSignals(
   workflowComposer: WorkflowComposerSignals,
-  draft: Pick<CreateComposerSignalsOptions["draft"], "save$">,
+  draft: Pick<CreateComposerSignalsOptions["draft"], "load$" | "save$">,
   lastAssistantMessage$: Computed<string | undefined>,
   draftTarget: string | null,
 ): ComposerVoiceInputSignals {
@@ -891,6 +896,27 @@ function createTemporaryModelNoticeEnabled(
   });
 }
 
+function composerDraftSignals(
+  options: CreateComposerSignalsOptions["draft"],
+  fileInput: ReturnType<typeof createComposerFileInputSignals>,
+): ComposerDraftSignals {
+  const draft = options.signals;
+  return {
+    load$: options.load$,
+    seed$: draft.seed$,
+    setDraftInput$: draft.setInput$,
+    attachments$: draft.attachments$,
+    attachmentUploadsReady$: draft.attachmentUploadsReady$,
+    uploadAttachment$: draft.uploadAttachment$,
+    restoreAttachments$: draft.restoreAttachments$,
+    removeAttachment$: draft.removeAttachment$,
+    dragOver$: draft.dragOver$,
+    setDragOver$: draft.setDragOver$,
+    ...fileInput,
+    save$: options.save$,
+  };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -973,19 +999,7 @@ export function createComposerSignals(
     connector:
       options.connector ??
       createComposerConnectorSignals(options.agentId, options.threadId),
-    draft: {
-      seed$: draft.seed$,
-      setDraftInput$: draft.setInput$,
-      attachments$: draft.attachments$,
-      attachmentUploadsReady$: draft.attachmentUploadsReady$,
-      uploadAttachment$: draft.uploadAttachment$,
-      restoreAttachments$: draft.restoreAttachments$,
-      removeAttachment$: draft.removeAttachment$,
-      dragOver$: draft.dragOver$,
-      setDragOver$: draft.setDragOver$,
-      ...fileInput,
-      save$: options.draft.save$,
-    },
+    draft: composerDraftSignals(options.draft, fileInput),
     model: {
       ...ui.model,
       temporaryModelNoticeEnabled$,
