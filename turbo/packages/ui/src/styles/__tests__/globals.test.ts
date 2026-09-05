@@ -241,7 +241,7 @@ describe("dialog transitions", () => {
         globalCss,
         ".okou-dialog-overlay[data-ending-style]:not([data-open])",
       ),
-    ).toMatch(/animation:\s*zero-dialog-overlay-out/);
+    ).toMatch(/animation:\s*okou-dialog-overlay-out/);
     expect(
       readRuleBody(
         globalCss,
@@ -253,7 +253,7 @@ describe("dialog transitions", () => {
         globalCss,
         ".okou-dialog-content[data-ending-style]:not([data-open])",
       ),
-    ).toMatch(/animation:\s*zero-dialog-content-out/);
+    ).toMatch(/animation:\s*okou-dialog-content-out/);
   });
 });
 

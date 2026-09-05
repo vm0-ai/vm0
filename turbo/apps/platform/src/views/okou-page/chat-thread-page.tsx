@@ -4835,7 +4835,7 @@ function ThinkingLoader({
       <span
         aria-hidden
         data-thinking-loader="spinner"
-        className="zero-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
+        className="okou-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
       >
         <img
           src={thinkingSpinnerImg}
