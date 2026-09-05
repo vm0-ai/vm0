@@ -80,10 +80,11 @@ export const RESIDUAL_BRAND_BOUNDARY_FILE_RULES = [
   },
   {
     category: "out-of-scope",
-    id: "out-of-scope/residual-brand-name-guard",
-    paths: /^turbo\/packages\/eslint-rules\/scripts\/residual-brand-name-/u,
+    id: "out-of-scope/brand-name-classification-source",
+    paths:
+      /^(?:turbo\/packages\/eslint-rules\/scripts\/residual-brand-name-|docs\/residual-platform-brand-names\.md$)/u,
     reason:
-      "The classifier and its baseline quote every name they track, so scanning them would make the guard satisfy itself.",
+      "The classifier, its baseline, and the #31816 classification this manifest consumes all quote every name they describe, so scanning them would make the guard satisfy itself.",
   },
   {
     category: "immutable-history",
@@ -208,6 +209,13 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
   },
   {
     category: "external-identity",
+    id: "external-identity/external-tool-identifier",
+    reason:
+      "The linter defines no-zero-fractions and Cloudflare serves zero-design-color.sites.vm0.io, so a source edit renames nothing and only disables the rule or breaks the link.",
+    tokens: ["no-zero-fractions", "zero-design-color"],
+  },
+  {
+    category: "external-identity",
     id: "external-identity/clerk-production-topology",
     reason:
       "The Clerk production instance origin is registered with Clerk and served to browsers; #31813 records it as an external identity.",
@@ -249,6 +257,13 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
       "vm0_source",
       "vm0_variant",
     ],
+  },
+  {
+    category: "wire-and-persisted-value",
+    id: "wire-and-persisted-value/client-persisted-identity",
+    reason:
+      "The name is an IndexedDB database or localStorage key held on the user's own device, so a rename silently strands the state it holds; docs/residual-platform-brand-names.md records the decision and the removal gate for each.",
+    tokens: ["zero-install-banner-dismissed", "zero-intro-video-drafts"],
   },
   {
     category: "wire-and-persisted-value",
@@ -341,7 +356,7 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     reason:
       "The name uses zero as the number, not as the brand, so a brand rename must leave it alone.",
     tokenPattern:
-      /^(?:all-zero|leading-zero|near-zero|no-zero-fractions|non-?zero|non_?zero(?:_[a-z0-9_]+)?|zero-(?:amount|based|budget|cost|credit|filled|height|incident|length|lint|padded|price|quantity|row|size|sized|tolerance|width)|zero(?:Count|OrMore|OrOne)|isNegativeZero|zero100)$/iu,
+      /^(?:all-zero|leading-zero|near-zero|non-?zero|non_?zero(?:_[a-z0-9_]+)?|zero-(?:amount|based|budget|cost|credit|filled|height|incident|length|lint|padded|price|quantity|row|size|sized|tolerance|width)|zero-usage|zero(?:Count|OrMore|OrOne)|isNegativeZero|zero100)$/iu,
   },
 ] as const satisfies readonly ResidualBrandBoundaryOccurrenceRule[];
 
@@ -406,25 +421,10 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
   ...baselineNames(
     [
       "owf-diagram-node-zero",
-      "owf-diagram-zero-icon",
       "vm0-main-stylesheet",
       "vm0-main-stylesheet-loader",
       "vm0-shadow-preview-root",
-      "workflow-zero-left",
-      "workflow-zero-size",
-      "zero-block-pop",
       "zero-card",
-      "zero-dialog-blur-in",
-      "zero-dialog-content-in",
-      "zero-dialog-content-out",
-      "zero-dialog-overlay-in",
-      "zero-dialog-overlay-out",
-      "zero-locator-landed",
-      "zero-nav-recent-label",
-      "zero-realtime-status-reveal",
-      "zero-shimmer",
-      "zero-thinking-in",
-      "zero-thinking-spinner-frame",
     ],
     {
       ownerIssue: "#31802",
@@ -433,19 +433,12 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       workstream: "R1",
     },
   ),
-  ...baselineNames(
-    [
-      "API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES",
-      "API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES",
-      "API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES",
-    ],
-    {
-      ownerIssue: "#31801",
-      reason:
-        "TypeScript vocabulary around the dispatch telemetry action types; it is renameable without touching the persisted action strings, and R2 stays blocked until the operational-query decision is recorded.",
-      workstream: "R2",
-    },
-  ),
+  ...baselineNames([], {
+    ownerIssue: "#31801",
+    reason:
+      "TypeScript vocabulary around the dispatch telemetry action types; it is renameable without touching the persisted action strings, and R2 stays blocked until the operational-query decision is recorded.",
+    workstream: "R2",
+  }),
   ...baselineNames(
     [
       "VM0ClerkProvider",
@@ -481,7 +474,6 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "zero-built-in-generation",
       "zero-me-model-providers",
       "zero-model-providers",
-      "zero-usage",
       "zeroUsageEvent",
     ],
     {
@@ -642,14 +634,7 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       "vm0secret",
       "withoutLegacyZeroEntries",
       "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
-      "zero-agent-name",
-      "zero-attachment-url",
-      "zero-chat",
-      "zero-chat-composer",
       "zero-copy",
-      "zero-design-color",
-      "zero-install-banner-dismissed",
-      "zero-intro-video-drafts",
       "zero-page",
       "zeroAgentId",
       "zeroBlock",
@@ -925,5 +910,11 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
     reason:
       "Legacy data-vm0-* edit-protocol reader kept for deck HTML that was stored or externally generated before the okou rename; #31824 drops it once no such deck remains.",
     workstream: "R7",
+  }),
+  ...baselineNames(["workflow-zero-left", "workflow-zero-size"], {
+    ownerIssue: "#31840",
+    reason:
+      "Dead custom property in the onboarding diagram declaration block that nothing reads; docs/residual-platform-brand-names.md records it as undecided and #31840 can delete rather than rename it.",
+    workstream: "R1",
   }),
 ] as const satisfies readonly ResidualBrandNameBaselineEntry[];
