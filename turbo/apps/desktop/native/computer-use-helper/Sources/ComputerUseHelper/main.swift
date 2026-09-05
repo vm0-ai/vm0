@@ -4544,6 +4544,9 @@ func performBackgroundKeyPress(
                 return (targetPID: target.pid, result: result)
             }
             try ensureBackgroundKeyboardWindow(target, deadline: deadline)
+            if let menu = try backgroundMenuShortcut(parsed, target: target, deadline: deadline) {
+                return (targetPID: target.pid, result: try performBackgroundMenuShortcut(menu, parsed: parsed, target: target, deadline: deadline))
+            }
             try postParsedKeyPress(parsed, to: target)
             return (targetPID: target.pid, result: ["normalizedKey": parsed.normalizedKey])
         }
