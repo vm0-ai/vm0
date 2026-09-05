@@ -10775,6 +10775,18 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     ]);
     expect(checkpointedMemory.storageId).toBe(terraMemoryMount.storageId);
+    const memoryArtifactSnapshots = [
+      {
+        name: terraMemoryMount.name,
+        version: checkpointedMemory.versionId,
+        mountPath: terraMemoryMount.mountPath,
+        ...(terraMemoryMount.missingRootPolicy === undefined
+          ? {}
+          : {
+              missingRootPolicy: terraMemoryMount.missingRootPolicy,
+            }),
+      },
+    ];
     const combinedH2 = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
@@ -10783,18 +10795,7 @@ describe("CHAT-02: model-first provider policies", () => {
           cliAgentType: "pi",
           cliAgentSessionId: run.threadId,
           cliAgentSessionHistoryHash: h2Hash,
-          artifactSnapshots: [
-            {
-              name: terraMemoryMount.name,
-              version: checkpointedMemory.versionId,
-              mountPath: terraMemoryMount.mountPath,
-              ...(terraMemoryMount.missingRootPolicy === undefined
-                ? {}
-                : {
-                    missingRootPolicy: terraMemoryMount.missingRootPolicy,
-                  }),
-            },
-          ],
+          artifactSnapshots: memoryArtifactSnapshots,
         },
       },
       claimed.sandboxHeaders,
@@ -10846,6 +10847,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cliAgentType: "pi",
         cliAgentSessionId: run.threadId,
         cliAgentSessionHistoryHash: h2Hash,
+        artifactSnapshots: memoryArtifactSnapshots,
       },
       claimed.sandboxHeaders,
       [200],
@@ -10891,6 +10893,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cliAgentType: "pi",
         cliAgentSessionId: run.threadId,
         cliAgentSessionHistoryHash: h2Hash,
+        artifactSnapshots: memoryArtifactSnapshots,
       },
       claimed.sandboxHeaders,
       [200],
