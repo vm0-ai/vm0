@@ -198,13 +198,10 @@ export const checkManagedCredits$ = command(
       args.orgId,
     );
     signal.throwIfAborted();
-    const sharedSpendableUnits =
-      (spendableCredits > 0n ? spendableCredits : 0n) +
-      BigInt(allowance?.remainingUnits ?? 0) -
-      (spendableCredits < 0n ? -spendableCredits : 0n);
     const spendableUnits =
       usagePackCredits +
-      (sharedSpendableUnits > 0n ? sharedSpendableUnits : 0n);
+      (spendableCredits > 0n ? spendableCredits : 0n) +
+      BigInt(allowance?.remainingUnits ?? 0);
     return spendableUnits >= requiredCredits ? null : insufficientCredits();
   },
 );
