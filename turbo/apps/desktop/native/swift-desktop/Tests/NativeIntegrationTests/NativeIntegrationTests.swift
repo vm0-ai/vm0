@@ -127,6 +127,24 @@ import Testing
     throw DesktopFailure("test_timeout", "Recording polling did not recover after a failed control")
   }
 
+  @MainActor private func waitForPermissionRefresh(_ model: DesktopModel, after count: Double)
+    async throws
+  {
+    let (events, continuation) = AsyncStream<Double>.makeStream()
+    model.onChange = { continuation.yield(model.permissions["queries"].number ?? 0) }
+    let deadline = Task {
+      do { try await Task.sleep(for: .seconds(10)) } catch { return }
+      continuation.finish()
+    }
+    defer {
+      deadline.cancel()
+      continuation.finish()
+      model.onChange = {}
+    }
+    for await value in events { if value > count { return } }
+    throw DesktopFailure("test_timeout", "Permission monitoring stopped after a cancelled shutdown")
+  }
+
   @Test @MainActor func httpMcpAndWebKitTokenRefreshUseRealBoundaries() async throws {
     _ = NSApplication.shared
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -339,16 +357,34 @@ import Testing
     let permissionScript = """
       #!/usr/bin/env python3
       import json,sys
+      queries=0
       for line in sys.stdin:
           request=json.loads(line)
-          print(json.dumps({'id':request['id'],'status':'succeeded','result':{'accessibility':True,'screenRecording':True}}),flush=True)
+          queries+=1
+          print(json.dumps({'id':request['id'],'status':'succeeded','result':{'accessibility':True,'screenRecording':True,'queries':queries}}),flush=True)
       """
     try Data(permissionScript.utf8).write(to: helperPath)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helperPath.path)
+    let capturePath = directory.appendingPathComponent("screen-recorder-helper")
+    try Data(("#!/usr/bin/env python3\n" + recorderScript).utf8).write(to: capturePath)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o700], ofItemAtPath: capturePath.path)
     let desktop = try DesktopModel(
       configuration: configuration, directory: directory, helperDirectory: directory)
-    try await desktop.refresh()
+    await desktop.launch(startHost: false)
     #expect(desktop.pluginsAvailable && desktop.debugAvailable && desktop.recorder.available)
+    try await desktop.recorder.loadSources()
+    try await desktop.recorder.start(source: source, systemAudio: true, microphone: true)
+    await #expect(throws: DesktopFailure.self) { try await desktop.shutdown() }
+    #expect(desktop.recorder.available && desktop.recorder.capturing)
+    try await waitForPermissionRefresh(
+      desktop, after: try #require(desktop.permissions["queries"].number))
+    await #expect(throws: DecodingError.self) { try await desktop.shutdown() }
+    try await desktop.shutdown()
+    await desktop.launch(startHost: false)
+    #expect(desktop.recorder.available)
+    try await waitForPermissionRefresh(
+      desktop, after: try #require(desktop.permissions["queries"].number))
     desktop.debugEnabled = true
     _ = try await api.request("api/test/malformed-features")
     // A malformed account-scoped response must not activate privileged

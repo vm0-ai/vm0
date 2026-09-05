@@ -23,6 +23,7 @@ final class DesktopModel: ObservableObject {
   private var keepAwakeActive = false
   private var permissionTask: Task<Void, Never>?
   private var featuresTask: Task<Void, Never>?
+  private var shuttingDown = false
   var onChange: @MainActor () -> Void = {}
   private let filesystem = FilesystemTools()
 
@@ -109,11 +110,13 @@ final class DesktopModel: ObservableObject {
       && permissions["screenRecording"].bool
   }
 
-  func launch() async {
+  func launch(startHost: Bool = true) async {
+    guard permissionTask == nil, featuresTask == nil else { return }
+    shuttingDown = false
     do {
       try applyKeepAwake()
       try await refresh()
-      if ready { host.start() }
+      if startHost && ready { host.start() }
     } catch { report(error) }
     permissionTask = Task { [weak self] in
       while !Task.isCancelled {
@@ -145,8 +148,10 @@ final class DesktopModel: ObservableObject {
   }
 
   private func refreshFeatures() async throws {
+    guard !shuttingDown else { return }
     do {
       let body = try await api.request("api/feature-switches")
+      guard !shuttingDown else { return }
       let switches = try JSONDecoder().decode(FeatureSwitches.self, from: body.encoded())
         .effectiveSwitches
       pluginsAvailable = switches["computerUseDesktopPlugins"] == true
@@ -157,6 +162,7 @@ final class DesktopModel: ObservableObject {
       recorder.available = recordingEnabled
       if wasRecordingEnabled && !recordingEnabled { try await recorder.shutdown(force: true) }
     } catch {
+      if shuttingDown { throw error }
       pluginsAvailable = false
       debugAvailable = false
       debugEnabled = false
@@ -260,16 +266,30 @@ final class DesktopModel: ObservableObject {
   }
 
   func shutdown() async throws {
+    let wasOnline = ["online", "connecting", "recovering"].contains(host.status)
+    let recordingAvailable = recorder.available
+    shuttingDown = true
+    recorder.available = false
     // Drain claimed work before cancelling permission probes that share its helper.
     await host.stop()
+    areaSelector.cancel()
+    do {
+      try await recorder.shutdown()
+    } catch {
+      // The user is still in the app after a failed finalization. Keep the
+      // existing monitors and capture controls, and restore the host intent.
+      shuttingDown = false
+      recorder.available = recordingAvailable
+      if wasOnline && ready { host.start() }
+      changed()
+      throw error
+    }
     permissionTask?.cancel()
     featuresTask?.cancel()
     await permissionTask?.value
     await featuresTask?.value
     permissionTask = nil
     featuresTask = nil
-    areaSelector.cancel()
-    try await recorder.shutdown()
     await mcp.shutdownAndWait()
     await helper.stop()
     if keepAwakeActive {

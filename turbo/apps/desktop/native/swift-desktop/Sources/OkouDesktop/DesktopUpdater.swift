@@ -19,6 +19,7 @@ final class DesktopUpdater {
   private let feed: DesktopUpdateFeed
   private let activity: @MainActor () -> DesktopUpdateActivity
   private let prepareForUpdate: @MainActor () async throws -> Void
+  private let recoverAfterFailedUpdate: @MainActor () async -> Void
   private let report: @MainActor (any Error) -> Void
   private let quitForUpdate: @MainActor () -> Void
   private var loop: Task<Void, Never>?
@@ -35,6 +36,7 @@ final class DesktopUpdater {
     configuration: DesktopConfiguration, directory: URL, feed: DesktopUpdateFeed,
     activity: @escaping @MainActor () -> DesktopUpdateActivity,
     prepareForUpdate: @escaping @MainActor () async throws -> Void,
+    recoverAfterFailedUpdate: @escaping @MainActor () async -> Void,
     report: @escaping @MainActor (any Error) -> Void,
     quitForUpdate: @escaping @MainActor () -> Void
   ) {
@@ -43,6 +45,7 @@ final class DesktopUpdater {
     self.feed = feed
     self.activity = activity
     self.prepareForUpdate = prepareForUpdate
+    self.recoverAfterFailedUpdate = recoverAfterFailedUpdate
     self.report = report
     self.quitForUpdate = quitForUpdate
   }
@@ -157,7 +160,12 @@ final class DesktopUpdater {
       String(ProcessInfo.processInfo.processIdentifier), update.candidate.path,
       Bundle.main.bundleURL.path, configuration.bundleID,
     ]
-    try process.run()
+    do {
+      try process.run()
+    } catch {
+      await recoverAfterFailedUpdate()
+      throw error
+    }
     quitForUpdate()
   }
 

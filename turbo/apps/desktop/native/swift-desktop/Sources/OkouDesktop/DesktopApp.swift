@@ -27,6 +27,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   private var hotKeyHandler: EventHandlerRef?
   private var hotKeyAttempted = false
   private var quitting = false
+  private var resumeHostAfterUpdateFailure = false
   private var pendingURLs: [URL] = []
   private var startupFailure: (DesktopConfiguration, any Error)?
 
@@ -183,7 +184,14 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
           lastCommand: model.host.lastCommand)
       },
       prepareForUpdate: { [weak self] in
-        if let model = self?.model { try await model.shutdown() }
+        guard let self, let model = self.model else { return }
+        self.resumeHostAfterUpdateFailure = ["online", "connecting", "recovering"].contains(
+          model.host.status)
+        try await model.shutdown()
+      },
+      recoverAfterFailedUpdate: { [weak self] in
+        guard let self, let model = self.model else { return }
+        await model.launch(startHost: self.resumeHostAfterUpdateFailure)
       },
       report: { [weak self] error in
         if let model = self?.model {
@@ -457,6 +465,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         NSApp.reply(toApplicationShouldTerminate: true)
       } catch {
         quitting = false
+        updater?.start()
         model.report(error)
         showWindow()
         NSApp.reply(toApplicationShouldTerminate: false)
