@@ -1,6 +1,7 @@
 import {
   isBuiltInModelProviderType,
-  isLimitedFree1RestrictedRunModel,
+  getRunModelAccess,
+  RETIRED_RUN_MODEL_MESSAGE,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
@@ -11,7 +12,7 @@ import {
   nullableDriverValueDecoder,
   pgInt8ToSafeIntegerDecoder,
 } from "../../lib/db-structured-result";
-import { insufficientCredits } from "../../lib/error";
+import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import type { Tx } from "../../lib/db-types";
 import type { Db } from "../external/db";
@@ -25,6 +26,10 @@ import {
   resolveUsageAllowanceAvailability,
   resolveUsageAllowanceAvailabilityForLockedOrg,
 } from "./usage-allowance.service";
+
+type RunAdmissionFailure =
+  | ReturnType<typeof insufficientCredits>
+  | ReturnType<typeof badRequestMessage>;
 
 type CreditDb = Pick<Db, "$with" | "select" | "with">;
 
@@ -143,7 +148,7 @@ export async function checkOrgCreditsForRunAdmission(params: {
   readonly userId: string;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel?: string | null;
-}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+}): Promise<RunAdmissionFailure | undefined> {
   const availability = await resolveOrgCreditAvailability(params);
   return await checkResolvedOrgCreditsForRunAdmission({
     ...params,
@@ -158,7 +163,7 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel?: string | null;
   readonly availability: OrgCreditAvailability | null;
-}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+}): Promise<RunAdmissionFailure | undefined> {
   return await checkResolvedOrgCreditsForRunAdmissionWithAllowance({
     ...params,
     resolveAllowance: async () => {
@@ -175,8 +180,11 @@ async function checkResolvedOrgCreditsForRunAdmissionWithAllowance(params: {
   readonly resolveAllowance: () => Promise<{
     readonly remainingUnits: number;
   } | null>;
-}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+}): Promise<RunAdmissionFailure | undefined> {
   const { availability } = params;
+  if (getRunModelAccess(params.selectedModel) === "retired") {
+    return badRequestMessage(RETIRED_RUN_MODEL_MESSAGE);
+  }
   if (!availability) {
     return insufficientCredits();
   }
@@ -209,7 +217,7 @@ export async function checkOrgCreditsForRunAdmissionInTransaction(params: {
   readonly userId: string;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel?: string | null;
-}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+}): Promise<RunAdmissionFailure | undefined> {
   await lockOrgCredits(params.db, params.orgId);
   const availability = await resolveOrgCreditAvailability(params);
   return await checkResolvedOrgCreditsForRunAdmissionWithAllowance({
@@ -228,15 +236,21 @@ export function checkOrgPlanRunAdmission(params: {
   readonly capabilities: OrgPlanRunAdmissionCapabilities | null;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
-}): ReturnType<typeof insufficientCredits> | undefined {
+}): RunAdmissionFailure | undefined {
   const { capabilities } = params;
+  const modelAccess = getRunModelAccess(
+    params.selectedModel,
+    capabilities?.restrictedVm0Models,
+  );
+  if (modelAccess === "retired") {
+    return badRequestMessage(RETIRED_RUN_MODEL_MESSAGE);
+  }
   if (!capabilities || capabilities.status !== "active") {
     return insufficientCredits();
   }
   return (!capabilities.supportByok &&
     !isBuiltInModelProviderType(params.modelProviderType)) ||
-    (capabilities.restrictedVm0Models &&
-      isLimitedFree1RestrictedRunModel(params.selectedModel))
+    modelAccess === "pro_required"
     ? insufficientCredits()
     : undefined;
 }
