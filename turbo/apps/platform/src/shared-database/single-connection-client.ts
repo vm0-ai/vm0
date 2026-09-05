@@ -1,11 +1,8 @@
-import { delay } from "signal-timers";
-
 import { observeClientOperation } from "../lib/client-telemetry.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
   settle,
-  withCleanup,
 } from "../signals/utils.ts";
 import type {
   SharedDatabaseBridge,
@@ -22,51 +19,15 @@ import {
   type SharedDatabaseWorkerUnavailableReason,
 } from "./protocol.ts";
 
-const DEFAULT_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
-
 interface SingleConnectionSharedDatabaseBridgeOptions {
   readonly createBridge: (
     events: SharedDatabaseBridgeEvents,
     signal: AbortSignal,
   ) => SharedDatabaseBridge;
   readonly events: SharedDatabaseBridgeEvents;
-  readonly controlRequestTimeoutMs?: number;
-}
-
-class SharedDatabaseTransportTimeoutError extends Error {
-  constructor() {
-    super("Shared database worker transport timed out");
-    this.name = "SharedDatabaseTransportTimeoutError";
-  }
-}
-
-function requiresReload(error: unknown): boolean {
-  return (
-    error instanceof SharedDatabaseTransportTimeoutError ||
-    (error instanceof Error &&
-      error.name === SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME)
-  );
-}
-
-async function withTransportTimeout<T>(
-  work: Promise<T>,
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<T> {
-  const timeoutController = createChildAbortController(signal);
-  const timeout = (async (): Promise<never> => {
-    await delay(timeoutMs, { signal: timeoutController.signal });
-    throw new SharedDatabaseTransportTimeoutError();
-  })();
-  return await withCleanup(Promise.race([work, timeout]), () => {
-    timeoutController.abort(
-      new DOMException("Transport request completed", "AbortError"),
-    );
-  });
 }
 
 export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridge {
-  private readonly controlRequestTimeoutMs: number;
   private readonly connectionEvents: SharedDatabaseBridgeEvents;
   private bridge: SharedDatabaseBridge | null = null;
   private connectionController: AbortController | null = null;
@@ -77,8 +38,6 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
   constructor(
     private readonly options: SingleConnectionSharedDatabaseBridgeOptions,
   ) {
-    this.controlRequestTimeoutMs =
-      options.controlRequestTimeoutMs ?? DEFAULT_CONTROL_REQUEST_TIMEOUT_MS;
     this.connectionEvents = {
       ...options.events,
       workerUnavailable: (reason) => {
@@ -187,24 +146,20 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     const work = (async (): Promise<T> => {
       return await operation();
     })();
-    const result = await settle(
-      withTransportTimeout(
-        work,
-        this.controlRequestTimeoutMs,
-        this.requireRegistered(this.connectionController).signal,
-      ),
-      signal,
-    );
+    const result = await settle(work, signal);
     if (this.workerUnavailable) {
       return await this.waitForReload(signal);
     }
     if (result.ok) {
       return result.value;
     }
-    if (!requiresReload(result.error)) {
-      throw result.error;
+    if (
+      result.error instanceof Error &&
+      result.error.name === SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME
+    ) {
+      return await this.requestReload(signal);
     }
-    return await this.requestReload(signal);
+    throw result.error;
   }
 
   private requestReload(signal: AbortSignal): Promise<never> {
