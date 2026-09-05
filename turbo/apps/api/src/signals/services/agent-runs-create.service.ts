@@ -270,7 +270,7 @@ function assertThreadBoundAgentRunHasQueueAssociation(
   if (!("queueFirstAssociation" in args)) {
     if (args.chatThreadId !== undefined) {
       throw new Error(
-        "Thread-bound Zero run requires a queue-first association",
+        "Thread-bound agent run requires a queue-first association",
       );
     }
     return;
@@ -1191,7 +1191,7 @@ async function resolveThreadSessionForAgentRun(
   }
   const threadSessionRoute = input.command.threadSessionRoute;
   if (!threadSessionRoute) {
-    throw new Error("Thread-bound Zero run is missing its model route");
+    throw new Error("Thread-bound agent run is missing its model route");
   }
   const resolution = await measureZeroPreCreate(
     input.timing,
@@ -1444,7 +1444,7 @@ export const createTestFixtureAgentRun$ = command(
   async ({ set }, args: CreateAgentRunCommandArgs, signal: AbortSignal) => {
     const result = await set(createAgentRunInternal$, args, signal);
     if (isQueueFirstRunClaimLost(result)) {
-      throw new Error("Zero run without a queue association lost a claim");
+      throw new Error("Agent run without a queue association lost a claim");
     }
     return result;
   },

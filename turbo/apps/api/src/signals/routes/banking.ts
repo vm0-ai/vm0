@@ -37,7 +37,7 @@ function okouTokenRequired() {
     status: 403 as const,
     body: {
       error: {
-        message: "Banking gateway access requires a zero run token",
+        message: "Banking gateway access requires an agent run token",
         code: "FORBIDDEN",
       },
     },

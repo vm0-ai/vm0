@@ -37,7 +37,7 @@ import {
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * zero run detail reads, queue position, event logs, and log reads) plus the RUN-01/02
+ * agent run detail reads, queue position, event logs, and log reads) plus the RUN-01/02
  * direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
@@ -445,7 +445,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       visibility: "private",
     });
 
-    // Seed a terminal zero-run session so a later queued run can carry a
+    // Seed a terminal agent-run session so a later queued run can carry a
     // continuation session link.
     const seedRun = await api.createRun(actor, {
       agentId: agent.agentId,
@@ -575,7 +575,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       status: "completed",
       prompt: "other run b",
     });
-    mustOk(detail, "Zero run detail");
+    mustOk(detail, "Agent run detail");
     expect(detail.body.startedAt).toBeDefined();
     expect(detail.body.completedAt).toBeDefined();
 
@@ -769,7 +769,7 @@ describe("RUN-03: cancel through the run cancel route", () => {
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
-    // A queued Zero run cancelled through the Zero route disappears from
+    // A queued agent run cancelled through the Zero route disappears from
     // the visible queue.
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -2637,13 +2637,13 @@ describe("RUN-04: agent run telemetry families", () => {
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD zero detail agent",
-      description: "Zero run detail reads.",
+      description: "Agent run detail reads.",
       visibility: "private",
     });
 
     const agentRun = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "zero run detail",
+      prompt: "agent run detail",
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(agentRun.runId);
@@ -2668,7 +2668,7 @@ describe("RUN-04: agent run telemetry families", () => {
 
     const bareRun = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "zero run without snapshots",
+      prompt: "agent run without snapshots",
       modelProvider: "anthropic-api-key",
     });
 
@@ -2883,7 +2883,7 @@ describe("RUN-04: agent run telemetry families", () => {
     }
     expect(contextRead.body).toMatchObject({
       runId,
-      prompt: "zero run detail",
+      prompt: "agent run detail",
       cliAgentType: "claude-code",
       sessionId: "bdd-session-1",
       environment: { NODE_ENV: "production" },

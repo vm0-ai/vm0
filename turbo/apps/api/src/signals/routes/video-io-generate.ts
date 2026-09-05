@@ -78,7 +78,7 @@ async function loadRunVideoModel(
     .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   if (!run) {
-    throw new Error("Expected a Zero run row for the default video model");
+    throw new Error("Expected an agent run row for the default video model");
   }
   if (run.selectedVideoModel === null) {
     return null;

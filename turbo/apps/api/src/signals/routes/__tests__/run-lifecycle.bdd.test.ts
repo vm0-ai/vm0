@@ -248,7 +248,7 @@ function mcpConnectorPromptSection(prompt: string): string | undefined {
     nextSectionStart === -1 ? undefined : nextSectionStart,
   );
 }
-const EXPECTED_ZERO_RUN_DISALLOWED_TOOLS = [
+const EXPECTED_AGENT_RUN_DISALLOWED_TOOLS = [
   "CronCreate",
   "CronList",
   "CronDelete",
@@ -1468,7 +1468,7 @@ async function entitledRunActor(userOptions: ApiTestUserOptions = {}): Promise<{
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
-function zeroBackedDirectRunBody(args: {
+function agentBackedDirectRunBody(args: {
   readonly agentId: string;
   readonly prompt: string;
 }) {
@@ -2081,7 +2081,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const missingAuthorityRun = await api.createDirectRun(
       missingAuthorityActor.actor,
       {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId: missingAuthorityActor.agentId,
           prompt: missingAuthorityPrompt,
         }),
@@ -2146,7 +2146,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const missingCompatibilityRun = await api.createDirectRun(
       missingCompatibilityActor.actor,
       {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId: missingCompatibilityActor.agentId,
           prompt: missingCompatibilityPrompt,
         }),
@@ -2201,7 +2201,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const differentAuthorityActor = await entitledRunActor();
     const warmRun = await api.createDirectRun(differentAuthorityActor.actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId: differentAuthorityActor.agentId,
         prompt: "warm catalog before changing validation authority",
       }),
@@ -2251,7 +2251,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const differentAuthorityRun = await api.createDirectRun(
       differentAuthorityActor.actor,
       {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId: differentAuthorityActor.agentId,
           prompt: differentAuthorityPrompt,
         }),
@@ -2303,7 +2303,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const cachedActor = await entitledRunActor();
     const cachedPrompt = "cached connector catalog fallback";
     const cachedRun = await api.createDirectRun(cachedActor.actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId: cachedActor.agentId,
         prompt: cachedPrompt,
       }),
@@ -2361,7 +2361,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const secondConcurrentPrompt = "second concurrent attested catalog load";
     const [firstConcurrentRun, secondConcurrentRun] = await Promise.all([
       api.createDirectRun(concurrentActor.actor, {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId: concurrentActor.agentId,
           prompt: firstConcurrentPrompt,
         }),
@@ -2371,7 +2371,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       }),
       api.createDirectRun(concurrentActor.actor, {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId: concurrentActor.agentId,
           prompt: secondConcurrentPrompt,
         }),
@@ -2516,7 +2516,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "overlap runtime catalog and provider reads",
       }),
@@ -2579,7 +2579,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const cancelledPrompt = `cancel overlapped runtime context ${randomUUID()}`;
     await expect(
       cancellableApi.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({ agentId, prompt: cancelledPrompt }),
+        ...agentBackedDirectRunBody({ agentId, prompt: cancelledPrompt }),
         modelProviderType: "aws-bedrock",
         connectorScope: {
           allowedConnectorSlugs: ["x"],
@@ -2639,7 +2639,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await expect(
       cancellableApi.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId,
           prompt: "prefer catalog failure during runtime preparation",
         }),
@@ -2672,7 +2672,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       allowedConnectorSlugs: readonly string[],
     ) => {
       return await api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        ...agentBackedDirectRunBody({ agentId, prompt }),
         connectorScope: {
           allowedConnectorSlugs,
           allowedCustomConnectorIds: [],
@@ -2870,7 +2870,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     const createProjectedRun = async (prompt: string) => {
       return await api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        ...agentBackedDirectRunBody({ agentId, prompt }),
         connectorScope: {
           allowedConnectorSlugs: ["x", "runtime-projection-unknown", "x"],
           allowedCustomConnectorIds: [],
@@ -3029,7 +3029,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "reuse unchanged catalog validation authority",
       }),
@@ -3083,7 +3083,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor, agentId } = await entitledRunActor();
 
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "missing projection compatibility fallback",
       }),
@@ -3130,7 +3130,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     await expect(
       api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId,
           prompt: rejectedPrompt,
         }),
@@ -3166,7 +3166,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor, agentId } = await entitledRunActor();
     const createProjectedRun = async (prompt: string) => {
       return await api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({ agentId, prompt }),
+        ...agentBackedDirectRunBody({ agentId, prompt }),
         connectorScope: {
           allowedConnectorSlugs: ["x"],
           allowedCustomConnectorIds: [],
@@ -3237,7 +3237,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const { actor, agentId } = await entitledRunActor();
 
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "bound repeated runtime projection identity replacement",
       }),
@@ -3278,7 +3278,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await corruptApiTestConnectorCatalogRuntimeProjectionDigest("x");
     const { actor, agentId } = await entitledRunActor();
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "digest-mismatched runtime projection",
       }),
@@ -3339,7 +3339,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       );
       const { actor, agentId } = await entitledRunActor();
       const run = await api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({
+        ...agentBackedDirectRunBody({
           agentId,
           prompt: `${payloadState} attested runtime projection`,
         }),
@@ -3380,7 +3380,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await expireApiTestConnectorCatalogRuntimeProjectionAuthority();
     const { actor, agentId } = await entitledRunActor();
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "stale runtime projection authority",
       }),
@@ -3428,7 +3428,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       allowedCustomConnectorIds: [],
     } as const;
     const warmed = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "warm the exact catalog identity before corruption",
       }),
@@ -3463,7 +3463,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "reject catalog-backed creation while the catalog is unavailable";
     await expect(
       api.createDirectRun(actor, {
-        ...zeroBackedDirectRunBody({ agentId, prompt: rejectedPrompt }),
+        ...agentBackedDirectRunBody({ agentId, prompt: rejectedPrompt }),
         connectorScope: catalogBackedScope,
       }),
     ).rejects.toThrow("Accepted external connector catalog is unavailable");
@@ -3695,7 +3695,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
 
     const initialRun = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "establish canonical storage for overlap",
       }),
@@ -7992,7 +7992,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 });
 
 describe("RUN-01: agent run authorization and session boundaries", () => {
-  it("does not expose the removed Zero run creation route", async () => {
+  it("does not expose the removed agent run creation route", async () => {
     const actor = createBddApi(context).user();
     await expect(
       createRunsApi(context).requestRemovedAgentRunCreation(actor),
@@ -10345,7 +10345,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.enableAgentConnectors(actor, agentId, ["google-ads"]);
 
     const run = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "use google ads with explicit developer token",
       }),
@@ -11934,7 +11934,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const genericDirectRun = await api.createDirectRun(
       actor,
-      zeroBackedDirectRunBody({
+      agentBackedDirectRunBody({
         agentId,
         prompt: "do not advertise Zero MCP without a server-issued token",
       }),
@@ -12253,7 +12253,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
 
     const directRun = await api.createDirectRun(actor, {
-      ...zeroBackedDirectRunBody({
+      ...agentBackedDirectRunBody({
         agentId,
         prompt: "use the direct scoped custom connector",
       }),
@@ -15166,7 +15166,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     const misc = createMiscRoutesApi(context);
     const actor = bdd.user();
     if (!actor.orgId) {
-      throw new Error("Zero runner context requires an organization");
+      throw new Error("Agent runner context requires an organization");
     }
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -15404,7 +15404,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
 
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+      EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expectCanonicalOkouRunEnvironment({
@@ -15505,7 +15505,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
 
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+      EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.appendSystemPrompt ?? "").toContain("okou web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("okou finance --help");
@@ -15781,7 +15781,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
 
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
-      EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
+      EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expect(claim.disallowedTools).not.toContain("goal");
@@ -19984,7 +19984,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     await api.grantProEntitlement(actor);
 
     // Direct compose runs created without vars leave the stored vars null,
-    // and their zero-run rows carry no model provider or pinned model.
+    // and their agent-run rows carry no model provider or pinned model.
     const composeName = `bdd-null-vars-${randomUUID().slice(0, 8)}`;
     const compose = await api.createDirectAgent(actor, {
       version: "1",
