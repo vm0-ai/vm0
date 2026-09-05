@@ -271,6 +271,37 @@ the window in the existing process. The test document was restored with native
 commands and saved, then verified byte-for-byte against its original contents.
 Sleep behavior, quit cleanup, and the remaining menu/Dock interactions are open.
 
+### Keyboard shortcut acceptance
+
+The downloaded `d8e5159` helper reported successful background Command-W in
+Safari without closing the owned tab. This was reproduced again after dismissing
+the acceptance app's own screen-capture consent and crash dialogs. The repair
+recognizes Safari's standard menu equivalent and performs its selected native
+tab's close action in the resolved target window. It verifies that the original
+tab leaves its parent before reporting success and does not retry with a key
+after an uncertain close. Other shortcuts retain their keyboard event path.
+
+The candidate closed only the owned tab, reducing the window from 12 tabs to 11,
+with the acceptance app remaining frontmost. The `on-window-unavailable` policy
+did the same; explicit `always` recovery activated Safari and closed the owned
+tab. Metadata identifies the actual accessibility dispatch. System-wide AX focus
+now replaces a stale `NSWorkspace` frontmost cache, and recovery waits for the
+actual target app before posting foreground input. Earlier helper-reported
+frontmost fields alone do not establish independent focus-preservation evidence.
+
+A real TextEdit foreground Command-A followed by typing replaced the complete
+owned document. Background Command-A did not select that document and remains
+an acceptance gap; disabled menu state alone is not a reliable general guard.
+These tests use the separate acceptance app and are not a new packaged
+Desktop/server round trip.
+[Candidate keyboard evidence](https://cdn.vm0.io/artifacts/stq01jmtrp.json).
+
+All 122 helper tests pass. The new real-process requests reject missing snapshot
+ownership before any recovery policy can activate an app. Immediate request/EOF
+also exposed a helper that stayed alive; queuing the stop on its main run loop
+fixes the startup/EOF race, and the integration test bounds process exit.
+The PR check and subsequent release acceptance record the downloadable revision.
+
 ## Feature inventory and evidence
 
 | Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                  |

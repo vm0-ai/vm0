@@ -1509,7 +1509,7 @@ final class BackgroundActivationSession: @unchecked Sendable {
 
     static func start(target: WindowTarget) -> BackgroundActivationSession {
         let session = BackgroundActivationSession(target: target)
-        session.installTapsIfPossible(previousApp: NSWorkspace.shared.frontmostApplication)
+        session.installTapsIfPossible(previousApp: currentFrontmostApplication())
         return session
     }
 
@@ -2807,7 +2807,7 @@ func restorePreviousFrontmostIfNeeded(previousApp: NSRunningApplication?, target
     var attempts = 0
     while cleanChecks < 2, attempts < 5 {
         attempts += 1
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID {
+        if currentFrontmostApplication()?.processIdentifier == targetPID {
             _ = previousApp.activate(options: [.activateIgnoringOtherApps])
             restored = true
             cleanChecks = 0
@@ -2840,7 +2840,7 @@ func runningAppRecord(_ app: NSRunningApplication?) -> [String: Any]? {
 @discardableResult
 func restorePreviousFrontmostIfChanged(previousApp: NSRunningApplication?) -> Bool {
     guard let previousApp,
-          NSWorkspace.shared.frontmostApplication?.processIdentifier != previousApp.processIdentifier
+          currentFrontmostApplication()?.processIdentifier != previousApp.processIdentifier
     else {
         return false
     }
@@ -2867,7 +2867,7 @@ func withFrontmostPreservation(
     inputRisk: String,
     _ action: () throws -> (targetPID: pid_t?, result: [String: Any])
 ) throws -> [String: Any] {
-    let before = NSWorkspace.shared.frontmostApplication
+    let before = currentFrontmostApplication()
     let actionResult: (targetPID: pid_t?, result: [String: Any])
     do {
         actionResult = try action()
@@ -2875,11 +2875,11 @@ func withFrontmostPreservation(
         restorePreviousFrontmostIfChanged(previousApp: before)
         throw error
     }
-    let afterAction = NSWorkspace.shared.frontmostApplication
+    let afterAction = currentFrontmostApplication()
     let restored = actionResult.targetPID.map { targetPID in
         restorePreviousFrontmostIfNeeded(previousApp: before, targetPID: targetPID)
     } ?? false
-    let after = NSWorkspace.shared.frontmostApplication
+    let after = currentFrontmostApplication()
 
     var result = nativeActionResult(
         dispatchMode: dispatchMode,
@@ -2992,6 +2992,7 @@ func foregroundActivateRunningApp(appName: String, app: NSRunningApplication) th
 }
 
 func waitForForegroundRecoveredTarget(
+    targetPID: pid_t,
     timeout: TimeInterval = 3,
     resolveTarget: () throws -> WindowTarget
 ) throws -> (target: WindowTarget, waitMs: Int) {
@@ -2999,6 +3000,12 @@ func waitForForegroundRecoveredTarget(
     let deadline = startedAt.addingTimeInterval(timeout)
     var lastWindowUnavailable: HelperFailure?
     repeat {
+        // LaunchServices/AppleScript can return before activation reaches the
+        // WindowServer. A visible window alone does not make global input safe.
+        guard currentFrontmostApplication()?.processIdentifier == targetPID else {
+            usleep(50_000)
+            continue
+        }
         do {
             let target = try resolveTarget()
             let waitMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
@@ -3009,6 +3016,12 @@ func waitForForegroundRecoveredTarget(
         }
     } while Date() < deadline
 
+    guard currentFrontmostApplication()?.processIdentifier == targetPID else {
+        throw HelperFailure(
+            code: "target_app_unresponsive",
+            message: "The target app did not become frontmost; no input was sent"
+        )
+    }
     do {
         let target = try resolveTarget()
         let waitMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
@@ -3083,7 +3096,7 @@ func withForegroundRecovery(
     _ action: (WindowTarget) throws -> [String: Any]
 ) throws -> [String: Any] {
     let app = try resolveRunningApp(named: appName)
-    let frontmostBefore = NSWorkspace.shared.frontmostApplication
+    let frontmostBefore = currentFrontmostApplication()
     let previousSpaceId = WindowSpaceDetector.currentSpaceId()
     let candidateBefore = resolveWindowTarget(
         app: app,
@@ -3106,14 +3119,14 @@ func withForegroundRecovery(
     }
     let recoveryResult: (target: WindowTarget, waitMs: Int)
     do {
-        recoveryResult = try waitForForegroundRecoveredTarget(resolveTarget: resolveTarget)
+        recoveryResult = try waitForForegroundRecoveredTarget(targetPID: app.processIdentifier, resolveTarget: resolveTarget)
     } catch let failure as HelperFailure where failure.code == "window_unavailable" {
         if (activationMethod.contains("apple_script_activate") || activationMethod.hasPrefix("skylight_set_current_space")),
            let appURL = applicationURL(for: app, fallbackBundleId: appName)
         {
             _ = try openApplication(at: appURL, named: appName, activates: true)
             activationMethod = "workspace_open_application"
-            recoveryResult = try waitForForegroundRecoveredTarget(resolveTarget: resolveTarget)
+            recoveryResult = try waitForForegroundRecoveredTarget(targetPID: app.processIdentifier, resolveTarget: resolveTarget)
         } else {
             throw failure
         }
@@ -3130,7 +3143,7 @@ func withForegroundRecovery(
         waitMs: recoveryResult.waitMs
     )
 
-    let frontmostAfterAction = NSWorkspace.shared.frontmostApplication
+    let frontmostAfterAction = currentFrontmostApplication()
     var result = nativeActionResult(
         dispatchMode: dispatchMode,
         dispatchTarget: dispatchTarget,
@@ -4513,13 +4526,21 @@ func performBackgroundKeyPress(
     foregroundRecovery: ForegroundRecoveryPolicy,
     resolveTarget: () throws -> WindowTarget
 ) throws -> [String: Any] {
+    let deadline = ProcessInfo.processInfo.systemUptime + commandTimeoutPolicy.timeoutSeconds - 1.5
     func currentSpaceKeyPress() throws -> [String: Any] {
+        let target = try resolveTarget()
+        let close = try safariCloseTabTarget(parsed, target: target, deadline: deadline)
         return try withFrontmostPreservation(
-            dispatchMode: "background_keyboard_event",
-            dispatchTarget: "app_process",
-            inputRisk: "background_app_shortcut"
+            dispatchMode: close == nil ? "background_keyboard_event" : "accessibility_action",
+            dispatchTarget: close == nil ? "app_process" : "element",
+            inputRisk: close == nil ? "background_app_shortcut" : "targeted_app_action"
         ) {
-            let target = try resolveTarget()
+            if let close {
+                var result = try performSafariCloseTab(close, target: target, deadline: deadline)
+                result["normalizedKey"] = parsed.normalizedKey
+                return (targetPID: target.pid, result: result)
+            }
+            try ensureKeyboardDeliveryDeadline(deadline)
             try postParsedKeyPress(parsed, to: target)
             return (targetPID: target.pid, result: ["normalizedKey": parsed.normalizedKey])
         }
@@ -4535,7 +4556,7 @@ func performBackgroundKeyPress(
         }
     }
 
-    return try withForegroundRecovery(
+    var result = try withForegroundRecovery(
         appName: appName,
         policy: foregroundRecovery,
         reason: foregroundRecoveryReason(policy: foregroundRecovery),
@@ -4543,10 +4564,23 @@ func performBackgroundKeyPress(
         dispatchTarget: "app_process",
         inputRisk: "foreground_app_shortcut",
         resolveTarget: resolveTarget
-    ) { _ in
+    ) { target in
+        if let close = try safariCloseTabTarget(parsed, target: target, deadline: deadline) {
+            var result = try performSafariCloseTab(close, target: target, deadline: deadline)
+            result["normalizedKey"] = parsed.normalizedKey
+            return result
+        }
+        try prepareForegroundKeyboardWindow(target, deadline: deadline)
+        try ensureKeyboardDeliveryDeadline(deadline)
         try postForegroundParsedKeyPress(parsed)
-        return ["normalizedKey": parsed.normalizedKey]
+        return ["normalizedKey": parsed.normalizedKey, "targetWindowId": target.windowNumber]
     }
+    if result["shortcutAction"] as? String == "close_tab" {
+        result["dispatchMode"] = "accessibility_action"
+        result["dispatchTarget"] = "element"
+        result["inputRisk"] = "targeted_app_action"
+    }
+    return result
 }
 
 func performBackgroundTextInput(
@@ -4976,6 +5010,13 @@ func handlePressKey(_ request: [String: Any], session: ComputerUseRuntimeSession
     let parsed = try parseKeyPress(key)
     let policy = try foregroundRecoveryPolicy(request)
     let snapshotId = optionalString(request, "snapshotId")
+    // Validate ownership before an explicit recovery can activate any app.
+    if let snapshotId {
+        guard let session else {
+            throw HelperFailure(code: "unsupported_command", message: "Snapshot targeting requires a runtime session snapshot: \(snapshotId)")
+        }
+        _ = try session.snapshot(appName: appName, snapshotId: snapshotId)
+    }
 
     return try performBackgroundKeyPress(
         appName: appName,
@@ -5200,7 +5241,12 @@ func runStdioSession() {
             }
         }
         ComputerUseVisualPointer.shared.hide()
-        CFRunLoopStop(mainRunLoop.runLoop)
+        // EOF can arrive before the main loop starts. Queue its stop on that
+        // loop so an immediate request/EOF cannot leave the helper running.
+        CFRunLoopPerformBlock(mainRunLoop.runLoop, CFRunLoopMode.defaultMode.rawValue) {
+            CFRunLoopStop(mainRunLoop.runLoop)
+        }
+        CFRunLoopWakeUp(mainRunLoop.runLoop)
     }
     CFRunLoopRun()
 }
