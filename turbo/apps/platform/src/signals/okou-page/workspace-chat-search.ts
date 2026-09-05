@@ -7,7 +7,9 @@ import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-repla
 import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { chatThreads$ } from "../agent-chat.ts";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
+import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.ts";
 import { chatListQuery$ } from "./sidebar-state.ts";
 
 const MAX_VISIBLE_CHAT_THREAD_RESULTS = 25;
@@ -122,6 +124,17 @@ export const workspaceSearchChatThreads$ = computed(
       query,
       chatThreads: matchingThreads.slice(0, MAX_VISIBLE_CHAT_THREAD_RESULTS),
     };
+  },
+);
+
+export const threeColumnSearchChatThreads$ = computed(
+  async (get): Promise<WorkspaceSearchChatThreadResult> => {
+    const query = get(chatListQuery$).trim().toLowerCase();
+    if (query || !get(stableChatThreadNavigationEnabled$)) {
+      return get(workspaceSearchChatThreads$);
+    }
+    const threads = await get(chatThreads$);
+    return { query, chatThreads: threads.map(workspaceSearchChatThread) };
   },
 );
 

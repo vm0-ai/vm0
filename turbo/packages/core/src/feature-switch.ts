@@ -423,6 +423,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.StableChatThreadNavigation]: {
+    maintainer: "ethan@okou.ai",
+    description:
+      "Keep pinned chats ordered by pin time, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:

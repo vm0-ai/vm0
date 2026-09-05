@@ -131,7 +131,7 @@ export const setupGlobalKeyboardShortcuts$ = command(
           shouldHandle: shouldHandleUniversalSearchShortcut,
           run: (event) => {
             event.stopPropagation();
-            set(openThreeColumnSearchDialog$);
+            set(openThreeColumnSearchDialog$, event);
           },
         },
         "ctrl+shift+[": {

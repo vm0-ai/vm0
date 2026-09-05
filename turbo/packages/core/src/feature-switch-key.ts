@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   ChatThinkingSpinner = "chatThinkingSpinner",
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
+  StableChatThreadNavigation = "stableChatThreadNavigation",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   ComposerConnectorPopoverPlacement = "composerConnectorPopoverPlacement",
