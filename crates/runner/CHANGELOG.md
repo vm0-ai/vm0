@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.186.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.0...runner-rs-v0.186.1) (2026-09-05)
+
+
+### Performance Improvements
+
+* **python:** bound zstd frame validation work ([#31874](https://github.com/vm0-ai/vm0/issues/31874)) ([276a68e](https://github.com/vm0-ai/vm0/commit/276a68e7956fd354f3812da92e77a1d02c7d30e7))
+
 ## [0.186.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.3...runner-rs-v0.186.0) (2026-09-05)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.845.4](https://github.com/vm0-ai/vm0/compare/app-v0.845.3...app-v0.845.4) (2026-09-05)
+
+
+### Refactoring
+
+* **platform:** rename browser globals and clerk bootstrap to okou ([#31904](https://github.com/vm0-ai/vm0/issues/31904)) ([d0e609d](https://github.com/vm0-ai/vm0/commit/d0e609d122cc970ebebad59a800836b311d4002b))
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+    * @okouai/connectors bumped to 3.3.6
+    * @okouai/core bumped to 8.625.3
+
 ## [0.845.3](https://github.com/vm0-ai/vm0/compare/app-v0.845.2...app-v0.845.3) (2026-09-05)
 
 
