@@ -837,8 +837,8 @@ function VoicePicker({
   });
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex-1 sm:grid-cols-2 sm:gap-3">
           <UtilityOption
             title={t(($) => {
               return $.chat.introVideo.voice.default;
@@ -891,7 +891,9 @@ function VoicePicker({
             />
           ) : null}
         </div>
-        <VoiceLibraryToolbar />
+        <div className="flex justify-end">
+          <VoiceLibraryToolbar />
+        </div>
       </div>
       <VoiceLibraryContent
         selectionActive={selection.kind === "catalog"}
