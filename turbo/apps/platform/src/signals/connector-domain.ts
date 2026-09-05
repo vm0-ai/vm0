@@ -12,6 +12,7 @@ export type PlatformConnectorCatalogStatusItem =
 export type PlatformConnectorPermissionMetadata =
   PublicConnectorCatalogPermissionDetail;
 export type PlatformUserPermissionGrant = UserPermissionGrantResponse;
-export const singleAccountConnectorMutation = {
-  intent: "single-account",
-} satisfies ConnectorAccountMutationIntent;
+export type PlatformConnectorAccountMutationIntent = Extract<
+  ConnectorAccountMutationIntent,
+  { readonly intent: "add" | "reconnect" }
+>;

@@ -2783,12 +2783,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Plus d'options",
-      "statusConnected": "Connecté",
       "toasts": {
         "connected": "Connecté",
         "created": "Créé \"{{connector}}\"",
         "deleted": "Connecteur personnalisé supprimé",
-        "disconnected": "Déconnecté",
         "updated": "Mis à jour \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3295,8 +3293,7 @@
       "redirectTitle": "Redirection vers {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connecté",
-      "disconnected": "{{connector}} déconnecté"
+      "connected": "{{connector}} connecté"
     }
   },
   "global": {

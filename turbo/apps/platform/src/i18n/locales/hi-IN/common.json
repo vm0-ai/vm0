@@ -2736,12 +2736,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "अधिक विकल्प",
-      "statusConnected": "जुड़े हुए",
       "toasts": {
         "connected": "जुड़े हुए",
         "created": "\"{{connector}}\" बनाया गया",
         "deleted": "कस्टम कनेक्टर हटा दिया गया",
-        "disconnected": "डिस्कनेक्ट किया गया",
         "updated": "अपडेट किया गया \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3245,8 +3243,7 @@
       "redirectTitle": "{{connector}} पर पुनर्निर्देशित किया जा रहा है..."
     },
     "toasts": {
-      "connected": "{{connector}} कनेक्ट हुआ",
-      "disconnected": "{{connector}} डिस्कनेक्ट हो गया"
+      "connected": "{{connector}} कनेक्ट हुआ"
     }
   },
   "global": {

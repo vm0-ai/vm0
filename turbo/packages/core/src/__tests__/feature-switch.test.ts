@@ -42,7 +42,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {

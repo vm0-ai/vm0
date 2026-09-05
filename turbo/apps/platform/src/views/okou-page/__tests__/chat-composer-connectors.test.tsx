@@ -427,7 +427,6 @@ test("Show only the connector actions that are useful in chat", async () => {
   await setupPage({
     context,
     path: `/agents/${SCOUT_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
 
   await loadComposer();
@@ -538,7 +537,6 @@ test("Respect integration-managed connector availability in chat", async () => {
   await setupPage({
     context,
     path: `/agents/${SCOUT_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
   });
 
   await loadComposer();

@@ -26,7 +26,6 @@ import {
   BrandGoogleDrive,
 } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactGoogleDriveRecovery,
@@ -34,6 +33,7 @@ import type {
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
+import type { PlatformConnectorAccountMutationIntent } from "../../signals/connector-domain.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { apiClient$ } from "../../signals/api-client.ts";
 import {
@@ -297,7 +297,7 @@ type GoogleDrivePendingAction =
   | { readonly kind: "authorize" }
   | {
       readonly kind: "connect";
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly useDefaultConnectorProjection: boolean;
     }
   | { readonly kind: "unavailable" };

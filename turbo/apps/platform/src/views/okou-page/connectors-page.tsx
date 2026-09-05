@@ -9,7 +9,6 @@ import {
   useLastResolved,
   type Loadable,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -20,7 +19,6 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import {
@@ -28,7 +26,6 @@ import {
   setConnectorsPageTab$,
   openCustomConnectorCreateDialog$,
 } from "../../signals/okou-page/settings/custom-connectors.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
@@ -39,20 +36,14 @@ import {
   connectFlowConnectorSlug$,
   connectorsSearch$,
   connectorsConnectionFilter$,
-  disconnectConnector$,
   filteredConnectorCatalogItems$,
   setConnectorsConnectionFilter$,
   setConnectorsSearch$,
-  selectedConnectorSlug$,
-  setSelectedConnectorSlug$,
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
-  justConnectedSlugs$,
   relatedCatalogItems$,
   scopeReviewSelection$,
   setScopeReviewSelection$,
-  getAvailableStatusAuthCodeAuthMethod,
-  getConnectorStatusAuthMethod,
   type ConnectorsConnectionFilter,
 } from "../../signals/okou-page/settings/connectors.ts";
 import {
@@ -87,10 +78,8 @@ import {
   managedConnectorAccessSlug$,
   setManagedConnectorAccessSlug$,
 } from "../../signals/okou-page/settings/connector-access-management.ts";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
 import {
   Button,
   DropdownMenu,
@@ -889,17 +878,12 @@ function effectiveConnectorCatalogCount(
 
 interface SettingsConnectorCardProps {
   readonly connector: PlatformConnectorCatalogStatusItem;
-  readonly accountManagement: boolean;
   readonly accountSummary: ConnectorAccountSummary | undefined;
   readonly accountSummaryStatus: ConnectorAccountSummaryStatus;
-  readonly connected: boolean;
   readonly busy: boolean;
-  readonly disconnecting: boolean;
   readonly connect: ConnectorConnectHandlers;
   readonly onManageAccounts: () => void;
   readonly onManageAccess: () => void;
-  readonly onDisconnect: () => void;
-  readonly onReviewScopes: () => void;
 }
 
 interface ConnectorCatalogHeaderProps {
@@ -941,48 +925,22 @@ function SettingsConnectorCard(props: SettingsConnectorCardProps) {
       connectorSlug={props.connector.slug}
       connectorLabel={props.connector.label}
       allowAccessIncrease={
-        !props.accountManagement ||
-        (props.accountSummaryStatus === "ready" &&
-          (props.accountSummary?.accountCount ?? 0) > 0)
+        props.accountSummaryStatus === "ready" &&
+        (props.accountSummary?.accountCount ?? 0) > 0
       }
       onClick={props.onManageAccess}
     />
   );
-  if (props.accountManagement) {
-    return (
-      <ConnectorCard
-        variant="accounts"
-        connector={props.connector}
-        summary={props.accountSummary}
-        summaryStatus={props.accountSummaryStatus}
-        busy={props.busy}
-        connect={props.connect}
-        onManage={props.onManageAccounts}
-        manageAccess={manageAccess}
-      />
-    );
-  }
-  if (!props.connected) {
-    return (
-      <ConnectorCard
-        variant="catalog"
-        connector={props.connector}
-        busy={props.busy}
-        connect={props.connect}
-      />
-    );
-  }
   return (
     <ConnectorCard
-      variant="connection"
+      variant="accounts"
       connector={props.connector}
-      connected
+      summary={props.accountSummary}
+      summaryStatus={props.accountSummaryStatus}
       busy={props.busy}
-      disconnecting={props.disconnecting}
       connect={props.connect}
-      onDisconnect={props.onDisconnect}
+      onManage={props.onManageAccounts}
       manageAccess={manageAccess}
-      onReviewScopes={props.onReviewScopes}
     />
   );
 }
@@ -994,8 +952,6 @@ function ManagedConnectorAccessDialog() {
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
   );
-  const accountManagement =
-    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
   if (!connectorSlug || catalogItemsLoadable.state !== "hasData") {
     return null;
   }
@@ -1014,9 +970,7 @@ function ManagedConnectorAccessDialog() {
     <ConnectorAccessManagementDialog
       connectorSlug={connectorSlug}
       connectorLabel={connectorLabel}
-      allowAccessIncrease={
-        !accountManagement || (accountSummary?.accountCount ?? 0) > 0
-      }
+      allowAccessIncrease={(accountSummary?.accountCount ?? 0) > 0}
       onClose={close}
     />
   );
@@ -1029,8 +983,6 @@ export function ConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
-  const connectorAccountsEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
   const accountSummariesLoadable = useLoadable(
     connectorAccountSummaryByTarget$,
   );
@@ -1049,14 +1001,10 @@ export function ConnectorsPage() {
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
-  const selectedConnectorSlug = useGet(selectedConnectorSlug$);
-  const setSelected = useSet(setSelectedConnectorSlug$);
   const scopeReviewSelection = useGet(scopeReviewSelection$);
   const setScopeReviewSelection = useSet(setScopeReviewSelection$);
   const setManagedConnectorSlug = useSet(setManagedConnectorAccessSlug$);
-  const optimisticConnected = useGet(justConnectedSlugs$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
@@ -1095,48 +1043,6 @@ export function ConnectorsPage() {
     relatedCatalogItemsLoadable.state === "hasData"
       ? relatedCatalogItemsLoadable.data
       : [];
-  const selectedConnector = selectedConnectorSlug
-    ? allConnectors.find((connector) => {
-        return connector.slug === selectedConnectorSlug;
-      })
-    : undefined;
-  const disconnecting = disconnectLoadable.state === "loading";
-
-  const connectHandlers = (
-    connector: PlatformConnectorCatalogStatusItem,
-  ): ConnectorConnectHandlers => {
-    return {
-      openModal: () => {
-        setSelected(connector.slug);
-      },
-      connectBrowserAuth: (authMethod) => {
-        return connect(
-          connector.slug,
-          authMethod,
-          {
-            authorizeVisibleAgents: true,
-            connectorLabel: connector.label,
-            connectorIcon: connector.icon,
-          },
-          signal,
-        );
-      },
-      connectNoAuth: (authMethod) => {
-        return connectNoAuth(
-          {
-            connectorSlug: connector.slug,
-            authMethod,
-            options: {
-              authorizeVisibleAgents: true,
-              connectorLabel: connector.label,
-            },
-          },
-          signal,
-        );
-      },
-    };
-  };
-
   const finishExplicitAccountAdd = async (
     connector: PlatformConnectorCatalogStatusItem,
     connectionId: string | null,
@@ -1195,18 +1101,7 @@ export function ConnectorsPage() {
     };
   };
 
-  const disconnectHandler = async (
-    connectorSlug: ConnectorSlug,
-    connectorLabel: string,
-  ) => {
-    if (disconnecting) {
-      return;
-    }
-    await disconnect(connectorSlug, connectorLabel, signal);
-  };
-
   const renderCard = (c: PlatformConnectorCatalogStatusItem) => {
-    const isConnected = c.connected || optimisticConnected.has(c.slug);
     const isPolling =
       pollingAuthCodeSlug === c.slug ||
       pollingDeviceAuthSlug === c.slug ||
@@ -1219,31 +1114,15 @@ export function ConnectorsPage() {
       <SettingsConnectorCard
         key={c.slug}
         connector={c}
-        accountManagement={connectorAccountsEnabled}
         accountSummary={summary}
         accountSummaryStatus={accountSummaryStatus}
-        connected={isConnected}
         busy={isPolling}
-        disconnecting={disconnecting}
-        connect={
-          connectorAccountsEnabled
-            ? accountConnectHandlers(c)
-            : connectHandlers(c)
-        }
-        onDisconnect={() => {
-          detach(disconnectHandler(c.slug, c.label), Reason.DomCallback);
-        }}
+        connect={accountConnectHandlers(c)}
         onManageAccounts={() => {
           return openAccountManager(c, signal);
         }}
         onManageAccess={() => {
           return setManagedConnectorSlug(c.slug);
-        }}
-        onReviewScopes={() => {
-          return setScopeReviewSelection({
-            kind: "default",
-            connectorSlug: c.slug,
-          });
         }}
       />
     );
@@ -1323,34 +1202,19 @@ export function ConnectorsPage() {
         </div>
       </main>
 
-      {selectedConnector && (
-        <ConnectModal
-          item={selectedConnector}
-          authorizeVisibleAgentsOnConnect
-          onClose={() => {
-            return setSelected(null);
-          }}
-          onSuccess={() => {
-            const label =
-              allConnectors.find((c) => {
-                return c.slug === selectedConnectorSlug;
-              })?.label ?? selectedConnectorSlug;
-            toast.success(
-              t(
-                ($) => {
-                  return $.connectors.callback.connected;
-                },
-                { connector: label },
-              ),
-            );
-          }}
-        />
-      )}
-
       {accountConnect && (
         <ConnectModal
           item={accountConnect.connector}
           accountMode={accountConnect.mode}
+          accountOptions={{
+            account:
+              accountConnect.mode.kind === "add"
+                ? { intent: "add" }
+                : {
+                    intent: "reconnect",
+                    connectionId: accountConnect.mode.connectionId,
+                  },
+          }}
           onClose={() => {
             closeAccountConnect();
           }}
@@ -1400,7 +1264,6 @@ export function ConnectorsPage() {
           onReviewScopes={(account) => {
             closeAccountManager();
             setScopeReviewSelection({
-              kind: "account",
               connectorSlug: managedAccountConnector.slug,
               connectionId: account.id,
               authMethod: account.authMethod,
@@ -1420,45 +1283,13 @@ export function ConnectorsPage() {
             const connector = allConnectors.find((connector) => {
               return connector.slug === selection.connectorSlug;
             });
-            if (selection.kind === "account") {
-              if (connector) {
-                openAccountConnect(connector, {
-                  kind: "reconnect",
-                  connectionId: selection.connectionId,
-                  authMethod: selection.authMethod,
-                });
-              }
-              return;
+            if (connector) {
+              openAccountConnect(connector, {
+                kind: "reconnect",
+                connectionId: selection.connectionId,
+                authMethod: selection.authMethod,
+              });
             }
-            const connection = connector?.connection ?? null;
-            if (!connector || !connection) {
-              setSelected(selection.connectorSlug);
-              return;
-            }
-            const authMethodId = getAvailableStatusAuthCodeAuthMethod(
-              connector,
-              connection.authMethod,
-            );
-            const authMethod = authMethodId
-              ? getConnectorStatusAuthMethod(connector, authMethodId)
-              : null;
-            if (!authMethod) {
-              setSelected(selection.connectorSlug);
-              return;
-            }
-            detach(
-              connect(
-                selection.connectorSlug,
-                authMethod,
-                {
-                  authorizeVisibleAgents: true,
-                  connectorLabel: connector.label,
-                  connectorIcon: connector.icon,
-                },
-                signal,
-              ),
-              Reason.DomCallback,
-            );
           }}
         />
       )}

@@ -100,22 +100,6 @@ function customConnectorValuesClient() {
   return setupApp({ context, routes })(customConnectorValuesContract);
 }
 
-async function setConnectorAccountsEnabled(
-  fixture: Fixture,
-  enabled: boolean,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    featureClient().update({
-      headers: authHeaders(),
-      body: {
-        switches: { [FeatureSwitchKey.ConnectorAccounts]: enabled },
-      },
-    }),
-    [200],
-  );
-}
-
 async function cleanupFixture(fixture: Fixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   for (const connectorSlug of ["openai", "github"] as const) {
@@ -207,15 +191,14 @@ describe("connector account lifecycle routes", () => {
     return fixture;
   }
 
-  it("hides canonical account resources while the feature is disabled", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, false);
+  it("exposes canonical account resources without feature setup", async () => {
+    await seedFixture();
     const response = await accept(
       accountClient().summaries({ headers: authHeaders() }),
-      [404],
+      [200],
     );
 
-    expect(response.body.error.message).toBe("Resource not found");
+    expect(response.body.summaries).toStrictEqual([]);
     const exact = await accept(
       accountClient().connection({
         headers: authHeaders(),
@@ -224,15 +207,15 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-    expect(exact.body.error.message).toBe("Resource not found");
+    expect(exact.body.error.message).toBe("Connector account not found");
     const inspection = await accept(
       accountClient().inspect({
         headers: authHeaders(),
         body: { selections: [] },
       }),
-      [404],
+      [200],
     );
-    expect(inspection.body.error.message).toBe("Resource not found");
+    expect(inspection.body.results).toStrictEqual([]);
     const scopeDiff = await accept(
       accountClient().scopeDiff({
         headers: authHeaders(),
@@ -241,12 +224,11 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-    expect(scopeDiff.body.error.message).toBe("Resource not found");
+    expect(scopeDiff.body.error.message).toBe("Connector account not found");
   });
 
   it("reviews requested scopes for one exact account across default changes", async () => {
     const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
     const currentScopes = ["repo", "project", "workflow"] as const;
     const staleId = await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
@@ -401,8 +383,7 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-    const foreign = await seedFixture();
-    await setConnectorAccountsEnabled(foreign, true);
+    await seedFixture();
     await accept(
       accountClient().scopeDiff({
         headers: authHeaders(),
@@ -432,8 +413,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("inspects only exact owned accounts without leaking credentials", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
     const connected = await accept(
       connectorClient().connect({
         headers: authHeaders(),
@@ -499,7 +479,6 @@ describe("connector account lifecycle routes", () => {
 
   it("requires connector read capability for account inspection", async () => {
     const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
     mockClerkMembership(
       context,
       {
@@ -537,8 +516,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("accepts one bounded inspection batch and rejects a larger one", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
     const selection = {
       connectionId: randomUUID(),
       target: { kind: "builtin" as const, connectorSlug: "openai" },
@@ -583,8 +561,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("adds siblings and manages exact default and deletion lifecycle", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const first = await accept(
       connectorClient().connect({
@@ -777,8 +754,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("keeps concurrent sibling creation to exactly one default", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const responses = await Promise.all(
       ["Concurrent A", "Concurrent B"].map((displayName) => {
@@ -834,8 +810,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("reuses an explicit single account and rejects an ambiguous target", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const first = await accept(
       connectorClient().connect({
@@ -919,8 +894,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("serializes concurrent single-account writes and disconnects", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const responses = await Promise.all(
       ["first", "second"].map((suffix) => {
@@ -990,8 +964,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("paginates and searches more than one hundred accounts", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const createdAccountIds: string[] = [];
     for (let index = 0; index < 101; index += 1) {
@@ -1132,7 +1105,6 @@ describe("connector account lifecycle routes", () => {
 
   it("does not enumerate or mutate another member account", async () => {
     const owner = await seedFixture();
-    await setConnectorAccountsEnabled(owner, true);
     const account = await accept(
       connectorClient().connect({
         headers: authHeaders(),
@@ -1146,7 +1118,6 @@ describe("connector account lifecycle routes", () => {
       [200],
     );
     const other = await seedFixture({ orgId: owner.orgId });
-    await setConnectorAccountsEnabled(other, true);
     mocks.clerk.session(other.userId, other.orgId);
 
     const listed = await accept(
@@ -1203,8 +1174,7 @@ describe("connector account lifecycle routes", () => {
       [404],
     );
 
-    const outsider = await seedFixture();
-    await setConnectorAccountsEnabled(outsider, true);
+    await seedFixture();
     const crossOrganization = await accept(
       accountClient().inspect({
         headers: authHeaders(),
@@ -1224,7 +1194,6 @@ describe("connector account lifecycle routes", () => {
 
   it("treats a removed built-in catalog target as absent", async () => {
     const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
     const accountId = await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -1312,7 +1281,6 @@ describe("connector account lifecycle routes", () => {
           headers: authHeaders(),
           body: {
             switches: {
-              [FeatureSwitchKey.ConnectorAccounts]: true,
               [FeatureSwitchKey.CustomConnectorMcp]: true,
             },
           },
@@ -1448,7 +1416,6 @@ describe("connector account lifecycle routes", () => {
           headers: authHeaders(),
           body: {
             switches: {
-              [FeatureSwitchKey.ConnectorAccounts]: true,
               [FeatureSwitchKey.CustomConnectorMcp]: true,
             },
           },

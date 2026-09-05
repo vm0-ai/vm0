@@ -165,9 +165,13 @@ const postGenerateInner$ = command(
       return options;
     }
 
+    const runId =
+      auth.tokenType === "agent" || auth.tokenType === "sandbox"
+        ? auth.runId
+        : undefined;
     const hasCredits = await set(
       checkAvatarVideoCredits$,
-      { orgId: auth.orgId, userId: auth.userId },
+      { orgId: auth.orgId, userId: auth.userId, runId },
       signal,
     );
     if (!hasCredits) {
@@ -193,10 +197,6 @@ const postGenerateInner$ = command(
       generationId,
     );
     signal.throwIfAborted();
-    const runId =
-      auth.tokenType === "agent" || auth.tokenType === "sandbox"
-        ? auth.runId
-        : undefined;
     const publicBrand =
       auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
     const admission = await set(

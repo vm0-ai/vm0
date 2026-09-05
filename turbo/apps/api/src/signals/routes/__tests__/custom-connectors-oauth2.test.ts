@@ -1,7 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -217,9 +216,7 @@ describe("Custom connector OAuth public-brand callbacks", () => {
       initialScope: "read",
     });
     const actor = createBddApi(context).user({ orgRole: "org:admin" });
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
     const connector = await createCustomOAuthConnector(actor, provider);
     const legacyRedirectUri = "https://app.vm0.ai/connectors/custom/callback";
     const state = `okou.${randomBytes(32).toString("hex")}`;

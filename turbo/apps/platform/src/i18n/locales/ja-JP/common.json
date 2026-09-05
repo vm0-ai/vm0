@@ -2728,12 +2728,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "その他のオプション",
-      "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
-        "disconnected": "切断されました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -3237,8 +3235,7 @@
       "redirectTitle": "{{connector}} にリダイレクトしています…"
     },
     "toasts": {
-      "connected": "{{connector}} が接続されました",
-      "disconnected": "{{connector}} が切断されました"
+      "connected": "{{connector}} が接続されました"
     }
   },
   "global": {
