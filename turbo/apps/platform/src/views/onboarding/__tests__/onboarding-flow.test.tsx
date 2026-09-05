@@ -169,7 +169,7 @@ function setupCustomWorkflowPage(
     context,
     host,
     locale: "en-US",
-    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=talk-to-zero",
+    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=custom-workflow",
   });
 }
 

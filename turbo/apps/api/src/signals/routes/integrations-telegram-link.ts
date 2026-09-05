@@ -123,7 +123,7 @@ function linkConflictResponse(
   const message =
     reason === "telegram-user-linked"
       ? `This Telegram account is already connected to another ${brandName} account for this bot. Disconnect it before connecting a different account.`
-      : reason === "vm0-user-linked"
+      : reason === "user-linked"
         ? `Your ${brandName} account is already connected to another Telegram account for this bot. Disconnect it before connecting a different Telegram account.`
         : "This Telegram account link already exists. Disconnect it first and try again.";
 

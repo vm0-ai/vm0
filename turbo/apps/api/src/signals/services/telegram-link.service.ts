@@ -33,7 +33,7 @@ export type LinkTelegramUserResult =
   | { readonly ok: true; readonly userLink: TelegramUserLink }
   | {
       readonly ok: false;
-      readonly reason: "telegram-user-linked" | "vm0-user-linked" | "conflict";
+      readonly reason: "telegram-user-linked" | "user-linked" | "conflict";
       readonly userLink?: TelegramUserLink;
     };
 
@@ -325,7 +325,7 @@ export const linkTelegramUser$ = command(
 
       return {
         ok: false,
-        reason: "vm0-user-linked",
+        reason: "user-linked",
         userLink: existingUserLink,
       };
     }

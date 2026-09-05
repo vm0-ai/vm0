@@ -85,7 +85,7 @@ import {
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
-const BUILT_IN_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
+const BUILT_IN_MODEL_KEY_FIXTURE_PREFIX = "built-in-key-runtime-fixture-";
 
 interface OrgAdmissionLockGate {
   holderPid: number | null;

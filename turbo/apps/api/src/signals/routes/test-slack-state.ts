@@ -224,17 +224,17 @@ function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      apiKey: `vm0-key-default-${agentId}`,
+      apiKey: `built-in-key-default-${agentId}`,
       label: agentId,
     },
     {
       vendor: "anthropic",
-      apiKey: `vm0-key-anthropic-${agentId}`,
+      apiKey: `built-in-key-anthropic-${agentId}`,
       label: agentId,
     },
     {
       vendor: "moonshot",
-      apiKey: `vm0-key-moonshot-${agentId}`,
+      apiKey: `built-in-key-moonshot-${agentId}`,
       label: agentId,
     },
   ];

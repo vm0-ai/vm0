@@ -15515,20 +15515,20 @@ describe("CHAT-02: run-level model overrides", () => {
     });
 
     // Chat send only accepts supported run models.
-    const vm0ThreadId = randomUUID();
+    const invalidModelThreadId = randomUUID();
     const invalidModel = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
         prompt: "use an unsupported vm0 model",
-        clientThreadId: vm0ThreadId,
+        clientThreadId: invalidModelThreadId,
         model: "codex" as never,
       },
       [400],
     );
     expectApiError(invalidModel.body);
     expect(invalidModel.body.error.message).toBe("Invalid input");
-    await chat.requestReadThread(actor, vm0ThreadId, [404]);
+    await chat.requestReadThread(actor, invalidModelThreadId, [404]);
 
     const unavailableThreadId = randomUUID();
     const unavailable = await chat.requestSendEvent(

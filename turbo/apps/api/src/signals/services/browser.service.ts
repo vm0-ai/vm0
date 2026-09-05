@@ -3560,7 +3560,7 @@ const reconcileBrowserInstance$ = command(
   },
 );
 
-const reconcileZeroBrowsersWithScope$ = command(
+const reconcileBrowsersWithScope$ = command(
   async (
     { get, set },
     chatThreadIds: readonly string[] | null,
@@ -3685,7 +3685,7 @@ const reconcileZeroBrowsersWithScope$ = command(
 
 export const reconcileBrowsers$ = command(
   async ({ set }, signal: AbortSignal): Promise<BrowserReconcileResult> => {
-    return await set(reconcileZeroBrowsersWithScope$, null, signal);
+    return await set(reconcileBrowsersWithScope$, null, signal);
   },
 );
 
@@ -3696,6 +3696,6 @@ export const reconcileBrowserFixtures$ = command(
     chatThreadIds: readonly string[],
     signal: AbortSignal,
   ): Promise<BrowserReconcileResult> => {
-    return await set(reconcileZeroBrowsersWithScope$, chatThreadIds, signal);
+    return await set(reconcileBrowsersWithScope$, chatThreadIds, signal);
   },
 );
