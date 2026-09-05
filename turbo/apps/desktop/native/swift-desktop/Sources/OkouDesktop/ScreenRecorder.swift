@@ -9,6 +9,9 @@ final class ScreenRecorder: ObservableObject {
   @Published private(set) var sources: [JSON] = []
   @Published private(set) var previews: [String: NSImage] = [:]
   @Published private(set) var microphoneSupported = false
+  private(set) var captureID: UUID?
+  private(set) var captureSourceID: String?
+  private(set) var captureArea: CGRect?
   private let helper: HelperProcess
   private let preferences: DesktopPreferences
   private let api: DesktopAPI
@@ -116,6 +119,17 @@ final class ScreenRecorder: ObservableObject {
         throw DesktopFailure("signed_out", "Sign in and select a workspace before recording")
       }
       recordingIdentity = try auth.identity()
+      captureID = UUID()
+      captureSourceID = try source.requireString("id")
+      if let area {
+        guard let x = area["x"].number, let y = area["y"].number,
+          let width = area["width"].number, let height = area["height"].number,
+          [x, y, width, height].allSatisfy(\.isFinite), width > 0, height > 0
+        else { throw DesktopFailure("capture_failed", "Select a valid recording area") }
+        captureArea = CGRect(x: x, y: y, width: width, height: height)
+      } else {
+        captureArea = nil
+      }
       var payload: JSON = .object([
         "sourceId": source["id"], "sourceKind": area == nil ? source["kind"] : .string("area"),
         "systemAudio": .bool(systemAudio), "microphone": .bool(microphone && microphoneSupported),

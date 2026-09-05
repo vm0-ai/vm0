@@ -21,6 +21,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   private var statusItem: NSStatusItem?
   private var updater: DesktopUpdater?
   private var activation: DesktopActivation?
+  private var recordingController: RecordingController?
   private var activationRequested = false
   private var hotKey: EventHotKeyRef?
   private var hotKeyHandler: EventHandlerRef?
@@ -82,6 +83,10 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         return
       }
       model.onChange = { [weak self] in self?.refreshStatus() }
+      recordingController = RecordingController(
+        recorder: model.recorder,
+        report: { [weak model] error in model?.report(error) },
+        showSettings: { [weak self] in self?.showWindow() })
       installMenus()
       statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
       let menu = NSMenu()
@@ -400,6 +405,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       debug.state = model.debugEnabled ? .on : .off
     }
     updateShortcut(recording: recording)
+    recordingController?.update()
   }
 
   private func updateShortcut(recording: Bool) {

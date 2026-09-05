@@ -234,7 +234,7 @@ import Testing
           elif kind=='recorder.windowPreviews': result={'previews':[]}
           elif kind=='recorder.prepare':
               stop_failed=False; stop_malformed=False
-              assert payload['sourceKind']=='display' and payload['sourceId']=='display:1'
+              assert payload['sourceKind'] in ['display','area'] and payload['sourceId']=='display:1'
               assert payload['systemAudio'] and payload['microphone']
               result={'sessionId':'recording-fixture'}
           elif kind=='recorder.start':
@@ -263,8 +263,29 @@ import Testing
     recorder.available = true
     try await recorder.loadSources()
     let source = try #require(recorder.sources.first)
-    try await recorder.start(source: source, systemAudio: true, microphone: true)
+    let screen = try #require(NSScreen.main)
+    let displayID = try #require(
+      screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
+    let display = CGDisplayBounds(displayID.uint32Value)
+    let area = CGRect(x: display.minX + 100, y: display.minY + 100, width: 400, height: 300)
+    try await recorder.start(
+      source: source, systemAudio: true, microphone: true,
+      area: .object([
+        "x": .number(area.minX), "y": .number(area.minY),
+        "width": .number(area.width), "height": .number(area.height),
+      ]))
     #expect(recorder.status == "recording")
+    let controls = RecordingController(recorder: recorder, report: { _ in }, showSettings: {})
+    defer { controls.window?.close() }
+    controls.update()
+    let panel = try #require(controls.window)
+    #expect(panel.isVisible)
+    #expect(!panel.hidesOnDeactivate)
+    let capturedInAppKit = CGRect(
+      x: screen.frame.minX + area.minX - display.minX,
+      y: screen.frame.maxY - area.maxY + display.minY,
+      width: area.width, height: area.height)
+    #expect(!panel.frame.intersects(capturedInAppKit))
     try await recorder.pauseOrResume()
     #expect(recorder.status == "paused")
     try await recorder.pauseOrResume()
@@ -278,6 +299,8 @@ import Testing
     await #expect(throws: DecodingError.self) { try await recorder.stop() }
     #expect(recorder.status == "recording")
     try await recorder.stop()
+    controls.update()
+    #expect(!panel.isVisible)
     #expect(recorder.status == "ready")
     #expect(recorder.error?.contains("503") == true)
     let recordings = try FileManager.default.contentsOfDirectory(
