@@ -253,6 +253,16 @@ describe("residual brand-name classifier", () => {
     expect(categories.has("immutable-history")).toBe(true);
   });
 
+  it("refuses to report against a baseline it cannot attribute", () => {
+    expect(() => {
+      return buildResidualBrandNameReport({
+        baseline: [{ ...baselineEntry("zeroThing"), workstream: "R42" }],
+        classification: { boundaryOccurrenceCounts: [], residual: [] },
+        skippedFiles: [],
+      });
+    }).toThrow(/unknown workstream R42/u);
+  });
+
   it("produces the same report for the same input", () => {
     const classification = classifyBrandOccurrences({
       databaseIdentifiers: inventory.databaseIdentifiers,

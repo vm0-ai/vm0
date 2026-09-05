@@ -365,31 +365,23 @@ export function buildResidualBrandNameReport(args: {
       (fileCounts.get(`${skipped.category}\t${skipped.ruleId}`) ?? 0) + 1,
     );
   }
+  assertResidualBrandNameBaseline(args.baseline);
   const baselineByName = new Map(
     args.baseline.map((entry) => {
       return [entry.name, entry] as const;
     }),
   );
-  const workstreamCounts = new Map<
-    string,
-    { names: number; occurrences: number }
-  >(
-    RESIDUAL_BRAND_NAME_WORKSTREAMS.map((workstream) => {
-      return [workstream.id, { names: 0, occurrences: 0 }] as const;
-    }),
-  );
-  let unclassified = 0;
-  for (const residual of args.classification.residual) {
+  const baselined = args.classification.residual.flatMap((residual) => {
     const entry = baselineByName.get(residual.name);
-    if (!entry) {
-      unclassified += 1;
-      continue;
-    }
-    const counts = workstreamCounts.get(entry.workstream);
-    if (!counts) continue;
-    counts.names += 1;
-    counts.occurrences += residual.occurrenceCount;
-  }
+    if (!entry) return [];
+    return [
+      {
+        occurrenceCount: residual.occurrenceCount,
+        workstream: entry.workstream,
+      },
+    ];
+  });
+  const unclassified = args.classification.residual.length - baselined.length;
 
   return [
     "Residual brand-name inventory",
@@ -407,11 +399,13 @@ export function buildResidualBrandNameReport(args: {
     "",
     "Baseline (cleanup still owed):",
     ...RESIDUAL_BRAND_NAME_WORKSTREAMS.map((workstream) => {
-      const counts = workstreamCounts.get(workstream.id) ?? {
-        names: 0,
-        occurrences: 0,
-      };
-      return `- ${workstream.id} ${workstream.title} (${workstream.ownerIssue}): ${counts.names} names, ${counts.occurrences} occurrences`;
+      const owned = baselined.filter((entry) => {
+        return entry.workstream === workstream.id;
+      });
+      const occurrences = owned.reduce((total, entry) => {
+        return total + entry.occurrenceCount;
+      }, 0);
+      return `- ${workstream.id} ${workstream.title} (${workstream.ownerIssue}): ${owned.length} names, ${occurrences} occurrences`;
     }),
     "",
     `Unclassified names: ${unclassified}`,
