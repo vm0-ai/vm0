@@ -1696,6 +1696,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "./generated/resources/reverse-template/SKILL.md",
     );
+    expect(appendSystemPrompt).toContain(
+      "https://github.com/vm0-ai/Template-artifact/tree/<commit>/reverse-template",
+    );
+    expect(appendSystemPrompt).toContain(
+      "do not pull or compare the registry copy",
+    );
   });
 
   it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
