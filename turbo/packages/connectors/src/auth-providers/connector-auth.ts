@@ -116,6 +116,7 @@ import { posthogProvider } from "./connectors/posthog/provider";
 import { paypalProvider } from "./connectors/paypal/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
 import { rampProvider } from "./connectors/ramp/provider";
+import { reckonProvider } from "./connectors/reckon/provider";
 import { playstationProvider } from "./connectors/playstation/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
 import { steamProvider } from "./connectors/steam/provider";
@@ -1057,6 +1058,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
   refreshProviderEntry("ramp", "api-token", rampProvider),
+  refreshProviderEntry("reckon", "oauth-refresh-token", reckonProvider),
   authCodeRefreshProviderEntry("reddit", "oauth", redditProvider),
   authCodeRefreshProviderEntry("sentry", "oauth", sentryProvider),
   authCodeTokenRevokeProviderEntry("slack", "oauth", slackProvider),
