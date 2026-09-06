@@ -23,7 +23,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { parseValidatedPiSessionJsonl } from "./session-validation";
-import { projectPiMemoryCitationSegments } from "@okouai/api-contracts/contracts/pi-memory-citations";
+import {
+  projectPiMemoryCitationSegments,
+  visiblePiMemoryCitationText,
+} from "@okouai/api-contracts/contracts/pi-memory-citations";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 import type { PiAgentStreamOptions } from "./stream-options";
 
@@ -246,10 +249,14 @@ export class MemoryPiSession {
       });
       const projection = projectPiMemoryCitationSegments(text);
       let textIndex = 0;
+      const errorMessage = entry.message.errorMessage;
       return {
         ...entry,
         message: {
           ...entry.message,
+          ...(typeof errorMessage === "string"
+            ? { errorMessage: visiblePiMemoryCitationText(errorMessage) }
+            : {}),
           content: entry.message.content.map((item) => {
             if (item.type !== "text") {
               return item;

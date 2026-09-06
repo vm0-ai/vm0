@@ -16,9 +16,18 @@ export interface EventCitation {
   readonly citation: PiMemoryCitation;
 }
 
-export interface NormalizedRunOutputEvents {
+interface NormalizedRunOutputEvents {
   readonly payload: EventConsumerPayload;
   readonly citations: readonly EventCitation[];
+}
+
+function citationSignature(citation: PiMemoryCitation): string {
+  return JSON.stringify([
+    citation.entries.map(({ path, lineStart, lineEnd, note }) => {
+      return [path, lineStart, lineEnd, note];
+    }),
+    citation.rolloutIds,
+  ]);
 }
 
 interface NormalizedEvent {
@@ -254,7 +263,7 @@ export function normalizeRunOutputEvents(
   let lastAssistantCitationSignature: string | undefined;
   for (const normalized of normalizedEvents) {
     const signature = normalized.citation
-      ? JSON.stringify(normalized.citation)
+      ? citationSignature(normalized.citation)
       : undefined;
     if (normalized.event.type === "assistant") {
       lastAssistantCitationSignature = signature;
