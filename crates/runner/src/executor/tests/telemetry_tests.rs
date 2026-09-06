@@ -46,6 +46,7 @@ use crate::telemetry::{
     RunnerResourceBudgetUtilizationBucket, RunnerStartupPath,
 };
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 #[test]
 fn elapsed_since_api_start_ms_returns_elapsed_duration() {
@@ -1805,6 +1806,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
 async fn execute_job_claims_blank_sandbox_without_changing_cold_path_attribution() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
+    let params = default_params();
     let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(MockSandboxFactory::new()));
     let sandbox_id = SandboxId::new_v4();
     let mut sandbox = factory
@@ -1815,11 +1817,17 @@ async fn execute_job_claims_blank_sandbox_without_changing_cold_path_attribution
                 memory_mb: 2048,
             },
             device_rate_limits: None,
-            workspace_drive: None,
+            workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+                size_mb: params.workspace_disk_mb,
+                seed_image: None,
+            }),
         })
         .await
         .unwrap();
     sandbox.start().await.unwrap();
+    ensure_workspace_drive_mounted(sandbox.as_ref(), sandbox_id)
+        .await
+        .unwrap();
     assert_eq!(
         sandbox.park().await.unwrap(),
         sandbox::SandboxParkOutcome::Reusable
@@ -1854,7 +1862,7 @@ async fn execute_job_claims_blank_sandbox_without_changing_cold_path_attribution
         SandboxReuseResult::PoolMiss,
         minimal_context(),
         &config,
-        &default_params(),
+        &params,
         RunCancellationSignals::hard_only(cancel),
         ExecutionHooks::none(),
     )
