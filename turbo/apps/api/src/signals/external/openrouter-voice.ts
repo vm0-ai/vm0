@@ -5,6 +5,7 @@ import {
   type VoiceIoTranscribeResponse,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { z } from "zod";
+import type { MultimodalVoiceInputModelId } from "@okouai/api-contracts/contracts/voice-input-models";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -16,11 +17,6 @@ const L = logger("OpenRouterVoice");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_VOICE_RESPONSE_MAX_BYTES = 1024 * 1024;
-const OPENROUTER_VOICE_MAX_TOKENS = 65_536;
-
-const OPENROUTER_VOICE_MODEL = "google/gemini-3.6-flash";
-// Gemini 3.6 Flash requires reasoning and rejects the "none" effort with HTTP 400.
-const OPENROUTER_VOICE_REASONING_EFFORT = "minimal";
 export const OPENROUTER_VOICE_NO_SPEECH = "[NO_SPEECH]";
 
 const VOICE_REFERENCE_RULES = [
@@ -112,9 +108,7 @@ const polishedResponseSchema = z
   })
   .strict();
 
-export type OpenRouterVoiceTranscript = z.infer<
-  typeof transcriptResponseSchema
->;
+type OpenRouterVoiceTranscript = z.infer<typeof transcriptResponseSchema>;
 type OpenRouterPolishedTranscript = z.infer<typeof polishedResponseSchema>;
 
 export interface OpenRouterVoiceAudio {
@@ -313,6 +307,7 @@ function parseCompletionText(value: unknown): string {
 
 async function generateStructuredVoiceResponse<T>(
   args: {
+    readonly model: MultimodalVoiceInputModelId;
     readonly systemPrompt: string;
     readonly content: string | readonly OpenRouterVoiceContentPart[];
     readonly jsonSchema: JsonSchemaDefinition;
@@ -325,6 +320,14 @@ async function generateStructuredVoiceResponse<T>(
     return null;
   }
 
+  const isGemini = args.model.startsWith("google/");
+  const isGemini25 = args.model === "google/gemini-2.5-flash-lite";
+  // GPT Audio does not implement structured outputs, despite the gateway's
+  // generic parameter catalog. Request JSON in the prompt and validate it here.
+  const systemPrompt = isGemini
+    ? args.systemPrompt
+    : `${args.systemPrompt}\nJSON schema: ${JSON.stringify(args.jsonSchema.schema)}`;
+
   const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
     method: "POST",
     headers: {
@@ -332,19 +335,23 @@ async function generateStructuredVoiceResponse<T>(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: OPENROUTER_VOICE_MODEL,
+      model: args.model,
       messages: [
-        { role: "system", content: args.systemPrompt },
+        { role: "system", content: systemPrompt },
         { role: "user", content: args.content },
       ],
-      max_tokens: OPENROUTER_VOICE_MAX_TOKENS,
-      reasoning: { effort: OPENROUTER_VOICE_REASONING_EFFORT },
+      max_tokens: isGemini ? (isGemini25 ? 65_535 : 65_536) : 16_384,
+      ...(isGemini
+        ? { reasoning: { effort: isGemini25 ? "none" : "minimal" } }
+        : { modalities: ["text"] }),
       temperature: 0,
       store: false,
-      response_format: {
-        type: "json_schema",
-        json_schema: args.jsonSchema,
-      },
+      ...(isGemini && {
+        response_format: {
+          type: "json_schema",
+          json_schema: args.jsonSchema,
+        },
+      }),
     }),
     signal,
   });
@@ -362,8 +369,7 @@ async function generateStructuredVoiceResponse<T>(
       parsedBody,
     );
     L.warn("OpenRouter voice request rejected", {
-      model: OPENROUTER_VOICE_MODEL,
-      reasoningEffort: OPENROUTER_VOICE_REASONING_EFFORT,
+      model: args.model,
       responseSchema: args.jsonSchema.name,
       status: error.status,
       errorType: error.errorType,
@@ -385,10 +391,12 @@ async function generateStructuredVoiceResponse<T>(
 export async function transcribeAndPolishVoice(
   audio: OpenRouterVoiceAudio,
   context: VoiceIoTranscribeContext,
+  model: MultimodalVoiceInputModelId,
   signal: AbortSignal,
 ): Promise<VoiceIoTranscribeResponse | null> {
   return await generateStructuredVoiceResponse(
     {
+      model,
       systemPrompt: TRANSCRIBE_AND_POLISH_SYSTEM_PROMPT,
       content: audioContent(audio, context),
       jsonSchema: transcribeAndPolishJsonSchema(),
@@ -401,10 +409,12 @@ export async function transcribeAndPolishVoice(
 export async function transcribeVoice(
   audio: OpenRouterVoiceAudio,
   context: VoiceIoTranscribeContext,
+  model: MultimodalVoiceInputModelId,
   signal: AbortSignal,
 ): Promise<OpenRouterVoiceTranscript | null> {
   return await generateStructuredVoiceResponse(
     {
+      model,
       systemPrompt: TRANSCRIPTION_SYSTEM_PROMPT,
       content: audioContent(audio, context),
       jsonSchema: transcriptJsonSchema(),
@@ -417,6 +427,7 @@ export async function transcribeVoice(
 export async function polishLongVoiceTranscript(
   transcript: string,
   context: VoiceIoTranscribeContext,
+  model: MultimodalVoiceInputModelId,
   signal: AbortSignal,
 ): Promise<OpenRouterPolishedTranscript | null> {
   const content = [
@@ -428,6 +439,7 @@ export async function polishLongVoiceTranscript(
   ].join("\n\n");
   return await generateStructuredVoiceResponse(
     {
+      model,
       systemPrompt: LONG_TRANSCRIPT_POLISH_SYSTEM_PROMPT,
       content,
       jsonSchema: polishedJsonSchema(),

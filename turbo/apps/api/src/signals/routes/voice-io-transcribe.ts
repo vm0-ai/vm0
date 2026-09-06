@@ -8,7 +8,10 @@ import {
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
+import {
+  DEFAULT_VOICE_INPUT_MODEL,
+  VOICE_INPUT_MODELS,
+} from "@okouai/api-contracts/contracts/voice-input-models";
 import { command, computed } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -28,6 +31,7 @@ import {
 } from "../services/voice-io-post.service";
 import { transcribeVoiceDraft$ } from "../services/voice-io-transcribe.service";
 import { safeJsonParse } from "../utils";
+import { userPreferences } from "../services/user-data.service";
 
 const ALLOWED_VOICE_DRAFT_MIME_TYPES = [
   "audio/wav",
@@ -35,22 +39,26 @@ const ALLOWED_VOICE_DRAFT_MIME_TYPES = [
   "audio/x-wav",
 ] as const;
 
-const voiceIoTranscribeEnabled$ = computed(async (get) => {
+const voiceIoFeatureContext$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!isStaffOrg(auth.orgId)) {
-    return false;
-  }
-  const context = await loadUserFeatureSwitchContext(
-    get(db$),
-    auth.orgId,
-    auth.userId,
+  return await loadUserFeatureSwitchContext(get(db$), auth.orgId, auth.userId);
+});
+
+const selectedVoiceInputModel$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const preferences = await get(
+    userPreferences({ orgId: auth.orgId, userId: auth.userId }),
   );
-  return isFeatureEnabled(FeatureSwitchKey.VoiceInputV2, context);
+  const modelId = preferences.voiceInputModel ?? DEFAULT_VOICE_INPUT_MODEL;
+  return VOICE_INPUT_MODELS.find((candidate) => {
+    return candidate.id === modelId;
+  });
 });
 
 function isAllowedVoiceDraftMimeType(value: string): boolean {
+  const baseMimeType = value.split(";")[0]?.toLowerCase() ?? value;
   return ALLOWED_VOICE_DRAFT_MIME_TYPES.some((mimeType) => {
-    return mimeType === value;
+    return mimeType === baseMimeType;
   });
 }
 
@@ -98,7 +106,9 @@ function editorReference(
 
 const postVoiceIoTranscribe$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(voiceIoTranscribeEnabled$))) {
+    const featureContext = await get(voiceIoFeatureContext$);
+    signal.throwIfAborted();
+    if (!isFeatureEnabled(FeatureSwitchKey.VoiceInputV2, featureContext)) {
       return {
         status: 403 as const,
         body: {
@@ -112,6 +122,13 @@ const postVoiceIoTranscribe$ = command(
     signal.throwIfAborted();
 
     const auth = get(organizationAuthContext$);
+    const model = await get(selectedVoiceInputModel$);
+    signal.throwIfAborted();
+    if (!model) {
+      return badRequest(
+        "The selected voice input model is unavailable. Choose another model in Debug preferences.",
+      );
+    }
     const quota = await get(audioInputLifetimeQuota(auth.orgId, auth.userId));
     signal.throwIfAborted();
     if (!quota.allowed) {
@@ -155,8 +172,7 @@ const postVoiceIoTranscribe$ = command(
       return badRequest("Audio files are too large (max 25 MB)");
     }
     for (const file of files) {
-      const baseMimeType = file.type.split(";")[0]?.toLowerCase() ?? file.type;
-      if (!isAllowedVoiceDraftMimeType(baseMimeType)) {
+      if (!isAllowedVoiceDraftMimeType(file.type)) {
         return badRequest("Voice draft audio must be 16 kHz PCM WAV");
       }
     }
@@ -206,6 +222,8 @@ const postVoiceIoTranscribe$ = command(
       {
         files,
         longRecording,
+        model,
+        debug: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext),
         ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
         ...(editorContext === undefined ? {} : { editorContext }),
       },

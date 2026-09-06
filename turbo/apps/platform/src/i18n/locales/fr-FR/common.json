@@ -5226,6 +5226,12 @@
           "stores": "magasins d’objets",
           "title": "Stockage IndexedDB",
           "unavailable": "Le stockage IndexedDB est indisponible."
+        },
+        "voiceInput": {
+          "default": "Par défaut ({{model}})",
+          "description": "Choisissez le modèle pour la saisie vocale v2. Les modèles de transcription utilisent {{model}} pour améliorer le texte.",
+          "title": "Modèle de saisie vocale",
+          "unavailable": "Modèle indisponible ({{model}})"
         }
       },
       "language": {

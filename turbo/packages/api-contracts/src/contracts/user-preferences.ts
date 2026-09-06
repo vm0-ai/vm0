@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
+import { voiceInputModelIdSchema } from "./voice-input-models";
 
 const c = initContract();
 
@@ -86,6 +87,8 @@ export const userPreferencesResponseSchema = z.object({
   theme: themePreferenceSchema.nullable(),
   colorTheme: colorThemeSchema.nullable(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
+  // Optional while an updated app can still reach the previous API release.
+  voiceInputModel: z.string().nullable().optional(),
 });
 
 export type UserPreferencesResponse = z.infer<
@@ -104,6 +107,7 @@ export const updateUserPreferencesRequestSchema = z
     theme: themePreferenceSchema.optional(),
     colorTheme: colorThemeSchema.optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
+    voiceInputModel: voiceInputModelIdSchema.nullable().optional(),
   })
   .refine(
     (data) => {
@@ -116,7 +120,8 @@ export const updateUserPreferencesRequestSchema = z
         data.cloudBrowserEnabledByDefault !== undefined ||
         data.theme !== undefined ||
         data.colorTheme !== undefined ||
-        data.captureNetworkBodiesRemaining !== undefined
+        data.captureNetworkBodiesRemaining !== undefined ||
+        data.voiceInputModel !== undefined
       );
     },
     {

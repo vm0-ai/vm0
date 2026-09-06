@@ -16,6 +16,67 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+test("Debug preferences restore, change, and reset the voice input model", async () => {
+  const updates = mockPreferences({
+    voiceInputModel: "google/gemini-3.8-flash",
+  });
+  await setupPage({
+    context,
+    path: "/?settings=debug",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+  const picker = await screen.findByRole("combobox", {
+    name: "Voice input model",
+  });
+  await waitFor(() => {
+    return expect(picker).toHaveTextContent("Gemini 3.8 Flash");
+  });
+  click(picker);
+  click(await screen.findByRole("option", { name: "ElevenLabs Scribe v2" }));
+  await waitFor(() => {
+    return expect(picker).toHaveTextContent("ElevenLabs Scribe v2");
+  });
+  expect(updates).toContainEqual({
+    voiceInputModel: "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+  });
+  click(picker);
+  click(
+    await screen.findByRole("option", { name: "Default (Gemini 3.6 Flash)" }),
+  );
+  await waitFor(() => {
+    return expect(picker).toHaveTextContent("Default (Gemini 3.6 Flash)");
+  });
+  expect(updates).toContainEqual({ voiceInputModel: null });
+});
+
+test("Debug preferences tolerate an older API without a voice model preference", async () => {
+  mockPreferences();
+  await setupPage({
+    context,
+    path: "/?settings=debug",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+  const picker = await screen.findByRole("combobox", {
+    name: "Voice input model",
+  });
+  await waitFor(() => {
+    return expect(picker).toHaveTextContent("Default (Gemini 3.6 Flash)");
+  });
+});
+
+test("Voice model selection is hidden while Debug is disabled", async () => {
+  mockPreferences({ voiceInputModel: "google/gemini-3.8-flash" });
+  await setupPage({
+    context,
+    path: "/?settings=preference",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: false },
+  });
+  await screen.findByRole("dialog");
+  expect(
+    screen.queryByRole("combobox", { name: "Voice input model" }),
+  ).not.toBeInTheDocument();
+});
+
 function defaultPreferences(): UserPreferencesResponse {
   return {
     timezone: "Etc/UTC",

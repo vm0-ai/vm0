@@ -5169,6 +5169,12 @@
           "stores": "ऑब्जेक्ट स्टोर",
           "title": "IndexedDB स्टोरेज",
           "unavailable": "IndexedDB स्टोरेज उपलब्ध नहीं है।"
+        },
+        "voiceInput": {
+          "default": "डिफ़ॉल्ट ({{model}})",
+          "description": "वॉइस इनपुट v2 के लिए मॉडल चुनें। स्पीच-टू-टेक्स्ट मॉडल टेक्स्ट सुधारने के लिए {{model}} का उपयोग करते हैं।",
+          "title": "वॉइस इनपुट मॉडल",
+          "unavailable": "मॉडल उपलब्ध नहीं है ({{model}})"
         }
       },
       "language": {
