@@ -11,7 +11,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::factory_lifecycle::SharedFactory;
-use super::idle_lifecycle::{SharedIdlePool, set_idle_status_snapshot};
+use super::idle_lifecycle::{
+    IdleDestroyTracker, SharedIdlePool, set_idle_status_snapshot, spawn_idle_destroy_job,
+};
 use crate::config::ProfileConfig;
 use crate::idle_pool::{ParkResult, ParkedIdleCandidate};
 use crate::lifecycle::RunnerMode;
@@ -216,6 +218,7 @@ impl BlankPoolReplenisher {
         result: BlankPrepareResult,
         idle_pool: &SharedIdlePool,
         status: &StatusTracker,
+        idle_destroy_tracker: &IdleDestroyTracker,
     ) {
         let Some(plan) = self.plan.as_ref() else {
             if let BlankPrepareResult::Ready(candidate) = result {
@@ -254,7 +257,11 @@ impl BlankPoolReplenisher {
                             outcome = "replaced",
                             "blank sandbox refill completed"
                         );
-                        evicted.run_with_context("blank_pool_replaced").await;
+                        spawn_idle_destroy_job(
+                            idle_destroy_tracker,
+                            evicted,
+                            "blank_pool_replaced",
+                        );
                     }
                     ParkResult::Rejected(rejected) => {
                         info!(
@@ -264,10 +271,15 @@ impl BlankPoolReplenisher {
                             "blank sandbox refill suppressed"
                         );
                         let (payload, lease) = rejected.into_active_destroy_parts();
-                        payload
-                            .finalize_workspace_and_destroy("blank_pool_rejected")
-                            .await;
-                        drop(lease);
+                        idle_destroy_tracker.spawn_cleanup(
+                            async move {
+                                payload
+                                    .finalize_workspace_and_destroy("blank_pool_rejected")
+                                    .await;
+                                drop(lease);
+                            },
+                            "blank_pool_rejected",
+                        );
                     }
                 }
             }
@@ -559,6 +571,7 @@ mod tests {
         )));
         let temp = tempfile::tempdir().unwrap();
         let status = StatusTracker::new(temp.path().join("status.json"), 7, None, None);
+        let idle_destroy_tracker = IdleDestroyTracker::new(Arc::new(tokio::sync::Notify::new()));
         let admission = PreSpawnAdmission::new(4).unwrap();
         let mut replenisher = BlankPoolReplenisher::new(&profiles, &factories, &budget, 0, None);
 
@@ -571,7 +584,7 @@ mod tests {
             .await
             .expect("preparation should be active");
         replenisher
-            .finish_preparation(result, &idle_pool, &status)
+            .finish_preparation(result, &idle_pool, &status, &idle_destroy_tracker)
             .await;
 
         let mut pool = idle_pool.lock().await;
@@ -586,5 +599,6 @@ mod tests {
         assert_eq!(budget.allocated(), (0, 0, 0));
         assert!(admission.try_acquire_background(4).unwrap().is_some());
         replenisher.shutdown().await;
+        idle_destroy_tracker.close_and_wait().await;
     }
 }

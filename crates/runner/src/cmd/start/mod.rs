@@ -2093,7 +2093,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             result = blank_pool.wait_for_preparation(), if blank_pool.is_preparing() => {
                 if let Some(result) = result {
                     blank_pool
-                        .finish_preparation(result, &shared.idle_pool, &shared.status)
+                        .finish_preparation(
+                            result,
+                            &shared.idle_pool,
+                            &shared.status,
+                            &idle_destroy_tracker,
+                        )
                         .await;
                 }
             }
