@@ -21,6 +21,7 @@
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tsconfig.build-config.json --noEmit"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
     "@axiomhq/js": "^1.5.0",
     "@base-ui/react": "^1.7.0",
     "@clerk/localizations": "^4.13.8",

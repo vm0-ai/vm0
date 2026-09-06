@@ -100,6 +100,8 @@ import {
   PinnedThreadRow,
   PinnedThreadDragAnnouncement,
   PinnedThreadDragPreview,
+  PinnedThreadDropPlaceholder,
+  ThreadPinMoveMenuItems,
 } from "./sidebar-thread-reorder.tsx";
 import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import { equalArrays } from "../../lib/equality.ts";
@@ -207,6 +209,43 @@ function ChatThreadMarkUnreadMenuItem({
   );
 }
 
+function ChatThreadPinMenuItems({
+  signals,
+}: {
+  signals: SidebarChatThreadItemSignals;
+}) {
+  const { t } = useTranslation();
+  const isPinned = useGet(signals.pinned$);
+  const togglePinned = useSet(signals.togglePinned$);
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <>
+      <DropdownMenuItem
+        onSelect={() => {
+          detach(togglePinned(pageSignal), Reason.DomCallback);
+        }}
+      >
+        {isPinned ? (
+          <>
+            <PinOff size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.unpin;
+            })}
+          </>
+        ) : (
+          <>
+            <Pin size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.pin;
+            })}
+          </>
+        )}
+      </DropdownMenuItem>
+      <ThreadPinMoveMenuItems signals={signals} />
+    </>
+  );
+}
+
 function ChatThreadMenu({
   signals,
 }: {
@@ -215,14 +254,9 @@ function ChatThreadMenu({
   const { t } = useTranslation();
   const isPinned = useGet(signals.pinned$);
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
-  const togglePinned = useSet(signals.togglePinned$);
   const openRename = useSet(signals.openRename$);
   const requestDelete = useSet(signals.requestDelete$);
   const pageSignal = useGet(pageSignal$);
-
-  function handleTogglePin() {
-    detach(togglePinned(pageSignal), Reason.DomCallback);
-  }
 
   function openRenameDialog() {
     detach(openRename(pageSignal), Reason.DomCallback);
@@ -299,23 +333,7 @@ function ChatThreadMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
-          <DropdownMenuItem onSelect={handleTogglePin}>
-            {isPinned ? (
-              <>
-                <PinOff size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.sidebar.unpin;
-                })}
-              </>
-            ) : (
-              <>
-                <Pin size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.sidebar.pin;
-                })}
-              </>
-            )}
-          </DropdownMenuItem>
+          <ChatThreadPinMenuItems signals={signals} />
           <ChatThreadMarkUnreadMenuItem signals={signals} />
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <Pencil size={16} className="mr-2" />
@@ -628,6 +646,7 @@ function VirtualizedChatThreads({
   const startIndex = window?.startIndex ?? 0;
   const visibleItems = window?.items ?? [];
 
+  const placement = useGet(scrollSignals.pinReorder.placement$);
   return (
     <div
       ref={setShortcutRoot}
@@ -637,17 +656,29 @@ function VirtualizedChatThreads({
     >
       <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />
       <PinnedThreadDragPreview signals={scrollSignals.pinReorder} />
+      <PinnedThreadDropPlaceholder signals={scrollSignals.pinReorder} />
       {visibleItems.map((signals, visibleOffset) => {
         const index = startIndex + visibleOffset;
+        let visualIndex = index;
+        if (placement) {
+          const { sourceIndex, destinationIndex } = placement;
+          if (index === sourceIndex) {
+            visualIndex = destinationIndex;
+          } else if (index > sourceIndex && index <= destinationIndex) {
+            visualIndex--;
+          } else if (index >= destinationIndex && index < sourceIndex) {
+            visualIndex++;
+          }
+        }
         return (
           <div
             key={signals.threadId}
-            data-index={index}
+            data-index={visualIndex}
             data-testid="sidebar-chat-thread-virtual-row"
             className="absolute left-0 top-0 w-full pb-1"
             style={{
               transform: `translateY(${
-                index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+                visualIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
               }px)`,
             }}
           >

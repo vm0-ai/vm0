@@ -14,7 +14,7 @@
 
 .okou-thread-reorder-row[data-reorderable]:is(
     :hover,
-    :focus-within,
+    :has(.okou-thread-drag-handle:focus-visible),
     [data-dragging]
   )
   > a {
@@ -22,7 +22,11 @@
   transition-duration: 160ms;
 }
 
-.okou-thread-reorder-row:is(:hover, :focus-within, [data-dragging])
+.okou-thread-reorder-row:is(
+    :hover,
+    :has(.okou-thread-drag-handle:focus-visible),
+    [data-dragging]
+  )
   .okou-thread-drag-handle {
   opacity: 1;
   transform: translateX(0);
@@ -35,35 +39,6 @@
 
 .okou-thread-reorder-row[data-dragging="pointer"] > * {
   opacity: 0;
-}
-
-.okou-thread-reorder-row[data-dragging="pointer"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px dashed hsl(var(--border));
-  border-radius: 8px;
-  background: hsl(var(--muted) / 0.3);
-  pointer-events: none;
-}
-
-.okou-thread-reorder-row[data-drop-side]::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  height: 2px;
-  border-radius: 2px;
-  background: hsl(var(--primary));
-  z-index: 20;
-  pointer-events: none;
-}
-
-.okou-thread-reorder-row[data-drop-side="before"]::after {
-  top: 0;
-}
-.okou-thread-reorder-row[data-drop-side="after"]::after {
-  bottom: 0;
 }
 
 @media (pointer: coarse) {

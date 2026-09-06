@@ -1,15 +1,9 @@
-import type { DragEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { GripVertical, ArrowUp, ArrowDown } from "lucide-react";
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@okouai/ui";
+import { Button, DropdownMenuItem } from "@okouai/ui";
 import {
   pinnedThreadReorderEnabled$,
   stepPinnedThread$,
@@ -17,41 +11,55 @@ import {
 } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import type { SidebarChatThreadItemSignals } from "../../signals/chat-page/sidebar-chat-thread-item.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../signals/okou-page/sidebar-state.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import "./sidebar-thread-reorder.css";
 
-const THREAD_DRAG_TYPE = "application/x-okou-pinned-thread";
-
-function prepareThreadPointerDrag(
-  event: DragEvent<HTMLButtonElement>,
-  threadId: string,
-) {
-  const row = event.currentTarget.closest(".okou-thread-reorder-row");
-  if (!(row instanceof HTMLElement)) {
-    return null;
-  }
-  event.dataTransfer.setData(THREAD_DRAG_TYPE, threadId);
-  event.dataTransfer.effectAllowed = "move";
-  const image = row.querySelector(".okou-thread-drag-image");
-  if (image instanceof HTMLElement) {
-    event.dataTransfer.setDragImage(image, 0, 0);
-  }
-  return {
-    x: event.clientX,
-    y: event.clientY,
-    width: row.getBoundingClientRect().width,
-  };
-}
-
-function ThreadPinMoveMenu({ threadId }: { threadId: string }) {
-  const { t } = useTranslation();
-  const move = useSet(stepPinnedThread$);
+export function PinnedThreadDropZone({
+  signals,
+  className,
+  children,
+}: {
+  signals: PinnedThreadDragSignals;
+  className: string;
+  children: ReactNode;
+}) {
+  const enabled = useGet(pinnedThreadReorderEnabled$);
+  const mount = useSet(signals.mountDropZone$);
+  const drop = useSet(signals.dropPointer$);
   const signal = useGet(pageSignal$);
   return (
-    <DropdownMenuContent align="start">
+    <div
+      ref={enabled ? mount : undefined}
+      data-testid="pinned-thread-drop-zone"
+      className={className}
+      onDrop={() => {
+        detach(drop(signal), Reason.DomCallback);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ThreadPinMoveMenuItems({
+  signals,
+}: {
+  signals: SidebarChatThreadItemSignals;
+}) {
+  const { t } = useTranslation();
+  const enabled = useGet(pinnedThreadReorderEnabled$);
+  const pinned = useGet(signals.pinned$);
+  const move = useSet(stepPinnedThread$);
+  const signal = useGet(pageSignal$);
+  if (!enabled || !pinned) {
+    return null;
+  }
+  return (
+    <>
       <DropdownMenuItem
         onSelect={() => {
-          return detach(move(threadId, -1, signal), Reason.DomCallback);
+          return detach(move(signals.threadId, -1, signal), Reason.DomCallback);
         }}
       >
         <ArrowUp />
@@ -61,7 +69,7 @@ function ThreadPinMoveMenu({ threadId }: { threadId: string }) {
       </DropdownMenuItem>
       <DropdownMenuItem
         onSelect={() => {
-          return detach(move(threadId, 1, signal), Reason.DomCallback);
+          return detach(move(signals.threadId, 1, signal), Reason.DomCallback);
         }}
       >
         <ArrowDown />
@@ -69,7 +77,7 @@ function ThreadPinMoveMenu({ threadId }: { threadId: string }) {
           return $.chat.sidebar.movePinDown;
         })}
       </DropdownMenuItem>
-    </DropdownMenuContent>
+    </>
   );
 }
 
@@ -88,84 +96,53 @@ function ThreadDragHandle({
     });
   const drag = useGet(dragSignals.drag$);
   const start = useSet(dragSignals.start$);
-  const cancel = useSet(dragSignals.cancel$);
   const cancelKeyboard = useSet(dragSignals.cancelKeyboard$);
   const drop = useSet(dragSignals.drop$);
   const step = useSet(dragSignals.step$);
   const signal = useGet(pageSignal$);
   const picked = drag?.threadId === signals.threadId;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        asChild
-        // Open on click, leaving pointer presses available for native dragging.
-        onPointerDown={(event) => {
-          event.preventBaseUIHandler();
-        }}
-        onMouseDown={(event) => {
-          event.preventBaseUIHandler();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === " " || event.key === "Enter") {
-            event.preventBaseUIHandler();
-            event.preventDefault();
-            event.stopPropagation();
-            if (picked) {
-              detach(drop(signal), Reason.DomCallback);
-            } else {
-              start(signals.threadId, null);
-            }
-          } else if (
-            picked &&
-            (event.key === "ArrowUp" || event.key === "ArrowDown")
-          ) {
-            event.preventBaseUIHandler();
-            event.preventDefault();
-            event.stopPropagation();
-            step(event.key === "ArrowUp" ? -1 : 1);
-          } else if (
-            event.key === "Escape" &&
-            cancelKeyboard(signals.threadId)
-          ) {
-            event.preventBaseUIHandler();
-            event.preventDefault();
-            event.stopPropagation();
+    <Button
+      className="okou-thread-drag-handle pointer-events-auto absolute left-1 top-1 z-10 cursor-grab active:cursor-grabbing"
+      variant="quiet"
+      size="icon-2xs"
+      aria-label={t(
+        ($) => {
+          return $.chat.sidebar.reorderThread;
+        },
+        { title },
+      )}
+      aria-pressed={picked}
+      title={t(($) => {
+        return $.chat.sidebar.reorderInstructions;
+      })}
+      onKeyDown={(event) => {
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (picked) {
+            detach(drop(signal), Reason.DomCallback);
+          } else {
+            start(signals.threadId, null);
           }
-        }}
-      >
-        <Button
-          className="okou-thread-drag-handle pointer-events-auto absolute left-1 top-1 z-10 cursor-grab active:cursor-grabbing"
-          variant="quiet"
-          size="icon-2xs"
-          draggable
-          aria-label={t(
-            ($) => {
-              return $.chat.sidebar.reorderThread;
-            },
-            { title },
-          )}
-          aria-pressed={picked}
-          title={t(($) => {
-            return $.chat.sidebar.reorderInstructions;
-          })}
-          onDragStart={(event) => {
-            const pointer = prepareThreadPointerDrag(event, signals.threadId);
-            if (pointer) {
-              start(signals.threadId, pointer);
-            }
-          }}
-          onDragEnd={() => {
-            return cancel();
-          }}
-          onBlur={() => {
-            cancelKeyboard(signals.threadId);
-          }}
-        >
-          <GripVertical size={16} />
-        </Button>
-      </DropdownMenuTrigger>
-      <ThreadPinMoveMenu threadId={signals.threadId} />
-    </DropdownMenu>
+        } else if (
+          picked &&
+          (event.key === "ArrowUp" || event.key === "ArrowDown")
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          step(event.key === "ArrowUp" ? -1 : 1);
+        } else if (event.key === "Escape" && cancelKeyboard(signals.threadId)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onBlur={() => {
+        cancelKeyboard(signals.threadId);
+      }}
+    >
+      <GripVertical size={16} />
+    </Button>
   );
 }
 
@@ -181,17 +158,13 @@ export function PinnedThreadRow({
   const enabled = useGet(pinnedThreadReorderEnabled$);
   const pinned = useGet(signals.pinned$);
   const drag = useGet(dragSignals.drag$);
-  const target = useSet(dragSignals.target$);
-  const drop = useSet(dragSignals.drop$);
-  const signal = useGet(pageSignal$);
+  const mountRow = useSet(dragSignals.mountRow$);
   const reorderable = enabled && pinned;
-  const targetSide =
-    drag?.targetId === signals.threadId && drag.threadId !== signals.threadId
-      ? drag.side
-      : undefined;
   return (
     <div
+      ref={reorderable ? mountRow : undefined}
       className="group relative grid grid-cols-[minmax(0,1fr)_auto] okou-thread-reorder-row"
+      data-thread-id={signals.threadId}
       data-reorderable={reorderable || undefined}
       data-dragging={
         drag?.threadId === signals.threadId
@@ -200,47 +173,35 @@ export function PinnedThreadRow({
             : "pointer"
           : undefined
       }
-      data-drop-side={targetSide}
-      onDragOver={(event) => {
-        if (
-          !reorderable ||
-          !drag ||
-          !event.dataTransfer.types.includes(THREAD_DRAG_TYPE)
-        ) {
-          return;
-        }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        const rect = event.currentTarget.getBoundingClientRect();
-        target(
-          signals.threadId,
-          event.clientY < rect.top + rect.height / 2 ? "before" : "after",
-        );
-      }}
-      onDrop={(event) => {
-        if (
-          reorderable &&
-          drag &&
-          event.dataTransfer.types.includes(THREAD_DRAG_TYPE)
-        ) {
-          event.preventDefault();
-          detach(drop(signal), Reason.DomCallback);
-        }
-      }}
     >
       {children}
       {reorderable && (
-        <>
-          <span
-            aria-hidden="true"
-            className="okou-thread-drag-image pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
-          />
-          <div className="pointer-events-none absolute left-0 top-0 h-8 w-8 overflow-hidden">
-            <ThreadDragHandle signals={signals} dragSignals={dragSignals} />
-          </div>
-        </>
+        <div className="pointer-events-none absolute left-0 top-0 h-8 w-8 overflow-hidden">
+          <ThreadDragHandle signals={signals} dragSignals={dragSignals} />
+        </div>
       )}
     </div>
+  );
+}
+
+export function PinnedThreadDropPlaceholder({
+  signals,
+}: {
+  signals: PinnedThreadDragSignals;
+}) {
+  const placement = useGet(signals.placement$);
+  if (!placement) {
+    return null;
+  }
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="pinned-thread-drop-placeholder"
+      className="pointer-events-none absolute left-0 top-0 h-8 w-full rounded-lg border border-dashed border-border bg-muted/30"
+      style={{
+        transform: `translateY(${placement.destinationIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT}px)`,
+      }}
+    />
   );
 }
 
