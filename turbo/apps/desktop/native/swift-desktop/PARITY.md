@@ -18,6 +18,21 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The unchanged `98c344f0` CI helper reproduced a captured-window metadata mismatch
+with an owned AppKit main window and floating panel: `windowId` and the screenshot
+selected the main window, while `windowTitle` named the first AX floating panel.
+The [candidate red/green evidence](https://cdn.vm0.io/artifacts/b3kqzcegl9.json)
+uses the same fixture process and window. Both response labels now use the
+captured target's title. If WindowServer provides no title, only one AX window
+with matching bounds can supply it; otherwise the known app name labels the
+source. AX ordering and positional element IDs remain unchanged.
+
+All 135 helper tests and eight live candidate cases passed, including two-window
+selection, owned text replacement, floating-panel visibility, and rejection of
+stale keyboard focus and moved coordinate snapshots without editing either
+document. This is independent helper acceptance; the subsequent downloadable
+package and actual Desktop/server round trip need their own evidence.
+
 The downloaded `5bbc2f28` app completed a new
 [actual Desktop/server and recording walkthrough](https://cdn.vm0.io/artifacts/141aiw6e9l.json):
 11 authenticated preview API commands covered all nine command kinds with the

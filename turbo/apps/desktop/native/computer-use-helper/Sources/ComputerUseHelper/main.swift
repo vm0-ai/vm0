@@ -4019,26 +4019,28 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     if let appPath = runningApp.bundleURL?.path {
         response["appPath"] = appPath
     }
-    if let windowTitle = elements.first?["name"] as? String {
-        response["windowTitle"] = windowTitle
-    }
     let resolvedTarget = resolveWindowTarget(app: runningApp, root: root) ??
         resolveWindowTarget(app: runningApp, root: root, scope: .anySpace)
     guard let target = resolvedTarget else {
         throw windowTargetUnavailableFailure(appName: appName, pid: runningApp.processIdentifier)
     }
-    if response["windowTitle"] == nil, let windowTitle = target.title {
-        response["windowTitle"] = windowTitle
-    }
     let screenshot = try BackgroundWindowScreenshot.capture(
         target: target,
         appName: runningApp.localizedName ?? appName
     )
-    let sourceName = target.title ??
-        (elements.first?["name"] as? String) ??
-        runningApp.localizedName ??
-        appName
+    let sourceName = capturedWindowName(
+        title: target.title,
+        frame: target.frame,
+        accessibilityWindows: elements.filter { $0["role"] as? String == "AXWindow" }.map { window in
+            AccessibilityWindowMetadata(
+                title: window["name"] as? String,
+                frame: try? optionalRectPayload(window, "bounds")
+            )
+        },
+        appName: runningApp.localizedName ?? appName
+    )
     let sourceBounds = boundsRecord(target.frame)
+    response["windowTitle"] = sourceName
     response["windowId"] = target.windowNumber
     response["windowFrame"] = sourceBounds
     response["windowIsOnScreen"] = target.isOnScreen
