@@ -1,8 +1,15 @@
 use std::sync::Arc;
+use std::time::Duration;
+
+use guest_contracts::active_input::encode_active_input;
 
 use crate::active_input::{
-    API_ACTIVE_INPUT_RECHECK_INTERVAL, ActiveInputNotifications, ActiveInputSource,
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, API_ACTIVE_INPUT_RECHECK_INTERVAL,
+    ActiveInputNotifications, ActiveInputSource, identified_active_input_payload_len,
     local_active_input_delivery_id,
+};
+use crate::executor::active_input::{
+    ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL, ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::support::{
@@ -991,10 +998,12 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&wait_gate),
     ));
-    for status in [
-        sandbox::ProcessControlGuestStatus::QueueFull,
-        sandbox::ProcessControlGuestStatus::SinkUnavailable,
-    ] {
+    for attempt in 0..7 {
+        let status = if attempt % 2 == 0 {
+            sandbox::ProcessControlGuestStatus::QueueFull
+        } else {
+            sandbox::ProcessControlGuestStatus::SinkUnavailable
+        };
         overrides.push_process_control_outcome(sandbox::ProcessControlOutcome::GuestStatus {
             status,
             diagnostic: "retryable guest backpressure".to_string(),
@@ -1003,10 +1012,17 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
+    let payload_overhead = identified_active_input_payload_len("").unwrap();
+    let prompt = "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - payload_overhead);
+    let expected_payload = encode_active_input(DELIVERY_ID, &prompt).unwrap();
+    assert_eq!(
+        expected_payload.len(),
+        ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
+    );
     let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
         "200 OK",
         &format!(
-            r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"retry guest backpressure"}}"#,
+            r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"{prompt}"}}"#,
         ),
     ))])
     .await;
@@ -1038,11 +1054,40 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
         .await
     });
 
+    let retry_delays = [
+        ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL,
+        Duration::from_millis(500),
+        Duration::from_secs(1),
+        Duration::from_secs(2),
+        ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
+        ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
+        ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
+    ];
+    let scheduling_margin = Duration::from_millis(10);
     assert!(
         overrides
-            .wait_for_process_control_calls(3, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
+    tokio::time::pause();
+    let mut previous_attempt_at = tokio::time::Instant::now();
+    for (index, expected_delay) in retry_delays.into_iter().enumerate() {
+        assert!(
+            overrides
+                .wait_for_process_control_calls(index + 2, Duration::from_secs(30))
+                .await,
+            "control did not retry after backoff interval {index}"
+        );
+        let attempted_at = tokio::time::Instant::now();
+        let elapsed = attempted_at.duration_since(previous_attempt_at);
+        assert!(
+            elapsed >= expected_delay && elapsed <= expected_delay + scheduling_margin,
+            "retry interval {index} was {elapsed:?}, expected {expected_delay:?}"
+        );
+        previous_attempt_at = attempted_at;
+    }
+
+    tokio::time::resume();
     wait_gate.notify_one();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await
@@ -1052,12 +1097,12 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     assert!(result.failure.is_none());
     server.assert_finished().await;
     let calls = overrides.process_control_calls();
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), retry_delays.len() + 1);
     assert!(calls.iter().all(|call| call.message_id == DELIVERY_ID));
     assert!(
         calls
-            .windows(2)
-            .all(|pair| pair[0].payload == pair[1].payload)
+            .iter()
+            .all(|call| call.payload.as_slice() == expected_payload)
     );
 }
 
