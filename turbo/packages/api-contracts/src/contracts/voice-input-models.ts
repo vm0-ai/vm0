@@ -71,4 +71,4 @@ export const voiceInputModelIdSchema = z.enum(
 );
 
 export const DEFAULT_VOICE_INPUT_MODEL =
-  "google/gemini-3.6-flash" satisfies MultimodalVoiceInputModelId;
+  "google/gemini-3.1-flash-lite" satisfies MultimodalVoiceInputModelId;
