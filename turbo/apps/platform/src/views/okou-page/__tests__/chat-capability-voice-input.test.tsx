@@ -985,17 +985,16 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   await expect(
     screen.findByText("Voice transcription failed. Try again."),
   ).resolves.toBeVisible();
-  const restoredVoiceInput = await findButton("Voice input");
-  expect(restoredVoiceInput).toBeEnabled();
+  const restoredVoiceInput = await findEnabledButton("Voice input");
   expect(restoredVoiceInput).toHaveAttribute("aria-busy", "false");
   expect(queryButton("Attach")).toBeVisible();
   expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
   expect(normalizedComposerText()).toBe("Keep these typed notes.");
   expect(microphoneStops).toBe(1);
   expect(audioContextCloses).toBe(1);
-  await expect(findButton("Send")).resolves.toBeEnabled();
+  await findEnabledButton("Send");
 
-  click(await findEnabledButton("Voice input"));
+  click(restoredVoiceInput);
   click(await activeVoiceDraftStopButton());
   await waitFor(() => {
     expect(normalizedComposerText()).toBe(
