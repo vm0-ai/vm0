@@ -682,9 +682,10 @@ DNS_INPUT_TCP_BEFORE=$(rule_packet_count "$DNS_INPUT_TCP_RULE")
 [ -n "$DNS_INPUT_UDP_BEFORE" ] || fail "IPv4 UDP DNS INPUT counter missing"
 [ -n "$DNS_INPUT_TCP_BEFORE" ] || fail "IPv4 TCP DNS INPUT counter missing"
 
-# Submit a long-running job in background (keeps sandbox alive during tests)
+# Keep the sandbox active until the service-stop cleanup assertions run.
 echo "--- Submitting long-running job ---"
-sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --prompt 'rm -f /tmp/vm0-exec-keepalive && mkfifo /tmp/vm0-exec-keepalive && cat /tmp/vm0-exec-keepalive >/dev/null' &
 SUBMIT_PID=$!
 
 # Wait for OUR runner's sandbox to have a control socket.
