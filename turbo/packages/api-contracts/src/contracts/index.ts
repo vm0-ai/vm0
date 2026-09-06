@@ -138,6 +138,27 @@ export {
   type ModelPoliciesMainContract,
 } from "./model-policies";
 export {
+  SSH_CONNECTION_LIMIT,
+  SSH_DISPLAY_NAME_MAX_LENGTH,
+  SSH_HOST_MAX_LENGTH,
+  SSH_PASSPHRASE_MAX_LENGTH,
+  SSH_PRIVATE_KEY_MAX_LENGTH,
+  SSH_USERNAME_MAX_LENGTH,
+  createSshConnectionRequestSchema,
+  resetSshConnectionHostKeyRequestSchema,
+  sshConnectionCredentialsInputSchema,
+  sshConnectionPathParamsSchema,
+  sshConnectionResponseSchema,
+  sshConnectionsContract,
+  sshConnectionsListResponseSchema,
+  sshConnectionsSummaryResponseSchema,
+  updateSshConnectionRequestSchema,
+  type CreateSshConnectionRequest,
+  type SshConnectionResponse,
+  type SshConnectionsContract,
+  type UpdateSshConnectionRequest,
+} from "./ssh-connections";
+export {
   createModelProviderConnectionRequestSchema,
   getModelProviderTypeForSurfaceProtocol,
   modelProviderConnectionResponseSchema,

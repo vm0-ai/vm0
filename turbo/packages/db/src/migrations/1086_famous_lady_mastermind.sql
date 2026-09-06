@@ -1,0 +1,1 @@
+ALTER TABLE "agent_ssh_access" ADD CONSTRAINT "agent_ssh_access_agent_owner_fk" FOREIGN KEY ("agent_id","org_id","user_id") REFERENCES "public"."agents"("id","org_id","owner") ON DELETE cascade ON UPDATE no action;
