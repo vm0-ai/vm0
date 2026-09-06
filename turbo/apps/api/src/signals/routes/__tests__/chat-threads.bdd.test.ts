@@ -3048,7 +3048,7 @@ describe("CHAT-01 chat search index", () => {
               {
                 finish_reason: "stop",
                 message: {
-                  content: body.includes("concise follow-up prompts")
+                  content: body.includes("recommended follow-up messages")
                     ? JSON.stringify([
                         { prompt: followupOnlyNeedle, kind: "talk" },
                       ])

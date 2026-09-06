@@ -1118,6 +1118,18 @@ describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: actor.userId,
+        orgId: actor.orgId,
+        orgRole: actor.orgRole,
+      },
+      { [FeatureSwitchKey.FollowUpOptimize]: false },
+    );
 
     const titlePrompts: string[] = [];
     const followupSystemPrompts: string[] = [];
@@ -1515,21 +1527,9 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses the optimized prompt and userMessage semantics for recommended follow-ups", async () => {
+  it("uses the released optimized prompt and userMessage semantics for recommended follow-ups", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: actor.userId,
-        orgId: actor.orgId,
-        orgRole: actor.orgRole,
-      },
-      { [FeatureSwitchKey.FollowUpOptimize]: true },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -1691,7 +1691,7 @@ describe("CHAT-02: completed chat callback", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         followupRequests += 1;
         return [
           "[",
@@ -1760,7 +1760,7 @@ describe("CHAT-02: completed chat callback", () => {
         requestsBySite.set("title", record);
         return "Budget Pinning";
       }
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         requestsBySite.set("followups", record);
         return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
       }
@@ -1828,7 +1828,7 @@ describe("CHAT-02: completed chat callback", () => {
       if (systemContent.includes("Generate a short, descriptive title")) {
         return "Truncated Notification";
       }
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
       }
       return "Generated summary";
@@ -1913,7 +1913,7 @@ describe("CHAT-02: completed chat callback", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         followupRequests += 1;
         return {
           content: JSON.stringify([
@@ -1981,7 +1981,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       await openRouterGate.wait();
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         return JSON.stringify([
           { prompt: "Review the queued result", kind: "talk" },
         ]);
@@ -5541,7 +5541,7 @@ describe("CHAT-02: auto-send after failures", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         followupRequests += 1;
         await followupGate.wait();
         return JSON.stringify([

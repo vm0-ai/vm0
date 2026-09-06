@@ -17015,7 +17015,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           upstreamAuthorization = request.headers.get("authorization");
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
-          if (systemContent.includes("concise follow-up prompts")) {
+          if (systemContent.includes("recommended follow-up messages")) {
             followupRequestBody = payload;
             return HttpResponse.json({
               choices: [
@@ -17214,7 +17214,9 @@ describe("CHAT-02: prior rounds and thread titles", () => {
               {
                 finish_reason: "stop",
                 message: {
-                  content: systemContent.includes("concise follow-up prompts")
+                  content: systemContent.includes(
+                    "recommended follow-up messages",
+                  )
                     ? JSON.stringify([
                         {
                           prompt: "Use the recommended follow-up",
