@@ -842,8 +842,12 @@ impl<'a> CliEventPipeline<'a> {
         http: &HttpClient,
         initial_sequence: u32,
     ) -> Result<Self, AgentError> {
-        let delivery =
-            EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_sequence)?;
+        let delivery = EventDeliveryRuntime::start(
+            http.clone(),
+            &runtime.run_id,
+            initial_sequence,
+            runtime.framework == env::Framework::Pi,
+        )?;
         let ingestor = CliEventIngestor::new_with_session_metadata(
             runtime,
             None,
