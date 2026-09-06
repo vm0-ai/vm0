@@ -24,13 +24,14 @@ function shortcutHintLabels(): string[] {
   return screen
     .queryAllByRole("tooltip", { hidden: true })
     .flatMap((tooltip) => {
-      const key = tooltip.querySelector("kbd");
-      return key ? [key.textContent ?? ""] : [];
+      return [...tooltip.querySelectorAll("kbd")].map((key) => {
+        return key.textContent ?? "";
+      });
     })
     .sort();
 }
 
-test.each([
+const platforms = [
   {
     platform: "Mac",
     userAgent:
@@ -44,8 +45,10 @@ test.each([
     modifier: "Control",
     hints: ["Ctrl+Shift+F", "Ctrl+Shift+O", "Ctrl+B"],
   },
-])(
-  "Show global hints together after a 500 ms hold in a $platform browser and keep their shortcuts usable",
+];
+
+test.each(platforms)(
+  "Show one hint panel after a 500 ms hold in a $platform browser and switch cleanly between hover labels",
   async ({ userAgent, modifier, hints }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
@@ -79,6 +82,11 @@ test.each([
     );
 
     const user = userEvent.setup();
+    const searchButton = within(list).getByLabelText("Search workspace");
+    await user.hover(searchButton);
+    const searchHover = await screen.findByRole("tooltip", {
+      name: "Search workspace",
+    });
     const pressedAt = now();
     await user.keyboard(`{${modifier}>}`);
     expect(shortcutHintLabels()).toStrictEqual([]);
@@ -86,21 +94,56 @@ test.each([
       expect(shortcutHintLabels()).toStrictEqual([...hints].sort());
     });
     expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
+    expect(searchHover).not.toBeVisible();
+    const hintPanels = screen
+      .getAllByRole("tooltip", { hidden: true })
+      .filter((tooltip) => {
+        return tooltip.querySelector("kbd") !== null;
+      });
+    expect(hintPanels).toHaveLength(1);
+    expect(hintPanels[0]).toHaveTextContent("Search workspace");
+    expect(hintPanels[0]).toHaveTextContent("New chat");
+    expect(hintPanels[0]).toHaveTextContent("Hide chat list");
     expect(composer).toHaveFocus();
     expect(screen.queryByRole("dialog")).toBeNull();
     // Browser tab-number shortcuts stay reserved for the browser.
     expect(list.querySelectorAll("kbd")).toHaveLength(0);
 
+    const newChatButton = fastButton("New chat", list);
+    await user.hover(newChatButton);
+    expect(screen.queryByRole("tooltip", { name: "New chat" })).toBeNull();
     await user.keyboard(`{/${modifier}}`);
     await waitFor(() => {
       expect(shortcutHintLabels()).toStrictEqual([]);
     });
-    await user.hover(within(list).getByLabelText("Search workspace"));
     await expect(
-      screen.findByRole("tooltip", { name: "Search workspace" }),
+      screen.findByRole("tooltip", { name: "New chat" }),
     ).resolves.toBeVisible();
-    await user.unhover(within(list).getByLabelText("Search workspace"));
+    await user.unhover(newChatButton);
+  },
+);
 
+test.each(platforms)(
+  "Keep shortcuts usable with grouped hints in a $platform browser, including the collapsed chat list",
+  async ({ userAgent, modifier, hints }) => {
+    context.mocks.browser.userAgent(userAgent);
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(min-width: 48rem)";
+    });
+    const thread = chatListThread(1, "Keyboard shortcuts");
+    const workspace = await installContinuityWorkspace(context, {
+      caseId: 63,
+      threads: [thread],
+    });
+    await setupPage({
+      context,
+      path: `/chats/${thread.id}`,
+      auth: workspace.auth,
+      featureSwitches,
+    });
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    click(composer);
+    const user = userEvent.setup();
     await user.keyboard(`{${modifier}>}{Shift>}o{/Shift}{/${modifier}}`);
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${CHAT_LIST_AGENT_ID}/chat`);

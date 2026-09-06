@@ -114,7 +114,7 @@ export {
 } from "./components/ui/table";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
-export { ShortcutTooltip } from "./components/ui/shortcut-tooltip";
+export { ShortcutTooltipGroup } from "./components/ui/shortcut-tooltip-group";
 export {
   Tooltip,
   TooltipTrigger,
