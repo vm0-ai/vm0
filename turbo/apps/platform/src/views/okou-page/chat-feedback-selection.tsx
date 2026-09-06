@@ -11,7 +11,10 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
+  Button,
   getShortcutParts,
+  Kbd,
+  KbdGroup,
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -51,18 +54,13 @@ function anchorStyle(selection: ChatThreadFeedbackSelection): CSSProperties {
 
 function ShortcutHint({ shortcut }: { readonly shortcut: string }) {
   return (
-    <span aria-hidden="true" className="ml-0.5 inline-flex items-center gap-1">
+    <KbdGroup aria-hidden="true">
       {getShortcutParts(shortcut).map((part) => {
         return (
-          <kbd
-            key={part}
-            className='inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-background px-1 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
-          >
-            {part.length === 1 ? part.toUpperCase() : part}
-          </kbd>
+          <Kbd key={part}>{part.length === 1 ? part.toUpperCase() : part}</Kbd>
         );
       })}
-    </span>
+    </KbdGroup>
   );
 }
 
@@ -80,46 +78,52 @@ function FeedbackToolbar({
   const { t } = useTranslation();
   return (
     <div className="flex items-center gap-0.5">
-      <button
+      <Button
         type="button"
+        variant="quiet"
+        size="sm"
         onClick={onCopy}
         aria-keyshortcuts="c"
-        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+        className="text-foreground"
       >
-        <Copy size={14} />
+        <Copy />
         {t(($) => {
           return $.chat.actions.copy;
         })}
         <ShortcutHint shortcut="c" />
-      </button>
+      </Button>
       <div className="h-4 w-px bg-border" />
-      <button
+      <Button
         type="button"
+        variant="quiet"
+        size="sm"
         onClick={onProvideFeedback}
         aria-keyshortcuts="q"
-        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+        className="text-foreground"
       >
-        <MessageCircle size={14} />
+        <MessageCircle />
         {t(($) => {
           return $.chat.feedback.quote;
         })}
         <ShortcutHint shortcut="q" />
-      </button>
+      </Button>
       {onForward ? (
         <>
           <div className="h-4 w-px bg-border" />
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="sm"
             onClick={onForward}
             aria-keyshortcuts="f"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+            className="text-foreground"
           >
-            <Forward size={14} />
+            <Forward />
             {t(($) => {
               return $.chat.forward.action;
             })}
             <ShortcutHint shortcut="f" />
-          </button>
+          </Button>
         </>
       ) : null}
       {translation ? (
@@ -258,25 +262,27 @@ function TranslationAction({
   const translate = useSet(feedback.translate$);
   const translating = useTranslationLoading(feedback);
   return (
-    <button
+    <Button
       type="button"
+      variant="quiet"
+      size="sm"
       disabled={translating}
       onClick={() => {
         detach(translate(pageSignal), Reason.DomCallback);
       }}
       aria-keyshortcuts="t"
-      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      className="text-foreground"
     >
       {translating ? (
-        <Loader2 size={14} className="animate-spin" aria-hidden />
+        <Loader2 className="animate-spin" aria-hidden />
       ) : (
-        <Languages size={14} />
+        <Languages />
       )}
       {t(($) => {
         return $.chat.translation.action;
       })}
       <ShortcutHint shortcut="t" />
-    </button>
+    </Button>
   );
 }
 
