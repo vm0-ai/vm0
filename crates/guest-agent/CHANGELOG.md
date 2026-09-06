@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.8...guest-agent-v0.86.0) (2026-09-06)
+
+
+### Features
+
+* **pi-memory:** hide citation envelopes and preserve provenance ([#31965](https://github.com/vm0-ai/vm0/issues/31965)) ([5cecc7c](https://github.com/vm0-ai/vm0/commit/5cecc7cbcebb48899e4a9b251f209bbfb176f3f9))
+
 ## [0.85.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.7...guest-agent-v0.85.8) (2026-09-05)
 
 
