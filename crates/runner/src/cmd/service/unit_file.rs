@@ -290,6 +290,14 @@ pub(super) fn cleanup_unit_staging_files(path: &Path) -> RunnerResult<()> {
 /// the unit in a broken state. The staging file is unique so concurrent
 /// installs for the same unit do not share a writable temp path.
 pub(super) fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
+    write_unit_file_with(path, content, |file, content| file.write_all(content))
+}
+
+fn write_unit_file_with(
+    path: &Path,
+    content: &str,
+    write: impl Fn(&mut std::fs::File, &[u8]) -> std::io::Result<()>,
+) -> RunnerResult<()> {
     for _ in 0..UNIT_STAGING_MAX_ATTEMPTS {
         let attempt = UNIT_STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
         let tmp = unit_staging_path(path, attempt)?;
@@ -320,7 +328,7 @@ pub(super) fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
                 )));
             }
         }
-        if let Err(e) = file.write_all(content.as_bytes()) {
+        if let Err(e) = write(&mut file, content.as_bytes()) {
             let _ = std::fs::remove_file(&tmp);
             return Err(RunnerError::Internal(format!(
                 "write {}: {e}",
@@ -805,6 +813,45 @@ mod tests {
         let path = dir.path().join("vm0-runner-test.service");
         write_unit_file(&path, "content").unwrap();
         assert_no_unit_staging_files(dir.path(), "vm0-runner-test.service");
+    }
+
+    #[test]
+    fn write_unit_file_cleans_up_staging_on_partial_write_failure() {
+        const SECRET: &str = "sentinel-partial-unit-secret";
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        let original = b"[Unit]\nDescription=existing\n";
+        std::fs::write(&path, original).unwrap();
+        let secret_prefix = format!("[Service]\nEnvironment=\"TOKEN={SECRET}");
+        let replacement = format!("{secret_prefix}\"\nExecStart=/bin/true\n");
+
+        let result = write_unit_file_with(&path, &replacement, |file, content| {
+            file.write_all(content.get(..secret_prefix.len()).unwrap())?;
+            Err(std::io::Error::other("injected partial write failure"))
+        });
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("injected partial write failure"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        assert_no_unit_staging_files(dir.path(), "vm0-runner-test.service");
+        for entry in std::fs::read_dir(dir.path()).unwrap() {
+            let entry = entry.unwrap();
+            if !entry.file_type().unwrap().is_file() {
+                continue;
+            }
+            let content = std::fs::read(entry.path()).unwrap();
+            assert!(
+                !content
+                    .windows(SECRET.len())
+                    .any(|window| window == SECRET.as_bytes()),
+                "residual file {} contains the secret",
+                entry.path().display()
+            );
+        }
     }
 
     #[test]
