@@ -5,7 +5,7 @@
 //! avoids host lock files, polling, and cross-process fairness machinery. Exact reuse bypasses the
 //! gate, and post-spawn execution releases its permit so steady-state capacity is unchanged.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
@@ -16,6 +16,19 @@ use crate::error::{RunnerError, RunnerResult};
 pub(crate) struct PreSpawnAdmission {
     semaphore: Arc<Semaphore>,
     total_tokens: u32,
+    background: Arc<Mutex<BackgroundAdmissionState>>,
+}
+
+#[derive(Default)]
+struct BackgroundAdmissionState {
+    next_id: u64,
+    real_waiters: usize,
+    active: Option<ActiveBackgroundAdmission>,
+}
+
+struct ActiveBackgroundAdmission {
+    id: u64,
+    cancel: CancellationToken,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,9 +44,42 @@ pub(crate) struct PreSpawnAdmissionLease {
     metadata: PreSpawnAdmissionMetadata,
 }
 
+pub(crate) struct BackgroundPreSpawnAdmissionLease {
+    _permit: OwnedSemaphorePermit,
+    background: Arc<Mutex<BackgroundAdmissionState>>,
+    id: u64,
+    cancel: CancellationToken,
+}
+
+struct RealWaiterGuard {
+    background: Arc<Mutex<BackgroundAdmissionState>>,
+}
+
 impl PreSpawnAdmissionLease {
     pub(crate) fn metadata(&self) -> PreSpawnAdmissionMetadata {
         self.metadata
+    }
+}
+
+impl BackgroundPreSpawnAdmissionLease {
+    pub(crate) fn cancellation_token(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
+}
+
+impl Drop for BackgroundPreSpawnAdmissionLease {
+    fn drop(&mut self) {
+        let mut state = lock_background(&self.background);
+        if state.active.as_ref().map(|active| active.id) == Some(self.id) {
+            state.active = None;
+        }
+    }
+}
+
+impl Drop for RealWaiterGuard {
+    fn drop(&mut self) {
+        let mut state = lock_background(&self.background);
+        state.real_waiters -= 1;
     }
 }
 
@@ -47,6 +93,7 @@ impl PreSpawnAdmission {
         Ok(Self {
             semaphore: Arc::new(Semaphore::new(total_tokens as usize)),
             total_tokens,
+            background: Arc::new(Mutex::new(BackgroundAdmissionState::default())),
         })
     }
 
@@ -66,10 +113,24 @@ impl PreSpawnAdmission {
         }
 
         let effective_tokens = requested_tokens.min(self.total_tokens);
-        let immediate = Arc::clone(&self.semaphore).try_acquire_many_owned(effective_tokens);
+        let immediate = {
+            let mut background = lock_background(&self.background);
+            match Arc::clone(&self.semaphore).try_acquire_many_owned(effective_tokens) {
+                Ok(permit) => Ok(permit),
+                Err(_) => {
+                    background.real_waiters += 1;
+                    if let Some(active) = background.active.as_ref() {
+                        active.cancel.cancel();
+                    }
+                    Err(RealWaiterGuard {
+                        background: Arc::clone(&self.background),
+                    })
+                }
+            }
+        };
         let (permit, contended) = match immediate {
             Ok(permit) => (permit, false),
-            Err(_) => {
+            Err(waiter) => {
                 let permit = tokio::select! {
                     biased;
                     _ = cancel.cancelled() => return Err(RunnerError::Cancelled),
@@ -79,6 +140,7 @@ impl PreSpawnAdmission {
                         )))?
                     },
                 };
+                drop(waiter);
                 (permit, true)
             }
         };
@@ -97,6 +159,54 @@ impl PreSpawnAdmission {
             },
         })
     }
+
+    /// Reserve weighted pre-spawn capacity for best-effort background work.
+    ///
+    /// This never waits and admits at most one background owner. A real
+    /// request that cannot acquire immediately cancels the returned token.
+    pub(crate) fn try_acquire_background(
+        &self,
+        requested_tokens: u32,
+    ) -> RunnerResult<Option<BackgroundPreSpawnAdmissionLease>> {
+        if requested_tokens == 0 {
+            return Err(RunnerError::Internal(
+                "background pre-spawn admission request must be positive".into(),
+            ));
+        }
+
+        let effective_tokens = requested_tokens.min(self.total_tokens);
+        let mut background = lock_background(&self.background);
+        if background.real_waiters > 0 || background.active.is_some() {
+            return Ok(None);
+        }
+        let Ok(permit) = Arc::clone(&self.semaphore).try_acquire_many_owned(effective_tokens)
+        else {
+            return Ok(None);
+        };
+        let id = background.next_id;
+        background.next_id = background.next_id.wrapping_add(1);
+        let cancel = CancellationToken::new();
+        background.active = Some(ActiveBackgroundAdmission {
+            id,
+            cancel: cancel.clone(),
+        });
+        drop(background);
+
+        Ok(Some(BackgroundPreSpawnAdmissionLease {
+            _permit: permit,
+            background: Arc::clone(&self.background),
+            id,
+            cancel,
+        }))
+    }
+}
+
+fn lock_background(
+    background: &Mutex<BackgroundAdmissionState>,
+) -> MutexGuard<'_, BackgroundAdmissionState> {
+    background
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[cfg(test)]
@@ -224,5 +334,55 @@ mod tests {
         }));
         assert!(panic.is_err());
         admission.acquire(1, &cancel).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn background_admission_is_immediate_and_single_flight() {
+        let admission = PreSpawnAdmission::new(3).unwrap();
+        let background = admission.try_acquire_background(2).unwrap().unwrap();
+
+        assert!(admission.try_acquire_background(1).unwrap().is_none());
+        let cancel = CancellationToken::new();
+        let real = admission.acquire(1, &cancel).await.unwrap();
+        assert!(!real.metadata().contended);
+        drop(real);
+        drop(background);
+        assert!(admission.try_acquire_background(3).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn real_waiter_cancels_background_admission() {
+        let admission = PreSpawnAdmission::new(2).unwrap();
+        let background = admission.try_acquire_background(2).unwrap().unwrap();
+        let background_cancel = background.cancellation_token();
+        let cancel = CancellationToken::new();
+        let mut real = Box::pin(admission.acquire(1, &cancel));
+
+        assert_pending(real.as_mut());
+        assert!(background_cancel.is_cancelled());
+        assert!(admission.try_acquire_background(1).unwrap().is_none());
+
+        drop(background);
+        let real = tokio::time::timeout(TEST_TIMEOUT, real)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(real.metadata().contended);
+    }
+
+    #[tokio::test]
+    async fn cancelled_real_waiter_reopens_background_admission() {
+        let admission = PreSpawnAdmission::new(1).unwrap();
+        let holder_cancel = CancellationToken::new();
+        let holder = admission.acquire(1, &holder_cancel).await.unwrap();
+        let waiter_cancel = CancellationToken::new();
+        let mut waiter = Box::pin(admission.acquire(1, &waiter_cancel));
+
+        assert_pending(waiter.as_mut());
+        waiter_cancel.cancel();
+        assert!(matches!(waiter.await, Err(RunnerError::Cancelled)));
+        drop(holder);
+
+        assert!(admission.try_acquire_background(1).unwrap().is_some());
     }
 }

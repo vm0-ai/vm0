@@ -26,6 +26,18 @@ fn make_candidate_for_with_lease(
         .build()
 }
 
+fn make_blank_candidate(profile_name: &str, vcpu: u32, memory_mb: u32) -> ParkedIdleCandidate {
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    ParkedIdleCandidate::blank(
+        Box::new(sandbox_mock::MockSandbox::new(sandbox_id.to_string())),
+        Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
+        make_budget_lease(vcpu, memory_mb),
+        sandbox_id,
+        profile_name.to_owned(),
+        None,
+    )
+}
+
 fn park_at(
     pool: &mut IdlePool,
     reuse_key: &str,
@@ -53,6 +65,80 @@ fn park_and_take() {
     assert_eq!(entry.budget_vcpu(), 2);
     assert_eq!(entry.budget_memory_mb(), 2048);
     assert_eq!(pool.len(), 0);
+}
+
+#[tokio::test]
+async fn blank_capacity_yield_selects_only_the_oldest_compatible_aged_exact() {
+    let now = Instant::now();
+    let min_idle_age = Duration::from_secs(30 * 60);
+    let mut pool = IdlePool::new(pool_config(0));
+    assert!(matches!(
+        pool.park_at_for_test(
+            make_blank_candidate("vm0/default", 2, 2048),
+            now - Duration::from_secs(60 * 60),
+        ),
+        ParkResult::Parked
+    ));
+    assert!(matches!(
+        park_at(
+            &mut pool,
+            "wrong-profile",
+            ParkedIdleCandidateBuilder::new("wrong-profile", make_budget_lease(2, 2048))
+                .with_profile_name("vm0/other")
+                .build(),
+            now - Duration::from_secs(50 * 60),
+        ),
+        ParkResult::Parked
+    ));
+    assert!(matches!(
+        park_at(
+            &mut pool,
+            "wrong-resource",
+            make_candidate_for("wrong-resource", 4, 4096),
+            now - Duration::from_secs(50 * 60),
+        ),
+        ParkResult::Parked
+    ));
+    for (reuse_key, idle_for) in [
+        ("young", Duration::from_secs(29 * 60 + 59)),
+        ("boundary", min_idle_age),
+        ("oldest", Duration::from_secs(45 * 60)),
+    ] {
+        assert!(matches!(
+            park_at(
+                &mut pool,
+                reuse_key,
+                make_candidate_for(reuse_key, 2, 2048),
+                now - idle_for,
+            ),
+            ParkResult::Parked
+        ));
+    }
+
+    let revision = pool.status_snapshot().revision;
+    let (oldest, idle_age) = pool
+        .evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048)
+        .expect("oldest compatible exact should yield capacity");
+    assert_eq!(oldest.reuse_key(), "oldest");
+    assert_eq!(idle_age, Duration::from_secs(45 * 60));
+    assert_eq!(pool.status_snapshot().revision, revision + 1);
+    oldest.run().await;
+
+    let (boundary, idle_age) = pool
+        .evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048)
+        .expect("the age boundary should be inclusive");
+    assert_eq!(boundary.reuse_key(), "boundary");
+    assert_eq!(idle_age, min_idle_age);
+    boundary.run().await;
+
+    assert!(
+        pool.evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048,)
+            .is_none(),
+        "blank, young, and incompatible entries must remain"
+    );
+    for job in pool.drain() {
+        job.run().await;
+    }
 }
 
 #[test]
@@ -291,6 +377,69 @@ fn park_respects_max_idle() {
     assert_eq!(pool.len(), 2);
 }
 
+#[test]
+fn blank_entries_are_reserved_only_by_compatible_blank_lookup() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let blank = make_blank_candidate("vm0/default", 2, 2048);
+    let blank_key = blank.reuse_key().to_owned();
+    assert!(matches!(pool.park(blank), ParkResult::Parked));
+
+    assert_eq!(pool.blank_len(), 1);
+    assert!(pool.take_reserved(&blank_key).is_none());
+    assert!(
+        pool.reserve_reusable(&blank_key, "vm0/default", &None)
+            .is_none()
+    );
+    assert!(pool.reserve_blank("vm0/large", &None).is_none());
+
+    let reserved = pool
+        .reserve_blank("vm0/default", &None)
+        .expect("compatible blank should reserve");
+    assert_eq!(reserved.kind(), IdleSandboxKind::Blank);
+    assert_eq!(pool.blank_len(), 0);
+}
+
+#[test]
+fn blank_entries_remain_in_status_but_not_heartbeat_state() {
+    let mut pool = IdlePool::new(pool_config(0));
+    assert!(matches!(
+        pool.park(make_blank_candidate("vm0/default", 2, 2048)),
+        ParkResult::Parked
+    ));
+
+    assert_eq!(pool.status_snapshot().idle_sandboxes.len(), 1);
+    assert!(pool.held_sandbox_states().is_empty());
+}
+
+#[test]
+fn completed_exact_entry_replaces_blank_at_max_idle() {
+    let mut pool = IdlePool::new(pool_config(1));
+    assert!(matches!(
+        pool.park(make_blank_candidate("vm0/default", 2, 2048)),
+        ParkResult::Parked
+    ));
+
+    let result = pool.park(make_candidate_for("session-exact", 2, 2048));
+    assert!(matches!(result, ParkResult::Replaced(_)));
+    assert_eq!(pool.blank_len(), 0);
+    assert!(pool.has_reusable("session-exact", "vm0/default", &None));
+}
+
+#[test]
+fn blank_entry_never_replaces_exact_entry_at_max_idle() {
+    let mut pool = IdlePool::new(pool_config(1));
+    assert!(matches!(
+        pool.park(make_candidate_for("session-exact", 2, 2048)),
+        ParkResult::Parked
+    ));
+
+    assert!(matches!(
+        pool.park(make_blank_candidate("vm0/default", 2, 2048)),
+        ParkResult::Rejected(_)
+    ));
+    assert!(pool.has_reusable("session-exact", "vm0/default", &None));
+}
+
 #[tokio::test]
 async fn rejected_parked_idle_candidate_returns_active_owned_lease() {
     let mut pool = IdlePool::new(pool_config(1));
@@ -339,6 +488,33 @@ fn pressure_ordering_evicts_oldest_first() {
     assert_eq!(evicted.budget_vcpu(), 2); // the old one
     assert_eq!(pool.len(), 1);
     assert!(pool.take("new").is_some());
+}
+
+#[test]
+fn pressure_ordering_evicts_blank_before_older_exact_entry() {
+    let mut pool = IdlePool::new(pool_config(0));
+    let now = Instant::now();
+    let exact = make_candidate_for("session-exact", 2, 2048);
+    assert!(matches!(
+        park_at(
+            &mut pool,
+            "session-exact",
+            exact,
+            now - Duration::from_secs(100),
+        ),
+        ParkResult::Parked
+    ));
+    let blank = make_blank_candidate("vm0/default", 2, 2048);
+    let blank_key = blank.reuse_key().to_owned();
+    assert!(matches!(
+        park_at(&mut pool, &blank_key, blank, now),
+        ParkResult::Parked
+    ));
+
+    assert_eq!(
+        pool.oldest_first_pressure_keys(),
+        vec![blank_key, "session-exact".to_owned()]
+    );
 }
 
 #[test]

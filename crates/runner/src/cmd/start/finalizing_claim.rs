@@ -890,6 +890,7 @@ async fn acquire_fallback_resource(
                 profile_name,
                 device_rate_limits,
                 history_generation_run_id: Some(history_generation_run_id),
+                allow_compatible_blank: false,
                 vcpu,
                 memory_mb,
                 context: "finalizing_fallback_oldest",

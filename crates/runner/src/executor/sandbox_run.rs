@@ -1421,7 +1421,7 @@ pub(super) async fn execute_reused_sandbox(
     source_ip: &str,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    prev_storage: &crate::storage_fingerprints::StorageFingerprints,
+    start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
     mut inputs: PreparedRunInputs,
 ) -> ExecuteOutcome {
@@ -1435,7 +1435,7 @@ pub(super) async fn execute_reused_sandbox(
     let prepare_started = Instant::now();
     let prepared_storage = prepare_storage(
         context,
-        Some(prev_storage),
+        start.prev_storage,
         config,
         &inputs.controls.cancel,
         telemetry,
@@ -1492,12 +1492,7 @@ pub(super) async fn execute_reused_sandbox(
         },
         context,
         config,
-        RunStart {
-            restore_guest_state: true,
-            reuse_result: SandboxReuseResult::Reused,
-            workspace_reuse_result: WorkspaceReuseResult::SandboxReused,
-            prev_storage: Some(prev_storage),
-        },
+        start,
         telemetry,
         inputs,
     )

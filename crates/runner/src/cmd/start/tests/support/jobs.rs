@@ -15,10 +15,11 @@ pub(in super::super) fn push_job(
     profile: &str,
     ctx: Option<crate::types::ExecutionContext>,
 ) {
+    let reuse_key = ctx.as_ref().and_then(|context| context.reuse_key.clone());
     env.provider.set_claim_result(run_id, ctx);
     env.handle
         .discover_tx
-        .send(JobCandidate::new(run_id, profile.into()))
+        .send(JobCandidate::new(run_id, profile.into()).with_reuse_key(reuse_key))
         .unwrap();
 }
 

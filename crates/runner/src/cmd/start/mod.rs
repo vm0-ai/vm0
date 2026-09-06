@@ -86,6 +86,7 @@ use crate::workspace_image_cache::{
 };
 
 mod active_runs;
+mod blank_pool;
 mod factory_lifecycle;
 mod finalizing_claim;
 mod heartbeat;
@@ -102,6 +103,7 @@ mod sandbox_finalization;
 mod signals;
 
 use active_runs::ActiveRuns;
+use blank_pool::BlankPoolReplenisher;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
@@ -930,6 +932,7 @@ async fn run_start_with_home(
             budget,
             min_vcpu,
             min_memory_mb,
+            max_idle,
             device_rate_limits,
         },
         shared: RunnerSharedState {
@@ -1053,6 +1056,7 @@ struct CapacityPolicy {
     budget: Arc<ResourceBudget>,
     min_vcpu: u32,
     min_memory_mb: u32,
+    max_idle: usize,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
 
@@ -1967,6 +1971,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         #[cfg(test)]
         test_observer: test_hooks.test_observer.clone(),
     };
+    let mut blank_pool = BlankPoolReplenisher::new(
+        &runner.profiles,
+        &factories,
+        &capacity.budget,
+        capacity.max_idle,
+        capacity.device_rate_limits.clone(),
+    );
+    let mut blank_pool_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(1),
+        Duration::from_secs(1),
+    );
+    blank_pool_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut workspace_cache_gc_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + WORKSPACE_CACHE_GC_PERIOD,
         WORKSPACE_CACHE_GC_PERIOD,
@@ -2004,6 +2020,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         if mode != RunnerMode::Running {
             pending_finalizing_candidate = None;
         }
+        blank_pool.cancel_if_inactive(mode);
         match mode {
             RunnerMode::Starting => {}
             // Stopped should not normally reach here — teardown sets it and
@@ -2040,6 +2057,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
         }
 
+        blank_pool
+            .maybe_start(
+                mode,
+                &shared.idle_pool,
+                &capacity.budget,
+                &exec_config.pre_spawn_admission,
+                &shared.status,
+                &idle_destroy_tracker,
+            )
+            .await;
+
         // Spawn background restart task when timer fires
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
@@ -2064,6 +2092,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .and_then(JobCandidate::runner_preference)
             .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
+            result = blank_pool.wait_for_preparation(), if blank_pool.is_preparing() => {
+                if let Some(result) = result {
+                    blank_pool
+                        .finish_preparation(
+                            result,
+                            &shared.idle_pool,
+                            &shared.status,
+                            &idle_destroy_tracker,
+                        )
+                        .await;
+                }
+            }
+            _ = blank_pool_tick.tick() => {
+                blank_pool.request_attempt();
+            }
             // Job discovery via provider (Ably/filesystem wakeups + reconciliation).
             // The future is pinned outside the loop so other reactor branches
             // do not cancel and restart its internal wait timer. See #8747.
@@ -2409,6 +2452,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
+
+    let phase = teardown.phase_start("blank_pool_shutdown");
+    blank_pool.shutdown().await;
+    teardown.phase_complete("blank_pool_shutdown", phase);
 
     let phase = teardown.phase_start("heartbeat_drain");
     heartbeat.drain().await;

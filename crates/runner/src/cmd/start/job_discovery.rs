@@ -21,10 +21,10 @@
 //!    a required preference resource is not available, the candidate is deferred or retained for a
 //!    later poll rather than claimed.
 //! 2. **Reserve local admission.** Before ordinary claim, hold either a budget lease or a reserved
-//!    idle entry. Exact speculation holds a generation-matching reservation while it prepares the
-//!    sandbox in parallel with claim. A finalizing successor is the deliberate exception: a proof of
-//!    its predecessor's reuse identity allows claim before the predecessor publishes an exact
-//!    sandbox, so no fresh capacity is reserved for this admission.
+//!    exact or blank idle entry. Exact speculation holds a generation-matching reservation while it
+//!    prepares the sandbox in parallel with claim. A finalizing successor is the deliberate
+//!    exception: a proof of its predecessor's reuse identity allows claim before the predecessor
+//!    publishes an exact sandbox, so no fresh capacity is reserved for this admission.
 //! 3. **Register cancellation and recheck lifecycle mode.** The cancellation registration is made
 //!    before claim so provider-side cancellation can find the run, and duplicate registration is
 //!    rejected without overwriting the active executor handle. The mode is checked after local
@@ -64,12 +64,12 @@
 //!   remains the fresh fallback while ordinary idle reuse is attempted; it is either transferred to
 //!   the executor's fresh sandbox or released after no-sandbox completion. If idle reuse wins, the
 //!   idle sandbox's active lease replaces this speculative fresh lease.
-//! - **`Reusable(ReservedIdleActivation)`:** the reservation owns an idle-pool entry removed from
-//!   the pool. Before claim loss it is restored to the pool. After a claim, activation validates
-//!   profile, device limits, reuse key, and workspace-promotion identity, persists `preparing`,
-//!   and then unparks. A status or unpark failure completes the claim without a sandbox and either
-//!   restores or destroys the entry before any fresh fallback; the reservation is not silently
-//!   dropped.
+//! - **`Reusable(ReservedIdleActivation)`:** the reservation owns an exact or blank idle-pool entry
+//!   removed from the pool. Before claim loss it is restored to the pool. After a claim, activation
+//!   preserves exact and workspace-cache priority over blank inventory, validates the applicable
+//!   identity and configuration, persists `preparing`, and then unparks. A status or unpark failure
+//!   completes the claim without a sandbox and either restores or destroys the entry before any
+//!   fresh fallback; the reservation is not silently dropped.
 //! - **`ExactSpeculative(ExactSpeculationReservation)`:** a generation-matching reservation owns
 //!   the idle entry while unpark and guest-state preparation run alongside claim. The idle status
 //!   snapshot remains the visible pool state until the prepared sandbox is committed. A lost claim
@@ -127,7 +127,7 @@ use crate::executor::{
 };
 use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
-    DestroyOutcome, ExactIdleReservationMiss, IdlePoolSnapshot, IdleUnparkResult,
+    DestroyOutcome, ExactIdleReservationMiss, IdlePoolSnapshot, IdleSandboxKind, IdleUnparkResult,
     ReservedIdleSandbox, RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
     SpeculativeIdleUnparkResult, SpeculativeReparkResult,
 };
@@ -1524,6 +1524,12 @@ async fn acquire_local_admission_resource(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<LocalAdmissionResource> {
+    let workspace_cache_possible = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
+        && candidate.reuse_key().is_some_and(|reuse_key| {
+            ctx.spawn_ctx
+                .workspace_cache_snapshot
+                .might_contain_workspace_cache_reuse_key(reuse_key)
+        });
     match select_idle_entries_for_pressure(
         ctx.idle_pool,
         ctx.status,
@@ -1536,6 +1542,7 @@ async fn acquire_local_admission_resource(
             profile_name,
             device_rate_limits,
             history_generation_run_id: None,
+            allow_compatible_blank: !workspace_cache_possible,
             vcpu: job_vcpu,
             memory_mb: job_memory,
             context: "candidate_admission_oldest",
@@ -1638,7 +1645,9 @@ pub(super) async fn rollback_reserved_idle_for_spawn(
         (restore_result, snapshot)
     };
     set_idle_status_snapshot(&ctx.status, snapshot).await;
-    if let RestoreReservedIdleResult::Rejected(destroy_job) = restore_result {
+    if let RestoreReservedIdleResult::Replaced(destroy_job)
+    | RestoreReservedIdleResult::Rejected(destroy_job) = restore_result
+    {
         destroy_idle_jobs_and_wait(
             vec![*destroy_job],
             "finalizing_claim_reserved_idle_rollback",
@@ -1734,7 +1743,8 @@ async fn rollback_exact_speculation_outcome(
                     ctx.spawn_ctx.reuse_state_notify.notify_one();
                     match restore_result {
                         RestoreReservedIdleResult::Restored => None,
-                        RestoreReservedIdleResult::Rejected(destroy_job) => Some(destroy_job),
+                        RestoreReservedIdleResult::Replaced(destroy_job)
+                        | RestoreReservedIdleResult::Rejected(destroy_job) => Some(destroy_job),
                     }
                 }
                 SpeculativeReparkResult::Destroy {
@@ -2170,8 +2180,78 @@ pub(super) async fn activate_reserved_idle(
     } = request;
     let started_at = Instant::now();
     let requested_reuse_key = context.reuse_key();
+    // A matching exact sandbox can park while the provider claim is in
+    // flight. Preserve the normal exact-over-blank priority without giving up
+    // the blank reservation that owns admission capacity during that wait.
+    let (reservation, idle_snapshot) = match (reservation.kind(), requested_reuse_key) {
+        (IdleSandboxKind::Blank, Some(reuse_key)) => {
+            let mut pool = ctx.idle_pool.lock().await;
+            if let Some(exact) = pool.reserve_reusable(reuse_key, profile_name, device_rate_limits)
+            {
+                let restore_result = pool.restore_reserved(reservation);
+                let snapshot = pool.status_snapshot();
+                drop(pool);
+                if let RestoreReservedIdleResult::Replaced(destroy_job)
+                | RestoreReservedIdleResult::Rejected(destroy_job) = restore_result
+                {
+                    spawn_idle_destroy_job(
+                        &ctx.idle_destroy_tracker,
+                        *destroy_job,
+                        "reserved_blank_exact_priority_restore_rejected",
+                    );
+                }
+                (exact, snapshot)
+            } else {
+                drop(pool);
+                (reservation, idle_snapshot)
+            }
+        }
+        (IdleSandboxKind::Exact | IdleSandboxKind::Blank, _) => (reservation, idle_snapshot),
+    };
+    let reservation_kind = reservation.kind();
     let reserved_reuse_key = reservation.reuse_key().to_owned();
+    let miss_result = if requested_reuse_key.is_some() {
+        SandboxReuseResult::PoolMiss
+    } else {
+        SandboxReuseResult::NoReuseKey
+    };
+    let activation_reuse_result = match reservation_kind {
+        IdleSandboxKind::Exact => SandboxReuseResult::Reused,
+        IdleSandboxKind::Blank => miss_result,
+    };
+    let fallback_reuse_result = match reservation_kind {
+        IdleSandboxKind::Exact => SandboxReuseResult::PoolMiss,
+        IdleSandboxKind::Blank => miss_result,
+    };
+    let unpark_failure_reuse_result = match reservation_kind {
+        IdleSandboxKind::Exact => SandboxReuseResult::UnparkFailed,
+        IdleSandboxKind::Blank => miss_result,
+    };
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
+
+    let claimed_workspace_cache_reuse_key = if reservation_kind == IdleSandboxKind::Blank {
+        let started_at = Instant::now();
+        let possible = ctx.exec_config.workspace_cache.is_some()
+            && requested_reuse_key.is_some_and(|reuse_key| {
+                ctx.workspace_cache_snapshot
+                    .might_contain_workspace_cache_reuse_key(reuse_key)
+            });
+        pre_spawn_timing
+            .record_phase_elapsed(RunnerPreSpawnPhase::WorkspaceCacheStateLookup, started_at);
+        possible
+    } else {
+        false
+    };
+    if claimed_workspace_cache_reuse_key {
+        return cleanup_reserved_for_fresh_fallback(
+            reservation.into_destroy_job(),
+            fallback_reuse_result,
+            "reserved_blank_workspace_cache_priority",
+            ctx,
+        )
+        .await
+        .into();
+    }
 
     if reservation.profile_name() != profile_name
         || reservation.device_rate_limits() != device_rate_limits
@@ -2186,7 +2266,7 @@ pub(super) async fn activate_reserved_idle(
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
-            SandboxReuseResult::PoolMiss,
+            fallback_reuse_result,
             "reserved_reuse_configuration_mismatch",
             ctx,
         )
@@ -2194,12 +2274,9 @@ pub(super) async fn activate_reserved_idle(
         .into();
     }
 
-    if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
-        let reuse_result = if requested_reuse_key.is_none() {
-            SandboxReuseResult::NoReuseKey
-        } else {
-            SandboxReuseResult::PoolMiss
-        };
+    if reservation_kind == IdleSandboxKind::Exact
+        && requested_reuse_key != Some(reserved_reuse_key.as_str())
+    {
         let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reserved_reuse_key);
         warn!(
             run_id = %run_id,
@@ -2209,7 +2286,7 @@ pub(super) async fn activate_reserved_idle(
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
-            reuse_result,
+            miss_result,
             "reserved_reuse_session_mismatch",
             ctx,
         )
@@ -2239,7 +2316,7 @@ pub(super) async fn activate_reserved_idle(
             );
             return cleanup_reserved_for_fresh_fallback(
                 reservation.into_destroy_job_without_workspace_promotion_for_mismatch(),
-                SandboxReuseResult::PoolMiss,
+                fallback_reuse_result,
                 "reserved_reuse_workspace_promotion_mismatch",
                 ctx,
             )
@@ -2275,7 +2352,7 @@ pub(super) async fn activate_reserved_idle(
         .await;
         return ReservedActivation::CannotStart {
             budget_lease: None,
-            reuse_result: SandboxReuseResult::PoolMiss,
+            reuse_result: fallback_reuse_result,
             error: format!("persist preparing reuse ownership: {error}"),
         };
     }
@@ -2302,14 +2379,15 @@ pub(super) async fn activate_reserved_idle(
         } => {
             info!(
                 run_id = %run_id,
+                idle_kind = ?reservation_kind,
                 reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
                 reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
-                "reusing pre-claim reserved idle sandbox for reuse key"
+                "activating pre-claim reserved idle sandbox"
             );
             ReservedActivation::Ready {
                 reuse_entry: Some(sandbox),
                 active_lease: budget_lease,
-                reuse_result: SandboxReuseResult::Reused,
+                reuse_result: activation_reuse_result,
                 idle_snapshot,
             }
         }
@@ -2323,7 +2401,7 @@ pub(super) async fn activate_reserved_idle(
             );
             let activation = cleanup_reserved_for_fresh_fallback(
                 *destroy_job,
-                SandboxReuseResult::UnparkFailed,
+                unpark_failure_reuse_result,
                 "reserved_reuse_unpark_failed",
                 ctx,
             )
@@ -2524,41 +2602,63 @@ async fn try_reuse_from_pool(
         job_lease,
     } = request;
 
-    let started_at = Instant::now();
-    let Some(reuse_key) = context.reuse_key() else {
-        pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return Ok((
-            None,
-            job_lease,
-            SandboxReuseResult::NoReuseKey,
-            None,
-            false,
-            None,
-        ));
+    let reuse_key = context.reuse_key();
+    let miss_result = if reuse_key.is_some() {
+        SandboxReuseResult::PoolMiss
+    } else {
+        SandboxReuseResult::NoReuseKey
     };
+    let started_at = Instant::now();
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let taken = {
+    let exact = {
         let mut pool = ctx.idle_pool.lock().await;
-        pool.take_reserved(reuse_key)
+        reuse_key
+            .and_then(|reuse_key| pool.take_reserved(reuse_key))
             .map(|entry| (entry, pool.status_snapshot()))
     };
-    let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
     let claimed_workspace_cache_reuse_key = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
-        && ctx
-            .spawn_ctx
-            .workspace_cache_snapshot
-            .might_contain_workspace_cache_reuse_key(reuse_key);
+        && reuse_key.is_some_and(|reuse_key| {
+            ctx.spawn_ctx
+                .workspace_cache_snapshot
+                .might_contain_workspace_cache_reuse_key(reuse_key)
+        });
     pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::WorkspaceCacheStateLookup, started_at);
+    let taken = match exact {
+        Some(exact) => Some(exact),
+        None if !claimed_workspace_cache_reuse_key => {
+            let mut pool = ctx.idle_pool.lock().await;
+            reuse_key
+                .and_then(|reuse_key| pool.take_reserved(reuse_key))
+                .or_else(|| pool.reserve_blank(profile_name, device_rate_limits))
+                .map(|entry| (entry, pool.status_snapshot()))
+        }
+        None => None,
+    };
+    let took_idle_session = taken.is_some();
     let needs_reuse_state_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
         Some((entry, snapshot))
             if entry.profile_name() == profile_name
                 && entry.device_rate_limits() == device_rate_limits =>
         {
+            let entry_kind = entry.kind();
+            let entry_reuse_key = entry.reuse_key().to_owned();
+            let activation_reuse_result = match entry_kind {
+                IdleSandboxKind::Exact => SandboxReuseResult::Reused,
+                IdleSandboxKind::Blank => miss_result,
+            };
+            let fallback_reuse_result = match entry_kind {
+                IdleSandboxKind::Exact => SandboxReuseResult::PoolMiss,
+                IdleSandboxKind::Blank => miss_result,
+            };
+            let unpark_failure_reuse_result = match entry_kind {
+                IdleSandboxKind::Exact => SandboxReuseResult::UnparkFailed,
+                IdleSandboxKind::Blank => miss_result,
+            };
             if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
                 let started_at = Instant::now();
                 let validation = entry.validate_workspace_promotion_identity(
@@ -2573,8 +2673,8 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                        reuse_key_kind = reuse_key_kind(reuse_key),
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
+                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle sandbox and falling through to fresh create"
@@ -2587,7 +2687,7 @@ async fn try_reuse_from_pool(
                     return Ok((
                         None,
                         job_lease,
-                        SandboxReuseResult::PoolMiss,
+                        fallback_reuse_result,
                         Some(snapshot),
                         needs_reuse_state_refresh,
                         None,
@@ -2607,7 +2707,7 @@ async fn try_reuse_from_pool(
                 return Ok((
                     None,
                     job_lease,
-                    SandboxReuseResult::PoolMiss,
+                    fallback_reuse_result,
                     None,
                     needs_reuse_state_refresh,
                     None,
@@ -2641,7 +2741,7 @@ async fn try_reuse_from_pool(
                 return Ok((
                     None,
                     job_lease,
-                    SandboxReuseResult::PoolMiss,
+                    fallback_reuse_result,
                     None,
                     needs_reuse_state_refresh,
                     None,
@@ -2664,9 +2764,10 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                        reuse_key_kind = reuse_key_kind(reuse_key),
-                        "reusing idle sandbox for reuse key"
+                        idle_kind = ?entry_kind,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
+                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
+                        "activating idle sandbox"
                     );
                     // Idle entry already holds budget. Drop the speculative
                     // fresh-job lease and move the idle lease to the outer job
@@ -2675,7 +2776,7 @@ async fn try_reuse_from_pool(
                     Ok((
                         Some(*sandbox),
                         budget_lease,
-                        SandboxReuseResult::Reused,
+                        activation_reuse_result,
                         Some(snapshot),
                         needs_reuse_state_refresh,
                         Some(transfer_guard),
@@ -2684,8 +2785,9 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                        reuse_key_kind = reuse_key_kind(reuse_key),
+                        idle_kind = ?entry_kind,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
+                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
                         error = %error,
                         "unpark failed, destroying idle sandbox and falling through to fresh create"
                     );
@@ -2700,7 +2802,7 @@ async fn try_reuse_from_pool(
                             Ok((
                                 None,
                                 job_lease,
-                                SandboxReuseResult::UnparkFailed,
+                                unpark_failure_reuse_result,
                                 Some(snapshot),
                                 needs_reuse_state_refresh,
                                 None,
@@ -2717,7 +2819,7 @@ async fn try_reuse_from_pool(
                                 "reuse_unpark_failed",
                             );
                             Err(ReuseFromPoolFailure {
-                                reuse_result: SandboxReuseResult::UnparkFailed,
+                                reuse_result: unpark_failure_reuse_result,
                                 error: "idle sandbox cleanup was uncertain; fresh replacement was not started"
                                     .to_owned(),
                             })
@@ -2727,10 +2829,11 @@ async fn try_reuse_from_pool(
             }
         }
         Some((stale, snapshot)) if stale.profile_name() == profile_name => {
+            let stale_reuse_key = stale.reuse_key().to_owned();
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                reuse_key_kind = reuse_key_kind(reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&stale_reuse_key),
+                reuse_key_kind = reuse_key_kind(&stale_reuse_key),
                 profile = %profile_name,
                 "idle sandbox device rate limiter mismatch, destroying"
             );
@@ -2749,10 +2852,11 @@ async fn try_reuse_from_pool(
             ))
         }
         Some((stale, snapshot)) => {
+            let stale_reuse_key = stale.reuse_key().to_owned();
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                reuse_key_kind = reuse_key_kind(reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&stale_reuse_key),
+                reuse_key_kind = reuse_key_kind(&stale_reuse_key),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle sandbox profile mismatch, destroying"
@@ -2772,16 +2876,20 @@ async fn try_reuse_from_pool(
             ))
         }
         None => {
-            info!(
-                run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                reuse_key_kind = reuse_key_kind(reuse_key),
-                "no idle sandbox found for reuse key"
-            );
+            match reuse_key {
+                Some(reuse_key) => info!(
+                    run_id = %run_id,
+                    reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                    reuse_key_kind = reuse_key_kind(reuse_key),
+                    workspace_cache_possible = claimed_workspace_cache_reuse_key,
+                    "no compatible idle sandbox found for reuse key"
+                ),
+                None => info!(run_id = %run_id, "no compatible blank sandbox found"),
+            }
             Ok((
                 None,
                 job_lease,
-                SandboxReuseResult::PoolMiss,
+                miss_result,
                 None,
                 needs_reuse_state_refresh,
                 None,

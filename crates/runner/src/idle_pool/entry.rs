@@ -20,7 +20,16 @@ use crate::workspace_promotion::{
     abandon_unpublished_workspace_promotion, prepare_workspace_image_from_parked_sandbox,
 };
 
+const BLANK_REUSE_KEY_PREFIX: &str = "__vm0_blank__:";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IdleSandboxKind {
+    Exact,
+    Blank,
+}
+
 pub(super) struct IdleSandboxMetadata {
+    pub(super) kind: IdleSandboxKind,
     pub(super) reuse_key: String,
     /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
     /// differs, but `sandbox_id` stays the same) and is the join key for
@@ -50,8 +59,13 @@ impl IdleSandboxMetadata {
     }
 
     fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
+        debug_assert_eq!(self.kind, IdleSandboxKind::Exact);
         self.last_completed_at = Some(last_completed_at);
         self
+    }
+
+    fn is_blank(&self) -> bool {
+        self.kind == IdleSandboxKind::Blank
     }
 }
 
@@ -131,6 +145,42 @@ impl ParkedIdleCandidate {
     pub(crate) fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
         self.metadata = self.metadata.with_last_completed_at(last_completed_at);
         self
+    }
+
+    pub(crate) fn blank(
+        sandbox: Box<dyn Sandbox>,
+        factory: Arc<Box<dyn SandboxFactory>>,
+        budget_lease: BudgetLease,
+        sandbox_id: SandboxId,
+        profile_name: String,
+        device_rate_limits: Option<DeviceRateLimits>,
+    ) -> Self {
+        let source_ip = sandbox.source_ip().to_owned();
+        Self {
+            resources: IdleSandboxResources {
+                sandbox,
+                factory,
+                workspace_promotion: None,
+            },
+            metadata: IdleSandboxMetadata {
+                kind: IdleSandboxKind::Blank,
+                reuse_key: format!("{BLANK_REUSE_KEY_PREFIX}{sandbox_id}"),
+                sandbox_id,
+                profile_name,
+                device_rate_limits,
+                source_ip,
+                storage_fingerprints: StorageFingerprints::default(),
+                restored_session_identity: None,
+                history_generation_run_id: None,
+                guest_timezone_intent: GuestTimezoneIntent::Unknown,
+                last_completed_at: None,
+            },
+            budget_lease,
+        }
+    }
+
+    pub(super) fn is_blank(&self) -> bool {
+        self.metadata.is_blank()
     }
 
     pub(super) fn into_idle_entry(self, parked_at: Instant) -> IdleEntry {
@@ -284,6 +334,8 @@ pub struct ReservedIdleSandbox {
 
 pub enum RestoreReservedIdleResult {
     Restored,
+    /// The exact reservation was restored; the displaced blank still needs cleanup.
+    Replaced(Box<IdleDestroyJob>),
     Rejected(Box<IdleDestroyJob>),
 }
 
@@ -311,6 +363,7 @@ pub struct ReusableIdleSandbox {
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
+    pub kind: IdleSandboxKind,
     pub reuse_key: String,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
@@ -343,6 +396,10 @@ impl ReusableIdleSandbox {
         self.metadata.restored_session_identity.as_ref()
     }
 
+    pub(crate) fn kind(&self) -> IdleSandboxKind {
+        self.metadata.kind
+    }
+
     pub fn into_parts(self) -> ReusableIdleSandboxParts {
         let Self {
             sandbox,
@@ -351,6 +408,7 @@ impl ReusableIdleSandbox {
             guest_state_prepared,
         } = self;
         let IdleSandboxMetadata {
+            kind,
             reuse_key,
             sandbox_id: _,
             profile_name: _,
@@ -365,6 +423,7 @@ impl ReusableIdleSandbox {
 
         ReusableIdleSandboxParts {
             sandbox,
+            kind,
             reuse_key,
             source_ip,
             storage_fingerprints,
@@ -603,6 +662,10 @@ enum IdleActivationFailure {
 }
 
 impl IdleEntry {
+    pub(super) fn kind(&self) -> IdleSandboxKind {
+        self.metadata.kind
+    }
+
     pub(super) fn reuse_key(&self) -> &str {
         self.metadata.reuse_key()
     }
@@ -613,6 +676,10 @@ impl IdleEntry {
 
     pub fn device_rate_limits(&self) -> &Option<DeviceRateLimits> {
         &self.metadata.device_rate_limits
+    }
+
+    pub(super) fn is_blank(&self) -> bool {
+        self.metadata.is_blank()
     }
 
     #[cfg(test)]
@@ -752,6 +819,10 @@ impl IdleEntry {
 impl ReservedIdleSandbox {
     pub(crate) fn sandbox_id(&self) -> SandboxId {
         self.entry.metadata.sandbox_id
+    }
+
+    pub(crate) fn kind(&self) -> IdleSandboxKind {
+        self.entry.metadata.kind
     }
 
     pub fn reuse_key(&self) -> &str {

@@ -70,6 +70,10 @@ impl IdleDestroyTracker {
         }));
     }
 
+    pub(super) fn notify_reuse_state(&self) {
+        self.reuse_state_notify.notify_one();
+    }
+
     pub(super) async fn close_and_wait(&self) {
         let _ = self.tasks.close();
         self.tasks.wait().await;
@@ -112,6 +116,7 @@ pub(super) struct IdlePressureRequest<'a> {
     pub(super) profile_name: &'a str,
     pub(super) device_rate_limits: &'a Option<DeviceRateLimits>,
     pub(super) history_generation_run_id: Option<RunId>,
+    pub(super) allow_compatible_blank: bool,
     pub(super) vcpu: u32,
     pub(super) memory_mb: u32,
     pub(super) context: &'static str,
@@ -174,8 +179,8 @@ impl RetiringIdleEntry {
     }
 }
 
-/// Prefer a matching reusable entry; otherwise retire only enough oldest idle
-/// entries for the incoming resource shape.
+/// Prefer a matching exact entry, then an allowed compatible blank; otherwise
+/// retire only enough oldest idle entries for the incoming resource shape.
 ///
 /// The idle pool stays locked while one deterministic oldest-first ordering is
 /// consumed. Resource-budget substitution takes only its short synchronous
@@ -192,12 +197,20 @@ pub(super) async fn select_idle_entries_for_pressure(
 ) -> IdlePressureSelection {
     let (selection, snapshot) = {
         let mut pool = idle_pool.lock().await;
-        if let Some(reservation) = pool.reserve_reusable_for_pressure(
-            request.reuse_key,
-            request.profile_name,
-            request.device_rate_limits,
-            request.history_generation_run_id,
-        ) {
+        let reservation = pool
+            .reserve_reusable_for_pressure(
+                request.reuse_key,
+                request.profile_name,
+                request.device_rate_limits,
+                request.history_generation_run_id,
+            )
+            .or_else(|| {
+                request
+                    .allow_compatible_blank
+                    .then(|| pool.reserve_blank(request.profile_name, request.device_rate_limits))
+                    .flatten()
+            });
+        if let Some(reservation) = reservation {
             drop(retiring_leases);
             let snapshot = pool.status_snapshot();
             (
@@ -217,6 +230,9 @@ pub(super) async fn select_idle_entries_for_pressure(
             );
             if fresh_lease.is_none() {
                 for reuse_key in pool.oldest_first_pressure_keys() {
+                    let Some(idle_kind) = pool.entry_kind(&reuse_key) else {
+                        continue;
+                    };
                     let Some(job) = pool.evict_for_pressure(&reuse_key) else {
                         continue;
                     };
@@ -225,6 +241,7 @@ pub(super) async fn select_idle_entries_for_pressure(
                     info!(
                         run_id = %request.run_id,
                         context = request.context,
+                        idle_kind = ?idle_kind,
                         reuse_key_fingerprint = %short_digest(retiring.reuse_key()),
                         reuse_key_kind = reuse_key_kind(retiring.reuse_key()),
                         profile = %retiring.profile_name(),
