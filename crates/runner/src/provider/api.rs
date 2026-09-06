@@ -393,7 +393,7 @@ impl ApiProvider {
             if let Some(pruned) = outcome.pruned {
                 Self::log_direct_candidate_pruned("pop", pruned);
                 if outcome.candidate.is_none() {
-                    self.poll_wakeups.request_immediate_poll().await;
+                    self.poll_wakeups.request_immediate_poll();
                 }
             }
             let candidate = outcome.candidate?;
@@ -407,7 +407,7 @@ impl ApiProvider {
                 retry_after_ms = duration_ms(retry_after),
                 "ably: direct candidate skipped during claim cooldown"
             );
-            self.poll_wakeups.request_immediate_poll().await;
+            self.poll_wakeups.request_immediate_poll();
             if self.cancel.is_cancelled() {
                 return None;
             }
@@ -417,13 +417,11 @@ impl ApiProvider {
     async fn schedule_claim_retry_after_poll(&self, polled_with_exclusions: bool) {
         let snapshot = self.claim_cooldowns.snapshot().await;
         if let Some(retry_after) = snapshot.retry_after {
-            self.poll_wakeups
-                .request_deferred_poll_after(retry_after)
-                .await;
+            self.poll_wakeups.request_deferred_poll_after(retry_after);
         } else if polled_with_exclusions {
             // Every exclusion expired while the HTTP poll was in flight.
             // Re-poll once without the stale exclusions instead of waiting for the normal cadence.
-            self.poll_wakeups.request_immediate_poll().await;
+            self.poll_wakeups.request_immediate_poll();
         }
     }
 
@@ -450,7 +448,7 @@ impl ApiProvider {
                     cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
                     "claim failed, candidate cooling down"
                 );
-                self.poll_wakeups.request_immediate_poll().await;
+                self.poll_wakeups.request_immediate_poll();
             }
             ClaimCooldownRecord::Saturated { active_count } => {
                 self.claim_cooldowns.block_all(POLL_FAST).await;
@@ -467,9 +465,7 @@ impl ApiProvider {
                     cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
                     "claim failed, candidate cooldown capacity reached"
                 );
-                self.poll_wakeups
-                    .request_deferred_poll_after(POLL_FAST)
-                    .await;
+                self.poll_wakeups.request_deferred_poll_after(POLL_FAST);
             }
         }
     }
@@ -690,7 +686,7 @@ impl JobProvider for ApiProvider {
                 }
                 direct = self.wait_for_direct_candidate() => {
                     if let Some(direct) = direct {
-                        self.poll_wakeups.request_immediate_poll().await;
+                        self.poll_wakeups.request_immediate_poll();
                         let run_id = direct.run_id();
                         let profile = direct.profile_name().to_owned();
                         info!(
@@ -724,9 +720,11 @@ impl JobProvider for ApiProvider {
                     http_request_elapsed,
                 }) => {
                     if let Some(retry_after) = self.claim_cooldowns.remaining(job.run_id).await {
-                        self.poll_wakeups
-                            .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-                            .await;
+                        self.poll_wakeups.record_poll_result(
+                            due,
+                            PollOutcome::Empty,
+                            POLL_WAKEUP_RETRY,
+                        );
                         warn!(
                             run_id = %job.run_id,
                             retry_after_ms = duration_ms(retry_after),
@@ -736,10 +734,11 @@ impl JobProvider for ApiProvider {
                         self.schedule_claim_retry_after_poll(true).await;
                         continue;
                     }
-                    let record = self
-                        .poll_wakeups
-                        .record_poll_result(due, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
-                        .await;
+                    let record = self.poll_wakeups.record_poll_result(
+                        due,
+                        PollOutcome::JobFound,
+                        POLL_WAKEUP_RETRY,
+                    );
                     if record.defer_job_return() {
                         info!(
                             run_id = %job.run_id,
@@ -779,16 +778,20 @@ impl JobProvider for ApiProvider {
                     return Some(candidate);
                 }
                 Ok(PollApiResult { job: None, .. }) => {
-                    self.poll_wakeups
-                        .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-                        .await;
+                    self.poll_wakeups.record_poll_result(
+                        due,
+                        PollOutcome::Empty,
+                        POLL_WAKEUP_RETRY,
+                    );
                     self.schedule_claim_retry_after_poll(!excluded_run_ids.is_empty())
                         .await;
                 }
                 Err(e) => {
-                    self.poll_wakeups
-                        .record_poll_result(due, PollOutcome::Failure, POLL_WAKEUP_RETRY)
-                        .await;
+                    self.poll_wakeups.record_poll_result(
+                        due,
+                        PollOutcome::Failure,
+                        POLL_WAKEUP_RETRY,
+                    );
                     self.record_poll_failure_at(reason, &e, Instant::now())
                         .await;
                 }
@@ -883,7 +886,7 @@ impl JobProvider for ApiProvider {
             Ok(None) => {
                 self.claim_cooldowns.remove(run_id).await;
                 info!(run_id = %run_id, "job unavailable, skipping");
-                self.poll_wakeups.request_immediate_poll().await;
+                self.poll_wakeups.request_immediate_poll();
                 None
             }
             Err(e) => {
@@ -908,9 +911,7 @@ impl JobProvider for ApiProvider {
     }
 
     async fn defer_poll_until(&self, deadline: Instant) {
-        self.poll_wakeups
-            .request_deferred_poll_until(deadline)
-            .await;
+        self.poll_wakeups.request_deferred_poll_until(deadline);
     }
 
     async fn shutdown(&self) {
@@ -3555,7 +3556,7 @@ mod tests {
                 },
                 async {
                     server.next_request("status poll request").await;
-                    wakeups.request_immediate_poll().await;
+                    wakeups.request_immediate_poll();
                     release_status_tx.send(()).unwrap();
 
                     server.next_request("empty poll request").await;
@@ -3567,7 +3568,7 @@ mod tests {
                         assert_eq!(episode.started_at, started_at);
                         assert_eq!(episode.consecutive_failures, 1);
                     }
-                    wakeups.request_immediate_poll().await;
+                    wakeups.request_immediate_poll();
                     release_empty_tx.send(()).unwrap();
 
                     server.next_request("job poll request after recovery").await;
@@ -3843,9 +3844,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
@@ -3923,9 +3922,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
@@ -4004,9 +4001,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
@@ -4053,9 +4048,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider =
             api_provider_for_test(api_url, CancellationToken::new(), Arc::clone(&wakeups));
         push_direct_candidate_for_test(
@@ -4134,9 +4127,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let cancel = CancellationToken::new();
         let provider = api_provider_for_test(api_url, cancel.clone(), Arc::clone(&wakeups));
         push_direct_candidate_for_test(
@@ -4277,7 +4268,6 @@ mod tests {
         assert_eq!(event_field(event, "active_cooldowns"), "1");
         let deferred_poll_at = wakeups
             .snapshot()
-            .await
             .deferred_poll_at
             .expect("saturation should defer HTTP polling");
         assert!(
@@ -4405,9 +4395,7 @@ mod tests {
         let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
 
         server.next_request("first deferred poll request").await;
-        wakeups
-            .request_deferred_poll_after_for_test(Duration::ZERO)
-            .await;
+        wakeups.request_deferred_poll_after_for_test(Duration::ZERO);
         release_first_tx.send(()).unwrap();
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)

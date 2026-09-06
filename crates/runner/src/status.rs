@@ -420,7 +420,7 @@ impl StatusTracker {
     }
 
     #[cfg(test)]
-    fn new_with_atomic_write_gate(
+    pub(crate) fn new_with_atomic_write_gate(
         path: PathBuf,
         generation: u64,
         started: std::sync::Arc<tokio::sync::Notify>,
@@ -439,6 +439,11 @@ impl StatusTracker {
     #[cfg(test)]
     pub(crate) fn idle_info_update_request_count(&self) -> u64 {
         self.idle_info_update_requests.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn hold_state_for_test(&self) -> impl Drop + '_ {
+        self.state.lock().await
     }
 
     /// Transition the reported lifecycle mode and flush the status file.
