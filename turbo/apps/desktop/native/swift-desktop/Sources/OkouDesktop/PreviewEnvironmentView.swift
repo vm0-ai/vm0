@@ -9,8 +9,12 @@ struct PreviewEnvironmentView: View {
   @State private var apiAddress = ""
   @State private var authAddress = ""
   @State private var bypass = ""
-  @State private var saved = false
+  @State private var savedInput: [String]?
   @State private var error: String?
+
+  private var input: [String] {
+    [enabled ? "preview" : "bundled", address, apiAddress, authAddress, bypass]
+  }
 
   var body: some View {
     Form {
@@ -25,10 +29,10 @@ struct PreviewEnvironmentView: View {
         Section("Preview") {
           TextField("App URL", text: $address)
             .autocorrectionDisabled()
-            .onChange(of: address) { _, value in extractBypass(value) }
+            .onSubmit { extractBypass(address) }
           SecureField("Vercel bypass token", text: $bypass)
           Text(
-            "You can paste a preview URL containing x-vercel-protection-bypass. Its token is stored in the field above."
+            "You can paste a preview URL containing x-vercel-protection-bypass. Its token is separated when you save."
           )
           .font(.caption).foregroundStyle(.secondary)
           DisclosureGroup("Service addresses") {
@@ -48,7 +52,7 @@ struct PreviewEnvironmentView: View {
       }
       Section {
         Button("Save for Next Launch") { save() }.buttonStyle(.borderedProminent)
-        if saved {
+        if savedInput == input {
           Text("Saved. Quit and reopen to use this environment.").foregroundStyle(.secondary)
         }
         if let error { Text(error).foregroundStyle(.orange) }
@@ -65,11 +69,6 @@ struct PreviewEnvironmentView: View {
         extractBypass(address)
       }
     }
-    .onChange(of: enabled) { saved = false }
-    .onChange(of: address) { saved = false }
-    .onChange(of: apiAddress) { saved = false }
-    .onChange(of: authAddress) { saved = false }
-    .onChange(of: bypass) { saved = false }
   }
 
   private func extractBypass(_ value: String) {
@@ -90,6 +89,9 @@ struct PreviewEnvironmentView: View {
 
   private func save() {
     do {
+      // Editing can deliver the URL one character at a time. Splitting it
+      // before submission would move a partial token and change the caret.
+      extractBypass(address)
       let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
       let api = apiAddress.trimmingCharacters(in: .whitespacesAndNewlines)
       let auth = authAddress.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -106,10 +108,10 @@ struct PreviewEnvironmentView: View {
           bypass: bypass.isEmpty ? nil : bypass) : nil
       try settings.save(environment)
       error = nil
-      saved = true
+      savedInput = input
     } catch {
       self.error = error.localizedDescription
-      saved = false
+      savedInput = nil
     }
   }
 }

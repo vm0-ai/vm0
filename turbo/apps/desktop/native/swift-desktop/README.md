@@ -55,7 +55,7 @@ release promotion and its compatibility audit remain separate acceptance work.
 
 Open the native **Environment** tab and enable **Use a preview environment**.
 Paste the App URL reported by `deploy-app`; a URL containing
-`x-vercel-protection-bypass` automatically moves its token into the secure field.
+`x-vercel-protection-bypass` moves its token into the secure field when saved.
 The token can also be entered separately. Other App URL query parameters are
 preserved when opening the App or reviewing a recording.
 
