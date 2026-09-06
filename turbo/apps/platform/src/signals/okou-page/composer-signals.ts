@@ -525,6 +525,7 @@ function createComposerInputLifecycle(
   const voice = createComposerVoiceInputSignals(
     workflowComposer.appendText$,
     deliverText$,
+    workflowComposer.readVoiceContext$,
     lastAssistantMessage$,
     options.voiceDraftTarget,
   );

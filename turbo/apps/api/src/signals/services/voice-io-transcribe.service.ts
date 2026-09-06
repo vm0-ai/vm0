@@ -1,5 +1,8 @@
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
-import type { VoiceIoTranscribeResponse } from "@okouai/api-contracts/contracts/voice-io-transcribe";
+import type {
+  VoiceIoTranscribeContext,
+  VoiceIoTranscribeResponse,
+} from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { command } from "ccstate";
 
 import { notConfigured } from "../../lib/error";
@@ -20,10 +23,9 @@ import { settle } from "../utils";
 
 const MAX_CONCURRENT_VOICE_TRANSCRIPTIONS = 3;
 
-interface VoiceDraftTranscriptionInput {
+interface VoiceDraftTranscriptionInput extends VoiceIoTranscribeContext {
   readonly files: readonly File[];
   readonly longRecording: boolean;
-  readonly lastAssistantMessage?: string;
 }
 
 function transcriptionError<Status extends number>(
@@ -152,11 +154,7 @@ async function transcribeLongVoiceDraft(
     signal,
     async (file, workerSignal) => {
       const audio = await voiceAudio(file, workerSignal);
-      const result = await transcribeVoice(
-        audio,
-        input.lastAssistantMessage,
-        workerSignal,
-      );
+      const result = await transcribeVoice(audio, input, workerSignal);
       if (result === null) {
         throw new Error("OpenRouter voice transcription is not configured");
       }
@@ -168,11 +166,7 @@ async function transcribeLongVoiceDraft(
   if (!transcript) {
     return null;
   }
-  const polished = await polishLongVoiceTranscript(
-    transcript,
-    input.lastAssistantMessage,
-    signal,
-  );
+  const polished = await polishLongVoiceTranscript(transcript, input, signal);
   if (polished === null) {
     throw new Error("OpenRouter voice transcription is not configured");
   }
@@ -192,11 +186,7 @@ async function transcribeShortVoiceDraft(
     throw new Error("Voice draft transcription requires one audio file");
   }
   const audio = await voiceAudio(file, signal);
-  const result = await transcribeAndPolishVoice(
-    audio,
-    input.lastAssistantMessage,
-    signal,
-  );
+  const result = await transcribeAndPolishVoice(audio, input, signal);
   if (result === null) {
     throw new Error("OpenRouter voice transcription is not configured");
   }

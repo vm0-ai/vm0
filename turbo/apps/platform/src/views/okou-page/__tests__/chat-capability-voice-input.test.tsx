@@ -1,3 +1,4 @@
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { voiceIoTranscribeContract } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -9,6 +10,7 @@ import { expect, test, vi } from "vitest";
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
+import { AGENT_ID } from "./chat-lifecycle-test-helpers.ts";
 import {
   assistantEvent,
   context,
@@ -19,6 +21,7 @@ import {
   queryButton,
   readyChat,
   RUN_PATH,
+  RUN_THREAD_ID,
   NEW_CHAT_PATH,
 } from "./chat-run-test-fixtures.ts";
 
@@ -113,6 +116,7 @@ function placeCaret(
   composer: HTMLElement,
   textNodeContent: string,
   offset: number,
+  endOffset = offset,
 ): void {
   const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
@@ -124,7 +128,7 @@ function placeCaret(
   }
   const range = document.createRange();
   range.setStart(node, offset);
-  range.collapse(true);
+  range.setEnd(node, endOffset);
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
@@ -137,7 +141,8 @@ test("Add voice transcription to the current message draft", async () => {
   let transcriptionRequest = 0;
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/stt", async () => {
+  context.mocks.http.post("*/api/voice-io/stt", async ({ request }) => {
+    expect((await request.formData()).has("editorContext")).toBeFalsy();
     transcriptionRequest += 1;
     if (transcriptionRequest === 2) {
       await delayedTranscript.promise;
@@ -254,6 +259,11 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
     expect(body.get("lastAssistantMessage")).toBe(
       "Use LaunchPad for the rollout.",
     );
+    expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+      before: "Opening  closing",
+      selected: "",
+      after: "",
+    });
     const files = body.getAll("file");
     expect(files).toHaveLength(1);
     expect(files[0]).toMatchObject({ type: "audio/wav", size: 32_044 });
@@ -294,6 +304,7 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   const stop = await activeVoiceDraftStopButton();
   expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
+  placeCaret(currentComposer(), "Opening  closing", 16);
   click(stop);
   await transcriptionStarted.promise;
 
@@ -318,6 +329,145 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   );
   expectNoVoiceDraftNode();
   expect(queryButton("Finish")).toBeNull();
+});
+
+test.each([RUN_PATH, NEW_CHAT_PATH])(
+  "Read the current selection when submitting voice input at %s",
+  async (path) => {
+    context.mocks.browser.voiceInput({ rms: 0.12 });
+    installAvailableVoiceQuota();
+    context.mocks.http.post(
+      "*/api/voice-io/transcribe",
+      async ({ request }) => {
+        const body = await request.formData();
+        expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+          before: "Alpha ",
+          selected: "old",
+          after: " omega",
+        });
+        return HttpResponse.json({
+          transcript: "new",
+          polishedText: "new",
+          language: "en-US",
+        });
+      },
+    );
+    installRunChat();
+    await setupPage({
+      context,
+      path,
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+    });
+    const voiceInput = await readyVoiceInput();
+    await fill(currentComposer(), "Alpha old omega");
+    placeCaret(currentComposer(), "Alpha old omega", 0);
+    click(voiceInput);
+    const stop = await activeVoiceDraftStopButton();
+    // The selection at submission, rather than at microphone startup, is used.
+    placeCaret(currentComposer(), "Alpha old omega", 6, 9);
+    click(stop);
+    await waitFor(() => {
+      expect(normalizedComposerText()).toBe("Alpha new omega");
+    });
+  },
+);
+
+test("Keep paragraph boundaries and readable mention names in voice context", async () => {
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
+    const body = await request.formData();
+    expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+      before: "First paragraph\n\nAsk @Run Agent ",
+      selected: "old",
+      after: " about @Run conversation\nLast paragraph",
+    });
+    return HttpResponse.json({
+      transcript: "new",
+      polishedText: "new",
+      language: "en-US",
+    });
+  });
+  installRunChat();
+  context.mocks.api(agentDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftUserMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "First paragraph\n\nAsk " },
+          { type: "agent", agentId: AGENT_ID, nameSnapshot: "Run Agent" },
+          { type: "text", text: " old about " },
+          {
+            type: "chat_thread",
+            threadId: RUN_THREAD_ID,
+            titleSnapshot: "Run conversation",
+          },
+          { type: "text", text: "\nLast paragraph" },
+        ],
+      },
+      draftAttachments: null,
+    });
+  });
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  const voiceInput = await readyVoiceInput();
+  await waitFor(() => {
+    expect(currentComposer()).toHaveTextContent("Ask Run Agent old about");
+  });
+  click(voiceInput);
+  const stop = await activeVoiceDraftStopButton();
+  placeCaret(currentComposer(), " old about ", 1, 4);
+  click(stop);
+  await waitFor(() => {
+    expect(currentComposer()).toHaveTextContent(
+      "Ask Run Agent new about Run conversation",
+    );
+  });
+});
+
+test("Bound editor context around the selection without trimming its whitespace", async () => {
+  const before = `${"a".repeat(1100)} leading `;
+  const selected = "s".repeat(1100);
+  const after = ` trailing ${"z".repeat(1100)}`;
+  const draft = before + selected + after;
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
+    const body = await request.formData();
+    expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+      before: `${"a".repeat(991)} leading `,
+      selected: "s".repeat(1000),
+      after: ` trailing ${"z".repeat(990)}`,
+    });
+    return HttpResponse.json({
+      transcript: "replacement",
+      polishedText: "replacement",
+      language: "en-US",
+    });
+  });
+  installRunChat();
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+  });
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), draft);
+  click(voiceInput);
+  const stop = await activeVoiceDraftStopButton();
+  placeCaret(
+    currentComposer(),
+    draft,
+    before.length,
+    before.length + selected.length,
+  );
+  click(stop);
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe(`${before}replacement${after}`);
+  });
 });
 
 test.each(["button", "keyboard"])(

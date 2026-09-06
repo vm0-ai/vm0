@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import {
   VOICE_IO_TRANSCRIBE_MAX_FILES,
   voiceIoTranscribeContract,
+  type VoiceIoEditorContext,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -114,13 +115,20 @@ async function waitForAbort(
   await aborted.promise;
 }
 
-function form(files: readonly File[], reference?: string): FormData {
+function form(
+  files: readonly File[],
+  reference?: string,
+  editorContext?: VoiceIoEditorContext,
+): FormData {
   const data = new FormData();
   for (const file of files) {
     data.append("file", file);
   }
   if (reference !== undefined) {
     data.append("lastAssistantMessage", reference);
+  }
+  if (editorContext !== undefined) {
+    data.append("editorContext", JSON.stringify(editorContext));
   }
   return data;
 }
@@ -301,6 +309,11 @@ describe("POST /api/voice-io/transcribe", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
     const reference = "The current release is called Project Nebula.";
+    const editorContext = {
+      before: "Please review Project Nebula\n",
+      selected: "the previous scope",
+      after: " before shipping version 1.5.",
+    };
     let providerRequest: OpenRouterRequest | undefined;
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
@@ -329,7 +342,7 @@ describe("POST /api/voice-io/transcribe", () => {
     const response = await accept(
       client().post({
         headers: { authorization: "Bearer clerk-session" },
-        body: form([audioFile(1)], reference),
+        body: form([audioFile(1)], reference, editorContext),
       }),
       [200],
     );
@@ -372,6 +385,16 @@ describe("POST /api/voice-io/transcribe", () => {
       }),
     ).toStrictEqual(["text", "text", "input_audio"]);
     expect(parts[0]?.text).toContain(reference);
+    expect(parts[0]?.text).toContain(
+      JSON.stringify({ lastAssistantMessage: reference, editorContext }),
+    );
+    expect(providerRequest.messages[0]?.content).not.toContain(
+      editorContext.before,
+    );
+    expect(providerRequest.messages[0]?.content).toContain("# Light polish");
+    expect(providerRequest.messages[0]?.content).toContain(
+      "Never turn 'may need to change' into 'needs to change'",
+    );
     expect(parts[1]?.text).toContain(
       "The audio that follows is the ONLY content to transcribe.",
     );
@@ -404,6 +427,13 @@ describe("POST /api/voice-io/transcribe", () => {
     const firstWave = createDeferredPromise<void>(context.signal);
     const firstWaveStarted = createDeferredPromise<void>(context.signal);
     let globalPolishContent = "";
+    let globalPolishSystem = "";
+    const chunkReferences: string[] = [];
+    const editorContext = {
+      before: "Review the plan first: ",
+      selected: "",
+      after: "\nDo not implement yet.",
+    };
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         const body = (await request.json()) as OpenRouterRequest;
@@ -412,6 +442,11 @@ describe("POST /api/voice-io/transcribe", () => {
           const userMessage = body.messages[1];
           globalPolishContent =
             typeof userMessage?.content === "string" ? userMessage.content : "";
+          const systemMessage = body.messages[0];
+          globalPolishSystem =
+            typeof systemMessage?.content === "string"
+              ? systemMessage.content
+              : "";
           return HttpResponse.json({
             choices: [
               {
@@ -428,6 +463,7 @@ describe("POST /api/voice-io/transcribe", () => {
         }
 
         transcriptionRequests += 1;
+        chunkReferences.push(requestAudioParts(body)[0]?.text ?? "");
         activeTranscriptions += 1;
         maximumActiveTranscriptions = Math.max(
           maximumActiveTranscriptions,
@@ -461,7 +497,7 @@ describe("POST /api/voice-io/transcribe", () => {
 
     const pendingResponse = client().post({
       headers: { authorization: "Bearer clerk-session" },
-      body: form(files, "Use the exact product spelling."),
+      body: form(files, "Use the exact product spelling.", editorContext),
     });
     await firstWaveStarted.promise;
     expect(transcriptionRequests).toBe(3);
@@ -476,6 +512,13 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(transcriptionRequests).toBe(4);
     expect(maximumActiveTranscriptions).toBe(3);
     expect(globalPolishContent).toContain("part 1 part 2 part 3 part 4");
+    for (const reference of [...chunkReferences, globalPolishContent]) {
+      expect(reference).toContain(JSON.stringify(editorContext));
+    }
+    expect(globalPolishSystem).toContain("# Light polish");
+    expect(globalPolishSystem).toContain(
+      "Never turn 'may need to change' into 'needs to change'",
+    );
   });
 
   it("uses transcript-only audio processing and one global polish for a long single file", async () => {
@@ -600,6 +643,31 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(transcriptionRequests).toBe(3);
     expect(abortedRequests).toBe(2);
   });
+
+  it.each([
+    { label: "malformed JSON", value: "not valid json" },
+    {
+      label: "oversized selection",
+      value: JSON.stringify({
+        before: "",
+        selected: "x".repeat(1001),
+        after: "",
+      }),
+    },
+  ])(
+    "rejects invalid editor context before contacting the provider: $label",
+    async ({ value }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const body = form([audioFile(1)]);
+      body.append("editorContext", value);
+      const response = await client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body,
+      });
+      expect(response.status).toBe(400);
+    },
+  );
 
   it("requires the voice draft switch and rejects oversized reference context", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");

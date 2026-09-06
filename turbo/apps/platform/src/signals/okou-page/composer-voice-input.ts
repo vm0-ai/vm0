@@ -9,6 +9,7 @@ import {
 import {
   VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
   voiceIoTranscribeContract,
+  type VoiceIoEditorContext,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
@@ -122,6 +123,7 @@ async function lockVoiceDraft(
 
 function createVoiceDraftTranscriptionCommand(
   deliverText$: DeliverVoiceTextCommand,
+  readEditorContext$: Command<VoiceIoEditorContext, []>,
   lastAssistantMessage$: Computed<string | undefined>,
   state$: ComposerVoiceInputStateSignal,
   storageKey$: Computed<Promise<string>>,
@@ -147,6 +149,14 @@ function createVoiceDraftTranscriptionCommand(
         .slice(0, VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS);
       if (reference) {
         formData.append("lastAssistantMessage", reference);
+      }
+      const editorContext = set(readEditorContext$);
+      if (
+        editorContext.before ||
+        editorContext.selected ||
+        editorContext.after
+      ) {
+        formData.append("editorContext", JSON.stringify(editorContext));
       }
       const result = await accept(
         get(apiClient$)(voiceIoTranscribeContract).post({
@@ -516,6 +526,7 @@ function createVoiceDraftOwner(restore$: VoiceDraftTranscriptionCommand) {
 export function createComposerVoiceInputSignals(
   appendText$: Command<void, [string]>,
   deliverText$: DeliverVoiceTextCommand,
+  readEditorContext$: Command<VoiceIoEditorContext, []>,
   lastAssistantMessage$: Computed<string | undefined>,
   draftTarget: string,
 ): ComposerVoiceInputSignals {
@@ -534,6 +545,7 @@ export function createComposerVoiceInputSignals(
   const owner = createVoiceDraftOwner(recovery.restore$);
   const transcribe$ = createVoiceDraftTranscriptionCommand(
     deliverText$,
+    readEditorContext$,
     lastAssistantMessage$,
     state$,
     storageKey$,
