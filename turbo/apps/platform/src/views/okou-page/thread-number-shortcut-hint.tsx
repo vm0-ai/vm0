@@ -1,6 +1,9 @@
 import { useGet } from "ccstate-react";
 import { getShortcutParts } from "@okouai/ui";
-import { threadNumberShortcutHintsVisible$ } from "../../signals/okou-page/thread-number-shortcuts.ts";
+import {
+  threadNumberShortcutHintsVisible$,
+  threadNumberShortcutModifier$,
+} from "../../signals/okou-page/thread-number-shortcuts.ts";
 
 export function ThreadNumberShortcutHint({
   shortcutNumber,
@@ -8,6 +11,7 @@ export function ThreadNumberShortcutHint({
   readonly shortcutNumber: number | undefined;
 }) {
   const visible = useGet(threadNumberShortcutHintsVisible$);
+  const modifier = useGet(threadNumberShortcutModifier$);
   if (!visible || shortcutNumber === undefined) {
     return null;
   }
@@ -17,7 +21,7 @@ export function ThreadNumberShortcutHint({
       aria-hidden="true"
       className="pointer-events-none inline-flex shrink-0 animate-thread-number-shortcut-hint items-center gap-1 motion-reduce:animate-none"
     >
-      {getShortcutParts(`mod+${shortcutNumber}`).map((part) => {
+      {getShortcutParts(`${modifier}+${shortcutNumber}`).map((part) => {
         return (
           <kbd
             key={part}
