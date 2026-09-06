@@ -1,0 +1,16 @@
+{
+  "source": {
+    "repo": "vm0-ai/vm0-skills",
+    "commit": "e6966525e5e809b6c8c2c57918ebb1ca43ee89eb",
+    "directory": "illustration-template/emboss-deboss"
+  },
+  "resource": {
+    "id": "image-style:emboss-deboss",
+    "archiveRoot": "illustration-template",
+    "packagePath": "illustration-template/emboss-deboss",
+    "storageId": "9a73f277-b6e7-4878-a92b-89c07154f5d6",
+    "expectedVersionId": "e84748dd61e087cc15f12d9f9ecf19d68de790d747e0075b3f9bb6be38975e95",
+    "expectedSha256": "f1c1be0b1cf711a8c61945f928206d700b54d71969711f0551403d20c360d3f8",
+    "archiveUrl": "https://a.okou.io/u98yi0to32.gz"
+  }
+}

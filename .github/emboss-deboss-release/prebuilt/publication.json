@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/vm0-skills",
+    "commit": "e6966525e5e809b6c8c2c57918ebb1ca43ee89eb",
+    "directory": "illustration-template/emboss-deboss"
+  },
+  "resource": {
+    "id": "image-style:emboss-deboss",
+    "archiveRoot": "illustration-template",
+    "packagePath": "illustration-template/emboss-deboss",
+    "storageId": "9a73f277-b6e7-4878-a92b-89c07154f5d6",
+    "versionId": "e84748dd61e087cc15f12d9f9ecf19d68de790d747e0075b3f9bb6be38975e95",
+    "archive": {
+      "path": "emboss-deboss.tar.gz",
+      "sha256": "f1c1be0b1cf711a8c61945f928206d700b54d71969711f0551403d20c360d3f8",
+      "byteSize": 2855348
+    },
+    "totalSize": 2865976,
+    "fileCount": 6,
+    "files": [
+      {
+        "path": "illustration-template/emboss-deboss/SKILL.md",
+        "hash": "fd7d4127c5f3c8d859a864e03972c0fce9d53d4eea7bf66eb284cf60a593c769",
+        "size": 9428
+      },
+      {
+        "path": "illustration-template/emboss-deboss/ref-beyond-ivory.jpg",
+        "hash": "4f27f3422750891c01ba394492e59276a87a23334528c8f77635d71ae4237221",
+        "size": 460055
+      },
+      {
+        "path": "illustration-template/emboss-deboss/ref-moon-boat-no-text.jpg",
+        "hash": "cc7023daa8fd5567b16065278e82e7ee576be24ad3c4f8016f25f3db46abfafe",
+        "size": 429243
+      },
+      {
+        "path": "illustration-template/emboss-deboss/ref-moon-mooring-indigo.jpg",
+        "hash": "6c092392380cb9cd0aff2c9728cc14ec6f0542a449ce9bb8f985c826d599d852",
+        "size": 978991
+      },
+      {
+        "path": "illustration-template/emboss-deboss/ref-weightless-indigo.jpg",
+        "hash": "e5da441a3fd5cf14411a0bdac7cef62ef3d3fd3fa6c62e18ca681e2942dd8828",
+        "size": 456130
+      },
+      {
+        "path": "illustration-template/emboss-deboss/ref-wind-space-blush.jpg",
+        "hash": "10b593875c329c0f424f9d025dafa1b6476312a38ae7b33c16024b2fc4e422a2",
+        "size": 532129
+      }
+    ]
+  }
+}

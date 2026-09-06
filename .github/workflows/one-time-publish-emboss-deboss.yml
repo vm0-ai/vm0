@@ -1,0 +1,139 @@
+name: One-time publish Emboss & Deboss image style
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/emboss-deboss-release/**"
+      - ".github/workflows/one-time-publish-emboss-deboss.yml"
+
+concurrency:
+  group: one-time-publish-emboss-deboss-e6966525
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'chore/one-time-publish-emboss-deboss-e6966525'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Check out approved merged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: vm0-ai/vm0-skills
+          ref: e6966525e5e809b6c8c2c57918ebb1ca43ee89eb
+          path: .emboss-deboss-source
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+      - name: Verify approved archive against merged source
+        run: |
+          set -euo pipefail
+          source_commit="e6966525e5e809b6c8c2c57918ebb1ca43ee89eb"
+          test "$(git -C .emboss-deboss-source rev-parse HEAD)" = "$source_commit"
+
+          release_dir="$RUNNER_TEMP/emboss-deboss-release"
+          output_dir="$RUNNER_TEMP/emboss-deboss-output"
+          mkdir -p "$release_dir" "$output_dir"
+          cp .github/emboss-deboss-release/publish.mjs "$release_dir/"
+          cp .github/emboss-deboss-release/emboss-deboss-release.json "$release_dir/"
+          cp .github/emboss-deboss-release/prebuilt/publication.json "$output_dir/"
+
+          archive_url=$(jq -r '.resource.archiveUrl' "$release_dir/emboss-deboss-release.json")
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            "$archive_url" --output "$output_dir/emboss-deboss.tar.gz"
+
+          cd "$release_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund \
+            @aws-sdk/client-s3@3.1116.0 postgres@3.4.9 tar@7.5.22
+          node publish.mjs verify --output-dir "$output_dir"
+
+          source_tar="$RUNNER_TEMP/emboss-deboss-source.tar"
+          git -C "$GITHUB_WORKSPACE/.emboss-deboss-source" archive --format=tar \
+            "$source_commit" -- illustration-template/emboss-deboss > "$source_tar"
+          gzip --decompress --stdout "$output_dir/emboss-deboss.tar.gz" | cmp - "$source_tar"
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: emboss-deboss-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/emboss-deboss-output
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-production:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+      - name: Download verified release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: emboss-deboss-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/emboss-deboss-output
+      - name: Publish immutable archive and register version
+        run: |
+          set -euo pipefail
+          : "${NEON_API_KEY:?NEON_API_KEY is required}"
+          : "${NEON_PROJECT_ID:?NEON_PROJECT_ID is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID is required}"
+          : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
+          : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
+          : "${R2_USER_STORAGES_BUCKET_NAME:?R2_USER_STORAGES_BUCKET_NAME is required}"
+
+          release_dir="$RUNNER_TEMP/emboss-deboss-release"
+          mkdir -p "$release_dir"
+          cp .github/emboss-deboss-release/publish.mjs "$release_dir/"
+          cp .github/emboss-deboss-release/emboss-deboss-release.json "$release_dir/"
+          cd "$release_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund \
+            @aws-sdk/client-s3@3.1116.0 postgres@3.4.9 tar@7.5.22
+
+          branches=$(curl -fsS \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches" \
+            -H "Authorization: Bearer ${NEON_API_KEY}")
+          branch_id=$(jq -er '[.branches[] | select(.name == "production") | .id] | if length == 1 then .[0] else error("Expected exactly one production branch") end' <<< "$branches")
+          connection=$(curl -fsS \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri?branch_id=${branch_id}&database_name=neondb&role_name=neondb_owner" \
+            -H "Authorization: Bearer ${NEON_API_KEY}")
+          database_url=$(jq -er '.uri | select(type == "string" and length > 0)' <<< "$connection")
+          mask_value="${database_url//%/%25}"
+          mask_value="${mask_value//$'\r'/%0D}"
+          mask_value="${mask_value//$'\n'/%0A}"
+          printf '::add-mask::%s\n' "$mask_value"
+
+          DATABASE_URL="$database_url" node publish.mjs publish \
+            --output-dir "$RUNNER_TEMP/emboss-deboss-output"
+      - name: Summarize publication
+        run: |
+          printf '### Emboss & Deboss published\n\n- Source: vm0-ai/vm0-skills@e6966525e5e809b6c8c2c57918ebb1ca43ee89eb\n- Immutable R2 archive, six-file manifest, and storage version verified.\n' >> "$GITHUB_STEP_SUMMARY"
