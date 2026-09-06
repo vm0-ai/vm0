@@ -4,8 +4,6 @@ import { command } from "ccstate";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { drainStaleChatThreadQueues$ } from "../services/chat-thread-queue-drain.service";
 import { reconcileBrowserFixtures$ } from "../services/browser.service";
 import {
   isTestEndpointAllowed,
@@ -27,15 +25,6 @@ const reconcileBrowserFixturesRoute$ = command(
     const body = await set(
       reconcileBrowserFixtures$,
       bodyResult.data.chat_thread_ids,
-      signal,
-    );
-    signal.throwIfAborted();
-    await set(
-      drainStaleChatThreadQueues$,
-      {
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        chatThreadIds: bodyResult.data.chat_thread_ids,
-      },
       signal,
     );
     signal.throwIfAborted();
