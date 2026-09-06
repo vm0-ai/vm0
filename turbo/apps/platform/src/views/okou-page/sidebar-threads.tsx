@@ -100,6 +100,7 @@ import {
   PinnedThreadRow,
   PinnedThreadDragAnnouncement,
   PinnedThreadDragPreview,
+  ThreadPinMoveMenuItems,
 } from "./sidebar-thread-reorder.tsx";
 import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import { equalArrays } from "../../lib/equality.ts";
@@ -207,6 +208,43 @@ function ChatThreadMarkUnreadMenuItem({
   );
 }
 
+function ChatThreadPinMenuItems({
+  signals,
+}: {
+  signals: SidebarChatThreadItemSignals;
+}) {
+  const { t } = useTranslation();
+  const isPinned = useGet(signals.pinned$);
+  const togglePinned = useSet(signals.togglePinned$);
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <>
+      <DropdownMenuItem
+        onSelect={() => {
+          detach(togglePinned(pageSignal), Reason.DomCallback);
+        }}
+      >
+        {isPinned ? (
+          <>
+            <PinOff size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.unpin;
+            })}
+          </>
+        ) : (
+          <>
+            <Pin size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.pin;
+            })}
+          </>
+        )}
+      </DropdownMenuItem>
+      <ThreadPinMoveMenuItems signals={signals} />
+    </>
+  );
+}
+
 function ChatThreadMenu({
   signals,
 }: {
@@ -215,14 +253,9 @@ function ChatThreadMenu({
   const { t } = useTranslation();
   const isPinned = useGet(signals.pinned$);
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
-  const togglePinned = useSet(signals.togglePinned$);
   const openRename = useSet(signals.openRename$);
   const requestDelete = useSet(signals.requestDelete$);
   const pageSignal = useGet(pageSignal$);
-
-  function handleTogglePin() {
-    detach(togglePinned(pageSignal), Reason.DomCallback);
-  }
 
   function openRenameDialog() {
     detach(openRename(pageSignal), Reason.DomCallback);
@@ -299,23 +332,7 @@ function ChatThreadMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
-          <DropdownMenuItem onSelect={handleTogglePin}>
-            {isPinned ? (
-              <>
-                <PinOff size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.sidebar.unpin;
-                })}
-              </>
-            ) : (
-              <>
-                <Pin size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.sidebar.pin;
-                })}
-              </>
-            )}
-          </DropdownMenuItem>
+          <ChatThreadPinMenuItems signals={signals} />
           <ChatThreadMarkUnreadMenuItem signals={signals} />
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <Pencil size={16} className="mr-2" />
@@ -626,11 +643,16 @@ function VirtualizedChatThreads({
   const startIndex = window?.startIndex ?? 0;
   const visibleItems = window?.items ?? [];
 
+  const drop = useSet(scrollSignals.pinReorder.dropPointer$);
+  const pageSignal = useGet(pageSignal$);
   return (
     <div
       ref={setShortcutRoot}
       className="relative w-full"
       data-testid="sidebar-chat-threads-virtual-list"
+      onDrop={() => {
+        detach(drop(pageSignal), Reason.DomCallback);
+      }}
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
       <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />

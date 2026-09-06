@@ -14,7 +14,7 @@
 
 .okou-thread-reorder-row[data-reorderable]:is(
     :hover,
-    :focus-within,
+    :has(.okou-thread-drag-handle:focus-visible),
     [data-dragging]
   )
   > a {
@@ -22,7 +22,11 @@
   transition-duration: 160ms;
 }
 
-.okou-thread-reorder-row:is(:hover, :focus-within, [data-dragging])
+.okou-thread-reorder-row:is(
+    :hover,
+    :has(.okou-thread-drag-handle:focus-visible),
+    [data-dragging]
+  )
   .okou-thread-drag-handle {
   opacity: 1;
   transform: translateX(0);
@@ -60,10 +64,16 @@
 }
 
 .okou-thread-reorder-row[data-drop-side="before"]::after {
-  top: 0;
+  /* -(4px row gap + 2px stroke) / 2: both edges share one gap center. */
+  top: -3px;
 }
 .okou-thread-reorder-row[data-drop-side="after"]::after {
-  bottom: 0;
+  bottom: -3px;
+}
+
+/* Only the actual first item, including when later rows are virtualized. */
+[data-index="0"] > .okou-thread-reorder-row[data-drop-side="before"]::after {
+  top: 0;
 }
 
 @media (pointer: coarse) {

@@ -11,6 +11,14 @@ import {
   comparePinnedThreads,
   moveChatThreadPinOrder,
 } from "@okouai/core/chat-thread-pin-order";
+import {
+  draggable,
+  dropTargetForElements,
+  monitorForElements,
+  type ElementDropTargetEventBasePayload,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.ts";
@@ -142,12 +150,12 @@ export interface PinnedThreadDragSignals {
   readonly preview$: Computed<PinDragPreview | null>;
   readonly announcement$: Computed<PinDragAnnouncement | null>;
   readonly mount$: Command<(() => void) | undefined, [HTMLElement | null]>;
-  readonly cancel$: Command<void, []>;
+  readonly mountRow$: Command<(() => void) | undefined, [HTMLElement | null]>;
   readonly cancelKeyboard$: Command<boolean, [string]>;
   readonly start$: Command<void, [string, PinDragPointer | null]>;
-  readonly target$: Command<void, [string, PinMove["side"]]>;
   readonly step$: Command<void, [-1 | 1]>;
   readonly drop$: Command<Promise<void>, [AbortSignal]>;
+  readonly dropPointer$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function createPinDragInteraction(
@@ -176,36 +184,42 @@ function createPinDragInteraction(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       set(registerPinnedThreadDragSession$, reconcile$, signal);
       const document = element.ownerDocument;
-      document.addEventListener(
-        "dragover",
-        (event) => {
+      const cleanup = monitorForElements({
+        canMonitor: ({ source }) => {
+          return source.data.session === internalDrag$;
+        },
+        onDrag: ({ location }) => {
           const pointer = get(pointer$);
+          const input = location.current.input;
           if (
             pointer &&
-            (pointer.x !== event.clientX || pointer.y !== event.clientY)
+            (pointer.x !== input.clientX || pointer.y !== input.clientY)
           ) {
-            set(pointer$, { ...pointer, x: event.clientX, y: event.clientY });
+            set(pointer$, { ...pointer, x: input.clientX, y: input.clientY });
+          }
+        },
+        onDrop: ({ location }) => {
+          // Valid drops are persisted by the list's React onDrop callback.
+          // The adapter runs in capture phase, before that callback.
+          if (location.current.dropTargets.length === 0) {
+            set(cancel$);
+          }
+        },
+      });
+      document.addEventListener(
+        "drop",
+        () => {
+          if (get(pointer$)) {
+            set(cancel$);
           }
         },
         { signal },
       );
-      // Handle cancellation above the virtualized rows, including drops
-      // outside the list.
-      for (const type of ["drop", "dragend"]) {
-        document.addEventListener(
-          type,
-          () => {
-            if (get(pointer$)) {
-              set(cancel$);
-            }
-          },
-          { signal },
-        );
-      }
       signal.addEventListener(
         "abort",
         () => {
-          return set(cancel$);
+          cleanup();
+          set(cancel$);
         },
         { once: true },
       );
@@ -236,6 +250,66 @@ function createPinDragInteraction(
     return { ...pointer, title: source.title };
   });
   return { cancel$, cancelKeyboard$, mount$, start$, preview$ };
+}
+
+function createPinDragRowMount(
+  internalDrag$: State<PinDrag | null>,
+  drag$: Computed<PinDrag | null>,
+  start$: PinnedThreadDragSignals["start$"],
+  target$: Command<void, [string, PinMove["side"]]>,
+) {
+  return onRef(
+    command(({ get, set }, row: HTMLElement, signal: AbortSignal) => {
+      const threadId = row.dataset.threadId;
+      const handle = row.querySelector(".okou-thread-drag-handle");
+      const slot = row.parentElement;
+      if (!threadId || !(handle instanceof HTMLElement) || !slot) {
+        throw new Error("Missing pinned thread drag elements");
+      }
+      const updateTarget = ({
+        location,
+      }: ElementDropTargetEventBasePayload) => {
+        const rect = row.getBoundingClientRect();
+        set(
+          target$,
+          threadId,
+          location.current.input.clientY < rect.top + rect.height / 2
+            ? "before"
+            : "after",
+        );
+      };
+      const cleanup = combine(
+        draggable({
+          element: handle,
+          getInitialData: () => {
+            return { threadId, session: internalDrag$ };
+          },
+          onGenerateDragPreview: ({ nativeSetDragImage }) => {
+            disableNativeDragPreview({ nativeSetDragImage });
+          },
+          onDragStart: ({ location }) => {
+            set(start$, threadId, {
+              x: location.current.input.clientX,
+              y: location.current.input.clientY,
+              width: row.getBoundingClientRect().width,
+            });
+          },
+        }),
+        dropTargetForElements({
+          // Include the existing 4px padding in the hit area, without
+          // changing the 32px row or its 36px virtual slot.
+          element: slot,
+          canDrop: ({ source }) => {
+            return source.data.session === internalDrag$ && get(drag$) !== null;
+          },
+          onDragEnter: updateTarget,
+          onDrag: updateTarget,
+          onDrop: updateTarget,
+        }),
+      );
+      signal.addEventListener("abort", cleanup, { once: true });
+    }),
+  );
 }
 
 export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
@@ -313,6 +387,11 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
       await set(movePinnedThread$, drag, signal);
     }
   });
+  const dropPointer$ = command(async ({ get, set }, signal: AbortSignal) => {
+    if (get(drag$)?.keyboard === false) {
+      await set(drop$, signal);
+    }
+  });
   const announcement$ = computed((get) => {
     const drag = get(drag$);
     if (!drag?.keyboard) {
@@ -331,12 +410,12 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
     drag$,
     preview$,
     mount$,
-    cancel$,
+    mountRow$: createPinDragRowMount(internalDrag$, drag$, start$, target$),
     cancelKeyboard$,
     start$,
-    target$,
     step$,
     drop$,
+    dropPointer$,
     announcement$,
   };
 }
