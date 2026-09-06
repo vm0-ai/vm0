@@ -1527,6 +1527,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "reckon",
+    authMethodId: "oauth-refresh-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["clientId", "clientSecret", "redirectUri", "refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
     connectorSlug: "reddit",
     authMethodId: "oauth",
     contract: {
