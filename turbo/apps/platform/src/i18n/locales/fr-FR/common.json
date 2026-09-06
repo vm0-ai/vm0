@@ -408,6 +408,7 @@
         "sendMessage": "Envoyer un message",
         "setIcon": "Définir l'icône (Ctrl+Maj+1-9)",
         "showShortcuts": "Afficher les raccourcis",
+        "togglePin": "Épingler / détacher la discussion",
         "toggleSidebar": "Activer/désactiver la barre latérale"
       },
       "title": "Raccourcis clavier"

@@ -394,6 +394,7 @@
         "sendMessage": "Kirim pesan",
         "setIcon": "Atur ikon (Ctrl+Shift+1-9)",
         "showShortcuts": "Tampilkan pintasan",
+        "togglePin": "Sematkan / lepas sematan chat",
         "toggleSidebar": "Alihkan sidebar"
       },
       "title": "Pintasan Keyboard"

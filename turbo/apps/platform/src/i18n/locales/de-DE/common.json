@@ -394,6 +394,7 @@
         "sendMessage": "Nachricht senden",
         "setIcon": "Symbol festlegen (Strg+Umschalt+1-9)",
         "showShortcuts": "Tastaturkürzel anzeigen",
+        "togglePin": "Chat anheften / lösen",
         "toggleSidebar": "Seitenleiste umschalten"
       },
       "title": "Tastaturkürzel"
