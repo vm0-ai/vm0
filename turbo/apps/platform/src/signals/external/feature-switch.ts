@@ -113,6 +113,10 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
+export const modelPickerMenuEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ModelPickerMenu] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

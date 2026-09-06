@@ -522,3 +522,160 @@ test("Let an existing thread send while model availability is reconciling", asyn
   ).resolves.toBeVisible();
   expect(sentPrompts).toHaveLength(1);
 });
+
+test("Confirm a chat model and Fast together from the compact menu", async () => {
+  installNewChat(["gpt-5.6-sol", "gpt-5.6-luna"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+    },
+  });
+  await readyComposer();
+  click(await findButton("GPT 5.6 Sol"));
+  const overview = await screen.findByRole("region", { name: "Models" });
+  click(buttonNamed("Change Chat model, GPT 5.6 Sol", overview));
+  const list = await screen.findByRole("region", { name: "Chat models" });
+  click(buttonNamed("GPT 5.6 Luna", list));
+  const settings = await screen.findByRole("region", { name: "Chat settings" });
+  await expect(findButton("GPT 5.6 Sol")).resolves.toBeVisible();
+  click(screen.getByRole("switch", { name: "Fast" }));
+  click(buttonNamed("Confirm", settings));
+  await expect(findButton("GPT 5.6 Luna Fast")).resolves.toBeVisible();
+  const updated = screen.getByRole("region", { name: "Models" });
+  expect(
+    buttonNamed("Change Chat model, GPT 5.6 Luna", updated),
+  ).toHaveTextContent("Fast");
+  click(buttonNamed("Adjust GPT 5.6 Luna settings", updated));
+  await screen.findByRole("region", { name: "Chat settings" });
+  expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
+});
+
+test("Discard unconfirmed Fast changes and return along the menu path", async () => {
+  const user = userEvent.setup({ delay: null });
+  installNewChat(["gpt-5.6-sol", "gpt-5.6-luna"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+    },
+  });
+  await readyComposer();
+  click(await findButton("GPT 5.6 Sol"));
+  let overview = await screen.findByRole("region", { name: "Models" });
+  click(buttonNamed("Adjust GPT 5.6 Sol settings", overview));
+  await screen.findByRole("region", { name: "Chat settings" });
+  click(screen.getByRole("switch", { name: "Fast" }));
+  await user.keyboard("{Escape}");
+  overview = await screen.findByRole("region", { name: "Models" });
+  click(buttonNamed("Adjust GPT 5.6 Sol settings", overview));
+  await screen.findByRole("region", { name: "Chat settings" });
+  expect(screen.getByRole("switch", { name: "Fast" })).not.toBeChecked();
+  click(
+    buttonNamed(
+      "Cancel",
+      screen.getByRole("region", { name: "Chat settings" }),
+    ),
+  );
+  overview = await screen.findByRole("region", { name: "Models" });
+  click(buttonNamed("Change Chat model, GPT 5.6 Sol", overview));
+  const list = await screen.findByRole("region", { name: "Chat models" });
+  click(buttonNamed("GPT 5.6 Luna", list));
+  await screen.findByRole("region", { name: "Chat settings" });
+  await user.keyboard("{Escape}");
+  await screen.findByRole("region", { name: "Chat models" });
+  await user.keyboard("{Escape}");
+  await screen.findByRole("region", { name: "Models" });
+  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("region", { name: "Models" }),
+    ).not.toBeInTheDocument();
+  });
+  click(await findButton("GPT 5.6 Sol"));
+  await screen.findByRole("region", { name: "Models" });
+});
+
+test("Keep unavailable routes disabled and open plan comparison from the compact menu", async () => {
+  installNewChat(
+    ["deepseek-v4-flash", "claude-fable-5-1", "gpt-5.6-sol"],
+    "deepseek-v4-flash",
+  );
+  context.mocks.data.orgModelPolicies([
+    modelPolicy("deepseek-v4-flash", 1, { default: true }),
+    modelPolicy("claude-fable-5-1", 2),
+    {
+      ...modelPolicy("gpt-5.6-sol", 3),
+      routeStatus: "missing_provider",
+      routeStatusReason: "No provider available",
+    },
+  ]);
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, limitedFreeBillingStatus());
+  });
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: { [FeatureSwitchKey.ModelPickerMenu]: true },
+  });
+  await readyComposer();
+  click(await findButton("DeepSeek V4 Flash"));
+  const overview = await screen.findByRole("region", { name: "Models" });
+  click(buttonNamed("Change Chat model, DeepSeek V4 Flash", overview));
+  const list = await screen.findByRole("region", { name: "Chat models" });
+  expect(buttonNamed("GPT 5.6 Sol", list)).toBeDisabled();
+  expect(buttonNamed("Claude Fable 5.1", list)).toHaveTextContent("Pro");
+  click(buttonNamed("Claude Fable 5.1", list));
+  const dialog = await screen.findByRole("dialog", { name: "Choose a plan" });
+  click(buttonNamed("Close", dialog));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
+  });
+  await expect(findButton("DeepSeek V4 Flash")).resolves.toBeVisible();
+});
+
+test("Navigate the compact menu by keyboard and discard a dismissed draft", async () => {
+  const user = userEvent.setup({ delay: null });
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(min-width: 640px)";
+  });
+  installNewChat(["gpt-5.6-sol"], "gpt-5.6-sol");
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ModelPickerMenu]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+    },
+  });
+  const composer = await readyComposer();
+  click(await findButton("GPT 5.6 Sol"));
+  const overview = await screen.findByRole("region", { name: "Models" });
+  const settingsButton = buttonNamed("Adjust GPT 5.6 Sol settings", overview);
+  await user.keyboard("{ArrowDown}");
+  expect(settingsButton).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await screen.findByRole("region", { name: "Chat settings" });
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("switch", { name: "Fast" })).toHaveFocus();
+  await user.keyboard(" ");
+  expect(screen.getByRole("switch", { name: "Fast" })).toBeChecked();
+  await user.click(composer);
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("region", { name: "Chat settings" }),
+    ).not.toBeInTheDocument();
+  });
+  click(await findButton("GPT 5.6 Sol"));
+  const reopened = await screen.findByRole("region", { name: "Models" });
+  click(buttonNamed("Adjust GPT 5.6 Sol settings", reopened));
+  await screen.findByRole("region", { name: "Chat settings" });
+  expect(screen.getByRole("switch", { name: "Fast" })).not.toBeChecked();
+});

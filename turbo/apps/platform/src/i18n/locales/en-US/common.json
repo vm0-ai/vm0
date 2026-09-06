@@ -4941,6 +4941,15 @@
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
+        "menu": {
+          "adjustSettings": "Adjust {{model}} settings",
+          "backToChatModels": "Back to chat models",
+          "backToModels": "Back to models",
+          "cancel": "Cancel",
+          "changeModel": "Change {{category}} model, {{model}}",
+          "chatSettings": "Chat settings",
+          "confirm": "Confirm"
+        },
         "models": "Models",
         "noConfiguredModels": "No configured models",
         "priceTiers": {

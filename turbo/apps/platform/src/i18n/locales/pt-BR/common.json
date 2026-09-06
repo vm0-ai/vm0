@@ -5003,6 +5003,15 @@
         "inheritDefault": "Herdar o padrão da organização",
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
+        "menu": {
+          "adjustSettings": "Ajustar configurações de {{model}}",
+          "backToChatModels": "Voltar aos modelos de chat",
+          "backToModels": "Voltar aos modelos",
+          "cancel": "Cancelar",
+          "changeModel": "Alterar modelo de {{category}}, {{model}}",
+          "chatSettings": "Configurações de chat",
+          "confirm": "Confirmar"
+        },
         "models": "Modelos",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {

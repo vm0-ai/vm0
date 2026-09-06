@@ -4941,6 +4941,15 @@
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
+        "menu": {
+          "adjustSettings": "{{model}} の設定を調整",
+          "backToChatModels": "チャットモデルに戻る",
+          "backToModels": "モデルに戻る",
+          "cancel": "キャンセル",
+          "changeModel": "{{category}}モデルを変更、{{model}}",
+          "chatSettings": "チャット設定",
+          "confirm": "確認"
+        },
         "models": "モデル",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {

@@ -270,6 +270,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelPickerMenu]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Show a compact overview of chat, image, and video models with nested model lists and Fast settings.",
+    enabled: false,
+  },
   [FeatureSwitchKey.NewChatDefaultModelAction]: {
     maintainer: "lancy@vm0.ai",
     description:
