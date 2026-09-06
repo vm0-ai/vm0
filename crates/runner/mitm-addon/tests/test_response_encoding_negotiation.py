@@ -20,12 +20,18 @@ _X_FIREWALL_NAME = "x"
 _X_HOST = "api.x.com"
 _X_PATH = "/2/users/by"
 _ACCEPT_ENCODING = "Accept-Encoding"
+_MAX_ACCEPT_ENCODING_VALUE_BYTES = 64 * 1024
 _WEBSOCKET_HEADER_WORK_LIMIT = 8 * 1024
 _WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
+
+
+class _DecodeGuardAcceptEncoding(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("over-budget Accept-Encoding must not be decoded")
 
 
 @pytest.mark.parametrize(
@@ -299,6 +305,51 @@ def test_normalization_reports_bounded_negotiation_outcome(
     )
 
 
+def test_normalization_accepts_exact_raw_value_budget(headers) -> None:
+    raw_value = (
+        "gzip," * ((_MAX_ACCEPT_ENCODING_VALUE_BYTES - len("zstd  ")) // len("gzip,")) + "zstd  "
+    )
+    assert len(raw_value.encode()) == _MAX_ACCEPT_ENCODING_VALUE_BYTES
+    request_headers = headers((_ACCEPT_ENCODING, raw_value))
+
+    outcome = response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
+        request_headers
+    )
+
+    assert outcome == "rewritten_stream_decodable"
+    assert request_headers.get_all(_ACCEPT_ENCODING) == ["gzip"]
+
+
+def test_normalization_preserves_first_over_budget_raw_value_without_decoding() -> None:
+    guarded_value = _DecodeGuardAcceptEncoding(b"x" * (_MAX_ACCEPT_ENCODING_VALUE_BYTES + 1))
+    original_fields = ((b"aCcEpT-EnCoDiNg", guarded_value),)
+    request_headers = http.Headers(original_fields)
+
+    outcome = response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
+        request_headers
+    )
+
+    assert outcome == "preserved_work_budget"
+    assert request_headers.fields == original_fields
+
+
+def test_normalization_combines_repeated_raw_value_budget_without_decoding() -> None:
+    guarded_first = _DecodeGuardAcceptEncoding(b"x" * (_MAX_ACCEPT_ENCODING_VALUE_BYTES // 2))
+    guarded_second = _DecodeGuardAcceptEncoding(b"y" * (_MAX_ACCEPT_ENCODING_VALUE_BYTES // 2 + 1))
+    original_fields = (
+        (b"Accept-Encoding", guarded_first),
+        (b"accept-encoding", guarded_second),
+    )
+    request_headers = http.Headers(original_fields)
+
+    outcome = response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
+        request_headers
+    )
+
+    assert outcome == "preserved_work_budget"
+    assert request_headers.fields == original_fields
+
+
 def test_explicit_normalized_encodings_create_stream_decode_sessions(headers) -> None:
     supported_encodings = body_decoding.stream_decodable_content_encodings()
     request_headers = headers(
@@ -475,6 +526,41 @@ async def test_billable_model_provider_request_normalizes_accept_encoding_before
     )
 
 
+async def test_billable_model_provider_request_preserves_over_budget_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _model_provider_registry(tmp_path)
+    guarded_value = _DecodeGuardAcceptEncoding(b"x" * (_MAX_ACCEPT_ENCODING_VALUE_BYTES + 1))
+    accept_encoding_field = (b"Accept-Encoding", guarded_value)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host=_MODEL_PROVIDER_HOST,
+        path=_MODEL_PROVIDER_PATH,
+        method="POST",
+        request_headers=http.Headers(
+            [
+                (b"Host", _MODEL_PROVIDER_HOST.encode()),
+                accept_encoding_field,
+            ]
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert accept_encoding_field in flow.request.headers.fields
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "preserved_work_budget"
+
+
 async def test_billable_model_provider_without_accept_encoding_sets_identity(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
@@ -640,6 +726,52 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
 
     auth_fetch.assert_awaited_once()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
+
+
+async def test_header_phase_stream_safe_auth_preserves_over_budget_accept_encoding(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _connector_registry(
+        tmp_path,
+        firewall_name=_X_FIREWALL_NAME,
+        host=_X_HOST,
+        path=_X_PATH,
+        billable=True,
+        capture_network_bodies=True,
+    )
+    guarded_value = _DecodeGuardAcceptEncoding(b"x" * (_MAX_ACCEPT_ENCODING_VALUE_BYTES + 1))
+    accept_encoding_field = (b"aCcEpT-EnCoDiNg", guarded_value)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host=_X_HOST,
+        path=_X_PATH,
+        method="GET",
+        request_headers=http.Headers(
+            [
+                (b"Host", _X_HOST.encode()),
+                accept_encoding_field,
+                (b"Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1).encode()),
+            ]
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        assert accept_encoding_field in flow.request.headers.fields
+        assert flow.request.headers["Authorization"] == "Bearer x"
+        assert flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "preserved_work_budget"
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert accept_encoding_field in flow.request.headers.fields
 
 
 async def test_header_phase_auth_fallback_restores_encoding_negotiation(

@@ -1,14 +1,19 @@
 """Request-side response encoding negotiation for body-inspected flows."""
 
 import re
+from collections.abc import Iterable, Iterator
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Final, Literal
 
 from mitmproxy import http
 
 import body_decoding
 
 _ACCEPT_ENCODING = "Accept-Encoding"
+_RAW_ACCEPT_ENCODING: Final = b"accept-encoding"
+# Accept an inclusive 64 KiB aggregate of matching raw values. This bounds
+# addon-owned negotiation work after mitmproxy has parsed the request head.
+_MAX_ACCEPT_ENCODING_VALUE_BYTES: Final = 64 * 1024
 _IDENTITY = "identity"
 _WILDCARD = "*"
 _STREAM_DECODABLE_ENCODINGS = body_decoding.stream_decodable_content_encodings()
@@ -22,6 +27,7 @@ type ResponseEncodingNegotiationOutcome = Literal[
     "already_stream_decodable",
     "rewritten_stream_decodable",
     "preserved_client_constraints",
+    "preserved_work_budget",
 ]
 
 
@@ -35,13 +41,17 @@ def normalize_accept_encoding_for_body_inspection(
     provide the needed bounded-output behavior. Brotli participates under the
     documented soft output-limit contract in ``body_decoding``.
 
-    The helper preserves explicit requester rejections.  When ``identity`` and
-    every supported compression coding are rejected, the original header remains
-    unchanged and the actual response might not support bounded streaming
-    inspection.  Callers must use the response's ``Content-Encoding`` to decide
-    whether incremental body inspection is available. The return value records
-    whether the request was already safe, rewritten, or preserved by constraint.
+    The helper preserves explicit requester rejections. When ``identity`` and
+    every supported compression coding are rejected, or the matching raw values
+    exceed the parser's work budget, the original header remains unchanged and
+    the actual response might not support bounded streaming inspection. Callers
+    must use the response's ``Content-Encoding`` to decide whether incremental
+    body inspection is available. The return value records whether the request
+    was already safe, rewritten, or preserved and why.
     """
+    if not _accept_encoding_values_within_budget(headers):
+        return "preserved_work_budget"
+
     values = headers.get_all(_ACCEPT_ENCODING)
     if not values:
         headers[_ACCEPT_ENCODING] = _IDENTITY
@@ -57,13 +67,12 @@ def normalize_accept_encoding_for_body_inspection(
     wildcard_rejected = False
 
     for raw_value in values:
-        for raw_coding in raw_value.split(","):
-            name, q_value = _parse_coding(raw_coding)
+        for raw_coding in _iter_delimited(raw_value, ","):
+            name, q_value, q_text = _parse_coding(raw_coding)
             if not name:
                 continue
 
             accepted = q_value is None or q_value > _MIN_Q_VALUE
-            q_text = _q_text(raw_coding)
 
             if name == _IDENTITY:
                 if accepted:
@@ -118,45 +127,66 @@ def normalize_accept_encoding_for_body_inspection(
     return "already_stream_decodable"
 
 
-def _parse_coding(raw_coding: str) -> tuple[str, Decimal | None]:
-    parts = raw_coding.split(";")
-    name = parts[0].strip(_HTTP_OWS_CHARS).lower()
-    q_value = _parse_q_value(parts[1:])
-    return name, q_value
+def _accept_encoding_values_within_budget(headers: http.Headers) -> bool:
+    """Bound matching raw values before mitmproxy decodes them."""
+    remaining_bytes = _MAX_ACCEPT_ENCODING_VALUE_BYTES
+    for raw_name, raw_value in headers.fields:
+        if raw_name.lower() != _RAW_ACCEPT_ENCODING:
+            continue
+        if len(raw_value) > remaining_bytes:
+            return False
+        remaining_bytes -= len(raw_value)
+    return True
 
 
-def _parse_q_value(parameters: list[str]) -> Decimal | None:
+def _iter_delimited(value: str, delimiter: str, *, start: int = 0) -> Iterator[str]:
+    while True:
+        end = value.find(delimiter, start)
+        if end == -1:
+            yield value[start:]
+            return
+        yield value[start:end]
+        start = end + len(delimiter)
+
+
+def _parse_coding(raw_coding: str) -> tuple[str, Decimal | None, str | None]:
+    parameter_separator = raw_coding.find(";")
+    if parameter_separator == -1:
+        name = raw_coding.strip(_HTTP_OWS_CHARS).lower()
+        return name, None, None
+    name = raw_coding[:parameter_separator].strip(_HTTP_OWS_CHARS).lower()
+    q_value, q_text = _parse_q_value(
+        _iter_delimited(raw_coding, ";", start=parameter_separator + 1)
+    )
+    return name, q_value, q_text
+
+
+def _parse_q_value(parameters: Iterable[str]) -> tuple[Decimal | None, str | None]:
     saw_q_value = False
     parsed_q_value: Decimal | None = None
+    parsed_q_text: str | None = None
     for parameter in parameters:
         parameter = parameter.strip(_HTTP_OWS_CHARS)
         if not parameter:
-            return _INVALID_Q_VALUE
+            return _INVALID_Q_VALUE, None
         key, separator, value = parameter.partition("=")
         if not separator or key.strip(_HTTP_OWS_CHARS).lower() != "q":
-            return _INVALID_Q_VALUE
+            return _INVALID_Q_VALUE, None
         if saw_q_value:
-            return _INVALID_Q_VALUE
+            return _INVALID_Q_VALUE, None
         saw_q_value = True
         q_text = value.strip(_HTTP_OWS_CHARS)
         if not _Q_VALUE_PATTERN.fullmatch(q_text):
-            return _INVALID_Q_VALUE
+            return _INVALID_Q_VALUE, None
         try:
             q_value = Decimal(q_text)
         except InvalidOperation:
-            return _INVALID_Q_VALUE
+            return _INVALID_Q_VALUE, None
         if not q_value.is_finite() or q_value < _MIN_Q_VALUE or q_value > _MAX_Q_VALUE:
-            return _INVALID_Q_VALUE
+            return _INVALID_Q_VALUE, None
         parsed_q_value = q_value
-    return parsed_q_value
-
-
-def _q_text(raw_coding: str) -> str | None:
-    for parameter in raw_coding.split(";")[1:]:
-        key, separator, value = parameter.strip(_HTTP_OWS_CHARS).partition("=")
-        if separator and key.strip(_HTTP_OWS_CHARS).lower() == "q":
-            return value.strip(_HTTP_OWS_CHARS)
-    return None
+        parsed_q_text = q_text
+    return parsed_q_value, parsed_q_text
 
 
 def _format_coding(name: str, q_text: str | None) -> str:
