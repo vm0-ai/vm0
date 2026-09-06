@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type State, type Computed } from "ccstate";
 import { chatThreadPinOrderContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   comparePinnedThreads,
@@ -114,6 +114,86 @@ interface PinDrag extends PinMove {
   readonly keyboard: boolean;
 }
 
+interface PinDragPointer {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+}
+
+function createPinDragInteraction(
+  internalDrag$: State<PinDrag | null>,
+  drag$: Computed<PinDrag | null>,
+) {
+  const pointer$ = state<PinDragPointer | null>(null);
+  const cancel$ = command(({ set }) => {
+    set(internalDrag$, null);
+    set(pointer$, null);
+  });
+  const mount$ = onRef(
+    command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      const document = element.ownerDocument;
+      document.addEventListener(
+        "dragover",
+        (event) => {
+          const pointer = get(pointer$);
+          if (
+            pointer &&
+            (pointer.x !== event.clientX || pointer.y !== event.clientY)
+          ) {
+            set(pointer$, { ...pointer, x: event.clientX, y: event.clientY });
+          }
+        },
+        { signal },
+      );
+      // Handle cancellation above the virtualized rows, including drops
+      // outside the list.
+      for (const type of ["drop", "dragend"]) {
+        document.addEventListener(
+          type,
+          () => {
+            if (get(pointer$)) {
+              set(cancel$);
+            }
+          },
+          { signal },
+        );
+      }
+      signal.addEventListener(
+        "abort",
+        () => {
+          return set(cancel$);
+        },
+        { once: true },
+      );
+    }),
+  );
+  const start$ = command(
+    ({ get, set }, threadId: string, pointer: PinDragPointer | null) => {
+      if (get(pinnedThreadReorderEnabled$)) {
+        set(pointer$, pointer);
+        set(internalDrag$, {
+          threadId,
+          targetId: threadId,
+          side: "before",
+          keyboard: pointer === null,
+        });
+      }
+    },
+  );
+  const preview$ = computed((get) => {
+    const drag = get(drag$);
+    const pointer = get(pointer$);
+    if (!drag || !pointer) {
+      return null;
+    }
+    const source = get(eventDrivenChatThreads$).find((item) => {
+      return item.id === drag.threadId;
+    })!;
+    return { ...pointer, title: source.title };
+  });
+  return { cancel$, mount$, start$, preview$ };
+}
+
 export function createPinnedThreadDragSignals() {
   const internalDrag$ = state<PinDrag | null>(null);
   const drag$ = computed((get) => {
@@ -134,31 +214,9 @@ export function createPinnedThreadDragSignals() {
       ? drag
       : null;
   });
-  const cancel$ = command(({ set }) => {
-    return set(internalDrag$, null);
-  });
-  const mount$ = onRef(
-    command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener(
-        "abort",
-        () => {
-          return set(cancel$);
-        },
-        { once: true },
-      );
-    }),
-  );
-  const start$ = command(
-    ({ get, set }, threadId: string, keyboard: boolean) => {
-      if (get(pinnedThreadReorderEnabled$)) {
-        set(internalDrag$, {
-          threadId,
-          targetId: threadId,
-          side: "before",
-          keyboard,
-        });
-      }
-    },
+  const { cancel$, mount$, start$, preview$ } = createPinDragInteraction(
+    internalDrag$,
+    drag$,
   );
   const target$ = command(
     ({ get, set }, targetId: string, side: PinMove["side"]) => {
@@ -229,6 +287,7 @@ export function createPinnedThreadDragSignals() {
   });
   return {
     drag$,
+    preview$,
     mount$,
     cancel$,
     start$,

@@ -29,8 +29,22 @@
   transition-duration: 160ms;
 }
 
-.okou-thread-reorder-row[data-dragging] > a {
+.okou-thread-reorder-row[data-dragging="keyboard"] > a {
   opacity: 0.45;
+}
+
+.okou-thread-reorder-row[data-dragging="pointer"] > * {
+  opacity: 0;
+}
+
+.okou-thread-reorder-row[data-dragging="pointer"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.3);
+  pointer-events: none;
 }
 
 .okou-thread-reorder-row[data-drop-side]::after {
@@ -40,15 +54,16 @@
   right: 4px;
   height: 2px;
   border-radius: 2px;
-  background: var(--primary);
+  background: hsl(var(--primary));
+  z-index: 20;
   pointer-events: none;
 }
 
 .okou-thread-reorder-row[data-drop-side="before"]::after {
-  top: -3px;
+  top: 0;
 }
 .okou-thread-reorder-row[data-drop-side="after"]::after {
-  bottom: -3px;
+  bottom: 0;
 }
 
 @media (pointer: coarse) {

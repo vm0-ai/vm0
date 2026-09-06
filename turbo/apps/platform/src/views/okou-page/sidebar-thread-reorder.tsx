@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { GripVertical, ArrowUp, ArrowDown } from "lucide-react";
@@ -20,6 +21,27 @@ import { detach, Reason } from "../../signals/utils.ts";
 import "./sidebar-thread-reorder.css";
 
 const THREAD_DRAG_TYPE = "application/x-okou-pinned-thread";
+
+function prepareThreadPointerDrag(
+  event: DragEvent<HTMLButtonElement>,
+  threadId: string,
+) {
+  const row = event.currentTarget.closest(".okou-thread-reorder-row");
+  if (!(row instanceof HTMLElement)) {
+    return null;
+  }
+  event.dataTransfer.setData(THREAD_DRAG_TYPE, threadId);
+  event.dataTransfer.effectAllowed = "move";
+  const image = row.querySelector(".okou-thread-drag-image");
+  if (image instanceof HTMLElement) {
+    event.dataTransfer.setDragImage(image, 0, 0);
+  }
+  return {
+    x: event.clientX,
+    y: event.clientY,
+    width: row.getBoundingClientRect().width,
+  };
+}
 
 function ThreadDragHandle({
   signals,
@@ -61,7 +83,7 @@ function ThreadDragHandle({
             if (picked) {
               detach(drop(signal), Reason.DomCallback);
             } else {
-              start(signals.threadId, true);
+              start(signals.threadId, null);
             }
           } else if (
             picked &&
@@ -95,13 +117,10 @@ function ThreadDragHandle({
             return $.chat.sidebar.reorderInstructions;
           })}
           onDragStart={(event) => {
-            const row = event.currentTarget.closest(".okou-thread-reorder-row");
-            event.dataTransfer.setData(THREAD_DRAG_TYPE, signals.threadId);
-            event.dataTransfer.effectAllowed = "move";
-            if (row instanceof HTMLElement) {
-              event.dataTransfer.setDragImage(row, 16, 16);
+            const pointer = prepareThreadPointerDrag(event, signals.threadId);
+            if (pointer) {
+              start(signals.threadId, pointer);
             }
-            start(signals.threadId, false);
           }}
           onDragEnd={() => {
             return cancel();
@@ -171,7 +190,13 @@ export function PinnedThreadRow({
     <div
       className="group relative okou-thread-reorder-row"
       data-reorderable={reorderable || undefined}
-      data-dragging={drag?.threadId === signals.threadId || undefined}
+      data-dragging={
+        drag?.threadId === signals.threadId
+          ? drag.keyboard
+            ? "keyboard"
+            : "pointer"
+          : undefined
+      }
       data-drop-side={targetSide}
       onDragOver={(event) => {
         if (
@@ -202,11 +227,49 @@ export function PinnedThreadRow({
     >
       {children}
       {reorderable && (
-        <div className="pointer-events-none absolute left-0 top-0 h-8 w-8 overflow-hidden">
-          <ThreadDragHandle signals={signals} dragSignals={dragSignals} />
-        </div>
+        <>
+          <span
+            aria-hidden="true"
+            className="okou-thread-drag-image pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
+          />
+          <div className="pointer-events-none absolute left-0 top-0 h-8 w-8 overflow-hidden">
+            <ThreadDragHandle signals={signals} dragSignals={dragSignals} />
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+export function PinnedThreadDragPreview({
+  signals,
+}: {
+  signals: PinnedThreadDragSignals;
+}) {
+  const { t } = useTranslation();
+  const preview = useGet(signals.preview$);
+  if (!preview) {
+    return null;
+  }
+  return createPortal(
+    <div
+      aria-hidden="true"
+      data-testid="pinned-thread-drag-preview"
+      className="pointer-events-none fixed left-0 top-0 z-50 flex h-8 max-w-64 items-center gap-2 rounded-lg border border-border bg-popover px-2 text-sm text-popover-foreground shadow-sm"
+      style={{
+        width: preview.width,
+        transform: `translate(${preview.x + 16}px, ${preview.y + 16}px)`,
+      }}
+    >
+      <GripVertical size={16} className="shrink-0 text-muted-foreground" />
+      <span className="truncate">
+        {preview.title ??
+          t(($) => {
+            return $.chat.newChat;
+          })}
+      </span>
+    </div>,
+    document.body,
   );
 }
 

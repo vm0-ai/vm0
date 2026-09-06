@@ -140,6 +140,9 @@ test("keyboard cancel leaves the order intact without writing an event", async (
   fireEvent.keyDown(grip, { key: " " });
   fireEvent.keyDown(grip, { key: "ArrowUp" });
   expect(screen.getByText("Drop before Second pin")).toBeInTheDocument();
+  expect(
+    screen.queryByTestId("pinned-thread-drag-preview"),
+  ).not.toBeInTheDocument();
   fireEvent.keyDown(grip, { key: "Escape" });
   expect(sidebarThreadTitles()).toStrictEqual([
     "First pin",
@@ -176,6 +179,13 @@ test("dragging between equal ranks updates the tied suffix optimistically", asyn
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   fireEvent.dragStart(grip, { dataTransfer: transfer });
   expect(grip).toHaveAttribute("aria-pressed", "true");
+  const preview = screen.getByTestId("pinned-thread-drag-preview");
+  expect(preview).toHaveTextContent("Last pin");
+  expect(preview.querySelector("button, a")).toBeNull();
+  expect(grip.closest("[data-dragging]")).toHaveAttribute(
+    "data-dragging",
+    "pointer",
+  );
   fireEvent(
     target,
     Object.assign(
@@ -189,6 +199,7 @@ test("dragging between equal ranks updates the tied suffix optimistically", asyn
   );
   expect(target).toHaveAttribute("data-drop-side", "before");
   fireEvent.drop(target, { dataTransfer: transfer });
+  expect(preview).not.toBeInTheDocument();
   await waitFor(() => {
     return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",
@@ -199,6 +210,27 @@ test("dragging between equal ranks updates the tied suffix optimistically", asyn
   });
   expect(ranks).toHaveLength(2);
   pending.resolve();
+});
+
+test("ending a drag outside the list clears its preview and placeholder", async () => {
+  await prepare(67);
+  const transfer = Object.assign(new DataTransfer(), {
+    setDragImage: () => {},
+  });
+  const grip = handle("Last pin");
+  fireEvent.dragStart(grip, { dataTransfer: transfer });
+  expect(screen.getByTestId("pinned-thread-drag-preview")).toBeInTheDocument();
+  fireEvent.dragEnd(document, { dataTransfer: transfer });
+  expect(
+    screen.queryByTestId("pinned-thread-drag-preview"),
+  ).not.toBeInTheDocument();
+  expect(document.querySelector("[data-dragging]")).toBeNull();
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "First pin",
+    "Second pin",
+    "Last pin",
+    "Regular thread",
+  ]);
 });
 
 test("new pins receive a rank ahead of all existing pins", async () => {

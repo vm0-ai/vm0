@@ -99,6 +99,7 @@ import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import {
   PinnedThreadRow,
   PinnedThreadDragAnnouncement,
+  PinnedThreadDragPreview,
 } from "./sidebar-thread-reorder.tsx";
 import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import { equalArrays } from "../../lib/equality.ts";
@@ -633,6 +634,7 @@ function VirtualizedChatThreads({
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
       <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />
+      <PinnedThreadDragPreview signals={scrollSignals.pinReorder} />
       {visibleItems.map((signals, visibleOffset) => {
         const index = startIndex + visibleOffset;
         return (
