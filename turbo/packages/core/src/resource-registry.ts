@@ -129,7 +129,7 @@ function privateR2ArchiveSource(
 // the private R2 version ids served by the API download route.
 const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
   "emboss-deboss":
-    "daafea0e8c6bd9c0a504c2c878843b49459ff247a0186a42bc64e1e9e951085c",
+    "f1c1be0b1cf711a8c61945f928206d700b54d71969711f0551403d20c360d3f8",
   "cozy-parlor":
     "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
   "crowd-ink":

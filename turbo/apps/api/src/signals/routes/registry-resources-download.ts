@@ -90,6 +90,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "f23a7edd4705fcf7b8086da55553a601194bcd857be15de7072128ff916a03ad",
   "color-system:warm-sand":
     "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
+  // Emboss & Deboss from vm0-ai/vm0-skills@e696652.
   "image-style:emboss-deboss":
     "e84748dd61e087cc15f12d9f9ecf19d68de790d747e0075b3f9bb6be38975e95",
   // Image style packages manually published from vm0-ai/vm0-skills@45e237a.
