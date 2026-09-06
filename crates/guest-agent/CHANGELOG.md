@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.1...guest-agent-v0.86.2) (2026-09-06)
+
+
+### Performance Improvements
+
+* **guest-agent:** persist runtime npx cache in workspace ([#31981](https://github.com/vm0-ai/vm0/issues/31981)) ([69b2150](https://github.com/vm0-ai/vm0/commit/69b2150a993f7e2f7d359f4d359352ffa542dba9))
+
 ## [0.86.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.0...guest-agent-v0.86.1) (2026-09-06)
 
 
