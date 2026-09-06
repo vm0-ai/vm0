@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.845.8](https://github.com/vm0-ai/vm0/compare/app-v0.845.7...app-v0.845.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* persist voice recordings for transcription retry ([#31845](https://github.com/vm0-ai/vm0/issues/31845)) ([2360162](https://github.com/vm0-ai/vm0/commit/2360162954630496be2b8b597af6b8aa7b0d3b72))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31954](https://github.com/vm0-ai/vm0/issues/31954)) ([8733345](https://github.com/vm0-ai/vm0/commit/8733345cc9d02379fc7a22c2525509b87833c46b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+    * @okouai/core bumped to 8.625.6
+
 ## [0.845.7](https://github.com/vm0-ai/vm0/compare/app-v0.845.6...app-v0.845.7) (2026-09-05)
 
 

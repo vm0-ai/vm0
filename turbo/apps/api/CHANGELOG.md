@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.551.8](https://github.com/vm0-ai/vm0/compare/api-v1.551.7...api-v1.551.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* settle private pi maintenance at the generic checkpoint boundary ([#31947](https://github.com/vm0-ai/vm0/issues/31947)) ([2db67fc](https://github.com/vm0-ai/vm0/commit/2db67fc8be4f1fa863c4faf8ed4905acfc65cdb5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+    * @okouai/core bumped to 8.625.6
+    * @okouai/db bumped to 1.241.12
+    * @okouai/pi-agent-runtime bumped to 1.20.6
+
 ## [1.551.7](https://github.com/vm0-ai/vm0/compare/api-v1.551.6...api-v1.551.7) (2026-09-05)
 
 

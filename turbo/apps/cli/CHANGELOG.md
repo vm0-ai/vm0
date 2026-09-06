@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.313.9](https://github.com/vm0-ai/vm0/compare/cli-v9.313.8...cli-v9.313.9) (2026-09-05)
+
+
+### Bug Fixes
+
+* settle private pi maintenance at the generic checkpoint boundary ([#31947](https://github.com/vm0-ai/vm0/issues/31947)) ([2db67fc](https://github.com/vm0-ai/vm0/commit/2db67fc8be4f1fa863c4faf8ed4905acfc65cdb5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.7
+    * @okouai/core bumped to 8.625.6
+    * @okouai/pi-agent-runtime bumped to 1.20.6
+
 ## [9.313.8](https://github.com/vm0-ai/vm0/compare/cli-v9.313.7...cli-v9.313.8) (2026-09-05)
 
 
