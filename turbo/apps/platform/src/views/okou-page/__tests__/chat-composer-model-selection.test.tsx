@@ -523,14 +523,14 @@ test("Let an existing thread send while model availability is reconciling", asyn
   expect(sentPrompts).toHaveLength(1);
 });
 
-test("Confirm a chat model and Fast together from the compact menu", async () => {
+test("Confirm a chat model and Fast with only the compact menu switch", async () => {
   installNewChat(["gpt-5.6-sol", "gpt-5.6-luna"], "gpt-5.6-sol");
   await setupPage({
     context,
     path: NEW_CHAT_PATH,
     featureSwitches: {
       [FeatureSwitchKey.ModelPickerMenu]: true,
-      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.CodexFastMode]: false,
       [FeatureSwitchKey.NewChatDefaultModelAction]: true,
     },
   });
@@ -562,7 +562,7 @@ test("Discard unconfirmed Fast changes and return along the menu path", async ()
     path: NEW_CHAT_PATH,
     featureSwitches: {
       [FeatureSwitchKey.ModelPickerMenu]: true,
-      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.CodexFastMode]: false,
     },
   });
   await readyComposer();
@@ -652,7 +652,7 @@ test("Navigate the compact menu by keyboard and discard a dismissed draft", asyn
     path: NEW_CHAT_PATH,
     featureSwitches: {
       [FeatureSwitchKey.ModelPickerMenu]: true,
-      [FeatureSwitchKey.CodexFastMode]: true,
+      [FeatureSwitchKey.CodexFastMode]: false,
     },
   });
   const composer = await readyComposer();

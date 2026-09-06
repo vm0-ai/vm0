@@ -146,6 +146,7 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
 import {
   additionalVolumesForRun,
@@ -1071,10 +1072,7 @@ async function resolveNormalSendFeatureSwitches(
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
-    codexFastModeEnabled: isFeatureEnabled(
-      FeatureSwitchKey.CodexFastMode,
-      context,
-    ),
+    codexFastModeEnabled: isCodexFastModeEnabled(context),
     presentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.PresentationTemplates,
       context,

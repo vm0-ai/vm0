@@ -19,8 +19,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { SupportedFramework } from "@okouai/core/frameworks";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,
@@ -395,10 +394,7 @@ export async function resolveDefaultModelFirstPin(
           selectedModel: preferredRoute.selectedModel,
           codexFastModeEnabled:
             featureSwitchContext !== null &&
-            isFeatureEnabled(
-              FeatureSwitchKey.CodexFastMode,
-              featureSwitchContext,
-            ),
+            isCodexFastModeEnabled(featureSwitchContext),
         })
           ? "priority"
           : null;
@@ -738,7 +734,7 @@ export async function validateCodexServiceTier(params: {
     params.orgId,
     params.userId,
   );
-  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
+  if (!isCodexFastModeEnabled(featureSwitchContext)) {
     return badRequestMessage(
       "Codex fast mode is not enabled for this workspace",
     );

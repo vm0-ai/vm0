@@ -275,6 +275,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show a compact overview of chat, image, and video models with nested model lists and Fast settings.",
     enabled: false,
+    enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
+    enabledEmailHashes: ["6490c77f", "9fd4ee92"], // bingjie@okou.ai, bingjie@vm0.ai
   },
   [FeatureSwitchKey.NewChatDefaultModelAction]: {
     maintainer: "lancy@vm0.ai",

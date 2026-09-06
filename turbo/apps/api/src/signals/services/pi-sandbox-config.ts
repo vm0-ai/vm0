@@ -17,6 +17,7 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { isPiAgentModelSupported } from "@okouai/pi-agent-runtime";
 
 import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
@@ -182,7 +183,7 @@ export function shouldUsePiExecution(args: {
       args.modelProviderType,
       args.builtInModelRuntimeRoute,
     ) &&
-    isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
+    isCodexFastModeEnabled(args.featureSwitchContext);
   const isPiModelProvider =
     isBuiltInModelProviderType(args.modelProviderType) ||
     args.modelProviderType === "custom-openai-responses" ||
