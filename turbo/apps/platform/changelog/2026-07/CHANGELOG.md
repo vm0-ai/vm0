@@ -1,6 +1,6 @@
 # Changelog - 2026-07
 
-[Current changelog](../CHANGELOG.md)
+[Current changelog](../../CHANGELOG.md)
 
 ## [0.675.1](https://github.com/vm0-ai/vm0/compare/app-v0.675.0...app-v0.675.1) (2026-07-31)
 

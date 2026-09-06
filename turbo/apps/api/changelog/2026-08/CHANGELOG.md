@@ -1,6 +1,6 @@
 # Changelog - 2026-08
 
-[Current changelog](../CHANGELOG.md)
+[Current changelog](../../CHANGELOG.md)
 
 ## [1.519.0](https://github.com/vm0-ai/vm0/compare/api-v1.518.1...api-v1.519.0) (2026-08-31)
 

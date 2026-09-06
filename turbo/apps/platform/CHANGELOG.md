@@ -2,14 +2,14 @@
 
 Releases before September 2026 are archived by month:
 
-- [2026-08](changelog/2026-08.md)
-- [2026-07](changelog/2026-07.md)
-- [2026-06](changelog/2026-06.md)
-- [2026-05](changelog/2026-05.md)
-- [2026-04](changelog/2026-04.md)
-- [2026-03](changelog/2026-03.md)
-- [2026-02](changelog/2026-02.md)
-- [2026-01](changelog/2026-01.md)
+- [2026-08](changelog/2026-08/CHANGELOG.md)
+- [2026-07](changelog/2026-07/CHANGELOG.md)
+- [2026-06](changelog/2026-06/CHANGELOG.md)
+- [2026-05](changelog/2026-05/CHANGELOG.md)
+- [2026-04](changelog/2026-04/CHANGELOG.md)
+- [2026-03](changelog/2026-03/CHANGELOG.md)
+- [2026-02](changelog/2026-02/CHANGELOG.md)
+- [2026-01](changelog/2026-01/CHANGELOG.md)
 
 ## [0.849.0](https://github.com/vm0-ai/vm0/compare/app-v0.848.1...app-v0.849.0) (2026-09-06)
 

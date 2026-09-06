@@ -2,11 +2,11 @@
 
 Releases before September 2026 are archived by month:
 
-- [2026-08](changelog/2026-08.md)
-- [2026-07](changelog/2026-07.md)
-- [2026-06](changelog/2026-06.md)
-- [2026-05](changelog/2026-05.md)
-- [2026-04](changelog/2026-04.md)
+- [2026-08](changelog/2026-08/CHANGELOG.md)
+- [2026-07](changelog/2026-07/CHANGELOG.md)
+- [2026-06](changelog/2026-06/CHANGELOG.md)
+- [2026-05](changelog/2026-05/CHANGELOG.md)
+- [2026-04](changelog/2026-04/CHANGELOG.md)
 
 ## [1.554.0](https://github.com/vm0-ai/vm0/compare/api-v1.553.1...api-v1.554.0) (2026-09-06)
 
