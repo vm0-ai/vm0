@@ -1,0 +1,77 @@
+def set_hash_failure(flow):
+    try:
+        metadata = flow.metadata
+        {metadata}
+        metadata = {}
+    except TypeError:
+        return metadata["sandbox_run_id"]
+
+
+def dict_hash_failure(flow):
+    try:
+        metadata = flow.metadata
+        {metadata: 1}
+        metadata = {}
+    except TypeError:
+        return metadata["firewall_name"]
+
+
+def repeated_set_failures_under_with(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        {metadata}
+        {metadata}
+        metadata = {}
+    return metadata["original_url"]
+
+
+def set_failure_before_later_entry_rebind(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        {metadata, (metadata := frozenset())}
+        metadata = {}
+    return metadata["capture_body"]
+
+
+def dict_failure_before_later_entry_rebind(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        {metadata: 1, "external": (metadata := {})}
+        metadata = {}
+    return metadata["sandbox_proxy_log_path"]
+
+
+def dict_value_rebinds_before_key_hashing(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        {metadata: (metadata := {})}
+    return metadata["sandbox_run_id"]
+
+
+def dict_pairs_follow_source_order(flow, manager):
+    metadata = {}
+    with manager:
+        {
+            (metadata := flow.metadata): (metadata := {}),
+            (metadata := flow.metadata): 1,
+        }
+        metadata = {}
+    return metadata["network_log_target"]
+
+
+def deterministic_rebind_precedes_display_hashing(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        metadata = {}
+        {metadata}
+        {metadata: 1}
+    return metadata["firewall_name"]
+
+
+def unpack_operations_do_not_add_failure_paths(flow, manager, values, mapping):
+    metadata = flow.metadata
+    with manager:
+        {*values}
+        {**mapping}
+        metadata = {}
+    return metadata["original_url"]
