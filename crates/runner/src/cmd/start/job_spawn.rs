@@ -181,6 +181,7 @@ impl ExecutorInvocation {
             if let Some(idle_entry) = reuse_entry {
                 executor::execute_job_reuse_with_hooks(
                     idle_entry,
+                    reuse_result,
                     context,
                     &exec_config,
                     &params,

@@ -231,6 +231,7 @@ fn build_mock_run_config_with_runtime(
             )),
             min_vcpu,
             min_memory_mb,
+            max_idle: 10,
             device_rate_limits: None,
         },
         shared: RunnerSharedState {

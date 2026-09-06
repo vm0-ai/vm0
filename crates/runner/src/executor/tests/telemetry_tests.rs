@@ -28,10 +28,13 @@ use super::super::{
 };
 use super::support::{
     api_storage, context_with_env, default_params, make_reusable_idle_sandbox, minimal_context,
-    test_executor_config,
+    test_budget_lease, test_executor_config,
 };
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
+use crate::idle_pool::{
+    IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult, ParkedIdleCandidate,
+};
 use crate::ids::RunId;
 use crate::provider::ApiClaimTiming;
 use crate::resource_budget::ResourceBudget;
@@ -1740,6 +1743,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
     let (_outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
+        SandboxReuseResult::Reused,
         context,
         &config,
         &default_params(),
@@ -1797,6 +1801,83 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
 }
 
+#[tokio::test]
+async fn execute_job_claims_blank_sandbox_without_changing_cold_path_attribution() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(MockSandboxFactory::new()));
+    let sandbox_id = SandboxId::new_v4();
+    let mut sandbox = factory
+        .create(SandboxConfig {
+            id: sandbox_id,
+            resources: sandbox::ResourceLimits {
+                cpu_count: 2,
+                memory_mb: 2048,
+            },
+            device_rate_limits: None,
+            workspace_drive: None,
+        })
+        .await
+        .unwrap();
+    sandbox.start().await.unwrap();
+    assert_eq!(
+        sandbox.park().await.unwrap(),
+        sandbox::SandboxParkOutcome::Reusable
+    );
+
+    let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
+    let candidate = ParkedIdleCandidate::blank(
+        sandbox,
+        Arc::clone(&factory),
+        test_budget_lease(),
+        sandbox_id,
+        "vm0/default".into(),
+        None,
+    );
+    assert!(matches!(pool.park(candidate), ParkResult::Parked));
+    let reserved = pool
+        .reserve_blank("vm0/default", &None)
+        .expect("blank sandbox should be compatible");
+    let (idle_sandbox, budget_lease) = match reserved.try_unpark_for_run(RunId::new_v4()).await {
+        IdleUnparkResult::Reused {
+            sandbox,
+            budget_lease,
+        } => (*sandbox, budget_lease),
+        IdleUnparkResult::Failed { error, .. } => {
+            panic!("blank sandbox should unpark: {error}");
+        }
+    };
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, telemetry) = execute_job_reuse_with_hooks(
+        idle_sandbox,
+        SandboxReuseResult::PoolMiss,
+        minimal_context(),
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks::none(),
+    )
+    .await;
+
+    assert!(outcome.failure.is_none());
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::NotConfigured)
+    );
+    assert_has_action(&telemetry, "sandbox_reuse_miss");
+    assert_has_action(&telemetry, "sandbox_blank_pool_hit");
+    assert_lacks_action(&telemetry, "sandbox_reuse_hit");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
+    assert_lacks_action(&telemetry, "runner_guest_state_restore");
+
+    let mut sandbox = outcome.sandbox.expect("sandbox should remain alive");
+    sandbox.stop().await.unwrap();
+    factory.destroy(sandbox).await;
+    drop(budget_lease);
+}
+
 async fn assert_reused_private_write_timeout_telemetry(
     context: crate::types::ExecutionContext,
     stage: SandboxOperationTimeoutStage,
@@ -1822,6 +1903,7 @@ async fn assert_reused_private_write_timeout_telemetry(
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
+        SandboxReuseResult::Reused,
         context,
         &config,
         &default_params(),
@@ -1875,6 +1957,7 @@ async fn assert_reused_connector_account_context_failure(
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
+        SandboxReuseResult::Reused,
         context,
         &config,
         &default_params(),

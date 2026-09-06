@@ -217,6 +217,9 @@ pub(super) async fn select_idle_entries_for_pressure(
             );
             if fresh_lease.is_none() {
                 for reuse_key in pool.oldest_first_pressure_keys() {
+                    let Some(idle_kind) = pool.entry_kind(&reuse_key) else {
+                        continue;
+                    };
                     let Some(job) = pool.evict_for_pressure(&reuse_key) else {
                         continue;
                     };
@@ -225,6 +228,7 @@ pub(super) async fn select_idle_entries_for_pressure(
                     info!(
                         run_id = %request.run_id,
                         context = request.context,
+                        idle_kind = ?idle_kind,
                         reuse_key_fingerprint = %short_digest(retiring.reuse_key()),
                         reuse_key_kind = reuse_key_kind(retiring.reuse_key()),
                         profile = %retiring.profile_name(),

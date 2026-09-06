@@ -127,7 +127,7 @@ use crate::executor::{
 };
 use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
-    DestroyOutcome, ExactIdleReservationMiss, IdlePoolSnapshot, IdleUnparkResult,
+    DestroyOutcome, ExactIdleReservationMiss, IdlePoolSnapshot, IdleSandboxKind, IdleUnparkResult,
     ReservedIdleSandbox, RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
     SpeculativeIdleUnparkResult, SpeculativeReparkResult,
 };
@@ -2524,41 +2524,57 @@ async fn try_reuse_from_pool(
         job_lease,
     } = request;
 
-    let started_at = Instant::now();
-    let Some(reuse_key) = context.reuse_key() else {
-        pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return Ok((
-            None,
-            job_lease,
-            SandboxReuseResult::NoReuseKey,
-            None,
-            false,
-            None,
-        ));
+    let reuse_key = context.reuse_key();
+    let miss_result = if reuse_key.is_some() {
+        SandboxReuseResult::PoolMiss
+    } else {
+        SandboxReuseResult::NoReuseKey
     };
+    let started_at = Instant::now();
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let taken = {
+    let exact = {
         let mut pool = ctx.idle_pool.lock().await;
-        pool.take_reserved(reuse_key)
+        reuse_key
+            .and_then(|reuse_key| pool.take_reserved(reuse_key))
             .map(|entry| (entry, pool.status_snapshot()))
     };
-    let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
     let claimed_workspace_cache_reuse_key = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
-        && ctx
-            .spawn_ctx
-            .workspace_cache_snapshot
-            .might_contain_workspace_cache_reuse_key(reuse_key);
+        && reuse_key.is_some_and(|reuse_key| {
+            ctx.spawn_ctx
+                .workspace_cache_snapshot
+                .might_contain_workspace_cache_reuse_key(reuse_key)
+        });
     pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::WorkspaceCacheStateLookup, started_at);
+    let taken = match exact {
+        Some(exact) => Some(exact),
+        None if !claimed_workspace_cache_reuse_key => {
+            let mut pool = ctx.idle_pool.lock().await;
+            pool.reserve_blank(profile_name, device_rate_limits)
+                .map(|entry| (entry, pool.status_snapshot()))
+        }
+        None => None,
+    };
+    let took_idle_session = taken.is_some();
     let needs_reuse_state_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
         Some((entry, snapshot))
             if entry.profile_name() == profile_name
                 && entry.device_rate_limits() == device_rate_limits =>
         {
+            let entry_kind = entry.kind();
+            let entry_reuse_key = entry.reuse_key().to_owned();
+            let activation_reuse_result = match entry_kind {
+                IdleSandboxKind::Exact => SandboxReuseResult::Reused,
+                IdleSandboxKind::Blank => miss_result,
+            };
+            let fallback_reuse_result = match entry_kind {
+                IdleSandboxKind::Exact => SandboxReuseResult::PoolMiss,
+                IdleSandboxKind::Blank => miss_result,
+            };
             if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
                 let started_at = Instant::now();
                 let validation = entry.validate_workspace_promotion_identity(
@@ -2573,8 +2589,8 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                        reuse_key_kind = reuse_key_kind(reuse_key),
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
+                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle sandbox and falling through to fresh create"
@@ -2587,7 +2603,7 @@ async fn try_reuse_from_pool(
                     return Ok((
                         None,
                         job_lease,
-                        SandboxReuseResult::PoolMiss,
+                        fallback_reuse_result,
                         Some(snapshot),
                         needs_reuse_state_refresh,
                         None,
@@ -2607,7 +2623,7 @@ async fn try_reuse_from_pool(
                 return Ok((
                     None,
                     job_lease,
-                    SandboxReuseResult::PoolMiss,
+                    fallback_reuse_result,
                     None,
                     needs_reuse_state_refresh,
                     None,
@@ -2641,7 +2657,7 @@ async fn try_reuse_from_pool(
                 return Ok((
                     None,
                     job_lease,
-                    SandboxReuseResult::PoolMiss,
+                    fallback_reuse_result,
                     None,
                     needs_reuse_state_refresh,
                     None,
@@ -2664,9 +2680,10 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                        reuse_key_kind = reuse_key_kind(reuse_key),
-                        "reusing idle sandbox for reuse key"
+                        idle_kind = ?entry_kind,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
+                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
+                        "activating idle sandbox"
                     );
                     // Idle entry already holds budget. Drop the speculative
                     // fresh-job lease and move the idle lease to the outer job
@@ -2675,7 +2692,7 @@ async fn try_reuse_from_pool(
                     Ok((
                         Some(*sandbox),
                         budget_lease,
-                        SandboxReuseResult::Reused,
+                        activation_reuse_result,
                         Some(snapshot),
                         needs_reuse_state_refresh,
                         Some(transfer_guard),
@@ -2684,8 +2701,9 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                        reuse_key_kind = reuse_key_kind(reuse_key),
+                        idle_kind = ?entry_kind,
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
+                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
                         error = %error,
                         "unpark failed, destroying idle sandbox and falling through to fresh create"
                     );
@@ -2727,10 +2745,11 @@ async fn try_reuse_from_pool(
             }
         }
         Some((stale, snapshot)) if stale.profile_name() == profile_name => {
+            let stale_reuse_key = stale.reuse_key().to_owned();
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                reuse_key_kind = reuse_key_kind(reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&stale_reuse_key),
+                reuse_key_kind = reuse_key_kind(&stale_reuse_key),
                 profile = %profile_name,
                 "idle sandbox device rate limiter mismatch, destroying"
             );
@@ -2749,10 +2768,11 @@ async fn try_reuse_from_pool(
             ))
         }
         Some((stale, snapshot)) => {
+            let stale_reuse_key = stale.reuse_key().to_owned();
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                reuse_key_kind = reuse_key_kind(reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&stale_reuse_key),
+                reuse_key_kind = reuse_key_kind(&stale_reuse_key),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle sandbox profile mismatch, destroying"
@@ -2772,16 +2792,20 @@ async fn try_reuse_from_pool(
             ))
         }
         None => {
-            info!(
-                run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
-                reuse_key_kind = reuse_key_kind(reuse_key),
-                "no idle sandbox found for reuse key"
-            );
+            match reuse_key {
+                Some(reuse_key) => info!(
+                    run_id = %run_id,
+                    reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                    reuse_key_kind = reuse_key_kind(reuse_key),
+                    workspace_cache_possible = claimed_workspace_cache_reuse_key,
+                    "no compatible idle sandbox found for reuse key"
+                ),
+                None => info!(run_id = %run_id, "no compatible blank sandbox found"),
+            }
             Ok((
                 None,
                 job_lease,
-                SandboxReuseResult::PoolMiss,
+                miss_result,
                 None,
                 needs_reuse_state_refresh,
                 None,

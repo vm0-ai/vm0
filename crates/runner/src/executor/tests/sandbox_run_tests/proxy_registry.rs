@@ -218,7 +218,12 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
             &source_ip,
             &ctx,
             &config,
-            &prev_storage,
+            RunStart {
+                restore_guest_state: true,
+                reuse_result: crate::types::SandboxReuseResult::Reused,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
+                prev_storage: Some(&prev_storage),
+            },
             &mut telemetry,
             PreparedRunInputs::new(
                 RunControls::new(tokio_util::sync::CancellationToken::new(), None),
