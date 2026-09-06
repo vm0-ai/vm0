@@ -288,6 +288,10 @@ function createPinDragRowMount(
             disableNativeDragPreview({ nativeSetDragImage });
           },
           onDragStart: ({ location }) => {
+            // Release pointer focus before the row moves. Otherwise React's
+            // focus restoration ends the adapter's hover fix during drop.
+            // Keyboard sorting calls start$ directly and keeps its focus.
+            handle.blur();
             set(start$, threadId, {
               x: location.current.input.clientX,
               y: location.current.input.clientY,

@@ -175,11 +175,15 @@ test("dragging between equal ranks updates the tied suffix optimistically", asyn
   if (!target) {
     throw new Error("Missing target row");
   }
+  const user = userEvent.setup();
+  await user.click(grip);
+  expect(grip).toHaveFocus();
   fireEvent.pointerDown(grip, { pointerType: "mouse", button: 0 });
   fireEvent.mouseDown(grip, { button: 0 });
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   fireEvent.dragStart(grip, { dataTransfer: transfer });
   const preview = await screen.findByTestId("pinned-thread-drag-preview");
+  expect(grip).not.toHaveFocus();
   expect(preview).toHaveTextContent("Last pin");
   expect(preview.querySelector("button, a")).toBeNull();
   expect(grip.closest("[data-dragging]")).toHaveAttribute(
