@@ -45,7 +45,7 @@ const platforms = [
     modifier: "Control",
     hints: ["Ctrl+Shift+F", "Ctrl+Shift+O", "Ctrl+B"],
   },
-];
+] as const;
 
 test.each(platforms)(
   "Show one hint panel after a 500 ms hold in a $platform browser and switch cleanly between hover labels",
