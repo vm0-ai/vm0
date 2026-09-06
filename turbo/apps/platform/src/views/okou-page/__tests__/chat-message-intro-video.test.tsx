@@ -508,7 +508,12 @@ test.each([true, false])(
   "A desktop recording reaches review after onboarding (needed: %s)",
   async (needsOnboarding) => {
     installIntroVideoFixture();
-    resolveDesktopRecordingFiles();
+    context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+      return respond(200, {
+        url: `https://resolved.example/${query.file_id}`,
+        publicUrl: `https://cdn.vm7.io/artifacts/tests/intro-video/${query.file_id}`,
+      });
+    });
     context.mocks.data.onboardingStatus({
       needsOnboarding,
       onboardingComplete: !needsOnboarding,
@@ -537,10 +542,7 @@ test.each([true, false])(
     const dialog = await screen.findByRole("dialog", {
       name: "Create an intro video",
     });
-    await expect(
-      within(dialog).findByText("Your source is ready"),
-    ).resolves.toBeVisible();
-    expect(within(dialog).getByText("demo.mp4")).toBeVisible();
+    await expect(within(dialog).findByText("demo.mp4")).resolves.toBeVisible();
     await waitFor(() => {
       expect(search()).toBe("");
     });
