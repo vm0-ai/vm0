@@ -42,6 +42,7 @@ function createSession(product: "okou" | "zero" = "okou") {
   const windows: DesktopAuthWindowRequest[] = [];
   const replies: Promise<string | null>[] = [];
   const completed: string[] = [];
+  const changes: (string | null)[] = [];
   const cookiesRead: string[] = [];
   const session = new DesktopAuthSession({
     product,
@@ -70,11 +71,14 @@ function createSession(product: "okou" | "zero" = "okou") {
       windows.push(request);
       return await (replies.shift() ?? Promise.resolve(null));
     },
+    onChange: () => {
+      changes.push(session.getCachedToken());
+    },
     onAuthCompleted: () => {
       completed.push("completed");
     },
   });
-  return { session, windows, replies, completed, cookiesRead };
+  return { session, windows, replies, completed, cookiesRead, changes };
 }
 
 function identityHandlers(
@@ -130,7 +134,6 @@ describe("Okou App session authority", () => {
     expect(requests).toEqual([]);
     expect(cookiesRead).toEqual([]);
     expect(windows.map((w) => w.url)).toEqual([
-      "https://app.okou.ai/desktop-auth/token",
       "https://app.okou.ai/desktop-auth/token",
     ]);
   });
@@ -221,6 +224,31 @@ describe("Okou App session authority", () => {
       expect(windows).toHaveLength(2);
     },
   );
+
+  it("notifies subscribers of a failed App refresh and waits for explicit sign-in", async () => {
+    const { session, replies, windows, changes } = createSession();
+    identityHandlers();
+    replies.push(Promise.resolve("expired"), Promise.resolve(null));
+    await session.getToken();
+    server.use(
+      http.get(
+        `${api}/api/protected`,
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+    expect(
+      (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
+        .status,
+    ).toBe(401);
+    expect(changes).toEqual(["expired", null]);
+    expect(await session.getAuthState()).toEqual(signedOut);
+    expect(await session.getToken({ forceRefresh: true })).toBeNull();
+    expect(windows).toHaveLength(2);
+    replies.push(Promise.resolve("explicit"));
+    await session.consumeCode("new-code");
+    expect(session.getCachedToken()).toBe("explicit");
+    expect(windows).toHaveLength(3);
+  });
 
   it("refreshes the entire identity pair when the organization read rejects the old token", async () => {
     const { session, replies } = createSession();

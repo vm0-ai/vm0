@@ -351,7 +351,15 @@ export class DesktopAuthSession {
       if (!interactive && signal.aborted) return null;
       throw error;
     } finally {
-      if (this.lifetime === lifetime) this.setSigningIn(false);
+      if (this.lifetime === lifetime) {
+        if (this.product === "okou" && !this.token) {
+          // Notify renderer/tray subscribers, and keep their reads from
+          // reopening a failed hidden restore until explicit sign-in.
+          this.restoreEnabled = false;
+          this.onChange();
+        }
+        this.setSigningIn(false);
+      }
     }
   }
 
@@ -467,6 +475,7 @@ export class DesktopAuthSession {
       init,
     );
     if (retried.status === 401) {
+      this.restoreEnabled = false;
       this.token = null;
       this.appState = signedOutDesktopAuthState();
       this.onChange();
