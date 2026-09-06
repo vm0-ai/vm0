@@ -11,6 +11,25 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.850.0](https://github.com/vm0-ai/vm0/compare/app-v0.849.1...app-v0.850.0) (2026-09-06)
+
+
+### Features
+
+* show global keyboard shortcut hints on modifier hold ([#32004](https://github.com/vm0-ai/vm0/issues/32004)) ([1a44eea](https://github.com/vm0-ai/vm0/commit/1a44eeaf461039a838aad9e59813c1e0d8f6f47a))
+
+
+### Bug Fixes
+
+* **platform:** align pinned chat tab order with visual layout ([#32016](https://github.com/vm0-ai/vm0/issues/32016)) ([beb16df](https://github.com/vm0-ai/vm0/commit/beb16dfceeca55a088d72c47f9fe9c7fa60f515e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/ui bumped to 1.6.0
+
 ## [0.849.1](https://github.com/vm0-ai/vm0/compare/app-v0.849.0...app-v0.849.1) (2026-09-06)
 
 
