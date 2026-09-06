@@ -527,10 +527,17 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.socket.request_header_values("X-Injected") == []
         assert upstream.socket.request_header_values("X-Keep") == []
 
-    async def test_forward_request_rejects_malformed_injected_header(
-        self, real_flow, mitm_ctx, tmp_path
+    @pytest.mark.parametrize(
+        "invalid_value",
+        [
+            pytest.param("bad\r\nX-Injected: value", id="newline"),
+            pytest.param("snowman ☃", id="non-latin-1"),
+        ],
+    )
+    async def test_forward_request_rejects_invalid_injected_header(
+        self, real_flow, mitm_ctx, tmp_path, invalid_value: str
     ):
-        """Malformed resolved auth headers fail before auth.base forwarding."""
+        """Invalid resolved auth headers fail before auth.base forwarding."""
         flow, allow, sandbox_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
@@ -544,7 +551,7 @@ class TestAuthBaseUrlRewriteForwarding:
         )
         token_meta["headers"] = {
             "Authorization": "Bearer real-token",
-            "X-Test": "bad\r\nX-Injected: value",
+            "X-Test": invalid_value,
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
