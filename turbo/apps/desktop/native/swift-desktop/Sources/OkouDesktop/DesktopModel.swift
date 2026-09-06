@@ -217,6 +217,7 @@ final class DesktopModel: ObservableObject {
 
   func consume(_ url: URL) async throws {
     guard configuration.callback(url) != nil else { return }
+    error = nil
     try await changeAccount {
       if try await self.auth.consume(url) {
         try await self.refresh(allowAccountChange: true)
