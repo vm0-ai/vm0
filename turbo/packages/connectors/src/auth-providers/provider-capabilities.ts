@@ -1311,6 +1311,33 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "resource-guru",
+    authMethodId: "oauth",
+    contract: {
+      client: {
+        kind: "static-confidential-env",
+        clientIdEnv: "RESOURCE_GURU_OAUTH_CLIENT_ID",
+        clientSecretEnv: "RESOURCE_GURU_OAUTH_CLIENT_SECRET",
+      },
+      grant: {
+        kind: "auth-code",
+        callbackOrigin: "web",
+        outputNames: ["accessToken", "refreshToken"],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
     connectorSlug: "outlook-calendar",
     authMethodId: "oauth",
     contract: {

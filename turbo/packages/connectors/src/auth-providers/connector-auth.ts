@@ -96,6 +96,7 @@ import { notionProvider } from "./connectors/notion/provider";
 import { netsuiteProvider } from "./connectors/netsuite/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
+import { resourceGuruProvider } from "./connectors/resource-guru/provider";
 import { redditProvider } from "./connectors/reddit/provider";
 import { intervalsIcuProvider } from "./connectors/intervals-icu/provider";
 import { sentryProvider } from "./connectors/sentry/provider";
@@ -1044,6 +1045,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     nintendoSwitchParentalControlsProvider,
   ),
   authCodeRefreshProviderEntry("notion", "oauth", notionProvider),
+  authCodeRefreshProviderEntry("resource-guru", "oauth", resourceGuruProvider),
   authCodeRefreshProviderEntry(
     "outlook-calendar",
     "oauth",
