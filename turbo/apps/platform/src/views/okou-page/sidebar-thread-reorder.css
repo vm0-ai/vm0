@@ -41,41 +41,6 @@
   opacity: 0;
 }
 
-.okou-thread-reorder-row[data-dragging="pointer"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px dashed hsl(var(--border));
-  border-radius: 8px;
-  background: hsl(var(--muted) / 0.3);
-  pointer-events: none;
-}
-
-.okou-thread-reorder-row[data-drop-side]::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  height: 2px;
-  border-radius: 2px;
-  background: hsl(var(--primary));
-  z-index: 20;
-  pointer-events: none;
-}
-
-.okou-thread-reorder-row[data-drop-side="before"]::after {
-  /* -(4px row gap + 2px stroke) / 2: both edges share one gap center. */
-  top: -3px;
-}
-.okou-thread-reorder-row[data-drop-side="after"]::after {
-  bottom: -3px;
-}
-
-/* Only the actual first item, including when later rows are virtualized. */
-[data-index="0"] > .okou-thread-reorder-row[data-drop-side="before"]::after {
-  top: 0;
-}
-
 @media (pointer: coarse) {
   .okou-thread-reorder-row[data-reorderable] > a {
     padding-left: 32px;

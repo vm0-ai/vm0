@@ -48,6 +48,7 @@ import { Link } from "../router/link.tsx";
 import { slackOrgScopeMismatch$ } from "../../signals/okou-page/slack.ts";
 import { AccountDropdown } from "./sidebar-account.tsx";
 import { ChatThreadDialogs, ChatThreadsSection } from "./sidebar-threads.tsx";
+import { PinnedThreadDropZone } from "./sidebar-thread-reorder.tsx";
 import {
   responsiveSidebarChatThreadScrollSignals,
   threeColumnSidebarChatThreadScrollSignals,
@@ -359,7 +360,10 @@ function ExpandedManageSection() {
 
 function ExpandedSidebarSections() {
   return (
-    <div className="flex-1 min-h-0 -mx-2 mt-2 pt-2 flex flex-col overflow-hidden">
+    <PinnedThreadDropZone
+      signals={responsiveSidebarChatThreadScrollSignals.pinReorder}
+      className="flex-1 min-h-0 -mx-2 mt-2 pt-2 flex flex-col overflow-hidden"
+    >
       <div className="px-2">
         <PinnedAgentListSection />
       </div>
@@ -368,7 +372,7 @@ function ExpandedSidebarSections() {
         contentClassName="px-2"
         showMarkAllRead
       />
-    </div>
+    </PinnedThreadDropZone>
   );
 }
 
@@ -817,7 +821,10 @@ function ChatListColumn() {
           <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />
         </TooltipProvider>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1">
+      <PinnedThreadDropZone
+        signals={threeColumnSidebarChatThreadScrollSignals.pinReorder}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1"
+      >
         <div className={inset}>
           <PinnedAgentListSection layout="horizontal" />
         </div>
@@ -826,7 +833,7 @@ function ChatListColumn() {
           contentClassName={inset}
           showMarkAllRead
         />
-      </div>
+      </PinnedThreadDropZone>
       {/* Collapses to nothing when SidebarUpgradeCard renders null, so the
           thread list reaches the column bottom instead of clipping its last
           row above a reserved strip. */}

@@ -18,11 +18,11 @@ import {
   type ElementDropTargetEventBasePayload,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
-import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.ts";
 import { onRef } from "../utils.ts";
+import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../okou-page/sidebar-state.ts";
 import { chatThreadOnlyUnread$ } from "./chat-thread-only-unread.ts";
 import {
   eventDrivenChatThreads$,
@@ -145,12 +145,22 @@ interface PinDragAnnouncement {
   readonly title: string;
 }
 
+interface PinDragPlacement {
+  readonly sourceIndex: number;
+  readonly destinationIndex: number;
+}
+
 export interface PinnedThreadDragSignals {
   readonly drag$: Computed<PinDrag | null>;
+  readonly placement$: Computed<PinDragPlacement | null>;
   readonly preview$: Computed<PinDragPreview | null>;
   readonly announcement$: Computed<PinDragAnnouncement | null>;
   readonly mount$: Command<(() => void) | undefined, [HTMLElement | null]>;
   readonly mountRow$: Command<(() => void) | undefined, [HTMLElement | null]>;
+  readonly mountDropZone$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   readonly cancelKeyboard$: Command<boolean, [string]>;
   readonly start$: Command<void, [string, PinDragPointer | null]>;
   readonly step$: Command<void, [-1 | 1]>;
@@ -254,66 +264,137 @@ function createPinDragInteraction(
 
 function createPinDragRowMount(
   internalDrag$: State<PinDrag | null>,
-  drag$: Computed<PinDrag | null>,
   start$: PinnedThreadDragSignals["start$"],
-  target$: Command<void, [string, PinMove["side"]]>,
 ) {
   return onRef(
-    command(({ get, set }, row: HTMLElement, signal: AbortSignal) => {
+    command(({ set }, row: HTMLElement, signal: AbortSignal) => {
       const threadId = row.dataset.threadId;
       const handle = row.querySelector(".okou-thread-drag-handle");
-      const slot = row.parentElement;
-      if (!threadId || !(handle instanceof HTMLElement) || !slot) {
+      if (!threadId || !(handle instanceof HTMLElement)) {
         throw new Error("Missing pinned thread drag elements");
       }
-      const updateTarget = ({
-        location,
-      }: ElementDropTargetEventBasePayload) => {
-        const rect = row.getBoundingClientRect();
-        set(
-          target$,
-          threadId,
-          location.current.input.clientY < rect.top + rect.height / 2
-            ? "before"
-            : "after",
-        );
-      };
-      const cleanup = combine(
-        draggable({
-          element: handle,
-          getInitialData: () => {
-            return { threadId, session: internalDrag$ };
-          },
-          onGenerateDragPreview: ({ nativeSetDragImage }) => {
-            disableNativeDragPreview({ nativeSetDragImage });
-          },
-          onDragStart: ({ location }) => {
-            // Release pointer focus before the row moves. Otherwise React's
-            // focus restoration ends the adapter's hover fix during drop.
-            // Keyboard sorting calls start$ directly and keeps its focus.
-            handle.blur();
-            set(start$, threadId, {
-              x: location.current.input.clientX,
-              y: location.current.input.clientY,
-              width: row.getBoundingClientRect().width,
-            });
-          },
-        }),
-        dropTargetForElements({
-          // Include the existing 4px padding in the hit area, without
-          // changing the 32px row or its 36px virtual slot.
-          element: slot,
-          canDrop: ({ source }) => {
-            return source.data.session === internalDrag$ && get(drag$) !== null;
-          },
-          onDragEnter: updateTarget,
-          onDrag: updateTarget,
-          onDrop: updateTarget,
-        }),
-      );
+      const cleanup = draggable({
+        element: handle,
+        getInitialData: () => {
+          return { threadId, session: internalDrag$ };
+        },
+        onGenerateDragPreview: ({ nativeSetDragImage }) => {
+          disableNativeDragPreview({ nativeSetDragImage });
+        },
+        onDragStart: ({ location }) => {
+          // Release pointer focus before the row moves. Otherwise React's
+          // focus restoration ends the adapter's hover fix during drop.
+          // Keyboard sorting calls start$ directly and keeps its focus.
+          handle.blur();
+          set(start$, threadId, {
+            x: location.current.input.clientX,
+            y: location.current.input.clientY,
+            width: row.getBoundingClientRect().width,
+          });
+        },
+      });
       signal.addEventListener("abort", cleanup, { once: true });
     }),
   );
+}
+
+function createPinDragDropZoneMount(
+  internalDrag$: State<PinDrag | null>,
+  drag$: Computed<PinDrag | null>,
+  target$: Command<void, [number]>,
+) {
+  return onRef(
+    command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      const findList = () => {
+        return element.querySelector(
+          '[data-testid="sidebar-chat-threads-virtual-list"]',
+        );
+      };
+      const updateTarget = ({
+        location,
+      }: ElementDropTargetEventBasePayload) => {
+        const list = findList();
+        if (!list) {
+          return;
+        }
+        // The fixed virtual slots do not move with the placeholder. Include
+        // the pinned-agent area and header so dragging above the list selects 0.
+        set(
+          target$,
+          Math.floor(
+            (location.current.input.clientY -
+              list.getBoundingClientRect().top) /
+              CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+          ),
+        );
+      };
+      const cleanup = dropTargetForElements({
+        element,
+        canDrop: ({ source }) => {
+          return (
+            source.data.session === internalDrag$ &&
+            get(drag$) !== null &&
+            findList() !== null
+          );
+        },
+        onDragEnter: updateTarget,
+        onDrag: updateTarget,
+        onDrop: updateTarget,
+      });
+      signal.addEventListener("abort", cleanup, { once: true });
+    }),
+  );
+}
+
+function createPinDragPlacement(
+  internalDrag$: State<PinDrag | null>,
+  drag$: Computed<PinDrag | null>,
+) {
+  const pins$ = computed((get) => {
+    const drag = get(drag$);
+    const threads = get(eventDrivenChatThreads$);
+    const source = threads.find((item) => {
+      return item.id === drag?.threadId;
+    });
+    return threads
+      .filter((item) => {
+        return item.agentId === source?.agentId && item.pinnedAt !== null;
+      })
+      .sort(comparePinnedThreads);
+  });
+  const remaining$ = computed((get) => {
+    const drag = get(drag$);
+    return get(pins$).filter((item) => {
+      return item.id !== drag?.threadId;
+    });
+  });
+  const placement$ = computed((get) => {
+    const drag = get(drag$);
+    if (!drag) {
+      return null;
+    }
+    const sourceIndex = get(pins$).findIndex((item) => {
+      return item.id === drag.threadId;
+    });
+    const destinationIndex =
+      drag.targetId === drag.threadId
+        ? sourceIndex
+        : get(remaining$).findIndex((item) => {
+            return item.id === drag.targetId;
+          }) + (drag.side === "after" ? 1 : 0);
+    return { sourceIndex, destinationIndex };
+  });
+  const target$ = command(({ get, set }, index: number) => {
+    const drag = get(drag$);
+    const remaining = get(remaining$);
+    const destination = Math.max(0, Math.min(remaining.length, index));
+    const target = remaining[destination] ?? remaining.at(-1);
+    const side = destination === remaining.length ? "after" : "before";
+    if (drag && target && (drag.targetId !== target.id || drag.side !== side)) {
+      set(internalDrag$, { ...drag, targetId: target.id, side });
+    }
+  });
+  return { placement$, target$ };
 }
 
 export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
@@ -338,50 +419,11 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
   });
   const { cancel$, cancelKeyboard$, mount$, start$, preview$ } =
     createPinDragInteraction(internalDrag$, drag$);
-  const target$ = command(
-    ({ get, set }, targetId: string, side: PinMove["side"]) => {
-      const drag = get(drag$);
-      if (drag && (drag.targetId !== targetId || drag.side !== side)) {
-        set(internalDrag$, { ...drag, targetId, side });
-      }
-    },
-  );
+  const { placement$, target$ } = createPinDragPlacement(internalDrag$, drag$);
   const step$ = command(({ get, set }, direction: -1 | 1) => {
-    const drag = get(drag$);
-    if (!drag) {
-      return;
-    }
-    const threads = get(eventDrivenChatThreads$);
-    const source = threads.find((item) => {
-      return item.id === drag.threadId;
-    })!;
-    const pins = threads
-      .filter((item) => {
-        return item.agentId === source.agentId && item.pinnedAt !== null;
-      })
-      .sort(comparePinnedThreads);
-    const remaining = pins.filter((item) => {
-      return item.id !== source.id;
-    });
-    const currentIndex =
-      drag.targetId === source.id
-        ? pins.findIndex((item) => {
-            return item.id === source.id;
-          })
-        : remaining.findIndex((item) => {
-            return item.id === drag.targetId;
-          }) + (drag.side === "after" ? 1 : 0);
-    const nextIndex = Math.max(
-      0,
-      Math.min(remaining.length, currentIndex + direction),
-    );
-    const target = remaining[nextIndex] ?? remaining.at(-1);
-    if (target) {
-      set(internalDrag$, {
-        ...drag,
-        targetId: target.id,
-        side: nextIndex === remaining.length ? "after" : "before",
-      });
+    const placement = get(placement$);
+    if (placement) {
+      set(target$, placement.destinationIndex + direction);
     }
   });
   const drop$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -412,9 +454,11 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
   });
   return {
     drag$,
+    placement$,
     preview$,
     mount$,
-    mountRow$: createPinDragRowMount(internalDrag$, drag$, start$, target$),
+    mountRow$: createPinDragRowMount(internalDrag$, start$),
+    mountDropZone$: createPinDragDropZoneMount(internalDrag$, drag$, target$),
     cancelKeyboard$,
     start$,
     step$,

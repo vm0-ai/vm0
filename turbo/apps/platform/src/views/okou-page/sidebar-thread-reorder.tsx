@@ -11,8 +11,36 @@ import {
 } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import type { SidebarChatThreadItemSignals } from "../../signals/chat-page/sidebar-chat-thread-item.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../signals/okou-page/sidebar-state.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import "./sidebar-thread-reorder.css";
+
+export function PinnedThreadDropZone({
+  signals,
+  className,
+  children,
+}: {
+  signals: PinnedThreadDragSignals;
+  className: string;
+  children: ReactNode;
+}) {
+  const enabled = useGet(pinnedThreadReorderEnabled$);
+  const mount = useSet(signals.mountDropZone$);
+  const drop = useSet(signals.dropPointer$);
+  const signal = useGet(pageSignal$);
+  return (
+    <div
+      ref={enabled ? mount : undefined}
+      data-testid="pinned-thread-drop-zone"
+      className={className}
+      onDrop={() => {
+        detach(drop(signal), Reason.DomCallback);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function ThreadPinMoveMenuItems({
   signals,
@@ -132,10 +160,6 @@ export function PinnedThreadRow({
   const drag = useGet(dragSignals.drag$);
   const mountRow = useSet(dragSignals.mountRow$);
   const reorderable = enabled && pinned;
-  const targetSide =
-    drag?.targetId === signals.threadId && drag.threadId !== signals.threadId
-      ? drag.side
-      : undefined;
   return (
     <div
       ref={reorderable ? mountRow : undefined}
@@ -149,7 +173,6 @@ export function PinnedThreadRow({
             : "pointer"
           : undefined
       }
-      data-drop-side={targetSide}
     >
       {children}
       {reorderable && (
@@ -158,6 +181,27 @@ export function PinnedThreadRow({
         </div>
       )}
     </div>
+  );
+}
+
+export function PinnedThreadDropPlaceholder({
+  signals,
+}: {
+  signals: PinnedThreadDragSignals;
+}) {
+  const placement = useGet(signals.placement$);
+  if (!placement) {
+    return null;
+  }
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="pinned-thread-drop-placeholder"
+      className="pointer-events-none absolute left-0 top-0 h-8 w-full rounded-lg border border-dashed border-border bg-muted/30"
+      style={{
+        transform: `translateY(${placement.destinationIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT}px)`,
+      }}
+    />
   );
 }
 

@@ -100,6 +100,7 @@ import {
   PinnedThreadRow,
   PinnedThreadDragAnnouncement,
   PinnedThreadDragPreview,
+  PinnedThreadDropPlaceholder,
   ThreadPinMoveMenuItems,
 } from "./sidebar-thread-reorder.tsx";
 import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
@@ -643,31 +644,39 @@ function VirtualizedChatThreads({
   const startIndex = window?.startIndex ?? 0;
   const visibleItems = window?.items ?? [];
 
-  const drop = useSet(scrollSignals.pinReorder.dropPointer$);
-  const pageSignal = useGet(pageSignal$);
+  const placement = useGet(scrollSignals.pinReorder.placement$);
   return (
     <div
       ref={setShortcutRoot}
       className="relative w-full"
       data-testid="sidebar-chat-threads-virtual-list"
-      onDrop={() => {
-        detach(drop(pageSignal), Reason.DomCallback);
-      }}
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
       <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />
       <PinnedThreadDragPreview signals={scrollSignals.pinReorder} />
+      <PinnedThreadDropPlaceholder signals={scrollSignals.pinReorder} />
       {visibleItems.map((signals, visibleOffset) => {
         const index = startIndex + visibleOffset;
+        let visualIndex = index;
+        if (placement) {
+          const { sourceIndex, destinationIndex } = placement;
+          if (index === sourceIndex) {
+            visualIndex = destinationIndex;
+          } else if (index > sourceIndex && index <= destinationIndex) {
+            visualIndex--;
+          } else if (index >= destinationIndex && index < sourceIndex) {
+            visualIndex++;
+          }
+        }
         return (
           <div
             key={signals.threadId}
-            data-index={index}
+            data-index={visualIndex}
             data-testid="sidebar-chat-thread-virtual-row"
             className="absolute left-0 top-0 w-full pb-1"
             style={{
               transform: `translateY(${
-                index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+                visualIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
               }px)`,
             }}
           >
