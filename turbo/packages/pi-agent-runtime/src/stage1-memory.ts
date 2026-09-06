@@ -5,6 +5,7 @@ import type {
   ToolCall,
 } from "@earendil-works/pi-ai";
 import { decode, encode } from "gpt-tokenizer/encoding/o200k_base";
+import { projectPiMemoryCitationSegments } from "@okouai/api-contracts/contracts/pi-memory-citations";
 
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 import { MemoryPiSession } from "./session-memory";
@@ -238,9 +239,18 @@ function appendAssistantProjection(args: {
   if (!assistantIsUsable(args.message)) {
     return;
   }
+  const citationProjection = projectPiMemoryCitationSegments(
+    args.message.content.flatMap((item) => {
+      return item.type === "text" ? [item.text] : [];
+    }),
+  );
+  let textIndex = 0;
   for (const item of args.message.content) {
     if (item.type === "text") {
-      const content = item.text.trim();
+      const content = (
+        citationProjection.visibleSegments[textIndex] ?? ""
+      ).trim();
+      textIndex += 1;
       if (content) {
         args.projected.push({ role: "assistant", content });
       }

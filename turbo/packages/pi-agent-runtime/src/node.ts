@@ -5,6 +5,7 @@ export type { PiMemoryPhase2MountedConsolidationArgs } from "./phase2-memory";
 export {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
+  projectPiSessionJsonlForExport,
   runPiApiFirstTurn,
 } from "./api";
 export { MemoryPiSession } from "./session-memory";

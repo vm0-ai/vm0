@@ -23,6 +23,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { parseValidatedPiSessionJsonl } from "./session-validation";
+import {
+  projectPiMemoryCitationSegments,
+  visiblePiMemoryCitationText,
+} from "@okouai/api-contracts/contracts/pi-memory-citations";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 import type { PiAgentStreamOptions } from "./stream-options";
 
@@ -232,6 +236,39 @@ export class MemoryPiSession {
 
   toJsonl(): string {
     return serializeFileEntries([this.#header, ...this.#entries]);
+  }
+
+  /** Build a user-facing derivative without changing canonical source bytes. */
+  toPublicJsonl(): string {
+    const entries = this.#entries.map((entry): SessionEntry => {
+      if (entry.type !== "message" || entry.message.role !== "assistant") {
+        return entry;
+      }
+      const text = entry.message.content.flatMap((item) => {
+        return item.type === "text" ? [item.text] : [];
+      });
+      const projection = projectPiMemoryCitationSegments(text);
+      let textIndex = 0;
+      const errorMessage = entry.message.errorMessage;
+      return {
+        ...entry,
+        message: {
+          ...entry.message,
+          ...(typeof errorMessage === "string"
+            ? { errorMessage: visiblePiMemoryCitationText(errorMessage) }
+            : {}),
+          content: entry.message.content.map((item) => {
+            if (item.type !== "text") {
+              return item;
+            }
+            const visible = projection.visibleSegments[textIndex] ?? "";
+            textIndex += 1;
+            return { ...item, text: visible };
+          }),
+        },
+      };
+    });
+    return serializeFileEntries([this.#header, ...entries]);
   }
 }
 

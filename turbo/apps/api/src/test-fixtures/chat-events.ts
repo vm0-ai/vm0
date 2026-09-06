@@ -31,6 +31,7 @@ import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-rou
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import { runOutputMemoryCitations } from "@okouai/db/schema/run-output-memory-citation";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import {
@@ -2682,6 +2683,17 @@ export async function holdRunOutputMaterializationRowFixture(args: {
       return await transitiveBlockedWaiterCount(holderPid);
     },
   };
+}
+
+export async function readRunOutputMemoryCitationsFixture(runId: string) {
+  return await db()
+    .select({
+      sequenceNumber: runOutputMemoryCitations.sequenceNumber,
+      citation: runOutputMemoryCitations.citation,
+    })
+    .from(runOutputMemoryCitations)
+    .where(eq(runOutputMemoryCitations.runId, runId))
+    .orderBy(asc(runOutputMemoryCitations.sequenceNumber));
 }
 
 /** Starts one event insert with reservation and persistence in one transaction. */

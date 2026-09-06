@@ -479,7 +479,10 @@ function assistantEvents(
   runId: string,
   assistant: PiApiFirstTurnResult["assistantMessage"],
 ): AgentEvent[] {
-  return projectedAssistantBlocks(assistant).map((block, sequenceNumber) => {
+  const blocks = projectedAssistantBlocks(assistant);
+  const eventBlocks =
+    blocks.length === 0 && assistant.memoryCitation ? [null] : blocks;
+  return eventBlocks.map((block, sequenceNumber) => {
     return {
       type: "assistant",
       sequenceNumber,
@@ -488,7 +491,11 @@ function assistantEvents(
           assistant.responseId ??
           `${runId}:${assistant.timestamp}:${assistant.model}`,
         role: "assistant",
-        content: [block],
+        content: block === null ? [] : [block],
+        ...(sequenceNumber === eventBlocks.length - 1 &&
+        assistant.memoryCitation
+          ? { memoryCitation: assistant.memoryCitation }
+          : {}),
         model: assistant.model,
         usage: {
           input_tokens: assistant.usage.input,

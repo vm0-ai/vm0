@@ -197,6 +197,7 @@ import {
   holdThreadSessionConversationClearFixture,
   insertPiApiFirstTurnUsageEventsFixture,
   readCanonicalChatEventStorageFixture,
+  readRunOutputMemoryCitationsFixture,
   readRunUsageEventsFixture,
   releaseBddVm0ApiKey,
   removeChatCallbackPublicBrandFixture,
@@ -9004,7 +9005,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("projects complete API-first text blocks in source order and completes at N", async () => {
+  it("projects citation-free API-first blocks and durable private provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
@@ -9042,11 +9043,13 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       ),
       http.post("https://api.openai.com/v1/responses", () => {
+        const hidden =
+          "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
         return new HttpResponse(
           piResponsesContentSse({
             blocks: [
-              { type: "text", text: "alpha" },
-              { type: "text", text: "beta" },
+              { type: "text", text: `alpha${hidden.slice(0, 17)}` },
+              { type: "text", text: `${hidden.slice(17)}beta` },
               { type: "text", text: "gamma" },
               { type: "text", text: "delta" },
             ],
@@ -9065,6 +9068,30 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed");
     await flushWaitUntilForTest();
+
+    const serializedAxiomEvents = JSON.stringify(consumedAgentEvents);
+    expect(serializedAxiomEvents).not.toContain("oai-mem-citation");
+    expect(serializedAxiomEvents).not.toContain("memory.md");
+    // Private provenance intentionally has no user-facing API; this exact
+    // event association is the only assertion that crosses the route boundary.
+    await expect(
+      readRunOutputMemoryCitationsFixture(run.runId),
+    ).resolves.toStrictEqual([
+      {
+        sequenceNumber: 3,
+        citation: {
+          entries: [
+            {
+              path: "memory.md",
+              lineStart: 2,
+              lineEnd: 3,
+              note: "used",
+            },
+          ],
+          rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+        },
+      },
+    ]);
 
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",
@@ -9332,9 +9359,12 @@ describe("CHAT-02: model-first provider policies", () => {
       timestamp: 3,
     });
     const sandboxAnswer = "Sandbox answered the accepted prompt once";
+    const hiddenCitation =
+      "<oai-mem-citation><citation_entries>memory.md:5-8|note=[sandbox used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
+    const sandboxRawAnswer = `${sandboxAnswer}${hiddenCitation}`;
     h2Session.appendMessage({
       role: "assistant",
-      content: [{ type: "text", text: sandboxAnswer }],
+      content: [{ type: "text", text: sandboxRawAnswer }],
       api: "openai-responses",
       provider: "openai",
       model: "gpt-5.6-terra",
@@ -9352,6 +9382,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const h2 = h2Session.toJsonl();
     expect(occurrences(h2, originalPrompt)).toBe(1);
     expect(occurrences(h2, activeInput)).toBe(1);
+    expect(occurrences(h2, hiddenCitation)).toBe(1);
     const h2Hash = createHash("sha256").update(h2).digest("hex");
     await webhooks.requestAgentCheckpointPrepareHistory(
       {
@@ -9375,22 +9406,47 @@ describe("CHAT-02: model-first provider policies", () => {
         reserved.deliveryId,
       ),
     ).resolves.toStrictEqual({ outcome: "delivered" });
-    await webhooks.requestAgentEvents(
+    const sandboxEvents = [
       {
-        runId: run.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 1,
-            message: { content: [{ type: "text", text: sandboxAnswer }] },
-          },
-          {
-            type: "result",
-            sequenceNumber: 2,
-            result: sandboxAnswer,
-          },
-        ],
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        message: {
+          id: "old-guest-citation-only",
+          content: [{ type: "text" as const, text: hiddenCitation }],
+        },
       },
+      {
+        type: "assistant" as const,
+        sequenceNumber: 2,
+        message: {
+          id: "new-guest-visible-answer",
+          content: [{ type: "text" as const, text: sandboxAnswer }],
+          memoryCitation: {
+            entries: [
+              {
+                path: "memory.md",
+                note: "sandbox used",
+                lineStart: 5,
+                lineEnd: 8,
+              },
+            ],
+            rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+          },
+        },
+      },
+      {
+        type: "result" as const,
+        sequenceNumber: 3,
+        result: sandboxRawAnswer,
+      },
+    ];
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: sandboxEvents },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: sandboxEvents },
       claimed.sandboxHeaders,
       [200],
     );
@@ -9398,7 +9454,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         runId: run.runId,
         exitCode: 0,
-        lastEventSequence: 2,
+        lastEventSequence: 3,
         activeInputDeliveryIds: [reserved.deliveryId],
         checkpoint: {
           cliAgentType: "pi",
@@ -9415,6 +9471,51 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed", 5000);
     expect(modelCalls).toBe(1);
+    const completedMessages = eventBackedContents(
+      (await chat.listThreadEvents(actor, run.threadId)).events,
+      run.runId,
+    );
+    expect(
+      completedMessages.filter((message) => {
+        return message.content === sandboxAnswer;
+      }),
+    ).toHaveLength(1);
+    expect(JSON.stringify(completedMessages)).not.toContain("oai-mem-citation");
+    expect(JSON.stringify(completedMessages)).not.toContain("memory.md");
+    // Private provenance intentionally has no user-facing API; this exact
+    // event association is the only assertion that crosses the route boundary.
+    await expect(
+      readRunOutputMemoryCitationsFixture(run.runId),
+    ).resolves.toStrictEqual([
+      {
+        sequenceNumber: 1,
+        citation: {
+          entries: [
+            {
+              path: "memory.md",
+              lineStart: 5,
+              lineEnd: 8,
+              note: "sandbox used",
+            },
+          ],
+          rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+        },
+      },
+      {
+        sequenceNumber: 2,
+        citation: {
+          entries: [
+            {
+              path: "memory.md",
+              lineStart: 5,
+              lineEnd: 8,
+              note: "sandbox used",
+            },
+          ],
+          rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+        },
+      },
+    ]);
   }, 90_000);
 
   it("retains pending-tool continuation while one accepted input remains a steer", async () => {

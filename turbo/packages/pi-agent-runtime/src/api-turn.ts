@@ -1,5 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { projectPiMemoryCitationSegments } from "@okouai/api-contracts/contracts/pi-memory-citations";
 
 import { piAgentStreamForConfig } from "./model";
 import { assertPiApiFirstTurnCompactionSafe } from "./compaction-preflight";
@@ -15,38 +16,53 @@ import type {
 import { UnsupportedPiResourceSnapshotError } from "./errors";
 import { classifyPiApiProviderFailure } from "./api-failure";
 
-function projectAssistantContent(
-  message: AssistantMessage,
-): PiApiAssistantContent[] {
-  return message.content.flatMap((content): PiApiAssistantContent[] => {
-    switch (content.type) {
-      case "text": {
-        return [{ type: "text", text: content.text }];
-      }
-      case "toolCall": {
-        return [
-          {
-            type: "toolCall",
-            id: content.id,
-            name: content.name,
-            arguments: content.arguments,
-          },
-        ];
-      }
-      case "thinking": {
-        return [];
-      }
-      default: {
-        const unsupportedContent: never = content;
-        return unsupportedContent;
-      }
-    }
+function projectAssistantContent(message: AssistantMessage): {
+  readonly content: PiApiAssistantContent[];
+  readonly memoryCitation?: PiApiAssistantMessage["memoryCitation"];
+} {
+  const textBlocks = message.content.flatMap((content) => {
+    return content.type === "text" ? [content.text] : [];
   });
+  const projection = projectPiMemoryCitationSegments(textBlocks);
+  let textIndex = 0;
+  const content = message.content.flatMap(
+    (content): PiApiAssistantContent[] => {
+      switch (content.type) {
+        case "text": {
+          const text = projection.visibleSegments[textIndex] ?? "";
+          textIndex += 1;
+          return [{ type: "text", text }];
+        }
+        case "toolCall": {
+          return [
+            {
+              type: "toolCall",
+              id: content.id,
+              name: content.name,
+              arguments: content.arguments,
+            },
+          ];
+        }
+        case "thinking": {
+          return [];
+        }
+        default: {
+          const unsupportedContent: never = content;
+          return unsupportedContent;
+        }
+      }
+    },
+  );
+  return {
+    content,
+    ...(projection.citation ? { memoryCitation: projection.citation } : {}),
+  };
 }
 
 export function projectPiApiAssistantMessage(
   message: AssistantMessage,
 ): PiApiAssistantMessage {
+  const projection = projectAssistantContent(message);
   const failureReason =
     message.stopReason === "error" &&
     message.api === "openai-codex-responses" &&
@@ -54,7 +70,10 @@ export function projectPiApiAssistantMessage(
       ? classifyPiApiProviderFailure(message.errorMessage)
       : undefined;
   return {
-    content: projectAssistantContent(message),
+    content: projection.content,
+    ...(projection.memoryCitation
+      ? { memoryCitation: projection.memoryCitation }
+      : {}),
     model: message.model,
     responseId: message.responseId,
     stopReason: message.stopReason,
