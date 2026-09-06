@@ -130,9 +130,9 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       featureSwitches: flags,
     });
     click(await findEnabledButton("Voice input"));
-    await findEnabledButton("Stop recording");
     const emit = await capture.promise;
     emit(new Float32Array(4096).fill(0.25));
+    await findEnabledButton("Stop recording");
     await waitFor(async () => {
       await expect(savedRecording()).resolves.toMatchObject({
         sampleCount: 4096,
@@ -232,7 +232,9 @@ test.each([
     const firstPage = createChildAbortController(context.signal);
     context.mocks.browser.voiceInput({
       rms: 0,
-      onPcmCapture: () => {},
+      onPcmCapture: (emit) => {
+        emit(new Float32Array(4096));
+      },
       finalPcmSamples: new Float32Array(empty ? 0 : 4096),
     });
     const consoleErrors = installVoiceBoundaries();
@@ -253,7 +255,7 @@ test.each([
     click(await findEnabledButton("Stop recording"));
     await findEnabledButton("Voice input");
     expect(queryButton("Retry")).toBeNull();
-    expect(uploads).toHaveLength(empty ? 0 : 1);
+    expect(uploads).toHaveLength(1);
     unload(firstPage);
     await setupPage({ context: secondContext, path, featureSwitches: flags });
     await findEnabledButton("Voice input");
@@ -272,9 +274,9 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
   const consoleErrors = installVoiceBoundaries();
   await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
   click(await findEnabledButton("Voice input"));
-  await findEnabledButton("Stop recording");
   const emit = await capture.promise;
   emit(new Float32Array(4096).fill(0.25));
+  await findEnabledButton("Stop recording");
   await waitFor(async () => {
     return await expect(savedRecording()).resolves.toMatchObject({
       sampleCount: 4096,
@@ -310,7 +312,6 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
       "Voice recording could not be saved",
       storageError,
     ],
-    ["[E][VoiceIO:STT]", "Voice recording failed to finish", storageError],
   ]);
 });
 

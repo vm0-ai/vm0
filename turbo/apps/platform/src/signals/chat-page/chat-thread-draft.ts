@@ -41,7 +41,7 @@ export function createThreadDraftLoad(
 ): Command<Promise<void>, [AbortSignal]> {
   const hasLocalDraft$ = computed((get) => {
     return (
-      get(draft.hasInput$) ||
+      get(draft.hasLocalInput$) ||
       get(draft.generationTemplate$) !== undefined ||
       get(draft.attachments$).length > 0
     );
@@ -84,7 +84,5 @@ export function createThreadDraftLoad(
       }
     }
   });
-  return command(async ({ set }, signal: AbortSignal) => {
-    await set(draft.hydrate$, load$, signal);
-  });
+  return load$;
 }

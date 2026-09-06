@@ -1,3 +1,7 @@
+import {
+  useComposerActions,
+  type ComposerActions,
+} from "./composer-actions.ts";
 import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
@@ -257,12 +261,9 @@ import {
   audioInputAvailable$,
   audioInputQuota$,
   sttRecording$,
-  sttRecordingStartedAt$,
   sttStarting$,
   sttTranscribing$,
   sttVoiceLevel$,
-  sttVoiceLevelSamples$,
-  stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";
 import { shouldUseUserMessage } from "../../signals/okou-page/user-message-document-codec.ts";
@@ -8493,18 +8494,23 @@ function micButtonTooltip(status: MicButtonStatus): string {
 }
 
 function voiceDraftMicButtonStatus(
-  status: ComposerVoiceInputStatus | undefined,
   recording: boolean,
-  starting: boolean,
-): Pick<MicButtonStatus, "recording" | "starting" | "transcribing"> {
+  action: ComposerActions["voiceAction"],
+) {
   return {
-    recording: status === "recording" && recording,
-    starting: starting || (status === "recording" && !recording),
-    transcribing: status === "transcribing",
+    recording: recording && action !== "start",
+    starting: action === "start",
+    transcribing: action === "finish" || action === "retry",
   };
 }
 
-function MicButton({ signals }: { signals: ComposerSignals }) {
+function MicButton({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quotaState = useLoadableState(audioInputQuota$);
   const quotaResolved = useLastResolved(audioInputQuota$) !== undefined;
@@ -8513,8 +8519,9 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const sttRecording = useGet(sttRecording$);
   const sttStarting = useGet(sttStarting$);
   const sttTranscribing = useGet(sttTranscribing$);
+  const capture = useGet(signals.voice.capture$);
   const { recording, starting, transcribing } = voiceInputV2Enabled
-    ? voiceDraftMicButtonStatus(voiceDraftStatus, sttRecording, sttStarting)
+    ? voiceDraftMicButtonStatus(capture !== null, actions.voiceAction)
     : {
         recording: sttRecording,
         starting: sttStarting,
@@ -8522,7 +8529,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
       };
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
-  const toggleVoiceInput = useSet(signals.voice.toggle$);
+
   const signal = useGet(pageSignal$);
   const disabled =
     starting ||
@@ -8541,7 +8548,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   }
 
   const handleClick = () => {
-    detach(toggleVoiceInput(signal), Reason.DomCallback);
+    detach(actions.voice("toggle", signal), Reason.DomCallback);
   };
 
   return (
@@ -8558,6 +8565,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
               (recording || starting || transcribing) &&
                 "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
             )}
+            data-composer-voice-toggle
             onClick={handleClick}
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
@@ -8610,24 +8618,25 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 
 function VoiceDraftFooter({
   signals,
+  actions,
   status,
   recordingAvailable,
   voiceMessage,
 }: {
   signals: ComposerSignals;
+  actions: ComposerActions;
   status: Exclude<ComposerVoiceInputStatus, "idle">;
   recordingAvailable: boolean;
   voiceMessage: string | undefined;
 }) {
   const { t } = useTranslation();
-  const recording = useGet(sttRecording$);
-  const starting = useGet(sttStarting$);
-  const recordingStartedAt = useGet(sttRecordingStartedAt$);
-  const toggleVoiceInput = useSet(signals.voice.toggle$);
-  const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
+  const capture = useGet(signals.voice.capture$);
+  const recording = capture !== null;
+  const starting = actions.voiceAction === "start";
+  const recordingStartedAt = capture?.startedAt ?? null;
+
+  const voiceLevelSamples = useGet(signals.voice.voiceLevelSamples$);
   const signal = useGet(pageSignal$);
-  const retry = useSet(signals.voice.retry$);
-  const discard = useSet(signals.voice.discard$);
 
   if (status === "failed") {
     return (
@@ -8654,7 +8663,7 @@ function VoiceDraftFooter({
               return $.chat.voice.removeDraft;
             })}
             onClick={() => {
-              detach(discard(signal), Reason.DomCallback);
+              detach(actions.voice("discard", signal), Reason.DomCallback);
             }}
           >
             <Trash2 size={16} />
@@ -8665,8 +8674,9 @@ function VoiceDraftFooter({
           variant="outline"
           size="sm"
           className="min-w-14 shrink-0 bg-background"
+          data-composer-voice-toggle
           onClick={() => {
-            detach(retry(signal), Reason.DomCallback);
+            detach(actions.voice("retry", signal), Reason.DomCallback);
           }}
         >
           {t(($) => {
@@ -8725,10 +8735,11 @@ function VoiceDraftFooter({
         size="sm"
         className="ml-auto min-w-14 shrink-0 bg-background"
         aria-label={stopRecordingLabel}
+        data-composer-voice-toggle
         aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
         disabled={starting || !recording}
         onClick={() => {
-          detach(toggleVoiceInput(signal), Reason.DomCallback);
+          detach(actions.voice("toggle", signal), Reason.DomCallback);
         }}
       >
         {t(($) => {
@@ -8898,24 +8909,26 @@ function useComposerTemplatePicker(
 
 function useComposerPrimaryAction(
   signals: ComposerSignals,
+  actions: ComposerActions,
 ): ComposerPrimaryAction {
-  const action =
-    useLastResolved(signals.submission.primaryAction$) ?? "disabled";
+  const action = useResolved(signals.submission.primaryAction$) ?? "disabled";
   const selectedModelOauthAvailable =
     useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
-  return selectedModelOauthAvailable ? action : "disabled";
+  return selectedModelOauthAvailable &&
+    (!actions.submitting || action === "stop") &&
+    actions.voiceAction === null
+    ? action
+    : "disabled";
 }
 
 function startComposerSubmission(
   {
     action,
     activate,
-    completeVoiceInput,
     ensurePushSubscription,
   }: {
     action: ComposerPrimaryAction;
     activate: (signal: AbortSignal) => Promise<boolean>;
-    completeVoiceInput: (signal: AbortSignal) => Promise<void>;
     ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
   },
   signal: AbortSignal,
@@ -8926,13 +8939,7 @@ function startComposerSubmission(
   if (action === "send") {
     detach(ensurePushSubscription(signal), Reason.DomCallback);
   }
-  detach(
-    (async () => {
-      await completeVoiceInput(signal);
-      await activate(signal);
-    })(),
-    Reason.DomCallback,
-  );
+  detach(activate(signal), Reason.DomCallback);
 }
 
 function useComposerFileUpload(
@@ -8958,7 +8965,13 @@ function useComposerFileUpload(
   };
 }
 
-function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
+function ComposerInputSlot({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
@@ -8966,9 +8979,8 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
-  const primaryAction = useComposerPrimaryAction(signals);
-  const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
-  const completeVoiceInput = useSet(stopAndTranscribe$);
+  const primaryAction = useComposerPrimaryAction(signals, actions);
+
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const sendModeLoadable = useLastLoadable(sendMode$);
@@ -9036,9 +9048,8 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
       {
         action: primaryAction,
         activate: (signal) => {
-          return submitCurrentInput(primaryAction, signal);
+          return actions.submit(primaryAction, signal);
         },
-        completeVoiceInput,
         ensurePushSubscription,
       },
       rootSignal,
@@ -9117,12 +9128,15 @@ function ComposerSendButton({
   );
 }
 
-function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
-  const action = useComposerPrimaryAction(signals);
-  const activatePrimaryAction = useSet(
-    signals.submission.activatePrimaryAction$,
-  );
-  const completeVoiceInput = useSet(stopAndTranscribe$);
+function ComposerSendControl({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
+  const action = useComposerPrimaryAction(signals, actions);
+  const activatePrimaryAction = actions.submit;
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const activate = () => {
@@ -9136,7 +9150,6 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
         activate: (signal) => {
           return activatePrimaryAction(action, signal);
         },
-        completeVoiceInput,
         ensurePushSubscription,
       },
       rootSignal,
@@ -10562,25 +10575,38 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerFooter({ signals }: { signals: ComposerSignals }) {
+function ComposerFooter({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraft = useResolved(signals.voice.state$);
-  const recording = useGet(sttRecording$);
-  const setVoiceLifecycleRef = useSet(signals.setLifecycleRef$);
+  const capture = useGet(signals.voice.capture$);
+  const status =
+    actions.voiceAction === "start"
+      ? "idle"
+      : actions.voiceAction === "discard"
+        ? "discarding"
+        : actions.voiceAction === "finish" || actions.voiceAction === "retry"
+          ? "transcribing"
+          : capture
+            ? "recording"
+            : voiceDraft?.status;
   return (
-    <div
-      ref={voiceInputV2Enabled ? setVoiceLifecycleRef : undefined}
-      className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2"
-    >
+    <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
       {voiceInputV2Enabled &&
-      voiceDraft &&
-      voiceDraft.status !== "idle" &&
-      (voiceDraft.status !== "recording" || recording) ? (
+      status &&
+      status !== "idle" &&
+      (status !== "recording" || capture) ? (
         <VoiceDraftFooter
           signals={signals}
-          status={voiceDraft.status}
-          recordingAvailable={voiceDraft.recording !== null}
-          voiceMessage={voiceDraft.message}
+          actions={actions}
+          status={status}
+          recordingAvailable={Boolean(voiceDraft?.recording)}
+          voiceMessage={voiceDraft?.message}
         />
       ) : (
         <>
@@ -10596,8 +10622,8 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
             <ComposerModelPickerSlot signals={signals} />
-            <MicButton signals={signals} />
-            <ComposerSendControl signals={signals} />
+            <MicButton signals={signals} actions={actions} />
+            <ComposerSendControl signals={signals} actions={actions} />
           </div>
         </>
       )}
@@ -10606,6 +10632,7 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
 }
 
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
+  const actions = useComposerActions(signals);
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
@@ -10639,14 +10666,14 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       }}
     >
       <CardContent className="p-0">
-        <div className="flex flex-col">
+        <div ref={actions.bind} className="flex flex-col">
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
-          <ComposerInputSlot signals={signals} />
+          <ComposerInputSlot signals={signals} actions={actions} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}
-          <ComposerFooter signals={signals} />
+          <ComposerFooter signals={signals} actions={actions} />
         </div>
       </CardContent>
     </Card>

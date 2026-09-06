@@ -1,12 +1,13 @@
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import * as idb from "idb";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { decodeVoiceDraftPcmWav } from "../../../signals/voice-io/voice-draft-pcm.ts";
 import { textContinuityDraft } from "./chat-continuity-test-helpers.ts";
 import { AGENT_ID } from "./chat-lifecycle-test-helpers.ts";
 import {
@@ -40,6 +41,112 @@ function installVoiceInput(): void {
     });
   });
 }
+
+test("Wait for nonempty PCM before showing the waveform and preserve the opening audio", async () => {
+  installVoiceInput();
+  const connected = context.mocks.deferred<(samples: Float32Array) => void>();
+  const uploaded = context.mocks.deferred<ArrayBuffer>();
+  context.mocks.browser.voiceInput({
+    rms: 0,
+    onPcmCapture: connected.resolve,
+    finalPcmSamples: new Float32Array(0),
+  });
+  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
+    const form = await request.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw new Error("Expected recorded audio");
+    }
+    uploaded.resolve(await file.arrayBuffer());
+    return HttpResponse.json({
+      transcript: "opening words",
+      polishedText: "Opening words.",
+      language: "en-US",
+    });
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  const emit = await connected.promise;
+  // Flush startup work while the connected worklet supplies no real samples.
+  await act(() => {
+    emit(new Float32Array(0));
+  });
+  expect(queryButton("Starting voice input")).toBeDisabled();
+  expect(queryButton("Stop recording")).toBeNull();
+  expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
+
+  const firstBatch = new Float32Array(4096);
+  emit(firstBatch);
+  const stop = await findEnabledButton("Stop recording");
+  expect(document.querySelector("[data-voice-level-waveform]")).toBeVisible();
+  const openingAudio = new Float32Array(4096).fill(-0.5);
+  emit(openingAudio);
+  click(stop);
+  const samples = decodeVoiceDraftPcmWav(await uploaded.promise);
+  expect(samples).toHaveLength(8192);
+  expect(samples?.slice(0, 4096)).toStrictEqual(firstBatch);
+  expect(samples?.slice(4096)).toStrictEqual(openingAudio);
+  await findEnabledButton("Voice input");
+});
+
+test("Release a connected capture when switching away before its first PCM batch", async () => {
+  installVoiceInput();
+  context.mocks.api(agentDraftContract.get, ({ params, respond }) => {
+    return respond(
+      200,
+      textContinuityDraft(
+        params.id === AGENT_ID ? "First agent." : "Second agent.",
+      ),
+    );
+  });
+  context.mocks.data.agents([
+    { agentId: AGENT_ID, displayName: "Run Agent" },
+    { agentId: OTHER_AGENT_ID, displayName: "Other Agent" },
+  ]);
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [AGENT_ID, OTHER_AGENT_ID],
+  });
+  const connected = context.mocks.deferred<(samples: Float32Array) => void>();
+  const trackStopped = context.mocks.deferred<void>();
+  const contextClosed = context.mocks.deferred<void>();
+  const disconnected = context.mocks.deferred<void>();
+  const portClosed = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({
+    rms: 0.12,
+    onPcmCapture: connected.resolve,
+    onTrackStop: trackStopped.resolve,
+    onAudioContextClose: contextClosed.resolve,
+    onPcmDisconnect: disconnected.resolve,
+    onPcmPortClose: portClosed.resolve,
+  });
+  await setupPage({ context, path: NEW_CHAT_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  const emit = await connected.promise;
+  await act(() => {
+    emit(new Float32Array(0));
+  });
+  expect(queryButton("Starting voice input")).toBeDisabled();
+  click(await findLink("Other Agent"));
+  await Promise.all([
+    trackStopped.promise,
+    contextClosed.promise,
+    disconnected.promise,
+    portClosed.promise,
+  ]);
+  await findEnabledButton("Voice input");
+  // A late message from the cancelled worklet cannot resurrect its session.
+  emit(new Float32Array(4096).fill(0.25));
+  expect(queryButton("Stop recording")).toBeNull();
+  expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
+  click(await findLink("Run Agent"));
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "First agent.",
+    );
+  });
+  await findEnabledButton("Voice input");
+  expect(queryButton("Retry")).toBeNull();
+});
 
 test("Keep composer controls visible while checking the local voice draft", async () => {
   installVoiceInput();
@@ -193,4 +300,98 @@ test("Do not show another agent's retryable recording while the current draft is
     "Voice draft transcription failed",
     expect.objectContaining({ status: 503 }),
   );
+});
+
+test("Keep the toolbar visible throughout microphone startup", async () => {
+  installVoiceInput();
+  const microphoneReady = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({
+    rms: 0.12,
+    getUserMediaReady: microphoneReady.promise,
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  await waitFor(() => {
+    expect(queryButton("Starting voice input")).toBeDisabled();
+  });
+  expect(queryButton("Attach")).toBeVisible();
+  expect(queryButton("Retry")).toBeNull();
+  expect(queryButton("Remove voice draft")).toBeNull();
+  expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
+
+  microphoneReady.resolve();
+  click(await findEnabledButton("Stop recording"));
+  await findEnabledButton("Voice input");
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+    "Voice note.",
+  );
+});
+
+test("Do not carry a pending transcription into another agent's composer", async () => {
+  installVoiceInput();
+  const requested = context.mocks.deferred<void>();
+  const response = context.mocks.deferred<void>();
+  context.mocks.data.agents([
+    { agentId: AGENT_ID, displayName: "Run Agent" },
+    { agentId: OTHER_AGENT_ID, displayName: "Other Agent" },
+  ]);
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [AGENT_ID, OTHER_AGENT_ID],
+  });
+  context.mocks.api(agentDraftContract.get, ({ params, respond }) => {
+    return respond(
+      200,
+      textContinuityDraft(
+        params.id === AGENT_ID ? "First agent." : "Second agent.",
+      ),
+    );
+  });
+  context.mocks.http.post("*/api/voice-io/transcribe", async () => {
+    requested.resolve();
+    await response.promise;
+    return HttpResponse.json({
+      transcript: "first agent's recording",
+      polishedText: "First agent's recording.",
+      language: "en-US",
+    });
+  });
+
+  await setupPage({ context, path: NEW_CHAT_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  click(await findEnabledButton("Stop recording"));
+  await requested.promise;
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+
+  click(await findLink("Other Agent"));
+  await findEnabledButton("Voice input");
+  await findEnabledButton("Send");
+  expect(queryButton("Attach")).toBeVisible();
+  expect(queryButton("Retry")).toBeNull();
+  expect(screen.queryByText("Transcribing...")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+    "Second agent.",
+  );
+  response.resolve();
+});
+
+test("Preserve an explicit draft clear while the server baseline is pending", async () => {
+  installVoiceInput();
+  const requested = context.mocks.deferred<void>();
+  const response = context.mocks.deferred<void>();
+  context.mocks.api(agentDraftContract.get, async ({ respond }) => {
+    requested.resolve();
+    await response.promise;
+    return respond(200, textContinuityDraft("Old saved notes."));
+  });
+  await setupPage({ context, path: NEW_CHAT_PATH, featureSwitches: flags });
+  await requested.promise;
+  const editor = screen.getByRole("textbox", { name: "Message" });
+  await fill(editor, "Temporary notes.");
+  await fill(editor, "");
+  response.resolve();
+  click(await findEnabledButton("Voice input"));
+  click(await findEnabledButton("Stop recording"));
+  await findEnabledButton("Send");
+  expect(editor).toHaveTextContent("Voice note.");
+  expect(editor).not.toHaveTextContent("Old saved notes.");
 });
