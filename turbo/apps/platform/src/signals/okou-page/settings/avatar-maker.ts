@@ -206,10 +206,9 @@ export const shuffleAvatar$ = command(
 );
 
 /**
- * Opens the maker on the avatar the caller currently shows. An avatar that can
- * be resolved is loaded as-is so it can be fine-tuned; only callers without one
- * start from a random config. The steps follow the loaded config, so a legacy
- * avatar keeps being edited in the legacy steps even once the composer ships.
+ * Opens the maker on the current avatar, or a random composer avatar when
+ * editing a legacy avatar with the composer enabled. The saved avatar stays
+ * unchanged until the caller confirms the replacement.
  */
 export const openAvatarMaker$ = command(
   ({ get, set }, avatarUrl: string | null, parentSignal: AbortSignal) => {
@@ -226,11 +225,12 @@ export const openAvatarMaker$ = command(
     const composerEnabled =
       get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2];
     const current = resolveAvatarSvgConfig(avatarUrl);
-    const config =
-      current ??
-      (composerEnabled
+    let config = current;
+    if (!config || (composerEnabled && isLegacyAvatarSvgConfig(config))) {
+      config = composerEnabled
         ? randomAvatarSvgConfig()
-        : randomLegacyAvatarSvgConfig());
+        : randomLegacyAvatarSvgConfig();
+    }
     set(internalConfig$, config);
     set(
       internalStep$,
