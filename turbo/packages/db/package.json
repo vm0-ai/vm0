@@ -49,8 +49,8 @@
     "test:pi-memory-citations": "tsx scripts/test-pi-memory-citation-migration.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1116.0",
-    "@aws-sdk/client-s3": "^3.1116.0",
+    "@aws-sdk/client-kms": "^3.1121.0",
+    "@aws-sdk/client-s3": "^3.1121.0",
     "@clerk/backend": "^3.13.1",
     "@okouai/api-contracts": "workspace:*",
     "@okouai/core": "workspace:*",
@@ -70,6 +70,6 @@
     "tsx": "^4.21.0",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
