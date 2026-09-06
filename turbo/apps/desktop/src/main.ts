@@ -35,7 +35,7 @@ import {
   notifyDesktopComputerUseChanged,
 } from "./computer-use-electron";
 import {
-  ComputerUseHostRuntime,
+  type ComputerUseHostRuntime,
   readSystemHostName,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
@@ -80,7 +80,7 @@ import { checkForDesktopUpdates } from "./desktop-auto-updates";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { DesktopMainModule } from "./desktop-main-module";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
-import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { createDesktopComputerUseHostRuntime } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
 import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
 import { DesktopMcpPluginManager } from "./desktop-mcp-plugin";
@@ -659,39 +659,39 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
   const installationId = readOrCreateComputerUseInstallationId(
     desktopPreferencesPath(),
   );
-  return new ComputerUseHostRuntime({
-    platformUrl: config.platformUrl,
-    installationId,
-    hostName: readSystemHostName(config.identity.displayName),
-    appVersion: app.getVersion(),
-    sessionFetch: createDesktopComputerUseSessionFetch({
+  return createDesktopComputerUseHostRuntime(
+    {
       platformUrl: config.platformUrl,
-      session: desktopSession,
+      installationId,
+      hostName: readSystemHostName(config.identity.displayName),
+      appVersion: app.getVersion(),
+      hostFetch: (input, init) => {
+        return fetch(input, init);
+      },
       addClientHeaders: addDesktopClientHeaders,
-      getCachedAuthToken: () => getAuthSession().getCachedToken(),
-      getAuthToken: (options) => getAuthSession().getToken(options),
-    }),
-    hostFetch: (input, init) => {
-      return fetch(input, init);
-    },
-    addClientHeaders: addDesktopClientHeaders,
-    getPermissions: refreshComputerUsePermissionState,
-    getSupportedCapabilities: supportedComputerUseCapabilities,
-    executeCommand: (command, permissions) => {
-      if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
-        if (isComputerUseMcpPluginCallPayload(command.payload)) {
-          return ensureMcpPluginManager().execute(command);
+      getPermissions: refreshComputerUsePermissionState,
+      getSupportedCapabilities: supportedComputerUseCapabilities,
+      executeCommand: (command, permissions) => {
+        if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+          if (isComputerUseMcpPluginCallPayload(command.payload)) {
+            return ensureMcpPluginManager().execute(command);
+          }
+          return ensureFilesystemPluginManager().execute(command);
         }
-        return ensureFilesystemPluginManager().execute(command);
-      }
-      return executeComputerUseCommand(command, permissions, {
-        nativeBackend: computerUseNativeBackend,
-        snapshotStore: computerUseSnapshotStore,
-      });
+        return executeComputerUseCommand(command, permissions, {
+          nativeBackend: computerUseNativeBackend,
+          snapshotStore: computerUseSnapshotStore,
+        });
+      },
+      onCommandFailure: automationPermissionPrompt,
+      onChange: notifyComputerUseChanged,
     },
-    onCommandFailure: automationPermissionPrompt,
-    onChange: notifyComputerUseChanged,
-  });
+    {
+      product: config.identity.product,
+      session: desktopSession,
+      getAuthSession,
+    },
+  );
 }
 
 async function startComputerUseRuntime(

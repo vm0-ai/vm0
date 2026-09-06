@@ -1,9 +1,43 @@
-import type { ComputerUseHostFetch } from "./computer-use-host";
+import {
+  ComputerUseHostRuntime,
+  type ComputerUseHostFetch,
+} from "./computer-use-host";
+import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
+import type { DesktopAuthSession } from "./desktop-auth-session";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 import {
   headersWithSessionCookies,
   type DesktopSessionCookieSource,
 } from "./desktop-session-cookies";
+
+export function createDesktopComputerUseHostRuntime(
+  options: Omit<
+    ConstructorParameters<typeof ComputerUseHostRuntime>[0],
+    "sessionFetch"
+  >,
+  auth: {
+    readonly product: DesktopProduct;
+    readonly session: DesktopSessionCookieSource;
+    readonly getAuthSession: () => DesktopAuthSession;
+  },
+): ComputerUseHostRuntime {
+  return new ComputerUseHostRuntime({
+    ...options,
+    // Okou shares the App session's bearer, refresh and sign-out lifetime.
+    // Zero keeps its existing Computer Use cookie and token retry policy.
+    sessionFetch:
+      auth.product === "okou"
+        ? (input, init) =>
+            auth.getAuthSession().fetchWithSessionAuth(new URL(input), init)
+        : createDesktopComputerUseSessionFetch({
+            platformUrl: options.platformUrl,
+            session: auth.session,
+            addClientHeaders: options.addClientHeaders,
+            getCachedAuthToken: () => auth.getAuthSession().getCachedToken(),
+            getAuthToken: (options) => auth.getAuthSession().getToken(options),
+          }),
+  });
+}
 
 export function createDesktopComputerUseSessionFetch(params: {
   readonly platformUrl: URL;

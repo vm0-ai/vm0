@@ -152,6 +152,8 @@ describe("Okou App session authority", () => {
       http.post(`${api}/api/protected`, async ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer fresh");
         expect(request.headers.get("cookie")).toBeNull();
+        expect(request.credentials).toBe("omit");
+        expect(request.redirect).toBe("error");
         expect(request.headers.get("x-client-type")).toBe("Desktop");
         expect(request.headers.get("x-client-version")).toBe("0.46.28");
         return HttpResponse.json(await request.json());
@@ -163,6 +165,8 @@ describe("Okou App session authority", () => {
         method: "POST",
         body: JSON.stringify({ action: "test" }),
         headers: { cookie: "legacy", authorization: "Bearer wrong" },
+        credentials: "include",
+        redirect: "follow",
       },
     );
     expect(await response.json()).toEqual({ action: "test" });
