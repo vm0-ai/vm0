@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.849.0](https://github.com/vm0-ai/vm0/compare/app-v0.848.1...app-v0.849.0) (2026-09-06)
+
+
+### Features
+
+* add voice input model preferences and honor lab overrides ([#31982](https://github.com/vm0-ai/vm0/issues/31982)) ([7b114d5](https://github.com/vm0-ai/vm0/commit/7b114d5b3b2683d2987daf09d651403f2951dc4c))
+
+
+### Bug Fixes
+
+* place chat shortcut hints after row actions ([#31994](https://github.com/vm0-ai/vm0/issues/31994)) ([a0bc24a](https://github.com/vm0-ai/vm0/commit/a0bc24a59d24f8215165e8e2cce4976d46272721))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.0
+    * @okouai/core bumped to 8.625.11
+
 ## [0.848.1](https://github.com/vm0-ai/vm0/compare/app-v0.848.0...app-v0.848.1) (2026-09-06)
 
 
