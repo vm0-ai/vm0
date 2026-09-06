@@ -305,6 +305,12 @@ const CODEX_CHATGPT_ACCOUNT_UNSUPPORTED_MODEL_MESSAGE =
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
 
+export const INSUFFICIENT_CREDITS_ADD_CREDITS_MESSAGE =
+  "Insufficient credits. Add credits to continue.";
+
+export const INSUFFICIENT_CREDITS_UPGRADE_MESSAGE =
+  "Insufficient credits. Your current plan cannot buy credits. Upgrade to continue.";
+
 export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   ...Object.values(RUN_ERROR_GUIDANCE).flatMap((guidance) => {
     return [guidance.title, guidance.guidance];
@@ -865,10 +871,14 @@ export function formatRunErrorForExternalSurface(params: {
     if (!params.insufficientCredits.canManageBilling) {
       return INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE;
     }
+    // The upstream 402 body cannot know the caller's plan, so it is replaced
+    // here rather than appended to: a plan without `canBuyCredits` must not be
+    // told to add credits, and a plan without BYOK must not be told to bring
+    // its own API key.
     if (params.insufficientCredits.addCreditsUrl !== undefined) {
-      return `${errorMessage}\n\nAdd credits: ${params.insufficientCredits.addCreditsUrl}`;
+      return `${INSUFFICIENT_CREDITS_ADD_CREDITS_MESSAGE}\n\nAdd credits: ${params.insufficientCredits.addCreditsUrl}`;
     }
-    return `${errorMessage}\n\nCompare plans: ${params.insufficientCredits.comparePlansUrl}`;
+    return `${INSUFFICIENT_CREDITS_UPGRADE_MESSAGE}\n\nCompare plans: ${params.insufficientCredits.comparePlansUrl}`;
   }
 
   if (isCodexOAuthReconnectRequiredRunError(errorMessage)) {

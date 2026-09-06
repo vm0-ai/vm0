@@ -711,7 +711,7 @@ describe("GET/PUT /api/model-policies", () => {
     expect(response.body).toStrictEqual({
       error: {
         message:
-          "Insufficient credits. Add credits or configure your own API key to continue.",
+          "Insufficient credits. Check your workspace billing to continue.",
         code: "INSUFFICIENT_CREDITS",
       },
     });
@@ -758,7 +758,7 @@ describe("GET/PUT /api/model-policies", () => {
     expect(response.body).toStrictEqual({
       error: {
         message:
-          "Insufficient credits. Add credits or configure your own API key to continue.",
+          "Insufficient credits. Check your workspace billing to continue.",
         code: "INSUFFICIENT_CREDITS",
       },
     });

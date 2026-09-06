@@ -337,6 +337,16 @@ fn cli_failure_reason_classifies_insufficient_credits() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_insufficient_credits_billing_copy() {
+    let reason = classify_cli_failure_reason(
+        AgentFramework::ClaudeCode,
+        "API Error: 402 Insufficient credits. Check your workspace billing to continue.",
+    );
+
+    assert_eq!(reason, Some(FailureReason::InsufficientCredits));
+}
+
+#[test]
 fn cli_failure_reason_classifies_provider_credit_affordability_error() {
     let reason = classify_cli_failure_reason(
         AgentFramework::ClaudeCode,
