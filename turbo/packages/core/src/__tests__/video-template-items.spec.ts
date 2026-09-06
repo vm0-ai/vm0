@@ -17,6 +17,9 @@ describe("video template items", () => {
     "video-template:hand-drawn-fantasy-anime",
     "video-template:cyberpunk-anime",
     "video-template:chinese-ink-art",
+    "video-template:cursor-led-variant-world",
+    "video-template:poster-tableau-dissolve",
+    "video-template:kinetic-editorial-collage",
   ];
 
   it("resolve every video template against the resource registry", () => {

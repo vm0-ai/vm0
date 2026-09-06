@@ -3549,13 +3549,16 @@
       },
       "video": {
         "chinese-ink-art": "Lukisan Tinta Tiongkok",
+        "cursor-led-variant-world": "Dunia Varian Berpanduan Kursor",
         "cyberpunk-anime": "Anime Cyberpunk",
         "epic-grandeur": "Keagungan Epik",
         "fashion-editorial": "Editorial Mode",
         "gourmet-documentary": "Dokumenter Kuliner",
         "hand-drawn-fantasy-anime": "Anime Fantasi Gambar Tangan",
         "japanese-wabi-sabi": "Wabi-Sabi Jepang",
+        "kinetic-editorial-collage": "Kolase Editorial Kinetik",
         "luxury-product": "Makro Produk Mewah",
+        "poster-tableau-dissolve": "Transisi Larut Tableau Poster",
         "shortform-viral": "Viral Format Pendek",
         "sports-performance-ad": "Iklan Performa Olahraga"
       }

@@ -3607,13 +3607,16 @@
       },
       "video": {
         "chinese-ink-art": "Arte em Tinta Chinesa",
+        "cursor-led-variant-world": "Mundo de Variantes Guiado por Cursor",
         "cyberpunk-anime": "Anime Cyberpunk",
         "epic-grandeur": "Grandeza Épica",
         "fashion-editorial": "Editorial de Moda",
         "gourmet-documentary": "Documentário Gourmet",
         "hand-drawn-fantasy-anime": "Anime de Fantasia Desenhado à Mão",
         "japanese-wabi-sabi": "Wabi-Sabi Japonês",
+        "kinetic-editorial-collage": "Colagem Editorial Cinética",
         "luxury-product": "Produto de Luxo Macro",
+        "poster-tableau-dissolve": "Dissolução de Quadros-Pôster",
         "shortform-viral": "Viral de Formato Curto",
         "sports-performance-ad": "Anúncio de Performance Esportiva"
       }
