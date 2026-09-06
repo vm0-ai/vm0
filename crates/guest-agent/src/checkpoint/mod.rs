@@ -398,6 +398,7 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_missing_mount_fails_before_final_completion() {
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
@@ -465,6 +466,7 @@ mod tests {
 
     #[tokio::test]
     async fn maintenance_success_rejects_partial_tree_before_storage_publication() {
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -543,6 +545,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn maintenance_recovery_checkpoint_preserves_parent_after_partial_apply() {
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -642,6 +645,7 @@ mod tests {
 
     #[tokio::test]
     async fn ordinary_recovery_checkpoint_still_snapshots_changed_artifacts() {
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)

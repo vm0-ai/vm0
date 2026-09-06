@@ -54,7 +54,6 @@ import {
   type CustomConnectorDefinitionRow,
 } from "./custom-connector-definition-selection";
 import {
-  deleteCustomConnectorMemberConnection,
   deleteCustomConnectorMemberConnectionExact,
   type PreparedCustomConnectorValue,
   upsertCustomConnectorStoredValues,
@@ -93,7 +92,6 @@ import {
   type ReadyConnectorConnectionMutation,
   writeConnectorConnectionMetadata,
 } from "./connector-connection-write.service";
-import { normalizeConnectorAccountMutation } from "./connector-account-mutation.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2826,7 +2824,7 @@ interface SetCustomConnectorValuesArgs {
   readonly userId: string;
   readonly connectorId: string;
   readonly values: readonly CustomConnectorValueInput[];
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
 }
 
 interface CustomConnectorValueWriteState {
@@ -2890,7 +2888,7 @@ async function prepareCustomConnectorValueWrite(args: {
       kind: "custom",
       customConnectorId: args.request.connectorId,
     },
-    mutation: normalizeConnectorAccountMutation(args.request.account),
+    mutation: args.request.account,
     allowSiblings: true,
   });
   if (resolution.kind !== "ready") {
@@ -3030,7 +3028,7 @@ export const setCustomConnectorValues$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly values: readonly CustomConnectorValueInput[];
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<
@@ -3132,103 +3130,6 @@ export const setCustomConnectorValues$ = command(
       }),
       connectedAccountId: writeResult.connectedAccountId,
     };
-  },
-);
-
-type DisconnectCustomConnectorResult =
-  | "deleted"
-  | "missing-definition"
-  | "missing-account"
-  | "ambiguous"
-  | "managed";
-
-export const disconnectCustomConnector$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly connectorId: string;
-      readonly requireAccount?: true;
-    },
-    signal: AbortSignal,
-  ): Promise<DisconnectCustomConnectorResult> => {
-    const writeDb = set(writeDb$);
-    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
-    const disconnected = await commitConnectorRuntimeMutation(
-      writeDb.transaction(async (tx) => {
-        const [connector] = await tx
-          .select({
-            id: orgCustomConnectors.id,
-            oauthProviderAdapter:
-              orgCustomConnectorOauthConfigs.providerAdapter,
-          })
-          .from(orgCustomConnectors)
-          .leftJoin(
-            orgCustomConnectorOauthConfigs,
-            and(
-              eq(
-                orgCustomConnectorOauthConfigs.connectorId,
-                orgCustomConnectors.id,
-              ),
-              eq(
-                orgCustomConnectorOauthConfigs.orgId,
-                orgCustomConnectors.orgId,
-              ),
-            ),
-          )
-          .where(
-            and(
-              eq(orgCustomConnectors.id, args.connectorId),
-              eq(orgCustomConnectors.orgId, args.orgId),
-            ),
-          )
-          .for("update", { of: orgCustomConnectors })
-          .limit(1);
-        signal.throwIfAborted();
-        if (!connector) {
-          return "missing-definition" as const;
-        }
-        if (
-          isIntegrationManagedCustomConnectorProviderAdapter(
-            connector.oauthProviderAdapter,
-          )
-        ) {
-          return "managed" as const;
-        }
-        return await deleteCustomConnectorMemberConnection(tx, args, signal);
-      }),
-      (result) => {
-        return result === "deleted"
-          ? {
-              db: writeDb,
-              scope: { orgId: args.orgId, userId: args.userId },
-              targets: [
-                { kind: "custom", customConnectorId: args.connectorId },
-              ],
-            }
-          : undefined;
-      },
-    );
-    if (signal.aborted) {
-      postCommitAbort = { reason: signal.reason };
-    }
-    const outcome =
-      disconnected === "missing"
-        ? args.requireAccount
-          ? ("missing-account" as const)
-          : ("deleted" as const)
-        : disconnected;
-    if (outcome !== "deleted") {
-      signal.throwIfAborted();
-      return outcome;
-    }
-    await publishCustomConnectorUserInvalidationAfterCommit(
-      args.userId,
-      signal,
-      postCommitAbort,
-    );
-    return "deleted";
   },
 );
 
@@ -3718,6 +3619,7 @@ export const saveCustomConnectorProposal$ = command(
           userId: args.userId,
           connectorId: connector.id,
           values: args.values,
+          account: { intent: "add" },
         },
         signal,
       );

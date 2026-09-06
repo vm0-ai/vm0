@@ -1025,7 +1025,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     ).resolves.toMatchObject({ status: 401 });
   });
 
-  it("replaces Calendar principal state and stops the captured old channel", async () => {
+  it("switches Calendar principal accounts and stops the captured old channel", async () => {
     const firstAccessToken = "calendar-principal-first-token";
     const refreshedAccessToken = "calendar-principal-refreshed-token";
     const replacementAccessToken = "calendar-principal-replacement-token";
@@ -1092,12 +1092,29 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
     await wf.connectConnector(scenario.actor, "google-calendar");
 
+    const replacementAccount = (
+      await connectorsApi.listBuiltinConnectorAccounts(
+        scenario.actor,
+        "google-calendar",
+      )
+    ).find((account) => {
+      return account.externalId === "calendar-principal-replacement-subject";
+    });
+    if (!replacementAccount) {
+      throw new Error("Expected the replacement Calendar account");
+    }
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      scenario.actor,
+      "google-calendar",
+      initialConnection.id,
+    );
+
     const replacementConnection = await connectorsApi.readConnectorBySlug(
       scenario.actor,
       "google-calendar",
     );
     expect(replacementConnection).toMatchObject({
-      id: initialConnection.id,
+      id: replacementAccount.id,
       externalId: "calendar-principal-replacement-subject",
     });
     expect(

@@ -1812,21 +1812,30 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async disconnectSingleBuiltinConnectorAccount(
+    async deleteDefaultBuiltinConnectorAccount(
       actor: ApiTestUser,
       connectorSlug: ConnectorSlug,
-      statuses: readonly (204 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
       const client = setupApp({ context, routes: connectorAccountRoutes })(
         connectorAccountsContract,
       );
-      await accept(
-        client.disconnectSingleAccount({
+      const response = await accept(
+        client.connections({
           headers: authenticate(actor),
-          body: { target: { kind: "builtin", connectorSlug } },
+          query: { kind: "builtin", connectorSlug, limit: 100 },
         }),
-        statuses,
+        [200, 404],
       );
+      if (response.status === 404) {
+        return;
+      }
+      const account = response.body.connections.find((candidate) => {
+        return candidate.isDefault;
+      });
+      if (!account) {
+        return;
+      }
+      await api.deleteBuiltinConnectorAccount(actor, connectorSlug, account.id);
     },
 
     async listBuiltinConnectorAccounts(
@@ -1954,7 +1963,7 @@ export function createConnectorBddApi(context: TestContext) {
             values,
             ...(options.agentId ? { agentId: options.agentId } : {}),
             ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
-            account: options.account ?? { intent: "single-account" },
+            account: options.account ?? { intent: "add" },
           },
         }),
         options.statuses,
@@ -1966,14 +1975,18 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
-      agentId?: string,
+      ...options: readonly [
+        agentId?: string,
+        account?: ConnectorAccountMutationIntent,
+      ]
     ): Promise<ConnectorResponse> {
+      const [agentId, account = { intent: "add" }] = options;
       const response = await api.requestManualGrant(
         actor,
         connectorSlug,
         authMethod,
         values,
-        { statuses: [200], agentId, authorizeAgent: true },
+        { statuses: [200], agentId, authorizeAgent: true, account },
       );
       expectStatus(response, 200);
       return response.body;
@@ -2005,7 +2018,7 @@ export function createConnectorBddApi(context: TestContext) {
             ...(options.callbackTarget
               ? { callbackTarget: options.callbackTarget }
               : {}),
-            account: options.account ?? { intent: "single-account" },
+            account: options.account ?? { intent: "add" },
           },
         }),
         options.statuses,
@@ -2196,8 +2209,7 @@ export function createConnectorBddApi(context: TestContext) {
         account?: ConnectorAccountMutationIntent,
       ]
     ) {
-      const [options, statuses, account = { intent: "single-account" }] =
-        request;
+      const [options, statuses, account = { intent: "add" }] = request;
       const client = setupApp({
         context,
         routes: connectorsOauthDeviceAuthRoutes,
@@ -2217,7 +2229,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       options?: Readonly<Record<string, string>>,
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ): Promise<ConnectorOauthDeviceAuthSessionStartResponse> {
       const response = await api.requestDeviceAuthStart(
         actor,
@@ -2274,7 +2286,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2587,6 +2599,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       value: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2598,7 +2611,7 @@ export function createConnectorBddApi(context: TestContext) {
           headers: authenticate(actor),
           body: {
             values: [{ key: "secret", kind: "secret", value }],
-            account: { intent: "single-account" },
+            account,
           },
         }),
         statuses,
@@ -2610,12 +2623,14 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       value: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[] = [200],
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ): Promise<void> {
       await api.requestSetCustomConnectorSecret(
         actor,
         connectorId,
         value,
         statuses,
+        account,
       );
     },
 
@@ -2624,7 +2639,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       values: readonly CustomConnectorValueInput[],
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2657,56 +2672,42 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestDisconnectSingleCustomConnectorAccount(
-      actor: ApiTestUser | null,
+    async deleteCustomConnectorAccount(
+      actor: ApiTestUser,
       connectorId: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
+      connectionId: string,
+    ): Promise<void> {
       const client = setupApp({
         context,
         routes: connectorAccountRoutes,
       })(connectorAccountsContract);
-      return await accept(
-        client.disconnectSingleAccount({
+      await accept(
+        client.delete({
+          params: { connectionId },
           headers: authenticate(actor),
           body: {
             target: { kind: "custom", customConnectorId: connectorId },
           },
         }),
-        statuses,
+        [200],
       );
     },
 
-    async disconnectSingleCustomConnectorAccount(
+    async deleteDefaultCustomConnectorAccount(
       actor: ApiTestUser,
       connectorId: string,
-      statuses: readonly (204 | 400 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
-      await api.requestDisconnectSingleCustomConnectorAccount(
+      const accounts = await api.listCustomConnectorAccounts(
         actor,
         connectorId,
-        statuses,
       );
-    },
-
-    async requestDisconnectSingleCustomConnectorAccountWithToken(
-      token: string,
-      connectorId: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
-      const client = setupApp({
-        context,
-        routes: connectorAccountRoutes,
-      })(connectorAccountsContract);
-      return await accept(
-        client.disconnectSingleAccount({
-          headers: { authorization: `Bearer ${token}` },
-          body: {
-            target: { kind: "custom", customConnectorId: connectorId },
-          },
-        }),
-        statuses,
-      );
+      const account = accounts.find((candidate) => {
+        return candidate.isDefault;
+      });
+      if (!account) {
+        return;
+      }
+      await api.deleteCustomConnectorAccount(actor, connectorId, account.id);
     },
 
     async requestStartCustomConnectorOAuth2(
@@ -2714,7 +2715,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500 | 502)[],
       agentId?: string,
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2754,7 +2755,7 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       connectorId: string,
       baseUrl: string,
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ): Promise<string> {
       const client = setupApp({
         baseUrl,

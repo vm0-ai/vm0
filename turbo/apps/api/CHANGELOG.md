@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.553.1](https://github.com/vm0-ai/vm0/compare/api-v1.553.0...api-v1.553.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* make pi memory citations safe across version skew ([#31976](https://github.com/vm0-ai/vm0/issues/31976)) ([63d4035](https://github.com/vm0-ai/vm0/commit/63d40353754fa03271b61b84d42ec3ee8cfe88f5))
+
+
+### Refactoring
+
+* **connectors:** remove single-account compatibility contract ([#31978](https://github.com/vm0-ai/vm0/issues/31978)) ([b0c87cb](https://github.com/vm0-ai/vm0/commit/b0c87cb69b860ef502e5722df642029ae9efd8f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.1
+    * @okouai/core bumped to 8.625.10
+    * @okouai/db bumped to 1.242.2
+    * @okouai/pi-agent-runtime bumped to 1.21.2
+
+## [1.553.0](https://github.com/vm0-ai/vm0/compare/api-v1.552.0...api-v1.553.0) (2026-09-06)
+
+
+### Features
+
+* add cursor context and light polish to voice input ([#31968](https://github.com/vm0-ai/vm0/issues/31968)) ([12d0c92](https://github.com/vm0-ai/vm0/commit/12d0c9232684f9223ade010c40f3fad752b079df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+    * @okouai/core bumped to 8.625.9
+    * @okouai/db bumped to 1.242.1
+    * @okouai/pi-agent-runtime bumped to 1.21.1
+
 ## [1.552.0](https://github.com/vm0-ai/vm0/compare/api-v1.551.9...api-v1.552.0) (2026-09-06)
 
 

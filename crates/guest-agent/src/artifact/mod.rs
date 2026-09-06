@@ -520,21 +520,6 @@ mod tests {
         guest_common::log::clear_system_log_file();
     }
 
-    struct SandboxOpsOverrideGuard;
-
-    impl SandboxOpsOverrideGuard {
-        fn set(path: &std::path::Path) -> Self {
-            guest_common::telemetry::set_sandbox_ops_log_file(path);
-            Self
-        }
-    }
-
-    impl Drop for SandboxOpsOverrideGuard {
-        fn drop(&mut self) {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
-        }
-    }
-
     fn test_http_client(server: &httpmock::MockServer) -> Result<HttpClient, AgentError> {
         HttpClient::with_api_config(
             server.base_url(),
@@ -614,6 +599,7 @@ mod tests {
     async fn snapshot_rejects_empty_prepare_response_before_upload_or_commit()
     -> Result<(), AgentError> {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         disable_system_log();
         let server = MockServer::start();
 
@@ -684,7 +670,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -778,7 +764,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -908,7 +894,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1024,7 +1010,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1123,7 +1109,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1210,7 +1196,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1318,7 +1304,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1392,7 +1378,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1460,6 +1446,7 @@ mod tests {
     #[tokio::test]
     async fn snapshot_requires_upload_urls_for_new_version() -> Result<(), AgentError> {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         disable_system_log();
         let server = MockServer::start();
 
