@@ -1,5 +1,5 @@
 import type { IntroVideoStyle } from "@okouai/api-contracts/contracts/intro-video-presenter";
-import { SegmentControl, SegmentControlItem } from "@okouai/ui";
+import { SegmentControl, SegmentControlItem, cn } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -103,7 +103,12 @@ export function IntroVideoStyleGallery({
             <h3 className="text-sm font-medium text-muted-foreground">
               {styleFormatLabel(t, ratio)}
             </h3>
-            <div className="grid grid-cols-2 items-start gap-2.5 sm:grid-cols-3 sm:gap-3">
+            <div
+              className={cn(
+                "grid grid-cols-2 items-start gap-2.5 sm:gap-3",
+                ratio === "9:16" ? "sm:grid-cols-4" : "sm:grid-cols-3",
+              )}
+            >
               {matches.map((style) => {
                 return (
                   <IntroVideoStyleCard
