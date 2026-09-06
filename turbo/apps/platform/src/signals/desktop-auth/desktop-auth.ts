@@ -25,6 +25,9 @@ import {
   type DesktopAuthRoute,
 } from "./protocol.ts";
 
+/** One second apart, so the budget matches the callback attempt's deadline. */
+const CALLBACK_POLL_LIMIT = 120;
+
 type DesktopAuthPhase =
   | "connecting"
   | "pending"
@@ -221,10 +224,16 @@ function createDesktopCallback(
     set(callbackUrl$, handoff.callbackUrl);
     set(phase$, "pending");
     location.assign(handoff.callbackUrl);
-    // The caller's signal already carries the callback deadline, so the loop
-    // needs no separate poll budget: it ends on completion or on that abort.
+    // The deadline on the caller's signal only stops the work: `settle`
+    // rethrows aborts, so an aborted attempt never reaches the failed phase.
+    // Keep a poll budget so the timeout surfaces as an ordinary error the page
+    // can turn into the retry prompt.
+    let polls = 0;
     await setLoop(
       async (loopSignal) => {
+        if (polls++ >= CALLBACK_POLL_LIMIT) {
+          throw new Error("Desktop sign-in timed out");
+        }
         const status = await accept(
           client.status({
             params: { handoffId: handoff.handoffId },
