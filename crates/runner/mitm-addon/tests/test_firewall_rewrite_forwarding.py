@@ -51,6 +51,7 @@ class TestAuthBaseUrlRewriteForwarding:
                 "headers": {
                     "Authorization": "Bearer ${{ secrets.TOKEN }}",
                     "X-Custom": "${{ secrets.CUSTOM }}",
+                    "X-Latin-1": "${{ secrets.LATIN_1 }}",
                 },
                 "query": {"api_key": "${{ secrets.API_KEY }}"},
             },
@@ -58,6 +59,7 @@ class TestAuthBaseUrlRewriteForwarding:
                 "headers": {
                     "Authorization": "Bearer real-token",
                     "X-Custom": "injected-value",
+                    "X-Latin-1": "café",
                 },
                 "query": {"api_key": "resolved-key"},
                 "resolved_secrets": ["WEBHOOK", "API_KEY"],
@@ -107,6 +109,8 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.socket.request_header_values("Host") == ["real.example.com"]
         assert upstream.socket.request_header_values("Authorization") == ["Bearer real-token"]
         assert upstream.socket.request_header_values("X-Custom") == ["injected-value"]
+        assert upstream.socket.request_header_values("X-Latin-1") == ["café"]
+        assert b"X-Latin-1: caf\xe9\r\n" in upstream.socket.sent
         assert upstream.socket.request_header_values("X-Repeat") == []
         assert upstream.socket.request_header_values("X-Keep") == []
         assert upstream.socket.request_header_values("Cookie") == []
