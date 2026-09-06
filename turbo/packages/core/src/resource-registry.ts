@@ -129,7 +129,7 @@ function privateR2ArchiveSource(
 // the private R2 version ids served by the API download route.
 const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
   "emboss-deboss":
-    "c2c42e88a01c79940829e8810926e330dfed5eff750771ef23d668fda0bd0498",
+    "818cab9aad46138fe70bd220bbc93c6bd5b5bf41e241aa24a83766804054db6e",
   "cozy-parlor":
     "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
   "crowd-ink":
@@ -3047,8 +3047,8 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Emboss & Deboss",
     description:
-      "Poetic paper posters with visible embossed lettering and forms, debossed contours, and Chinese, English, Japanese, or text-free compositions.",
-    desc: "Poetic editorial posters and covers in tactile matte paper, with clearly raised lettering and forms, recessed contours, fine fibers, and intentional negative space. Supports Chinese, English, Japanese, and text-free artwork. Preserve exact supplied text; compose each language or text-free edition to fit the brief. Trigger for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or paper-relief design.",
+      "Poetic paper posters with visible embossed lettering and forms, debossed contours, fine fibers, and intentional negative space.",
+    desc: "Compose poetic editorial posters and covers in tactile matte paper, with clearly raised lettering and forms, recessed contours, fine fibers, and intentional negative space. Use for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or paper-relief design.",
     source: imageStyleSource("emboss-deboss"),
   },
   {

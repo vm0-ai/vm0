@@ -91,7 +91,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "color-system:warm-sand":
     "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
   "image-style:emboss-deboss":
-    "fab9e7a4e7fcbb6cdaad841f13428ac7cca0d8b60f2dcdb6d30378808fa5801a",
+    "a0fb408bac4e4ea7b0ba5e50f742b6201b701b987061b23ec205981619ecb029",
   // Image style packages manually published from vm0-ai/vm0-skills@45e237a.
   "image-style:cozy-parlor":
     "b6ce5ecd7207360f6929616daea4c054aa9583ee24ca64eeb7d5aca5c9767db5",

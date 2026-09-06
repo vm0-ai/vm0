@@ -168,9 +168,9 @@ describe("registry resource download", () => {
     {
       slug: "emboss-deboss",
       sha256:
-        "c2c42e88a01c79940829e8810926e330dfed5eff750771ef23d668fda0bd0498",
+        "818cab9aad46138fe70bd220bbc93c6bd5b5bf41e241aa24a83766804054db6e",
       versionId:
-        "fab9e7a4e7fcbb6cdaad841f13428ac7cca0d8b60f2dcdb6d30378808fa5801a",
+        "a0fb408bac4e4ea7b0ba5e50f742b6201b701b987061b23ec205981619ecb029",
     },
   ])(
     "downloads the pinned $slug image style archive through the route",
