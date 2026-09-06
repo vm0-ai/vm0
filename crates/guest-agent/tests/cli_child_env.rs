@@ -108,6 +108,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     std::fs::write(stale_cache_dir.join("stale"), "stale")?;
     std::fs::create_dir_all(&linked_generation_target)?;
     std::fs::write(linked_generation_target.join("retained"), "retained")?;
+    symlink(&linked_generation_target, stale_cache_dir.join("linked"))?;
     symlink(&linked_generation_target, &linked_generation)?;
     std::fs::create_dir(&unmanaged_cache_dir)?;
     unsafe {

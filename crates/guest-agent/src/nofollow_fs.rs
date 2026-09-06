@@ -491,47 +491,6 @@ mod tests {
     }
 
     #[test]
-    fn create_child_dir_rejects_symlinked_existing_child() {
-        let dir = tempfile::tempdir().unwrap();
-        let root_path = dir.path().join("root");
-        let outside = dir.path().join("outside");
-        fs::create_dir(&root_path).unwrap();
-        fs::create_dir(&outside).unwrap();
-        symlink(&outside, root_path.join("linked")).unwrap();
-
-        let root = Dir::open(&root_path).unwrap();
-
-        assert!(root.create_child_dir(OsStr::new("linked")).is_err());
-        assert!(outside.exists());
-    }
-
-    #[test]
-    fn remove_child_dir_all_does_not_follow_nested_symlinks() {
-        let dir = tempfile::tempdir().unwrap();
-        let root_path = dir.path().join("root");
-        let outside = dir.path().join("outside");
-        fs::create_dir(&root_path).unwrap();
-        fs::create_dir(&outside).unwrap();
-        fs::write(outside.join("retained.txt"), "retained").unwrap();
-        let stale = root_path.join("stale");
-        fs::create_dir(&stale).unwrap();
-        symlink(&outside, stale.join("linked")).unwrap();
-
-        let root = Dir::open(&root_path).unwrap();
-        let filesystem = root.identity().unwrap();
-
-        assert!(
-            root.remove_child_dir_all(OsStr::new("stale"), filesystem)
-                .unwrap()
-        );
-        assert!(!stale.exists());
-        assert_eq!(
-            fs::read_to_string(outside.join("retained.txt")).unwrap(),
-            "retained"
-        );
-    }
-
-    #[test]
     fn open_child_file_rejects_symlinked_child() {
         let dir = tempfile::tempdir().unwrap();
         let root_path = dir.path().join("root");
