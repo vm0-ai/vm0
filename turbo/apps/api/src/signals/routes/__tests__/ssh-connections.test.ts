@@ -338,6 +338,16 @@ describe("SSH connection routes", () => {
     );
     expect(stale.body.error.message).toContain("modified");
 
+    const staleReset = await accept(
+      client().resetHostKey({
+        headers: authHeaders(),
+        params: { connectionId: created.body.id },
+        body: { expectedGeneration: 7 },
+      }),
+      [409],
+    );
+    expect(staleReset.body.error.message).toContain("modified");
+
     await accept(
       client().delete({
         headers: authHeaders(),
@@ -405,6 +415,24 @@ describe("SSH connection routes", () => {
     expect(duplicate.body.error.message).toContain("already exists");
     expect(kms.generateDataKeyCalls).toBe(1);
 
+    const other = await accept(
+      client().create({
+        headers: authHeaders(),
+        body: createBody("other.example.com"),
+      }),
+      [201],
+    );
+    const endpointCollision = await accept(
+      client().update({
+        headers: authHeaders(),
+        params: { connectionId: other.body.id },
+        body: { expectedGeneration: 1, host: "EXAMPLE.com." },
+      }),
+      [409],
+    );
+    expect(endpointCollision.body.error.message).toContain("already exists");
+    expect(kms.generateDataKeyCalls).toBe(2);
+
     const rawRequest = setupRawAppRequest({
       context,
       routes: sshConnectionsRoutes,
@@ -419,6 +447,36 @@ describe("SSH connection routes", () => {
     });
     expect(unknownField.status).toBe(400);
 
+    const invalidPort = await rawRequest("/api/ssh/connections", {
+      method: "POST",
+      headers: { ...authHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        ...createBody("invalid-port.example.com"),
+        port: 65_536,
+      }),
+    });
+    expect(invalidPort.status).toBe(400);
+
+    const invalidPrivateKey = await rawRequest("/api/ssh/connections", {
+      method: "POST",
+      headers: { ...authHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        ...createBody("invalid-key.example.com"),
+        privateKey: "",
+      }),
+    });
+    expect(invalidPrivateKey.status).toBe(400);
+
+    const invalidPassphrase = await rawRequest("/api/ssh/connections", {
+      method: "POST",
+      headers: { ...authHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        ...createBody("invalid-passphrase.example.com"),
+        passphrase: "",
+      }),
+    });
+    expect(invalidPassphrase.status).toBe(400);
+
     const emptyPatch = await rawRequest(
       `/api/ssh/connections/${created.body.id}`,
       {
@@ -428,6 +486,17 @@ describe("SSH connection routes", () => {
       },
     );
     expect(emptyPatch.status).toBe(400);
+
+    const invalidGeneration = await rawRequest(
+      `/api/ssh/connections/${created.body.id}`,
+      {
+        method: "PATCH",
+        headers: { ...authHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ expectedGeneration: 0, displayName: "Invalid" }),
+      },
+    );
+    expect(invalidGeneration.status).toBe(400);
+    expect(kms.generateDataKeyCalls).toBe(2);
   });
 
   it("fails closed across owners without invoking KMS", async () => {
