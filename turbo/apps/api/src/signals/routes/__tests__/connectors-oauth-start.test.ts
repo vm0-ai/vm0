@@ -716,7 +716,6 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
 async function requestOauthStart(
   connectorSlug: string,
   options: {
-    readonly accountIntent?: "add" | "single-account";
     readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly callbackTarget?: "app";
@@ -738,7 +737,7 @@ async function requestOauthStart(
     headers,
     body: JSON.stringify({
       authMethod: options.authMethod ?? "oauth",
-      account: { intent: options.accountIntent ?? "single-account" },
+      account: { intent: "add" },
       ...(options.callbackTarget
         ? { callbackTarget: options.callbackTarget }
         : {}),
@@ -1029,7 +1028,6 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
 
   it("returns the future connection id for an unnamed account addition", async () => {
     const response = await requestOauthStart("test-oauth", {
-      accountIntent: "add",
       authenticated: true,
     });
 
@@ -1356,7 +1354,6 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("airtable", {
-      accountIntent: "add",
       callbackTarget: "app",
       headers: authHeaders(),
       origin: OKOU_API_ORIGIN,

@@ -1,6 +1,6 @@
 {
-  "id": "f2dfe137-efc4-421c-a90b-859b0d7b1784",
-  "prevId": "e23d0f1d-ac31-4643-a57c-e27622aae4bb",
+  "id": "9b4e3bc6-a41a-41ae-90f8-1e268bb12caf",
+  "prevId": "f2dfe137-efc4-421c-a90b-859b0d7b1784",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -17349,6 +17349,12 @@
         },
         "selected_image_model": {
           "name": "selected_image_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "voice_input_model": {
+          "name": "voice_input_model",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false

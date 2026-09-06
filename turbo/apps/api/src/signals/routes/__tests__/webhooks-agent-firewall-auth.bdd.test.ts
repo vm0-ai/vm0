@@ -372,7 +372,7 @@ describe("FW-2: template resolution without connector refresh", () => {
       "X-Email": "current@example.test",
     });
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "jira");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "jira");
     const disconnected = await fw.requestFirewallAuth(headers, body, [424]);
     if (disconnected.status !== 424) {
       throw new Error("Expected disconnected builtin connector auth to fail");
@@ -1292,7 +1292,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       "X-AWS-Session-Token": oldCredentials.sessionToken,
     });
 
-    await connectors.disconnectSingleBuiltinConnectorAccount(actor, "aws");
+    await connectors.deleteDefaultBuiltinConnectorAccount(actor, "aws");
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {
@@ -2202,6 +2202,7 @@ describe("FW-7: client-unconfigured and mixed-reason refresh failures", () => {
 describe("FW-8: static access tokens and unavailable sources", () => {
   it("requires reconnect for expired static tokens and syncs current ones", async () => {
     const fw = createFirewallApi(context);
+    const connectors = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
       connectorSlug: "test-oauth-device",
@@ -2227,13 +2228,32 @@ describe("FW-8: static access tokens and unavailable sources", () => {
     expect(expired.body.error.failureReason).toBe("reconnect_required");
     expect(expired.body.error.connectors).toStrictEqual(["test-oauth-device"]);
 
+    const [expiredAccount] = await connectors.listBuiltinConnectorAccounts(
+      actor,
+      "test-oauth-device",
+    );
+    if (!expiredAccount) {
+      throw new Error("Expected the expired device account");
+    }
+    await connectors.deleteBuiltinConnectorAccount(
+      actor,
+      "test-oauth-device",
+      expiredAccount.id,
+    );
+
     await fw.seedTestConnector(actor, {
       connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "current-device",
       expiresIn: 3600,
     });
-    const synced = await fw.requestFirewallAuth(headers, body, [200]);
+    const currentBody = {
+      ...body,
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_DEVICE_TOKEN: "test-oauth-device",
+      })),
+    };
+    const synced = await fw.requestFirewallAuth(headers, currentBody, [200]);
     if (synced.status !== 200) {
       throw new Error("Expected current static token to resolve");
     }

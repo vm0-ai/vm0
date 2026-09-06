@@ -448,21 +448,6 @@ mod tests {
 
     const REQUEST_OVERLAP_TIMEOUT: Duration = Duration::from_secs(5);
 
-    struct SandboxOpsOverrideGuard;
-
-    impl SandboxOpsOverrideGuard {
-        fn set(path: &std::path::Path) -> Self {
-            guest_common::telemetry::set_sandbox_ops_log_file(path);
-            Self
-        }
-    }
-
-    impl Drop for SandboxOpsOverrideGuard {
-        fn drop(&mut self) {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
-        }
-    }
-
     fn assert_artifact_hash_failure(telemetry_path: &std::path::Path, expected_error: &str) {
         let expected_error = expected_error
             .strip_prefix("checkpoint: ")
@@ -501,7 +486,7 @@ mod tests {
     async fn artifact_snapshot_preflight_error(mount: &std::path::Path) -> String {
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -647,6 +632,7 @@ mod tests {
 
     #[tokio::test]
     async fn maintenance_recovery_preserves_parent_before_any_storage_publication() {
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -715,6 +701,7 @@ mod tests {
 
     #[tokio::test]
     async fn maintenance_success_forwards_exact_validation_attestation() {
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let storage_id = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
@@ -873,6 +860,7 @@ mod tests {
     #[tokio::test]
     async fn artifact_snapshot_missing_mount_fails_before_storage_api_calls() {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -926,6 +914,7 @@ mod tests {
         };
 
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let mut sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         guest_common::log::clear_system_log_file();
 
         let dir = tempfile::tempdir().unwrap();
@@ -953,7 +942,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        sandbox_ops_guard.install_override(&telemetry_path);
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1121,6 +1110,7 @@ mod tests {
     #[tokio::test]
     async fn artifact_snapshot_explicit_fail_policy_missing_mount_fails() {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1165,6 +1155,7 @@ mod tests {
     #[tokio::test]
     async fn artifact_snapshot_later_missing_mount_fails_before_any_storage_api_calls() {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1221,6 +1212,7 @@ mod tests {
     #[tokio::test]
     async fn artifact_snapshot_pipelines_overlap_and_preserve_result_order() {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let dir = tempfile::tempdir().unwrap();
         let workspace_mount = dir.path().join("workspace");
         let memory_mount = dir.path().join("memory");
@@ -1283,6 +1275,7 @@ mod tests {
     #[tokio::test]
     async fn artifact_snapshot_preserve_policy_missing_mount_preserves_parent_version() {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1335,6 +1328,7 @@ mod tests {
     #[tokio::test]
     async fn artifact_snapshot_policy_still_fails_on_non_not_found_root_error() {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)

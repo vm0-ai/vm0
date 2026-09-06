@@ -130,18 +130,31 @@ function installSearchResources() {
 
 test.each([
   {
-    platform: "Mac",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    platform: "Mac Chrome",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
     modifiers: { metaKey: true, ctrlKey: false },
+    numberModifiers: { metaKey: true, ctrlKey: false },
+    firstHint: ["⌘", "1"],
+  },
+  {
+    platform: "Mac Safari",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
+    modifiers: { metaKey: true, ctrlKey: false },
+    numberModifiers: { metaKey: true, ctrlKey: true },
+    firstHint: ["⌃", "⌘", "1"],
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifiers: { metaKey: false, ctrlKey: true },
+    numberModifiers: { metaKey: false, ctrlKey: true },
+    firstHint: ["Ctrl", "1"],
   },
 ])(
   "Limit empty search to 25 current chats and open the ninth result on $platform",
-  async ({ userAgent, modifiers }) => {
+  async ({ userAgent, modifiers, numberModifiers, firstHint }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
       return (
@@ -191,6 +204,13 @@ test.each([
         "9",
       ]);
     });
+    expect(
+      [...queryAllByRoleFast("option", dialog)[0]!.querySelectorAll("kbd")].map(
+        (keycap) => {
+          return keycap.textContent;
+        },
+      ),
+    ).toStrictEqual(firstHint);
     fireEvent.keyUp(search, { key: modifiers.metaKey ? "Meta" : "Control" });
     await waitFor(() => {
       expect(numberedHints(dialog)).toStrictEqual([]);
@@ -205,7 +225,7 @@ test.each([
     fireEvent.keyDown(search, {
       key: "9",
       code: "Digit9",
-      ...modifiers,
+      ...numberModifiers,
       shiftKey: false,
     });
     await waitFor(() => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.0...guest-agent-v0.86.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* make pi memory citations safe across version skew ([#31976](https://github.com/vm0-ai/vm0/issues/31976)) ([63d4035](https://github.com/vm0-ai/vm0/commit/63d40353754fa03271b61b84d42ec3ee8cfe88f5))
+
 ## [0.86.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.8...guest-agent-v0.86.0) (2026-09-06)
 
 

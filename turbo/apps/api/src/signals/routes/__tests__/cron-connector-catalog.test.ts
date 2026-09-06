@@ -177,10 +177,9 @@ function createConnectorCleanup(
   return async () => {
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", bucket);
     mockApiTestConnectorProviderConfiguration();
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       connectorSlug,
-      [204, 404],
     );
   };
 }
@@ -2624,9 +2623,12 @@ describe("connector catalog valid lifecycle", () => {
 
     const actor = bdd.user();
     onTestFinished(createConnectorCleanup(actor, "agora"));
-    await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
-      credential: "legacy-catalog-secret",
-    });
+    const legacyConnection = await connectorsApi.connectManualGrant(
+      actor,
+      "agora",
+      "legacy",
+      { credential: "legacy-catalog-secret" },
+    );
 
     const replacement = buildRelease({
       version: "2026-07-15.external-replacement-method",
@@ -2667,6 +2669,8 @@ describe("connector catalog valid lifecycle", () => {
       "agora",
       "current",
       { credential: "current-catalog-secret" },
+      undefined,
+      { intent: "reconnect", connectionId: legacyConnection.id },
     );
     expect(connected).toMatchObject({
       slug: "agora",
@@ -2715,7 +2719,7 @@ describe("connector catalog valid lifecycle", () => {
     const filtered = await syncCatalog();
     expect(filtered.body.filtering.filteredAuthMethods).toHaveLength(2);
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "agora");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "agora");
     const secretsAfterDelete = await readUserSecrets(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -2762,9 +2766,12 @@ describe("connector catalog valid lifecycle", () => {
 
     const actor = bdd.user();
     onTestFinished(createConnectorCleanup(actor, "agora"));
-    await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
-      credential: "legacy-catalog-secret",
-    });
+    const legacyConnection = await connectorsApi.connectManualGrant(
+      actor,
+      "agora",
+      "legacy",
+      { credential: "legacy-catalog-secret" },
+    );
 
     const removed = buildRelease({
       version: "2026-07-15.external-stored-method-removed",
@@ -2792,14 +2799,16 @@ describe("connector catalog valid lifecycle", () => {
       "agora",
       "current",
       { credential: "current-catalog-secret" },
-      { statuses: [200] },
+      {
+        statuses: [200],
+        account: {
+          intent: "reconnect",
+          connectionId: legacyConnection.id,
+        },
+      },
     );
     expect(replacement.status).toBe(200);
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
-      actor,
-      "agora",
-      [204],
-    );
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "agora");
 
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const secrets = await readUserSecrets(context, {
@@ -2840,9 +2849,12 @@ describe("connector catalog valid lifecycle", () => {
 
     const actor = bdd.user();
     onTestFinished(createConnectorCleanup(actor, "gmail"));
-    await connectorsApi.connectManualGrant(actor, "gmail", "legacy", {
-      credential: "legacy-gmail-secret",
-    });
+    const legacyConnection = await connectorsApi.connectManualGrant(
+      actor,
+      "gmail",
+      "legacy",
+      { credential: "legacy-gmail-secret" },
+    );
 
     mockGmailConnectorOAuth({ email: "removed-method@example.test" });
     const replacement = buildRelease({
@@ -2861,7 +2873,13 @@ describe("connector catalog valid lifecycle", () => {
     serveObjects(catalogObjects([initial, replacement], replacement));
     await syncCatalog();
 
-    const oauth = await connectorsApi.startOauth(actor, "gmail", "oauth");
+    const oauth = await connectorsApi.startOauth(
+      actor,
+      "gmail",
+      "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: legacyConnection.id },
+    );
     const state = new URL(oauth.authorizationUrl).searchParams.get("state");
     if (!state) {
       throw new Error("Expected Gmail authorization state");
@@ -3929,7 +3947,7 @@ describe("connector catalog valid lifecycle", () => {
         headers,
         body: {
           authMethod: "openid",
-          account: { intent: "single-account" },
+          account: { intent: "add" },
         },
       }),
       [200],
@@ -4124,7 +4142,7 @@ describe("connector catalog valid lifecycle", () => {
       code: "catalog-slack-code",
       state,
     });
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "slack");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "slack");
     expect(revokeCalls).toBe(1);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
@@ -4233,7 +4251,19 @@ describe("connector catalog valid lifecycle", () => {
       firstStorageState.connector?.id,
     );
 
-    const secondStart = await connectorsApi.startOauth(actor, "slack", "oauth");
+    if (!firstStorageState.connector) {
+      throw new Error("Expected first-release Slack connector storage");
+    }
+    const secondStart = await connectorsApi.startOauth(
+      actor,
+      "slack",
+      "oauth",
+      undefined,
+      {
+        intent: "reconnect",
+        connectionId: firstStorageState.connector.id,
+      },
+    );
     const secondState = new URL(secondStart.authorizationUrl).searchParams.get(
       "state",
     );
@@ -4341,6 +4371,10 @@ describe("connector catalog valid lifecycle", () => {
       code: "initial",
       state: initialState,
     });
+    const initialConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
 
     mockNow(new Date("2026-07-15T10:00:00.000Z"));
     bdd.acceptAgentStorageWrites();
@@ -4430,6 +4464,8 @@ describe("connector catalog valid lifecycle", () => {
       actor,
       "gmail",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: initialConnection.id },
     );
     const replacementState = new URL(
       replacementOauth.authorizationUrl,

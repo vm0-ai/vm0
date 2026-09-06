@@ -1117,7 +1117,7 @@ describe("Stripe automation event webhook", () => {
       EXECUTED_EXECUTION,
     );
 
-    await connectors.disconnectSingleBuiltinConnectorAccount(
+    await connectors.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "stripe",
     );
@@ -1580,23 +1580,6 @@ describe("Stripe automation event webhook", () => {
       expect(result.inputEvents).toHaveLength(0);
     });
 
-    it("when the connected account changes", async () => {
-      const { scenario } =
-        await setupPendingLifecycleDelivery("changed_account");
-      const changed = await connectStripeOAuth(
-        scenario.actor,
-        `acct_stripe_changed_${randomUUID()}`,
-      );
-      expect(changed.id).toBe(scenario.connector.id);
-      const result = await executeLifecycleDelivery(scenario);
-      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
-      expect((await readStripeAutomation(scenario)).health).toMatchObject({
-        lastDeliveryStatus: "skipped",
-        warning: null,
-      });
-      expect(result.inputEvents).toHaveLength(0);
-    });
-
     it("when the thread account selection changes", async () => {
       const { scenario } =
         await setupPendingLifecycleDelivery("thread_selection");
@@ -1634,12 +1617,12 @@ describe("Stripe automation event webhook", () => {
     it("when the connection changes from live mode to test mode", async () => {
       const { accountId, scenario } =
         await setupPendingLifecycleDelivery("test_mode");
-      const testConnection = await connectStripeOAuth(
+      await reconnectStripeOAuthAccount(
         scenario.actor,
+        scenario.connector.id,
         accountId,
         false,
       );
-      expect(testConnection.id).toBe(scenario.connector.id);
       const result = await executeLifecycleDelivery(scenario);
       expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
       expect((await readStripeAutomation(scenario)).health).toMatchObject({
@@ -1652,7 +1635,7 @@ describe("Stripe automation event webhook", () => {
     it("when the connector is deleted", async () => {
       const { scenario } =
         await setupPendingLifecycleDelivery("deleted_connector");
-      await connectors.disconnectSingleBuiltinConnectorAccount(
+      await connectors.deleteDefaultBuiltinConnectorAccount(
         scenario.actor,
         "stripe",
       );

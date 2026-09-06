@@ -68,6 +68,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
       params: { connectorSlug: "openai" },
       body: {
         authMethod: "api-token",
+        account: { intent: "add" },
         values: { apiKey: "sk-test-token" },
       },
       headers: authHeaders(),
@@ -78,15 +79,29 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
 
 async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context, routes: connectorAccountRoutes })(
-      connectorAccountsContract,
-    ).disconnectSingleAccount({
-      headers: authHeaders(),
-      body: { target: { kind: "builtin", connectorSlug: "openai" } },
-    }),
-    [204, 404],
+  const client = setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
   );
+  const accounts = await accept(
+    client.connections({
+      headers: authHeaders(),
+      query: { kind: "builtin", connectorSlug: "openai" },
+    }),
+    [200, 404],
+  );
+  if (accounts.status === 404) {
+    return;
+  }
+  for (const account of accounts.body.connections) {
+    await accept(
+      client.delete({
+        headers: authHeaders(),
+        params: { connectionId: account.id },
+        body: { target: { kind: "builtin", connectorSlug: "openai" } },
+      }),
+      [200],
+    );
+  }
 }
 
 describe("GET /api/connectors/:connectorSlug", () => {
