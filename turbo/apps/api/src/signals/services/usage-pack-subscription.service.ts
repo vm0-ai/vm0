@@ -21,7 +21,9 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   lte,
+  notExists,
   notInArray,
   or,
   sql,
@@ -47,6 +49,7 @@ import { upsertOrgPlanEntitlement } from "./org-plan-entitlements.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
   handleUsagePackAllocationChangeInvoicePaid,
+  lockUsagePackBillingOrg,
   reconcileUsagePackAllocationChanges,
   reconcileUsagePackAllocationChangeSubscription,
   reconcileUsagePackAllocationChangeSubscriptionDeleted,
@@ -2991,6 +2994,45 @@ async function createUsagePackMemberGrants(
   }
 }
 
+async function clearNegativeOrgCreditsForFirstUsagePackUpgrade(
+  tx: WriteTx,
+  subscription: UsagePackSubscriptionRow,
+  invoiceId: string,
+): Promise<void> {
+  const priorFulfillment = tx
+    .select({
+      stripeInvoiceId: usagePackInvoiceFulfillments.stripeInvoiceId,
+    })
+    .from(usagePackInvoiceFulfillments)
+    .innerJoin(
+      usagePackSubscriptions,
+      eq(
+        usagePackSubscriptions.id,
+        usagePackInvoiceFulfillments.usagePackSubscriptionId,
+      ),
+    )
+    .where(eq(usagePackSubscriptions.orgId, subscription.orgId));
+  const cleared = await tx
+    .update(orgMetadata)
+    .set({ credits: 0, updatedAt: nowDate() })
+    .where(
+      and(
+        eq(orgMetadata.orgId, subscription.orgId),
+        lt(orgMetadata.credits, 0),
+        notExists(priorFulfillment),
+      ),
+    )
+    .returning({ orgId: orgMetadata.orgId });
+  if (cleared.length === 0) {
+    return;
+  }
+  L.debug("negative organization credits cleared on first usage pack upgrade", {
+    invoiceId,
+    orgId: subscription.orgId,
+    usagePackSubscriptionId: subscription.id,
+  });
+}
+
 async function persistUsagePackPlanState(
   tx: WriteTx,
   subscription: UsagePackSubscriptionRow,
@@ -3158,6 +3200,7 @@ async function commitUsagePackFulfillmentTransaction(
   tx: WriteTx,
   args: CommitUsagePackFulfillmentArgs,
 ): Promise<void> {
+  await lockUsagePackBillingOrg(tx, args.context.subscription.orgId);
   const [lockedSubscription] = await tx
     .select()
     .from(usagePackSubscriptions)
@@ -3188,6 +3231,11 @@ async function commitUsagePackFulfillmentTransaction(
   }
 
   await requireCurrentFulfillmentAllocations(tx, lockedSubscription, args);
+  await clearNegativeOrgCreditsForFirstUsagePackUpgrade(
+    tx,
+    lockedSubscription,
+    args.invoice.id,
+  );
   await createUsagePackMemberGrants(tx, lockedSubscription, args);
   await advanceUsagePackProjection(tx, lockedSubscription, args);
   await tx.insert(usagePackInvoiceFulfillments).values({
