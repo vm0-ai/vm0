@@ -8,6 +8,7 @@ _URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in ran
 _URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
 _SPECIAL_URL_SCHEMES = ("http", "https")
 _SPECIAL_URL_SEPARATORS = "/\\"
+_MALFORMED_AUTHORITY_PREFIX_CHARACTERS = f"{_SPECIAL_URL_SEPARATORS} \v\f"
 
 
 def _normalize_for_urlsplit(value: str) -> str:
@@ -48,7 +49,9 @@ def _sanitize_malformed_authority_for_network_log(
     if not has_special_scheme and not is_protocol_relative:
         return None
 
-    authority_path = parts.path.lstrip(_SPECIAL_URL_SEPARATORS)
+    # SP, VT, and FF survive urlsplit preprocessing when embedded after the
+    # scheme. Treat them only as part of the leading malformed separator run.
+    authority_path = parts.path.lstrip(_MALFORMED_AUTHORITY_PREFIX_CHARACTERS)
     cut_points = [
         index
         for separator in _SPECIAL_URL_SEPARATORS
