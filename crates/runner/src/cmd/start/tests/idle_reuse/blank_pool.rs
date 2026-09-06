@@ -178,6 +178,108 @@ async fn foreground_admission_drains_cancelled_blank_start_before_destroy() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn foreground_admission_cancels_blank_create_without_leaking_ownership() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let create_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_create_lifecycle_gate(create_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    create_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("blank sandbox create should enter the lifecycle gate");
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(
+            run_id,
+            "session-cancelled-blank-create",
+        )),
+    );
+    create_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("foreground create should acquire admission after blank cancellation");
+    assert_eq!(calls.destroy_call_count(), 0);
+    assert_eq!(
+        budget.allocated().2,
+        1,
+        "cancelled blank create must release its resource lease"
+    );
+
+    create_gate.release_many(2);
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("foreground job should complete");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_eq!(calls.destroy_call_count(), 0);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn foreground_admission_drains_cancelled_blank_park_before_destroy() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let park_gate = sandbox_mock::MockLifecycleGate::new();
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_park_lifecycle_gate(park_gate.clone());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let run_handle = tokio::spawn(run(config));
+
+    park_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("blank sandbox park should enter the lifecycle gate");
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "session-cancelled-blank-park")),
+    );
+    park_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("foreground job should reach final park while blank park drains");
+    assert_eq!(
+        calls.destroy_call_count(),
+        0,
+        "blank sandbox must remain owned until its in-flight park completes"
+    );
+
+    park_gate.release_many(2);
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("cancelled blank sandbox should enter destroy after park completes");
+    destroy_gate.release_many(2);
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("foreground job should complete");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_eq!(calls.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn incompatible_profile_fresh_creates_without_consuming_blank_inventory() {
     let (config, env) = mock_run_config(two_profiles(), 16, 32_768, 8);
     let idle_pool = Arc::clone(&config.shared.idle_pool);

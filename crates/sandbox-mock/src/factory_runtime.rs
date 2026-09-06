@@ -78,6 +78,7 @@ impl SandboxFactory for MockSandboxFactory {
                 .create_configs
                 .lock_ignoring_poison()
                 .push(config.clone());
+            wait_lifecycle_gate(&overrides.factory.create_gate).await;
         }
         if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;

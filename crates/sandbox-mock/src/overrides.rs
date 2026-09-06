@@ -260,6 +260,8 @@ pub(crate) struct FactoryOverrideState {
     pub(crate) create_results: Mutex<VecDeque<Result<()>>>,
     /// Sandbox create configs observed across factories built with these overrides.
     pub(crate) create_configs: Mutex<Vec<SandboxConfig>>,
+    /// Optional gate that records and blocks every factory `create()` entry until released.
+    pub(crate) create_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
@@ -771,6 +773,11 @@ impl MockSandboxOverrides {
     /// are returned.
     pub fn create_configs(&self) -> Vec<SandboxConfig> {
         self.factory.create_configs.lock_ignoring_poison().clone()
+    }
+
+    /// Block every factory `create()` call with a durable lifecycle gate.
+    pub fn set_create_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.factory.create_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Queue a `start()` result applied to the next factory-created sandbox.
