@@ -1956,31 +1956,31 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou decides",
-        "autoDescription": "Match a public HeyGen presenter to the request",
+        "auto": "자동 · Okou가 선택",
+        "autoDescription": "요청에 맞는 HeyGen 공개 발표자 선택",
         "heading": "아바타 선택",
-        "label": "Avatar",
+        "label": "아바타",
         "none": "아바타 없음",
-        "noneDescription": "Create the video without a presenter",
-        "previewLook": "Preview look {{name}}"
+        "noneDescription": "발표자 없이 영상 만들기",
+        "previewLook": "{{name}} 모습 미리보기"
       },
-      "cardDescription": "Turn an idea or material into a finished video",
+      "cardDescription": "아이디어나 자료를 완성된 영상으로 변환",
       "catalog": {
-        "empty": "No public HeyGen options are available.",
-        "error": "The HeyGen catalog could not be loaded.",
-        "loading": "Loading more options",
+        "empty": "사용 가능한 HeyGen 공개 옵션이 없습니다.",
+        "error": "HeyGen 목록을 불러오지 못했습니다.",
+        "loading": "옵션 더 불러오는 중",
         "reload": "목록 새로고침",
-        "retry": "Try again"
+        "retry": "다시 시도"
       },
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "description": "자료를 추가하고 원하는 내용을 설명한 뒤, 필요에 따라 HeyGen 스타일, 아바타, 음성을 선택하세요.",
       "errors": {
         "sendFailed": "채팅 스레드를 만들 수 없습니다. 요청이 이 화면에 남아 있으니 다시 시도해 주세요.",
         "uploadFailed": "일부 파일을 업로드할 수 없습니다. 해당 파일을 제거하거나 다시 시도해 주세요."
       },
       "footer": {
-        "cancel": "Cancel",
-        "create": "Create video",
-        "hint": "Add a prompt, files, or both"
+        "cancel": "취소",
+        "create": "영상 만들기",
+        "hint": "지침이나 파일 또는 둘 다 추가하세요"
       },
       "format": {
         "auto": "자동",
@@ -1989,18 +1989,18 @@
         "output": "출력 화면 비율",
         "portrait": "세로 · 9:16"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "heading": "인트로 영상 만들기",
+      "help": "자료를 추가하거나 원하는 내용을 설명하세요. 둘 다 해도 좋습니다. 나머지는 Okou가 처리합니다.",
       "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+        "label": "영상으로 무엇을 전달하고 싶으신가요?",
+        "placeholder": "목표, 시청 대상, 언어, 분위기 등 중요한 내용을 설명하세요"
       },
       "source": {
-        "drop": "Drop files here or click to upload",
-        "remove": "Remove {{filename}}"
+        "drop": "여기에 파일을 놓거나 클릭하여 업로드",
+        "remove": "{{filename}} 삭제"
       },
       "style": {
-        "auto": "Let Okou choose",
+        "auto": "Okou에게 맡기기",
         "autoDescription": "요청과 자료에 맞는 시각적 방향 선택",
         "emptyFormat": "이 화면 비율에 맞는 스타일 참고가 없습니다.",
         "heading": "참고할 스타일 선택",
@@ -2010,14 +2010,14 @@
       },
       "title": "인트로 영상 만들기",
       "voice": {
-        "auto": "Let Okou choose",
-        "autoDescription": "Okou picks a suitable public HeyGen voice",
-        "default": "Default · Follows avatar",
-        "defaultDescription": "Use the chosen avatar's default voice",
-        "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "auto": "Okou에게 맡기기",
+        "autoDescription": "Okou가 적합한 HeyGen 공개 음성을 선택합니다",
+        "default": "기본값 · 아바타에 맞춤",
+        "defaultDescription": "선택한 아바타의 기본 음성 사용",
+        "defaultForAvatar": "기본값 · {{avatar}}",
+        "defaultForAvatarDescription": "{{avatar}}의 HeyGen 기본 음성 사용",
         "heading": "음성 선택",
-        "label": "Voice",
+        "label": "음성",
         "none": "내레이션 없음",
         "noneDescription": "내레이션을 추가하지 않으며, 음소거 요청이 없으면 원본 오디오를 유지합니다.",
         "original": "원본 오디오",

@@ -1991,31 +1991,31 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou decides",
-        "autoDescription": "Match a public HeyGen presenter to the request",
+        "auto": "Auto · Okou décide",
+        "autoDescription": "Choisir un présentateur public HeyGen adapté à votre demande",
         "heading": "Choisir un avatar",
         "label": "Avatar",
         "none": "Aucun avatar",
-        "noneDescription": "Create the video without a presenter",
-        "previewLook": "Preview look {{name}}"
+        "noneDescription": "Créer la vidéo sans présentateur",
+        "previewLook": "Aperçu de l’apparence {{name}}"
       },
-      "cardDescription": "Turn an idea or material into a finished video",
+      "cardDescription": "Transformez une idée ou vos contenus en vidéo finalisée",
       "catalog": {
-        "empty": "No public HeyGen options are available.",
-        "error": "The HeyGen catalog could not be loaded.",
-        "loading": "Loading more options",
+        "empty": "Aucune option publique HeyGen n’est disponible.",
+        "error": "Le catalogue HeyGen n’a pas pu être chargé.",
+        "loading": "Chargement d’autres options",
         "reload": "Recharger le catalogue",
-        "retry": "Try again"
+        "retry": "Réessayer"
       },
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "description": "Ajoutez des contenus, décrivez votre objectif et choisissez éventuellement un style, un avatar et une voix HeyGen.",
       "errors": {
         "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre demande est toujours ici, vous pouvez réessayer.",
         "uploadFailed": "Un ou plusieurs fichiers n'ont pas pu être importés. Supprimez-les ou réessayez."
       },
       "footer": {
-        "cancel": "Cancel",
-        "create": "Create video",
-        "hint": "Add a prompt, files, or both"
+        "cancel": "Annuler",
+        "create": "Créer la vidéo",
+        "hint": "Ajoutez des consignes, des fichiers ou les deux"
       },
       "format": {
         "auto": "Automatique",
@@ -2024,18 +2024,18 @@
         "output": "Format de sortie",
         "portrait": "Portrait · 9:16"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "heading": "Créez votre vidéo d’introduction",
+      "help": "Ajoutez des contenus, décrivez votre objectif ou faites les deux. Okou s’occupe du reste.",
       "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+        "label": "Que doit transmettre la vidéo ?",
+        "placeholder": "Décrivez l’objectif, le public, la langue, le ton ou tout autre détail important"
       },
       "source": {
-        "drop": "Drop files here or click to upload",
-        "remove": "Remove {{filename}}"
+        "drop": "Déposez vos fichiers ici ou cliquez pour les importer",
+        "remove": "Retirer {{filename}}"
       },
       "style": {
-        "auto": "Let Okou choose",
+        "auto": "Laisser Okou choisir",
         "autoDescription": "Adapter la direction visuelle à vos consignes et contenus",
         "emptyFormat": "Aucune référence de style ne correspond à ce format.",
         "heading": "Choisir une référence de style",
@@ -2045,14 +2045,14 @@
       },
       "title": "Créer une vidéo d'introduction",
       "voice": {
-        "auto": "Let Okou choose",
-        "autoDescription": "Okou picks a suitable public HeyGen voice",
-        "default": "Default · Follows avatar",
-        "defaultDescription": "Use the chosen avatar's default voice",
-        "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "auto": "Laisser Okou choisir",
+        "autoDescription": "Okou choisit une voix publique HeyGen adaptée",
+        "default": "Par défaut · Suit l’avatar",
+        "defaultDescription": "Utiliser la voix par défaut de l’avatar choisi",
+        "defaultForAvatar": "Par défaut · {{avatar}}",
+        "defaultForAvatarDescription": "Utiliser la voix HeyGen par défaut de {{avatar}}",
         "heading": "Choisir une voix",
-        "label": "Voice",
+        "label": "Voix",
         "none": "Sans voix off",
         "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine.",
         "original": "Audio d'origine",

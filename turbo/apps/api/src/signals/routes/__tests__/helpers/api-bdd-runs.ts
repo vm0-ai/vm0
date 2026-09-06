@@ -57,6 +57,7 @@ import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createDeferredPromise } from "../../../utils";
 import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
+import type { SystemSkillStorageResolution } from "../../../context/system-skill-storage-resolution";
 import {
   createDirectAgentExecutionFixture,
   createDirectRunFixture,
@@ -174,11 +175,13 @@ const runRoutes = [
 function runApp(
   context: TestContext,
   usagePricingResolution?: UsagePricingResolution,
+  systemSkillStorageResolution?: SystemSkillStorageResolution,
 ) {
   return setupAppWithRoutes({
     context,
     routes: runRoutes,
     ...(usagePricingResolution === undefined ? {} : { usagePricingResolution }),
+    systemSkillStorageResolution,
   });
 }
 
@@ -268,7 +271,10 @@ function runnerHeartbeatBody(
   };
 }
 
-export function createRunsApi(context: TestContext) {
+export function createRunsApi(
+  context: TestContext,
+  systemSkillStorageResolution?: SystemSkillStorageResolution,
+) {
   const defaultRunnerIdentity = {
     runnerId: randomUUID(),
     heartbeatGeneration: 1,
@@ -489,7 +495,11 @@ export function createRunsApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
     ) {
       const response = await accept(
-        runApp(context)(runFixtureContract).create({
+        runApp(
+          context,
+          undefined,
+          systemSkillStorageResolution,
+        )(runFixtureContract).create({
           headers: authenticate(context, actor),
           ...(publicBrand === "okou"
             ? { extraHeaders: { origin: "https://app.okou.ai" } }

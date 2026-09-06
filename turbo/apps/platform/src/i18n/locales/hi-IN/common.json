@@ -1959,31 +1959,31 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou decides",
-        "autoDescription": "Match a public HeyGen presenter to the request",
+        "auto": "स्वचालित · Okou चुनेगा",
+        "autoDescription": "अनुरोध के अनुसार HeyGen का सार्वजनिक प्रस्तुतकर्ता चुनें",
         "heading": "अवतार चुनें",
-        "label": "Avatar",
+        "label": "अवतार",
         "none": "कोई अवतार नहीं",
-        "noneDescription": "Create the video without a presenter",
-        "previewLook": "Preview look {{name}}"
+        "noneDescription": "बिना प्रस्तुतकर्ता के वीडियो बनाएँ",
+        "previewLook": "{{name}} रूप का पूर्वावलोकन"
       },
-      "cardDescription": "Turn an idea or material into a finished video",
+      "cardDescription": "विचार या सामग्री को तैयार वीडियो में बदलें",
       "catalog": {
-        "empty": "No public HeyGen options are available.",
-        "error": "The HeyGen catalog could not be loaded.",
-        "loading": "Loading more options",
+        "empty": "HeyGen के सार्वजनिक विकल्प उपलब्ध नहीं हैं।",
+        "error": "HeyGen कैटलॉग लोड नहीं हो सका।",
+        "loading": "और विकल्प लोड हो रहे हैं",
         "reload": "कैटलॉग फिर लोड करें",
-        "retry": "Try again"
+        "retry": "फिर से कोशिश करें"
       },
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "description": "सामग्री जोड़ें, अपनी ज़रूरत बताएँ और चाहें तो HeyGen की शैली, अवतार और आवाज़ चुनें।",
       "errors": {
         "sendFailed": "चैट थ्रेड नहीं बन सका। आपका अनुरोध अभी भी यहाँ है, आप फिर से कोशिश कर सकते हैं।",
         "uploadFailed": "एक या अधिक फ़ाइलें अपलोड नहीं हो सकीं। उन्हें हटाएँ या फिर से कोशिश करें।"
       },
       "footer": {
-        "cancel": "Cancel",
-        "create": "Create video",
-        "hint": "Add a prompt, files, or both"
+        "cancel": "रद्द करें",
+        "create": "वीडियो बनाएँ",
+        "hint": "निर्देश, फ़ाइलें या दोनों जोड़ें"
       },
       "format": {
         "auto": "स्वचालित",
@@ -1992,18 +1992,18 @@
         "output": "आउटपुट फ़ॉर्मैट",
         "portrait": "पोर्ट्रेट · 9:16"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "heading": "अपना इंट्रो वीडियो बनाएँ",
+      "help": "सामग्री जोड़ें, अपनी ज़रूरत बताएँ या दोनों करें। बाकी काम Okou संभालेगा।",
       "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+        "label": "वीडियो से क्या संदेश देना है?",
+        "placeholder": "उद्देश्य, दर्शक, भाषा, लहजा या अन्य ज़रूरी बातें बताएँ"
       },
       "source": {
-        "drop": "Drop files here or click to upload",
-        "remove": "Remove {{filename}}"
+        "drop": "फ़ाइलें यहाँ छोड़ें या अपलोड करने के लिए क्लिक करें",
+        "remove": "{{filename}} हटाएँ"
       },
       "style": {
-        "auto": "Let Okou choose",
+        "auto": "Okou को चुनने दें",
         "autoDescription": "अपने निर्देशों और सामग्री के अनुसार दृश्य शैली चुनें",
         "emptyFormat": "इस फ़ॉर्मैट से मेल खाने वाले शैली संदर्भ नहीं हैं।",
         "heading": "शैली संदर्भ चुनें",
@@ -2013,14 +2013,14 @@
       },
       "title": "इंट्रो वीडियो बनाएँ",
       "voice": {
-        "auto": "Let Okou choose",
-        "autoDescription": "Okou picks a suitable public HeyGen voice",
-        "default": "Default · Follows avatar",
-        "defaultDescription": "Use the chosen avatar's default voice",
-        "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "auto": "Okou को चुनने दें",
+        "autoDescription": "Okou, HeyGen की उपयुक्त सार्वजनिक आवाज़ चुनता है",
+        "default": "डिफ़ॉल्ट · अवतार के अनुसार",
+        "defaultDescription": "चुने गए अवतार की डिफ़ॉल्ट आवाज़ इस्तेमाल करें",
+        "defaultForAvatar": "डिफ़ॉल्ट · {{avatar}}",
+        "defaultForAvatarDescription": "{{avatar}} की डिफ़ॉल्ट HeyGen आवाज़ इस्तेमाल करें",
         "heading": "आवाज़ चुनें",
-        "label": "Voice",
+        "label": "आवाज़",
         "none": "बिना वॉइसओवर",
         "noneDescription": "नरेशन न जोड़ें; म्यूट करने को न कहने पर मूल ऑडियो बनाए रखें।",
         "original": "मूल ऑडियो",

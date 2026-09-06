@@ -1956,31 +1956,31 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou decides",
-        "autoDescription": "Match a public HeyGen presenter to the request",
+        "auto": "Otomatis · Okou memilih",
+        "autoDescription": "Pilih presenter publik HeyGen yang sesuai dengan permintaan",
         "heading": "Pilih avatar",
         "label": "Avatar",
         "none": "Tanpa avatar",
-        "noneDescription": "Create the video without a presenter",
-        "previewLook": "Preview look {{name}}"
+        "noneDescription": "Buat video tanpa presenter",
+        "previewLook": "Pratinjau tampilan {{name}}"
       },
-      "cardDescription": "Turn an idea or material into a finished video",
+      "cardDescription": "Ubah ide atau materi menjadi video siap pakai",
       "catalog": {
-        "empty": "No public HeyGen options are available.",
-        "error": "The HeyGen catalog could not be loaded.",
-        "loading": "Loading more options",
+        "empty": "Tidak ada pilihan publik HeyGen yang tersedia.",
+        "error": "Katalog HeyGen tidak dapat dimuat.",
+        "loading": "Memuat pilihan lainnya",
         "reload": "Muat ulang katalog",
-        "retry": "Try again"
+        "retry": "Coba lagi"
       },
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
+      "description": "Tambahkan materi, jelaskan keinginan Anda, lalu pilih gaya, avatar, dan suara HeyGen jika diperlukan.",
       "errors": {
         "sendFailed": "Utas chat tidak dapat dibuat. Permintaan Anda masih ada di sini agar Anda dapat mencoba lagi.",
         "uploadFailed": "Satu atau beberapa file tidak dapat diunggah. Hapus file tersebut atau coba lagi."
       },
       "footer": {
-        "cancel": "Cancel",
-        "create": "Create video",
-        "hint": "Add a prompt, files, or both"
+        "cancel": "Batal",
+        "create": "Buat video",
+        "hint": "Tambahkan instruksi, file, atau keduanya"
       },
       "format": {
         "auto": "Otomatis",
@@ -1989,18 +1989,18 @@
         "output": "Format keluaran",
         "portrait": "Potret · 9:16"
       },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "heading": "Buat video intro Anda",
+      "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
       "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
+        "label": "Apa yang harus disampaikan video ini?",
+        "placeholder": "Jelaskan tujuan, audiens, bahasa, nada, atau detail penting lainnya"
       },
       "source": {
-        "drop": "Drop files here or click to upload",
-        "remove": "Remove {{filename}}"
+        "drop": "Letakkan file di sini atau klik untuk mengunggah",
+        "remove": "Hapus {{filename}}"
       },
       "style": {
-        "auto": "Let Okou choose",
+        "auto": "Biarkan Okou memilih",
         "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
         "emptyFormat": "Tidak ada referensi gaya yang sesuai dengan format ini.",
         "heading": "Pilih referensi gaya",
@@ -2010,14 +2010,14 @@
       },
       "title": "Buat video intro",
       "voice": {
-        "auto": "Let Okou choose",
-        "autoDescription": "Okou picks a suitable public HeyGen voice",
-        "default": "Default · Follows avatar",
-        "defaultDescription": "Use the chosen avatar's default voice",
+        "auto": "Biarkan Okou memilih",
+        "autoDescription": "Okou memilih suara publik HeyGen yang sesuai",
+        "default": "Default · Mengikuti avatar",
+        "defaultDescription": "Gunakan suara default avatar yang dipilih",
         "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
+        "defaultForAvatarDescription": "Gunakan suara HeyGen default milik {{avatar}}",
         "heading": "Pilih suara",
-        "label": "Voice",
+        "label": "Suara",
         "none": "Tanpa narasi",
         "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",
         "original": "Audio asli",

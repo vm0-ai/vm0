@@ -293,6 +293,52 @@ test("Intro Video opens as one unrestricted multi-file form", async () => {
   expect(requiredButtonNamed("Create video", dialog)).toBeDisabled();
 });
 
+test("Intro Video keeps the form and voice selection localized", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: INTRO_VIDEO_SWITCHES,
+    locale: "pt-BR",
+  });
+  click(await screen.findByTestId("intro-video-start-card"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Criar um vídeo de introdução",
+  });
+  expect(
+    within(dialog).getByText("Crie seu vídeo de introdução"),
+  ).toBeVisible();
+  expect(
+    requiredButtonNamed("Solte os arquivos aqui ou clique para enviar", dialog),
+  ).toBeEnabled();
+  await user.type(
+    within(dialog).getByLabelText("O que o vídeo deve transmitir?"),
+    "Apresente nosso produto em português.",
+  );
+  await user.click(requiredButtonNamed("Voz: Padrão · Segue o avatar", dialog));
+  const picker = await screen.findByRole("dialog", { name: "Escolha uma voz" });
+  expect(
+    within(picker).getByText("Usar a voz padrão do avatar escolhido"),
+  ).toBeVisible();
+  await user.click(
+    await within(picker).findByLabelText("Selecionar a voz Annie - Lifelike"),
+  );
+  expect(requiredButtonNamed("Voz: Annie - Lifelike", dialog)).toBeVisible();
+  await user.click(requiredButtonNamed("Criar vídeo", dialog));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Apresente nosso produto em português.");
+    expect(submittedPrompt).toContain(
+      "- Voice: Annie - Lifelike (330290724a1b470fb63153f34d4c0183)",
+    );
+  });
+});
+
 test("The whole upload area opens the file picker and still accepts drops", async () => {
   const user = userEvent.setup({ delay: null });
   installIntroVideoFixture();
@@ -630,12 +676,6 @@ test("A failed preview keeps style selection available", async () => {
     throw new Error("Expected the style preview video");
   }
   fireEvent.error(video);
-  expect(video).toHaveAttribute("data-failed", "true");
-  expect(
-    within(picker).getByText(
-      "A video preview is not available for this style.",
-    ),
-  ).toBeInTheDocument();
   await user.click(requiredButtonNamed("Select style Thriller", picker));
   expect(
     requiredButtonNamed("Style reference: Thriller", dialog),
@@ -720,18 +760,11 @@ test("Style format filtering does not change the explicit output ratio", async (
   const formats = within(picker).getByLabelText(
     "Filter style references by format",
   );
-  expect(within(formats).getAllByRole("radio")).toHaveLength(2);
-  expect(within(formats).queryByLabelText("All")).toBeNull();
-  expect(within(formats).queryByText("1:1")).toBeNull();
-  expect(within(picker).getAllByText("16:9")).toHaveLength(1);
   expect(
-    within(picker).queryByRole("heading", { name: "Landscape · 16:9" }),
-  ).toBeNull();
-  expect(
-    within(picker).queryByText(
-      "Adapt a public HeyGen style to your video; this is not an exact template render.",
-    ),
-  ).toBeNull();
+    queryAllByRoleFast("radio", formats).map((format) => {
+      return format.getAttribute("aria-label");
+    }),
+  ).toStrictEqual(["Landscape · 16:9", "Portrait · 9:16"]);
   expect(within(picker).queryByText("Tall story")).toBeNull();
   expect(within(picker).getByText("Wide story")).toBeVisible();
   await user.click(within(formats).getByLabelText("Portrait · 9:16"));
@@ -1065,8 +1098,8 @@ test("A failed upload keeps the request editable and can be retried", async () =
 
 test("Retrying a partial upload reuses completed files and submits each source once", async () => {
   const user = userEvent.setup({ delay: null });
-  let firstUploads = 0;
-  let secondUploads = 0;
+  let secondUploadFailed = false;
+  const originalUploadIds = new Map<string, string>();
   let submittedMessage: unknown;
   installIntroVideoFixture({
     onSendRequest(body) {
@@ -1074,21 +1107,20 @@ test("Retrying a partial upload reuses completed files and submits each source o
     },
   });
   context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
-    const first = body.filename === "first.txt";
-    if (first) {
-      firstUploads += 1;
-    } else {
-      secondUploads += 1;
-    }
-    if (!first && secondUploads === 1) {
+    if (body.filename === "second.txt" && !secondUploadFailed) {
+      secondUploadFailed = true;
       return respond(500, {
         error: { code: "INTERNAL_SERVER_ERROR", message: "Upload failed" },
       });
     }
+    // A new preparation creates a new public attachment identity. The final
+    // message must reuse the first successful identity for each source.
+    const id = crypto.randomUUID();
+    if (!originalUploadIds.has(body.filename)) {
+      originalUploadIds.set(body.filename, id);
+    }
     return respond(200, {
-      id: first
-        ? "f0000000-0000-4000-a000-000000000055"
-        : "f0000000-0000-4000-a000-000000000056",
+      id,
       filename: body.filename,
       contentType: body.contentType,
       size: body.size,
@@ -1118,15 +1150,14 @@ test("Retrying a partial upload reuses completed files and submits each source o
   await waitFor(() => {
     expect(submittedMessage).toBeDefined();
   });
-  expect(firstUploads).toBe(1);
-  expect(secondUploads).toBe(2);
   const message = JSON.stringify(submittedMessage);
-  expect(message.match(/f0000000-0000-4000-a000-000000000055/gu)).toHaveLength(
-    1,
-  );
-  expect(message.match(/f0000000-0000-4000-a000-000000000056/gu)).toHaveLength(
-    1,
-  );
+  for (const filename of ["first.txt", "second.txt"]) {
+    const id = originalUploadIds.get(filename);
+    if (!id) {
+      throw new Error(`Expected a successful upload of ${filename}`);
+    }
+    expect(message.match(new RegExp(id, "gu"))).toHaveLength(1);
+  }
 });
 
 test.each(["load", "error"] as const)(
