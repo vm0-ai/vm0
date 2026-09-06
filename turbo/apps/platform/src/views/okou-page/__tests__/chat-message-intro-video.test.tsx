@@ -18,6 +18,8 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
+import { search } from "../../../signals/location.ts";
+
 import {
   click,
   queryAllByRoleFast,
@@ -1482,3 +1484,61 @@ test("A desktop recording handoff submits the original recording and clicks once
   expect(submitted?.prompt).toContain("- Source: demo.mp4 (video)");
   expect(submitted?.prompt).toContain("- Voice: Use original source audio");
 });
+
+test.each([true, false])(
+  "A desktop recording reaches review after onboarding (needed: %s)",
+  async (needsOnboarding) => {
+    installIntroVideoFixture();
+    context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+      return respond(200, {
+        url: `https://resolved.example/${query.file_id}`,
+        publicUrl: `https://cdn.vm7.io/artifacts/tests/intro-video/${query.file_id}`,
+      });
+    });
+    context.mocks.data.onboardingStatus({
+      needsOnboarding,
+      onboardingComplete: !needsOnboarding,
+      defaultAgentId: MESSAGE_EXPERIENCE_AGENT_ID,
+    });
+    const params = new URLSearchParams({
+      ...DESKTOP_HANDOFF_PARAMS,
+      choice: "explore",
+      category: "engineering",
+      onboarding_note: "stale onboarding note",
+      "x-vercel-protection-bypass": "preview-only-secret",
+    });
+    await setupPage({
+      context,
+      host: "app.okou.ai",
+      path: `/onboarding?${params.toString()}`,
+      featureSwitches: INTRO_VIDEO_SWITCHES,
+    });
+    if (needsOnboarding) {
+      click(
+        await screen.findByRole("radio", {
+          name: /I will explore on my own/u,
+        }),
+      );
+    }
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    await expect(within(dialog).findByText("demo.mp4")).resolves.toBeVisible();
+    const preview = within(dialog).getByLabelText("Video preview for demo.mp4");
+    expect(preview).toHaveAttribute(
+      "src",
+      "https://resolved.example/video-upload-id",
+    );
+    expect(preview).toHaveAttribute("controls");
+    expect(preview).toHaveAttribute("playsinline");
+    expect(preview).not.toHaveAttribute("autoplay");
+    await waitFor(() => {
+      expect(search()).toBe("");
+    });
+    click(requiredButtonNamed("Remove demo.mp4", dialog));
+    await waitFor(() => {
+      expect(preview).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("demo.mp4")).not.toBeInTheDocument();
+    });
+  },
+);

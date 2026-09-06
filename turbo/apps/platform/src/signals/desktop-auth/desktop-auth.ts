@@ -473,8 +473,11 @@ export function setupDesktopAuthPage(mode: DesktopAuthRoute) {
         authBrand: resolveAuthBrandContext(),
       }),
     );
-    await set(hideAppSkeleton$, signal);
-    signal.throwIfAborted();
-    await set(signals.initialize$, lifetime);
+    // Hidden native WebViews can suspend the stylesheet's paint frames.
+    // Start authentication independently and cancel both waits with this page.
+    await Promise.all([
+      waitForDesktopOperation(set(hideAppSkeleton$, lifetime), lifetime),
+      set(signals.initialize$, lifetime),
+    ]);
   });
 }

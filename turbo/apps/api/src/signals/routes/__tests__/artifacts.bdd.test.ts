@@ -5,7 +5,7 @@ import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-c
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { describe, expect, it } from "vitest";
 
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
@@ -27,8 +27,7 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
-const CLOUDFLARE_SNAPSHOT_URL =
-  "https://api.cloudflare.com/client/v4/accounts/test-account/browser-rendering/snapshot";
+const CLOUDFLARE_SNAPSHOT_URL = `https://api.cloudflare.com/client/v4/accounts/${env("R2_ACCOUNT_ID")}/browser-rendering/snapshot`;
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//;
 const ARTIFACT_PREVIEW_WAF_SECRET = "test-artifact-preview-waf-secret-value";

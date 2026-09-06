@@ -49,17 +49,31 @@ public struct PauseTimeline: Equatable, Sendable {
     public func pausedSecondsBefore(_ seconds: Double) -> Double {
         var total = 0.0
         for span in spans {
-            guard let end = span.end else {
-                continue
-            }
-            if end <= seconds {
+            let end = min(span.end ?? seconds, seconds)
+            if span.start < end {
                 total += end - span.start
-            } else if span.start < seconds {
-                // Only the part of the span that has already elapsed counts.
-                total += seconds - span.start
             }
         }
         return total
+    }
+
+    /// The parts of a captured buffer that belong to the movie. Audio can
+    /// arrive after pause was pressed or straddle either edge of a pause.
+    public func recordedRanges(in range: Range<Double>) -> [Range<Double>] {
+        var cursor = range.lowerBound
+        var result: [Range<Double>] = []
+        for span in spans {
+            let end = span.end ?? range.upperBound
+            if end <= cursor { continue }
+            if span.start >= range.upperBound { break }
+            if span.start > cursor {
+                result.append(cursor..<min(span.start, range.upperBound))
+            }
+            cursor = max(cursor, end)
+            if cursor >= range.upperBound { return result }
+        }
+        if cursor < range.upperBound { result.append(cursor..<range.upperBound) }
+        return result
     }
 
     /// Where a capture timestamp lands in the finished movie, or `nil` when it
