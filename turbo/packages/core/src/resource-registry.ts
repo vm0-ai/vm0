@@ -125,10 +125,11 @@ function privateR2ArchiveSource(
   };
 }
 
-// Archive digests for the image style packages manually published from
-// vm0-ai/vm0-skills@45e237a. Keep these aligned with the private R2 version ids
-// served by the API download route.
+// Pinned archive digests for image style packages. Keep these aligned with
+// the private R2 version ids served by the API download route.
 const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
+  "emboss-deboss":
+    "d1d99c39fab372f8e95ee089b84e7f0d48e98498a8ef3c42c14c33ae92783fcf",
   "cozy-parlor":
     "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
   "crowd-ink":
@@ -3040,6 +3041,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Automation platform. Warm orange, friendly illustration-driven.",
     source: { path: "design-systems/zapier" },
+  },
+  {
+    id: "image-style:emboss-deboss",
+    kind: "image-style",
+    name: "Emboss & Deboss",
+    description:
+      "Tactile paper posters with shallow embossed lettering, debossed contours, restrained color, and a theme-driven visual metaphor.",
+    desc: "Minimal editorial posters and covers pressed into matte, fiber-textured paper. Shallow raised lettering and recessed graphic contours share one soft side light, restrained color, generous negative space, and one theme-driven visual metaphor. Preserve exact Chinese or English text; vary composition, typography, palette, and relief placement to fit the brief. Trigger for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or tactile print design.",
+    source: imageStyleSource("emboss-deboss"),
   },
   {
     id: "image-style:notion-illustration",

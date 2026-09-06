@@ -9,6 +9,14 @@ export const ILLUSTRATION_ASSET_BASE =
  * {@link illustrationAssetUrl}.
  */
 const ILLUSTRATION_ASSET_PATHS: Record<string, string> = {
+  "images/emboss-deboss.jpg":
+    "9c05fa82-161d-4414-acdf-f3a26c93008f/ref-make-room-ivory.jpg",
+  "refs/emboss-deboss/ref-make-room-ivory.jpg":
+    "9c05fa82-161d-4414-acdf-f3a26c93008f/ref-make-room-ivory.jpg",
+  "refs/emboss-deboss/ref-slow-mornings-cobalt.jpg":
+    "0e777493-80cc-4736-a94b-8670d530dcf1/ref-slow-mornings-cobalt.jpg",
+  "refs/emboss-deboss/ref-growth-sage.jpg":
+    "4d229a60-40a2-4c4a-a794-6630fc71e30c/ref-growth-sage.jpg",
   "images/cozy-parlor.jpg":
     "d6892556-c737-4b2d-96e2-8011cb89e73b/cozy-parlor.jpg",
   "images/crowd-ink.png": "61a6e547-8dcd-4a70-9c08-436721562ce9/crowd-ink.png",
@@ -412,6 +420,19 @@ export interface IllustrationStyle {
 }
 
 export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
+  {
+    slug: "emboss-deboss",
+    title: "Emboss & Deboss",
+    image: "emboss-deboss.jpg",
+    sample: "ref-make-room-ivory.jpg",
+    width: 1024,
+    height: 1536,
+    refs: [
+      "ref-make-room-ivory.jpg",
+      "ref-slow-mornings-cobalt.jpg",
+      "ref-growth-sage.jpg",
+    ],
+  },
   {
     slug: "ink-storefront",
     title: "Ink Storefront",
@@ -873,6 +894,8 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
 const ILLUSTRATION_TEMPLATE_CARD_PREVIEW_IMAGES: Readonly<
   Record<string, string>
 > = {
+  "emboss-deboss":
+    "https://static.vm0.io/vm0/artifact-templates/illustration/card-previews/f1a20fc9-b102-4218-b8b9-5f9475fd28bf/template-card-illustration-emboss-deboss-512.jpg",
   "ink-storefront":
     "https://static.vm0.io/vm0/artifact-templates/illustration/card-previews/d3633cfc-bb66-4cf1-9a9b-0c2ac53f12e4/template-card-illustration-ink-storefront-512.jpg",
   "tiny-wanderer":

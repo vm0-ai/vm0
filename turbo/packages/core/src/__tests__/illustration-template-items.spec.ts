@@ -17,10 +17,10 @@ describe("illustration template items", () => {
     }
   });
 
-  it("registers the 32 manually published image style archives", () => {
+  it("registers the 33 image style archives", () => {
     const imageStyles = listImageStyles();
 
-    expect(imageStyles).toHaveLength(32);
+    expect(imageStyles).toHaveLength(33);
     for (const imageStyle of imageStyles) {
       expect(imageStyle.source.archive, imageStyle.id).toBeDefined();
     }
