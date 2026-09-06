@@ -8,6 +8,15 @@ const standaloneDisplayMode$ = state(false);
 const shortcutHintPhase$ = state<"idle" | "pending" | "visible">("idle");
 const resetShortcutHintHold$ = resetSignal();
 
+export const threadNumberShortcutModifier$ = computed(() => {
+  // Safari's macOS web apps consume Command+1-9 before dispatching DOM events.
+  // iPadOS can report a Macintosh user agent, but has multiple touch points.
+  return /Macintosh.*Version\/[\d.]+.*Safari\//.test(navigator.userAgent) &&
+    navigator.maxTouchPoints <= 1
+    ? "ctrl+mod"
+    : "mod";
+});
+
 export const threadNumberShortcutsEnabled$ = computed((get) => {
   return get(stableChatThreadNavigationEnabled$) && get(standaloneDisplayMode$);
 });
@@ -36,8 +45,10 @@ const revealThreadNumberShortcutHints$ = command(
 const updateThreadNumberShortcutModifiers$ = command(
   ({ get, set }, event: KeyboardEvent, signal: AbortSignal) => {
     const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+    const allowControlWithMeta =
+      get(threadNumberShortcutModifier$) === "ctrl+mod";
     const modifierHeld = isMac
-      ? event.metaKey && !event.ctrlKey
+      ? event.metaKey && (!event.ctrlKey || allowControlWithMeta)
       : event.ctrlKey && !event.metaKey;
     if (
       !get(threadNumberShortcutsEnabled$) ||
@@ -119,8 +130,9 @@ export const threadNumberShortcutIndex$ = command(
     ) {
       return undefined;
     }
+    const modifier = get(threadNumberShortcutModifier$);
     for (let index = 0; index < 9; index++) {
-      if (matchShortcut(`mod+${index + 1}`, event)) {
+      if (matchShortcut(`${modifier}+${index + 1}`, event)) {
         return index;
       }
     }

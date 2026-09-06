@@ -32,27 +32,62 @@ function hintKeys(container: ParentNode): string[] {
       return keycap.textContent ?? "";
     })
     .filter((label) => {
-      return /^(?:Ctrl|⌘|[1-9])$/.test(label);
+      return /^(?:Ctrl|⌃|⌘|[1-9])$/.test(label);
     });
 }
 
 test.each([
   {
-    platform: "Mac",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    platform: "Mac Chrome",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+    maxTouchPoints: 0,
     modifier: "Meta",
-    label: "⌘",
+    additionalModifier: "",
+    releaseModifiers: "{/Meta}",
+    label: ["⌘"],
+  },
+  {
+    platform: "Mac Safari",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
+    maxTouchPoints: 0,
+    modifier: "Meta",
+    additionalModifier: "{Control>}",
+    releaseModifiers: "{/Control}{/Meta}",
+    label: ["⌃", "⌘"],
+  },
+  {
+    platform: "iPad Safari with a desktop user agent",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
+    maxTouchPoints: 5,
+    modifier: "Meta",
+    additionalModifier: "",
+    releaseModifiers: "{/Meta}",
+    label: ["⌘"],
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    maxTouchPoints: 0,
     modifier: "Control",
-    label: "Ctrl",
+    additionalModifier: "",
+    releaseModifiers: "{/Control}",
+    label: ["Ctrl"],
   },
 ])(
   "Reveal the first nine thread shortcuts after holding the modifier for 500 ms on $platform",
-  async ({ userAgent, modifier, label }) => {
+  async ({
+    userAgent,
+    maxTouchPoints,
+    modifier,
+    additionalModifier,
+    releaseModifiers,
+    label,
+  }) => {
     context.mocks.browser.userAgent(userAgent);
+    context.mocks.browser.maxTouchPoints(maxTouchPoints);
     context.mocks.browser.matchMedia((query) => {
       return (
         query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -94,22 +129,28 @@ test.each([
     await user.keyboard(`{${modifier}>}`);
     expect(hintKeys(list)).toStrictEqual([]);
     await waitFor(() => {
-      expect(hintKeys(list)).toHaveLength(18);
+      expect(hintKeys(list)).toHaveLength(9 * (label.length + 1));
     });
     expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
     expect(hintKeys(list)).toStrictEqual(
       Array.from({ length: 9 }, (_, index) => {
-        return [label, String(index + 1)];
+        return [...label, String(index + 1)];
       }).flat(),
     );
-    await user.keyboard(`9{/${modifier}}`);
+    if (additionalModifier) {
+      await user.keyboard(additionalModifier);
+    }
+    expect(hintKeys(list)).toHaveLength(9 * (label.length + 1));
+    await user.keyboard(`9${releaseModifiers}`);
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
     });
     expect(hintKeys(list)).toStrictEqual([]);
 
     // A known shortcut can be used immediately, without waiting for its hint.
-    await user.keyboard(`{${modifier}>}1{/${modifier}}`);
+    await user.keyboard(
+      `{${modifier}>}${additionalModifier}1${releaseModifiers}`,
+    );
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${threads[0]!.id}`);
     });
