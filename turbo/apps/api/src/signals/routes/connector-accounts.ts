@@ -5,7 +5,7 @@ import {
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
@@ -339,14 +339,8 @@ const deleteInner$ = command(
             signal,
           );
     signal.throwIfAborted();
-    if (typeof result === "string") {
-      if (result === "missing") {
-        return notFound("Connector account not found");
-      }
-      if (result === "ambiguous") {
-        return conflict("Multiple connector accounts require an exact choice");
-      }
-      throw new Error("Exact connector account deletion returned no result");
+    if (result === "missing") {
+      return notFound("Connector account not found");
     }
     if (result.kind === "missing" || result.kind === "managed") {
       return notFound("Connector account not found");
