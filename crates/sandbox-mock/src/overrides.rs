@@ -120,6 +120,8 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) start_results: Mutex<VecDeque<Result<()>>>,
+    /// Optional gate that records and blocks every `start()` entry until released.
+    pub(crate) start_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) stop_behaviors: LifecycleBehaviors<()>,
@@ -778,6 +780,11 @@ impl MockSandboxOverrides {
             .start_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    /// Block every `start()` call with a durable lifecycle gate.
+    pub fn set_start_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.start_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Return full run identities bound across all mock sandboxes.

@@ -635,6 +635,7 @@ impl Sandbox for MockSandbox {
             .start_run_control_ids
             .lock_ignoring_poison()
             .push(self.run_control_id.clone());
+        wait_lifecycle_gate(&o.lifecycle.start_gate).await;
         o.lifecycle
             .start_results
             .lock_ignoring_poison()

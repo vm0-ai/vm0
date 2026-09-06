@@ -1,6 +1,7 @@
 //! Best-effort, capacity-scaled preparation of tenant-free parked sandboxes.
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
@@ -48,6 +49,12 @@ struct BlankPrepareInput {
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
     budget_lease: BudgetLease,
     pre_spawn_lease: BackgroundPreSpawnAdmissionLease,
+}
+
+enum BackgroundStageResult<T> {
+    Completed(sandbox::Result<T>),
+    CancelledBeforeStart,
+    CancelledAfterStart(sandbox::Result<T>),
 }
 
 pub(super) enum BlankPrepareResult {
@@ -387,6 +394,7 @@ async fn prepare_blank_sandbox(
         budget_lease,
         pre_spawn_lease,
     } = input;
+    let mut pre_spawn_lease = Some(pre_spawn_lease);
     let sandbox_id = SandboxId::new_v4();
     let config = SandboxConfig {
         id: sandbox_id,
@@ -400,7 +408,8 @@ async fn prepare_blank_sandbox(
             seed_image: None,
         }),
     };
-    let mut sandbox = match create_or_cancel(&factory, config, &cancel).await {
+    let mut sandbox = match create_or_cancel(&factory, config, &cancel, &mut pre_spawn_lease).await
+    {
         Some(Ok(sandbox)) => sandbox,
         Some(Err(error)) => {
             return BlankPrepareResult::Failed(BlankPrepareFailure {
@@ -416,19 +425,18 @@ async fn prepare_blank_sandbox(
         }
     };
 
-    let start_result = start_or_cancel(sandbox.as_mut(), &cancel).await;
-    match start_result {
-        Some(Ok(())) => {}
-        Some(Err(error)) => {
-            drop(pre_spawn_lease);
+    match run_background_stage(sandbox.start(), &cancel, &mut pre_spawn_lease).await {
+        BackgroundStageResult::Completed(Ok(())) => {}
+        BackgroundStageResult::Completed(Err(error)) => {
+            drop(pre_spawn_lease.take());
             destroy_sandbox(&factory, sandbox).await;
             return BlankPrepareResult::Failed(BlankPrepareFailure {
                 stage: "start",
                 error: Some(error.to_string()),
             });
         }
-        None => {
-            drop(pre_spawn_lease);
+        BackgroundStageResult::CancelledBeforeStart
+        | BackgroundStageResult::CancelledAfterStart(_) => {
             destroy_sandbox(&factory, sandbox).await;
             return BlankPrepareResult::Failed(BlankPrepareFailure {
                 stage: "start",
@@ -437,10 +445,9 @@ async fn prepare_blank_sandbox(
         }
     }
 
-    let park_result = park_or_cancel(sandbox.as_mut(), &cancel).await;
-    match park_result {
-        Some(Ok(SandboxParkOutcome::Reusable)) => {
-            drop(pre_spawn_lease);
+    match run_background_stage(sandbox.park(), &cancel, &mut pre_spawn_lease).await {
+        BackgroundStageResult::Completed(Ok(SandboxParkOutcome::Reusable)) => {
+            drop(pre_spawn_lease.take());
             BlankPrepareResult::Ready(Box::new(ParkedIdleCandidate::blank(
                 sandbox,
                 factory,
@@ -450,24 +457,24 @@ async fn prepare_blank_sandbox(
                 device_rate_limits,
             )))
         }
-        Some(Ok(SandboxParkOutcome::NonReusable(reason))) => {
-            drop(pre_spawn_lease);
+        BackgroundStageResult::Completed(Ok(SandboxParkOutcome::NonReusable(reason))) => {
+            drop(pre_spawn_lease.take());
             destroy_sandbox(&factory, sandbox).await;
             BlankPrepareResult::Failed(BlankPrepareFailure {
                 stage: "park_non_reusable",
                 error: Some(reason.as_str().to_owned()),
             })
         }
-        Some(Err(error)) => {
-            drop(pre_spawn_lease);
+        BackgroundStageResult::Completed(Err(error)) => {
+            drop(pre_spawn_lease.take());
             destroy_sandbox(&factory, sandbox).await;
             BlankPrepareResult::Failed(BlankPrepareFailure {
                 stage: "park",
                 error: Some(error.to_string()),
             })
         }
-        None => {
-            drop(pre_spawn_lease);
+        BackgroundStageResult::CancelledBeforeStart
+        | BackgroundStageResult::CancelledAfterStart(_) => {
             destroy_sandbox(&factory, sandbox).await;
             BlankPrepareResult::Failed(BlankPrepareFailure {
                 stage: "park",
@@ -481,33 +488,49 @@ async fn create_or_cancel(
     factory: &SharedFactory,
     config: SandboxConfig,
     cancel: &CancellationToken,
+    pre_spawn_lease: &mut Option<BackgroundPreSpawnAdmissionLease>,
 ) -> Option<sandbox::Result<Box<dyn Sandbox>>> {
+    if cancel.is_cancelled() {
+        drop(pre_spawn_lease.take());
+        return None;
+    }
+    // Firecracker factory creation owns a cancellation-safe transaction. Do
+    // not drain a cancelled create: it may be waiting on the same COW or netns
+    // resources needed by the foreground request that triggered cancellation.
     tokio::select! {
         biased;
-        _ = cancel.cancelled() => None,
+        _ = cancel.cancelled() => {
+            drop(pre_spawn_lease.take());
+            None
+        }
         result = factory.create(config) => Some(result),
     }
 }
 
-async fn start_or_cancel(
-    sandbox: &mut dyn Sandbox,
+async fn run_background_stage<T>(
+    stage: impl Future<Output = sandbox::Result<T>>,
     cancel: &CancellationToken,
-) -> Option<sandbox::Result<()>> {
-    tokio::select! {
-        biased;
-        _ = cancel.cancelled() => None,
-        result = sandbox.start() => Some(result),
+    pre_spawn_lease: &mut Option<BackgroundPreSpawnAdmissionLease>,
+) -> BackgroundStageResult<T> {
+    if cancel.is_cancelled() {
+        drop(pre_spawn_lease.take());
+        return BackgroundStageResult::CancelledBeforeStart;
     }
-}
-
-async fn park_or_cancel(
-    sandbox: &mut dyn Sandbox,
-    cancel: &CancellationToken,
-) -> Option<sandbox::Result<SandboxParkOutcome>> {
+    tokio::pin!(stage);
     tokio::select! {
         biased;
-        _ = cancel.cancelled() => None,
-        result = sandbox.park() => Some(result),
+        result = &mut stage => {
+            if cancel.is_cancelled() {
+                drop(pre_spawn_lease.take());
+                BackgroundStageResult::CancelledAfterStart(result)
+            } else {
+                BackgroundStageResult::Completed(result)
+            }
+        }
+        _ = cancel.cancelled() => {
+            drop(pre_spawn_lease.take());
+            BackgroundStageResult::CancelledAfterStart(stage.await)
+        }
     }
 }
 

@@ -130,6 +130,54 @@ async fn blank_unpark_failure_falls_back_without_changing_cold_attribution() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn foreground_admission_drains_cancelled_blank_start_before_destroy() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let start_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_start_lifecycle_gate(start_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let run_handle = tokio::spawn(run(config));
+
+    start_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("blank sandbox start should enter the lifecycle gate");
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(
+            run_id,
+            "session-cancelled-blank-start",
+        )),
+    );
+    start_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("foreground start should acquire admission while blank start drains");
+    assert_eq!(
+        calls.destroy_call_count(),
+        0,
+        "blank sandbox must remain owned until its in-flight start completes"
+    );
+
+    start_gate.release_many(2);
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("foreground job should complete");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_eq!(calls.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn incompatible_profile_fresh_creates_without_consuming_blank_inventory() {
     let (config, env) = mock_run_config(two_profiles(), 16, 32_768, 8);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
