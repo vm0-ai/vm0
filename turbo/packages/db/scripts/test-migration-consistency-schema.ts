@@ -47,6 +47,7 @@ import {
   validatePermanentOrgPlanEntitlementRestrictionState,
 } from "./test-org-plan-entitlement-restriction-permanent";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
+import { validatePermanentComputerUseHostProductState } from "./test-computer-use-host-product-permanent";
 import { LEGACY_DATABASE_IDENTITY_MANIFEST } from "./legacy-database-identity-manifest";
 import {
   assertLegacyDatabaseIdentityInventory,
@@ -3703,6 +3704,7 @@ async function main(): Promise<void> {
     await validatePermanentBuiltInModelCooldownState(dbUrl1);
     await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validatePermanentSlackPublicBrandState(dbUrl1);
+    await validatePermanentComputerUseHostProductState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl1);
     await validateOfficialAutomationResultEmailSchema(dbUrl1);
@@ -3728,6 +3730,7 @@ async function main(): Promise<void> {
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validatePermanentSlackPublicBrandState(dbUrl2);
+    await validatePermanentComputerUseHostProductState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
     await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl2);
     await validateOfficialAutomationResultEmailSchema(dbUrl2);
