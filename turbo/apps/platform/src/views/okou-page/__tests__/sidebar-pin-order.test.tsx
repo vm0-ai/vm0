@@ -97,7 +97,7 @@ function dragEvent(
   );
 }
 
-test("keyboard reorder is optimistic and survives the matching persisted event", async () => {
+test("keyboard reorder follows visual tab order and survives the matching persisted event", async () => {
   const caseId = 61;
   const pending = context.mocks.deferred<void>();
   const requested = context.mocks.deferred<ChatThreadEvent>();
@@ -116,10 +116,23 @@ test("keyboard reorder is optimistic and survives the matching persisted event",
   );
   const { stream, snapshot } = await prepare(caseId);
   const grip = handle("Last pin");
+  const row = slot("Last pin");
+  const link = queryAllByRoleFast("link", row)[0];
+  const menuButton = queryAllByRoleFast("button", row).find((button) => {
+    return button.getAttribute("aria-label") === "Open chat menu";
+  });
   const user = userEvent.setup();
   act(() => {
     grip.focus();
   });
+  await user.keyboard("{Tab}");
+  expect(link).toHaveFocus();
+  await user.keyboard("{Tab}");
+  expect(menuButton).toHaveFocus();
+  await user.keyboard("{Shift>}{Tab}{/Shift}");
+  expect(link).toHaveFocus();
+  await user.keyboard("{Shift>}{Tab}{/Shift}");
+  expect(grip).toHaveFocus();
   await user.keyboard(" ");
   await user.keyboard("{ArrowUp}");
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
