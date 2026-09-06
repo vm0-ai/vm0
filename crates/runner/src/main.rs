@@ -455,7 +455,7 @@ mod tests {
             .join(" ");
 
         assert!(normalized_help.contains(
-            "drain Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)"
+            "drain Drain without waiting for active jobs (waits for bounded same-process acknowledgement)"
         ));
     }
 
