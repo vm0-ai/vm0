@@ -43,6 +43,36 @@ function prepareThreadPointerDrag(
   };
 }
 
+function ThreadPinMoveMenu({ threadId }: { threadId: string }) {
+  const { t } = useTranslation();
+  const move = useSet(stepPinnedThread$);
+  const signal = useGet(pageSignal$);
+  return (
+    <DropdownMenuContent align="start">
+      <DropdownMenuItem
+        onSelect={() => {
+          return detach(move(threadId, -1, signal), Reason.DomCallback);
+        }}
+      >
+        <ArrowUp />
+        {t(($) => {
+          return $.chat.sidebar.movePinUp;
+        })}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onSelect={() => {
+          return detach(move(threadId, 1, signal), Reason.DomCallback);
+        }}
+      >
+        <ArrowDown />
+        {t(($) => {
+          return $.chat.sidebar.movePinDown;
+        })}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  );
+}
+
 function ThreadDragHandle({
   signals,
   dragSignals,
@@ -62,7 +92,6 @@ function ThreadDragHandle({
   const cancelKeyboard = useSet(dragSignals.cancelKeyboard$);
   const drop = useSet(dragSignals.drop$);
   const step = useSet(dragSignals.step$);
-  const move = useSet(stepPinnedThread$);
   const signal = useGet(pageSignal$);
   const picked = drag?.threadId === signals.threadId;
   return (
@@ -135,34 +164,7 @@ function ThreadDragHandle({
           <GripVertical size={16} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuItem
-          onSelect={() => {
-            return detach(
-              move(signals.threadId, -1, signal),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <ArrowUp />
-          {t(($) => {
-            return $.chat.sidebar.movePinUp;
-          })}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            return detach(
-              move(signals.threadId, 1, signal),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <ArrowDown />
-          {t(($) => {
-            return $.chat.sidebar.movePinDown;
-          })}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+      <ThreadPinMoveMenu threadId={signals.threadId} />
     </DropdownMenu>
   );
 }

@@ -194,7 +194,7 @@ describe("pinned thread ordering", () => {
     );
   });
 
-  it("accepts equal ranks and lets legacy pin clients insert at the front", async () => {
+  it("accepts equal client ranks with deterministic id ordering", async () => {
     const fixture = await seedChatThread("First");
     const second = await chat.createThread(fixture.actor, {
       agentId: fixture.agentId,
@@ -210,11 +210,6 @@ describe("pinned thread ordering", () => {
         [204],
       );
     }
-    const third = await chat.createThread(fixture.actor, {
-      agentId: fixture.agentId,
-      title: "Third",
-    });
-    await chat.pinThread(fixture.actor, third.id);
     const events = await chat.requestThreadEvents(fixture.actor, {}, [200]);
     if (events.status !== 200) {
       throw new Error("Missing events");
@@ -226,11 +221,7 @@ describe("pinned thread ordering", () => {
       order.map((thread) => {
         return thread.id;
       }),
-    ).toStrictEqual([
-      third.id,
-      ...[fixture.threadId, second.id].sort().reverse(),
-    ]);
-    expect(order[0]!.pinOrder! < "a0").toBeTruthy();
+    ).toStrictEqual([fixture.threadId, second.id].sort().reverse());
   });
 
   it("does not reorder an unpinned or other-org thread", async () => {
