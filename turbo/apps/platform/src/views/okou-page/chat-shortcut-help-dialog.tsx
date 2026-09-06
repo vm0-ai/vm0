@@ -10,6 +10,7 @@ import {
 import { i18n } from "../../i18n/index.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { COMPOSER_VOICE_INPUT_SHORTCUT } from "../../lib/composer-voice-input-shortcut.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
 
 type ShortcutLabelId =
   | "blurComposer"
@@ -45,9 +46,15 @@ type ShortcutSectionTitleId = "composer" | "global" | "messages";
 
 const GLOBAL_NAVIGATION_SHORTCUTS = [
   { key: "shift+/", labelId: "showShortcuts" },
-  { key: "mod+b", labelId: "toggleSidebar" },
-  { key: "mod+shift+o", labelId: "newChat" },
-  { key: "mod+shift+f", labelId: "searchWorkspace" },
+  {
+    key: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding,
+    labelId: "toggleSidebar",
+  },
+  { key: GLOBAL_KEYBOARD_SHORTCUTS.newChat.binding, labelId: "newChat" },
+  {
+    key: GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.binding,
+    labelId: "searchWorkspace",
+  },
   { key: "ctrl+shift+[", labelId: "previousAgent" },
   { key: "ctrl+shift+]", labelId: "nextAgent" },
 ] as const satisfies readonly ShortcutDefinition[];
