@@ -1417,6 +1417,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "procountor",
+    authMethodId: "api-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["apiKey", "clientId", "clientSecret", "redirectUri"],
+        outputNames: ["accessToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
     connectorSlug: "playstation",
     authMethodId: "api",
     contract: {
