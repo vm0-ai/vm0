@@ -5004,6 +5004,15 @@
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
+        "menu": {
+          "adjustSettings": "Modifica le impostazioni di {{model}}",
+          "backToChatModels": "Torna ai modelli di chat",
+          "backToModels": "Torna ai modelli",
+          "cancel": "Annulla",
+          "changeModel": "Cambia modello di {{category}}, {{model}}",
+          "chatSettings": "Impostazioni della chat",
+          "confirm": "Conferma"
+        },
         "models": "Modelli",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {

@@ -4950,6 +4950,15 @@
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
         "loadError": "मॉडल लोड करने में असमर्थ.",
         "loading": "मॉडल लोड हो रहे हैं...",
+        "menu": {
+          "adjustSettings": "{{model}} की सेटिंग समायोजित करें",
+          "backToChatModels": "चैट मॉडल पर वापस जाएँ",
+          "backToModels": "मॉडल पर वापस जाएँ",
+          "cancel": "रद्द करें",
+          "changeModel": "{{category}} मॉडल बदलें, {{model}}",
+          "chatSettings": "चैट सेटिंग",
+          "confirm": "पुष्टि करें"
+        },
         "models": "मॉडल",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
         "priceTiers": {

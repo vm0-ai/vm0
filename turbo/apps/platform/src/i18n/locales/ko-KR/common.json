@@ -4942,6 +4942,15 @@
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
+        "menu": {
+          "adjustSettings": "{{model}} 설정 조정",
+          "backToChatModels": "채팅 모델로 돌아가기",
+          "backToModels": "모델로 돌아가기",
+          "cancel": "취소",
+          "changeModel": "{{category}} 모델 변경, {{model}}",
+          "chatSettings": "채팅 설정",
+          "confirm": "확인"
+        },
         "models": "모델",
         "noConfiguredModels": "구성된 모델 없음",
         "priceTiers": {
