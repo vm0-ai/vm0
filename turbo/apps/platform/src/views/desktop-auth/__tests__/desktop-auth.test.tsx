@@ -13,6 +13,7 @@ import {
   click,
   queryAllByRoleFast,
   setupPage,
+  startPage,
   type SetupPageAuth,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -400,6 +401,27 @@ test("existing session restoration uses a fresh token without requiring a handof
   expect(tokens).toStrictEqual(["fresh-restore"]);
 });
 
+test("native session restoration proceeds while stylesheet paint is pending", async () => {
+  const stylesheet = context.mocks.deferred<"loaded" | "failed">();
+  vi.stubGlobal("__mainStylesheetLoaded", stylesheet.promise);
+  const documents = navigation();
+  const tokens = bridge();
+  const started = await startPage({
+    context,
+    host: "app.okou.ai",
+    primaryAppDomain: "app.okou.ai",
+    path: "/desktop-auth/token",
+  });
+
+  await waitFor(() => {
+    expect(documents).toStrictEqual(["/"]);
+  });
+  expect(tokens).toStrictEqual(["test-token"]);
+  expect(stylesheet.settled()).toBeFalsy();
+  stylesheet.resolve("loaded");
+  await started.ready;
+});
+
 test.each([0, 2])(
   "token restoration with %s memberships makes the native select-org transition",
   async (count) => {
@@ -472,7 +494,9 @@ test.each(["bridge", "completion"])(
   },
 );
 
-test("cancelling a delayed token read prevents late IPC", async () => {
+test("cancelling a delayed token read while stylesheet paint is pending prevents late IPC", async () => {
+  const stylesheet = context.mocks.deferred<"loaded" | "failed">();
+  vi.stubGlobal("__mainStylesheetLoaded", stylesheet.promise);
   const documents = navigation();
   const tokens = bridge();
   const token = context.mocks.deferred<string>();
@@ -482,11 +506,19 @@ test("cancelling a delayed token read prevents late IPC", async () => {
     requested.resolve();
     return token.promise;
   });
-  await page("/desktop-auth/token");
+  await startPage({
+    context,
+    host: "app.okou.ai",
+    primaryAppDomain: "app.okou.ai",
+    path: "/desktop-auth/token",
+  });
   await requested.promise;
+  expect(stylesheet.settled()).toBeFalsy();
   fireEvent(window, new Event("pagehide"));
   token.resolve("too-late-token");
+  stylesheet.resolve("loaded");
   await token.promise;
+  await stylesheet.promise;
   expect(tokens).toStrictEqual([]);
   expect(documents).toStrictEqual([]);
 });

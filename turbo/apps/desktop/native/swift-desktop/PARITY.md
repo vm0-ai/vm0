@@ -504,6 +504,29 @@ remain open.
 
 ## Feature inventory and evidence
 
+### Hidden native session restoration
+
+The downloaded `6558f113` client completed ordinary Safari email/password/OTP
+login, the actual OS callback, and native account/workspace restoration. The
+browser confirmed completion and Open Okou reached authenticated onboarding.
+The old timeout banner was absent after the new login. A normal Quit/relaunch
+with all four executable hashes unchanged then reproduced a restore timeout,
+even though the stored session renewed after its previous JWT expired.
+
+[The live failure and diagnostic evidence](https://cdn.vm0.io/artifacts/2kpukwmnzx.json)
+locates the wait before token delivery: Clerk was ready with an active session
+and workspace, while the hidden WebKit page's stylesheet readiness promise and
+animation frame remained pending. The built App resolves stylesheet readiness
+after two paint frames, and desktop authentication previously waited for that
+promise before starting its protocol.
+
+Desktop authentication now starts alongside skeleton dismissal, with both waits
+owned by the page lifetime. A page integration test reproduces the missing native
+completion while stylesheet paint is held; the repair passes all 50 desktop-auth
+tests, including cancellation before a delayed token and stylesheet resolve.
+The PR progress record identifies subsequent deployed acceptance. Recording
+review, concurrent live account changes, and the full inventory remain open.
+
 ### Configurable preview environment
 
 The native Environment tab accepts the deployed App URL, including its Vercel
