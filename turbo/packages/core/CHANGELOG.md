@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.627.0](https://github.com/vm0-ai/vm0/compare/core-v8.626.0...core-v8.627.0) (2026-09-06)
+
+
+### Features
+
+* add emboss and deboss illustration template ([#32010](https://github.com/vm0-ai/vm0/issues/32010)) ([e186381](https://github.com/vm0-ai/vm0/commit/e186381a7e441cf5168ae007ff15969a6260e43c))
+* **core:** roll out follow-up optimization to all users ([#32037](https://github.com/vm0-ai/vm0/issues/32037)) ([60fa908](https://github.com/vm0-ai/vm0/commit/60fa908caced68e59f6a5ac0e441e77bb6ffb192))
+* **platform:** add a compact composer model menu ([#32036](https://github.com/vm0-ai/vm0/issues/32036)) ([eb168c8](https://github.com/vm0-ai/vm0/commit/eb168c8a818b233d4c0dbeb37ee00a96f9eaeca4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.1
+
 ## [8.626.0](https://github.com/vm0-ai/vm0/compare/core-v8.625.12...core-v8.626.0) (2026-09-06)
 
 
