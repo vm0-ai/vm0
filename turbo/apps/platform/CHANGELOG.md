@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.846.0](https://github.com/vm0-ai/vm0/compare/app-v0.845.8...app-v0.846.0) (2026-09-06)
+
+
+### Features
+
+* **platform:** add desktop authentication bridge routes ([#31960](https://github.com/vm0-ai/vm0/issues/31960)) ([f1e3d4b](https://github.com/vm0-ai/vm0/commit/f1e3d4b7284d5c0fdae40887d0f24a3d08d5d824))
+
+
+### Bug Fixes
+
+* **ui:** follow base ui popup transitions and positioning ([#31942](https://github.com/vm0-ai/vm0/issues/31942)) ([38edfa5](https://github.com/vm0-ai/vm0/commit/38edfa57f3e1318ec0bfdd13a1fd840ab8929203))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.625.7
+    * @okouai/ui bumped to 1.5.4
+
 ## [0.845.8](https://github.com/vm0-ai/vm0/compare/app-v0.845.7...app-v0.845.8) (2026-09-05)
 
 
