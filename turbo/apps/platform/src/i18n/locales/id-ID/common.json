@@ -3493,6 +3493,7 @@
         "cozy-parlor": "Cozy Parlor",
         "crowd-ink": "Crowd Ink",
         "editorial-flatfolk": "Editorial Flatfolk",
+        "emboss-deboss": "Embos & Debos",
         "endpaper": "Endpaper",
         "flat-poster": "Flat Poster",
         "folk-muse": "Folk Muse",
@@ -4941,6 +4942,15 @@
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
+        "menu": {
+          "adjustSettings": "Sesuaikan pengaturan {{model}}",
+          "backToChatModels": "Kembali ke model chat",
+          "backToModels": "Kembali ke model",
+          "cancel": "Batal",
+          "changeModel": "Ubah model {{category}}, {{model}}",
+          "chatSettings": "Pengaturan chat",
+          "confirm": "Konfirmasi"
+        },
         "models": "Model",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {

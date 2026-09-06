@@ -270,6 +270,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ModelPickerMenu]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Show a compact overview of chat, image, and video models with nested model lists and Fast settings.",
+    enabled: false,
+    enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
+    enabledEmailHashes: ["6490c77f", "9fd4ee92"], // bingjie@okou.ai, bingjie@vm0.ai
+  },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -393,8 +401,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Use a concise, language-matched prompt for recommended chat follow-ups.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",

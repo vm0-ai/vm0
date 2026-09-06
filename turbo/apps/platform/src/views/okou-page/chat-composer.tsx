@@ -229,6 +229,7 @@ import {
 import {
   chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
+  modelPickerMenuEnabled$,
   customConnectorMcpEnabled$,
   voiceInputV2Enabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -9264,6 +9265,7 @@ function ComposerRunModelPickerControl({
   mediaModelPanel: MediaModelPanelState | undefined;
 }) {
   const { t } = useTranslation();
+  const modelMenuEnabled = useGet(modelPickerMenuEnabled$);
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const setLifecycleRef = useSet(signals.model.desktopModelPickerLifecycleRef$);
@@ -9276,6 +9278,7 @@ function ComposerRunModelPickerControl({
           return $.chat.composer.selectModel;
         })}
         triggerClassName={composerModelPickerTriggerClassName()}
+        menuSignals={modelMenuEnabled ? signals.model.menu : undefined}
         compactTrigger
         mobileIconTrigger
         open={modelPickerOpen}

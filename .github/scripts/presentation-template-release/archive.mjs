@@ -33,7 +33,7 @@ function requiredTemplateFiles(release) {
   return [
     "SKILL.md",
     "design-system.md",
-    "layouts/_shell.html",
+    "layouts/shared-shell.html",
     `color-systems/${release.defaultColorSystem}.css`,
   ];
 }

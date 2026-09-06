@@ -634,30 +634,33 @@ describe("okou generate image command", () => {
     );
   });
 
-  it("should print an R2-backed style packet when --style-source r2 is selected", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "image",
-      "--style",
-      "image-style:ink-storefront",
-      "--style-source",
-      "r2",
-      "--prompt",
-      "A florist named Luna Floral",
-      "--compile",
-    ]);
+  it.each(["ink-storefront", "emboss-deboss"])(
+    "prints an R2-backed style packet for %s",
+    async (slug) => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--style",
+        `image-style:${slug}`,
+        "--style-source",
+        "r2",
+        "--prompt",
+        "A florist named Luna Floral",
+        "--compile",
+      ]);
 
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("Registry resource: `image-style:ink-storefront`");
-    expect(stdout).toContain(
-      "okou resource pull image-style:ink-storefront --dir ./generated/resources",
-    );
-    expect(stdout).toContain(
-      "./generated/resources/illustration-template/ink-storefront",
-    );
-    expect(stdout).not.toContain("Repository: `vm0-ai/vm0-skills@main`");
-  });
+      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(stdout).toContain(`Registry resource: \`image-style:${slug}\``);
+      expect(stdout).toContain(
+        `okou resource pull image-style:${slug} --dir ./generated/resources`,
+      );
+      expect(stdout).toContain(
+        `./generated/resources/illustration-template/${slug}`,
+      );
+      expect(stdout).not.toContain("Repository: `vm0-ai/vm0-skills@main`");
+    },
+  );
 
   it("should fail with mode guidance when no image prompt mode is selected", async () => {
     await expect(async () => {

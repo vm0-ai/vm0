@@ -5,8 +5,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { UserPreferenceChangedPayload } from "@okouai/api-contracts/contracts/realtime";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 
 import { badRequestMessage } from "../../lib/error";
 import { publishUserPreferenceChangedForUserSafely } from "../external/realtime";
@@ -68,9 +67,7 @@ const updateUserModelPreferenceInner$ = command(
         userFeatureSwitchContext(auth.orgId, auth.userId),
       );
       signal.throwIfAborted();
-      if (
-        !isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)
-      ) {
+      if (!isCodexFastModeEnabled(featureSwitchContext)) {
         return badRequestMessage(
           "Codex fast mode is not enabled for this workspace",
         );

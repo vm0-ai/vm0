@@ -3551,6 +3551,7 @@
         "cozy-parlor": "Salotto accogliente",
         "crowd-ink": "Inchiostro della folla",
         "editorial-flatfolk": "Editoriale Flatfolk",
+        "emboss-deboss": "Rilievo e incavo",
         "endpaper": "Risguardo",
         "flat-poster": "Manifesto piatto",
         "folk-muse": "Musa popolare",
@@ -5003,6 +5004,15 @@
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
+        "menu": {
+          "adjustSettings": "Modifica le impostazioni di {{model}}",
+          "backToChatModels": "Torna ai modelli di chat",
+          "backToModels": "Torna ai modelli",
+          "cancel": "Annulla",
+          "changeModel": "Cambia modello di {{category}}, {{model}}",
+          "chatSettings": "Impostazioni della chat",
+          "confirm": "Conferma"
+        },
         "models": "Modelli",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {

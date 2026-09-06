@@ -41,6 +41,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.FollowUpOptimize, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -203,7 +204,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -229,7 +229,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -362,6 +361,9 @@ describe("getFeatureSwitchMetadata", () => {
     expect(
       metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
     ).toBe("released");
+    expect(metadata[FeatureSwitchKey.FollowUpOptimize].rolloutStage).toBe(
+      "released",
+    );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
