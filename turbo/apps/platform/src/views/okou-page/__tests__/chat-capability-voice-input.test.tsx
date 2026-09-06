@@ -631,7 +631,6 @@ test.each([
   const transcriptionFailed = context.mocks.deferred<void>();
   const retryRequest = context.mocks.deferred<void>();
   const retryResponse = context.mocks.deferred<void>();
-  const consoleErrors = captureVoiceTranscriptionErrors();
   let transcriptionAttempts = 0;
   const recordings: ArrayBuffer[] = [];
   context.mocks.browser.voiceInput({ rms: 0.12 });
@@ -681,9 +680,7 @@ test.each([
   click(await activeVoiceDraftStopButton());
   await transcriptionFailed.promise;
 
-  await expect(
-    screen.findByText("Voice transcription failed. Try again."),
-  ).resolves.toBeVisible();
+  await expect(screen.findByText(failure.message)).resolves.toBeVisible();
   await expect(findButton("Retry")).resolves.toBeEnabled();
   expect(queryButton("Voice input")).toBeNull();
   expect(transcriptionAttempts).toBe(1);
@@ -711,18 +708,6 @@ test.each([
   expect(recordings[2]).toStrictEqual(recordings[0]);
   expectNoVoiceDraftNode();
   await findEnabledButton("Send");
-  expect(consoleErrors).toHaveLength(2);
-  for (const error of consoleErrors) {
-    expect(error).toStrictEqual([
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({
-        message: failure.message,
-        code: failure.code,
-        status: failure.status,
-      }),
-    ]);
-  }
   click(await findLink("Agents"));
   await screen.findByRole("heading", { name: "Agents" });
   cleanup();
@@ -744,7 +729,6 @@ test.each([
   async ({ path, failed }) => {
     const firstRequest = context.mocks.deferred<void>();
     const firstResponse = context.mocks.deferred<void>();
-    const consoleErrors = captureVoiceTranscriptionErrors();
     const recordings: ArrayBuffer[] = [];
     context.mocks.browser.voiceInput({ rms: 0.12 });
     installAvailableVoiceQuota();
@@ -812,12 +796,10 @@ test.each([
     });
     await findEnabledButton("Send");
     expect(recordings[1]).toStrictEqual(recordings[0]);
-    expect(consoleErrors).toHaveLength(failed ? 1 : 0);
   },
 );
 
 test("Keep a saved voice recording isolated from another signed-in user", async () => {
-  const consoleErrors = captureVoiceTranscriptionErrors();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
@@ -853,11 +835,9 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
   await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
   expect(normalizedComposerText()).toBe("");
-  expect(consoleErrors).toHaveLength(1);
 });
 
 test("Discard a failed recording without removing typed notes", async () => {
-  const consoleErrors = captureVoiceTranscriptionErrors();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
@@ -895,7 +875,6 @@ test("Discard a failed recording without removing typed notes", async () => {
   });
   await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
-  expect(consoleErrors).toHaveLength(1);
 });
 
 test("Release a late microphone stream after navigating away during voice startup", async () => {

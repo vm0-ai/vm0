@@ -62,8 +62,7 @@ function installVoiceBoundaries() {
   errorSpy.mockImplementation((...args: unknown[]) => {
     if (
       (args[0] === "[E][Composer:VoiceDraft]" &&
-        (args[1] === "Voice draft transcription failed" ||
-          args[1] === "Voice recording could not be saved")) ||
+        args[1] === "Voice recording could not be saved") ||
       (args[0] === "[E][VoiceIO:STT]" &&
         args[1] === "Voice recording failed to finish")
     ) {
@@ -96,7 +95,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       rms: 0.12,
       onPcmCapture: capture.resolve,
     });
-    const consoleErrors = installVoiceBoundaries();
+    installVoiceBoundaries();
     const uploads: ArrayBuffer[] = [];
     const retries = Array.from({ length: 2 }, () => {
       return {
@@ -169,14 +168,6 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     await waitFor(async () => {
       return await expect(savedRecording()).resolves.toBeNull();
     });
-    expect(consoleErrors).toHaveLength(2);
-    for (const error of consoleErrors) {
-      expect(error).toStrictEqual([
-        "[E][Composer:VoiceDraft]",
-        "Voice draft transcription failed",
-        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-      ]);
-    }
   },
 );
 
@@ -318,7 +309,7 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
 test("Restore audio when voice input v2 enables after the composer mounts", async () => {
   const firstPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
-  const consoleErrors = installVoiceBoundaries();
+  installVoiceBoundaries();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
     return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
   });
@@ -353,11 +344,4 @@ test("Restore audio when voice input v2 enables after the composer mounts", asyn
     "aria-keyshortcuts",
   );
   await expect(savedRecording()).resolves.toBeNull();
-  expect(consoleErrors).toStrictEqual([
-    [
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-    ],
-  ]);
 });

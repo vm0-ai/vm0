@@ -59,13 +59,23 @@ export type ComposerVoiceInputSignals = ReturnType<
   typeof createComposerVoiceInputSignals
 >;
 
-function reportVoiceDraftTranscriptionFailure(error: unknown): void {
-  L.error("Voice draft transcription failed", error);
+// Local audio/storage failures need a recovery message. API errors belong to
+// accept and must propagate directly to the action's loadable.
+async function withVoiceDraftFailureToast<T>(
+  operation: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  const result = await settle(operation, signal);
+  if (result.ok) {
+    return result.value;
+  }
+  L.error("Voice draft transcription failed", result.error);
   toast.error(
     i18n.t(($) => {
       return $.chat.voice.transcriptionFailed;
     }),
   );
+  throw result.error;
 }
 function voiceDraftStorageFailedMessage(): string {
   return i18n.t(($) => {
@@ -180,9 +190,15 @@ function createVoiceDraftTranscription(
     }
     const key = await get(storageKey$);
     signal.throwIfAborted();
-    const blob = await readVoiceDraftAudio(key, recording.id);
+    const blob = await withVoiceDraftFailureToast(
+      readVoiceDraftAudio(key, recording.id),
+      signal,
+    );
     signal.throwIfAborted();
-    const files = await prepareVoiceDraftAudio(blob, signal);
+    const files = await withVoiceDraftFailureToast(
+      prepareVoiceDraftAudio(blob, signal),
+      signal,
+    );
     signal.throwIfAborted();
     if (files.length > 0) {
       const formData = new FormData();
@@ -210,7 +226,6 @@ function createVoiceDraftTranscription(
         }),
         [200, 204, 402, 429],
         signal,
-        { showErrorToast: false },
       );
       signal.throwIfAborted();
       if (result.status !== 200 && result.status !== 204) {
@@ -258,7 +273,10 @@ function createVoiceDraftMutations(
     if (recording) {
       const key = await get(storageKey$);
       signal.throwIfAborted();
-      await deleteVoiceDraftRecording(key, recording.id);
+      await withVoiceDraftFailureToast(
+        deleteVoiceDraftRecording(key, recording.id),
+        signal,
+      );
       signal.throwIfAborted();
     }
     set(reload$);
@@ -275,7 +293,10 @@ function createVoiceDraftMutations(
     const key = await get(storageKey$);
     signal.throwIfAborted();
     const id = crypto.randomUUID();
-    const recording = await createVoiceDraftRecording(key, id);
+    const recording = await withVoiceDraftFailureToast(
+      createVoiceDraftRecording(key, id),
+      signal,
+    );
     signal.throwIfAborted();
     set(reload$);
     if (recording.id !== id) {
@@ -289,7 +310,7 @@ function createVoiceDraftMutations(
       set(reload$);
     };
     set(captureError$, null);
-    const started = await settle(
+    const started = await withVoiceDraftFailureToast(
       onRejection(
         set(
           capture.start$,
@@ -312,18 +333,18 @@ function createVoiceDraftMutations(
       signal,
     );
     signal.throwIfAborted();
-    if (!started.ok) {
-      throw started.error;
-    }
-    if (!started.value) {
-      await removeEmptyRecording();
+    if (!started) {
+      await withVoiceDraftFailureToast(removeEmptyRecording(), signal);
       signal.throwIfAborted();
     }
   });
   const finish$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const finished = await withCleanup(set(capture.finish$, signal), () => {
-      return set(reload$);
-    });
+    const finished = await withCleanup(
+      withVoiceDraftFailureToast(set(capture.finish$, signal), signal),
+      () => {
+        return set(reload$);
+      },
+    );
     signal.throwIfAborted();
     if (finished && !get(captureError$)) {
       await set(transcribe$, signal);
@@ -381,25 +402,17 @@ function createVoiceActionBindings(
               : "start"
           : action;
       set(invocation$, { action: resolvedAction, owner });
-      const result = await settle(
-        (async () => {
-          if (resolvedAction === "start") {
-            await set(start$, signal);
-          } else if (resolvedAction === "finish") {
-            await set(finish$, signal);
-          } else if (resolvedAction === "discard") {
-            await set(discard$, signal);
-          } else {
-            set(reload$);
-            await set(transcribe$, signal);
-          }
-        })(),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!result.ok) {
-        reportVoiceDraftTranscriptionFailure(result.error);
+      if (resolvedAction === "start") {
+        await set(start$, signal);
+      } else if (resolvedAction === "finish") {
+        await set(finish$, signal);
+      } else if (resolvedAction === "discard") {
+        await set(discard$, signal);
+      } else {
+        set(reload$);
+        await set(transcribe$, signal);
       }
+      signal.throwIfAborted();
     },
   );
   const mount$ = onRef(

@@ -243,20 +243,6 @@ test("Do not show another agent's retryable recording while the current draft is
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
     return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
   });
-  const errors = vi.spyOn(console, "error");
-  const reportError = errors.getMockImplementation();
-  if (!reportError) {
-    throw new Error("Expected the unexpected-console-error guard");
-  }
-  errors.mockImplementation((...args: unknown[]) => {
-    if (
-      args[0] === "[E][Composer:VoiceDraft]" &&
-      args[1] === "Voice draft transcription failed"
-    ) {
-      return;
-    }
-    reportError(...args);
-  });
 
   await setupPage({ context, path: NEW_CHAT_PATH, featureSwitches: flags });
   click(await findEnabledButton("Voice input"));
@@ -295,11 +281,6 @@ test("Do not show another agent's retryable recording while the current draft is
   await findEnabledButton("Voice input");
   expect(queryButton("Attach")).toBeVisible();
   expect(queryButton("Retry")).toBeNull();
-  expect(errors).toHaveBeenCalledWith(
-    "[E][Composer:VoiceDraft]",
-    "Voice draft transcription failed",
-    expect.objectContaining({ status: 503 }),
-  );
 });
 
 test("Keep the toolbar visible throughout microphone startup", async () => {

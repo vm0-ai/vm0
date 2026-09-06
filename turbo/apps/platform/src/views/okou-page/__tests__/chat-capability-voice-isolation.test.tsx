@@ -39,29 +39,12 @@ function installVoiceBoundaries() {
   context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
     return respond(200, { allowed: true, count: 0, limit: 60 });
   });
-  const errorSpy = vi.spyOn(console, "error");
-  const original = errorSpy.getMockImplementation();
-  if (!original) {
-    throw new Error("Expected console guard");
-  }
-  const errors: unknown[][] = [];
-  errorSpy.mockImplementation((...args: unknown[]) => {
-    if (
-      args[0] === "[E][Composer:VoiceDraft]" &&
-      args[1] === "Voice draft transcription failed"
-    ) {
-      errors.push(args);
-      return;
-    }
-    original(...args);
-  });
-  return errors;
 }
 
 test.each(["user", "org", "target"] as const)(
   "Keep local recordings isolated when the composer changes %s",
   async (part) => {
-    const consoleErrors = installVoiceBoundaries();
+    installVoiceBoundaries();
     const firstPage = createChildAbortController(context.signal);
     const secondPage = createChildAbortController(secondContext.signal);
     let successful = false;
@@ -120,13 +103,5 @@ test.each(["user", "org", "target"] as const)(
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
       "Original recording.",
     );
-    expect(consoleErrors).toHaveLength(2);
-    for (const error of consoleErrors) {
-      expect(error).toStrictEqual([
-        "[E][Composer:VoiceDraft]",
-        "Voice draft transcription failed",
-        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-      ]);
-    }
   },
 );

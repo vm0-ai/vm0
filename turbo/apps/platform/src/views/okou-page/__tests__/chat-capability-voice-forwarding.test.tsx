@@ -68,34 +68,6 @@ function installVoiceBoundaries() {
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, textContinuityDraft("Keep the existing notes."));
   });
-  const errorSpy = vi.spyOn(console, "error");
-  const original = errorSpy.getMockImplementation();
-  if (!original) {
-    throw new Error("Expected console guard");
-  }
-  const errors: unknown[][] = [];
-  errorSpy.mockImplementation((...args: unknown[]) => {
-    if (
-      args[0] === "[E][Composer:VoiceDraft]" &&
-      args[1] === "Voice draft transcription failed"
-    ) {
-      errors.push(args);
-      return;
-    }
-    original(...args);
-  });
-  return errors;
-}
-
-function expectTranscriptionErrors(errors: unknown[][], count: number) {
-  expect(errors).toHaveLength(count);
-  for (const error of errors) {
-    expect(error).toStrictEqual([
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-    ]);
-  }
 }
 
 async function openForwardComposer(name: string) {
@@ -130,7 +102,7 @@ test.each(
     const firstResponse = context.mocks.deferred<void>();
     const retryRequest = context.mocks.deferred<void>();
     const retryResponse = context.mocks.deferred<void>();
-    const errors = installVoiceBoundaries();
+    installVoiceBoundaries();
     context.mocks.browser.voiceInput({
       rms: 0.12,
       onPcmCapture: capture.resolve,
@@ -217,7 +189,6 @@ test.each(
       4,
     );
     await expect(recordings()).resolves.toStrictEqual([]);
-    expectTranscriptionErrors(errors, interruption === "failed" ? 2 : 1);
   },
 );
 
@@ -227,7 +198,7 @@ test.each(targets)(
     const initialPage = createChildAbortController(context.signal);
     const capture = context.mocks.deferred<(samples: Float32Array) => void>();
     const stopped = context.mocks.deferred<void>();
-    const errors = installVoiceBoundaries();
+    installVoiceBoundaries();
     context.mocks.browser.voiceInput({
       rms: 0.12,
       onPcmCapture: capture.resolve,
@@ -284,14 +255,13 @@ test.each(targets)(
     expect(uploads).toHaveLength(1);
     expect(decodeVoiceDraftPcmWav(uploads[0]!)).toHaveLength(4096);
     await expect(recordings()).resolves.toStrictEqual([]);
-    expectTranscriptionErrors(errors, 0);
   },
 );
 
 test.each(targets)(
   "Release a forwarded $target audio context when its dialog closes during startup",
   async ({ name }) => {
-    const errors = installVoiceBoundaries();
+    installVoiceBoundaries();
     const moduleRequested = context.mocks.deferred<void>();
     const moduleReady = context.mocks.deferred<void>();
     const contextClosed = context.mocks.deferred<void>();
@@ -321,7 +291,6 @@ test.each(targets)(
     expect(
       screen.queryByText("Voice transcription failed. Try again."),
     ).not.toBeInTheDocument();
-    expectTranscriptionErrors(errors, 0);
   },
 );
 
@@ -329,7 +298,7 @@ test.each(targets)(
   "Reuse an unfinished $target recording in the forward dialog without replacing it",
   async ({ name, path }) => {
     const initialPage = createChildAbortController(context.signal);
-    const errors = installVoiceBoundaries();
+    installVoiceBoundaries();
     context.mocks.browser.voiceInput({ rms: 0.12 });
     const uploads: ArrayBuffer[] = [];
     let successful = false;
@@ -378,6 +347,5 @@ test.each(targets)(
     expect(uploads).toHaveLength(2);
     expect(uploads[1]).toStrictEqual(uploads[0]);
     await expect(recordings()).resolves.toStrictEqual([]);
-    expectTranscriptionErrors(errors, 1);
   },
 );
