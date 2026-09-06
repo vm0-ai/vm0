@@ -1,11 +1,9 @@
 import { command, computed, state, type State } from "ccstate";
 import { createElement } from "react";
-import { delay } from "signal-timers";
 import {
   desktopAuthConsumeContract,
   desktopAuthHandoffContract,
 } from "@okouai/api-contracts/contracts/desktop-auth";
-import { IN_VITEST } from "../../env.ts";
 import { accept } from "../../lib/accept.ts";
 import { DesktopAuthPage } from "../../views/desktop-auth/desktop-auth-page.tsx";
 import { apiClient$ } from "../api-client.ts";
@@ -14,7 +12,7 @@ import { clerk$, resolveAppAuthUrl, resolveAuthBrandContext } from "../auth.ts";
 import { updatePage$ } from "../react-router.ts";
 import { replaceState } from "../location.ts";
 import { searchParams$ } from "../route.ts";
-import { resetSignal, settle } from "../utils.ts";
+import { resetSignal, setLoop, settle } from "../utils.ts";
 import {
   callbackScheme,
   completeDesktopSession$,
@@ -26,6 +24,9 @@ import {
   waitForDesktopOperation,
   type DesktopAuthRoute,
 } from "./protocol.ts";
+
+/** One second apart, so the budget matches the callback attempt's deadline. */
+const CALLBACK_POLL_LIMIT = 120;
 
 type DesktopAuthPhase =
   | "connecting"
@@ -223,25 +224,37 @@ function createDesktopCallback(
     set(callbackUrl$, handoff.callbackUrl);
     set(phase$, "pending");
     location.assign(handoff.callbackUrl);
-    for (let poll = 0; poll < 120; poll++) {
-      const status = await accept(
-        client.status({
-          params: { handoffId: handoff.handoffId },
-          fetchOptions: { signal },
-        }),
-        [200],
-        signal,
-        { showErrorToast: false },
-      );
-      signal.throwIfAborted();
-      set(phase$, status.body.status);
-      if (status.body.status === "completed") {
+    // The deadline on the caller's signal only stops the work: `settle`
+    // rethrows aborts, so an aborted attempt never reaches the failed phase.
+    // Keep a poll budget so the timeout surfaces as an ordinary error the page
+    // can turn into the retry prompt.
+    let polls = 0;
+    await setLoop(
+      async (loopSignal) => {
+        if (polls++ >= CALLBACK_POLL_LIMIT) {
+          throw new Error("Desktop sign-in timed out");
+        }
+        const status = await accept(
+          client.status({
+            params: { handoffId: handoff.handoffId },
+            fetchOptions: { signal: loopSignal },
+          }),
+          [200],
+          loopSignal,
+          { showErrorToast: false },
+        );
+        loopSignal.throwIfAborted();
+        set(phase$, status.body.status);
+        if (status.body.status !== "completed") {
+          return false;
+        }
         set(callbackUrl$, null);
-        return;
-      }
-      await delay(IN_VITEST ? 0 : 1000, { signal });
-    }
-    throw new Error("Desktop sign-in timed out");
+        return true;
+      },
+      1000,
+      signal,
+      { retryTransientErrors: false },
+    );
   });
 }
 
