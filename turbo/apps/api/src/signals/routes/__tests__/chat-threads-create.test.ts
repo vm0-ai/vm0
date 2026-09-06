@@ -556,13 +556,14 @@ describe("POST /api/zero/chat-threads", () => {
           target: { kind: "builtin", connectorSlug: "openai" },
         },
       }),
-      connectorAccountsClient().disconnectSingleAccount({
+      connectorAccountsClient().delete({
         headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: connection.id },
         body: { target: { kind: "builtin", connectorSlug: "openai" } },
       }),
     ]);
     expect([200, 400]).toContain(concurrentSelectionWrite.status);
-    expect(concurrentDisconnect.status).toBe(204);
+    expect(concurrentDisconnect.status).toBe(200);
     const afterDisconnect = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
@@ -695,15 +696,19 @@ describe("POST /api/zero/chat-threads", () => {
     );
 
     createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
-    for (const customConnectorId of [httpConnector.id, mcpConnector.id]) {
+    for (const [customConnectorId, connectionId] of [
+      [httpConnector.id, httpConnectionId],
+      [mcpConnector.id, mcpConnectionId],
+    ] as const) {
       await accept(
-        connectorAccountsClient().disconnectSingleAccount({
+        connectorAccountsClient().delete({
           headers: { authorization: "Bearer clerk-session" },
+          params: { connectionId },
           body: {
             target: { kind: "custom", customConnectorId },
           },
         }),
-        [204],
+        [200],
       );
     }
     const afterDisconnect = await accept(

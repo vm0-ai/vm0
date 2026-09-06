@@ -552,11 +552,20 @@ async function connectGmail(
     code: "gmail-code",
     state,
   });
-  const connector = await connectorsApi.readConnectorBySlug(actor, "gmail");
+  const connector = (
+    await connectorsApi.listBuiltinConnectorAccounts(actor, "gmail")
+  ).find((candidate) => {
+    return account?.intent === "reconnect"
+      ? candidate.id === account.connectionId
+      : candidate.externalId === subject;
+  });
+  if (!connector) {
+    throw new Error("Expected the connected Gmail account");
+  }
   expect(connector).toMatchObject({
     authMethod: "oauth",
     externalEmail: gmailEmail,
-    slug: "gmail",
+    target: { kind: "builtin", connectorSlug: "gmail" },
   });
   return connector.id;
 }
@@ -790,7 +799,7 @@ async function completeRunThroughSandbox(
 }
 
 describe("POST /api/webhooks/gmail", () => {
-  it("invalidates Gmail label ids when OAuth replaces the connector identity", async () => {
+  it("invalidates Gmail label ids when the selected account is replaced", async () => {
     configureGmailEnv();
     configureGmailWatchMock();
     configureGmailLabelsMockSequence([
@@ -823,15 +832,17 @@ describe("POST /api/webhooks/gmail", () => {
       eventConfig: { resolvedLabelId: "Label_old_account" },
     });
 
-    await connectGmail(actor, uniqueGmailEmail(), "gmail-label-account-two");
-    const replacementConnection = await connectorsApi.readConnectorBySlug(
+    const replacementConnectionId = await connectGmail(
+      actor,
+      uniqueGmailEmail(),
+      "gmail-label-account-two",
+    );
+    expect(replacementConnectionId).not.toBe(initialConnection.id);
+    await connectorsApi.deleteBuiltinConnectorAccount(
       actor,
       "gmail",
+      initialConnection.id,
     );
-    expect(replacementConnection).toMatchObject({
-      id: initialConnection.id,
-      externalId: "gmail-label-account-two",
-    });
     const updated = await readAutomation(actor, created.body.id);
     if (
       updated.kind !== "event" ||
@@ -842,7 +853,7 @@ describe("POST /api/webhooks/gmail", () => {
     expect(updated.eventConfig).not.toHaveProperty("resolvedLabelId");
   });
 
-  it("rejects an in-flight Gmail event after the connector identity changes", async () => {
+  it("rejects an in-flight Gmail event after the selected account is removed", async () => {
     const oldEmail = uniqueGmailEmail();
     const newEmail = uniqueGmailEmail();
     configureGmailEnv();
@@ -876,7 +887,11 @@ describe("POST /api/webhooks/gmail", () => {
     );
 
     const { actor, workflowId } = await setupFixture();
-    await connectGmail(actor, oldEmail, "gmail-race-account-one");
+    const initialConnectionId = await connectGmail(
+      actor,
+      oldEmail,
+      "gmail-race-account-one",
+    );
     await configureWorkspaceModelProvider(actor);
     const created = await accept(
       automationsClient().create({
@@ -906,6 +921,11 @@ describe("POST /api/webhooks/gmail", () => {
     );
     await labelLookupStarted.promise;
     await connectGmail(actor, newEmail, "gmail-race-account-two");
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "gmail",
+      initialConnectionId,
+    );
     releaseLabelLookup.resolve();
 
     const response = await webhookRequest;
@@ -929,7 +949,7 @@ describe("POST /api/webhooks/gmail", () => {
     );
   });
 
-  it("keeps same-account watch state and drops it when reconnect changes accounts", async () => {
+  it("keeps same-account watch state and drops it when the account switches", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
     const watch = configureGmailWatchMock();
@@ -983,15 +1003,17 @@ describe("POST /api/webhooks/gmail", () => {
     expectResponseStatus(sameAccountEvent, 200);
     expect(sameAccountEvent.body).toMatchObject({ watchStates: 1 });
 
-    await connectGmail(actor, `replacement-${gmailEmail}`, "gmail-account-two");
-    const replacementConnection = await connectorsApi.readConnectorBySlug(
+    const replacementConnectionId = await connectGmail(
+      actor,
+      `replacement-${gmailEmail}`,
+      "gmail-account-two",
+    );
+    expect(replacementConnectionId).not.toBe(initialConnection.id);
+    await connectorsApi.deleteBuiltinConnectorAccount(
       actor,
       "gmail",
+      initialConnection.id,
     );
-    expect(replacementConnection).toMatchObject({
-      id: initialConnection.id,
-      externalId: "gmail-account-two",
-    });
     const oldAccountEvent = await postGmailWebhook(
       gmailPushBody({
         emailAddress: renamedGmailEmail,

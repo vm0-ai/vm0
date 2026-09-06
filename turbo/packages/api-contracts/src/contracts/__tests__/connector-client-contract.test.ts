@@ -489,7 +489,7 @@ describe("connector client request contracts", () => {
 });
 
 describe("connector path parameter contracts", () => {
-  it("keeps concrete connector URLs unchanged", async () => {
+  it("builds concrete connector URLs", async () => {
     const paths: string[] = [];
     const config = {
       baseUrl: "https://api.example.test",
@@ -503,12 +503,11 @@ describe("connector path parameter contracts", () => {
       },
     };
 
-    await initClient(connectorAccountsContract, config).disconnectSingleAccount(
-      {
-        headers: {},
-        body: { target: { kind: "builtin", connectorSlug: "github" } },
-      },
-    );
+    await initClient(connectorAccountsContract, config).delete({
+      params: { connectionId: connector.id },
+      headers: {},
+      body: { target: { kind: "builtin", connectorSlug: "github" } },
+    });
     await initClient(connectorAccountsContract, config).scopeDiff({
       params: { connectionId: connector.id },
       query: { connectorSlug: "github" },
@@ -525,7 +524,7 @@ describe("connector path parameter contracts", () => {
     });
 
     expect(paths).toStrictEqual([
-      "https://api.example.test/api/connector-accounts/single-account",
+      `https://api.example.test/api/connector-accounts/${connector.id}`,
       `https://api.example.test/api/connector-accounts/${connector.id}/scope-diff?connectorSlug=github`,
       "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",

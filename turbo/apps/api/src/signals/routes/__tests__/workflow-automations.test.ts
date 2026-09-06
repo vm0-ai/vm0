@@ -2107,7 +2107,7 @@ describe("okou workflow automations", () => {
       ),
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "google-forms",
     );
@@ -3322,7 +3322,7 @@ describe("okou workflow automations", () => {
           return;
         }
         deleteConnector = false;
-        await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+        await connectorsApi.deleteDefaultBuiltinConnectorAccount(
           scenario.actor,
           "google-calendar",
         );
@@ -3536,7 +3536,7 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "google-calendar",
     );
@@ -4171,7 +4171,7 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "gmail",
     );

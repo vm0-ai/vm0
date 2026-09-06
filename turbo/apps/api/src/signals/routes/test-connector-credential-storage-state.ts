@@ -515,7 +515,7 @@ async function seedCustomOAuthStateContext(
     orgId: body.org_id,
     redirectUri: body.redirect_uri,
     oauthContext: JSON.stringify(body.oauth_context),
-    accountMutation: { intent: "single-account" },
+    accountMutation: { intent: "add" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
   signal.throwIfAborted();
