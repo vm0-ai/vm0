@@ -302,6 +302,7 @@ fn build_mock_run_config_with_runtime(
             before_initial_workspace_cache_scan: None,
             after_initial_workspace_cache_scan: None,
             manual_routine_heartbeat_rx: None,
+            manual_workspace_cache_gc_rx: None,
         },
     };
 

@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use futures_util::future::BoxFuture;
-use tracing::info;
+use tokio_util::task::AbortOnDropHandle;
+use tracing::{Instrument, info};
 
 use super::active_runs::ActiveRuns;
 use crate::config::ProfileConfig;
@@ -26,19 +26,19 @@ use crate::workspace_image_cache::{
 pub(super) const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
 const WORKSPACE_CACHE_COMMIT_WAIT: Duration = Duration::from_secs(2);
 
-/// References needed to collect and send a heartbeat.
+/// Shared inputs owned by independently scheduled heartbeat work.
 ///
 /// Avoids passing 8+ arguments through `send_heartbeat`.
 #[derive(Clone)]
-pub(super) struct HeartbeatContext<'a> {
-    idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
+pub(super) struct HeartbeatContext {
+    idle_pool: Arc<tokio::sync::Mutex<IdlePool>>,
     runner_identity: RunnerProcessIdentity,
-    group: &'a str,
-    profiles: &'a BTreeMap<String, ProfileConfig>,
-    budget: &'a ResourceBudget,
-    provider: &'a dyn JobProvider,
+    group: Arc<str>,
+    profiles: Arc<BTreeMap<String, ProfileConfig>>,
+    budget: Arc<ResourceBudget>,
+    provider: Arc<dyn JobProvider>,
     workspace_cache: Option<WorkspaceImageCache>,
-    active_runs: &'a ActiveRuns,
+    active_runs: ActiveRuns,
     workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
 
@@ -47,38 +47,38 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) runner_identity: RunnerProcessIdentity,
     pub(super) group: &'a str,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
-    pub(super) budget: &'a ResourceBudget,
-    pub(super) provider: &'a dyn JobProvider,
+    pub(super) budget: &'a Arc<ResourceBudget>,
+    pub(super) provider: Arc<dyn JobProvider>,
     pub(super) workspace_cache: Option<WorkspaceImageCache>,
     pub(super) active_runs: &'a ActiveRuns,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
 
-impl<'a> HeartbeatContext<'a> {
-    pub(super) fn new(init: HeartbeatContextInit<'a>) -> Self {
+impl HeartbeatContext {
+    pub(super) fn new(init: HeartbeatContextInit<'_>) -> Self {
         Self {
-            idle_pool: init.idle_pool,
+            idle_pool: Arc::clone(init.idle_pool),
             runner_identity: init.runner_identity,
-            group: init.group,
-            profiles: init.profiles,
-            budget: init.budget,
+            group: Arc::from(init.group),
+            profiles: Arc::new(init.profiles.clone()),
+            budget: Arc::clone(init.budget),
             provider: init.provider,
             workspace_cache: init.workspace_cache,
-            active_runs: init.active_runs,
+            active_runs: init.active_runs.clone(),
             workspace_cache_snapshot: init.workspace_cache_snapshot,
         }
     }
 }
 
-/// Single-flight heartbeat work polled alongside the main reactor.
+/// Single-flight heartbeat work scheduled independently of the main reactor.
 ///
-/// Trigger handlers only call [`request`](Self::request). The active future is
-/// kept outside `tokio::select!`, so other ready branches neither await nor
-/// cancel it. Any number of triggers during one send collapse into one
+/// Trigger handlers only call [`request`](Self::request). The task continues
+/// even while a reactor branch awaits a resource also used by heartbeat work.
+/// Any number of triggers during one send collapse into one
 /// follow-up built from live state when that send starts.
-pub(super) struct HeartbeatController<'a> {
-    context: HeartbeatContext<'a>,
-    in_flight: Option<BoxFuture<'a, ()>>,
+pub(super) struct HeartbeatController {
+    context: HeartbeatContext,
+    in_flight: Option<AbortOnDropHandle<()>>,
     pending: Option<HeartbeatRequest>,
     next_snapshot_sequence: u64,
 }
@@ -129,8 +129,8 @@ impl HeartbeatRequest {
     }
 }
 
-impl<'a> HeartbeatController<'a> {
-    pub(super) fn new(context: HeartbeatContext<'a>) -> Self {
+impl HeartbeatController {
+    pub(super) fn new(context: HeartbeatContext) -> Self {
         Self {
             context,
             in_flight: None,
@@ -184,13 +184,18 @@ impl<'a> HeartbeatController<'a> {
         self.in_flight.is_some()
     }
 
-    /// Wait for the stored future from an enabled `tokio::select!` branch.
+    /// Observe the task from an enabled `tokio::select!` branch.
     pub(super) async fn wait_for_send(&mut self) -> RunnerResult<()> {
         let send = self.in_flight.as_mut().ok_or_else(|| {
             RunnerError::Internal("heartbeat wait requires an active send".to_string())
         })?;
-        send.await;
-        Ok(())
+        let result = send.await;
+        if result.is_err() {
+            // Teardown must not poll a completed JoinHandle a second time.
+            self.in_flight = None;
+            self.pending = None;
+        }
+        result.map_err(|error| RunnerError::Internal(format!("heartbeat task failed: {error}")))
     }
 
     /// Clear a completed send and start one live-state follow-up when dirty.
@@ -226,11 +231,14 @@ impl<'a> HeartbeatController<'a> {
     /// Hard stopping calls this before provider shutdown. Awaiting the bounded
     /// request preserves local ordering without assuming that dropping a
     /// client future retracts a request already queued remotely.
-    pub(super) async fn drain(&mut self) {
-        if let Some(send) = self.in_flight.take() {
-            send.await;
-        }
+    pub(super) async fn drain(&mut self) -> RunnerResult<()> {
         self.pending = None;
+        if let Some(send) = self.in_flight.take() {
+            send.await.map_err(|error| {
+                RunnerError::Internal(format!("heartbeat task failed: {error}"))
+            })?;
+        }
+        Ok(())
     }
 
     pub(super) fn into_next_snapshot_sequence(self) -> u64 {
@@ -246,9 +254,12 @@ impl<'a> HeartbeatController<'a> {
         })?;
         self.next_snapshot_sequence = next_snapshot_sequence;
         let context = self.context.clone();
-        self.in_flight = Some(Box::pin(async move {
-            send_heartbeat(&context, mode, snapshot_sequence, request).await;
-        }));
+        self.in_flight = Some(AbortOnDropHandle::new(tokio::spawn(
+            async move {
+                send_heartbeat(&context, mode, snapshot_sequence, request).await;
+            }
+            .in_current_span(),
+        )));
         Ok(())
     }
 }
@@ -422,7 +433,7 @@ impl WorkspaceCacheStateSnapshot {
 /// Collect current runner state, refresh the local workspace-cache snapshot, and
 /// send a heartbeat to the server.
 async fn send_heartbeat(
-    hb: &HeartbeatContext<'_>,
+    hb: &HeartbeatContext,
     mode: RunnerMode,
     snapshot_sequence: u64,
     request: HeartbeatRequest,
@@ -431,11 +442,11 @@ async fn send_heartbeat(
     let mut state = collect_heartbeat_state(
         HeartbeatSnapshotMetadata {
             runner_identity: hb.runner_identity,
-            group: hb.group,
+            group: &hb.group,
             sequence: snapshot_sequence,
         },
-        hb.profiles,
-        hb.budget,
+        &hb.profiles,
+        &hb.budget,
         &pool,
         mode,
     );
@@ -443,13 +454,13 @@ async fn send_heartbeat(
     let cache_change = request.workspace_cache_change.as_ref();
     let previous_workspace_states = cache_change.map(|_| {
         hb.workspace_cache_snapshot
-            .current_held_workspace_states(hb.active_runs, None)
+            .current_held_workspace_states(&hb.active_runs, None)
     });
     let refresh = if request.refresh_workspace_cache {
         refresh_workspace_cache_snapshot_after_change(
             &hb.workspace_cache_snapshot,
             hb.workspace_cache.as_ref(),
-            hb.profiles,
+            &hb.profiles,
             cache_change,
         )
         .await
@@ -460,9 +471,9 @@ async fn send_heartbeat(
         }
     };
     state.held_sandbox_states =
-        filter_current_held_sandbox_states(state.held_sandbox_states, hb.active_runs, None);
+        filter_current_held_sandbox_states(state.held_sandbox_states, &hb.active_runs, None);
     state.held_workspace_states =
-        filter_current_held_workspace_states(refresh.states, hb.active_runs, None);
+        filter_current_held_workspace_states(refresh.states, &hb.active_runs, None);
     if let Some(change) = cache_change
         && !request.force_send
         && previous_workspace_states
@@ -1107,7 +1118,7 @@ mod tests {
         let cache = WorkspaceImageCache::new(paths.clone());
         seed_workspace_cache_state(&cache, &paths, reuse_key, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
         let active_runs = test_active_runs();
         let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
@@ -1123,7 +1134,7 @@ mod tests {
             group: "vm0/test",
             profiles: &profiles,
             budget: &budget,
-            provider: provider.as_ref(),
+            provider,
             workspace_cache: Some(cache),
             active_runs: &active_runs,
             workspace_cache_snapshot: workspace_cache_snapshot.clone(),
@@ -1183,7 +1194,7 @@ mod tests {
         let cache = WorkspaceImageCache::new(paths.clone());
         seed_workspace_cache_state(&cache, &paths, reuse_key, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
         let active_runs = test_active_runs();
         let (provider, handle) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
@@ -1213,7 +1224,7 @@ mod tests {
             group: "vm0/test",
             profiles: &profiles,
             budget: &budget,
-            provider: provider.as_ref(),
+            provider,
             workspace_cache: Some(cache),
             active_runs: &active_runs,
             workspace_cache_snapshot,

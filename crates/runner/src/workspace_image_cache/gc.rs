@@ -107,6 +107,15 @@ impl WorkspaceImageCache {
             return Ok(None);
         }
 
+        #[cfg(test)]
+        if let Some((entered, release)) = &self.routine_gc_test_gate {
+            entered.notify_one();
+            release
+                .acquire()
+                .await
+                .expect("routine GC gate closed")
+                .forget();
+        }
         let freed_bytes = self.gc_locked(false).await?;
         capacity_lock.write_all(b"\0")?;
         Ok(Some(freed_bytes))
