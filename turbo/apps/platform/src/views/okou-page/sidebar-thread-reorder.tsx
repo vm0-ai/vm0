@@ -159,10 +159,22 @@ export function PinnedThreadRow({
   const pinned = useGet(signals.pinned$);
   const drag = useGet(dragSignals.drag$);
   const mountRow = useSet(dragSignals.mountRow$);
+  const startTouch = useSet(dragSignals.startTouch$);
+  const signal = useGet(pageSignal$);
   const reorderable = enabled && pinned;
   return (
     <div
       ref={reorderable ? mountRow : undefined}
+      onTouchStart={
+        reorderable
+          ? (event) => {
+              detach(
+                startTouch(event.currentTarget, event.nativeEvent, signal),
+                Reason.DomCallback,
+              );
+            }
+          : undefined
+      }
       className="group relative grid grid-cols-[minmax(0,1fr)_auto] okou-thread-reorder-row"
       data-thread-id={signals.threadId}
       data-reorderable={reorderable || undefined}
@@ -222,7 +234,7 @@ export function PinnedThreadDragPreview({
       className="pointer-events-none fixed left-0 top-0 z-50 flex h-8 max-w-64 items-center gap-2 rounded-lg border border-border bg-popover px-2 text-sm text-popover-foreground shadow-sm"
       style={{
         width: preview.width,
-        transform: `translate(${preview.x + 16}px, ${preview.y + 16}px)`,
+        transform: `translate(${preview.x + preview.offsetX}px, ${preview.y + preview.offsetY}px)`,
       }}
     >
       <GripVertical size={16} className="shrink-0 text-muted-foreground" />

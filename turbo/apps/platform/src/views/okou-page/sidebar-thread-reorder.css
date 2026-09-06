@@ -6,6 +6,7 @@
 
 .okou-thread-drag-handle {
   opacity: 0;
+  pointer-events: none;
   transform: translateX(-14px);
   transition:
     transform 120ms ease-out,
@@ -13,7 +14,6 @@
 }
 
 .okou-thread-reorder-row[data-reorderable]:is(
-    :hover,
     :has(.okou-thread-drag-handle:focus-visible),
     [data-dragging]
   )
@@ -23,12 +23,12 @@
 }
 
 .okou-thread-reorder-row:is(
-    :hover,
     :has(.okou-thread-drag-handle:focus-visible),
     [data-dragging]
   )
   .okou-thread-drag-handle {
   opacity: 1;
+  pointer-events: auto;
   transform: translateX(0);
   transition-duration: 160ms;
 }
@@ -41,13 +41,25 @@
   opacity: 0;
 }
 
-@media (pointer: coarse) {
-  .okou-thread-reorder-row[data-reorderable] > a {
+@media (hover: hover) and (pointer: fine) {
+  .okou-thread-reorder-row[data-reorderable]:hover > a {
     padding-left: 32px;
+    transition-duration: 160ms;
   }
-  .okou-thread-drag-handle {
+  .okou-thread-reorder-row:hover .okou-thread-drag-handle {
     opacity: 1;
-    transform: none;
+    pointer-events: auto;
+    transform: translateX(0);
+    transition-duration: 160ms;
+  }
+}
+
+@media (any-pointer: coarse) {
+  .okou-thread-reorder-row[data-reorderable] > a {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
   }
 }
 
