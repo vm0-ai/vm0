@@ -139,7 +139,7 @@ export const connectorManualGrantContract = c.router({
       authMethod: connectorAuthMethodIdSchema,
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
-      account: connectorAccountMutationIntentSchema.optional(),
+      account: connectorAccountMutationIntentSchema,
       values: z.record(z.string(), z.string()),
     }),
     responses: {
@@ -149,7 +149,6 @@ export const connectorManualGrantContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
-      426: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Connect a connector with a manual grant",

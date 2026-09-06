@@ -9,11 +9,6 @@ import {
   connectorsMainContract,
   connectorsSearchContract,
 } from "@okouai/api-contracts/contracts/connectors";
-import {
-  CLIENT_FORCE_UPGRADE_STATUS,
-  CLIENT_TYPE_CLI,
-  CLIENT_TYPE_HEADER,
-} from "@okouai/api-contracts/contracts/client-headers";
 import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 
@@ -262,21 +257,6 @@ const connectManualGrantConnectorInner$ = command(
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
-    }
-    if (
-      get(request$).header(CLIENT_TYPE_HEADER) === CLIENT_TYPE_CLI &&
-      (!bodyResult.data.account ||
-        bodyResult.data.account.intent === "single-account")
-    ) {
-      return {
-        status: CLIENT_FORCE_UPGRADE_STATUS,
-        body: {
-          error: {
-            message: "Update the CLI to connect this connector",
-            code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
-          },
-        },
-      };
     }
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,

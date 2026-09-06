@@ -3533,6 +3533,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       actor,
       "google-drive",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: connected.id },
     );
     await connectorsApi.completeOauthCallback("google-drive", {
       code: "drive-reconnected",
@@ -3612,6 +3614,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       actor,
       "google-drive",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: connected.id },
     );
     await connectorsApi.completeOauthCallback("google-drive", {
       code: "drive-reconnected-again",

@@ -33,7 +33,7 @@ async function startGithubOauth(marker: string): Promise<string> {
     ).start({
       params: { connectorSlug: "github" },
       headers: { authorization: "Bearer clerk-session" },
-      body: { authMethod: "oauth", account: { intent: "single-account" } },
+      body: { authMethod: "oauth", account: { intent: "add" } },
     }),
     [200],
   );

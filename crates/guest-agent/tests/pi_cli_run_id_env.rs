@@ -17,9 +17,16 @@ async fn guest_projects_pi_blocks_with_canonical_sequences_and_run_id()
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir)?;
     let capture_path = tmp.path().join("canonical-run-id.txt");
+    let npm_cache_capture_path = tmp.path().join("npm-cache.txt");
     let payload_capture_path = tmp.path().join("pi-launch-payload-path.txt");
     let final_assistant_event_path = tmp.path().join("pi-final-assistant-event.jsonl");
     let large_tool_payload = "x".repeat(1024 * 1024);
+    let private_path = "memory/private-pi-cli.md";
+    let private_note = "private Pi CLI transport note";
+    let private_rollout_id = "019c6e27-e55b-73d1-87d8-4e01f1f75043";
+    let hidden_citation = format!(
+        "<oai-mem-citation><citation_entries>{private_path}:11-13|note=[{private_note}]</citation_entries><rollout_ids>{private_rollout_id}</rollout_ids></oai-mem-citation>"
+    );
     std::fs::write(
         &final_assistant_event_path,
         format!(
@@ -29,7 +36,10 @@ async fn guest_projects_pi_blocks_with_canonical_sequences_and_run_id()
                 "message": {
                     "role": "assistant",
                     "content": [
-                        { "type": "text", "text": "official rpc projection" },
+                        {
+                            "type": "text",
+                            "text": format!("official rpc projection{hidden_citation}"),
+                        },
                         {
                             "type": "toolCall",
                             "id": "tool-4",
@@ -61,8 +71,10 @@ test -n "${OKOU_RUN_ID:-}"
 test -z "${OKOU_PI_LAUNCH_CONFIG:-}"
 test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
 test -n "${PI_FINAL_ASSISTANT_EVENT_PATH:-}"
+test -n "${npm_config_cache:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
+printf '%s' "$npm_config_cache" > "$NPM_CACHE_CAPTURE_PATH"
 printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'
 IFS= read -r state_command
 case "$state_command" in
@@ -150,6 +162,10 @@ fi
                     payload_capture_path.to_string_lossy().into_owned(),
                 ),
                 (
+                    "NPM_CACHE_CAPTURE_PATH".to_string(),
+                    npm_cache_capture_path.to_string_lossy().into_owned(),
+                ),
+                (
                     "PI_FINAL_ASSISTANT_EVENT_PATH".to_string(),
                     final_assistant_event_path.to_string_lossy().into_owned(),
                 ),
@@ -178,12 +194,24 @@ fi
         Some(guest_agent::cli::JsonlResultStatus::Success)
     );
     let mut delivered_events = Vec::new();
+    let mut delivered_citations = Vec::new();
     for request in server.requests()? {
         assert_eq!(request.path, "/api/webhooks/agent/events");
         assert_eq!(request.authorization.as_deref(), Some("Bearer test-token"));
         assert!(!request.body.contains("vm0_pi_api_first_turn_boundary"));
         assert!(!request.body.contains("sandboxEventSequenceStart"));
         let body: Value = serde_json::from_str(&request.body)?;
+        assert_eq!(
+            body.pointer("/piMemoryCitationTransport/schemaVersion"),
+            Some(&Value::from(1))
+        );
+        delivered_citations.extend(
+            body.pointer("/piMemoryCitationTransport/citations")
+                .and_then(Value::as_array)
+                .expect("Pi event request should contain a private citation transport")
+                .iter()
+                .cloned(),
+        );
         delivered_events.extend(
             body.get("events")
                 .and_then(Value::as_array)
@@ -199,6 +227,20 @@ fi
             .unwrap_or(u64::MAX)
     });
     assert_eq!(delivered_events.len(), 12);
+    assert_eq!(delivered_citations.len(), 1);
+    assert_eq!(delivered_citations[0]["sequenceNumber"], 14);
+    assert_eq!(
+        delivered_citations[0].pointer("/citation/entries/0/path"),
+        Some(&Value::String(private_path.to_string()))
+    );
+    assert_eq!(
+        delivered_citations[0].pointer("/citation/entries/0/note"),
+        Some(&Value::String(private_note.to_string()))
+    );
+    assert_eq!(
+        delivered_citations[0].pointer("/citation/rolloutIds/0"),
+        Some(&Value::String(private_rollout_id.to_string()))
+    );
     assert_eq!(
         delivered_events
             .iter()
@@ -206,11 +248,14 @@ fi
             .collect::<Vec<_>>(),
         (4..16).map(Some).collect::<Vec<_>>()
     );
-    assert!(
-        delivered_events
-            .iter()
-            .all(|event| !event.to_string().contains("supersecret"))
-    );
+    assert!(delivered_events.iter().all(|event| {
+        let serialized = event.to_string();
+        !serialized.contains("supersecret")
+            && !serialized.contains("memoryCitation")
+            && !serialized.contains(private_path)
+            && !serialized.contains(private_note)
+            && !serialized.contains(private_rollout_id)
+    }));
     assert_eq!(delivered_events[0]["type"], "system");
     assert_eq!(delivered_events[0]["subtype"], "init");
     assert_eq!(
@@ -375,6 +420,10 @@ fi
     assert_eq!(delivered_events[11]["subtype"], "success");
     assert_eq!(delivered_events[11]["result"], "official rpc projection");
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
+    assert_eq!(
+        std::fs::read_to_string(npm_cache_capture_path)?,
+        "/home/user/workspace/.vm0/cache/npm"
+    );
 
     let payload_path = std::fs::read_to_string(payload_capture_path)?;
     assert_eq!(

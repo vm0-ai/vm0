@@ -392,7 +392,7 @@ function ChatThreadItemLink({
         e.preventDefault();
         detach(openRename(pageSignal), Reason.DomCallback);
       }}
-      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+      className={`col-span-2 col-start-1 row-start-1 grid h-8 grid-cols-subgrid items-center rounded-lg pl-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
           ? "bg-state-selected text-sidebar-foreground font-medium"
           : isUnread
@@ -400,7 +400,7 @@ function ChatThreadItemLink({
             : "text-sidebar-foreground hover:bg-state-hover"
       }`}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="flex min-w-0 items-center gap-2 pr-8">
         <ChatThreadListPaneIcon signals={signals} />
         <span className="okou-nav-copy min-w-0 truncate">
           {title ??
@@ -409,7 +409,9 @@ function ChatThreadItemLink({
             })}
         </span>
       </span>
-      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+      <span className="flex items-center pr-2 empty:hidden">
+        <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+      </span>
     </Link>
   );
 }
@@ -426,7 +428,7 @@ function ChatThreadItem({
   return (
     <PinnedThreadRow signals={signals} dragSignals={dragSignals}>
       <ChatThreadItemLink signals={signals} shortcutNumber={shortcutNumber} />
-      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+      <div className="pointer-events-none relative col-start-1 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end">
         <ChatThreadMenu signals={signals} />
       </div>
     </PinnedThreadRow>

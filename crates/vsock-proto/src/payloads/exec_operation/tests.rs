@@ -1,5 +1,6 @@
 mod exec_agent_ready;
 mod exec_control;
+mod exec_control_properties;
 mod exec_control_result;
 mod exec_output;
 mod exec_result;

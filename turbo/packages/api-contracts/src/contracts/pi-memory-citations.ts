@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * Adapted from OpenAI Codex rust-v0.152.1 at
  * 5adb68a49933ae446bf11935662c83dba55a0804. Portions copyright OpenAI and
@@ -71,6 +73,65 @@ const UUID_PATTERN =
 function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
+
+const boundedCitationStringSchema = (maxBytes: number) => {
+  return z
+    .string()
+    .min(1)
+    .refine((value) => {
+      return utf8Bytes(value) <= maxBytes;
+    });
+};
+
+export const piMemoryCitationEntrySchema = z
+  .object({
+    path: boundedCitationStringSchema(PI_MEMORY_CITATION_LIMITS.pathBytes),
+    lineStart: z
+      .number()
+      .int()
+      .positive()
+      .max(PI_MEMORY_CITATION_LIMITS.lineNumberMax),
+    lineEnd: z
+      .number()
+      .int()
+      .positive()
+      .max(PI_MEMORY_CITATION_LIMITS.lineNumberMax),
+    note: boundedCitationStringSchema(PI_MEMORY_CITATION_LIMITS.noteBytes),
+  })
+  .strict()
+  .refine((entry) => {
+    return entry.lineEnd >= entry.lineStart;
+  });
+
+/** Strict boundary for the private Guest-to-API citation sidecar. */
+export const piMemoryCitationSchema = z
+  .object({
+    entries: z
+      .array(piMemoryCitationEntrySchema)
+      .max(PI_MEMORY_CITATION_LIMITS.entries),
+    rolloutIds: z
+      .array(z.string().regex(UUID_PATTERN))
+      .max(PI_MEMORY_CITATION_LIMITS.rolloutIds),
+  })
+  .strict()
+  .superRefine((citation, context) => {
+    if (citation.entries.length === 0 && citation.rolloutIds.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "memory citation must contain provenance",
+      });
+    }
+    const canonicalIds = citation.rolloutIds.map((id) => {
+      return id.toLowerCase();
+    });
+    if (new Set(canonicalIds).size !== canonicalIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["rolloutIds"],
+        message: "memory citation rollout IDs must be unique",
+      });
+    }
+  });
 
 function emptyDiagnostics(): MutableDiagnostics {
   return {

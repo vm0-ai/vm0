@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   testStripeInvoicePaidFixtureContract,
   type TestStripeInvoicePaidFixtureState,
@@ -37,6 +38,7 @@ interface StripeAutomationScenario {
 }
 
 interface StripeOAuthOptions {
+  readonly account?: ConnectorAccountMutationIntent;
   readonly accountId?: string;
   readonly accessToken?: string;
   readonly code?: string;
@@ -143,7 +145,13 @@ async function connectStripeOAuth(
       : { accessToken: options.accessToken }),
     ...(options.livemode === undefined ? {} : { livemode: options.livemode }),
   });
-  const started = await connectors.startOauth(actor, "stripe", "oauth");
+  const started = await connectors.startOauth(
+    actor,
+    "stripe",
+    "oauth",
+    undefined,
+    options.account,
+  );
   const state = new URL(started.authorizationUrl).searchParams.get("state");
   if (!state) {
     throw new Error("Expected Stripe OAuth state");
@@ -429,6 +437,10 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       [201],
     );
     const reconnected = await connectStripeOAuth(scenario.actor, {
+      account: {
+        intent: "reconnect",
+        connectionId: initial.connector.id,
+      },
       accountId: STRIPE_ACCOUNT_ID,
       livemode: true,
       code: "stripe-same-account-reconnect",
@@ -453,7 +465,22 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       accountId: "acct_different_workflow",
       livemode: true,
     });
+    const accounts = await connectors.listBuiltinConnectorAccounts(
+      scenario.actor,
+      "stripe",
+    );
+    const replacement = accounts.find((account) => {
+      return account.externalId === "acct_different_workflow";
+    });
+    if (!replacement) {
+      throw new Error("Expected the replacement Stripe account");
+    }
     expect(reconnected.connector.id).toBe(initial.connector.id);
+    await connectors.deleteBuiltinConnectorAccount(
+      scenario.actor,
+      "stripe",
+      initial.connector.id,
+    );
 
     const enabled = await accept(
       enableStripeAutomationRequest(scenario, created.body.id),
@@ -462,7 +489,7 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
     expect(enabled.body).toMatchObject({
       enabled: true,
       eventConfig: {
-        connectorId: initial.connector.id,
+        connectorId: replacement.id,
         stripeAccountId: "acct_different_workflow",
         mode: "live",
       },
@@ -477,6 +504,10 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       [201],
     );
     const reconnected = await connectStripeOAuth(scenario.actor, {
+      account: {
+        intent: "reconnect",
+        connectionId: initial.connector.id,
+      },
       accountId: STRIPE_ACCOUNT_ID,
       livemode: false,
     });
@@ -496,7 +527,7 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       createStripeAutomationRequest(scenario),
       [201],
     );
-    await connectors.disconnectSingleBuiltinConnectorAccount(
+    await connectors.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "stripe",
     );
