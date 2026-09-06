@@ -403,7 +403,7 @@ private func writerFailureMessage(_ assetWriter: AVAssetWriter) -> String {
 
 private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
     let id: String
-    private let lock = NSLock()
+    private let lock = NSCondition()
     private let filter: SCContentFilter
     private let configuration: SCStreamConfiguration
     private let geometry: CaptureGeometry
@@ -426,6 +426,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
     private var stoppedCaptureSeconds: Double?
+    private var drainingAudio = false
+    private var lastCapturedAudioEnd: [SCStreamOutputType: Double] = [:]
     /// Keep one complete frame to hold a static picture through the stop time.
     /// ScreenCaptureKit can deliver no further pictures for an unchanged area.
     private var lastVideoSample: CMSampleBuffer?
@@ -791,22 +793,35 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return max(0, CMTimeGetSeconds(CMTimeSubtract(now, start)))
     }
 
-    func pause() throws {
-        try transition(.pause)
-        lock.lock()
-        if let seconds = captureSecondsNowLocked() {
-            pauseTimeline.pause(at: seconds)
-        }
-        lock.unlock()
-    }
+    func pause() throws { try transition(.pause) }
 
-    func resume() throws {
-        try transition(.resume)
+    func resume() throws { try transition(.resume) }
+
+    /// ScreenCaptureKit delivers audio after its capture timestamp. Keep the
+    /// stream alive until requested tracks reach the frozen endpoint, while
+    /// callbacks keep only samples belonging before that endpoint. This wait
+    /// is signalled by sample delivery and bounded if a source stops producing.
+    private func drainPendingAudio() -> String? {
         lock.lock()
-        if let seconds = captureSecondsNowLocked() {
-            pauseTimeline.resume(at: seconds)
+        defer { lock.unlock() }
+        guard let end = stoppedCaptureSeconds, end > 0 else { return nil }
+        let target = pauseTimeline.recordedRanges(in: 0..<end).last?.upperBound ?? 0
+        guard target > 0 else { return nil }
+        let deadline = Date().addingTimeInterval(1)
+        while externalStop == nil {
+            let systemPending = audioPlan.systemAudio && (lastCapturedAudioEnd[.audio] ?? 0) < target
+            let microphonePending: Bool
+            if #available(macOS 15.0, *) {
+                microphonePending = audioPlan.microphone && (lastCapturedAudioEnd[.microphone] ?? 0) < target
+            } else {
+                microphonePending = false
+            }
+            if !systemPending && !microphonePending { return nil }
+            if !lock.wait(until: deadline) {
+                return "Timed out receiving the final captured audio samples"
+            }
         }
-        lock.unlock()
+        return nil
     }
 
     /// Ends the capture and removes what was written. Nothing is handed back,
@@ -854,6 +869,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         stream = nil
         lock.unlock()
 
+        let audioDrainFailure = captureStream == nil ? nil : drainPendingAudio()
         if let captureStream {
             let semaphore = DispatchSemaphore(value: 0)
             captureStream.stopCapture { _ in
@@ -866,6 +882,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         // frame and markAsFinished touch the same writer input.
         sampleQueue.sync {}
         lock.lock()
+        drainingAudio = false
         let assetWriter = writer
         let video = videoInput
         let systemAudio = systemAudioInput
@@ -887,7 +904,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         var writerFailure = appendFinalVideoFrame(
             lastFrame, to: video, writer: assetWriter, start: start,
             lastFrameSeconds: lastFrameSeconds, duration: duration
-        )
+        ) ?? audioDrainFailure
         video?.markAsFinished()
         systemAudio?.markAsFinished()
         microphone?.markAsFinished()
@@ -959,12 +976,12 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let frameDuration = CMTime(value: 1, timescale: captureFrameRate)
         let finalFrameSeconds = duration - frameDuration.seconds
         guard finalFrameSeconds > lastFrameSeconds else { return nil }
-        guard let finalFrame = retimedSampleBuffer(
+        guard let finalFrame = MediaSampleTiming.retimed(
             sample,
             to: CMTimeAdd(
                 start, CMTime(seconds: finalFrameSeconds, preferredTimescale: start.timescale)
             ),
-            duration: frameDuration
+            videoDuration: frameDuration
         ) else {
             return "The final screen frame could not be timed"
         }
@@ -1060,9 +1077,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         defer { lock.unlock() }
         switch RecorderTransitionPolicy.next(from: state, command: command) {
         case .success(let next):
-            if command == .stop, stoppedCaptureSeconds == nil {
-                stoppedCaptureSeconds = captureSecondsNowLocked()
+            if let seconds = captureSecondsNowLocked() {
+                if command == .pause { pauseTimeline.pause(at: seconds) }
+                if command == .resume { pauseTimeline.resume(at: seconds) }
+                if command == .stop, stoppedCaptureSeconds == nil {
+                    stoppedCaptureSeconds = seconds
+                }
             }
+            if command == .stop { drainingAudio = true }
             state = next
         case .failure(let rejection):
             throw HelperFailure(code: rejection.code, message: rejection.message)
@@ -1080,28 +1102,6 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             return microphoneInput
         }
         return systemAudioInput
-    }
-
-    /// Rewrites a sample's timing without touching its payload.
-    private func retimedSampleBuffer(
-        _ sampleBuffer: CMSampleBuffer,
-        to presentationTime: CMTime,
-        duration: CMTime
-    ) -> CMSampleBuffer? {
-        var timing = CMSampleTimingInfo(
-            duration: duration,
-            presentationTimeStamp: presentationTime,
-            decodeTimeStamp: .invalid
-        )
-        var copy: CMSampleBuffer?
-        let status = CMSampleBufferCreateCopyWithNewTiming(
-            allocator: kCFAllocatorDefault,
-            sampleBuffer: sampleBuffer,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleBufferOut: &copy
-        )
-        return status == noErr ? copy : nil
     }
 
     private func elapsedSecondsLocked() -> Double {
@@ -1158,6 +1158,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             externalStop = (reason, code, message)
             stoppedCaptureSeconds = stoppedCaptureSeconds ?? captureSecondsNowLocked()
         }
+        lock.broadcast()
         let captureStream = stream
         stream = nil
         lock.unlock()
@@ -1209,12 +1210,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
         lock.lock()
-        guard state == .recording, let assetWriter = writer else {
+        guard state == .recording || state == .paused || (state == .stopped && drainingAudio),
+            let assetWriter = writer
+        else {
             lock.unlock()
             return
         }
         if sessionStartedAt == nil {
-            guard type == .screen else {
+            guard type == .screen, state == .recording else {
                 // Anchor the timeline on the first video frame so audio that
                 // arrives first cannot start the session before the picture.
                 lock.unlock()
@@ -1239,8 +1242,54 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let input = writerInputLocked(for: type)
         let start = sessionStartedAt
         let timeline = pauseTimeline
-        let lastWritten = input.map { lastWrittenSeconds[ObjectIdentifier($0)] } ?? nil
-        let lastWrittenEnd = input.map { lastWrittenEndSeconds[ObjectIdentifier($0)] } ?? nil
+        let captureEnd = stoppedCaptureSeconds
+        lock.unlock()
+        guard let input, let start else { return }
+
+        if type == .screen {
+            let seconds = CMTimeSubtract(timestamp, start).seconds
+            guard captureEnd.map({ seconds < $0 }) ?? true else { return }
+            appendSample(
+                sampleBuffer, type: type, to: input, writer: assetWriter, start: start, pauses: timeline
+            )
+        } else {
+            // Signal only after processing this callback so stop cannot finish
+            // the writer while the last buffer is still being appended.
+            defer {
+                let end = CMTimeSubtract(timestamp, start).seconds
+                    + CMSampleBufferGetDuration(sampleBuffer).seconds
+                lock.lock()
+                if end.isFinite {
+                    lastCapturedAudioEnd[type] = max(lastCapturedAudioEnd[type] ?? 0, end)
+                }
+                lock.broadcast()
+                lock.unlock()
+            }
+            guard let segments = MediaSampleTiming.audioSegments(
+                sampleBuffer, anchor: start, pauses: timeline, captureEnd: captureEnd
+            ) else {
+                noteExternalStop(
+                    reason: .failed, code: "capture_failed", message: "The captured audio could not be timed"
+                )
+                return
+            }
+            for segment in segments {
+                appendSample(
+                    segment, type: type, to: input, writer: assetWriter, start: start, pauses: timeline
+                )
+            }
+        }
+    }
+
+    private func appendSample(
+        _ sampleBuffer: CMSampleBuffer, type: SCStreamOutputType,
+        to input: AVAssetWriterInput, writer assetWriter: AVAssetWriter,
+        start: CMTime, pauses timeline: PauseTimeline
+    ) {
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        lock.lock()
+        let lastWritten = lastWrittenSeconds[ObjectIdentifier(input)]
+        let lastWrittenEnd = lastWrittenEndSeconds[ObjectIdentifier(input)]
         lock.unlock()
 
         // A writer that has failed answers `isReadyForMoreMediaData` with false
@@ -1251,7 +1300,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             noteWriterFailure(assetWriter, sample: sampleBuffer, type: type, at: nil)
             return
         }
-        guard let input, input.isReadyForMoreMediaData, let start else {
+        guard input.isReadyForMoreMediaData else {
             return
         }
         // Frames keep arriving while paused; they are dropped, and everything
@@ -1286,13 +1335,13 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         // 48 kHz audio onto a 600 Hz grid could move neighbouring buffers onto
         // each other.
         guard
-            let retimed = retimedSampleBuffer(
+            let retimed = MediaSampleTiming.retimed(
                 sampleBuffer,
                 to: CMTimeAdd(
                     start,
                     CMTime(seconds: mediaSeconds, preferredTimescale: timestamp.timescale)
                 ),
-                duration: duration
+                videoDuration: type == .screen ? duration : nil
             )
         else {
             return

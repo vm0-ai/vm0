@@ -3,6 +3,18 @@ import Testing
 @testable import ScreenRecorderCore
 
 struct PauseTimelineTests {
+    @Test
+    func selectsRecordedPartsOfLateBuffersAcrossSeveralPauses() {
+        var pauses = PauseTimeline()
+        pauses.pause(at: 2)
+        pauses.resume(at: 4)
+        pauses.pause(at: 6)
+        #expect(pauses.recordedRanges(in: 1..<9) == [1..<2, 4..<6])
+        #expect(pauses.recordedRanges(in: 2..<4).isEmpty)
+        #expect(pauses.recordedRanges(in: 4..<6) == [4..<6])
+        #expect(pauses.recordedRanges(in: 7..<8).isEmpty)
+    }
+
     private func timeline(pausedFrom start: Double, to end: Double) -> PauseTimeline {
         var timeline = PauseTimeline()
         timeline.pause(at: start)

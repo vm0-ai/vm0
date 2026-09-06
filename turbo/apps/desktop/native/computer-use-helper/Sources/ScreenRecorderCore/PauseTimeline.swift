@@ -57,6 +57,25 @@ public struct PauseTimeline: Equatable, Sendable {
         return total
     }
 
+    /// The parts of a captured buffer that belong to the movie. Audio can
+    /// arrive after pause was pressed or straddle either edge of a pause.
+    public func recordedRanges(in range: Range<Double>) -> [Range<Double>] {
+        var cursor = range.lowerBound
+        var result: [Range<Double>] = []
+        for span in spans {
+            let end = span.end ?? range.upperBound
+            if end <= cursor { continue }
+            if span.start >= range.upperBound { break }
+            if span.start > cursor {
+                result.append(cursor..<min(span.start, range.upperBound))
+            }
+            cursor = max(cursor, end)
+            if cursor >= range.upperBound { return result }
+        }
+        if cursor < range.upperBound { result.append(cursor..<range.upperBound) }
+        return result
+    }
+
     /// Where a capture timestamp lands in the finished movie, or `nil` when it
     /// falls inside a pause and therefore is not in the movie at all.
     public func mediaTime(forCaptureTime seconds: Double) -> Double? {

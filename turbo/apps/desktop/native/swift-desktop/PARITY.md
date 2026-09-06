@@ -632,10 +632,40 @@ was delayed. All five retained movies decoded fully with their original timebase
 and video duration matched the reported time within two milliseconds.
 
 A continuous 880 Hz system-audio take retained the tone in its final decoded
-samples, but audio ended about 213 milliseconds before video. End synchronization
-remains open. These results use a separate acceptance parent and locally built
-release helper; they do not establish a new packaged Desktop/upload acceptance,
-microphone or multi-display support, or production identity/signing acceptance.
+samples, but audio ended about 213 milliseconds before video. The later downloaded
+`0cad38ce` recorder still ended audio about 161 milliseconds early. The next section
+records the subsequent repair. These results use a separate acceptance parent;
+they do not establish a new full Desktop/upload acceptance, microphone or
+multi-display support, or production identity/signing acceptance.
+
+### Audio delivery at pause and stop
+
+[Real Mac timestamp diagnostics and recording acceptance](https://cdn.vm0.io/artifacts/aoj704cfoh.json)
+identified two independent timing defects. An instrumented `0f13041e` helper kept
+the stream alive for a diagnostic 300 milliseconds after stop: three audio buffers
+containing pre-stop sound arrived after the state changed, and all were discarded.
+Their unwritten pre-stop interval was about 58 milliseconds; this observation does
+not establish the exact timing of the earlier 161-millisecond take. Separately,
+retiming assigned a whole 20-millisecond buffer's duration to each of its 960
+samples, producing a buffer described as 19.2 seconds long.
+
+Stop now freezes its endpoint, then waits for the requested audio tracks to reach
+it, signalled by sample callbacks and bounded to one second. Late samples are
+selected by capture time. Actual PCM frames outside pause/stop boundaries are
+removed, while each retained sample keeps its original timing and channel value.
+This also handles ScreenCaptureKit's non-interleaved stereo, which the generic
+CoreMedia range-copy API explicitly does not support. A drain timeout retains the
+partial file and reports failure instead of silently claiming complete audio.
+
+The uninstrumented release candidate passed 130 helper tests, including a native
+stereo reproduction that failed before the range-copy repair. Real continuous
+audio, pause/resume and paused-stop movies ended within 0.65 milliseconds of their
+video tracks. A 1760 Hz marker played only during the pause was absent above the
+measured low harmonic/noise floor, while the retained 880 Hz tone reached the
+final samples. Static capture, discard and source loss also passed; all five
+retained movies decoded fully with their original timebase. These are independent
+helper results. Current CI packaging, full Desktop/upload, microphone, multi-display
+and prolonged synchronization acceptance remain separately tracked.
 
 ### Configurable preview environment
 
