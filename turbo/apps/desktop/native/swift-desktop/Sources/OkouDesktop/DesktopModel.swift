@@ -19,6 +19,8 @@ final class DesktopModel: ObservableObject {
   @Published var debugAvailable = false
   @Published var debugEnabled = false
   @Published var permissions: JSON = .object([:])
+  @Published private(set) var probingBrowsers: Set<String> = []
+  private var automationPermissions = DesktopPermissionState.defaultAutomation
   private var keepAwakeAssertion: IOPMAssertionID = 0
   private var keepAwakeActive = false
   private var permissionTask: Task<Void, Never>?
@@ -54,6 +56,10 @@ final class DesktopModel: ObservableObject {
         executable: helperDirectory.appendingPathComponent("screen-recorder-helper"),
         cancelStopsProcess: false), preferences: preferences, api: api, auth: auth)
     api.tokenProvider = { [auth] force in try await auth.getToken(force: force) }
+    host.permissions = { [weak self] in
+      guard let self else { throw CancellationError() }
+      return try await self.refreshPermissions()
+    }
     host.execute = { [weak self, commands] command, permissions in
       guard let self else {
         return DesktopFailure("plugin_unavailable", "Desktop is shutting down").response
@@ -75,7 +81,16 @@ final class DesktopModel: ObservableObject {
       }
       let result = await commands.execute(command, permissions: permissions)
       if result["error"]["code"].string == "automation_permission_denied" {
+        if let target = DesktopPermissionState.automationTarget(
+          app: command["payload"]["app"].string),
+          let observation = try? DesktopPermissionState.automationObservation(
+            .object(["status": .string("denied"), "reason": result["error"]["message"]]))
+        {
+          self.automationPermissions[target] = observation
+          self.permissions["automation"] = self.automationPermissions
+        }
         self.error = "Allow browser Automation in System Settings to continue."
+        self.changed()
       }
       return result
     }
@@ -297,22 +312,34 @@ final class DesktopModel: ObservableObject {
     } else if name == "screenRecording" {
       try await refreshPermissions("permissions.request_screen_recording")
     } else {
-      _ = try await helper.request(
+      guard ["chrome", "safari"].contains(name) else {
+        throw DesktopFailure("unsupported_command", "Unsupported Automation permission target")
+      }
+      guard probingBrowsers.insert(name).inserted else { return }
+      defer { probingBrowsers.remove(name) }
+      let result = try await helper.request(
         "permissions.probe_automation", fields: .object(["target": .string(name)]))
+      automationPermissions[name] = try DesktopPermissionState.automationObservation(result)
       try await refreshPermissions()
     }
     changed()
   }
 
-  private func refreshPermissions(_ kind: String = "permissions.state") async throws {
+  @discardableResult
+  private func refreshPermissions(_ kind: String = "permissions.state") async throws -> JSON {
     do {
-      permissions = try DesktopPermissionState.validated(await helper.request(kind))
+      var current = try DesktopPermissionState.validated(await helper.request(kind))
+      // Read the latest observations after the await: a probe or a command may
+      // have completed while this grant query was in flight.
+      current["automation"] = automationPermissions
+      permissions = current
     } catch {
       permissions = .null
       changed()
       throw error
     }
     changed()
+    return permissions
   }
 
   func setKeepAwake(_ enabled: Bool) throws {

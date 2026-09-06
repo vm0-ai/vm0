@@ -118,10 +118,13 @@ struct DesktopView: View {
             HStack {
               Text("Browser Automation")
               Spacer()
-              Button("Chrome") { model.run { try await model.requestPermission("chrome") } }
-              Button("Safari") { model.run { try await model.requestPermission("safari") } }
               Button("Settings") { openPrivacy("Privacy_Automation") }
             }
+            Text("Optional for browser control. Test only the browser you use.")
+              .font(.caption).foregroundStyle(.secondary)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            automationRow("Google Chrome", target: "chrome")
+            automationRow("Safari", target: "safari")
           }.padding(8)
         }
         Toggle(
@@ -134,6 +137,32 @@ struct DesktopView: View {
           .foregroundStyle(.secondary)
       }.padding(20)
     }
+  }
+
+  private func automationRow(_ name: String, target: String) -> some View {
+    let permission = model.permissions["automation"][target]
+    let testing = model.probingBrowsers.contains(target)
+    let status: String
+    switch permission["status"].string {
+    case "granted": status = "Allowed"
+    case "denied": status = "Not allowed"
+    case "not_installed": status = "Not installed"
+    case "not_running": status = "Open the browser to test"
+    default: status = permission["updatedAt"].string == nil ? "Not tested" : "Could not verify"
+    }
+    return VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Text(name)
+        Spacer()
+        Text(testing ? "Testing…" : status).font(.caption).foregroundStyle(.secondary)
+        Button("Test") { model.run { try await model.requestPermission(target) } }
+          .accessibilityLabel("Test \(name)").disabled(testing)
+      }
+      if permission["status"].string == "denied" {
+        Text("Allow this app to control \(name) in Automation settings, then test again.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    }.help(permission["reason"].string ?? "")
   }
 
   private var statusLabel: String {

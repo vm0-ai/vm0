@@ -18,6 +18,29 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The unchanged `21246043` configured release exposed lost Browser Automation
+observations: clicking the Chrome test left the UI without a result and the
+actual host API at `unknown` with no timestamp, while the unchanged CI helper
+reported `not_installed`. Probe results now retain each browser's status, reason
+and observation time across permission refreshes and reach both the native UI
+and host. A navigation denial also updates the matching browser. Tests remain
+explicit user actions and the UI shows optional per-browser results.
+
+[Baseline and regression evidence](https://cdn.vm0.io/artifacts/sahjiy8ylo.json)
+records nine failures in the original implementation and all 32 app/core tests
+passing after the repair. The new real-helper-process regression covers probes,
+grant refreshes, malformed replies, recovery and navigation denial. New packaged
+UI/API acceptance and actual Safari Automation denial remain separate work.
+
+That same `21246043` release also passed actual Accessibility revocation and
+recovery: the host reflected denial, an API input command failed without changing
+the owned document, and the same processes resumed input after restoring only
+their grant. Screen Capture revocation blocked actual capture while the process
+still reported its cached grant; macOS requested a restart. Restoring the grant
+and completing the system/native restart restored actual API capture. This
+behavior is not established as a Swift-specific regression. Unrelated system
+and user TCC rows were unchanged.
+
 The unchanged `c79b8b0c` release also reproduced a separate window-selection
 failure: with the main window ordered out and a floating panel visible, it still
 selected the hidden main window and failed to capture. Space membership does not
@@ -31,8 +54,11 @@ floating-panel capture and AX/coordinate clicks, occluded-main capture, four
 rejected hidden-window snapshot mutations with unchanged fixture values, and
 explicit all-hidden failure. All 136 helper tests passed, including a separate
 AppKit process that exercises the production WindowServer query through
-occlusion, hiding, panel-only visibility, and restoration. The new package and
-actual Desktop/server round trip still require separate acceptance.
+occlusion, hiding, panel-only visibility, and restoration. The subsequent
+unchanged `21246043` package and configured app passed
+[separate release and actual Desktop/server acceptance](https://cdn.vm0.io/artifacts/vfvot4fabv.json),
+including all nine release cases, all nine API command kinds and native floating
+controls while the main window remained hidden.
 
 The unchanged `98c344f0` CI helper reproduced a captured-window metadata mismatch
 with an owned AppKit main window and floating panel: `windowId` and the screenshot
