@@ -308,3 +308,127 @@ test("touch users can move a pin through the handle menu", async () => {
     ]);
   });
 });
+
+test("a remotely invalidated keyboard drag stays cancelled after repin", async () => {
+  const caseId = 68;
+  const { stream, snapshot } = await prepare(caseId);
+  const grip = handle("Last pin");
+  const user = userEvent.setup();
+  act(() => {
+    grip.focus();
+  });
+  await user.keyboard(" {ArrowUp}");
+  expect(grip).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText("Drop before Second pin")).toBeInTheDocument();
+
+  const targetId = snapshot[1]!.id;
+  const unpin = chatListEvent(caseId, 2, "unpinned", targetId);
+  stream.setEvents([unpin]);
+  changeChatThreadList();
+  await waitFor(() => {
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.getAttribute("aria-label") === "Reorder Second pin";
+      }),
+    ).toBeFalsy();
+  });
+  expect(grip).toHaveAttribute("aria-pressed", "false");
+  expect(grip).toHaveFocus();
+  await user.keyboard("{Escape}");
+
+  const repin = chatListEvent(caseId, 3, "pinned", targetId, {
+    pinOrder: "a1",
+  });
+  stream.setEvents([unpin, repin]);
+  changeChatThreadList();
+  await waitFor(() => {
+    expect(handle("Second pin")).toBeInTheDocument();
+  });
+  expect(grip).toHaveAttribute("aria-pressed", "false");
+  expect(screen.queryByText("Drop before Second pin")).not.toBeInTheDocument();
+});
+
+test("list unmount clears pointer state before remount", async () => {
+  await prepare(69);
+  const transfer = Object.assign(new DataTransfer(), {
+    setDragImage: () => {},
+  });
+  fireEvent.dragStart(handle("Last pin"), { dataTransfer: transfer });
+  expect(screen.getByTestId("pinned-thread-drag-preview")).toBeInTheDocument();
+  const title = document.querySelector(".okou-nav-recent-label");
+  if (!title) {
+    throw new Error("Missing chat list header");
+  }
+  fireEvent.click(title);
+  expect(
+    screen.queryByTestId("sidebar-chat-threads-virtual-list"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByTestId("pinned-thread-drag-preview"),
+  ).not.toBeInTheDocument();
+  fireEvent.click(title);
+  await waitFor(() => {
+    expect(handle("Last pin")).toBeInTheDocument();
+  });
+  expect(handle("Last pin")).toHaveAttribute("aria-pressed", "false");
+  fireEvent.dragOver(document, {
+    clientX: 50,
+    clientY: 50,
+    dataTransfer: transfer,
+  });
+  expect(
+    screen.queryByTestId("pinned-thread-drag-preview"),
+  ).not.toBeInTheDocument();
+  expect(document.querySelector("[data-dragging]")).toBeNull();
+});
+
+test("a remotely invalidated pointer drag stays cancelled without a dragend event", async () => {
+  const caseId = 70;
+  const { stream, snapshot } = await prepare(caseId);
+  const transfer = Object.assign(new DataTransfer(), {
+    setDragImage: () => {},
+  });
+  const grip = handle("Last pin");
+  const target = handle("Second pin").closest(".okou-thread-reorder-row");
+  if (!target) {
+    throw new Error("Missing target row");
+  }
+  fireEvent.dragStart(grip, { dataTransfer: transfer });
+  fireEvent.dragOver(target, { dataTransfer: transfer });
+  expect(screen.getByTestId("pinned-thread-drag-preview")).toBeInTheDocument();
+
+  const targetId = snapshot[1]!.id;
+  const unpin = chatListEvent(caseId, 2, "unpinned", targetId);
+  stream.setEvents([unpin]);
+  changeChatThreadList();
+  await waitFor(() => {
+    expect(
+      screen.queryByTestId("pinned-thread-drag-preview"),
+    ).not.toBeInTheDocument();
+  });
+
+  stream.setEvents([
+    unpin,
+    chatListEvent(caseId, 3, "pinned", targetId, { pinOrder: "a1" }),
+  ]);
+  changeChatThreadList();
+  await waitFor(() => {
+    expect(handle("Second pin")).toBeInTheDocument();
+  });
+  fireEvent.dragOver(document, {
+    dataTransfer: transfer,
+    clientX: 50,
+    clientY: 50,
+  });
+  expect(
+    screen.queryByTestId("pinned-thread-drag-preview"),
+  ).not.toBeInTheDocument();
+  expect(document.querySelector("[data-dragging]")).toBeNull();
+  expect(document.querySelector("[data-drop-side]")).toBeNull();
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "First pin",
+    "Second pin",
+    "Last pin",
+    "Regular thread",
+  ]);
+});

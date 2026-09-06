@@ -59,6 +59,7 @@ function ThreadDragHandle({
   const drag = useGet(dragSignals.drag$);
   const start = useSet(dragSignals.start$);
   const cancel = useSet(dragSignals.cancel$);
+  const cancelKeyboard = useSet(dragSignals.cancelKeyboard$);
   const drop = useSet(dragSignals.drop$);
   const step = useSet(dragSignals.step$);
   const move = useSet(stepPinnedThread$);
@@ -93,11 +94,13 @@ function ThreadDragHandle({
             event.preventDefault();
             event.stopPropagation();
             step(event.key === "ArrowUp" ? -1 : 1);
-          } else if (picked && event.key === "Escape") {
+          } else if (
+            event.key === "Escape" &&
+            cancelKeyboard(signals.threadId)
+          ) {
             event.preventBaseUIHandler();
             event.preventDefault();
             event.stopPropagation();
-            cancel();
           }
         }}
       >
@@ -126,9 +129,7 @@ function ThreadDragHandle({
             return cancel();
           }}
           onBlur={() => {
-            if (picked && drag.keyboard) {
-              cancel();
-            }
+            cancelKeyboard(signals.threadId);
           }}
         >
           <GripVertical size={16} />
@@ -279,8 +280,12 @@ export function PinnedThreadDragAnnouncement({
   signals: PinnedThreadDragSignals;
 }) {
   const { t } = useTranslation();
+  const enabled = useGet(pinnedThreadReorderEnabled$);
   const announcement = useGet(signals.announcement$);
   const mount = useSet(signals.mount$);
+  if (!enabled) {
+    return null;
+  }
   return (
     <span ref={mount} className="sr-only" aria-live="polite" aria-atomic="true">
       {announcement

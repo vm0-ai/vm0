@@ -1,4 +1,11 @@
-import { command, computed, state, type State, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type State,
+  type Computed,
+} from "ccstate";
 import { chatThreadPinOrderContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   comparePinnedThreads,
@@ -13,6 +20,7 @@ import {
   eventDrivenChatThreads$,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
+import { registerPinnedThreadDragSession$ } from "./chat-thread-pin-drag-lifecycle.ts";
 
 export const pinnedThreadReorderEnabled$ = computed((get) => {
   return get(stableChatThreadNavigationEnabled$) && !get(chatThreadOnlyUnread$);
@@ -120,6 +128,28 @@ interface PinDragPointer {
   readonly width: number;
 }
 
+interface PinDragPreview extends PinDragPointer {
+  readonly title: string | null;
+}
+
+interface PinDragAnnouncement {
+  readonly side: PinMove["side"];
+  readonly title: string;
+}
+
+export interface PinnedThreadDragSignals {
+  readonly drag$: Computed<PinDrag | null>;
+  readonly preview$: Computed<PinDragPreview | null>;
+  readonly announcement$: Computed<PinDragAnnouncement | null>;
+  readonly mount$: Command<(() => void) | undefined, [HTMLElement | null]>;
+  readonly cancel$: Command<void, []>;
+  readonly cancelKeyboard$: Command<boolean, [string]>;
+  readonly start$: Command<void, [string, PinDragPointer | null]>;
+  readonly target$: Command<void, [string, PinMove["side"]]>;
+  readonly step$: Command<void, [-1 | 1]>;
+  readonly drop$: Command<Promise<void>, [AbortSignal]>;
+}
+
 function createPinDragInteraction(
   internalDrag$: State<PinDrag | null>,
   drag$: Computed<PinDrag | null>,
@@ -129,8 +159,22 @@ function createPinDragInteraction(
     set(internalDrag$, null);
     set(pointer$, null);
   });
+  const cancelKeyboard$ = command(({ get, set }, threadId: string) => {
+    const session = get(internalDrag$);
+    if (!session?.keyboard || session.threadId !== threadId) {
+      return false;
+    }
+    set(cancel$);
+    return true;
+  });
+  const reconcile$ = command(({ get, set }) => {
+    if (get(internalDrag$) && !get(drag$)) {
+      set(cancel$);
+    }
+  });
   const mount$ = onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      set(registerPinnedThreadDragSession$, reconcile$, signal);
       const document = element.ownerDocument;
       document.addEventListener(
         "dragover",
@@ -191,10 +235,10 @@ function createPinDragInteraction(
     })!;
     return { ...pointer, title: source.title };
   });
-  return { cancel$, mount$, start$, preview$ };
+  return { cancel$, cancelKeyboard$, mount$, start$, preview$ };
 }
 
-export function createPinnedThreadDragSignals() {
+export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
   const internalDrag$ = state<PinDrag | null>(null);
   const drag$ = computed((get) => {
     const drag = get(internalDrag$);
@@ -214,10 +258,8 @@ export function createPinnedThreadDragSignals() {
       ? drag
       : null;
   });
-  const { cancel$, mount$, start$, preview$ } = createPinDragInteraction(
-    internalDrag$,
-    drag$,
-  );
+  const { cancel$, cancelKeyboard$, mount$, start$, preview$ } =
+    createPinDragInteraction(internalDrag$, drag$);
   const target$ = command(
     ({ get, set }, targetId: string, side: PinMove["side"]) => {
       const drag = get(drag$);
@@ -290,6 +332,7 @@ export function createPinnedThreadDragSignals() {
     preview$,
     mount$,
     cancel$,
+    cancelKeyboard$,
     start$,
     target$,
     step$,
@@ -297,7 +340,3 @@ export function createPinnedThreadDragSignals() {
     announcement$,
   };
 }
-
-export type PinnedThreadDragSignals = ReturnType<
-  typeof createPinnedThreadDragSignals
->;
