@@ -119,6 +119,30 @@ def test_connected_client_fallback_drives_both_projections_without_direct_bindin
     )
 
 
+def test_connected_client_fallback_rejects_stored_port_mismatch(real_flow):
+    flow = real_flow(with_response=False, host="api.github.com")
+    flow.server_conn.address = ("203.0.113.10", 443)
+    flow.server_conn.peername = ("203.0.113.10", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    prior_server = connection.Server(address=("203.0.113.10", 443))
+    seed_server_binding(
+        prior_server,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=_ALLOWED_KINDS,
+        original_address=("203.0.113.10", 8443),
+    )
+
+    _assert_destination_resolution(
+        flow,
+        host="api.github.com",
+        port=443,
+        matches=False,
+        endpoint=None,
+    )
+
+
 def test_unconnected_address_match_has_no_concrete_endpoint(real_flow):
     flow = real_flow(with_response=False, host="api.github.com")
 
