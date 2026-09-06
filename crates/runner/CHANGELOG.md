@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.186.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.8...runner-rs-v0.186.9) (2026-09-06)
+
+
+### Bug Fixes
+
+* **mitm-addon:** redact whitespace-separated url userinfo ([#32024](https://github.com/vm0-ai/vm0/issues/32024)) ([83462e3](https://github.com/vm0-ai/vm0/commit/83462e3b47192bfddf30340f61ba9cf6b1b30c1a))
+* **python:** track set and dict display hashing failures ([#32027](https://github.com/vm0-ai/vm0/issues/32027)) ([982724a](https://github.com/vm0-ai/vm0/commit/982724ad05aa9f373fe6858d217f8a4ef873993b))
+
+
+### Performance Improvements
+
+* **python:** bound accept-encoding negotiation work ([#32026](https://github.com/vm0-ai/vm0/issues/32026)) ([02a358f](https://github.com/vm0-ai/vm0/commit/02a358fc5303b146e8645982be195c8fa0d8b8c8))
+* **runner:** back off active input retries ([#32028](https://github.com/vm0-ai/vm0/issues/32028)) ([7e7e055](https://github.com/vm0-ai/vm0/commit/7e7e0551b8cc787637f0d780d06581bd34001aaa))
+
 ## [0.186.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.7...runner-rs-v0.186.8) (2026-09-06)
 
 ## [0.186.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.6...runner-rs-v0.186.7) (2026-09-06)

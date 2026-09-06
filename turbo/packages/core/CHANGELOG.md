@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.626.0](https://github.com/vm0-ai/vm0/compare/core-v8.625.12...core-v8.626.0) (2026-09-06)
+
+
+### Features
+
+* simplify intro video creation flow ([#31830](https://github.com/vm0-ai/vm0/issues/31830)) ([646a907](https://github.com/vm0-ai/vm0/commit/646a907e90dd9ffa0b7983a2d7d4dea77886893f))
+* **ssh:** add standalone connection configuration api ([#32023](https://github.com/vm0-ai/vm0/issues/32023)) ([3e50b38](https://github.com/vm0-ai/vm0/commit/3e50b384d85a17b18b67a22a5af3dc59202b7f7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.0
+
 ## [8.625.12](https://github.com/vm0-ai/vm0/compare/core-v8.625.11...core-v8.625.12) (2026-09-06)
 
 
