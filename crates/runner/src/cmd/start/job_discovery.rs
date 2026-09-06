@@ -1645,7 +1645,9 @@ pub(super) async fn rollback_reserved_idle_for_spawn(
         (restore_result, snapshot)
     };
     set_idle_status_snapshot(&ctx.status, snapshot).await;
-    if let RestoreReservedIdleResult::Rejected(destroy_job) = restore_result {
+    if let RestoreReservedIdleResult::Replaced(destroy_job)
+    | RestoreReservedIdleResult::Rejected(destroy_job) = restore_result
+    {
         destroy_idle_jobs_and_wait(
             vec![*destroy_job],
             "finalizing_claim_reserved_idle_rollback",
@@ -1741,7 +1743,8 @@ async fn rollback_exact_speculation_outcome(
                     ctx.spawn_ctx.reuse_state_notify.notify_one();
                     match restore_result {
                         RestoreReservedIdleResult::Restored => None,
-                        RestoreReservedIdleResult::Rejected(destroy_job) => Some(destroy_job),
+                        RestoreReservedIdleResult::Replaced(destroy_job)
+                        | RestoreReservedIdleResult::Rejected(destroy_job) => Some(destroy_job),
                     }
                 }
                 SpeculativeReparkResult::Destroy {
@@ -2188,7 +2191,9 @@ pub(super) async fn activate_reserved_idle(
                 let restore_result = pool.restore_reserved(reservation);
                 let snapshot = pool.status_snapshot();
                 drop(pool);
-                if let RestoreReservedIdleResult::Rejected(destroy_job) = restore_result {
+                if let RestoreReservedIdleResult::Replaced(destroy_job)
+                | RestoreReservedIdleResult::Rejected(destroy_job) = restore_result
+                {
                     spawn_idle_destroy_job(
                         &ctx.idle_destroy_tracker,
                         *destroy_job,

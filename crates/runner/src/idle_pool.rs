@@ -339,14 +339,29 @@ impl IdlePool {
     ) -> RestoreReservedIdleResult {
         let entry = reservation.entry;
         let reuse_key = entry.reuse_key().to_owned();
-        let has_capacity = self.config.max_idle == 0 || self.entries.len() < self.config.max_idle;
-        if !self.parking_gate.is_open() || !has_capacity || self.entries.contains_key(&reuse_key) {
+        if !self.parking_gate.is_open() || self.entries.contains_key(&reuse_key) {
             return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
         }
 
+        let mut displaced_blank = None;
+        if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
+            let blank_key = (!entry.is_blank())
+                .then(|| self.oldest_blank_key())
+                .flatten();
+            let Some(blank_key) = blank_key else {
+                return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
+            };
+            displaced_blank = self.entries.remove(&blank_key);
+        }
+
+        // Restore the original entry, including its idle age, while giving exact
+        // reservations the same priority over blank inventory as newly parked runs.
         self.entries.insert(reuse_key, entry);
         self.bump_revision();
-        RestoreReservedIdleResult::Restored
+        match displaced_blank {
+            Some(blank) => RestoreReservedIdleResult::Replaced(Box::new(blank.into_destroy_job())),
+            None => RestoreReservedIdleResult::Restored,
+        }
     }
 
     /// Evict an entry selected by a pressure ordering captured under the same

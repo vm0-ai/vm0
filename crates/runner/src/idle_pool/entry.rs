@@ -334,6 +334,8 @@ pub struct ReservedIdleSandbox {
 
 pub enum RestoreReservedIdleResult {
     Restored,
+    /// The exact reservation was restored; the displaced blank still needs cleanup.
+    Replaced(Box<IdleDestroyJob>),
     Rejected(Box<IdleDestroyJob>),
 }
 

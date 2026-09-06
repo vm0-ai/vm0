@@ -2282,6 +2282,107 @@ async fn no_exact_resolution_falls_back_before_predecessor_release() {
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn cancelled_finalizing_activation_restores_exact_over_refilled_blank() {
+    let (mut config, env) = mock_run_config(test_profiles(), 16, 32_768, 8);
+    config.capacity.max_idle = 1;
+    *env.idle_pool.lock().await =
+        IdlePool::new_with_parking_gate(IdlePoolConfig { max_idle: 1 }, env.parking_gate.clone());
+    let budget = Arc::clone(&config.capacity.budget);
+    // Keep ordinary refill below its headroom requirement until exact activation
+    // has reserved the predecessor's sandbox.
+    let occupied = ResourceBudget::try_reserve_lease(&budget, 12, 24_576).unwrap();
+    let reuse_key = "thread:cancelled-exact-blank-refill";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor.reuse_publisher();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            predecessor_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    let cancellation = wait_cancel_handle(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    let transfer_guard = cancellation.transfer_guard().await;
+    let cancel_request = cancellation.request_hard_cancellation();
+    tokio::pin!(cancel_request);
+    // Queue cancellation before activation at the real ownership-transfer gate.
+    assert!(futures_util::poll!(&mut cancel_request).is_pending());
+
+    let exact_id = seed_idle_pool_with_history_generation(
+        &env.idle_pool,
+        &budget,
+        reuse_key,
+        "vm0/default",
+        2,
+        4096,
+        predecessor_run_id,
+    )
+    .await;
+    assert!(predecessor_reuse.publish_exact_sandbox());
+    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+
+    drop(occupied);
+    wait_idle_pool_len(&env.idle_pool, 1, Duration::from_secs(5)).await;
+    assert_eq!(env.idle_pool.lock().await.blank_len(), 1);
+    assert_eq!(budget.allocated().2, 2);
+
+    drop(transfer_guard);
+    assert!(cancel_request.await);
+    env.handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("cancelled finalizing activation should complete");
+    {
+        let pool = env.idle_pool.lock().await;
+        assert!(
+            pool.has_reusable(reuse_key, "vm0/default", &None),
+            "rollback must preserve the exact sandbox when a blank filled its idle slot"
+        );
+        assert_eq!(pool.blank_len(), 0);
+        assert_eq!(
+            pool.status_snapshot().idle_sandboxes[0].sandbox_id,
+            exact_id
+        );
+    }
+    assert_eq!(budget.allocated().2, 1);
+
+    let followup_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        followup_run_id,
+        "vm0/default",
+        Some(context_with_reuse_key(followup_run_id, reuse_key)),
+    );
+    let completion = env
+        .handle
+        .wait_completion(followup_run_id, Duration::from_secs(5))
+        .await
+        .expect("restored exact sandbox should serve the next run");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(completion.sandbox_id, Some(exact_id));
+
+    drop(predecessor);
+    shutdown(&env, run_handle).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+}
+
 #[tokio::test]
 async fn competing_finalizing_successors_reserve_exact_generation_once() {
     let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
