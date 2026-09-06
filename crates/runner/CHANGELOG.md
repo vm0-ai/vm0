@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.186.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.9...runner-rs-v0.186.10) (2026-09-06)
+
+
+### Bug Fixes
+
+* **python:** keep resolved auth header bytes consistent ([#32022](https://github.com/vm0-ai/vm0/issues/32022)) ([b3535a2](https://github.com/vm0-ai/vm0/commit/b3535a26f15f04cf8639c2f7765eadcd36a5be8a))
+
 ## [0.186.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.8...runner-rs-v0.186.9) (2026-09-06)
 
 
