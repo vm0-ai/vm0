@@ -125,10 +125,11 @@ function privateR2ArchiveSource(
   };
 }
 
-// Archive digests for the image style packages manually published from
-// vm0-ai/vm0-skills@45e237a. Keep these aligned with the private R2 version ids
-// served by the API download route.
+// Pinned archive digests for image style packages. Keep these aligned with
+// the private R2 version ids served by the API download route.
 const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
+  "emboss-deboss":
+    "f1c1be0b1cf711a8c61945f928206d700b54d71969711f0551403d20c360d3f8",
   "cozy-parlor":
     "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
   "crowd-ink":
@@ -3040,6 +3041,15 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Automation platform. Warm orange, friendly illustration-driven.",
     source: { path: "design-systems/zapier" },
+  },
+  {
+    id: "image-style:emboss-deboss",
+    kind: "image-style",
+    name: "Emboss & Deboss",
+    description:
+      "Poetic paper posters with pronounced raised lettering and forms, deep pressed contours, fine fibers, and intentional negative space.",
+    desc: "Poetic editorial posters and covers in sculpted matte paper, with pronounced raised lettering and forms, deeply pressed contours, fine fibers, and intentional negative space. Use for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or paper-relief design.",
+    source: imageStyleSource("emboss-deboss"),
   },
   {
     id: "image-style:notion-illustration",
