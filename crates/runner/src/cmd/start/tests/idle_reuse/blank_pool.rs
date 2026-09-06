@@ -11,11 +11,26 @@ use crate::workspace_image_cache::WorkspaceImageCache;
 
 #[tokio::test(start_paused = true)]
 async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution() {
-    let (config, env) = mock_run_config(test_profiles(), 16, 32_768, 8);
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    assert_eq!(calls.workspace_drive_mount_calls(), 1);
+    let create_configs = calls.create_configs();
+    assert_eq!(create_configs.len(), 1);
+    assert!(
+        create_configs[0]
+            .workspace_drive
+            .as_ref()
+            .expect("blank sandbox should have a workspace drive")
+            .seed_image
+            .is_none()
+    );
+    assert_eq!(calls.start_run_control_ids(), vec![None]);
+    assert!(calls.run_control_bind_calls().is_empty());
     let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
@@ -36,8 +51,42 @@ async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution
         Some(WorkspaceReuseResult::NotConfigured)
     );
     assert_eq!(completion.sandbox_id, Some(blank_sandbox_id));
+    assert_eq!(calls.workspace_drive_mount_calls(), 1);
 
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn blank_mount_failure_destroys_sandbox_before_releasing_budget() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.push_workspace_drive_mount_result(Ok(sandbox::ExecResult::new(
+        64,
+        Vec::new(),
+        b"simulated workspace mount failure".to_vec(),
+    )));
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("failed blank mount should enter factory destroy");
+    assert_eq!(calls.workspace_drive_mount_calls(), 1);
+    assert_eq!(idle_pool.lock().await.blank_len(), 0);
+    assert_eq!(
+        budget.allocated().2,
+        1,
+        "blank budget must remain owned until physical destroy completes"
+    );
+
+    destroy_gate.release_many(1);
+    shutdown(&env, run_handle).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -164,6 +213,58 @@ async fn foreground_admission_drains_cancelled_blank_start_before_destroy() {
     );
 
     start_gate.release_many(2);
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("foreground job should complete");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_eq!(calls.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn foreground_admission_drains_cancelled_blank_mount_before_destroy() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let mount_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_workspace_drive_mount_lifecycle_gate(mount_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let run_handle = tokio::spawn(run(config));
+
+    assert!(
+        calls
+            .wait_workspace_drive_mount_call_count(1, Duration::from_secs(5))
+            .await,
+        "blank sandbox mount should enter the lifecycle gate"
+    );
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(
+            run_id,
+            "session-cancelled-blank-mount",
+        )),
+    );
+    assert!(
+        calls
+            .wait_workspace_drive_mount_call_count(2, Duration::from_secs(5))
+            .await,
+        "foreground mount should acquire admission while blank mount drains"
+    );
+    assert_eq!(
+        calls.destroy_call_count(),
+        0,
+        "blank sandbox must remain owned until its in-flight mount completes"
+    );
+
+    mount_gate.release_many(2);
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))

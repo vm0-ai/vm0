@@ -21,6 +21,7 @@ use crate::lifecycle::RunnerMode;
 use crate::pre_spawn_admission::{BackgroundPreSpawnAdmissionLease, PreSpawnAdmission};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::status::StatusTracker;
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 const TARGET_PERCENT: usize = 10;
 
@@ -51,10 +52,10 @@ struct BlankPrepareInput {
     pre_spawn_lease: BackgroundPreSpawnAdmissionLease,
 }
 
-enum BackgroundStageResult<T> {
-    Completed(sandbox::Result<T>),
+enum BackgroundStageResult<T, E> {
+    Completed(Result<T, E>),
     CancelledBeforeStart,
-    CancelledAfterStart(sandbox::Result<T>),
+    CancelledAfterStart(Result<T, E>),
     Panicked,
 }
 
@@ -454,6 +455,40 @@ async fn prepare_blank_sandbox(
         }
     }
 
+    match run_background_stage(
+        ensure_workspace_drive_mounted(sandbox.as_ref(), sandbox_id),
+        &cancel,
+        &mut pre_spawn_lease,
+    )
+    .await
+    {
+        BackgroundStageResult::Completed(Ok(_)) => {}
+        BackgroundStageResult::Completed(Err(error)) => {
+            drop(pre_spawn_lease.take());
+            destroy_sandbox(&factory, sandbox).await;
+            return BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "workspace_mount",
+                error: Some(error.error.to_string()),
+            });
+        }
+        BackgroundStageResult::CancelledBeforeStart
+        | BackgroundStageResult::CancelledAfterStart(_) => {
+            destroy_sandbox(&factory, sandbox).await;
+            return BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "workspace_mount",
+                error: None,
+            });
+        }
+        BackgroundStageResult::Panicked => {
+            drop(pre_spawn_lease.take());
+            destroy_sandbox(&factory, sandbox).await;
+            return BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "workspace_mount",
+                error: Some("workspace drive mount panicked".into()),
+            });
+        }
+    }
+
     match run_background_stage(sandbox.park(), &cancel, &mut pre_spawn_lease).await {
         BackgroundStageResult::Completed(Ok(SandboxParkOutcome::Reusable)) => {
             drop(pre_spawn_lease.take());
@@ -524,11 +559,11 @@ async fn create_or_cancel(
     }
 }
 
-async fn run_background_stage<T>(
-    stage: impl Future<Output = sandbox::Result<T>>,
+async fn run_background_stage<T, E>(
+    stage: impl Future<Output = Result<T, E>>,
     cancel: &CancellationToken,
     pre_spawn_lease: &mut Option<BackgroundPreSpawnAdmissionLease>,
-) -> BackgroundStageResult<T> {
+) -> BackgroundStageResult<T, E> {
     if cancel.is_cancelled() {
         drop(pre_spawn_lease.take());
         return BackgroundStageResult::CancelledBeforeStart;
