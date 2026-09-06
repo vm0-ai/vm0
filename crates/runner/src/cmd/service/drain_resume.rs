@@ -973,9 +973,14 @@ async fn wait_for_drain_acknowledgement(
             }
         };
 
-        match live_runner_instances::is_current(home, &target.instance).await {
-            Ok(true) => {}
-            Ok(false) => {
+        let identity_result = tokio::time::timeout(
+            deadline.saturating_duration_since(Instant::now()),
+            live_runner_instances::is_current(home, &target.instance),
+        )
+        .await;
+        match identity_result {
+            Ok(Ok(true)) => {}
+            Ok(Ok(false)) => {
                 last_observation = format!(
                     "ActiveState={:?}, captured runner process identity is no longer current",
                     state.active_state()
@@ -983,7 +988,7 @@ async fn wait_for_drain_acknowledgement(
                 wait_for_next_drain_observation(deadline).await;
                 continue;
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 last_observation = format!(
                     "ActiveState={:?}, cannot verify runner process identity: {error}",
                     state.active_state()
@@ -991,10 +996,22 @@ async fn wait_for_drain_acknowledgement(
                 wait_for_next_drain_observation(deadline).await;
                 continue;
             }
+            Err(_) => {
+                let observation = format!(
+                    "ActiveState={:?}, process identity observation did not finish",
+                    state.active_state()
+                );
+                return Err(drain_acknowledgement_timeout_error(unit, &observation));
+            }
         }
 
-        match read_drain_status(&target.instance.base_dir).await {
-            Ok(status) => {
+        let status_result = tokio::time::timeout(
+            deadline.saturating_duration_since(Instant::now()),
+            read_drain_status(&target.instance.base_dir),
+        )
+        .await;
+        match status_result {
+            Ok(Ok(status)) => {
                 if status.started_at != target.started_at {
                     return Err(RunnerError::Internal(format!(
                         "{} status generation changed before drain acknowledgement (started_at changed from {} to {}); Restart=no remains applied",
@@ -1028,11 +1045,18 @@ async fn wait_for_drain_acknowledgement(
                     }
                 }
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 last_observation = format!(
                     "ActiveState={:?}, cannot read status.json: {error}",
                     state.active_state()
                 );
+            }
+            Err(_) => {
+                let observation = format!(
+                    "ActiveState={:?}, status.json observation did not finish",
+                    state.active_state()
+                );
+                return Err(drain_acknowledgement_timeout_error(unit, &observation));
             }
         }
 
@@ -1045,7 +1069,19 @@ async fn drain_and_wait_with_ops(
     home: &HomePaths,
     ops: &mut impl ServiceDrainOps,
 ) -> RunnerResult<()> {
-    let target = capture_drain_acknowledgement_target(unit, home, ops).await;
+    let target = match tokio::time::timeout(
+        DRAIN_ACKNOWLEDGEMENT_TIMEOUT,
+        capture_drain_acknowledgement_target(unit, home, ops),
+    )
+    .await
+    {
+        Ok(target) => target,
+        Err(_) => Err(RunnerError::Internal(format!(
+            "timed out after {}s resolving the acknowledgement target for {} before drain",
+            DRAIN_ACKNOWLEDGEMENT_TIMEOUT.as_secs(),
+            unit.unit_name()
+        ))),
+    };
     match drain_with_ops(unit, ops).await? {
         DrainSignalConvergence::SignalDelivered => {
             wait_for_drain_acknowledgement(unit, home, target, ops).await
@@ -1419,6 +1455,7 @@ mod tests {
         signal_results: VecDeque<RunnerResult<ServiceSignalOutcome>>,
         signal_timeouts: Vec<Duration>,
         config_path: Option<PathBuf>,
+        config_path_pending: bool,
         status_update_on_signal: Option<(PathBuf, String)>,
         disable_error: bool,
         restore_enablement_error: bool,
@@ -1457,6 +1494,7 @@ mod tests {
                 signal_results: signal_results(ServiceSignalOutcome::Sent, 1),
                 signal_timeouts: Vec::new(),
                 config_path: Some(PathBuf::from("/tmp/runner-config.yaml")),
+                config_path_pending: false,
                 status_update_on_signal: None,
                 disable_error: false,
                 restore_enablement_error: false,
@@ -1632,7 +1670,11 @@ mod tests {
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, Option<PathBuf>> {
             self.events.push("read_config_path");
-            Box::pin(std::future::ready(Ok(self.config_path.clone())))
+            if self.config_path_pending {
+                Box::pin(std::future::pending())
+            } else {
+                Box::pin(std::future::ready(Ok(self.config_path.clone())))
+            }
         }
     }
 
@@ -2654,6 +2696,39 @@ mod tests {
             error
                 .to_string()
                 .contains("predates the selected live process")
+        );
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restart_policy"));
+        assert!(ops.events.contains(&"signal_drain"));
+        assert!(!ops.events.contains(&"remove_restart_override"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_preflight_timeout_does_not_skip_signal_safeguards() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let attempts = (DRAIN_ACKNOWLEDGEMENT_TIMEOUT.as_millis()
+            / DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL.as_millis()) as usize
+            + 2;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", attempts),
+            config_path_pending: true,
+            ..FakeDrainOps::default()
+        };
+        let started_at = Instant::now();
+
+        let error = drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            Instant::now() - started_at,
+            DRAIN_ACKNOWLEDGEMENT_TIMEOUT * 2
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("resolving the acknowledgement target")
         );
         assert!(ops.events.contains(&"write_restart_override"));
         assert!(ops.events.contains(&"restart_policy"));
