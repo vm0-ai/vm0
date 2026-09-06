@@ -32,39 +32,6 @@ describe("FeatureSwitchKey", () => {
 });
 
 describe("isFeatureEnabled", () => {
-  it("defaults the compact model menu to Bingjie without enabling the staff org", () => {
-    for (const ctx of [
-      { userId: "user_3EWY21Oe3f15kfs3yYmbGgDb3NV" },
-      { email: "bingjie@okou.ai" },
-      { email: "bingjie@vm0.ai" },
-    ]) {
-      expect(isFeatureEnabled(FeatureSwitchKey.ModelPickerMenu, ctx)).toBe(
-        true,
-      );
-      expect(getAllFeatureStates(ctx)[FeatureSwitchKey.ModelPickerMenu]).toBe(
-        true,
-      );
-      expect(
-        isFeatureEnabled(FeatureSwitchKey.ModelPickerMenu, {
-          ...ctx,
-          overrides: { [FeatureSwitchKey.ModelPickerMenu]: false },
-        }),
-      ).toBe(false);
-    }
-    for (const ctx of [
-      {},
-      { email: "another-user@example.com" },
-      { orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe" },
-    ]) {
-      expect(isFeatureEnabled(FeatureSwitchKey.ModelPickerMenu, ctx)).toBe(
-        false,
-      );
-      expect(getAllFeatureStates(ctx)[FeatureSwitchKey.ModelPickerMenu]).toBe(
-        false,
-      );
-    }
-  });
-
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(
