@@ -129,7 +129,7 @@ function privateR2ArchiveSource(
 // the private R2 version ids served by the API download route.
 const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
   "emboss-deboss":
-    "041c65e3b8a5368d71e275c1dc8e2e70cfa5593f8ac03d2424737019087e4439",
+    "daafea0e8c6bd9c0a504c2c878843b49459ff247a0186a42bc64e1e9e951085c",
   "cozy-parlor":
     "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
   "crowd-ink":
@@ -3047,8 +3047,8 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     kind: "image-style",
     name: "Emboss & Deboss",
     description:
-      "Poetic paper posters with visible embossed lettering and forms, debossed contours, fine fibers, and intentional negative space.",
-    desc: "Poetic editorial posters and covers in tactile matte paper, with clearly raised lettering and forms, recessed contours, fine fibers, and intentional negative space. Use for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or paper-relief design.",
+      "Poetic paper posters with pronounced raised lettering and forms, deep pressed contours, fine fibers, and intentional negative space.",
+    desc: "Poetic editorial posters and covers in sculpted matte paper, with pronounced raised lettering and forms, deeply pressed contours, fine fibers, and intentional negative space. Use for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or paper-relief design.",
     source: imageStyleSource("emboss-deboss"),
   },
   {

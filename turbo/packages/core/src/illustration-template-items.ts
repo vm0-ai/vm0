@@ -9,6 +9,8 @@ export const ILLUSTRATION_ASSET_BASE =
  * {@link illustrationAssetUrl}.
  */
 const ILLUSTRATION_ASSET_PATHS: Record<string, string> = {
+  "refs/emboss-deboss/ref-weightless-indigo.jpg":
+    "2c781b91-9f3c-4a94-a056-1a40df68e2aa/ref-weightless-indigo.jpg",
   "images/emboss-deboss.jpg":
     "7d58d19d-7af8-40bb-8fc6-d0e19854ae77/ref-beyond-ivory.jpg",
   "refs/emboss-deboss/ref-beyond-ivory.jpg":
@@ -431,6 +433,7 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     width: 1024,
     height: 1536,
     refs: [
+      "ref-weightless-indigo.jpg",
       "ref-beyond-ivory.jpg",
       "ref-wind-space-blush.jpg",
       "ref-moon-mooring-indigo.jpg",
