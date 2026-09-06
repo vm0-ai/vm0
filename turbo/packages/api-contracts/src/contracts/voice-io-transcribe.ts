@@ -9,10 +9,17 @@ const c = initContract();
 
 export const VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS = 8_000;
 export const VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS = 1_000;
-export const VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS = 90;
-// The 300-second request limit and 45-second minimum safe chunk allow at most
-// six chunks. The server enforces this independently of the browser chunker.
-export const VOICE_IO_TRANSCRIBE_MAX_FILES = 6;
+export const VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS = 75;
+
+export const voiceIoTranscribeSegmentOptionsSchema = z.object({
+  previousTranscript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
+  final: z.boolean(),
+  totalDurationSeconds: z.number().nonnegative().max(300),
+});
+
+export type VoiceIoTranscribeSegmentOptions = z.infer<
+  typeof voiceIoTranscribeSegmentOptionsSchema
+>;
 
 export const voiceIoEditorContextSchema = z
   .object({
@@ -27,6 +34,7 @@ export type VoiceIoEditorContext = z.infer<typeof voiceIoEditorContextSchema>;
 export interface VoiceIoTranscribeContext {
   readonly lastAssistantMessage?: string;
   readonly editorContext?: VoiceIoEditorContext;
+  readonly previousTranscript?: string;
 }
 
 export const voiceIoTranscribeResponseSchema = z
@@ -41,15 +49,27 @@ export type VoiceIoTranscribeResponse = z.infer<
   typeof voiceIoTranscribeResponseSchema
 >;
 
+export const voiceIoTranscribeSegmentResponseSchema = z
+  .object({
+    transcript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
+    polishedText: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS).optional(),
+    language: z.string().trim().min(1).max(64),
+  })
+  .strict();
+
+export type VoiceIoTranscribeSegmentResponse = z.infer<
+  typeof voiceIoTranscribeSegmentResponseSchema
+>;
+
 export const voiceIoTranscribeContract = c.router({
-  post: {
+  segment: {
     method: "POST",
-    path: "/api/voice-io/transcribe",
+    path: "/api/voice-io/transcribe/segment",
     headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),
     responses: {
-      200: voiceIoTranscribeResponseSchema,
+      200: voiceIoTranscribeSegmentResponseSchema,
       204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -59,7 +79,8 @@ export const voiceIoTranscribeContract = c.router({
       502: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Transcribe and polish a voice draft",
+    summary:
+      "Transcribe one voice segment and optionally polish the complete recording",
   },
 });
 

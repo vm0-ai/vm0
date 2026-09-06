@@ -104,7 +104,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       };
     });
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         uploads.push(await uploadedAudio(request));
         const retry = retries[uploads.length - 1];
@@ -183,7 +183,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     });
     const consoleErrors = installVoiceBoundaries();
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         upload.resolve(await uploadedAudio(request));
         return HttpResponse.json({
@@ -231,7 +231,7 @@ test.each([
     const consoleErrors = installVoiceBoundaries();
     const uploads: ArrayBuffer[] = [];
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         uploads.push(await uploadedAudio(request));
         return new HttpResponse(null, { status: 204 });
@@ -310,7 +310,7 @@ test("Restore audio when voice input v2 enables after the composer mounts", asyn
   const firstPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installVoiceBoundaries();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
   });
   await setupPage({

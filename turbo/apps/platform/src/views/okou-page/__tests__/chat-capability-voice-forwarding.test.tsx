@@ -111,7 +111,7 @@ test.each(
     const uploads: ArrayBuffer[] = [];
     let successful = false;
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         uploads.push(await uploadedAudio(request));
         if (uploads.length === 1) {
@@ -171,7 +171,8 @@ test.each(
     await screen.findByText("Transcribing...");
     retryResponse.resolve();
     await findEnabledButton("Retry");
-    await expect(recordings()).resolves.toStrictEqual(saved);
+    // The sealed segment checkpoint may be added, while the recording stays intact.
+    await expect(recordings()).resolves.toMatchObject(saved);
     successful = true;
     click(await findEnabledButton("Retry"));
     await findEnabledButton("Voice input");
@@ -210,7 +211,7 @@ test.each(targets)(
     });
     const uploads: ArrayBuffer[] = [];
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         uploads.push(await uploadedAudio(request));
         return HttpResponse.json({
@@ -303,7 +304,7 @@ test.each(targets)(
     const uploads: ArrayBuffer[] = [];
     let successful = false;
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         uploads.push(await uploadedAudio(request));
         return successful

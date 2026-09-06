@@ -107,7 +107,7 @@ test.each([
       }
       return respond(204);
     });
-    context.mocks.http.post("*/api/voice-io/transcribe", async () => {
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", async () => {
       transcriptionRequests += 1;
       if (transcriptionRequests === 2) {
         retryRequested.resolve();
@@ -171,7 +171,8 @@ test.each([
       expect(savedText).toContain("Recovered voice note.");
     });
     expect(hydrationRequests).toBe(interruptHydration ? 2 : 1);
-    expect(transcriptionRequests).toBe(interruptHydration ? 3 : 2);
+    // The successful retry is checkpointed before waiting for text hydration.
+    expect(transcriptionRequests).toBe(2);
 
     // Assert the recovered composer and persisted text at the handoff boundary.
     // Ordinary saved-draft restoration is covered in chat-continuity-drafts.
