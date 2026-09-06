@@ -81,7 +81,7 @@ function FeedbackToolbar({
       <Button
         type="button"
         variant="quiet"
-        size="sm"
+        size="xs"
         onClick={onCopy}
         aria-keyshortcuts="c"
         className="text-foreground"
@@ -96,7 +96,7 @@ function FeedbackToolbar({
       <Button
         type="button"
         variant="quiet"
-        size="sm"
+        size="xs"
         onClick={onProvideFeedback}
         aria-keyshortcuts="q"
         className="text-foreground"
@@ -113,7 +113,7 @@ function FeedbackToolbar({
           <Button
             type="button"
             variant="quiet"
-            size="sm"
+            size="xs"
             onClick={onForward}
             aria-keyshortcuts="f"
             className="text-foreground"
@@ -265,7 +265,7 @@ function TranslationAction({
     <Button
       type="button"
       variant="quiet"
-      size="sm"
+      size="xs"
       disabled={translating}
       onClick={() => {
         detach(translate(pageSignal), Reason.DomCallback);
