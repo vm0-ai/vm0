@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
 
 export function stubTestTimezone(
@@ -47,7 +48,9 @@ vi.stubEnv("MINIMAX_API_KEY", "test-minimax-key");
 vi.stubEnv("BYTEPLUS_STT_API_KEY", "test-byteplus-stt-key");
 vi.stubEnv("CRON_SECRET", "test-cron-secret");
 vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
-vi.stubEnv("R2_ACCOUNT_ID", "test-account");
+// Configuration tests replace persisted connector-catalog rows. Each isolated
+// test file needs its own source so another worker cannot replace those rows.
+vi.stubEnv("R2_ACCOUNT_ID", `test-account-${randomUUID()}`);
 vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
 vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
 vi.stubEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-user-artifacts");
