@@ -5,7 +5,6 @@ mod common;
 
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
@@ -383,13 +382,9 @@ fi
     assert_eq!(delivered_events[11]["subtype"], "success");
     assert_eq!(delivered_events[11]["result"], "official rpc projection");
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
-    let package_url = "https://example.invalid/current-okou-cli.tgz";
-    let expected_npm_cache = std::path::Path::new(guest_agent::paths::CANONICAL_WORKING_DIR)
-        .join(".vm0/cache/runtime-npx-v1")
-        .join(hex::encode(Sha256::digest(package_url.as_bytes())));
     assert_eq!(
         std::fs::read_to_string(npm_cache_capture_path)?,
-        expected_npm_cache.to_string_lossy()
+        "/home/user/workspace/.vm0/cache/npm"
     );
 
     let payload_path = std::fs::read_to_string(payload_capture_path)?;

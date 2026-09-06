@@ -6,12 +6,8 @@ mod common;
 use guest_agent::cli;
 use guest_agent::masker::SecretMasker;
 use guest_agent::run_context::GuestRuntime;
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
-use std::os::unix::fs::symlink;
 use std::path::Path;
-
-const CLI_PACKAGE_URL: &str = "https://example.invalid/current-okou-cli.tgz";
 
 #[tokio::test]
 async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
@@ -27,24 +23,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         .to_string();
     let rejected_config_dir = tmp.path().join("rejected-claude-config");
     let rejected_npm_cache = tmp.path().join("rejected-npm-cache");
-    let runtime_npx_cache_root =
-        Path::new(guest_agent::paths::CANONICAL_WORKING_DIR).join(".vm0/cache/runtime-npx-v1");
-    let stale_generation = hex::encode(Sha256::digest(
-        format!("stale:{}", tmp.path().display()).as_bytes(),
-    ));
-    let stale_cache_dir = runtime_npx_cache_root.join(&stale_generation);
-    let linked_generation_name = hex::encode(Sha256::digest(
-        format!("linked:{}", tmp.path().display()).as_bytes(),
-    ));
-    let linked_generation = runtime_npx_cache_root.join(linked_generation_name);
-    let linked_generation_target = tmp.path().join("linked-generation-target");
-    let unmanaged_cache_dir = runtime_npx_cache_root.join(format!(
-        "user-cache-{}",
-        tmp.path()
-            .file_name()
-            .ok_or("temp directory must have a basename")?
-            .to_string_lossy()
-    ));
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
@@ -99,18 +77,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "HOME": user_home_str,
             "CLAUDE_CONFIG_DIR": rejected_config_dir,
             "NODE_EXTRA_CA_CERTS": "/tmp/user-ca.pem",
-            "CLI_PKG_URL": CLI_PACKAGE_URL,
             "npm_config_cache": rejected_npm_cache,
             "NPM_CONFIG_CACHE": "/tmp/rejected-uppercase-npm-cache",
         }))?,
     )?;
-    std::fs::create_dir_all(&stale_cache_dir)?;
-    std::fs::write(stale_cache_dir.join("stale"), "stale")?;
-    std::fs::create_dir_all(&linked_generation_target)?;
-    std::fs::write(linked_generation_target.join("retained"), "retained")?;
-    symlink(&linked_generation_target, stale_cache_dir.join("linked"))?;
-    symlink(&linked_generation_target, &linked_generation)?;
-    std::fs::create_dir(&unmanaged_cache_dir)?;
     unsafe {
         std::env::set_var(
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
@@ -251,21 +221,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("false")
     );
     assert!(cli_env.contains_key("PATH"));
-    let active_generation = hex::encode(Sha256::digest(CLI_PACKAGE_URL.as_bytes()));
-    let expected_npm_cache = runtime_npx_cache_root.join(active_generation);
     assert_eq!(
         cli_env.get("npm_config_cache").map(String::as_str),
-        expected_npm_cache.to_str()
+        Some("/home/user/workspace/.vm0/cache/npm")
     );
-    assert!(expected_npm_cache.is_dir());
-    assert!(!stale_cache_dir.exists());
-    assert!(linked_generation.is_symlink());
-    assert!(linked_generation_target.join("retained").is_file());
-    assert!(unmanaged_cache_dir.is_dir());
     assert!(!cli_env.contains_key("NPM_CONFIG_CACHE"));
-
-    std::fs::remove_file(linked_generation)?;
-    std::fs::remove_dir(unmanaged_cache_dir)?;
 
     for key in [
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,

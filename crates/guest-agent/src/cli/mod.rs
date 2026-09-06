@@ -39,7 +39,6 @@ mod pi_memory_citation;
 mod pi_rpc;
 mod process_group;
 mod provider_event_normalization;
-mod runtime_npx_cache;
 mod termination;
 
 pub use codex_setup::setup_codex_for_config;
@@ -87,6 +86,7 @@ const AGENT_LOG_BUFFER_BYTES: usize = 8 * 1024;
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const CODEX_SERVICE_TIER_CANONICAL_ENV: &str = "OKOU_CODEX_SERVICE_TIER";
+const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
 const CODEX_FIXED_STARTUP_CONFIGS: [&str; 5] = [
@@ -507,12 +507,11 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     }
     let package_url = runtime
         .user_env
-        .get(runtime_npx_cache::CLI_PACKAGE_URL_ENV_KEY)
+        .get(CLI_PACKAGE_URL_ENV_KEY)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
             AgentError::Execution(format!(
-                "{} is required for Pi execution",
-                runtime_npx_cache::CLI_PACKAGE_URL_ENV_KEY
+                "{CLI_PACKAGE_URL_ENV_KEY} is required for Pi execution"
             ))
         })?;
     Ok(vec![

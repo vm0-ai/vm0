@@ -128,21 +128,6 @@ impl Dir {
         .map(Self)
     }
 
-    pub(crate) fn create_child_dir(&self, name: &OsStr) -> io::Result<Self> {
-        let name = child_name_c_string(name)?;
-        // SAFETY: the parent fd is a live directory descriptor, `name` is a
-        // validated NUL-terminated basename, and mkdirat receives an explicit
-        // private directory mode.
-        let result = unsafe { libc::mkdirat(self.0.as_raw_fd(), name.as_ptr(), 0o700) };
-        if result != 0 {
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() != Some(libc::EEXIST) {
-                return Err(error);
-            }
-        }
-        self.open_child_dir(OsStr::from_bytes(name.as_bytes()))
-    }
-
     pub(crate) fn open_child_file(&self, name: &OsStr) -> io::Result<File> {
         open_child(
             &self.0,
@@ -208,22 +193,6 @@ impl Dir {
             0,
             &mut raw_dir_buffer,
         )
-    }
-
-    pub(crate) fn remove_child_dir_all(
-        &self,
-        name: &OsStr,
-        filesystem: FileIdentity,
-    ) -> io::Result<bool> {
-        let child = match self.open_child_dir(name) {
-            Ok(child) => child,
-            Err(error) if error.raw_os_error() == Some(libc::ENOENT) => return Ok(false),
-            Err(error) => return Err(error),
-        };
-        child.identity()?.ensure_same_mount(filesystem)?;
-        let mut raw_dir_buffer = [MaybeUninit::<u8>::uninit(); REMOVE_RAW_DIR_BUFFER_BYTES];
-        child.remove_children(&[], filesystem, &[], 0, &mut raw_dir_buffer)?;
-        unlink_child_if_present(&self.0, name, libc::AT_REMOVEDIR)
     }
 
     fn remove_children(
