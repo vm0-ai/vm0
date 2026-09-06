@@ -28,7 +28,7 @@ func focusedSafariWebTextElement(window: AXUIElement, deadline: TimeInterval) th
 
 func safariEditingShortcut(_ parsed: ParsedKeyPress, target: WindowTarget, deadline: TimeInterval) throws -> BackgroundMenuShortcut? {
     guard NSRunningApplication(processIdentifier: target.pid)?.bundleIdentifier == "com.apple.Safari",
-          ["c", "x", "v", "z"].contains(where: { keyCodes[$0] == parsed.keyCode }) else { return nil }
+          ["a", "c", "x", "v", "z"].contains(where: { keyCodes[$0] == parsed.keyCode }) else { return nil }
     let window = try keyboardAXWindow(target)
     guard let focused = try focusedSafariWebTextElement(window: window, deadline: deadline) else { return nil }
     let app = applicationElement(forProcessIdentifier: target.pid)
@@ -38,6 +38,7 @@ func safariEditingShortcut(_ parsed: ParsedKeyPress, target: WindowTarget, deadl
         throw HelperFailure(code: "window_unavailable", message: "The browser text selection cannot be validated; no input was sent")
     }
     // Keep the original key event so keydown/clipboard handlers can override
-    // editing normally. Direct menu actions would bypass those handlers.
+    // editing and selection normally. Direct menu or AX selection actions
+    // would bypass those handlers, including a custom Command-A binding.
     return BackgroundMenuShortcut(window: window, textElement: focused, selection: selection, isSafariWebContent: true)
 }

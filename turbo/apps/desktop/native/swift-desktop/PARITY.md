@@ -587,14 +587,38 @@ candidate and subsequent packaged acceptance; compilation is not a parity gate.
 Clipboard backups and ownership leases remain private, preserve every type, and
 refuse to overwrite observed concurrent content.
 
-Two separately reproduced baseline gaps remain open: standard same-tab Safari
-Command-A can report success without changing the selection in the background;
-Undo after an additional A/B/A tab cycle can report success without restoring
-the edit. Immediate Undo without that tab cycle succeeds in the same release.
 An inactive tab switch can also omit the page's AX subtree in both old and new
 helpers; test preparation therefore confirms the owned page after foreground
 tab selection. Broader browser focus, history, and window styles still require
 acceptance. Full Swift Desktop parity remains open.
+
+### Safari background Select All and native Undo controls
+
+The downloaded `998b955` helper sends Command-A to the page but leaves the
+selection unchanged in both a textarea and a single-line input under the two
+background policies. Foreground controls and custom keydown overrides pass.
+Safari Select All now uses the existing window-validated background menu
+shortcut path, including the actual menu binding, focused web control and
+selection checks. It still sends the original key events, so custom handlers
+can replace the standard selection behavior.
+
+The real Mac candidate passes 12 cases across both controls, all three recovery
+policies and standard/custom behavior, plus three stale-tab ownership cases.
+Background commands preserve the actual native foreground receiver and all
+clipboard representations, including the owned text/binary sentinel. The
+[baseline and candidate evidence](https://cdn.vm0.io/artifacts/huvvdcl280.json)
+records the helper hashes; the PR progress record separately identifies the
+subsequent downloaded RELEASE and Desktop/server acceptance.
+
+Undo after an additional A/B/A tab cycle is also reproduced with native HID
+mouse clicks and, independently, VNC mouse and keyboard input. The page receives
+Command-Z, but Safari exposes disabled Undo/Redo menu items and produces no
+`historyUndo` event. Immediate Undo passes in the same fixture. This native
+control result does not establish a Swift dispatch regression; the helper does
+not synthesize history by overwriting text or clipboard data. Initial input
+obscured by old owned test-app dialogs is excluded, and the complete matrix is
+rerun after those dialogs are dismissed. Broader browser history acceptance
+remains open.
 
 ## Completion gate
 
