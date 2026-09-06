@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadPinOrderContract,
@@ -96,6 +96,142 @@ function dragEvent(
     ),
   );
 }
+
+function threadLink(title: string) {
+  const link = sidebarThreadLinks().find((item) => {
+    return item.textContent?.includes(title);
+  });
+  if (!link) {
+    throw new Error(`Missing thread link: ${title}`);
+  }
+  return link;
+}
+
+function touchEvent(
+  type: "touchstart" | "touchmove" | "touchend" | "touchcancel",
+  target: Element,
+  clientY: number,
+  clientX = 50,
+) {
+  const touch = new Touch({ identifier: 1, target, clientX, clientY });
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: type === "touchend" || type === "touchcancel" ? [] : [touch],
+    changedTouches: [touch],
+  });
+  fireEvent(target, event);
+  return event;
+}
+
+test("long pressing the pinned row reorders it without a navigation click", async () => {
+  context.mocks.api(chatThreadPinOrderContract.reorder, ({ respond }) => {
+    return respond(204);
+  });
+  await prepare(73);
+  vi.spyOn(
+    screen.getByTestId("pinned-thread-drop-zone"),
+    "getBoundingClientRect",
+  ).mockReturnValue(new DOMRect(0, 0, 300, 500));
+  const link = threadLink("Last pin");
+  const pathname = window.location.pathname;
+  touchEvent("touchstart", link, 90);
+  const preview = await screen.findByTestId("pinned-thread-drag-preview");
+  expect(preview).toHaveTextContent("Last pin");
+  expect(touchEvent("touchmove", link, 52).defaultPrevented).toBeTruthy();
+  expect(screen.getByTestId("pinned-thread-drop-placeholder")).toHaveStyle({
+    transform: "translateY(36px)",
+  });
+  expect(touchEvent("touchend", link, 52).defaultPrevented).toBeTruthy();
+  await waitFor(() => {
+    expect(sidebarThreadTitles()).toStrictEqual([
+      "First pin",
+      "Last pin",
+      "Second pin",
+      "Regular thread",
+    ]);
+  });
+  expect(preview).not.toBeInTheDocument();
+  expect(window.location.pathname).toBe(pathname);
+});
+
+test("a tap or an early swipe leaves touch scrolling available and cancels pickup", async () => {
+  await prepare(74);
+  const link = threadLink("Last pin");
+  touchEvent("touchstart", link, 90);
+  expect(touchEvent("touchend", link, 90).defaultPrevented).toBeFalsy();
+  touchEvent("touchstart", link, 90);
+  expect(touchEvent("touchmove", link, 52).defaultPrevented).toBeFalsy();
+  touchEvent("touchend", link, 52);
+
+  // A subsequent pickup is the completion boundary for the cancelled holds.
+  const next = threadLink("Second pin");
+  touchEvent("touchstart", next, 52);
+  const preview = await screen.findByTestId("pinned-thread-drag-preview");
+  expect(preview).toHaveTextContent("Second pin");
+  touchEvent("touchcancel", next, 52);
+  expect(preview).not.toBeInTheDocument();
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "First pin",
+    "Second pin",
+    "Last pin",
+    "Regular thread",
+  ]);
+});
+
+test("releasing a touch drag outside the sidebar leaves the pin order intact", async () => {
+  await prepare(75);
+  vi.spyOn(
+    screen.getByTestId("pinned-thread-drop-zone"),
+    "getBoundingClientRect",
+  ).mockReturnValue(new DOMRect(0, 0, 300, 500));
+  const link = threadLink("Last pin");
+  touchEvent("touchstart", link, 90);
+  const preview = await screen.findByTestId("pinned-thread-drag-preview");
+  touchEvent("touchmove", link, 52);
+  expect(screen.getByTestId("pinned-thread-drop-placeholder")).toHaveStyle({
+    transform: "translateY(36px)",
+  });
+  touchEvent("touchend", link, 52, 350);
+  await waitFor(() => {
+    expect(preview).not.toBeInTheDocument();
+  });
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "First pin",
+    "Second pin",
+    "Last pin",
+    "Regular thread",
+  ]);
+});
+
+test("collapsing the list cancels a touch pickup before it can reorder after remount", async () => {
+  await prepare(76);
+  touchEvent("touchstart", threadLink("Last pin"), 90);
+  const title = document.querySelector(".okou-nav-recent-label");
+  if (!title) {
+    throw new Error("Missing chat list header");
+  }
+  fireEvent.click(title);
+  expect(
+    screen.queryByTestId("sidebar-chat-threads-virtual-list"),
+  ).not.toBeInTheDocument();
+  fireEvent.click(title);
+  await waitFor(() => {
+    expect(threadLink("First pin")).toBeInTheDocument();
+  });
+  const next = threadLink("First pin");
+  touchEvent("touchstart", next, 16);
+  const preview = await screen.findByTestId("pinned-thread-drag-preview");
+  expect(preview).toHaveTextContent("First pin");
+  touchEvent("touchcancel", next, 16);
+  expect(preview).not.toBeInTheDocument();
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "First pin",
+    "Second pin",
+    "Last pin",
+    "Regular thread",
+  ]);
+});
 
 test("keyboard reorder follows visual tab order and survives the matching persisted event", async () => {
   const caseId = 61;

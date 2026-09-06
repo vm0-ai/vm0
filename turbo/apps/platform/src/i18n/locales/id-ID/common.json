@@ -4943,6 +4943,15 @@
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
+        "menu": {
+          "adjustSettings": "Sesuaikan pengaturan {{model}}",
+          "backToChatModels": "Kembali ke model chat",
+          "backToModels": "Kembali ke model",
+          "cancel": "Batal",
+          "changeModel": "Ubah model {{category}}, {{model}}",
+          "chatSettings": "Pengaturan chat",
+          "confirm": "Konfirmasi"
+        },
         "models": "Model",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
@@ -5075,6 +5084,10 @@
         "cloudBrowser": {
           "description": "Aktifkan browser cloud secara default di chat baru. Anda tetap bisa mengubahnya di chat mana pun.",
           "title": "Browser cloud"
+        },
+        "defaultModel": {
+          "description": "Digunakan kecuali chat atau proses memilih model lain.",
+          "title": "Model default"
         },
         "description": "Pilih default untuk chat baru dan cara pesan dikirim.",
         "sectionTitle": "Chat"

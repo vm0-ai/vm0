@@ -33,12 +33,25 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      - name: Normalize GitHub App private key
+        id: source-private-key
+        env:
+          SOURCE_PRIVATE_KEY_PEM: ${{ secrets.OKOU_GITHUB_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          private_key="$(
+            printf '%s' "$SOURCE_PRIVATE_KEY_PEM" |
+              bash .github/scripts/normalize-github-app-private-key.sh
+          )"
+          printf '::add-mask::%s\n' "$private_key"
+          printf 'private-key=%s\n' "$private_key" >> "$GITHUB_OUTPUT"
+
       - name: Create read token for Template-artifact
         id: source-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.VM0_GITHUB_APP_ID }}
-          private-key: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+          app-id: ${{ vars.OKOU_GITHUB_APP_ID }}
+          private-key: ${{ steps.source-private-key.outputs.private-key }}
           owner: vm0-ai
           repositories: Template-artifact
           permission-contents: read

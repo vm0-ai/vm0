@@ -22,6 +22,7 @@ import {
   Cpu,
   CreditCard,
   History,
+  MessageCircle,
   ReceiptText,
   Users,
 } from "lucide-react";
@@ -31,12 +32,13 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { billingPlansStandalone$ } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
-  isAdminOnlySettingsSection,
+  resolveAvailableSettingsSection,
   settingsActiveSection$,
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/okou-page/settings/settings-dialog.ts";
 import { PreferenceSection } from "./sections/preference-section.tsx";
+import { ChatSection } from "./sections/chat-section.tsx";
 import { ModelSection } from "./sections/model-section.tsx";
 import { DebugSection } from "./sections/debug-section.tsx";
 import { GeneralSection } from "./sections/general-section.tsx";
@@ -67,6 +69,9 @@ interface SidebarGroup {
 const SECTION_COMPONENTS = {
   preference: () => {
     return <PreferenceSection />;
+  },
+  chat: () => {
+    return <ChatSection />;
   },
   model: () => {
     return <ModelSection />;
@@ -116,6 +121,7 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.OkouDebug] ?? false;
+  const showChat = features[FeatureSwitchKey.ChatPreference] ?? false;
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -123,6 +129,14 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
       }),
       description: t(($) => {
         return $.settings.dialog.sections.preference.description;
+      }),
+    },
+    chat: {
+      title: t(($) => {
+        return $.settings.preferences.chat.sectionTitle;
+      }),
+      description: t(($) => {
+        return $.settings.preferences.chat.description;
       }),
     },
     model: {
@@ -196,6 +210,15 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
       label: sectionMeta.preference.title,
       icon: SlidersHorizontal,
     },
+    ...(showChat
+      ? [
+          {
+            id: "chat" as const,
+            label: sectionMeta.chat.title,
+            icon: MessageCircle,
+          },
+        ]
+      : []),
     { id: "debug", label: sectionMeta.debug.title, icon: Bug },
   ];
   const personalGroup: SidebarGroup = {
@@ -264,11 +287,14 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
+  const availableSection = resolveAvailableSettingsSection(activeSection, {
+    isAdmin,
+    chatPreferenceEnabled: showChat,
+  });
   const resolvedSection: SettingsSection =
-    (!showDebug && activeSection === "debug") ||
-    (!isAdmin && isAdminOnlySettingsSection(activeSection))
+    !showDebug && availableSection === "debug"
       ? "preference"
-      : activeSection;
+      : availableSection;
   const meta = sectionMeta[resolvedSection];
 
   const handleSectionChange = (section: SettingsSection) => {

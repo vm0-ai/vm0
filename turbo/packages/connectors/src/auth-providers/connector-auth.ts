@@ -96,6 +96,7 @@ import { notionProvider } from "./connectors/notion/provider";
 import { netsuiteProvider } from "./connectors/netsuite/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
+import { resourceGuruProvider } from "./connectors/resource-guru/provider";
 import { redditProvider } from "./connectors/reddit/provider";
 import { intervalsIcuProvider } from "./connectors/intervals-icu/provider";
 import { sentryProvider } from "./connectors/sentry/provider";
@@ -115,6 +116,7 @@ import { posthogProvider } from "./connectors/posthog/provider";
 import { paypalProvider } from "./connectors/paypal/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
 import { rampProvider } from "./connectors/ramp/provider";
+import { reckonProvider } from "./connectors/reckon/provider";
 import { playstationProvider } from "./connectors/playstation/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
 import { steamProvider } from "./connectors/steam/provider";
@@ -1044,6 +1046,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     nintendoSwitchParentalControlsProvider,
   ),
   authCodeRefreshProviderEntry("notion", "oauth", notionProvider),
+  authCodeRefreshProviderEntry("resource-guru", "oauth", resourceGuruProvider),
   authCodeRefreshProviderEntry(
     "outlook-calendar",
     "oauth",
@@ -1055,6 +1058,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
   refreshProviderEntry("ramp", "api-token", rampProvider),
+  refreshProviderEntry("reckon", "oauth-refresh-token", reckonProvider),
   authCodeRefreshProviderEntry("reddit", "oauth", redditProvider),
   authCodeRefreshProviderEntry("sentry", "oauth", sentryProvider),
   authCodeTokenRevokeProviderEntry("slack", "oauth", slackProvider),

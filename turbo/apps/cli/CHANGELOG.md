@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.315.0](https://github.com/vm0-ai/vm0/compare/cli-v9.314.0...cli-v9.315.0) (2026-09-06)
+
+
+### Features
+
+* add emboss and deboss illustration template ([#32010](https://github.com/vm0-ai/vm0/issues/32010)) ([e186381](https://github.com/vm0-ai/vm0/commit/e186381a7e441cf5168ae007ff15969a6260e43c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.409.1
+    * @okouai/connectors bumped to 3.4.0
+    * @okouai/core bumped to 8.627.0
+    * @okouai/pi-agent-runtime bumped to 1.21.6
+
 ## [9.314.0](https://github.com/vm0-ai/vm0/compare/cli-v9.313.15...cli-v9.314.0) (2026-09-06)
 
 

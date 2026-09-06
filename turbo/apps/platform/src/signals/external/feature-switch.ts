@@ -6,6 +6,7 @@ import {
 } from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { clerk$ } from "../auth";
 import { appVersion$ } from "../app-version.ts";
 import { accept } from "../../lib/accept.ts";
@@ -113,8 +114,12 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
+export const modelPickerMenuEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ModelPickerMenu] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+  return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });
 
 export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {

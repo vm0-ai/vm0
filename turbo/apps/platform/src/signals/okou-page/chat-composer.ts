@@ -15,6 +15,7 @@ import {
 import { readableAttachmentResourceUrl } from "../../views/okou-page/attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
 import { createImportedPresentationTemplateSignals } from "./presentation-template-library.ts";
+import { createModelPickerMenuSignals } from "./model-picker-menu.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ type NewThreadComputerAccess =
   | { readonly kind: "cloudBrowser" }
   | { readonly kind: "computerUse"; readonly hostId: string };
 
-async function computerAccessFromCloudBrowserPreference(
+async function computerAccessFromSavedCloudBrowserDefault(
   cloudBrowserEnabled: Promise<boolean>,
 ): Promise<NewThreadComputerAccess> {
   return (await cloudBrowserEnabled)
@@ -52,7 +53,7 @@ export const newThreadCloudBrowserEnabled$ = computed(
       return selection.kind === "cloudBrowser";
     }
     const preferenceEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.CloudBrowserPreference] ?? false;
+      get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;
     return preferenceEnabled ? get(cloudBrowserEnabledByDefault$) : true;
   },
 );
@@ -72,7 +73,7 @@ export const newThreadComputerAccess$ = computed(
     if (typeof cloudBrowserEnabled === "boolean") {
       return cloudBrowserEnabled ? { kind: "cloudBrowser" } : { kind: "none" };
     }
-    return computerAccessFromCloudBrowserPreference(cloudBrowserEnabled);
+    return computerAccessFromSavedCloudBrowserDefault(cloudBrowserEnabled);
   },
 );
 
@@ -324,6 +325,7 @@ function createBasicComposerUiSignals() {
   const { desktopModelPickerLayout$, desktopModelPickerLifecycleRef$ } =
     createDesktopModelPickerLayoutSignals();
   const internalModelPickerOpen$ = state(false);
+  const menu = createModelPickerMenuSignals();
   // Every viewport drives this from the same category strip. Null means the
   // chat models. It survives close the way the old composer track kept its
   // expanded category -- the video options chip and the temporary-model notice
@@ -334,6 +336,9 @@ function createBasicComposerUiSignals() {
   });
   const setModelPickerOpen$ = command(({ set }, open: boolean) => {
     set(internalModelPickerOpen$, open);
+    if (!open) {
+      set(menu.reset$);
+    }
   });
   const mediaModelCategory$ = computed((get) => {
     return get(internalMediaModelCategory$);
@@ -345,6 +350,7 @@ function createBasicComposerUiSignals() {
   );
   return {
     model: {
+      menu,
       modelPickerOpen$,
       setModelPickerOpen$,
       mediaModelCategory$,

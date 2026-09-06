@@ -20,6 +20,7 @@ describe("FeatureSwitchKey", () => {
     );
     expect(FeatureSwitchKey.FeishuIntegration).toBe("_feishuIntegration");
     expect(FeatureSwitchKey.CodexFastMode).toBe("_fastModel");
+    expect(FeatureSwitchKey.ChatPreference).toBe("chatPreference");
     expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
@@ -196,9 +197,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.ChatPreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
@@ -223,9 +222,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatPreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,

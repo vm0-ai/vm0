@@ -5005,6 +5005,15 @@
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
+        "menu": {
+          "adjustSettings": "Modifica le impostazioni di {{model}}",
+          "backToChatModels": "Torna ai modelli di chat",
+          "backToModels": "Torna ai modelli",
+          "cancel": "Annulla",
+          "changeModel": "Cambia modello di {{category}}, {{model}}",
+          "chatSettings": "Impostazioni della chat",
+          "confirm": "Conferma"
+        },
         "models": "Modelli",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
@@ -5140,6 +5149,10 @@
         "cloudBrowser": {
           "description": "Attiva il browser cloud per impostazione predefinita nelle nuove chat. Puoi modificarlo in qualsiasi chat.",
           "title": "Browser cloud"
+        },
+        "defaultModel": {
+          "description": "Utilizzato a meno che una chat o un'esecuzione non scelga un altro modello.",
+          "title": "Modello predefinito"
         },
         "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",
         "sectionTitle": "Chat"

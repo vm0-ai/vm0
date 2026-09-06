@@ -4943,6 +4943,15 @@
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
+        "menu": {
+          "adjustSettings": "{{model}} の設定を調整",
+          "backToChatModels": "チャットモデルに戻る",
+          "backToModels": "モデルに戻る",
+          "cancel": "キャンセル",
+          "changeModel": "{{category}}モデルを変更、{{model}}",
+          "chatSettings": "チャット設定",
+          "confirm": "確認"
+        },
         "models": "モデル",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
@@ -5075,6 +5084,10 @@
         "cloudBrowser": {
           "description": "新しいチャットでクラウドブラウザを既定でオンにします。各チャットで変更できます。",
           "title": "クラウドブラウザ"
+        },
+        "defaultModel": {
+          "description": "チャットまたは実行で別のモデルを選択しない限り使用されます。",
+          "title": "デフォルトモデル"
         },
         "description": "新しいチャットの初期設定とメッセージの送信方法を選択します。",
         "sectionTitle": "チャット"

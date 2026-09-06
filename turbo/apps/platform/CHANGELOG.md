@@ -11,6 +11,28 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.852.0](https://github.com/vm0-ai/vm0/compare/app-v0.851.0...app-v0.852.0) (2026-09-06)
+
+
+### Features
+
+* add emboss and deboss illustration template ([#32010](https://github.com/vm0-ai/vm0/issues/32010)) ([e186381](https://github.com/vm0-ai/vm0/commit/e186381a7e441cf5168ae007ff15969a6260e43c))
+* **platform:** add a compact composer model menu ([#32036](https://github.com/vm0-ai/vm0/issues/32036)) ([eb168c8](https://github.com/vm0-ai/vm0/commit/eb168c8a818b233d4c0dbeb37ee00a96f9eaeca4))
+
+
+### Bug Fixes
+
+* **platform:** support long-press pin reordering on touch screens ([#32032](https://github.com/vm0-ai/vm0/issues/32032)) ([93f3152](https://github.com/vm0-ai/vm0/commit/93f3152e39d2a3600de9d7759bfd05f21cc0fbe2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.1
+    * @okouai/connectors bumped to 3.4.0
+    * @okouai/core bumped to 8.627.0
+
 ## [0.851.0](https://github.com/vm0-ai/vm0/compare/app-v0.850.0...app-v0.851.0) (2026-09-06)
 
 

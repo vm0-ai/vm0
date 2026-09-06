@@ -4951,6 +4951,15 @@
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
         "loading": "Modelle werden geladen...",
+        "menu": {
+          "adjustSettings": "Einstellungen für {{model}} anpassen",
+          "backToChatModels": "Zurück zu Chatmodellen",
+          "backToModels": "Zurück zu Modellen",
+          "cancel": "Abbrechen",
+          "changeModel": "{{category}}-Modell ändern, {{model}}",
+          "chatSettings": "Chateinstellungen",
+          "confirm": "Bestätigen"
+        },
         "models": "Modelle",
         "noConfiguredModels": "Keine konfigurierten Modelle",
         "priceTiers": {
@@ -5084,6 +5093,10 @@
         "cloudBrowser": {
           "description": "Cloud-Browser in neuen Chats standardmäßig aktivieren. Du kannst das in jedem Chat ändern.",
           "title": "Cloud-Browser"
+        },
+        "defaultModel": {
+          "description": "Wird verwendet, sofern ein Chat oder Lauf kein anderes Modell auswählt.",
+          "title": "Standardmodell"
         },
         "description": "Lege Standardeinstellungen für neue Chats und die Art des Nachrichtenversands fest.",
         "sectionTitle": "Chat"

@@ -5005,6 +5005,15 @@
         "inheritDefault": "Hériter des paramètres par défaut de l'organisation",
         "loadError": "Impossible de charger les modèles.",
         "loading": "Chargement des modèles...",
+        "menu": {
+          "adjustSettings": "Ajuster les paramètres de {{model}}",
+          "backToChatModels": "Retour aux modèles de chat",
+          "backToModels": "Retour aux modèles",
+          "cancel": "Annuler",
+          "changeModel": "Changer le modèle {{category}}, {{model}}",
+          "chatSettings": "Paramètres du chat",
+          "confirm": "Confirmer"
+        },
         "models": "Modèles",
         "noConfiguredModels": "Aucun modèle configuré",
         "priceTiers": {
@@ -5140,6 +5149,10 @@
         "cloudBrowser": {
           "description": "Activez le navigateur cloud par défaut dans les nouvelles discussions. Vous pouvez le modifier dans chaque discussion.",
           "title": "Navigateur cloud"
+        },
+        "defaultModel": {
+          "description": "Utilisé sauf si un chat ou une exécution choisit un autre modèle.",
+          "title": "Modèle par défaut"
         },
         "description": "Choisissez les paramètres par défaut des nouvelles discussions et le mode d’envoi des messages.",
         "sectionTitle": "Chat"

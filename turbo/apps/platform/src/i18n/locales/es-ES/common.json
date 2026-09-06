@@ -5005,6 +5005,15 @@
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",
+        "menu": {
+          "adjustSettings": "Ajustar la configuración de {{model}}",
+          "backToChatModels": "Volver a los modelos de chat",
+          "backToModels": "Volver a los modelos",
+          "cancel": "Cancelar",
+          "changeModel": "Cambiar modelo de {{category}}, {{model}}",
+          "chatSettings": "Configuración del chat",
+          "confirm": "Confirmar"
+        },
         "models": "Modelos",
         "noConfiguredModels": "Sin modelos configurados",
         "priceTiers": {
@@ -5140,6 +5149,10 @@
         "cloudBrowser": {
           "description": "Activa el navegador en la nube de forma predeterminada en los chats nuevos. Puedes cambiarlo en cualquier chat.",
           "title": "Navegador en la nube"
+        },
+        "defaultModel": {
+          "description": "Se usa a menos que un chat o una ejecución elija otro modelo.",
+          "title": "Modelo predeterminado"
         },
         "description": "Elige los valores predeterminados para los chats nuevos y cómo se envían los mensajes.",
         "sectionTitle": "Chat"
