@@ -31,7 +31,7 @@ import {
   installApiTestConnectorCatalog,
   replaceApiTestConnectorCatalogFilteredAuthMethods,
 } from "../../../test-fixtures/connector-catalog";
-import { generateSandboxToken, generateOkouToken } from "../../auth/tokens";
+import { generateOkouToken } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
@@ -408,10 +408,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       storedScopes: [],
     });
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
-      actor,
-      "openai",
-    );
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "openai");
 
     const deleted = await connectorsApi.requestReadConnectorBySlug(
       actor,
@@ -586,7 +583,7 @@ describe("CONN-02: OAuth start and callback", () => {
     expect(failedConnector.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("preserves legacy intents and allows explicit sibling adds across OAuth callbacks", async () => {
+  it("supports exact reconnect and sibling adds across OAuth callbacks", async () => {
     mockGitHubConnectorOAuth();
 
     const bdd = createBddApi(context);
@@ -604,23 +601,6 @@ describe("CONN-02: OAuth start and callback", () => {
       actor,
       "github",
     );
-
-    const singleAccountStart = await connectorsApi.startOauth(
-      actor,
-      "github",
-      "oauth",
-      undefined,
-      { intent: "single-account" },
-    );
-    await connectorsApi.completeOauthCallback("github", {
-      code: "github-single-account-code",
-      state: stateFromAuthorizationUrl(singleAccountStart.authorizationUrl),
-    });
-    const singleAccountConnection = await connectorsApi.readConnectorBySlug(
-      actor,
-      "github",
-    );
-    expect(singleAccountConnection.id).toBe(initialConnection.id);
 
     const reconnectStart = await connectorsApi.startOauth(
       actor,
@@ -903,7 +883,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "test-oauth-device",
       "oauth",
       undefined,
-      { intent: "single-account" },
+      { intent: "add" },
     );
     expect(session).toMatchObject({
       connectorSlug: "test-oauth-device",
@@ -985,7 +965,7 @@ describe("CONN-02: OAuth device authorization", () => {
       undefined,
       { intent: "reconnect", connectionId: poll.connector.id },
     );
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth-device",
     );
@@ -1160,10 +1140,7 @@ describe("CONN-02: OAuth device authorization", () => {
       }),
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
-      actor,
-      "stripe",
-    );
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "stripe");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
@@ -1391,7 +1368,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "test-device:test-oauth-device-api-client:read:test",
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth-device",
     );
@@ -1442,7 +1419,7 @@ describe("CONN-02: OAuth device authorization", () => {
     expect(rePoll.connector.id).toBe(completed.connector.id);
     expect(provider.tokenBodies).toHaveLength(tokenCallsBeforeRePoll);
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth-device",
     );
@@ -1793,10 +1770,7 @@ describe("CONN-02: OAuth device authorization", () => {
     expect(JSON.stringify(base44Connector)).not.toContain(
       "base44-access-token",
     );
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
-      actor,
-      "base44",
-    );
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "base44");
 
     const slockProvider = mockSlockOAuthProvider();
     const slockSession = await connectorsApi.startDeviceAuth(
@@ -1848,7 +1822,7 @@ describe("CONN-02: OAuth device authorization", () => {
     const slockExpiryMs = Date.parse(slockConnector.tokenExpiresAt);
     expect(slockExpiryMs).toBeGreaterThan(now() + 850_000);
     expect(slockExpiryMs).toBeLessThanOrEqual(now() + 900_000);
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "slock");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "slock");
 
     mockSlockOAuthProvider({ deviceCode: "userinfo-error" });
     const failing = await connectorsApi.startDeviceAuth(
@@ -2205,10 +2179,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: false });
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      admin,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, created.id);
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: false });
@@ -2385,14 +2356,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       storageVersion: 3,
     });
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(admin, http.id);
-    await connectorsApi.disconnectSingleCustomConnectorAccount(admin, mcp.id);
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, http.id);
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, mcp.id);
     await connectorsApi.deleteCustomConnector(admin, http.id);
     await connectorsApi.deleteCustomConnector(admin, mcp.id);
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
-  it("uses explicit single-account semantics for HTTP and MCP custom connectors", async () => {
+  it("uses exact reconnect semantics for HTTP and MCP custom connectors", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
@@ -2426,15 +2397,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         connected: true,
         connectedAccountId: expect.any(String),
       });
+      if (connected.status !== 200 || !connected.body.connectedAccountId) {
+        throw new Error("Expected a connected custom connector account");
+      }
+      const connectedAccountId = connected.body.connectedAccountId;
 
       const replaced = await connectorsApi.requestSetCustomConnectorValues(
         admin,
         connector.id,
         [{ key: "secret", kind: "secret", value: "replacement-secret" }],
         [200],
-        { intent: "single-account" },
+        {
+          intent: "reconnect",
+          connectionId: connectedAccountId,
+        },
       );
-      expect(replaced.body).toMatchObject({ connected: true });
+      expect(replaced.body).toMatchObject({
+        connected: true,
+        connectedAccountId,
+      });
 
       const sibling = await connectorsApi.requestSetCustomConnectorValues(
         admin,
@@ -2445,17 +2426,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       );
       expect(sibling.body).toMatchObject({ connected: true });
 
-      const ambiguous = await connectorsApi.requestSetCustomConnectorValues(
-        admin,
-        connector.id,
-        [{ key: "secret", kind: "secret", value: "ambiguous-secret" }],
-        [409],
-        { intent: "single-account" },
-      );
-      expectApiError(ambiguous.body);
-      expect(ambiguous.body.error.message).toBe(
-        "Multiple connector accounts require an exact choice",
-      );
       await expect(
         connectorsApi.readCustomConnector(admin, connector.id),
       ).resolves.toMatchObject({ connected: true });
@@ -2676,6 +2646,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       member,
       created.id,
       agent.agentId,
+      {
+        intent: "reconnect",
+        connectionId: initialStorage.connector.id,
+      },
     );
     await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
       code: "bdd-custom-oauth-replacement-code",
@@ -2744,10 +2718,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         connectionId: initialStorage.connector.id,
       },
     );
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      member,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(member, created.id);
     const removedReconnect =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "bdd-custom-oauth-removed-reconnect-code",
@@ -2920,6 +2891,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       code: "oauth-to-manual-code",
       state: stateFromAuthorizationUrl(authorizationUrl),
     });
+    const [oauthAccount] = await connectorsApi.listCustomConnectorAccounts(
+      admin,
+      created.id,
+    );
+    if (!oauthAccount) {
+      throw new Error("Expected the custom OAuth account");
+    }
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: true, storageVersion: 1 });
@@ -2949,9 +2927,12 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     );
     expect(manual).toMatchObject({ connected: false, storageVersion: 2 });
-    await connectorsApi.setCustomConnectorValues(admin, created.id, [
-      { key: "api_key", kind: "secret", value: "manual-api-key" },
-    ]);
+    await connectorsApi.setCustomConnectorValues(
+      admin,
+      created.id,
+      [{ key: "api_key", kind: "secret", value: "manual-api-key" }],
+      { intent: "reconnect", connectionId: oauthAccount.id },
+    );
 
     const oauthAgain = await connectorsApi.updateCustomConnector(
       admin,
@@ -3189,7 +3170,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({ connected: false });
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(peer, "github");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(peer, "github");
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
 
@@ -3330,10 +3311,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(blockedStart.body);
     expect(blockedStart.body.error.code).toBe("FORBIDDEN");
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      member,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(member, created.id);
     await connectorsApi.deleteCustomConnector(admin, created.id);
     await bdd.deleteAgent(member, agent.agentId);
   });
@@ -4965,10 +4943,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       created.id,
     ]);
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      admin,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, created.id);
     const afterDisconnect = await connectorsApi.listCustomConnectors(admin);
     expect(
       afterDisconnect.find((connector) => {
@@ -5165,9 +5140,12 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     ]);
 
-    await connectorsApi.setCustomConnectorValues(admin, created.id, [
-      { key: "api_key", kind: "secret", value: "updated-secret" },
-    ]);
+    await connectorsApi.setCustomConnectorValues(
+      admin,
+      created.id,
+      [{ key: "api_key", kind: "secret", value: "updated-secret" }],
+      { intent: "reconnect", connectionId: parent.connector.id },
+    );
     const updatedParent = await readCustomConnectorCredentialStorageParent(
       context,
       {
@@ -5227,10 +5205,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       storageVersion: 1,
     });
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      admin,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, created.id);
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requiredOrgId(admin),
@@ -5527,6 +5502,12 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         { key: "note", kind: "variable", value: "invalid\u0000value" },
       ],
       [500],
+      storageBeforeFailure.connector
+        ? {
+            intent: "reconnect",
+            connectionId: storageBeforeFailure.connector.id,
+          }
+        : { intent: "add" },
     );
     expect(failed.status).toBe(500);
     await expect(
@@ -5582,6 +5563,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         value: "legacy-value",
       },
     ]);
+    const [initialAccount] = await connectorsApi.listCustomConnectorAccounts(
+      admin,
+      created.id,
+    );
+    if (!initialAccount) {
+      throw new Error("Expected the versioned custom connector account");
+    }
 
     const compatible = await connectorsApi.updateCustomConnector(
       admin,
@@ -5644,6 +5632,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       created.id,
       [{ key: "replacement", kind: "secret", value: "partial-replacement" }],
       [400],
+      { intent: "reconnect", connectionId: initialAccount.id },
     );
     expectApiError(partialRecovery.body);
     expect(partialRecovery.body.error.message).toContain(
@@ -5661,6 +5650,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
           value: "replacement-secret",
         },
       ],
+      { intent: "reconnect", connectionId: initialAccount.id },
     );
     expect(recovered).toMatchObject({
       connected: true,
@@ -6168,7 +6158,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       ],
     });
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
+    await connectorsApi.deleteDefaultCustomConnectorAccount(
       admin,
       saved.connector.id,
     );
@@ -6225,15 +6215,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expectApiError(secretSet.body);
       expect(secretSet.body.error.code).toBe("UNAUTHORIZED");
 
-      const disconnect =
-        await connectorsApi.requestDisconnectSingleCustomConnectorAccount(
-          actor,
-          connectorId,
-          [401],
-        );
-      expectApiError(disconnect.body);
-      expect(disconnect.body.error.code).toBe("UNAUTHORIZED");
-
       const oauthStart = await connectorsApi.requestStartCustomConnectorOAuth2(
         actor,
         connectorId,
@@ -6242,20 +6223,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expectApiError(oauthStart.body);
       expect(oauthStart.body.error.code).toBe("UNAUTHORIZED");
     }
-
-    const sandboxActor = bdd.user();
-    if (!sandboxActor.orgId) {
-      throw new Error("Expected an org-scoped sandbox actor");
-    }
-    const runId = randomUUID();
-    const disconnect =
-      await connectorsApi.requestDisconnectSingleCustomConnectorAccountWithToken(
-        generateSandboxToken(sandboxActor.userId, runId, sandboxActor.orgId),
-        connectorId,
-        [403],
-      );
-    expectApiError(disconnect.body);
-    expect(disconnect.body.error.code).toBe("FORBIDDEN");
   });
 
   it("invalidates every organization member for definitions and only the owner for credentials", async () => {
@@ -6291,10 +6258,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectCustomConnectorInvalidations([admin.userId, member.userId]);
 
     clearConnectorInvalidationMocks();
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      admin,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, created.id);
     expectCustomConnectorInvalidations([admin.userId]);
 
     clearConnectorInvalidationMocks();
@@ -6586,10 +6550,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(blockedGrant.body);
     expect(blockedGrant.body.error.code).toBe("FORBIDDEN");
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      admin,
-      created.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, created.id);
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({ connected: false });
@@ -7304,17 +7265,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(missing.body);
     expect(missing.body.error.message).toBe("Custom connector not found");
 
-    const missingDisconnect =
-      await connectorsApi.requestDisconnectSingleCustomConnectorAccount(
-        admin,
-        randomUUID(),
-        [404],
-      );
-    expectApiError(missingDisconnect.body);
-    expect(missingDisconnect.body.error.message).toBe(
-      "Connector target not found",
-    );
-
     await connectorsApi.setCustomConnectorSecret(
       member,
       shared.id,
@@ -7328,10 +7278,19 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       shared.id,
       "admin-secret-value",
     );
+    const [adminAccount] = await connectorsApi.listCustomConnectorAccounts(
+      admin,
+      shared.id,
+    );
+    if (!adminAccount) {
+      throw new Error("Expected the admin custom connector account");
+    }
     await connectorsApi.setCustomConnectorSecret(
       admin,
       shared.id,
       "admin-secret-value-rotated",
+      [200],
+      { intent: "reconnect", connectionId: adminAccount.id },
     );
     const adminList = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -7351,10 +7310,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       readConnected(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeTruthy();
 
-    await connectorsApi.disconnectSingleCustomConnectorAccount(
-      admin,
-      shared.id,
-    );
+    await connectorsApi.deleteDefaultCustomConnectorAccount(admin, shared.id);
     await expect(readConnected(admin, shared.id)).resolves.toBeFalsy();
     await expect(readConnected(member, shared.id)).resolves.toBeTruthy();
     await expect(
@@ -7709,6 +7665,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       actor,
       "test-oauth",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: supplemental.id },
     );
     expect(
       new URL(omittedStart.authorizationUrl).searchParams.get("scope"),
@@ -7735,7 +7693,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       connectionStatus: "connected",
     });
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth",
     );
@@ -7757,11 +7715,25 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       displayName: "OAuth Connector Agent",
     });
 
+    const manualConnection = await connectorsApi.connectManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-manual-test-oauth-token",
+        inputVariable: "bdd-input-variable",
+        tenantId: "bdd-manual-tenant",
+      },
+    );
+    const manual = await connectorsApi.readConnectorBySlug(actor, "test-oauth");
+    expect(manual.authMethod).toBe("api-token");
+
     const start = await connectorsApi.startOauth(
       actor,
       "test-oauth",
       "oauth",
       agent.agentId,
+      { intent: "reconnect", connectionId: manualConnection.id },
     );
     const authorizationUrl = new URL(start.authorizationUrl);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
@@ -7771,14 +7743,6 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "test-oauth-client",
     );
     const state = stateFromAuthorizationUrl(start.authorizationUrl);
-
-    await connectorsApi.connectManualGrant(actor, "test-oauth", "api-token", {
-      apiToken: "bdd-manual-test-oauth-token",
-      inputVariable: "bdd-input-variable",
-      tenantId: "bdd-manual-tenant",
-    });
-    const manual = await connectorsApi.readConnectorBySlug(actor, "test-oauth");
-    expect(manual.authMethod).toBe("api-token");
 
     const success = await connectorsApi.completeOauthCallback("test-oauth", {
       code: "bdd-test-oauth-code",
@@ -7864,7 +7828,13 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       accessToken: "bdd-test-oauth-api-access-token",
       refreshToken: "bdd-test-oauth-api-refresh",
     });
-    const apiStart = await connectorsApi.startOauth(actor, "test-oauth", "api");
+    const apiStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "api",
+      undefined,
+      { intent: "reconnect", connectionId: oauthConnector.id },
+    );
     const apiState = stateFromAuthorizationUrl(apiStart.authorizationUrl);
     await connectorsApi.completeOauthCallback("test-oauth", {
       code: "bdd-test-oauth-api-code",
@@ -7893,7 +7863,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     );
     expectNoVisibleSecret(apiListed, "bdd-test-oauth-api-access-token");
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth",
     );
@@ -7925,6 +7895,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       actor,
       "test-oauth",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: initial.id },
     );
     await connectorsApi.completeOauthCallback("test-oauth", {
       code: "bdd-rollback-oauth-code",
@@ -7970,7 +7942,10 @@ describe("CONN-02: test-oauth auth-code journey", () => {
         inputVariable: "bdd-failed-replacement-input\u0000",
         tenantId: "bdd-failed-replacement-tenant",
       },
-      { statuses: [500] },
+      {
+        statuses: [500],
+        account: { intent: "reconnect", connectionId: oauthConnector.id },
+      },
     );
     expect(failed.status).toBe(500);
     await expect(
@@ -7989,6 +7964,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
         inputVariable: "bdd-successful-replacement-input",
         tenantId: "bdd-successful-replacement-tenant",
       },
+      undefined,
+      { intent: "reconnect", connectionId: oauthConnector.id },
     );
     expect(manual).toMatchObject({
       id: oauthConnector.id,
@@ -8021,7 +7998,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "TEST_OAUTH_API_TOKEN_INPUT_VAR",
     ]);
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth",
     );
@@ -8071,6 +8048,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       actor,
       "test-oauth",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: explicitExpiry.id },
     );
     const defaultBefore = now();
     await connectorsApi.completeOauthCallback("test-oauth", {
@@ -8127,6 +8106,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       actor,
       "test-oauth",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: defaultExpiry.id },
     );
     const tokenFail = await connectorsApi.completeOauthCallback("test-oauth", {
       code: "bdd-code-token-fail",
@@ -8157,6 +8138,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       actor,
       "test-oauth",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: defaultExpiry.id },
     );
     const userinfoFail = await connectorsApi.completeOauthCallback(
       "test-oauth",
@@ -8197,18 +8180,19 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       code: "bdd-code-replacement-account",
       state: stateFromAuthorizationUrl(replacementStart.authorizationUrl),
     });
-    const replacementAccount = await connectorsApi.readConnectorBySlug(
-      actor,
-      "test-oauth",
-    );
+    const replacementAccounts =
+      await connectorsApi.listBuiltinConnectorAccounts(actor, "test-oauth");
+    const replacementAccount = replacementAccounts.find((account) => {
+      return account.externalId === "bdd-test-oauth-replacement-user";
+    });
     expect(replacementAccount).toMatchObject({
-      id: defaultExpiry.id,
       externalId: "bdd-test-oauth-replacement-user",
       externalUsername: "bdd-test-oauth-replacement",
       externalEmail: "bdd-test-oauth-replacement@example.test",
     });
+    expect(replacementAccount?.id).not.toBe(defaultExpiry.id);
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "slack");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "slack");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 });
@@ -8256,6 +8240,8 @@ describe("CONN-02: device-auth method switching", () => {
       actor,
       "test-oauth-device",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: apiPoll.connector.id },
     );
     const oauthPoll = await connectorsApi.pollDeviceAuth(
       actor,
@@ -8296,7 +8282,7 @@ describe("CONN-02: device-auth method switching", () => {
       }),
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       actor,
       "test-oauth-device",
     );
@@ -8373,9 +8359,6 @@ describe("CONN-02: GitHub installation link after connector OAuth", () => {
       null,
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
-      admin,
-      "github",
-    );
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(admin, "github");
   });
 });

@@ -1472,7 +1472,17 @@ async function connectStripeOAuthForOfficialWorkflow(
     code: args.code,
     state,
   });
-  return (await connectors.readConnectorBySlug(actor, "stripe")).id;
+  const accounts = await connectors.listBuiltinConnectorAccounts(
+    actor,
+    "stripe",
+  );
+  const connected = accounts.find((account) => {
+    return account.externalId === args.accountId;
+  });
+  if (!connected) {
+    throw new Error(`Expected Stripe account ${args.accountId}`);
+  }
+  return connected.id;
 }
 
 function configureResultEmailRecipient(actor: ApiTestUser): void {
@@ -6636,7 +6646,7 @@ describe.sequential("Official Workflow installations", () => {
     ]);
   });
 
-  it("revalidates a prepared Stripe transition after the same connector changes accounts", async () => {
+  it("revalidates a prepared Stripe transition after the default account changes", async () => {
     installCatalogStorageFixture();
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-stripe-binding-race-${suffix}`;
@@ -6701,7 +6711,12 @@ describe.sequential("Official Workflow installations", () => {
       accountId: "acct_official_after",
       code: `stripe-after-${suffix}`,
     });
-    expect(reconnectedId).toBe(connectorId);
+    expect(reconnectedId).not.toBe(connectorId);
+    await connectors.deleteBuiltinConnectorAccount(
+      actor,
+      "stripe",
+      connectorId,
+    );
     await resumeStructureTransitionPromotion();
     await olderWorker;
 
@@ -6738,7 +6753,7 @@ describe.sequential("Official Workflow installations", () => {
         kind: "event",
         eventType: "stripe-invoice-paid",
         eventConfig: expect.objectContaining({
-          connectorId,
+          connectorId: reconnectedId,
           stripeAccountId: "acct_official_after",
           mode: "live",
         }),

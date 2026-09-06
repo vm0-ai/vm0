@@ -788,6 +788,24 @@ function availableCustomConnectorRuntime(
   return result;
 }
 
+async function defaultCustomConnectorAccountId(
+  connectorApi: ReturnType<typeof createConnectorBddApi>,
+  actor: ApiTestUser,
+  customConnectorId: string,
+): Promise<string> {
+  const accounts = await connectorApi.listCustomConnectorAccounts(
+    actor,
+    customConnectorId,
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.isDefault;
+  });
+  if (!account) {
+    throw new Error("Expected a default custom connector account");
+  }
+  return account.id;
+}
+
 function customConnectorRuntimeAuthBody(
   runtime: AvailableCustomConnectorRuntime,
   encryptedSecrets: string,
@@ -9656,9 +9674,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      accessToken: "glpat-bdd",
-    });
+    const gitlabConnection = await connectors.connectManualGrant(
+      actor,
+      "gitlab",
+      "api-token",
+      { accessToken: "glpat-bdd" },
+    );
     await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
 
     const withoutHost = await api.createRun(actor, {
@@ -9677,10 +9698,17 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     // Reconnecting with the optional variable threads it into the next run.
-    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      accessToken: "glpat-bdd",
-      host: "gitlab.example.com",
-    });
+    await connectors.connectManualGrant(
+      actor,
+      "gitlab",
+      "api-token",
+      {
+        accessToken: "glpat-bdd",
+        host: "gitlab.example.com",
+      },
+      undefined,
+      { intent: "reconnect", connectionId: gitlabConnection.id },
+    );
     const withHost = await api.createRun(actor, {
       agentId,
       prompt: "use gitlab with the optional host",
@@ -11064,6 +11092,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "secret", kind: "secret", value: "custom-secret-value" },
       { key: "tenant", kind: "variable", value: "acme" },
     ]);
+    const customConnectionId = await defaultCustomConnectorAccountId(
+      connectors,
+      actor,
+      custom.id,
+    );
     const wrongTargetConnection = await connectors.connectManualGrant(
       actor,
       "figma",
@@ -11208,6 +11241,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       actor,
       custom.id,
       "updated-custom-secret-value",
+      [200],
+      { intent: "reconnect", connectionId: customConnectionId },
     );
     const currentUpdatedAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -11265,6 +11300,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       actor,
       custom.id,
       "recovered-custom-secret-value",
+      [200],
+      { intent: "reconnect", connectionId: customConnectionId },
     );
     const recoveredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -11328,14 +11365,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
-    await connectors.setCustomConnectorValues(actor, custom.id, [
-      {
-        key: "secret",
-        kind: "secret",
-        value: "restored-custom-secret-value",
-      },
-      { key: "tenant", kind: "variable", value: "changed" },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      custom.id,
+      [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "restored-custom-secret-value",
+        },
+        { key: "tenant", kind: "variable", value: "changed" },
+      ],
+      { intent: "reconnect", connectionId: customConnectionId },
+    );
     const restoredCredentialsAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       missingCredentialsAuthBody,
@@ -11522,7 +11564,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
-    await connectors.disconnectSingleCustomConnectorAccount(actor, custom.id);
+    await connectors.deleteDefaultCustomConnectorAccount(actor, custom.id);
     const [deletedExactRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -12022,6 +12064,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       userId: actor.userId,
       customConnectors: [runtimeConnector],
     });
+    const runtimeConnectionId = await defaultCustomConnectorAccountId(
+      connectors,
+      actor,
+      runtimeConnector.id,
+    );
     const listedRuntimeConnectors =
       await connectors.listCustomConnectors(actor);
     expect(
@@ -12040,13 +12087,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.updateAgentCustomConnectors(actor, agentId, [
       runtimeConnector.id,
     ]);
-    await connectors.setCustomConnectorValues(actor, runtimeConnector.id, [
-      {
-        key: "optional_secret",
-        kind: "secret",
-        value: "canonical-runtime-secret",
-      },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      runtimeConnector.id,
+      [
+        {
+          key: "optional_secret",
+          kind: "secret",
+          value: "canonical-runtime-secret",
+        },
+      ],
+      { intent: "reconnect", connectionId: runtimeConnectionId },
+    );
 
     const run = await api.createRun(actor, {
       agentId,
@@ -13387,10 +13439,22 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(kms.decryptCalls).toBe(1);
 
     context.mocks.ably.publish.mockClear();
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "subdomain", kind: "variable", value: "later-run" },
-      { key: "scope", kind: "variable", value: "later-scope" },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        { key: "subdomain", kind: "variable", value: "later-run" },
+        { key: "scope", kind: "variable", value: "later-scope" },
+      ],
+      {
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
+      },
+    );
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       "connector-runtime-sync",
       expect.anything(),
@@ -13568,8 +13632,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       tenant: `\${{ secrets.${tenantVarKey} }}`,
     });
 
+    const runtimeTarget = customConnectorRuntimeRegistration(
+      claim,
+      saved.connector.id,
+    );
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
+      targets: [runtimeTarget],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { api: runtimeApi, body: runtimeAuthBody } =
@@ -13592,13 +13660,25 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(missingHeaderAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        {
+          key: "secondary_token",
+          kind: "secret",
+          value: "optional-secondary",
+        },
+      ],
       {
-        key: "secondary_token",
-        kind: "secret",
-        value: "optional-secondary",
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
       },
-    ]);
+    );
     const restoredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -13862,6 +13942,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           value: "rewritten-reconnect-required-secret",
         },
       ],
+      {
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
+      },
     );
     expect(reconnected).toMatchObject({ connected: true });
     await expect(
@@ -13929,7 +14017,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await connectors.disconnectSingleCustomConnectorAccount(
+    await connectors.deleteDefaultCustomConnectorAccount(
       actor,
       saved.connector.id,
     );
@@ -13968,10 +14056,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "api_key", kind: "secret", value: "recovered-key" },
-      { key: "subdomain", kind: "variable", value: longSubdomain },
-    ]);
+    const recoveredConnection = await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        { key: "api_key", kind: "secret", value: "recovered-key" },
+        { key: "subdomain", kind: "variable", value: longSubdomain },
+      ],
+    );
+    if (!recoveredConnection.connectedAccountId) {
+      throw new Error("Expected the recovered custom connector account");
+    }
 
     const fixedPrefix = "very-long-fixed-prefix-for-custom-runtime-";
     await connectors.updateCustomConnector(actor, saved.connector.id, {
@@ -14005,9 +14100,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.requestCancelRun(actor, unroutableRun.runId, [200]);
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "subdomain", kind: "variable", value: "version-two" },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [{ key: "subdomain", kind: "variable", value: "version-two" }],
+      {
+        intent: "reconnect",
+        connectionId: recoveredConnection.connectedAccountId,
+      },
+    );
 
     const recoveredRun = await api.createRun(actor, {
       agentId,
@@ -14120,13 +14221,25 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(missingQueryAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        {
+          key: "tenant",
+          kind: "variable",
+          value: "restored-tenant",
+        },
+      ],
       {
-        key: "tenant",
-        kind: "variable",
-        value: "restored-tenant",
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
       },
-    ]);
+    );
     const restoredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,

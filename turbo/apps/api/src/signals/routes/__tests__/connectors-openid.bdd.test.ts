@@ -51,7 +51,7 @@ function mockSteamRuntimeEnv(): void {
 
 async function startSteamOpenId(
   actor: TestActor,
-  account: ConnectorAccountMutationIntent = { intent: "single-account" },
+  account: ConnectorAccountMutationIntent = { intent: "add" },
 ): Promise<URL> {
   mockSession(actor);
   const response = await accept(
@@ -284,7 +284,8 @@ describe("Steam OpenID connector", () => {
     expect(connector.body).toStrictEqual(initial.body);
 
     const replacementAuthorizationUrl = await startSteamOpenId(actor, {
-      intent: "single-account",
+      intent: "reconnect",
+      connectionId: initial.body.id,
     });
     await completeSteamOpenIdCallback(replacementAuthorizationUrl);
     mockSession(actor);
@@ -311,7 +312,7 @@ describe("Steam OpenID connector", () => {
       ).start({
         params: { connectorSlug: "github" },
         headers: authHeaders(),
-        body: { authMethod: "oauth", account: { intent: "single-account" } },
+        body: { authMethod: "oauth", account: { intent: "add" } },
       }),
       [400],
     );
