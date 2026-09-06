@@ -1524,8 +1524,21 @@ test.each([true, false])(
       name: "Create an intro video",
     });
     await expect(within(dialog).findByText("demo.mp4")).resolves.toBeVisible();
+    const preview = within(dialog).getByLabelText("Video preview for demo.mp4");
+    expect(preview).toHaveAttribute(
+      "src",
+      "https://resolved.example/video-upload-id",
+    );
+    expect(preview).toHaveAttribute("controls");
+    expect(preview).toHaveAttribute("playsinline");
+    expect(preview).not.toHaveAttribute("autoplay");
     await waitFor(() => {
       expect(search()).toBe("");
+    });
+    click(requiredButtonNamed("Remove demo.mp4", dialog));
+    await waitFor(() => {
+      expect(preview).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("demo.mp4")).not.toBeInTheDocument();
     });
   },
 );

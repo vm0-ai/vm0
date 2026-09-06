@@ -157,38 +157,57 @@ function FileDropzone({
             return (
               <div
                 key={source.key}
-                className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5"
+                className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"
               >
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text">
-                  <File size={16} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm font-medium text-foreground">
-                    {source.name}
-                  </strong>
-                  <small className="mt-0.5 block text-xs text-muted-foreground">
-                    {formatBytes(source.size)}
-                  </small>
-                </span>
-                <button
-                  type="button"
-                  aria-label={t(
-                    ($) => {
-                      return $.chat.introVideo.source.remove;
-                    },
-                    { filename: source.name },
-                  )}
-                  className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => {
-                    detach(
-                      removeSource(source.key, rootSignal),
-                      Reason.DomCallback,
-                      "remove intro video source",
-                    );
-                  }}
-                >
-                  <X size={15} />
-                </button>
+                <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text">
+                    <File size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm font-medium text-foreground">
+                      {source.name}
+                    </strong>
+                    <small className="mt-0.5 block text-xs text-muted-foreground">
+                      {formatBytes(source.size)}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={t(
+                      ($) => {
+                        return $.chat.introVideo.source.remove;
+                      },
+                      { filename: source.name },
+                    )}
+                    className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => {
+                      detach(
+                        removeSource(source.key, rootSignal),
+                        Reason.DomCallback,
+                        "remove intro video source",
+                      );
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+                {source.origin === "uploaded" &&
+                source.kind === "video" &&
+                source.previewUrl ? (
+                  <video
+                    src={source.previewUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="block aspect-video max-h-64 w-full bg-black object-contain"
+                    aria-label={t(
+                      ($) => {
+                        return $.artifacts.preview.videoLabel;
+                      },
+                      { filename: source.name },
+                    )}
+                  />
+                ) : null}
               </div>
             );
           })}

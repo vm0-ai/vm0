@@ -171,10 +171,9 @@ export const applyDesktopRecordingHandoff$ = command(
         draft.setInput$,
         "Create a polished intro video from this desktop screen recording.",
       );
-      // The desktop already collected the source, so the wizard opens where an
-      // in-browser recording lands: reviewing the take, one step from the
-      // avatar. It adopts the upload rather than the bytes, which the browser
-      // never had.
+      // Open the intro-video form with the uploaded take and its resolved
+      // playback URL. The browser adopts the existing attachments without
+      // downloading and uploading the recording again.
       set(introVideoWizardSignals.adoptUploadedRecording$, {
         attachmentIds: [handoff.recording.id, handoff.clicks.id],
         contentType: handoff.recording.contentType,

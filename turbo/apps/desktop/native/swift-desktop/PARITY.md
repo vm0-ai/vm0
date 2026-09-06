@@ -18,6 +18,19 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The downloaded `5bbc2f28` app completed a new
+[actual Desktop/server and recording walkthrough](https://cdn.vm0.io/artifacts/141aiw6e9l.json):
+11 authenticated preview API commands covered all nine command kinds with the
+same app and bundled helper processes. Two native area captures exercised
+pause/resume, floating stop, the global stop shortcut through CGHID, upload and
+Safari attachment adoption. The second capture retained audible final samples
+with a 3.646 ms audio/video packet-end difference and passed full decoding.
+This used a separately signed preview identity, not the primary production app.
+The current web form adopted the recording but did not render its retained
+playback URL. The source list now includes an inline player; page integration
+tests cover both onboarding paths and removing the player with the attachment.
+Deployed browser playback of that repair requires separate acceptance.
+
 Before the hostname repair, the downloaded `62800194` app and independent Swift
 project were verified at version 0.46.21. Its unchanged helper passed
 [15 release cases](https://cdn.vm0.io/artifacts/4j10holz91.json). A separate
