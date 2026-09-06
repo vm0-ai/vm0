@@ -408,6 +408,7 @@
         "sendMessage": "Invia messaggio",
         "setIcon": "Imposta icona (Ctrl+Maiusc+1-9)",
         "showShortcuts": "Mostra scorciatoie",
+        "togglePin": "Fissa / rimuovi dai fissati la chat",
         "toggleSidebar": "Attiva/disattiva la barra laterale"
       },
       "title": "Scorciatoie da tastiera"

@@ -7,6 +7,7 @@ import {
   loadRightThread$,
 } from "./chat-thread-panes.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import { pinChatThread$, unpinChatThread$ } from "./chat-event.ts";
 import {
   clearChatThreadEmojiFromThreadMeta$,
   openRenameChatThreadDialogFromThreadMeta$,
@@ -22,7 +23,10 @@ import {
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { voiceInputV2Enabled$ } from "../external/feature-switch.ts";
+import {
+  chatThreadPinShortcutEnabled$,
+  voiceInputV2Enabled$,
+} from "../external/feature-switch.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -171,6 +175,7 @@ function setupKeyboardScrollPrepareListener(
 }
 
 interface ChatPageShortcutActions {
+  canToggleThreadPin: (event: KeyboardEvent) => boolean;
   clearEmoji: () => void | Promise<void>;
   openEmojiMenu: () => void | Promise<void>;
   renameThread: () => void | Promise<void>;
@@ -180,6 +185,7 @@ interface ChatPageShortcutActions {
   scrollTop: () => void | Promise<void>;
   setEmoji: (emoji: string) => void | Promise<void>;
   toggleVoiceInput: () => void | Promise<void>;
+  toggleThreadPin: (event: KeyboardEvent) => void | Promise<void>;
 }
 
 interface ChatPageShortcutSetup {
@@ -244,6 +250,13 @@ const setupChatPageShortcutActions$ = command(
     setupChatPageGlobalShortcutListener(
       {
         actions: {
+          canToggleThreadPin: (event) => {
+            return (
+              get(chatThreadPinShortcutEnabled$) &&
+              !event.isComposing &&
+              event.keyCode !== 229
+            );
+          },
           clearEmoji: async () => {
             const thread = focusedThread();
             if (thread) {
@@ -304,6 +317,21 @@ const setupChatPageShortcutActions$ = command(
             const thread = focusedThread();
             if (thread) {
               set(thread.composer.voice.toggle$);
+            }
+          },
+          toggleThreadPin: async (event) => {
+            if (event.repeat) {
+              return;
+            }
+            const thread = focusedThread();
+            if (thread) {
+              await set(
+                get(thread.threadMeta$)?.pinnedAt
+                  ? unpinChatThread$
+                  : pinChatThread$,
+                thread.threadId,
+                signal,
+              );
             }
           },
         },
@@ -371,6 +399,7 @@ function createEmojiShortcutBindings({
 }
 
 function createChatPageShortcutBindings({
+  canToggleThreadPin,
   clearEmoji,
   openEmojiMenu,
   renameThread,
@@ -380,6 +409,7 @@ function createChatPageShortcutBindings({
   scrollTop,
   setEmoji,
   toggleVoiceInput,
+  toggleThreadPin,
 }: ChatPageShortcutActions): GlobalShortcutBindings {
   return {
     "shift+f2": {
@@ -397,6 +427,11 @@ function createChatPageShortcutBindings({
     "mod+shift+arrowdown": {
       allowInEditableTarget: true,
       run: navigateNext,
+    },
+    "mod+shift+d": {
+      allowInEditableTarget: true,
+      shouldHandle: canToggleThreadPin,
+      run: toggleThreadPin,
     },
     [COMPOSER_VOICE_INPUT_SHORTCUT]: {
       allowInEditableTarget: true,

@@ -58,6 +58,7 @@ export enum FeatureSwitchKey {
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   StableChatThreadNavigation = "stableChatThreadNavigation",
+  ChatThreadPinShortcut = "chatThreadPinShortcut",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   FeishuIntegration = "_feishuIntegration",

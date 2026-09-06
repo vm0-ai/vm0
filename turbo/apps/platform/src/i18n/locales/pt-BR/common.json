@@ -408,6 +408,7 @@
         "sendMessage": "Enviar mensagem",
         "setIcon": "Definir ícone (Ctrl+Shift+1-9)",
         "showShortcuts": "Mostrar atalhos",
+        "togglePin": "Fixar / desafixar conversa",
         "toggleSidebar": "Alternar barra lateral"
       },
       "title": "Atalhos de teclado"

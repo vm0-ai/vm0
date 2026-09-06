@@ -408,6 +408,7 @@
         "sendMessage": "Enviar mensaje",
         "setIcon": "Asignar icono (Ctrl+Mayús+1-9)",
         "showShortcuts": "Mostrar atajos de teclado",
+        "togglePin": "Fijar / desfijar chat",
         "toggleSidebar": "Mostrar u ocultar la barra lateral"
       },
       "title": "Atajos de teclado"

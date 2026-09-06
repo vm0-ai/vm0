@@ -394,6 +394,7 @@
         "sendMessage": "Send message",
         "setIcon": "Set icon (Ctrl+Shift+1-9)",
         "showShortcuts": "Show shortcuts",
+        "togglePin": "Pin / unpin chat",
         "toggleSidebar": "Toggle sidebar"
       },
       "title": "Keyboard Shortcuts"

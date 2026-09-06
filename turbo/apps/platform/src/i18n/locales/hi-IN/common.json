@@ -394,6 +394,7 @@
         "sendMessage": "मेसेज भेजें",
         "setIcon": "आइकन सेट करें (Ctrl+Shift+1-9)",
         "showShortcuts": "शॉर्टकट दिखाएँ",
+        "togglePin": "चैट पिन / अनपिन करें",
         "toggleSidebar": "साइडबार टॉगल करें"
       },
       "title": "कुंजीपटल अल्प मार्ग"

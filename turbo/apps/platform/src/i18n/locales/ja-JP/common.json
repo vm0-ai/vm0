@@ -394,6 +394,7 @@
         "sendMessage": "メッセージを送信する",
         "setIcon": "アイコンの設定 (Ctrl+Shift+1-9)",
         "showShortcuts": "ショートカットを表示する",
+        "togglePin": "チャットをピン留め／解除する",
         "toggleSidebar": "サイドバーの切り替え"
       },
       "title": "キーボードショートカット"
