@@ -1,7 +1,11 @@
 import { command, computed, state } from "ccstate";
 
 import type { ModelProviderSelection } from "../../../views/okou-page/components/model-provider-picker.tsx";
-import { updateUserModelPreference$ } from "../../external/user-model-preference.ts";
+import {
+  reloadUserModelPreference$,
+  updateUserModelPreference$,
+  userModelPreference$,
+} from "../../external/user-model-preference.ts";
 
 interface PendingDefaultModelSelection {
   readonly selection: ModelProviderSelection | null;
@@ -14,13 +18,12 @@ export const pendingDefaultModelSelection$ = computed((get) => {
   return get(internalPendingDefaultModelSelection$);
 });
 
-export const updateDefaultModelPreference$ = command(
+const persistDefaultModelPreference$ = command(
   async (
-    { set },
+    { get, set },
     selection: ModelProviderSelection | null,
     signal: AbortSignal,
   ): Promise<void> => {
-    set(internalPendingDefaultModelSelection$, { selection });
     await set(
       updateUserModelPreference$,
       {
@@ -28,9 +31,25 @@ export const updateDefaultModelPreference$ = command(
         serviceTier: selection?.codexServiceTier === "fast" ? "priority" : null,
       },
       signal,
-    ).finally(() => {
-      set(internalPendingDefaultModelSelection$, null);
-    });
+    );
     signal.throwIfAborted();
+    set(reloadUserModelPreference$);
+    await get(userModelPreference$);
+    signal.throwIfAborted();
+  },
+);
+
+export const updateDefaultModelPreference$ = command(
+  (
+    { set },
+    selection: ModelProviderSelection | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    set(internalPendingDefaultModelSelection$, { selection });
+    return set(persistDefaultModelPreference$, selection, signal).finally(
+      () => {
+        set(internalPendingDefaultModelSelection$, null);
+      },
+    );
   },
 );

@@ -9,7 +9,6 @@ import {
   type UpdateUserModelPreferenceRequest,
 } from "@okouai/api-contracts/contracts/user-model-preference";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import {
@@ -263,7 +262,6 @@ test("Chat settings fall back to Preference while the capability is disabled", a
 });
 
 test("Chat settings keep the agreed row order and save chat defaults", async () => {
-  const user = userEvent.setup({ delay: null });
   const updates = mockPreferences({ cloudBrowserEnabledByDefault: false });
   context.mocks.data.userModelPreference({
     selectedModel: "gpt-5.6-sol",
@@ -275,13 +273,15 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
   const modelUpdates: UpdateUserModelPreferenceRequest[] = [];
   context.mocks.api(userModelPreferenceContract.update, ({ body, respond }) => {
     modelUpdates.push(body);
-    return respond(200, {
+    const preference = {
       selectedModel: body.selectedModel,
       serviceTier: body.serviceTier,
       selectedVideoModel: null,
       selectedImageModel: null,
       updatedAt: "2026-09-06T00:00:01.000Z",
-    });
+    };
+    context.mocks.data.userModelPreference(preference);
+    return respond(200, preference);
   });
 
   await setupPage({
@@ -313,22 +313,19 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
 
-  await user.click(
-    await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }),
-  );
-  await user.click(
-    await screen.findByRole("option", { name: "GPT 5.6 Sol Fast" }),
-  );
+  click(await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }));
+  click(await screen.findByRole("option", { name: "GPT 5.6 Sol Fast" }));
   await waitFor(() => {
     expect(modelUpdates).toContainEqual({
       selectedModel: "gpt-5.6-sol",
       serviceTier: "priority",
     });
+    expect(
+      within(dialog).getByRole("combobox", { name: "GPT 5.6 Sol Fast" }),
+    ).toBeVisible();
   });
-  await user.click(
-    await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }),
-  );
-  await user.click(
+  click(within(dialog).getByRole("combobox", { name: "GPT 5.6 Sol Fast" }));
+  click(
     await screen.findByRole("option", { name: "Inherit from org default" }),
   );
   await waitFor(() => {
@@ -336,6 +333,11 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
       selectedModel: null,
       serviceTier: null,
     });
+    expect(
+      within(dialog).getByRole("combobox", {
+        name: "Inherit from org default",
+      }),
+    ).toBeVisible();
   });
 
   const cloudBrowser = within(dialog).getByRole("switch", {
