@@ -5160,6 +5160,12 @@
           "stores": "オブジェクトストア",
           "title": "IndexedDB ストレージ",
           "unavailable": "IndexedDB ストレージを利用できません。"
+        },
+        "voiceInput": {
+          "default": "デフォルト（{{model}}）",
+          "description": "音声入力 v2 のモデルを選択します。文字起こしモデルは {{model}} で文章を整えます。",
+          "title": "音声入力モデル",
+          "unavailable": "利用できないモデル（{{model}}）"
         }
       },
       "language": {

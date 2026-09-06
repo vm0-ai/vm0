@@ -5226,6 +5226,12 @@
           "stores": "object store",
           "title": "Spazio IndexedDB",
           "unavailable": "Lo spazio IndexedDB non è disponibile."
+        },
+        "voiceInput": {
+          "default": "Predefinito ({{model}})",
+          "description": "Scegli il modello per input vocale v2. I modelli di trascrizione usano {{model}} per rifinire il testo.",
+          "title": "Modello di input vocale",
+          "unavailable": "Modello non disponibile ({{model}})"
         }
       },
       "language": {

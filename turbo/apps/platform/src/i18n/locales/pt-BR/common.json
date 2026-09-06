@@ -5226,6 +5226,12 @@
           "stores": "armazenamentos de objetos",
           "title": "Armazenamento do IndexedDB",
           "unavailable": "O armazenamento do IndexedDB não está disponível."
+        },
+        "voiceInput": {
+          "default": "Padrão ({{model}})",
+          "description": "Escolha o modelo para entrada de voz v2. Os modelos de transcrição usam {{model}} para refinar o texto.",
+          "title": "Modelo de entrada de voz",
+          "unavailable": "Modelo indisponível ({{model}})"
         }
       },
       "language": {

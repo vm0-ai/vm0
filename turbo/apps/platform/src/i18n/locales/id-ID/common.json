@@ -5160,6 +5160,12 @@
           "stores": "penyimpanan objek",
           "title": "Penyimpanan IndexedDB",
           "unavailable": "Penyimpanan IndexedDB tidak tersedia."
+        },
+        "voiceInput": {
+          "default": "Default ({{model}})",
+          "description": "Pilih model untuk input suara v2. Model transkripsi menggunakan {{model}} untuk merapikan teks.",
+          "title": "Model input suara",
+          "unavailable": "Model tidak tersedia ({{model}})"
         }
       },
       "language": {

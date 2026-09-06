@@ -1,7 +1,6 @@
 import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { isStaffOrg } from "@okouai/core/staff-org";
 import { command, computed } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -16,9 +15,6 @@ const voiceIoPolishBody$ = bodyResultOf(voiceIoPolishContract.post);
 
 const voiceIoPolishEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!isStaffOrg(auth.orgId)) {
-    return false;
-  }
   const context = await loadUserFeatureSwitchContext(
     get(db$),
     auth.orgId,

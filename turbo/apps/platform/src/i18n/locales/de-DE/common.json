@@ -5169,6 +5169,12 @@
           "stores": "Objektspeicher",
           "title": "IndexedDB-Speicher",
           "unavailable": "IndexedDB-Speicher ist nicht verfügbar."
+        },
+        "voiceInput": {
+          "default": "Standard ({{model}})",
+          "description": "Wähle das Modell für Spracheingabe v2. Spracherkennungsmodelle verwenden {{model}} zur Textbereinigung.",
+          "title": "Modell für Spracheingabe",
+          "unavailable": "Modell nicht verfügbar ({{model}})"
         }
       },
       "language": {

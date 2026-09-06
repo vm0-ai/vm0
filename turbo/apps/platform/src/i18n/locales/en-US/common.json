@@ -5161,6 +5161,12 @@
           "stores": "object stores",
           "title": "IndexedDB storage",
           "unavailable": "IndexedDB storage is unavailable."
+        },
+        "voiceInput": {
+          "default": "Default ({{model}})",
+          "description": "Choose the model for voice input v2. Speech-to-text models and GPT Audio recordings over 90 seconds use {{model}} for cleanup.",
+          "title": "Voice input model",
+          "unavailable": "Unavailable model ({{model}})"
         }
       },
       "language": {
