@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.625.7](https://github.com/vm0-ai/vm0/compare/core-v8.625.6...core-v8.625.7) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ui:** follow base ui popup transitions and positioning ([#31942](https://github.com/vm0-ai/vm0/issues/31942)) ([38edfa5](https://github.com/vm0-ai/vm0/commit/38edfa57f3e1318ec0bfdd13a1fd840ab8929203))
+
 ## [8.625.6](https://github.com/vm0-ai/vm0/compare/core-v8.625.5...core-v8.625.6) (2026-09-05)
 
 
