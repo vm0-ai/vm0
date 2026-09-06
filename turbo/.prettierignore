@@ -7,6 +7,9 @@ pnpm-lock.yaml
 coverage
 .claude
 CHANGELOG.md
+# Preserve generated release notes in monthly archives.
+apps/api/changelog/
+apps/platform/changelog/
 .source
 Caddyfile
 .dev-process-pid
