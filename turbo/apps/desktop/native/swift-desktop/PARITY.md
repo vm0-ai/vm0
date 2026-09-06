@@ -524,8 +524,34 @@ Desktop authentication now starts alongside skeleton dismissal, with both waits
 owned by the page lifetime. A page integration test reproduces the missing native
 completion while stylesheet paint is held; the repair passes all 50 desktop-auth
 tests, including cancellation before a delayed token and stylesheet resolve.
-The PR progress record identifies subsequent deployed acceptance. Recording
-review, concurrent live account changes, and the full inventory remain open.
+The PR progress record identifies subsequent deployed acceptance. Concurrent live
+account changes and the full inventory remain open.
+
+### Recording delivery through onboarding
+
+[Current `84e627ef` CI acceptance](https://cdn.vm0.io/artifacts/btwjegxg1x.json)
+verified all nine Desktop/server command kinds and two window recordings. An
+already-onboarded account received the uploaded recording in ordinary Safari's
+source review; actual playback advanced from 2 to 25 to 37 seconds. Floating
+pause/resume/stop, discard, 2x click mapping and full video decoding also passed.
+Audio, microphone, area capture and multiple displays were not covered.
+
+The first recording exposed an onboarding defect: its complete handoff reached
+`/onboarding`, but selecting "I will explore on my own" cleared all parameters
+and opened chat without the recording. Onboarding navigation now retains only the
+validated recording handoff when clearing its other parameters. The redirect for
+an already-onboarded user visiting an onboarding URL does the same. The existing
+feature gate and file API still control whether the recording can be restored.
+Both page integration regressions failed before the repair. Deployed browser
+acceptance of this repair remains pending and is tracked in the PR.
+
+Later, the independent browser's Clerk token endpoint returned 404 with the SDK
+degraded; native feature refresh returned 401 and finalized the active capture
+without delivery before signing out. The source-close test was interrupted and
+is not accepted. The identity's disappearance and recovery, plus a fresh owner
+API check of the stopped host, remain unverified. Test processes quit normally;
+the original app/document/preferences hashes, clipboard and callback handlers
+were preserved.
 
 ### Configurable preview environment
 

@@ -6,6 +6,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { search } from "../../../signals/location.ts";
+
 import {
   click,
   queryAllByRoleFast,
@@ -501,3 +503,46 @@ test("A desktop recording survives leaving the presenter step", async () => {
   ).resolves.toBeVisible();
   expect(within(dialog).getByText("demo.mp4")).toBeVisible();
 });
+
+test.each([true, false])(
+  "A desktop recording reaches review after onboarding (needed: %s)",
+  async (needsOnboarding) => {
+    installIntroVideoFixture();
+    resolveDesktopRecordingFiles();
+    context.mocks.data.onboardingStatus({
+      needsOnboarding,
+      onboardingComplete: !needsOnboarding,
+      defaultAgentId: MESSAGE_EXPERIENCE_AGENT_ID,
+    });
+    const params = new URLSearchParams({
+      ...DESKTOP_HANDOFF_PARAMS,
+      choice: "explore",
+      category: "engineering",
+      onboarding_note: "stale onboarding note",
+      "x-vercel-protection-bypass": "preview-only-secret",
+    });
+    await setupPage({
+      context,
+      host: "app.okou.ai",
+      path: `/onboarding?${params.toString()}`,
+      featureSwitches: INTRO_VIDEO_SWITCHES,
+    });
+    if (needsOnboarding) {
+      click(
+        await screen.findByRole("radio", {
+          name: /I will explore on my own/u,
+        }),
+      );
+    }
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    await expect(
+      within(dialog).findByText("Your source is ready"),
+    ).resolves.toBeVisible();
+    expect(within(dialog).getByText("demo.mp4")).toBeVisible();
+    await waitFor(() => {
+      expect(search()).toBe("");
+    });
+  },
+);

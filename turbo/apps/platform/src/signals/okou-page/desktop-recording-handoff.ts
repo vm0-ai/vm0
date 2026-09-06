@@ -85,6 +85,21 @@ export function hasDesktopRecordingHandoff(params: URLSearchParams): boolean {
   return handoffFromParams(params) !== null;
 }
 
+export function desktopRecordingHandoffSearchParams(
+  params: URLSearchParams,
+): URLSearchParams {
+  const next = new URLSearchParams();
+  if (hasDesktopRecordingHandoff(params)) {
+    for (const name of desktopRecordingHandoffParamNames) {
+      const value = params.get(name);
+      if (value !== null) {
+        next.set(name, value);
+      }
+    }
+  }
+  return next;
+}
+
 export function desktopRecordingHandoffFeatureEnabled(
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): boolean {

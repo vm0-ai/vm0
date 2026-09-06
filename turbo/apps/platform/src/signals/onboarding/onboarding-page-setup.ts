@@ -46,6 +46,7 @@ import {
   capturePaidOnboardingStepViewed$,
 } from "../bootstrap/paid-funnel-telemetry.ts";
 import { onboardingStatus$ } from "../okou-page/onboarding.ts";
+import { desktopRecordingHandoffSearchParams } from "../okou-page/desktop-recording-handoff.ts";
 
 interface OnboardingPageConfig {
   readonly step: OnboardingRouteStep;
@@ -141,7 +142,7 @@ function createOnboardingPageSetup(
       set(detachedNavigateTo$, prompt ? ROUTES.prompt : ROUTES.home, {
         searchParams: prompt
           ? promptHandoffParams(searchParams)
-          : new URLSearchParams(),
+          : desktopRecordingHandoffSearchParams(searchParams),
         replace: true,
       });
       return;
