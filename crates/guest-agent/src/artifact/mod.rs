@@ -55,6 +55,17 @@ pub(crate) struct SnapshotResult {
     pub(crate) version_id: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PiMemoryPhase2CheckpointAttestation {
+    pub(crate) schema_version: u8,
+    pub(crate) lease_token: String,
+    pub(crate) claimed_revision: u32,
+    pub(crate) claimed_base_version_id: String,
+    pub(crate) selection_digest: String,
+    pub(crate) validated_version_id: String,
+}
+
 pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) mount_path: &'a str,
     pub(crate) files: Vec<FileEntry>,
@@ -71,6 +82,7 @@ struct SnapshotRequest<'a> {
     run_id: &'a str,
     message: &'a str,
     parent_version_id: &'a str,
+    maintenance_attestation: Option<PiMemoryPhase2CheckpointAttestation>,
 }
 
 impl<'a> From<CreateSnapshotRequest<'a>> for SnapshotRequest<'a> {
@@ -82,6 +94,7 @@ impl<'a> From<CreateSnapshotRequest<'a>> for SnapshotRequest<'a> {
             run_id: request.run_id,
             message: request.message,
             parent_version_id: request.parent_version_id,
+            maintenance_attestation: None,
         }
     }
 }
@@ -205,11 +218,21 @@ pub(crate) async fn walk_files_for_checkpoint(
 /// pre-walked file list (see [`walk_files_for_checkpoint`]) — this lets the
 /// checkpoint step share one walk between its skip-check fingerprint and the
 /// snapshot upload.
+#[cfg(test)]
 pub(crate) async fn create_snapshot(
     http: &HttpClient,
     request: CreateSnapshotRequest<'_>,
 ) -> Result<SnapshotResult, AgentError> {
-    let request = SnapshotRequest::from(request);
+    create_snapshot_with_attestation(http, request, None).await
+}
+
+pub(crate) async fn create_snapshot_with_attestation(
+    http: &HttpClient,
+    request: CreateSnapshotRequest<'_>,
+    maintenance_attestation: Option<PiMemoryPhase2CheckpointAttestation>,
+) -> Result<SnapshotResult, AgentError> {
+    let mut request = SnapshotRequest::from(request);
+    request.maintenance_attestation = maintenance_attestation;
     log_info!(
         LOG_TAG,
         "Creating direct upload snapshot for Storage {}",
@@ -261,6 +284,7 @@ async fn prepare_snapshot_step(
             storage_id: request.storage_id,
             files: request.files.as_ref(),
             parent_version_id: request.parent_version_id,
+            maintenance_attestation: request.maintenance_attestation.as_ref(),
         },
     )
     .await
@@ -345,6 +369,7 @@ async fn commit_snapshot_step(
             parent_version_id: request.parent_version_id,
             files: request.files.as_ref(),
             message,
+            maintenance_attestation: request.maintenance_attestation.as_ref(),
         },
         "Failed to parse commit response",
     )
@@ -495,21 +520,6 @@ mod tests {
         guest_common::log::clear_system_log_file();
     }
 
-    struct SandboxOpsOverrideGuard;
-
-    impl SandboxOpsOverrideGuard {
-        fn set(path: &std::path::Path) -> Self {
-            guest_common::telemetry::set_sandbox_ops_log_file(path);
-            Self
-        }
-    }
-
-    impl Drop for SandboxOpsOverrideGuard {
-        fn drop(&mut self) {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
-        }
-    }
-
     fn test_http_client(server: &httpmock::MockServer) -> Result<HttpClient, AgentError> {
         HttpClient::with_api_config(
             server.base_url(),
@@ -589,6 +599,7 @@ mod tests {
     async fn snapshot_rejects_empty_prepare_response_before_upload_or_commit()
     -> Result<(), AgentError> {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         disable_system_log();
         let server = MockServer::start();
 
@@ -659,7 +670,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -753,7 +764,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -883,7 +894,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -999,7 +1010,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1098,7 +1109,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -1185,7 +1196,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1293,7 +1304,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1367,7 +1378,7 @@ mod tests {
 
         let telemetry_dir = tempfile::tempdir().unwrap();
         let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
 
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -1435,6 +1446,7 @@ mod tests {
     #[tokio::test]
     async fn snapshot_requires_upload_urls_for_new_version() -> Result<(), AgentError> {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
         disable_system_log();
         let server = MockServer::start();
 

@@ -665,10 +665,7 @@ describe("PUT /api/agents/:id/custom-connectors", () => {
     await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
       connector.id,
     ]);
-    await connectors.disconnectSingleCustomConnectorAccount(
-      actor,
-      connector.id,
-    );
+    await connectors.deleteDefaultCustomConnectorAccount(actor, connector.id);
 
     const updated = await connectors.updateAgentCustomConnectors(
       actor,

@@ -82,6 +82,7 @@ import {
 } from "./canonical-chat-event-read.service";
 import { readCurrentChatEventHistory } from "./chat-event-history.service";
 import { loadWorkflowVolumeFiles } from "./workflow-volume.service";
+import { projectPiSessionJsonlForExport } from "@okouai/pi-agent-runtime/api";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const DOWNLOAD_URL_EXPIRY_SECONDS = 3600;
@@ -1043,6 +1044,7 @@ function collectConversationMessages(
     const sessionsWithHistory = await runtime.db
       .select({
         id: agentSessions.id,
+        cliAgentType: conversations.cliAgentType,
         cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
         sessionHistoryBlobEncoding: blobs.encoding,
         sessionHistoryBlobEncodedSize: blobs.encodedSize,
@@ -1081,9 +1083,16 @@ function collectConversationMessages(
         ),
       );
 
+      const exportedHistory =
+        session.cliAgentType === "pi"
+          ? Buffer.from(
+              projectPiSessionJsonlForExport(history.toString("utf8")),
+              "utf8",
+            )
+          : history;
       entries.push({
         path: `conversations/${session.id}-history.jsonl`,
-        content: history,
+        content: exportedHistory,
       });
       sessionHistoryCount += 1;
     }

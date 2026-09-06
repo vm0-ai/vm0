@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.46.25](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.24...desktop-v0.46.25) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.0
+
+## [0.46.24](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.23...desktop-v0.46.24) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.1
+
+## [0.46.23](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.22...desktop-v0.46.23) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+
+## [0.46.22](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.21...desktop-v0.46.22) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+
+## [0.46.21](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.20...desktop-v0.46.21) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+
+## [0.46.20](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.19...desktop-v0.46.20) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.6
+
+## [0.46.19](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.18...desktop-v0.46.19) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+
+## [0.46.18](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.17...desktop-v0.46.18) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+
 ## [0.46.17](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.16...desktop-v0.46.17) (2026-09-05)
 
 

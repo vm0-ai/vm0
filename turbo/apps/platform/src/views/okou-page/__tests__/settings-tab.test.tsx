@@ -15,6 +15,7 @@ import {
 import {
   AVATAR_PRESET_COUNT,
   DEFAULT_AGENT_AVATAR_URL,
+  avatarComposerUrl,
 } from "@okouai/core/agent-avatar";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -30,6 +31,24 @@ const context = testContext();
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const AGENT_ID = "a0000000-0000-4000-a000-000000000020";
+const FULL_BEARD_AVATAR_URL = avatarComposerUrl({
+  face: "round",
+  hair: "curly-cap",
+  expression: "full-beard",
+  skin: "light",
+  hairColor: "blue",
+  sweater: "lime",
+});
+
+const INCOMPATIBLE_FULL_BEARD_HAIR_OPTIONS = [
+  { label: "High bun", slug: "high-bun" },
+  { label: "Geometric long", slug: "geometric-long" },
+  { label: "Long center part", slug: "long-center-part" },
+  { label: "Triple bun", slug: "triple-bun" },
+  { label: "Topknot locks", slug: "topknot-locks" },
+  { label: "Low pigtails", slug: "low-pigtails" },
+  { label: "Ribbon updo", slug: "ribbon-updo" },
+] as const;
 
 function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
   return Array.from(root.querySelectorAll<HTMLImageElement>("img"), (img) => {
@@ -41,6 +60,18 @@ function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
 
 function isNeckOrSweaterLayer(src: string): boolean {
   return src.includes("/neck/") || src.includes("/sweater/");
+}
+
+function renderedAvatarOptionHairSrcs(
+  dialog: HTMLElement,
+  label: string,
+): string[] {
+  const option = within(dialog).getByLabelText(label);
+  return Array.from(option.querySelectorAll<HTMLImageElement>("img"), (img) => {
+    return img.src;
+  }).filter((src) => {
+    return src.includes("/hairs/");
+  });
 }
 
 function findCreateCustomAvatarButton(): Promise<HTMLElement> {
@@ -325,6 +356,49 @@ test("Keep every composer step and its edge options usable in one dialog", async
     if (index + 1 < steps.length) {
       click(within(dialog).getByLabelText("Next step"));
     }
+  }
+});
+
+test("Keep incompatible hairstyle previews stable after selecting another style", async () => {
+  prepareAgentProfile(FULL_BEARD_AVATAR_URL);
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: true,
+    },
+  });
+
+  click(await findCustomizeAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  click(within(dialog).getByLabelText("Next step"));
+  await expect(within(dialog).findByText("Hair")).resolves.toBeVisible();
+
+  const previewsBeforeSelection = new Map<string, string[]>();
+  for (const { label, slug } of INCOMPATIBLE_FULL_BEARD_HAIR_OPTIONS) {
+    const option = within(dialog).getByLabelText(label);
+    expect(option).toBeDisabled();
+    const hairSrcs = renderedAvatarOptionHairSrcs(dialog, label);
+    expect(hairSrcs).toStrictEqual([
+      expect.stringContaining(`/hairs/round/${slug}-blue-rear.svg`),
+      expect.stringContaining(`/hairs/round/${slug}-blue-front.svg`),
+    ]);
+    previewsBeforeSelection.set(label, hairSrcs);
+  }
+
+  click(within(dialog).getByLabelText("Sparse"));
+  await waitForAvatarFeedback(dialog);
+  expect(within(dialog).getByLabelText("Sparse")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  for (const { label } of INCOMPATIBLE_FULL_BEARD_HAIR_OPTIONS) {
+    expect(renderedAvatarOptionHairSrcs(dialog, label)).toStrictEqual(
+      previewsBeforeSelection.get(label),
+    );
   }
 });
 

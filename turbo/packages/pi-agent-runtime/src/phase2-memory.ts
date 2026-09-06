@@ -20,6 +20,7 @@ import {
 
 import {
   baseHasValidConsolidatedArtifacts,
+  applyValidatedPiMemoryPhase2Result,
   createPiMemoryPhase2Workspace,
   mapsEqual,
   Phase2InputInvalidError,
@@ -27,6 +28,7 @@ import {
   preparedSetFromSnapshot,
   removePiMemoryPhase2Workspace,
   snapshotPiMemoryPhase2Input,
+  snapshotMountedPiMemoryPhase2Base,
   type Phase2PrivateWorkspace,
   type SnapshotPhase2Input,
   validatePiMemoryPhase2Output,
@@ -478,6 +480,38 @@ async function runMaintenancePrompt(args: {
   let arbiter: Phase2TerminalArbiter | undefined;
   let failure: Phase2CapturedFailure | undefined;
   let provider: Phase2ProviderResult | undefined;
+  let attemptIndex = 0;
+  let usageFailed = false;
+  // The agent awaits subscribers before starting the next tool or request.
+  // Persist incurred usage at that boundary so later failure cannot erase it.
+  const unsubscribeUsage = args.session.agent.subscribe(async (event) => {
+    if (event.type !== "message_end" || event.message.role !== "assistant") {
+      return;
+    }
+    const message = event.message;
+    const index = attemptIndex++;
+    try {
+      await args.input.onUsage?.({
+        orgId: args.input.orgId,
+        userId: args.input.userId,
+        memoryStorageId: args.input.memoryStorageId,
+        claimedRevision: args.input.claimedRevision,
+        selectionDigest: args.input.selectionDigest,
+        responseId:
+          message.responseId ?? `attempt:${args.input.leaseToken}:${index}`,
+        usage: {
+          input: message.usage.input,
+          output: message.usage.output,
+          cacheRead: message.usage.cacheRead,
+          cacheWrite: message.usage.cacheWrite,
+          reasoning: message.usage.reasoning ?? 0,
+        },
+      });
+    } catch (error) {
+      usageFailed = true;
+      throw error;
+    }
+  });
   try {
     await confirmHeartbeat(args.input, args.state, args.startedAt);
     args.input.signal.throwIfAborted();
@@ -510,6 +544,11 @@ async function runMaintenancePrompt(args: {
 
   if (!failure && settlement) {
     failure = settlementFailure(settlement, args.input, args.state);
+  }
+
+  unsubscribeUsage();
+  if (usageFailed) {
+    throw engineError("observer_failed", args.input, args.state);
   }
 
   if (failure) {
@@ -755,19 +794,6 @@ async function executeConsolidation(
     testHooks,
   });
   emitLifecycle(input, state, startedAt, "model_completed");
-  try {
-    await input.onUsage?.({
-      orgId: input.orgId,
-      userId: input.userId,
-      memoryStorageId: input.memoryStorageId,
-      claimedRevision: input.claimedRevision,
-      selectionDigest: input.selectionDigest,
-      responseId: provider.responseId,
-      usage: provider.usage,
-    });
-  } catch {
-    throw engineError("observer_failed", input, state);
-  }
   signal.throwIfAborted();
   await testHooks?.beforeOutputValidation?.(workspace);
   signal.throwIfAborted();
@@ -904,4 +930,100 @@ export async function runPiMemoryPhase2Consolidation(
   signal: AbortSignal,
 ): Promise<PiMemoryPhase2ConsolidationResult> {
   return await runPiMemoryPhase2ConsolidationForTest(args, undefined, signal);
+}
+
+export interface PiMemoryPhase2MountedConsolidationArgs {
+  readonly memoryRoot: string;
+  readonly memoryStorageId: string;
+  readonly claimedRevision: number;
+  readonly claimedBaseVersionId: string;
+  readonly leaseToken: string;
+  readonly selectionDigest: string;
+  readonly selected: readonly PiMemoryPhase2ConsolidationArgs["selected"][number][];
+  readonly model: PiMemoryPhase2ConsolidationArgs["model"];
+  readonly onUsage?: PiMemoryPhase2ConsolidationArgs["onUsage"];
+}
+
+/**
+ * Run Phase 2 from the exact mounted Storage epoch and apply only a fully
+ * validated result back to that mount. Durable publication remains owned by
+ * the ordinary terminal artifact checkpoint.
+ */
+export async function runPiMemoryPhase2MountedConsolidation(
+  args: PiMemoryPhase2MountedConsolidationArgs,
+  signal: AbortSignal,
+): Promise<{
+  readonly status: "no_diff" | "prepared";
+  readonly validatedVersionId: string;
+}> {
+  const baseFiles = await snapshotMountedPiMemoryPhase2Base(args.memoryRoot);
+  const mountedBaseVersionId = createHash("sha256")
+    .update(
+      `storage:${args.memoryStorageId}\n${baseFiles
+        .map((file) => {
+          return `${file.path}:${file.hash}`;
+        })
+        .sort()
+        .join("\n")}`,
+    )
+    .digest("hex");
+  if (mountedBaseVersionId !== args.claimedBaseVersionId) {
+    throw new PiMemoryPhase2EngineError("input_invalid", {
+      candidateCount: args.selected.length,
+      fileCount: baseFiles.length,
+      totalBytes: baseFiles.reduce((sum, file) => {
+        return sum + file.size;
+      }, 0),
+      heartbeatCount: 0,
+    });
+  }
+  const result = await runPiMemoryPhase2Consolidation(
+    {
+      orgId: "sandbox",
+      userId: "sandbox",
+      memoryStorageId: args.memoryStorageId,
+      claimedRevision: args.claimedRevision,
+      leaseToken: args.leaseToken,
+      baseFiles,
+      selected: args.selected,
+      model: args.model,
+      onUsage: args.onUsage,
+      heartbeat: async () => {
+        return true;
+      },
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (result.selectionDigest !== args.selectionDigest) {
+    throw new PiMemoryPhase2EngineError("input_invalid", {
+      candidateCount: args.selected.length,
+      fileCount: baseFiles.length,
+      totalBytes: baseFiles.reduce((sum, file) => {
+        return sum + file.size;
+      }, 0),
+      heartbeatCount: 0,
+    });
+  }
+  try {
+    await applyValidatedPiMemoryPhase2Result({
+      memoryRoot: args.memoryRoot,
+      memoryStorageId: args.memoryStorageId,
+      baseFiles,
+      files: result.files,
+      contentIdentity: result.contentIdentity,
+    });
+  } catch {
+    throw new PiMemoryPhase2EngineError("agent_output_invalid", {
+      candidateCount: args.selected.length,
+      fileCount: result.manifest.fileCount,
+      totalBytes: result.manifest.totalBytes,
+      heartbeatCount: 0,
+    });
+  }
+  signal.throwIfAborted();
+  return {
+    status: result.status,
+    validatedVersionId: result.contentIdentity,
+  };
 }

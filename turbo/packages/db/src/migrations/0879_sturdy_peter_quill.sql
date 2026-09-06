@@ -1,3 +1,0 @@
-ALTER TABLE "org_custom_connectors" ADD COLUMN "skill_storage_version_id" varchar(64);--> statement-breakpoint
-ALTER TABLE "org_custom_connectors" ADD CONSTRAINT "fk_org_custom_connectors_skill_storage_version" FOREIGN KEY ("skill_storage_version_id") REFERENCES "public"."storage_versions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_org_custom_connectors_skill_storage_version" ON "org_custom_connectors" USING btree ("skill_storage_version_id");

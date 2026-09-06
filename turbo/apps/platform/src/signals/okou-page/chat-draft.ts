@@ -570,6 +570,7 @@ function createChatAttachment(file: File): ChatAttachment {
 // ---------------------------------------------------------------------------
 
 export interface DraftSignals {
+  hasLocalInput$: Computed<boolean>;
   input$: Computed<string>;
   hasInput$: Computed<boolean>;
   readInput$: Command<string, []>;
@@ -733,16 +734,19 @@ function reportUnavailableAttachments(filenames: readonly string[]): string {
 }
 
 function createDraftInputSignals() {
-  const internalInput$ = state("");
+  const internalInput$ = state<string | undefined>(undefined);
+  const hasLocalInput$ = computed((get) => {
+    return get(internalInput$) !== undefined;
+  });
   const internalInputSyncTarget$ = state<DraftInputSyncTarget | null>(null);
   const input$ = computed((get) => {
-    return get(internalInput$);
+    return get(internalInput$) ?? "";
   });
   const hasInput$ = computed((get) => {
-    return get(internalInput$).trim().length > 0;
+    return (get(internalInput$) ?? "").trim().length > 0;
   });
   const readInput$ = command(({ get }) => {
-    return get(internalInput$);
+    return get(internalInput$) ?? "";
   });
   const syncInput$ = command(({ get }, value: string) => {
     get(internalInputSyncTarget$)?.syncInput(value);
@@ -771,11 +775,12 @@ function createDraftInputSignals() {
     if (!text) {
       return;
     }
-    const base = get(internalInput$);
+    const base = get(internalInput$) ?? "";
     const separator = base.length > 0 && !base.endsWith(" ") ? " " : "";
     set(setInput$, `${base}${separator}${text}`);
   });
   return {
+    hasLocalInput$,
     input$,
     hasInput$,
     readInput$,

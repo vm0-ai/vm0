@@ -226,6 +226,19 @@ describe("Pi memory Stage 1 runtime", () => {
     expect(first).not.toContain("/secret/workspace");
   });
 
+  it("removes hidden citations from the active assistant branch", () => {
+    const hidden =
+      "<oai-mem-citation><citation_entries>memory.md:1-1|note=[private]</citation_entries></oai-mem-citation>";
+    const jsonl = branchedJsonl().replace("finished", `visible${hidden}`);
+    const projected = projectPiMemoryStage1History({
+      jsonl,
+      expectedSessionId: SESSION_ID,
+    });
+    expect(projected).toContain('"content":"visible"');
+    expect(projected).not.toContain("oai-mem-citation");
+    expect(projected).not.toContain("memory.md");
+  });
+
   it("redacts adversarial secret forms and truncates both ends deterministically", () => {
     const slackToken = [
       "x",

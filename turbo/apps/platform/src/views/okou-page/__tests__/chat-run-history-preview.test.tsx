@@ -11,6 +11,7 @@ import {
   findButton,
   installRunChat,
   promptEvent,
+  publishRunUpdate,
   queryButton,
   readyChat,
   RUN_PATH,
@@ -79,6 +80,13 @@ test.each([
     await findButton("Collapse work history");
     expect(document.querySelector("[data-chat-run-work-preview]")).toBeNull();
     expect(screen.getByText("Step 1")).toBeVisible();
+    expect(screen.getByText(`Step ${count}`)).toBeVisible();
+    expect(queryButton("Copy message", main)).toBeVisible();
+    expect(
+      document.querySelector(
+        "[data-chat-run-status-tail] [data-thinking-indicator]",
+      ),
+    ).toBeVisible();
 
     click(await findButton("Collapse work history"));
     await waitFor(() => {
@@ -86,8 +94,65 @@ test.each([
         document.querySelectorAll("[data-chat-run-work-preview]"),
       ).toHaveLength(expected.length);
     });
+    expect(screen.getByText(`Step ${count}`)).toBeVisible();
+    expect(queryButton("Copy message", main)).toBeVisible();
+    expect(
+      document.querySelector(
+        "[data-chat-run-status-tail] [data-thinking-indicator]",
+      ),
+    ).toBeVisible();
   },
 );
+
+test("Keep work history open and keyboard focus in place when another output arrives", async () => {
+  const events = [
+    promptEvent({
+      id: "focused-history-input",
+      runId: RUN_ID,
+      seqId: 1,
+      text: "Check every step",
+    }),
+    assistantEvent({
+      id: "focused-history-first",
+      runId: RUN_ID,
+      seqId: 2,
+      text: "Checked the dependencies",
+    }),
+    assistantEvent({
+      id: "focused-history-second",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "Checked the boundaries",
+    }),
+  ];
+  installRunChat({ chatEvents: events, activeRunIds: [RUN_ID] });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await readyChat();
+  click(await findButton("Expand work history"));
+  const collapse = await findButton("Collapse work history");
+  collapse.focus();
+
+  events.push(
+    assistantEvent({
+      id: "focused-history-third",
+      runId: RUN_ID,
+      seqId: 4,
+      text: "The checks are complete",
+    }),
+  );
+  publishRunUpdate();
+
+  await expect(
+    screen.findByText("The checks are complete"),
+  ).resolves.toBeVisible();
+  expect(screen.getByText("Checked the dependencies")).toBeVisible();
+  expect(screen.getByText("Checked the boundaries")).toBeVisible();
+  await expect(findButton("Collapse work history")).resolves.toHaveFocus();
+});
 
 test("Keep a card-only output in the collapsed history preview", async () => {
   installRunChat({

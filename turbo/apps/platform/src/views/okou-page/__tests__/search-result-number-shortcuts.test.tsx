@@ -46,7 +46,9 @@ async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
     ...modifiers,
   });
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
-  return { dialog, search: within(dialog).getByPlaceholderText(SEARCH_LABEL) };
+  const search = within(dialog).getByPlaceholderText(SEARCH_LABEL);
+  fireEvent.keyUp(search, { key: "Shift", ...modifiers, shiftKey: false });
+  return { dialog, search };
 }
 
 function numberedHints(dialog: HTMLElement): string[] {
@@ -128,20 +130,38 @@ function installSearchResources() {
 
 test.each([
   {
-    platform: "Mac",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    platform: "Mac Chrome",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
     modifiers: { metaKey: true, ctrlKey: false },
+    numberModifiers: { metaKey: true, ctrlKey: false },
+    firstHint: ["⌘", "1"],
+  },
+  {
+    platform: "Mac Safari",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
+    modifiers: { metaKey: true, ctrlKey: false },
+    numberModifiers: { metaKey: true, ctrlKey: true },
+    firstHint: ["⌃", "⌘", "1"],
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifiers: { metaKey: false, ctrlKey: true },
+    numberModifiers: { metaKey: false, ctrlKey: true },
+    firstHint: ["Ctrl", "1"],
   },
 ])(
-  "Open the ninth current chat from search on $platform",
-  async ({ userAgent, modifiers }) => {
+  "Limit empty search to 25 current chats and open the ninth result on $platform",
+  async ({ userAgent, modifiers, numberModifiers, firstHint }) => {
     context.mocks.browser.userAgent(userAgent);
-    const threads = Array.from({ length: 11 }, (_, index) => {
+    context.mocks.browser.matchMedia((query) => {
+      return (
+        query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+      );
+    });
+    const threads = Array.from({ length: 30 }, (_, index) => {
       return chatListThread(index + 1, `Chat ${index + 1}`, {
         pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
       });
@@ -156,15 +176,18 @@ test.each([
       auth: workspace.auth,
       featureSwitches,
     });
-    await waitFor(() => {
-      expect(sidebarThreadTitles()).toHaveLength(11);
-    });
-    const expectedTitles = sidebarThreadTitles();
-    expect(expectedTitles.slice(0, 3)).toStrictEqual([
+    const expectedTitles = [
       "Chat 1",
       "Chat 2",
-      "Chat 11",
-    ]);
+      ...Array.from({ length: 23 }, (_, index) => {
+        return `Chat ${30 - index}`;
+      }),
+    ];
+    await waitFor(() => {
+      expect(sidebarThreadTitles().slice(0, 3)).toStrictEqual(
+        expectedTitles.slice(0, 3),
+      );
+    });
     click(fastButton("Hide chat list"));
     const { dialog, search } = await openSearch(modifiers);
     await waitFor(() => {
@@ -181,29 +204,44 @@ test.each([
         "9",
       ]);
     });
-    fireEvent.keyUp(search, { key: "Shift", ...modifiers, shiftKey: false });
+    expect(
+      [...queryAllByRoleFast("option", dialog)[0]!.querySelectorAll("kbd")].map(
+        (keycap) => {
+          return keycap.textContent;
+        },
+      ),
+    ).toStrictEqual(firstHint);
+    fireEvent.keyUp(search, { key: modifiers.metaKey ? "Meta" : "Control" });
     await waitFor(() => {
       expect(numberedHints(dialog)).toStrictEqual([]);
     });
-    fireEvent.keyDown(search, { key: "Shift", ...modifiers, shiftKey: true });
+    fireEvent.keyDown(search, {
+      key: modifiers.metaKey ? "Meta" : "Control",
+      ...modifiers,
+    });
     await waitFor(() => {
       expect(numberedHints(dialog)).toHaveLength(9);
     });
     fireEvent.keyDown(search, {
-      key: "(",
+      key: "9",
       code: "Digit9",
-      ...modifiers,
-      shiftKey: true,
+      ...numberModifiers,
+      shiftKey: false,
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
-      expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
+      expect(pathname()).toBe(`/chats/${threads[23]!.id}`);
     });
     expect(screen.queryByTestId("chat-list-column")).toBeNull();
   },
 );
 
 test("Empty search follows the current agent and unread filter", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return (
+      query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+    );
+  });
   const first = chatListThread(1, "First pin", {
     pinnedAt: "2026-08-01T00:51:00.000Z",
   });
@@ -258,10 +296,10 @@ test("Empty search follows the current agent and unread filter", async () => {
     ]);
   });
   fireEvent.keyDown(search, {
-    key: "!",
+    key: "1",
     code: "Digit1",
     ctrlKey: true,
-    shiftKey: true,
+    shiftKey: false,
   });
   await waitFor(() => {
     expect(pathname()).toBe(`/chats/${second.id}`);
@@ -269,6 +307,11 @@ test("Empty search follows the current agent and unread filter", async () => {
 });
 
 test("Search numbers follow fresh matches and restart after filtering", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return (
+      query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+    );
+  });
   const titleMatch = chatListThread(1, "Budget planning");
   const messageMatch = chatListThread(2, "Project notes");
   const workspace = await installContinuityWorkspace(context, {
@@ -306,7 +349,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
   const { dialog, search } = await openSearch();
   await fill(search, "budget");
-  fireEvent.keyDown(search, { key: "Shift", ctrlKey: true, shiftKey: true });
+  fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
   await waitFor(() => {
     expect(searchResultTitles(dialog)).toStrictEqual([
       "Budget planning",
@@ -326,10 +369,10 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
     expect(numberedHints(dialog)).toStrictEqual(["1"]);
   });
   fireEvent.keyDown(search, {
-    key: "!",
+    key: "1",
     code: "Digit1",
     ctrlKey: true,
-    shiftKey: true,
+    shiftKey: false,
   });
   await waitFor(() => {
     expect(pathname()).toBe(`/chats/${messageMatch.id}`);
@@ -337,6 +380,11 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
 });
 
 test("Search shortcuts preserve typing and reset hints when focus is lost or the dialog closes", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return (
+      query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+    );
+  });
   const first = chatListThread(1, "First chat");
   const workspace = await installContinuityWorkspace(context, {
     caseId: 27,
@@ -357,13 +405,14 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
     { keyCode: 229 },
     { repeat: true },
     { altKey: true },
+    { shiftKey: true },
     { metaKey: true },
   ]) {
     const event = new KeyboardEvent("keydown", {
-      key: "!",
+      key: "1",
       code: "Digit1",
       ctrlKey: true,
-      shiftKey: true,
+      shiftKey: false,
       bubbles: true,
       cancelable: true,
       ...ignored,
@@ -373,10 +422,10 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
     expect(dialog).toBeInTheDocument();
   }
   fireEvent.keyDown(search, {
-    key: "(",
+    key: "9",
     code: "Digit9",
     ctrlKey: true,
-    shiftKey: true,
+    shiftKey: false,
   });
   expect(dialog).toBeInTheDocument();
   expect(search).toHaveValue("");
@@ -388,7 +437,7 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
   await userEvent.keyboard("19");
   expect(search).toHaveValue("19");
   await fill(search, "");
-  fireEvent.keyDown(search, { key: "Shift", ctrlKey: true, shiftKey: true });
+  fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
   await waitFor(() => {
     expect(numberedHints(dialog)).toStrictEqual(["1"]);
   });
@@ -415,6 +464,11 @@ test.each([
 ])(
   "Open a resource from numbered search results in $filter",
   async ({ filter, titles, hints, digit }) => {
+    context.mocks.browser.matchMedia((query) => {
+      return (
+        query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+      );
+    });
     const titleMatch = chatListThread(1, "Budget planning");
     const workspace = await installContinuityWorkspace(context, {
       caseId: 29,
@@ -429,7 +483,7 @@ test.each([
     });
     const { dialog, search } = await openSearch();
     await fill(search, "budget");
-    fireEvent.keyDown(search, { key: "Shift", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
     await waitFor(() => {
       expect(searchResultTitles(dialog)).toStrictEqual([
         "Budget planning",
@@ -453,7 +507,7 @@ test.each([
       key: digit,
       code: `Digit${digit}`,
       ctrlKey: true,
-      shiftKey: true,
+      shiftKey: false,
     });
     const expectedPath =
       filter === "Workflows" ? `/workflows/${workflow.id}` : "/artifacts";
@@ -469,6 +523,11 @@ test.each([
 );
 
 test("Disabling stable navigation restores activity order and workspace-wide search without shortcuts", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return (
+      query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+    );
+  });
   const firstPin = chatListThread(1, "Latest pin", {
     pinnedAt: "2026-08-01T00:52:00.000Z",
   });
@@ -506,10 +565,10 @@ test("Disabling stable navigation restores activity order and workspace-wide sea
   });
   expect(numberedHints(dialog)).toStrictEqual([]);
   const event = new KeyboardEvent("keydown", {
-    key: "!",
+    key: "1",
     code: "Digit1",
     ctrlKey: true,
-    shiftKey: true,
+    shiftKey: false,
     bubbles: true,
     cancelable: true,
   });

@@ -60,7 +60,6 @@ export enum FeatureSwitchKey {
   StableChatThreadNavigation = "stableChatThreadNavigation",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
-  ComposerConnectorPopoverPlacement = "composerConnectorPopoverPlacement",
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
   SharedThreadSharing = "sharedThreadSharing",

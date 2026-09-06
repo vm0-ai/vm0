@@ -301,6 +301,19 @@ pub mod webhooks {
             };
         }
 
+        /// Generated route bindings under `webhooks::agent::pi_memory_phase2`.
+        pub mod pi_memory_phase2 {
+            /// Generated route bindings under `webhooks::agent::pi_memory_phase2::usage`.
+            pub mod usage {
+                /// Record private memory maintenance provider usage.
+                /// Route contract: `POST /api/webhooks/agent/pi-memory-phase2/usage`.
+                pub const SEND: crate::Route = crate::Route {
+                    method: crate::Method::Post,
+                    path: "/api/webhooks/agent/pi-memory-phase2/usage",
+                };
+            }
+        }
+
         /// Generated route bindings under `webhooks::agent::storages`.
         pub mod storages {
             /// Generated route bindings under `webhooks::agent::storages::commit`.

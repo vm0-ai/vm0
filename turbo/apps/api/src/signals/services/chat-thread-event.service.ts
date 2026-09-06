@@ -63,6 +63,7 @@ export async function appendChatThreadEvent(
     readonly agentId: string;
     readonly eventId?: string;
     readonly title?: string | null;
+    readonly pinOrder?: string | null;
     readonly selectedModel?: string | null;
     readonly serviceTier?: ChatThreadServiceTier | null;
     readonly computerUseHostId?: string | null;
@@ -99,6 +100,7 @@ export async function appendChatThreadEvent(
       kind: args.kind,
       agentId: args.agentId,
       title: args.title ?? null,
+      pinOrder: args.pinOrder ?? null,
       selectedModel: args.selectedModel ?? null,
       serviceTier: args.serviceTier ?? null,
       computerUseHostId: args.computerUseHostId ?? null,
@@ -171,6 +173,7 @@ type ChatThreadEventRow = {
   readonly chatThreadId: string;
   readonly agentId: string | null;
   readonly title: string | null;
+  readonly pinOrder: string | null;
   readonly selectedModel: string | null;
   readonly serviceTier: ChatThreadServiceTier | null;
   readonly computerUseHostId: string | null;
@@ -202,6 +205,7 @@ function toApiChatThreadEvent(
     chatThreadId: row.chatThreadId,
     agentId: row.agentId,
     title: row.title,
+    pinOrder: row.pinOrder,
     selectedModel: row.selectedModel,
     serviceTier: row.serviceTier,
     computerUseHostId: row.computerUseHostId,
@@ -243,6 +247,7 @@ export async function getChatThreadEventsSince(
           chatThreadId: pageChatThreadEvent.chatThreadId,
           agentId: pageChatThreadEvent.agentId,
           title: pageChatThreadEvent.title,
+          pinOrder: pageChatThreadEvent.pinOrder,
           selectedModel: pageChatThreadEvent.selectedModel,
           serviceTier: pageChatThreadEvent.serviceTier,
           computerUseHostId: pageChatThreadEvent.computerUseHostId,
@@ -291,6 +296,7 @@ export async function getChatThreadEventsSince(
         chatThreadId: chatThreadEvents.chatThreadId,
         agentId: chatThreadEvents.agentId,
         title: chatThreadEvents.title,
+        pinOrder: chatThreadEvents.pinOrder,
         selectedModel: chatThreadEvents.selectedModel,
         serviceTier: chatThreadEvents.serviceTier,
         computerUseHostId: chatThreadEvents.computerUseHostId,

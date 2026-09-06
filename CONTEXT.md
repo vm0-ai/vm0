@@ -2,19 +2,33 @@
 
 ## Voice draft
 
-A transient ComposerSignals-owned voice-input lifecycle. It captures 16 kHz PCM through AudioWorklet and moves from idle to
-recording to transcribing, blocks submission while active, and inserts only the
-successful polished text into TipTap at the existing selection before returning
-to idle. Recording data, transcription state, and failures are never TipTap
-nodes or persisted draft state. Failures show a toast and return directly to
-idle so the user can record again.
+A local recording lifecycle initialized by the composer. It captures 16 kHz PCM
+through AudioWorklet and continuously appends ordered chunks to IndexedDB,
+isolated by user, organization, and thread or agent. IndexedDB is the sole
+persistent recording source; recording identity and state are never TipTap
+nodes or text-draft fields. A browser Web Lock owns each target, and writes and
+deletions check the recording identity. Forwarding composers use the selected
+thread or agent target too; their temporary text does not opt audio out of
+persistence. Closing a composer releases its recording and transcription work,
+even when the surrounding page remains open.
 
-No-speech provider results are not message text: an entirely inaudible recording
-fails without changing the draft, while silent chunks are omitted before the
-remaining spoken content is polished. Recorder startup failures and cancellation
-release microphone resources and the transient submission gate.
+Recording and transcription block submission. Failures retain saved audio for
+Retry; composer initialization restores interrupted work as retryable without
+opening the microphone. Retry rereads the saved recording, and explicit Remove
+deletes it. Valid polished text enters the prepared composer through ordinary
+input, then the recording is deleted without waiting for text autosave. This
+handoff is not atomic with text persistence. Storage failures remain visible
+and protect only the committed audio prefix.
 
-_Avoid_: Voice draft block, persisted voice draft, live transcript
+No-speech provider results and recordings with no captured samples complete
+silently without inserting text, saving a draft, or showing a toast. The
+transcription API returns 204 when there is no intelligible speech. Silent chunks
+are omitted before the remaining spoken content is polished; entirely silent
+recordings skip polishing.
+Recorder startup failures and cancellation release microphone resources;
+interrupted recordings with committed audio remain recoverable.
+
+_Avoid_: Voice draft block, server-synced recording draft, live transcript
 
 ## Archived chat history
 

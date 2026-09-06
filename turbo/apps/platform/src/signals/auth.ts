@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import {
   derivePlatformServiceOrigin,
   isOkouProductionHostname,
@@ -603,12 +604,19 @@ export const watchOrgSwitch$ = command(
         set(persistOrgId$, newOrgId);
         setPostHogOrganization(newOrgId);
 
+        // Desktop owns navigation until fresh-token IPC and handoff acknowledgement.
+        // Check both sides of the token wait: a route can change while it is pending.
+        if (signal.aborted || isDesktopAuthFlow()) {
+          return;
+        }
         await bestEffort(
           (async () => {
             return await clerk.session?.getToken({ skipCache: true });
           })(),
         );
-        location.href = "/";
+        if (!signal.aborted && !isDesktopAuthFlow()) {
+          location.href = "/";
+        }
       }),
     );
     signal.addEventListener("abort", unsubscribe);

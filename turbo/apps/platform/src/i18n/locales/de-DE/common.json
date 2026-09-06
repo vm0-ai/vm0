@@ -1006,6 +1006,20 @@
       "accessNotAllowed": "Zugriff nicht gestattet.",
       "userBanned": "Der Kontozugriff wurde gesperrt, da die Aktivität auf diesem Konto gegen die Nutzungsbedingungen von {{brandName}} verstößt. Wenn Sie Fragen haben, wenden Sie sich an {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Sie sind bei Desktop angemeldet. Sie können dieses Fenster schließen.",
+        "connecting": "Ihre Desktop-Sitzung wird verbunden.",
+        "consumed": "Die Anmeldung in Desktop wird abgeschlossen. Lassen Sie dieses Fenster geöffnet.",
+        "failed": "Die Anmeldung konnte nicht abgeschlossen werden. Starten Sie erneut über Desktop oder versuchen Sie es in diesem Browser noch einmal.",
+        "no-workspaces": "Erstellen Sie in der Web-App einen Arbeitsbereich oder treten Sie einem bei. Melden Sie sich dann erneut über Desktop an.",
+        "pending": "Öffnen Sie Desktop, um die Anmeldung fortzusetzen.",
+        "selecting": "Wählen Sie einen Arbeitsbereich für diesen Computer."
+      },
+      "reopen": "Desktop öffnen",
+      "retry": "Erneut versuchen",
+      "title": "Bei Desktop anmelden"
+    },
     "documentTitles": {
       "signIn": "Anmelden",
       "signUp": "Registrieren"
@@ -2227,14 +2241,20 @@
       "draft": "Entwurf",
       "empty": "Starten Sie eine Konversation; sie wird dann hier angezeigt",
       "markUnread": "Als ungelesen markieren",
+      "movePinDown": "Nach unten verschieben",
+      "movePinUp": "Nach oben verschieben",
       "newChatWith": "Neuer Chat mit {{agentName}}",
       "noUnread": "Keine ungelesenen Chats",
       "openChatMenu": "Chat-Menü öffnen",
       "openListMenu": "Chatlisten-Menü öffnen",
       "pin": "Chat anheften",
+      "pinDropAfter": "Nach {{title}} ablegen",
+      "pinDropBefore": "Vor {{title}} ablegen",
       "pinned": "Angepinnt",
       "rename": "Chat umbenennen",
       "renameDescription": "Geben Sie einen neuen Namen für diesen Chat-Thread ein.",
+      "reorderInstructions": "Zum Neuanordnen ziehen. Mit der Leertaste aufnehmen, mit den Pfeiltasten verschieben, mit der Leertaste ablegen oder mit Esc abbrechen.",
+      "reorderThread": "{{title}} neu anordnen",
       "titlePlaceholder": "Chattitel",
       "unpin": "Chat nicht mehr anheften",
       "unread": "Ungelesen",
@@ -2357,7 +2377,9 @@
     },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
+      "cleanupFailed": "Der Text wurde eingefügt, aber die gespeicherte Aufnahme konnte nicht entfernt werden.",
       "confirmRecording": "OK",
+      "discarding": "Sprachentwurf wird entfernt...",
       "input": "Spracheingabe",
       "inputLimitReached": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Pro oder Team.",
       "inputLimitReachedMember": "Das Limit für die Spracheingabe wurde erreicht. Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade für höhere Limits.",
@@ -2366,8 +2388,13 @@
       "inputLimitReachedReset": "Das Limit für die Spracheingabe wurde erreicht. Bitte warten Sie, bis Ihr Limit zurückgesetzt wird.",
       "microphoneAccessDenied": "Der Zugriff auf das Mikrofon wurde verweigert. Erlauben Sie den Mikrofonzugriff und versuchen Sie es erneut.",
       "openingMicrophone": "Mikrofon öffnen...",
+      "removeDraft": "Sprachentwurf entfernen",
+      "restoreFailed": "Ihr Sprachentwurf konnte nicht geladen werden. Versuchen Sie es erneut.",
+      "retry": "Erneut versuchen",
+      "retryReady": "Ihre Aufnahme bleibt erhalten. Versuchen Sie die Transkription erneut.",
       "starting": "Spracheingabe starten",
       "stopRecording": "Aufnahme stoppen",
+      "storageFailed": "Audio konnte nicht gespeichert werden. Erneut versuchen stellt nur bereits auf diesem Gerät gespeichertes Audio wieder her.",
       "transcribing": "Transkribieren",
       "transcribingProgress": "Transkribieren...",
       "transcriptionFailed": "Die Sprachtranskription ist fehlgeschlagen. Versuchen Sie es erneut."
@@ -5128,6 +5155,12 @@
           "stores": "Objektspeicher",
           "title": "IndexedDB-Speicher",
           "unavailable": "IndexedDB-Speicher ist nicht verfügbar."
+        },
+        "voiceInput": {
+          "default": "Standard ({{model}})",
+          "description": "Wähle das Modell für Spracheingabe v2. Spracherkennungsmodelle verwenden {{model}} zur Textbereinigung.",
+          "title": "Modell für Spracheingabe",
+          "unavailable": "Modell nicht verfügbar ({{model}})"
         }
       },
       "language": {

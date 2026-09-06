@@ -1,5 +1,6 @@
 import type { ChatEventRow } from "./chat-event-rows";
 import { chatEventSchema, type ChatEvent } from "./chat-threads";
+import { visiblePiMemoryCitationText } from "./pi-memory-citations";
 
 function requiredRowField<T>(
   value: T | null,
@@ -21,10 +22,14 @@ function requiredRowField<T>(
  */
 export function chatEventFromRow(row: ChatEventRow): ChatEvent {
   const payload = row.payload;
+  const visibleContent =
+    payload?.content === undefined
+      ? null
+      : visiblePiMemoryCitationText(payload.content);
   const base = {
     id: row.id,
     threadId: row.chatThreadId,
-    content: payload?.content ?? null,
+    content: visibleContent,
     runId:
       row.eventType === "control.interrupt"
         ? undefined
@@ -108,11 +113,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
       return {
         ...base,
         eventType: "output.message",
-        content: requiredRowField(
-          payload?.content ?? null,
-          row.eventType,
-          "content",
-        ),
+        content: requiredRowField(visibleContent, row.eventType, "content"),
       };
     },
     "output.error": () => {
@@ -138,11 +139,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
       return {
         ...base,
         eventType: "output.followups",
-        content: requiredRowField(
-          payload?.content ?? null,
-          row.eventType,
-          "content",
-        ),
+        content: requiredRowField(visibleContent, row.eventType, "content"),
       };
     },
     "run.queued": () => {

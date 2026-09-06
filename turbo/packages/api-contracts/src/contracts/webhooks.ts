@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
+import { piMemoryCitationSchema } from "./pi-memory-citations";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -39,6 +40,20 @@ const sha256HexSchema = z
     /^[a-f0-9]{64}$/,
     "hash must be a lowercase 64-character SHA-256 hex string",
   );
+
+const piMemoryPhase2CheckpointAttestationSchema = z
+  .object({
+    // New Guests require receipt-aware prepare/commit. Old APIs reject v2
+    // before upload. Read v1 while pinned Guests drain (up to two hours);
+    // remove v1 under #31067 after that drain and the API rollback window.
+    schemaVersion: z.number().int().min(1).max(2),
+    leaseToken: z.uuid(),
+    claimedRevision: z.number().int().positive(),
+    claimedBaseVersionId: sha256HexSchema,
+    selectionDigest: sha256HexSchema,
+    validatedVersionId: sha256HexSchema,
+  })
+  .strict();
 
 const thirdPartyWebhookErrorSchema = z.object({ error: z.string() });
 const thirdPartyWebhookOkSchema = z.union([
@@ -540,6 +555,68 @@ const agentEventSchema = z
   })
   .passthrough();
 
+const piMemoryCitationTransportSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    citations: z
+      .array(
+        z
+          .object({
+            sequenceNumber: eventSequenceNumberSchema,
+            citation: piMemoryCitationSchema,
+          })
+          .strict(),
+      )
+      .max(32),
+  })
+  .strict()
+  .superRefine((transport, context) => {
+    const sequences = transport.citations.map((citation) => {
+      return citation.sequenceNumber;
+    });
+    if (new Set(sequences).size !== sequences.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["citations"],
+        message: "memory citation sequences must be unique",
+      });
+    }
+  });
+
+const webhookEventsBodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    events: z.array(agentEventSchema).min(1, "events array cannot be empty"),
+    piMemoryCitationTransport: piMemoryCitationTransportSchema.optional(),
+  })
+  .superRefine((body, context) => {
+    if (!body.piMemoryCitationTransport) {
+      return;
+    }
+    const eventSequences = new Set(
+      body.events.map((event) => {
+        return event.sequenceNumber;
+      }),
+    );
+    for (const [
+      index,
+      citation,
+    ] of body.piMemoryCitationTransport.citations.entries()) {
+      if (!eventSequences.has(citation.sequenceNumber)) {
+        context.addIssue({
+          code: "custom",
+          path: [
+            "piMemoryCitationTransport",
+            "citations",
+            index,
+            "sequenceNumber",
+          ],
+          message: "memory citation sequence must belong to this event batch",
+        });
+      }
+    }
+  });
+
 const firewallAuthErrorSchema = z.object({
   error: z.object({
     message: z.string(),
@@ -651,10 +728,7 @@ export const webhookEventsContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/events",
     headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      events: z.array(agentEventSchema).min(1, "events array cannot be empty"),
-    }),
+    body: webhookEventsBodySchema,
     responses: {
       200: z.object({
         received: z.number(),
@@ -693,6 +767,7 @@ export const webhookCompleteContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Handle agent run completion",
   },
@@ -1002,6 +1077,9 @@ export const webhookStoragesPrepareContract = c.router({
       force: z.boolean().optional(),
       baseVersion: z.string().optional(),
       changes: storageChangesSchema.optional(),
+      /** Private proof emitted only after sandbox-local Phase 2 validation. */
+      maintenanceAttestation:
+        piMemoryPhase2CheckpointAttestationSchema.optional(),
     }),
     responses: {
       200: z.object({
@@ -1046,6 +1124,9 @@ export const webhookStoragesCommitContract = c.router({
       parentVersionId: z.string().optional(),
       files: storageManifestFilesSchema,
       message: z.string().optional(),
+      /** Private proof emitted only after sandbox-local Phase 2 validation. */
+      maintenanceAttestation:
+        piMemoryPhase2CheckpointAttestationSchema.optional(),
     }),
     responses: {
       200: z.object({
@@ -1143,3 +1224,70 @@ export const webhookUsageEventContract = c.router({
 });
 
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
+
+/** Private, content-free provider-attempt accounting for mounted maintenance. */
+export const webhookPiMemoryPhase2UsageContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/pi-memory-phase2/usage",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        schemaVersion: z.literal(1),
+        runId: z.uuid(),
+        memoryStorageId: z.uuid(),
+        leaseToken: z.uuid(),
+        claimedRevision: z.number().int().positive(),
+        claimedBaseVersionId: z.string().regex(/^[a-f0-9]{64}$/u),
+        selectionDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+        attempts: z
+          .array(
+            z
+              .object({
+                responseId: z.string().min(1).max(255),
+                usage: z
+                  .object({
+                    input: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    output: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    cacheRead: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    cacheWrite: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                    reasoning: z
+                      .number()
+                      .int()
+                      .nonnegative()
+                      .max(Number.MAX_SAFE_INTEGER),
+                  })
+                  .strict(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(256),
+      })
+      .strict(),
+    responses: {
+      200: z.object({ success: z.boolean() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Record private memory maintenance provider usage",
+  },
+});

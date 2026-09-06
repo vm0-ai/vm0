@@ -1,5 +1,169 @@
 # Changelog
 
+## [0.849.0](https://github.com/vm0-ai/vm0/compare/app-v0.848.1...app-v0.849.0) (2026-09-06)
+
+
+### Features
+
+* add voice input model preferences and honor lab overrides ([#31982](https://github.com/vm0-ai/vm0/issues/31982)) ([7b114d5](https://github.com/vm0-ai/vm0/commit/7b114d5b3b2683d2987daf09d651403f2951dc4c))
+
+
+### Bug Fixes
+
+* place chat shortcut hints after row actions ([#31994](https://github.com/vm0-ai/vm0/issues/31994)) ([a0bc24a](https://github.com/vm0-ai/vm0/commit/a0bc24a59d24f8215165e8e2cce4976d46272721))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.0
+    * @okouai/core bumped to 8.625.11
+
+## [0.848.1](https://github.com/vm0-ai/vm0/compare/app-v0.848.0...app-v0.848.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* handle thread number shortcuts in safari web apps ([#31987](https://github.com/vm0-ai/vm0/issues/31987)) ([9482af4](https://github.com/vm0-ai/vm0/commit/9482af45d227bc8df673855f960fa775f3208131))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.1
+    * @okouai/core bumped to 8.625.10
+
+## [0.848.0](https://github.com/vm0-ai/vm0/compare/app-v0.847.0...app-v0.848.0) (2026-09-06)
+
+
+### Features
+
+* add cursor context and light polish to voice input ([#31968](https://github.com/vm0-ai/vm0/issues/31968)) ([12d0c92](https://github.com/vm0-ai/vm0/commit/12d0c9232684f9223ade010c40f3fad752b079df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+    * @okouai/core bumped to 8.625.9
+
+## [0.847.0](https://github.com/vm0-ai/vm0/compare/app-v0.846.0...app-v0.847.0) (2026-09-06)
+
+
+### Features
+
+* **platform:** add pwa thread navigation hints ([#31938](https://github.com/vm0-ai/vm0/issues/31938)) ([e5cbf8b](https://github.com/vm0-ai/vm0/commit/e5cbf8b3fff605d41581d511fc890a6d87a9bdbe))
+
+
+### Bug Fixes
+
+* **platform:** keep incompatible hairstyle previews stable ([#31966](https://github.com/vm0-ai/vm0/issues/31966)) ([854b91e](https://github.com/vm0-ai/vm0/commit/854b91e89bbf20a41458b6c8f7f0dcb025d6f2f9)), closes [#31935](https://github.com/vm0-ai/vm0/issues/31935)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+    * @okouai/core bumped to 8.625.8
+
+## [0.846.0](https://github.com/vm0-ai/vm0/compare/app-v0.845.8...app-v0.846.0) (2026-09-06)
+
+
+### Features
+
+* **platform:** add desktop authentication bridge routes ([#31960](https://github.com/vm0-ai/vm0/issues/31960)) ([f1e3d4b](https://github.com/vm0-ai/vm0/commit/f1e3d4b7284d5c0fdae40887d0f24a3d08d5d824))
+
+
+### Bug Fixes
+
+* **ui:** follow base ui popup transitions and positioning ([#31942](https://github.com/vm0-ai/vm0/issues/31942)) ([38edfa5](https://github.com/vm0-ai/vm0/commit/38edfa57f3e1318ec0bfdd13a1fd840ab8929203))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.625.7
+    * @okouai/ui bumped to 1.5.4
+
+## [0.845.8](https://github.com/vm0-ai/vm0/compare/app-v0.845.7...app-v0.845.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* persist voice recordings for transcription retry ([#31845](https://github.com/vm0-ai/vm0/issues/31845)) ([2360162](https://github.com/vm0-ai/vm0/commit/2360162954630496be2b8b597af6b8aa7b0d3b72))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31954](https://github.com/vm0-ai/vm0/issues/31954)) ([8733345](https://github.com/vm0-ai/vm0/commit/8733345cc9d02379fc7a22c2525509b87833c46b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+    * @okouai/core bumped to 8.625.6
+
+## [0.845.7](https://github.com/vm0-ai/vm0/compare/app-v0.845.6...app-v0.845.7) (2026-09-05)
+
+
+### Bug Fixes
+
+* finish voice input silently when no speech is detected ([#31933](https://github.com/vm0-ai/vm0/issues/31933)) ([b37822c](https://github.com/vm0-ai/vm0/commit/b37822c16ec7479dfc1fa1ecdefc85dd8ee53a6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.6
+    * @okouai/core bumped to 8.625.5
+
+## [0.845.6](https://github.com/vm0-ai/vm0/compare/app-v0.845.5...app-v0.845.6) (2026-09-05)
+
+
+### Bug Fixes
+
+* restore the search dialog chat result limit ([#31928](https://github.com/vm0-ai/vm0/issues/31928)) ([96bb60e](https://github.com/vm0-ai/vm0/commit/96bb60ed942feae6d12b1cf3b8586503b60d1675))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+    * @okouai/core bumped to 8.625.4
+
+## [0.845.5](https://github.com/vm0-ai/vm0/compare/app-v0.845.4...app-v0.845.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **platform:** preserve connector account card layout while loading ([#31914](https://github.com/vm0-ai/vm0/issues/31914)) ([aed13b2](https://github.com/vm0-ai/vm0/commit/aed13b2c13a2cbff2fd03503a14f7c315764ad73))
+
+## [0.845.4](https://github.com/vm0-ai/vm0/compare/app-v0.845.3...app-v0.845.4) (2026-09-05)
+
+
+### Refactoring
+
+* **platform:** rename browser globals and clerk bootstrap to okou ([#31904](https://github.com/vm0-ai/vm0/issues/31904)) ([d0e609d](https://github.com/vm0-ai/vm0/commit/d0e609d122cc970ebebad59a800836b311d4002b))
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+    * @okouai/connectors bumped to 3.3.6
+    * @okouai/core bumped to 8.625.3
+
 ## [0.845.3](https://github.com/vm0-ai/vm0/compare/app-v0.845.2...app-v0.845.3) (2026-09-05)
 
 

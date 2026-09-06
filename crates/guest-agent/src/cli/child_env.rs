@@ -6,6 +6,8 @@ use super::CliRuntimeConfig;
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";
+const NPM_CACHE_ENV_KEY: &str = "npm_config_cache";
+const WORKSPACE_NPM_CACHE_RELATIVE_PATH: &str = ".vm0/cache/npm";
 // The sandbox CLI needs the same API origin as the guest-agent in local
 // development. The managed-CLI reader floor is complete, so expose only the
 // canonical spelling. Tokens and all other bootstrap controls must stay private
@@ -47,7 +49,9 @@ pub(super) fn values_with_inputs(
         values.push((key.to_string(), value));
     }
     for (key, value) in user_env {
-        if key == guest_contracts::env::CANONICAL_API_URL_ENV {
+        if key == guest_contracts::env::CANONICAL_API_URL_ENV
+            || key.eq_ignore_ascii_case(NPM_CACHE_ENV_KEY)
+        {
             continue;
         }
         values.push((key.clone(), value.clone()));
@@ -55,6 +59,14 @@ pub(super) fn values_with_inputs(
     apply_runner_visible_env(api_url, |key, value| {
         values.push((key.to_string(), value));
     });
+    values.push((
+        NPM_CACHE_ENV_KEY.to_string(),
+        format!(
+            "{}/{}",
+            crate::paths::CANONICAL_WORKING_DIR,
+            WORKSPACE_NPM_CACHE_RELATIVE_PATH
+        ),
+    ));
     normalize_values(values)
 }
 

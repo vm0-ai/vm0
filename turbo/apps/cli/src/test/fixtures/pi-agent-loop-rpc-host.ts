@@ -15,4 +15,5 @@ await runPiSandboxAgentLoop({
   config,
   agentDir,
   sessionDir,
+  memoryRoot: process.argv[4],
 });

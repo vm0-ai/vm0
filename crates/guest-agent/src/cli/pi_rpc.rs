@@ -135,8 +135,10 @@
 //!   raw response remains in the local transcript.
 //! - `message_end` with an assistant message: the latest assistant terminal
 //!   state is cached. Supported content is emitted as an `assistant` event;
-//!   empty content, unknown content blocks, and assistant messages with no
-//!   supported content emit no public event, but their raw records remain local.
+//!   Empty content, unknown content blocks, and assistant messages with no
+//!   supported content emit no public event unless a hidden citation was
+//!   extracted; citation-only messages emit an empty assistant event carrying
+//!   structured provenance. Their raw records remain local.
 //! - `message_end` with a `toolResult` message: required tool-result fields are
 //!   validated and one public `user` event containing one `tool_result` block is
 //!   emitted. The raw record remains local. Other message roles are ignored
@@ -153,8 +155,9 @@
 //!
 //! After projection, assistant and user events with multiple content blocks
 //! are split by `provider_event_normalization` into one independently
-//! sequenced public event per block. The source order is retained, and common
-//! masking and bounded delivery happen after that normalization.
+//! sequenced public event per block. Citation metadata stays only on the final
+//! split assistant event. The source order is retained, and common masking and
+//! bounded delivery happen after that normalization.
 //!
 //! ## Public event shapes
 //!
@@ -237,6 +240,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 
+use super::pi_memory_citation::{CitationProjection, project_segments};
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use crate::error::AgentError;
 
@@ -443,14 +447,14 @@ struct PiAssistantTerminal {
 }
 
 impl PiAssistantTerminal {
-    fn from_message(message: &Value) -> Self {
+    fn from_message(message: &Value, preserve_empty_result: bool) -> Self {
         let stop_reason = message.get("stopReason").and_then(Value::as_str);
         let failed = matches!(stop_reason, Some("error" | "aborted"));
         let result = message
             .get("errorMessage")
             .and_then(Value::as_str)
             .map_or_else(|| assistant_text(message), ToString::to_string);
-        let result = if result.is_empty() {
+        let result = if result.is_empty() && !preserve_empty_result {
             stop_reason.map_or_else(String::new, |reason| format!("Pi model turn {reason}"))
         } else {
             result
@@ -574,9 +578,13 @@ impl PiRpcProjection {
         &mut self,
         mut message: Value,
     ) -> Result<Option<Value>, AgentError> {
-        self.assistant_terminal = Some(PiAssistantTerminal::from_message(&message));
+        let citation_projection = normalize_assistant_citations(&mut message);
+        self.assistant_terminal = Some(PiAssistantTerminal::from_message(
+            &message,
+            citation_projection.citation.is_some(),
+        ));
         let content = assistant_content(&mut message)?;
-        if content.is_empty() {
+        if content.is_empty() && citation_projection.citation.is_none() {
             return Ok(None);
         }
         let timestamp = message
@@ -630,13 +638,21 @@ impl PiRpcProjection {
                 ),
             ),
         ]);
-        let projected_message = owned_object([
+        let mut projected_message = owned_object([
             ("id", Value::String(id)),
             ("role", Value::from("assistant")),
             ("content", Value::Array(content)),
             ("model", Value::String(model.to_string())),
             ("usage", usage),
         ]);
+        if let Some(citation) = citation_projection.citation
+            && let Value::Object(fields) = &mut projected_message
+        {
+            fields.insert(
+                "memoryCitation".to_string(),
+                serde_json::to_value(citation)?,
+            );
+        }
         Ok(Some(owned_object([
             ("type", Value::from("assistant")),
             ("message", projected_message),
@@ -701,6 +717,61 @@ impl PiRpcProjection {
             "duration_ms": self.started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
         })
     }
+}
+
+fn normalize_assistant_citations(message: &mut Value) -> CitationProjection {
+    let mut segments: Vec<String> = message
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|block| {
+            (block.get("type").and_then(Value::as_str) == Some("text"))
+                .then(|| block.get("text").and_then(Value::as_str))
+                .flatten()
+                .map(ToString::to_string)
+        })
+        .collect();
+    let error_index = message
+        .get("errorMessage")
+        .and_then(Value::as_str)
+        .map(|error| {
+            let index = segments.len();
+            segments.push(error.to_string());
+            index
+        });
+    let segment_refs: Vec<&str> = segments.iter().map(String::as_str).collect();
+    let projection = project_segments(&segment_refs);
+    let mut text_index = 0;
+    if let Some(blocks) = message.get_mut("content").and_then(Value::as_array_mut) {
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) != Some("text") {
+                continue;
+            }
+            if let Some(text) = block.get_mut("text") {
+                *text = Value::String(
+                    projection
+                        .visible_segments
+                        .get(text_index)
+                        .cloned()
+                        .unwrap_or_default(),
+                );
+            }
+            text_index += 1;
+        }
+    }
+    if let Some(error_index) = error_index
+        && let Some(error) = message.get_mut("errorMessage")
+    {
+        *error = Value::String(
+            projection
+                .visible_segments
+                .get(error_index)
+                .cloned()
+                .unwrap_or_default(),
+        );
+    }
+    projection
 }
 
 fn owned_object<const N: usize>(fields: [(&str, Value); N]) -> Value {
@@ -1195,6 +1266,124 @@ mod tests {
             .expect("agent_settled should emit result");
         assert_eq!(result["type"], "result");
         assert_eq!(result["result"], "done");
+    }
+
+    #[test]
+    fn projection_hides_citations_in_assistant_and_terminal_result() {
+        let hidden = "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
+        let (responses, _rx) = response_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let assistant = projection
+            .project(
+                json!({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            { "type": "text", "text": format!("before{}", &hidden[..12]) },
+                            { "type": "text", "text": format!("{}after", &hidden[12..]) },
+                        ],
+                        "model": "model",
+                        "timestamp": 1,
+                        "usage": {},
+                        "stopReason": "stop",
+                    }
+                }),
+                &responses,
+                0,
+            )
+            .expect("message should project")
+            .expect("citation-bearing assistant should emit");
+        assert_eq!(assistant["message"]["content"][0]["text"], "before");
+        assert_eq!(assistant["message"]["content"][1]["text"], "after");
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["entries"][0]["path"],
+            "memory.md"
+        );
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["rolloutIds"][0],
+            "019c6e27-e55b-73d1-87d8-4e01f1f75043"
+        );
+
+        let result = projection
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
+            .expect("settled event should project")
+            .expect("settled event should emit");
+        assert_eq!(result["result"], "before\n\nafter");
+        assert!(!result.to_string().contains("oai-mem-citation"));
+    }
+
+    #[test]
+    fn citation_only_projection_keeps_provenance_without_fallback_text() {
+        let (responses, _rx) = response_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let assistant = projection
+            .project(
+                json!({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{
+                            "type": "text",
+                            "text": "<oai-mem-citation><citation_entries>x:1-1|note=[n]</citation_entries></oai-mem-citation>"
+                        }],
+                        "model": "model",
+                        "timestamp": 1,
+                        "usage": {},
+                        "stopReason": "stop",
+                    }
+                }),
+                &responses,
+                0,
+            )
+            .expect("message should project")
+            .expect("citation-only assistant should emit");
+        assert_eq!(assistant["message"]["content"], json!([]));
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["entries"][0]["path"],
+            "x"
+        );
+        let result = projection
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
+            .expect("settled event should project")
+            .expect("settled event should emit");
+        assert_eq!(result["result"], "");
+    }
+
+    #[test]
+    fn projection_hides_citations_in_terminal_error_text() {
+        let (responses, _rx) = response_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let assistant = projection
+            .project(
+                json!({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "errorMessage": "failed<oai-mem-citation><citation_entries>x:1-1|note=[n]</citation_entries></oai-mem-citation>",
+                        "model": "model",
+                        "timestamp": 1,
+                        "usage": {},
+                        "stopReason": "error",
+                    }
+                }),
+                &responses,
+                0,
+            )
+            .expect("message should project")
+            .expect("citation-bearing error should emit");
+        assert_eq!(assistant["message"]["content"], json!([]));
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["entries"][0]["path"],
+            "x"
+        );
+        let result = projection
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
+            .expect("settled event should project")
+            .expect("settled event should emit");
+        assert_eq!(result["result"], "failed");
+        assert!(!result.to_string().contains("oai-mem-citation"));
     }
 
     #[test]

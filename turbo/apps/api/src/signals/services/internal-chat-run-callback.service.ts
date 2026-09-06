@@ -24,6 +24,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import {
   chatEventTerminalPredicate,
   chatEvents,
@@ -1062,7 +1063,7 @@ async function loadDbCompletedChatOutput(args: {
     state.latestResultText !== null
       ? {
           sequenceNumber: state.latestResultSequence,
-          content: state.latestResultText,
+          content: visiblePiMemoryCitationText(state.latestResultText),
         }
       : null;
   return {

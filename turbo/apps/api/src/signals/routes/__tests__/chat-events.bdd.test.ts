@@ -59,6 +59,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
+import type { AgentEvent } from "../../../lib/event-consumer/verify";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
   buildArtifactKeyV2,
@@ -192,11 +193,15 @@ import {
   holdChatThreadRowLockFixture,
   holdOrgAdmissionLockFixture,
   holdPiApiFirstTurnLifecycleLockFixture,
+  holdRunOutputMaterializationRowFixture,
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
   insertPiApiFirstTurnUsageEventsFixture,
   readCanonicalChatEventStorageFixture,
+  readRunOutputMemoryCitationsFixture,
+  readRunOutputLegacyPiEventsFixture,
+  readRunOutputMaterializationFixture,
   readRunUsageEventsFixture,
   releaseBddVm0ApiKey,
   removeChatCallbackPublicBrandFixture,
@@ -4982,6 +4987,8 @@ function piResponsesContentSse(args: {
   readonly sequence: number;
   readonly includeReasoning?: boolean;
   readonly observedServiceTier?: string | null;
+  readonly incomplete?: boolean;
+  readonly usage?: Parameters<typeof piResponsesTextSse>[2];
 }): string {
   const responseId = `resp_pi_content_${args.sequence.toString()}`;
   const output: Record<string, unknown>[] = [];
@@ -5086,16 +5093,23 @@ function piResponsesContentSse(args: {
     );
   }
   events.push({
-    type: "response.completed",
+    type: args.incomplete ? "response.incomplete" : "response.completed",
     response: {
       id: responseId,
       object: "response",
-      status: "completed",
+      status: args.incomplete ? "incomplete" : "completed",
+      ...(args.incomplete
+        ? { incomplete_details: { reason: "max_output_tokens" } }
+        : {}),
       output,
       ...(args.observedServiceTier === undefined
         ? {}
         : { service_tier: args.observedServiceTier }),
-      usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+      usage: args.usage ?? {
+        input_tokens: 5,
+        output_tokens: 3,
+        total_tokens: 8,
+      },
     },
   });
   return events
@@ -5311,6 +5325,7 @@ async function cancelBeforeLatePiResult(
   actor: ApiTestUser,
   runId: string,
   releaseProvider: () => void,
+  usagePricingResolution?: UsagePricingFixture["resolution"],
 ): Promise<void> {
   // No public API holds the lifecycle transaction open; this scoped lock
   // makes cancellation commit before a completed provider result publishes.
@@ -5322,7 +5337,12 @@ async function cancelBeforeLatePiResult(
     lock.release();
     await lock.done;
   });
-  const cancellation = api.requestCancelRun(actor, runId, [200]);
+  const cancellation = api.requestCancelRun(
+    actor,
+    runId,
+    [200],
+    usagePricingResolution,
+  );
   await expect.poll(lock.waiterCount).toBe(1);
   releaseProvider();
   await expect.poll(lock.waiterCount).toBe(2);
@@ -5494,6 +5514,61 @@ function mockPiCheckpointObjectStore(): Map<string, Buffer> {
     );
   });
   return objects;
+}
+
+function expectNoPiApiFirstTurnArtifacts(
+  runId: string,
+  objects: ReadonlyMap<string, Buffer>,
+): void {
+  const prefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${runId}/`;
+  const artifactKeys = [`${prefix}session.jsonl`, `${prefix}manifest.json`];
+  for (const key of artifactKeys) {
+    expect(objects.has(key)).toBeFalsy();
+  }
+  // Terminal cleanup deletes temporary objects. Inspect the external writes
+  // too, so a briefly published H1 or manifest cannot pass this assertion.
+  const writes = context.mocks.s3.send.mock.calls.flatMap(([command]) => {
+    const candidate = command as PiCheckpointS3Command;
+    const key = piS3ObjectKey(candidate);
+    return candidate.constructor?.name === "PutObjectCommand" &&
+      key !== undefined &&
+      artifactKeys.includes(key)
+      ? [key]
+      : [];
+  });
+  expect(writes).toStrictEqual([]);
+}
+
+async function expectPiApiFirstTurnTerminalWithoutOutput(
+  actor: ApiTestUser,
+  run: { readonly runId: string; readonly threadId: string },
+  status: "failed" | "cancelled",
+): Promise<void> {
+  const terminal = await api.readRun(actor, run.runId);
+  expect(terminal).toMatchObject({
+    status,
+    ...(status === "failed"
+      ? {
+          error:
+            "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
+        }
+      : {}),
+  });
+  expect(terminal.result).toBeFalsy();
+  const events = (await chat.listThreadEvents(actor, run.threadId)).events;
+  expect(eventBackedContents(events, run.runId)).toStrictEqual([]);
+  expect(
+    events
+      .filter((event) => {
+        return (
+          event.runId === run.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      })
+      .map((event) => {
+        return event.eventType;
+      }),
+  ).toStrictEqual([`run.${status}`]);
 }
 
 const PI_RESOURCE_ARCHIVE_DOWNLOAD_URL =
@@ -8934,7 +9009,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("projects complete API-first text blocks in source order and completes at N", async () => {
+  it("projects citation-free API-first blocks and durable private provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
@@ -8972,11 +9047,13 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       ),
       http.post("https://api.openai.com/v1/responses", () => {
+        const hidden =
+          "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
         return new HttpResponse(
           piResponsesContentSse({
             blocks: [
-              { type: "text", text: "alpha" },
-              { type: "text", text: "beta" },
+              { type: "text", text: `alpha${hidden.slice(0, 17)}` },
+              { type: "text", text: `${hidden.slice(17)}beta` },
               { type: "text", text: "gamma" },
               { type: "text", text: "delta" },
             ],
@@ -8995,6 +9072,30 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed");
     await flushWaitUntilForTest();
+
+    const serializedAxiomEvents = JSON.stringify(consumedAgentEvents);
+    expect(serializedAxiomEvents).not.toContain("oai-mem-citation");
+    expect(serializedAxiomEvents).not.toContain("memory.md");
+    // Private provenance intentionally has no user-facing API; this exact
+    // event association is the only assertion that crosses the route boundary.
+    await expect(
+      readRunOutputMemoryCitationsFixture(run.runId),
+    ).resolves.toStrictEqual([
+      {
+        sequenceNumber: 3,
+        citation: {
+          entries: [
+            {
+              path: "memory.md",
+              lineStart: 2,
+              lineEnd: 3,
+              note: "used",
+            },
+          ],
+          rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+        },
+      },
+    ]);
 
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",
@@ -9032,6 +9133,503 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "gamma", sequenceNumber: 2, runEventId: "event:2" },
       { content: "delta", sequenceNumber: 3, runEventId: "event:3" },
     ]);
+  }, 90_000);
+
+  it("classifies old Pi citations across real request caps, retries, replay, and ordering", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const resourceEntered = createDeferredPromise<void>(context.signal);
+    const releaseResource = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseResource.settled()) {
+        releaseResource.resolve(undefined);
+      }
+    });
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, async ({ request }) => {
+        if (!resourceEntered.settled()) {
+          resourceEntered.resolve(undefined);
+        }
+        await releaseResource.promise;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected Pi resource archive object identity");
+        }
+        return new HttpResponse(piS3Object(objectKey), {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          piResponsesTextSse("unexpected API-owned answer", modelCalls),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const consumedAgentEvents: Record<string, unknown>[] = [];
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom event array");
+          }
+          consumedAgentEvents.push(
+            ...events.filter((event): event is Record<string, unknown> => {
+              return typeof event === "object" && event !== null;
+            }),
+          );
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+          });
+        },
+      ),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "classify one old Pi Guest stream across requests",
+      });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await resourceEntered.promise;
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: "transfer this in-flight turn to the old Sandbox Guest",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      run.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected one active input to transfer Pi ownership");
+    }
+    releaseResource.resolve(undefined);
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    const manifest = piApiFirstTurnManifestSchema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest.mode).toBe("sandbox-first");
+    expect(modelCalls).toBe(0);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+
+    const rolloutId = "019c6e27-e55b-73d1-87d8-4e01f1f75043";
+    const privateValues = new Set<string>([rolloutId]);
+    const citation = (path: string, note: string): string => {
+      privateValues.add(path);
+      privateValues.add(note);
+      return `<oai-mem-citation><citation_entries>${path}:1-2|note=[${note}]</citation_entries><rollout_ids>${rolloutId}</rollout_ids></oai-mem-citation>`;
+    };
+    const assistant = (sequenceNumber: number, id: string, text: string) => {
+      return {
+        type: "assistant" as const,
+        sequenceNumber,
+        message: {
+          id,
+          content: [{ type: "text" as const, text }],
+        },
+      };
+    };
+    const separator = (sequenceNumber: number) => {
+      return {
+        type: "user" as const,
+        sequenceNumber,
+        message: { content: [] },
+      };
+    };
+    const result = (sequenceNumber: number, text: string) => {
+      return {
+        type: "result" as const,
+        sequenceNumber,
+        subtype: "success",
+        is_error: false,
+        result: text,
+      };
+    };
+    const sendOldGuestRequest = async (
+      events: readonly AgentEvent[],
+      statuses: readonly (200 | 503)[] = [200],
+    ) => {
+      return await webhooks.requestAgentEvents(
+        { runId: run.runId, events: [...events] },
+        claimed.sandboxHeaders,
+        statuses,
+      );
+    };
+    const runAxiomEvents = () => {
+      return consumedAgentEvents.filter((event) => {
+        return event.runId === run.runId;
+      });
+    };
+    const expectNoPrivatePublicOutput = async (): Promise<void> => {
+      const publicOutput = JSON.stringify({
+        axiom: runAxiomEvents(),
+        chat: eventBackedContents(
+          (await chat.listThreadEvents(actor, run.threadId)).events,
+          run.runId,
+        ),
+      });
+      expect(publicOutput).not.toContain("oai-mem-citation");
+      for (const privateValue of privateValues) {
+        expect(publicOutput).not.toContain(privateValue);
+      }
+    };
+    let sequence = manifest.sandboxEventSequenceStart;
+
+    const openerMarkup = citation(
+      "memory/request-opener.md",
+      "request opener split",
+    );
+    const openerBoundary = openerMarkup.indexOf("citation>");
+    const openerEvents = [
+      assistant(
+        sequence,
+        "request-opener",
+        `opener-before${openerMarkup.slice(0, openerBoundary)}`,
+      ),
+      assistant(
+        sequence + 1,
+        "request-opener",
+        `${openerMarkup.slice(openerBoundary)}opener-after`,
+      ),
+      separator(sequence + 2),
+    ];
+    await sendOldGuestRequest([openerEvents[0]!]);
+    await sendOldGuestRequest([openerEvents[1]!]);
+    expect(
+      (await readRunOutputLegacyPiEventsFixture(run.runId)).map((row) => {
+        return row.sequenceNumber;
+      }),
+    ).toStrictEqual([sequence, sequence + 1]);
+    expect(runAxiomEvents()).toHaveLength(0);
+    await sendOldGuestRequest([openerEvents[2]!]);
+    await flushWaitUntilForTest();
+    await expect(
+      readRunOutputLegacyPiEventsFixture(run.runId),
+    ).resolves.toStrictEqual([]);
+    const axiomCountBeforeReplay = runAxiomEvents().length;
+    await sendOldGuestRequest(openerEvents);
+    await flushWaitUntilForTest();
+    expect(runAxiomEvents()).toHaveLength(axiomCountBeforeReplay);
+    sequence += 3;
+
+    const bodyMarkup = citation("memory/request-body.md", "request body split");
+    const bodyBoundary = bodyMarkup.indexOf("body split") + 4;
+    await sendOldGuestRequest([
+      assistant(
+        sequence,
+        "request-body",
+        `body-before${bodyMarkup.slice(0, bodyBoundary)}`,
+      ),
+    ]);
+    await sendOldGuestRequest([
+      assistant(
+        sequence + 1,
+        "request-body",
+        `${bodyMarkup.slice(bodyBoundary)}body-after`,
+      ),
+    ]);
+    await sendOldGuestRequest([separator(sequence + 2)]);
+    sequence += 3;
+
+    const closerMarkup = citation(
+      "memory/request-closer.md",
+      "request closer split",
+    );
+    const closerBoundary = closerMarkup.indexOf("</oai-mem-citation>") + 10;
+    await sendOldGuestRequest([
+      assistant(
+        sequence,
+        "request-closer",
+        `closer-before${closerMarkup.slice(0, closerBoundary)}`,
+      ),
+    ]);
+    await sendOldGuestRequest([
+      assistant(
+        sequence + 1,
+        "request-closer",
+        `${closerMarkup.slice(closerBoundary)}closer-after`,
+      ),
+    ]);
+    await sendOldGuestRequest([separator(sequence + 2)]);
+    sequence += 3;
+
+    const orderedMarkup = citation(
+      "memory/request-order.md",
+      "out of order split",
+    );
+    const orderedBoundary = Math.floor(orderedMarkup.length / 2);
+    const orderedFirst = assistant(
+      sequence,
+      "request-order",
+      `order-before${orderedMarkup.slice(0, orderedBoundary)}`,
+    );
+    const orderedSecond = assistant(
+      sequence + 1,
+      "request-order",
+      `${orderedMarkup.slice(orderedBoundary)}order-after`,
+    );
+    await sendOldGuestRequest([orderedSecond]);
+    const axiomCountBeforeGapCompletion = runAxiomEvents().length;
+    const gapCompletion = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: sequence + 1,
+      },
+      claimed.sandboxHeaders,
+      [503],
+    );
+    expect(gapCompletion.body).toMatchObject({
+      error: { code: "EVENT_DELIVERY_UNAVAILABLE" },
+    });
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "running",
+    });
+    expect(runAxiomEvents()).toHaveLength(axiomCountBeforeGapCompletion);
+    expect(
+      (await readRunOutputLegacyPiEventsFixture(run.runId)).map((row) => {
+        return row.sequenceNumber;
+      }),
+    ).toStrictEqual([sequence + 1]);
+    await sendOldGuestRequest([orderedFirst, orderedFirst]);
+    await sendOldGuestRequest([orderedFirst]);
+    const lockedMaterialization = await holdRunOutputMaterializationRowFixture({
+      runId: run.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      lockedMaterialization.release();
+      await lockedMaterialization.done;
+    });
+    await sendOldGuestRequest([separator(sequence + 2)], [503]);
+    lockedMaterialization.release();
+    await lockedMaterialization.done;
+    expect(
+      (await readRunOutputLegacyPiEventsFixture(run.runId)).map((row) => {
+        return row.sequenceNumber;
+      }),
+    ).toStrictEqual([sequence, sequence + 1]);
+    await sendOldGuestRequest([separator(sequence + 2)]);
+    sequence += 3;
+
+    const countMarkup = citation(
+      "memory/request-count.md",
+      "thirty two event split",
+    );
+    const countBoundary = Math.floor(countMarkup.length / 2);
+    const countBatch: AgentEvent[] = Array.from({ length: 31 }, (_, index) => {
+      return {
+        type: "system" as const,
+        sequenceNumber: sequence + index,
+        subtype: "request-count-padding",
+      };
+    });
+    countBatch.push(
+      assistant(
+        sequence + 31,
+        "request-count",
+        `count-before${countMarkup.slice(0, countBoundary)}`,
+      ),
+    );
+    expect(countBatch).toHaveLength(32);
+    await sendOldGuestRequest(countBatch);
+    await flushWaitUntilForTest();
+    expect(
+      (await readRunOutputLegacyPiEventsFixture(run.runId)).map((row) => {
+        return row.sequenceNumber;
+      }),
+    ).toStrictEqual([sequence + 31]);
+    await sendOldGuestRequest([
+      assistant(
+        sequence + 32,
+        "request-count",
+        `${countMarkup.slice(countBoundary)}count-after`,
+      ),
+      separator(sequence + 33),
+    ]);
+    sequence += 34;
+
+    const byteMarkup = citation(
+      "memory/request-bytes.md",
+      "four MiB request split",
+    );
+    const byteBoundary = Math.floor(byteMarkup.length / 2);
+    const largeSystemEvent = {
+      type: "system" as const,
+      sequenceNumber: sequence,
+      subtype: "request-byte-padding",
+      padding: "",
+    };
+    const byteFirst = assistant(
+      sequence + 1,
+      "request-bytes",
+      `bytes-before${byteMarkup.slice(0, byteBoundary)}`,
+    );
+    const byteSecond = assistant(
+      sequence + 2,
+      "request-bytes",
+      `${byteMarkup.slice(byteBoundary)}bytes-after`,
+    );
+    const requestCap = 4 * 1024 * 1024;
+    const singletonBytes = (event: object): number => {
+      return Buffer.byteLength(
+        JSON.stringify({ runId: run.runId, events: [event] }),
+      );
+    };
+    largeSystemEvent.padding = "x".repeat(
+      requestCap -
+        64 -
+        singletonBytes(largeSystemEvent) -
+        singletonBytes(byteFirst),
+    );
+    const atByteCap =
+      singletonBytes(largeSystemEvent) + singletonBytes(byteFirst);
+    expect(atByteCap).toBeLessThanOrEqual(requestCap);
+    expect(atByteCap + singletonBytes(byteSecond)).toBeGreaterThan(requestCap);
+    await sendOldGuestRequest([largeSystemEvent, byteFirst]);
+    await flushWaitUntilForTest();
+    expect(
+      (await readRunOutputLegacyPiEventsFixture(run.runId)).map((row) => {
+        return row.sequenceNumber;
+      }),
+    ).toStrictEqual([sequence + 1]);
+    await sendOldGuestRequest([byteSecond, separator(sequence + 3)]);
+    sequence += 4;
+
+    const citationOnlyMarkup = citation(
+      "memory/request-citation-only.md",
+      "citation only request",
+    );
+    await sendOldGuestRequest([
+      assistant(sequence, "request-citation-only", citationOnlyMarkup),
+    ]);
+    await sendOldGuestRequest([
+      result(sequence + 1, `callback-safe${citationOnlyMarkup}`),
+    ]);
+    sequence += 2;
+
+    const finalMarkup = citation(
+      "memory/request-completion.md",
+      "completion flush",
+    );
+    const finalBoundary = Math.floor(finalMarkup.length / 2);
+    await sendOldGuestRequest([
+      assistant(
+        sequence,
+        "request-completion",
+        `completion-before${finalMarkup.slice(0, finalBoundary)}`,
+      ),
+    ]);
+    await sendOldGuestRequest([
+      assistant(
+        sequence + 1,
+        "request-completion",
+        `${finalMarkup.slice(finalBoundary)}completion-after`,
+      ),
+    ]);
+    expect(
+      (await readRunOutputLegacyPiEventsFixture(run.runId)).map((row) => {
+        return row.sequenceNumber;
+      }),
+    ).toStrictEqual([sequence, sequence + 1]);
+    await expectNoPrivatePublicOutput();
+
+    await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
+      ...frameworkMatchingCompletionOptions(run.threadId, "pi"),
+      activeInputDeliveryIds: [reserved.deliveryId],
+      lastEventSequence: sequence + 1,
+      usagePricingResolution,
+    });
+    await waitForRunStatus(actor, run.runId, "completed", 5000);
+    await flushWaitUntilForTest();
+
+    await expect(
+      readRunOutputLegacyPiEventsFixture(run.runId),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      readRunOutputMaterializationFixture(run.runId),
+    ).resolves.toMatchObject({
+      processedThroughSequence: sequence + 1,
+      pendingSequenceNumbers: [],
+      latestResultText: "callback-safe",
+      latestOutputText: "callback-safe",
+    });
+    const persistedCitations = await readRunOutputMemoryCitationsFixture(
+      run.runId,
+    );
+    expect(
+      persistedCitations.map((item) => {
+        return item.sequenceNumber;
+      }),
+    ).toStrictEqual([
+      sequence - 51,
+      sequence - 48,
+      sequence - 45,
+      sequence - 42,
+      sequence - 8,
+      sequence - 4,
+      sequence - 2,
+      sequence + 1,
+    ]);
+    const serializedCitations = JSON.stringify(persistedCitations);
+    for (const privateValue of privateValues) {
+      expect(serializedCitations).toContain(privateValue);
+    }
+    const visibleOutput = eventBackedContents(
+      (await chat.listThreadEvents(actor, run.threadId)).events,
+      run.runId,
+    )
+      .map((event) => {
+        return event.content;
+      })
+      .join("|");
+    for (const visible of [
+      "opener-before",
+      "opener-after",
+      "body-before",
+      "body-after",
+      "closer-before",
+      "closer-after",
+      "order-before",
+      "order-after",
+      "count-before",
+      "count-after",
+      "bytes-before",
+      "bytes-after",
+      "completion-before",
+      "completion-after",
+    ]) {
+      expect(visibleOutput).toContain(visible);
+    }
+    await expectNoPrivatePublicOutput();
   }, 90_000);
 
   it("transfers pre-provider active input through one stable sandbox-first delivery", async () => {
@@ -9262,9 +9860,12 @@ describe("CHAT-02: model-first provider policies", () => {
       timestamp: 3,
     });
     const sandboxAnswer = "Sandbox answered the accepted prompt once";
+    const hiddenCitation =
+      "<oai-mem-citation><citation_entries>memory.md:5-8|note=[sandbox used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
+    const sandboxRawAnswer = `${sandboxAnswer}${hiddenCitation}`;
     h2Session.appendMessage({
       role: "assistant",
-      content: [{ type: "text", text: sandboxAnswer }],
+      content: [{ type: "text", text: sandboxRawAnswer }],
       api: "openai-responses",
       provider: "openai",
       model: "gpt-5.6-terra",
@@ -9282,6 +9883,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const h2 = h2Session.toJsonl();
     expect(occurrences(h2, originalPrompt)).toBe(1);
     expect(occurrences(h2, activeInput)).toBe(1);
+    expect(occurrences(h2, hiddenCitation)).toBe(1);
     const h2Hash = createHash("sha256").update(h2).digest("hex");
     await webhooks.requestAgentCheckpointPrepareHistory(
       {
@@ -9305,22 +9907,47 @@ describe("CHAT-02: model-first provider policies", () => {
         reserved.deliveryId,
       ),
     ).resolves.toStrictEqual({ outcome: "delivered" });
-    await webhooks.requestAgentEvents(
+    const sandboxCitation = {
+      entries: [
+        {
+          path: "memory.md",
+          note: "sandbox used",
+          lineStart: 5,
+          lineEnd: 8,
+        },
+      ],
+      rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+    };
+    const sandboxEvents = [
       {
-        runId: run.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 1,
-            message: { content: [{ type: "text", text: sandboxAnswer }] },
-          },
-          {
-            type: "result",
-            sequenceNumber: 2,
-            result: sandboxAnswer,
-          },
-        ],
+        type: "assistant" as const,
+        sequenceNumber: 1,
+        message: {
+          id: "new-guest-visible-answer",
+          content: [{ type: "text" as const, text: sandboxAnswer }],
+        },
       },
+      {
+        type: "result" as const,
+        sequenceNumber: 2,
+        result: sandboxAnswer,
+      },
+    ];
+    const sandboxEventBody = {
+      runId: run.runId,
+      events: sandboxEvents,
+      piMemoryCitationTransport: {
+        schemaVersion: 1 as const,
+        citations: [{ sequenceNumber: 1, citation: sandboxCitation }],
+      },
+    };
+    await webhooks.requestAgentEvents(
+      sandboxEventBody,
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      sandboxEventBody,
       claimed.sandboxHeaders,
       [200],
     );
@@ -9345,6 +9972,30 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed", 5000);
     expect(modelCalls).toBe(1);
+    const completedMessages = eventBackedContents(
+      (await chat.listThreadEvents(actor, run.threadId)).events,
+      run.runId,
+    );
+    expect(
+      completedMessages.filter((message) => {
+        return message.content === sandboxAnswer;
+      }),
+    ).toHaveLength(1);
+    expect(JSON.stringify(completedMessages)).not.toContain("oai-mem-citation");
+    expect(JSON.stringify(completedMessages)).not.toContain("memory.md");
+    // Private provenance intentionally has no user-facing API; this exact
+    // event association is the only assertion that crosses the route boundary.
+    await expect(
+      readRunOutputMemoryCitationsFixture(run.runId),
+    ).resolves.toStrictEqual([
+      {
+        sequenceNumber: 1,
+        citation: {
+          entries: sandboxCitation.entries,
+          rolloutIds: sandboxCitation.rolloutIds,
+        },
+      },
+    ]);
   }, 90_000);
 
   it("retains pending-tool continuation while one accepted input remains a steer", async () => {
@@ -9789,6 +10440,544 @@ describe("CHAT-02: model-first provider policies", () => {
         return message.content === answer;
       }),
     ).toHaveLength(1);
+  }, 90_000);
+
+  it.each([
+    { name: "text below cap", content: "text", atCap: false },
+    { name: "text at cap", content: "text", atCap: true },
+    { name: "empty", content: "empty", atCap: false },
+    { name: "thinking-only", content: "thinking", atCap: false },
+  ] as const)(
+    "fails incomplete Pi $name output once after recording consumed Built-in usage",
+    async ({ content, atCap }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const usagePricingResolution = await createTerraUsagePricingResolution();
+      await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const consumedAgentEvents: { runId: string; eventType: string }[] = [];
+      const requests: unknown[] = [];
+      let outputTokens = 0;
+      const partialText = `private-incomplete-answer-${randomUUID()}`;
+      server.use(
+        http.post(
+          "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+          async ({ request }) => {
+            const events = z
+              .array(z.object({ runId: z.string(), eventType: z.string() }))
+              .parse(await request.json());
+            consumedAgentEvents.push(...events);
+            return HttpResponse.json({
+              ingested: events.length,
+              failed: 0,
+              processedBytes: 123,
+            });
+          },
+        ),
+        http.post(
+          "https://api.openai.com/v1/responses",
+          async ({ request }) => {
+            const body = await request.json();
+            requests.push(body);
+            const { max_output_tokens: cap } = z
+              .object({ max_output_tokens: z.number().int().positive() })
+              .parse(body);
+            expect(cap).toBeGreaterThan(3);
+            outputTokens = atCap ? cap : 3;
+            return nativeCodexSseResponse(
+              piResponsesContentSse({
+                sequence: requests.length,
+                blocks:
+                  content === "text"
+                    ? [{ type: "text", text: partialText }]
+                    : [],
+                includeReasoning: content === "thinking",
+                incomplete: true,
+                usage: {
+                  input_tokens: 10,
+                  output_tokens: outputTokens,
+                  total_tokens: 10 + outputTokens,
+                  input_tokens_details: {
+                    cached_tokens: 3,
+                    cache_write_tokens: 2,
+                  },
+                },
+              }),
+            );
+          },
+        ),
+      );
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          model: "gpt-5.6-terra",
+          prompt: "finish one API-first answer",
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await waitForRunStatus(actor, run.runId, "failed");
+      await flushWaitUntilForTest();
+      await expectPiApiFirstTurnTerminalWithoutOutput(actor, run, "failed");
+      expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+      expect(
+        [...objects.keys()].filter((key) => {
+          return key.includes("/blobs/");
+        }),
+      ).toStrictEqual([]);
+      expect(requests).toHaveLength(1);
+      // The existing run-scoped usage observation is the only billing ledger
+      // surface; public usage summaries cannot prove per-category exactness.
+      await expectTerraApiUsage(run.runId, "", {
+        input: 5,
+        output: outputTokens,
+        cacheRead: 3,
+        cacheCreation: 2,
+      });
+      expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+        `runner-group:${runnerGroup}`,
+      );
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+        runId: run.runId,
+        mode: "hard",
+      });
+      await api.heartbeatRunner(runnerGroup);
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      const sandboxHeaders = {
+        authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+      };
+      await webhooks.requestAgentComplete(
+        { runId: run.runId, exitCode: 0 },
+        sandboxHeaders,
+        [200],
+      );
+      await flushWaitUntilForTest();
+      await expectPiApiFirstTurnTerminalWithoutOutput(actor, run, "failed");
+      await expectTerraApiUsage(run.runId, "", {
+        input: 5,
+        output: outputTokens,
+        cacheRead: 3,
+        cacheCreation: 2,
+      });
+      expect(requests).toHaveLength(1);
+      expect(
+        consumedAgentEvents.filter((event) => {
+          return event.runId === run.runId;
+        }),
+      ).toStrictEqual([]);
+      const telemetry = JSON.stringify([
+        ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.warn.mock.calls,
+      ]);
+      expect(telemetry).not.toContain(partialText);
+    },
+    90_000,
+  );
+
+  it.each(USER_OWNED_TERRA_FAST_BDD_ROUTES)(
+    "fails incomplete Pi $name Fast output without Built-in billing or provider substitution",
+    async (route) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await configureUserOwnedTerraPiModel(actor, route);
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const requests: string[] = [];
+      server.use(
+        ...USER_OWNED_TERRA_FAST_BDD_ROUTES.map((candidate) => {
+          return http.post(candidate.endpoint, ({ request }) => {
+            requests.push(request.url);
+            return nativeCodexSseResponse(
+              piResponsesContentSse({
+                sequence: requests.length,
+                blocks: [
+                  { type: "text", text: "incomplete user-owned answer" },
+                ],
+                incomplete: true,
+              }),
+            );
+          });
+        }),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        model: "gpt-5.6-terra",
+        prompt: "finish the user-owned turn",
+        runOptions: { codexServiceTier: "fast" },
+      });
+      await waitForRunStatus(actor, run.runId, "failed");
+      await flushWaitUntilForTest();
+      await expectPiApiFirstTurnTerminalWithoutOutput(actor, run, "failed");
+      await expectNoBuiltInModelUsage(run.runId);
+      expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+      expect(
+        [...objects.keys()].filter((key) => {
+          return key.includes("/blobs/");
+        }),
+      ).toStrictEqual([]);
+      await api.heartbeatRunner(runnerGroup);
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      expect(requests).toStrictEqual([route.endpoint]);
+    },
+    90_000,
+  );
+
+  it.each(["in-flight", "late-result"] as const)(
+    "keeps canonical cancellation ahead of incomplete Pi output at the %s boundary",
+    async (phase) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const entered = createDeferredPromise<void>(context.signal);
+      const release = createDeferredPromise<void>(context.signal);
+      let requests = 0;
+      server.use(
+        http.post("https://api.openai.com/v1/responses", async () => {
+          requests += 1;
+          if (!entered.settled()) {
+            entered.resolve(undefined);
+          }
+          await release.promise;
+          return nativeCodexSseResponse(
+            piResponsesContentSse({
+              sequence: requests,
+              blocks: [{ type: "text", text: "incomplete cancelled answer" }],
+              incomplete: true,
+            }),
+          );
+        }),
+      );
+      const { anchor, anchorClaim, run, usagePricingResolution } =
+        await queueCapabilityProvenPiRun({
+          actor,
+          agentId,
+          runnerGroup,
+          prompt: "cancel an incomplete API-first turn",
+        });
+      await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+        usagePricingResolution,
+      });
+      await entered.promise;
+      if (phase === "late-result") {
+        await cancelBeforeLatePiResult(
+          actor,
+          run.runId,
+          () => {
+            release.resolve(undefined);
+          },
+          usagePricingResolution,
+        );
+      } else {
+        await api.requestCancelRun(
+          actor,
+          run.runId,
+          [200],
+          usagePricingResolution,
+        );
+        release.resolve(undefined);
+      }
+      await flushWaitUntilForTest();
+      await expectPiApiFirstTurnTerminalWithoutOutput(actor, run, "cancelled");
+      expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+      if (phase === "late-result") {
+        await expectTerraApiFollowUpUsage(run.runId);
+      } else {
+        await expectNoBuiltInModelUsage(run.runId);
+      }
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      expect(requests).toBe(1);
+    },
+    90_000,
+  );
+
+  it("fails incomplete Pi output while preserving undelivered active-input ownership", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const objects = mockPiCheckpointObjectStore();
+    const entered = createDeferredPromise<void>(context.signal);
+    const release = createDeferredPromise<void>(context.signal);
+    const requests: unknown[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requests.push(await request.json());
+        if (!entered.settled()) {
+          entered.resolve(undefined);
+        }
+        await release.promise;
+        return nativeCodexSseResponse(
+          piResponsesContentSse({
+            sequence: requests.length,
+            blocks: [
+              {
+                type: "text",
+                text:
+                  requests.length === 1
+                    ? "incomplete before accepted steer"
+                    : "completed the separately queued input",
+              },
+            ],
+            incomplete: requests.length === 1,
+          }),
+        );
+      }),
+    );
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "hold the incomplete API-first turn",
+      });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await entered.promise;
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    const activeInputEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: "keep this accepted input",
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      run.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected in-flight active input to be reserved");
+    }
+    expect(reserved.prompt).toContain("keep this accepted input");
+    release.resolve(undefined);
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    await expectPiApiFirstTurnTerminalWithoutOutput(actor, run, "failed");
+    expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+    await expect(
+      api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, run.runId),
+    ).resolves.toStrictEqual({ outcome: "terminal" });
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toMatchObject({ outcome: "rejected" });
+    const events = (await chat.listThreadEvents(actor, run.threadId)).events;
+    expect(
+      events.filter((event) => {
+        return event.id === activeInputEventId;
+      }),
+    ).toHaveLength(1);
+    const replacements = events.filter((event) => {
+      return event.revokesEventId === activeInputEventId;
+    });
+    expect(replacements).toHaveLength(1);
+    const successor = replacements[0];
+    if (!successor?.runId) {
+      throw new Error("Expected undelivered input to retain queue ownership");
+    }
+    expect(successor.runId).not.toBe(run.runId);
+    // Terminal failure releases the accepted input into its own queued run.
+    // That explicit input owns the second request; the failed turn is not retried.
+    await waitForRunStatus(actor, successor.runId, "completed");
+    expect(eventBackedContents(events, successor.runId)).toMatchObject([
+      { content: "completed the separately queued input" },
+    ]);
+    expect(JSON.stringify(requests[1])).toContain("keep this accepted input");
+    expect(JSON.stringify(requests[1])).not.toContain(
+      "incomplete before accepted steer",
+    );
+    await expectTerraApiFollowUpUsage(run.runId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "hard",
+    });
+    expect(requests).toHaveLength(2);
+  }, 90_000);
+
+  it("preserves ordinary Pi stop checkpoints and length with pending tools after incomplete output fails", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+    mockPiResourceArchiveDownloads();
+    const objects = mockPiCheckpointObjectStore();
+    const requests: unknown[] = [];
+    const answer = "the last complete canonical answer";
+    const incompleteAnswer = "discarded incomplete canonical answer";
+    const callId = `call_length_${randomUUID()}`;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requests.push(await request.json());
+        return nativeCodexSseResponse(
+          piResponsesContentSse({
+            sequence: requests.length,
+            incomplete: requests.length !== 1,
+            blocks:
+              requests.length === 3
+                ? [
+                    {
+                      type: "toolCall",
+                      callId,
+                      name: "bash",
+                      arguments: {
+                        command: "printf incomplete-tool-must-not-run",
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      type: "text",
+                      text: requests.length === 1 ? answer : incompleteAnswer,
+                    },
+                  ],
+          }),
+        );
+      }),
+    );
+    const first = await sendChatRun(
+      actor,
+      {
+        agentId,
+        model: "gpt-5.6-terra",
+        prompt: "create the last complete checkpoint",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, first.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(requests).toHaveLength(1);
+    const firstEvents = (await chat.listThreadEvents(actor, first.threadId))
+      .events;
+    expect(eventBackedContents(firstEvents, first.runId)).toMatchObject([
+      { content: answer },
+    ]);
+    expect(
+      firstEvents.filter((event) => {
+        return (
+          event.runId === first.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      }),
+    ).toMatchObject([{ eventType: "run.completed" }]);
+    await expectTerraApiFollowUpUsage(first.runId);
+    const blobEntries = [...objects.entries()].filter(([key]) => {
+      return key.includes("/blobs/");
+    });
+    expect(blobEntries).toHaveLength(1);
+    const h0 = blobEntries[0]?.[1];
+    if (!h0) {
+      throw new Error("Expected the ordinary stop checkpoint");
+    }
+    const h0Hash = createHash("sha256").update(h0).digest("hex");
+
+    const failed = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "produce incomplete output on the existing session",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, failed.runId, "failed");
+    await flushWaitUntilForTest();
+    await expectPiApiFirstTurnTerminalWithoutOutput(actor, failed, "failed");
+    expectNoPiApiFirstTurnArtifacts(failed.runId, objects);
+    expect(
+      [...objects.entries()].filter(([key]) => {
+        return key.includes("/blobs/");
+      }),
+    ).toStrictEqual(blobEntries);
+    expect(requests).toHaveLength(2);
+
+    // Only this explicit user request continues the last successful H0. The
+    // failed turn cannot publish a new canonical checkpoint or start a retry.
+    const next = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue the preserved canonical session with tools",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${next.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return objects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    await flushWaitUntilForTest();
+    const manifestBytes = objects.get(manifestKey);
+    if (!manifestBytes) {
+      throw new Error("Expected pending-tool ownership transfer");
+    }
+    expect(
+      piApiFirstTurnManifestSchema.parse(
+        JSON.parse(manifestBytes.toString("utf8")),
+      ),
+    ).toMatchObject({
+      outcome: "ownership-transfer",
+      mode: "pending-tool-continuation",
+      baseSession: { sessionId: first.threadId, sha256: h0Hash },
+    });
+    const claimed = await claimChatRun(runnerGroup, next.runId);
+    expect(claimed.claim.resumeSession).toMatchObject({
+      sessionId: first.threadId,
+      historyRef: { hash: h0Hash },
+    });
+    const h1 = objects.get(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${next.runId}/session.jsonl`,
+    );
+    if (!h1) {
+      throw new Error("Expected length plus pending-tool H1");
+    }
+    const pending = MemoryPiSession.fromJsonl(h1.toString("utf8"))
+      .buildSessionContext()
+      .messages.at(-1);
+    expect(pending).toMatchObject({
+      role: "assistant",
+      stopReason: "length",
+      content: [expect.objectContaining({ type: "toolCall", name: "bash" })],
+    });
+    expect(occurrences(JSON.stringify(requests[2]), answer)).toBe(1);
+    expect(JSON.stringify(requests[2])).not.toContain(incompleteAnswer);
+    expect(
+      [...objects.entries()].filter(([key]) => {
+        return key.includes("/blobs/");
+      }),
+    ).toStrictEqual(blobEntries);
+    const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+    expect(
+      events.filter((event) => {
+        return (
+          event.runId === next.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      }),
+    ).toStrictEqual([]);
+    await cancelChatRun(actor, next.runId, claimed.sandboxHeaders);
+    expect(requests).toHaveLength(3);
   }, 90_000);
 
   it("fails Pi after one model request without claiming Sandbox or replaying the model", async () => {

@@ -15,6 +15,7 @@ import {
   ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS,
   webhookCheckpointsContract,
   webhookCompleteContract,
+  webhookEventsContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -22,6 +23,71 @@ import {
 
 const storageId = "00000000-0000-4000-8000-000000000000";
 const manifestHash = "a".repeat(64);
+
+describe("Pi memory citation event transport", () => {
+  const citation = {
+    entries: [
+      {
+        path: "memory.md",
+        lineStart: 1,
+        lineEnd: 2,
+        note: "used",
+      },
+    ],
+    rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+  };
+  const event = { type: "assistant", sequenceNumber: 7 };
+
+  it("accepts an empty marker or sequence-bound private citations", () => {
+    for (const citations of [
+      [],
+      [{ sequenceNumber: event.sequenceNumber, citation }],
+    ]) {
+      expect(
+        webhookEventsContract.send.body.safeParse({
+          runId: "run",
+          events: [event],
+          piMemoryCitationTransport: { schemaVersion: 1, citations },
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("rejects unbound, duplicate, oversized, or structurally loose sidecars", () => {
+    const invalidTransports = [
+      {
+        schemaVersion: 1,
+        citations: [{ sequenceNumber: 8, citation }],
+      },
+      {
+        schemaVersion: 1,
+        citations: [
+          { sequenceNumber: 7, citation },
+          { sequenceNumber: 7, citation },
+        ],
+      },
+      {
+        schemaVersion: 1,
+        citations: Array.from({ length: 33 }, () => {
+          return { sequenceNumber: 7, citation };
+        }),
+      },
+      {
+        schemaVersion: 1,
+        citations: [{ sequenceNumber: 7, citation, public: true }],
+      },
+    ];
+    for (const piMemoryCitationTransport of invalidTransports) {
+      expect(
+        webhookEventsContract.send.body.safeParse({
+          runId: "run",
+          events: [event],
+          piMemoryCitationTransport,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("agent checkpoint session history", () => {
   const runId = "00000000-0000-4000-8000-000000000000";
@@ -113,6 +179,44 @@ function manifestFile(path: string) {
 }
 
 describe("storage webhook manifest limits", () => {
+  it.each([1, 2])(
+    "accepts exact maintenance checkpoint attestation v%s",
+    (schemaVersion) => {
+      const body = {
+        runId: "run-id",
+        storageId,
+        files: [],
+        parentVersionId: "a".repeat(64),
+        maintenanceAttestation: {
+          schemaVersion,
+          leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+          claimedRevision: 7,
+          claimedBaseVersionId: "a".repeat(64),
+          selectionDigest: "b".repeat(64),
+          validatedVersionId: "c".repeat(64),
+        },
+      };
+      expect(
+        webhookStoragesPrepareContract.prepare.body.safeParse(body).success,
+      ).toBe(true);
+      expect(
+        webhookStoragesCommitContract.commit.body.safeParse({
+          ...body,
+          versionId: "c".repeat(64),
+        }).success,
+      ).toBe(true);
+      expect(
+        webhookStoragesPrepareContract.prepare.body.safeParse({
+          ...body,
+          maintenanceAttestation: {
+            ...body.maintenanceAttestation,
+            schemaVersion: 3,
+          },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   it("accepts the exact file-count boundary and rejects one more file", () => {
     const exactFiles = Array.from(
       { length: STORAGE_MANIFEST_MAX_FILES },

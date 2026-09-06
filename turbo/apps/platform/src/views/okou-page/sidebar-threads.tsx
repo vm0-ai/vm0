@@ -90,9 +90,20 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  threeColumnSearchOpen$,
 } from "../../signals/okou-page/sidebar-state.ts";
+import { setThreadListNumberShortcutRoot$ } from "../../signals/okou-page/thread-list-number-shortcuts.ts";
+import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
+import {
+  PinnedThreadRow,
+  PinnedThreadDragAnnouncement,
+  PinnedThreadDragPreview,
+  PinnedThreadDropPlaceholder,
+  ThreadPinMoveMenuItems,
+} from "./sidebar-thread-reorder.tsx";
+import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
 import { equalArrays } from "../../lib/equality.ts";
 
 // The row glyphs draw at 17px, which the shared button base (`[&_svg]:size-4`)
@@ -198,6 +209,43 @@ function ChatThreadMarkUnreadMenuItem({
   );
 }
 
+function ChatThreadPinMenuItems({
+  signals,
+}: {
+  signals: SidebarChatThreadItemSignals;
+}) {
+  const { t } = useTranslation();
+  const isPinned = useGet(signals.pinned$);
+  const togglePinned = useSet(signals.togglePinned$);
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <>
+      <DropdownMenuItem
+        onSelect={() => {
+          detach(togglePinned(pageSignal), Reason.DomCallback);
+        }}
+      >
+        {isPinned ? (
+          <>
+            <PinOff size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.unpin;
+            })}
+          </>
+        ) : (
+          <>
+            <Pin size={16} className="mr-2" />
+            {t(($) => {
+              return $.chat.sidebar.pin;
+            })}
+          </>
+        )}
+      </DropdownMenuItem>
+      <ThreadPinMoveMenuItems signals={signals} />
+    </>
+  );
+}
+
 function ChatThreadMenu({
   signals,
 }: {
@@ -206,14 +254,9 @@ function ChatThreadMenu({
   const { t } = useTranslation();
   const isPinned = useGet(signals.pinned$);
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
-  const togglePinned = useSet(signals.togglePinned$);
   const openRename = useSet(signals.openRename$);
   const requestDelete = useSet(signals.requestDelete$);
   const pageSignal = useGet(pageSignal$);
-
-  function handleTogglePin() {
-    detach(togglePinned(pageSignal), Reason.DomCallback);
-  }
 
   function openRenameDialog() {
     detach(openRename(pageSignal), Reason.DomCallback);
@@ -290,23 +333,7 @@ function ChatThreadMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
-          <DropdownMenuItem onSelect={handleTogglePin}>
-            {isPinned ? (
-              <>
-                <PinOff size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.sidebar.unpin;
-                })}
-              </>
-            ) : (
-              <>
-                <Pin size={16} className="mr-2" />
-                {t(($) => {
-                  return $.chat.sidebar.pin;
-                })}
-              </>
-            )}
-          </DropdownMenuItem>
+          <ChatThreadPinMenuItems signals={signals} />
           <ChatThreadMarkUnreadMenuItem signals={signals} />
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <Pencil size={16} className="mr-2" />
@@ -333,8 +360,10 @@ function ChatThreadMenu({
 
 function ChatThreadItemLink({
   signals,
+  shortcutNumber,
 }: {
   signals: SidebarChatThreadItemSignals;
+  shortcutNumber: number | undefined;
 }) {
   const { t } = useTranslation();
   const title = useGet(signals.title$);
@@ -363,7 +392,7 @@ function ChatThreadItemLink({
         e.preventDefault();
         detach(openRename(pageSignal), Reason.DomCallback);
       }}
-      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+      className={`col-span-2 col-start-1 row-start-1 grid h-8 grid-cols-subgrid items-center rounded-lg pl-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
           ? "bg-state-selected text-sidebar-foreground font-medium"
           : isUnread
@@ -371,7 +400,7 @@ function ChatThreadItemLink({
             : "text-sidebar-foreground hover:bg-state-hover"
       }`}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="flex min-w-0 items-center gap-2 pr-8">
         <ChatThreadListPaneIcon signals={signals} />
         <span className="okou-nav-copy min-w-0 truncate">
           {title ??
@@ -380,22 +409,29 @@ function ChatThreadItemLink({
             })}
         </span>
       </span>
+      <span className="flex items-center pr-2 empty:hidden">
+        <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+      </span>
     </Link>
   );
 }
 
 function ChatThreadItem({
   signals,
+  shortcutNumber,
+  dragSignals,
 }: {
   signals: SidebarChatThreadItemSignals;
+  shortcutNumber: number | undefined;
+  dragSignals: PinnedThreadDragSignals;
 }) {
   return (
-    <div className="group relative">
-      <ChatThreadItemLink signals={signals} />
-      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+    <PinnedThreadRow signals={signals} dragSignals={dragSignals}>
+      <ChatThreadItemLink signals={signals} shortcutNumber={shortcutNumber} />
+      <div className="pointer-events-none relative col-start-1 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end">
         <ChatThreadMenu signals={signals} />
       </div>
-    </div>
+    </PinnedThreadRow>
   );
 }
 
@@ -602,33 +638,55 @@ function VirtualizedChatThreads({
   scrollSignals: SidebarChatThreadScrollSignals;
   threadCount: number;
 }) {
+  const setShortcutRoot = useSet(setThreadListNumberShortcutRoot$);
+  const searchOpen = useGet(threeColumnSearchOpen$);
   const window = useLastResolved(scrollSignals.window$, {
     equalityFn: equalSidebarChatThreadWindows,
   });
   const startIndex = window?.startIndex ?? 0;
   const visibleItems = window?.items ?? [];
 
+  const placement = useGet(scrollSignals.pinReorder.placement$);
   return (
     <div
+      ref={setShortcutRoot}
       className="relative w-full"
       data-testid="sidebar-chat-threads-virtual-list"
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
+      <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />
+      <PinnedThreadDragPreview signals={scrollSignals.pinReorder} />
+      <PinnedThreadDropPlaceholder signals={scrollSignals.pinReorder} />
       {visibleItems.map((signals, visibleOffset) => {
         const index = startIndex + visibleOffset;
+        let visualIndex = index;
+        if (placement) {
+          const { sourceIndex, destinationIndex } = placement;
+          if (index === sourceIndex) {
+            visualIndex = destinationIndex;
+          } else if (index > sourceIndex && index <= destinationIndex) {
+            visualIndex--;
+          } else if (index >= destinationIndex && index < sourceIndex) {
+            visualIndex++;
+          }
+        }
         return (
           <div
             key={signals.threadId}
-            data-index={index}
+            data-index={visualIndex}
             data-testid="sidebar-chat-thread-virtual-row"
             className="absolute left-0 top-0 w-full pb-1"
             style={{
               transform: `translateY(${
-                index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+                visualIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
               }px)`,
             }}
           >
-            <ChatThreadItem signals={signals} />
+            <ChatThreadItem
+              signals={signals}
+              shortcutNumber={!searchOpen && index < 9 ? index + 1 : undefined}
+              dragSignals={scrollSignals.pinReorder}
+            />
           </div>
         );
       })}

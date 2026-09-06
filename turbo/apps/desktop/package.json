@@ -1,6 +1,6 @@
 {
   "name": "@okouai/desktop",
-  "version": "0.46.17",
+  "version": "0.46.25",
   "private": true,
   "description": "Computer Use desktop shell",
   "main": "dist/bootstrap.js",
@@ -56,6 +56,6 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "^8.0.16",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

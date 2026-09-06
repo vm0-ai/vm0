@@ -1025,6 +1025,20 @@
       "accessNotAllowed": "L'accès n'est pas autorisé.",
       "userBanned": "L'accès au compte a été suspendu car l'activité sur ce compte a violé les Conditions d'utilisation de {{brandName}}. Si vous avez des questions, contactez {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Vous êtes connecté à Desktop. Vous pouvez fermer cette fenêtre.",
+        "connecting": "Connexion de votre session de bureau.",
+        "consumed": "Finalisation de la connexion dans Desktop. Gardez cette fenêtre ouverte.",
+        "failed": "La connexion n’a pas pu aboutir. Recommencez depuis Desktop ou réessayez dans ce navigateur.",
+        "no-workspaces": "Créez ou rejoignez un espace de travail dans l’application web, puis reconnectez-vous depuis Desktop.",
+        "pending": "Ouvrez Desktop pour poursuivre la connexion.",
+        "selecting": "Choisissez un espace de travail pour cet ordinateur."
+      },
+      "reopen": "Ouvrir Desktop",
+      "retry": "Réessayer",
+      "title": "Se connecter à Desktop"
+    },
     "documentTitles": {
       "signIn": "Se connecter",
       "signUp": "S'inscrire"
@@ -2270,14 +2284,20 @@
       "draft": "Brouillon",
       "empty": "Commencez une conversation et elle apparaîtra ici",
       "markUnread": "Marquer comme non lu",
+      "movePinDown": "Déplacer vers le bas",
+      "movePinUp": "Déplacer vers le haut",
       "newChatWith": "Nouvelle discussion avec {{agentName}}",
       "noUnread": "Aucune discussion non lue",
       "openChatMenu": "Ouvrir le menu de discussion",
       "openListMenu": "Ouvrir le menu de la liste de discussion",
       "pin": "Épingler la discussion",
+      "pinDropAfter": "Déposer après {{title}}",
+      "pinDropBefore": "Déposer avant {{title}}",
       "pinned": "Épinglé",
       "rename": "Renommer la discussion",
       "renameDescription": "Entrez un nouveau nom pour ce fil de discussion.",
+      "reorderInstructions": "Faites glisser pour réorganiser. Appuyez sur Espace pour sélectionner, sur les flèches pour déplacer, sur Espace pour déposer ou sur Échap pour annuler.",
+      "reorderThread": "Réorganiser {{title}}",
       "titlePlaceholder": "Titre de la discussion",
       "unpin": "Détacher la discussion",
       "unread": "Non lu",
@@ -2400,7 +2420,9 @@
     },
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
+      "cleanupFailed": "Le texte a été ajouté, mais l’enregistrement sauvegardé n’a pas pu être supprimé.",
       "confirmRecording": "OK",
+      "discarding": "Suppression du brouillon vocal...",
       "input": "Entrée vocale",
       "inputLimitReached": "Limite d'entrée vocale atteinte. Passez à Pro ou Team pour des limites plus élevées.",
       "inputLimitReachedMember": "Limite d'entrée vocale atteinte. Demandez à un administrateur de l'espace de travail d'effectuer une mise à niveau pour obtenir des limites plus élevées.",
@@ -2409,8 +2431,13 @@
       "inputLimitReachedReset": "Limite d'entrée vocale atteinte. Veuillez attendre la réinitialisation de votre limite.",
       "microphoneAccessDenied": "L'accès au microphone a été refusé. Autorisez l'accès au microphone et réessayez.",
       "openingMicrophone": "Ouverture du microphone...",
+      "removeDraft": "Supprimer le brouillon vocal",
+      "restoreFailed": "Impossible de charger votre brouillon vocal. Réessayez.",
+      "retry": "Réessayer",
+      "retryReady": "Votre enregistrement est conservé. Réessayez la transcription.",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
+      "storageFailed": "Impossible de sauvegarder le son. Réessayer ne récupère que le son déjà enregistré sur cet appareil.",
       "transcribing": "Transcription",
       "transcribingProgress": "Transcription en cours...",
       "transcriptionFailed": "Échec de la transcription vocale. Réessayez."
@@ -5185,6 +5212,12 @@
           "stores": "magasins d’objets",
           "title": "Stockage IndexedDB",
           "unavailable": "Le stockage IndexedDB est indisponible."
+        },
+        "voiceInput": {
+          "default": "Par défaut ({{model}})",
+          "description": "Choisissez le modèle pour la saisie vocale v2. Les modèles de transcription utilisent {{model}} pour améliorer le texte.",
+          "title": "Modèle de saisie vocale",
+          "unavailable": "Modèle indisponible ({{model}})"
         }
       },
       "language": {

@@ -413,7 +413,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.StableChatThreadNavigation]: {
     maintainer: "ethan@okou.ai",
     description:
-      "Keep pinned chats ordered by pin time, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
+      "Keep pinned chats in a stable, manually adjustable order, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -452,13 +452,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the composer connector popover collision frame stable while filtering so placement does not flip.",
-    enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",

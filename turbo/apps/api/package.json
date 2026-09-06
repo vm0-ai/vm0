@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.551.1",
+  "version": "1.554.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,9 +22,9 @@
     "check-types:bootstrap-wiring": "tsc -p tsconfig.bootstrap-wiring.json --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1116.0",
-    "@aws-sdk/client-s3": "^3.1116.0",
-    "@aws-sdk/s3-request-presigner": "^3.1116.0",
+    "@aws-sdk/client-kms": "^3.1121.0",
+    "@aws-sdk/client-s3": "^3.1121.0",
+    "@aws-sdk/s3-request-presigner": "^3.1121.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
     "@clerk/backend": "^3.13.1",
@@ -90,6 +90,6 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "^8.0.16",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

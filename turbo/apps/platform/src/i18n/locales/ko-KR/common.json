@@ -1005,6 +1005,20 @@
       "accessNotAllowed": "접근이 허용되지 않습니다.",
       "userBanned": "이 계정의 활동이 {{brandName}} 이용 약관을 위반하여 계정 접근이 중단되었습니다. 문의 사항은 {{supportEmail}}로 연락해 주세요."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Desktop에 로그인했습니다. 이 창을 닫아도 됩니다.",
+        "connecting": "데스크톱 세션을 연결하고 있습니다.",
+        "consumed": "Desktop에서 로그인을 완료하고 있습니다. 이 창을 열어 두세요.",
+        "failed": "로그인을 완료하지 못했습니다. Desktop에서 다시 시작하거나 이 브라우저에서 다시 시도하세요.",
+        "no-workspaces": "웹 앱에서 워크스페이스를 만들거나 참여한 후 Desktop에서 다시 로그인하세요.",
+        "pending": "Desktop을 열어 로그인을 계속하세요.",
+        "selecting": "이 컴퓨터에서 사용할 워크스페이스를 선택하세요."
+      },
+      "reopen": "Desktop 열기",
+      "retry": "다시 시도",
+      "title": "Desktop 로그인"
+    },
     "documentTitles": {
       "signIn": "로그인",
       "signUp": "회원가입"
@@ -2223,14 +2237,20 @@
       "draft": "초안",
       "empty": "대화를 시작하면 여기에 표시됩니다",
       "markUnread": "읽지 않음으로 표시",
+      "movePinDown": "아래로 이동",
+      "movePinUp": "위로 이동",
       "newChatWith": "{{agentName}}와 새 채팅",
       "noUnread": "읽지 않은 채팅 없음",
       "openChatMenu": "채팅 메뉴 열기",
       "openListMenu": "채팅 목록 메뉴 열기",
       "pin": "채팅 고정",
+      "pinDropAfter": "{{title}} 뒤에 놓기",
+      "pinDropBefore": "{{title}} 앞에 놓기",
       "pinned": "고정됨",
       "rename": "채팅 이름 바꾸기",
       "renameDescription": "이 채팅 스레드의 새 이름을 입력하세요.",
+      "reorderInstructions": "드래그하여 순서를 변경하세요. 스페이스 키로 선택하고, 화살표 키로 이동한 뒤 스페이스 키로 놓거나 Esc 키로 취소하세요.",
+      "reorderThread": "{{title}} 순서 변경",
       "titlePlaceholder": "채팅 제목",
       "unpin": "채팅 고정 해제",
       "unread": "읽지 않음",
@@ -2353,7 +2373,9 @@
     },
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
+      "cleanupFailed": "텍스트가 추가되었지만 저장된 녹음을 삭제하지 못했습니다.",
       "confirmRecording": "OK",
+      "discarding": "음성 초안 삭제 중...",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",
       "inputLimitReachedMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 업그레이드를 요청하세요.",
@@ -2362,8 +2384,13 @@
       "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
+      "removeDraft": "음성 초안 삭제",
+      "restoreFailed": "음성 초안을 불러올 수 없습니다. 다시 시도하세요.",
+      "retry": "다시 시도",
+      "retryReady": "녹음이 보관되어 있습니다. 텍스트 변환을 다시 시도하세요.",
       "starting": "음성 입력 시작",
       "stopRecording": "녹음 중지",
+      "storageFailed": "오디오를 저장하지 못했습니다. 재시도하면 이 기기에 이미 저장된 오디오만 복구됩니다.",
       "transcribing": "전사 중",
       "transcribingProgress": "전사 진행 중...",
       "transcriptionFailed": "음성 전사 실패. 다시 시도하세요."
@@ -5119,6 +5146,12 @@
           "stores": "객체 저장소",
           "title": "IndexedDB 저장소",
           "unavailable": "IndexedDB 저장소를 사용할 수 없습니다."
+        },
+        "voiceInput": {
+          "default": "기본값 ({{model}})",
+          "description": "음성 입력 v2 모델을 선택하세요. 음성 인식 모델은 {{model}}로 텍스트를 다듬습니다.",
+          "title": "음성 입력 모델",
+          "unavailable": "사용할 수 없는 모델 ({{model}})"
         }
       },
       "language": {

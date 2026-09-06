@@ -117,7 +117,8 @@ describe("POST /api/voice-io/polish", () => {
     expect(disabled.status).toBe(403);
   });
 
-  it("rejects non-staff users with a voice draft override", async () => {
+  it("lets non-staff users enable polishing through their Lab override", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Voice draft tests require an organization");
@@ -128,27 +129,27 @@ describe("POST /api/voice-io/polish", () => {
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
       { [FeatureSwitchKey.VoiceInputV2]: true },
     );
-    let providerRequests = 0;
     server.use(
       http.post(OPENROUTER_URL, () => {
-        providerRequests += 1;
         return HttpResponse.json({
           choices: [
             {
               finish_reason: "stop",
-              message: { content: "Should not be returned." },
+              message: { content: "Hello." },
             },
           ],
         });
       }),
     );
 
-    const response = await client().post({
-      headers: { authorization: "Bearer clerk-session" },
-      body: { text: "Hello" },
-    });
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Hello" },
+      }),
+      [200],
+    );
 
-    expect(response.status).toBe(403);
-    expect(providerRequests).toBe(0);
+    expect(response.body.text).toBe("Hello.");
   });
 });

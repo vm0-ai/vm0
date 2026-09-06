@@ -420,25 +420,25 @@ export default [
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Route BDDs cover citation persistence and public projection; this
+      // privacy-boundary matrix separately pins semantic deduplication and
+      // byte-identical non-Pi passthrough without coupling either to a DB row.
+      "src/signals/services/__tests__/pi-memory-citation-events.test.ts",
       // Pi resource snapshots are a byte-identical discovery contract shared
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       // The production cron exposes aggregate Phase 2 outcomes, but no API
       // constructs or inspects exact job and Storage state matrices. These
-      // focused tests pin the finite job, archive, usage, worker composition,
-      // publication, Storage notification, and concurrency contracts.
-      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
+      // focused tests pin the finite job, usage, worker composition, generic
+      // Storage publication guard, notification, and concurrency contracts.
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
+      // #31937 requires the real Guest/CLI and PostgreSQL control boundary.
+      "src/signals/services/__tests__/pi-memory-maintenance.boundary.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
-      // Terra route activation is explicitly deferred. This compatibility
-      // slice must pin the pre-admission provider/transport contract before a
-      // production endpoint can expose Pi-owned Terra behavior.
-      "src/signals/services/__tests__/pi-sandbox-config.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
       // Preview job-ref aliases are process environment state, and both Stripe
@@ -453,22 +453,6 @@ export default [
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
-    },
-  },
-  {
-    // Dedicated PostgreSQL race tests own explicit transactions and clients.
-    // Their try/finally blocks guarantee lock release when an assertion fails;
-    // they do not catch or transform product errors.
-    files: [
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
-    ],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...restrictedSyntax.filter((restriction) => {
-          return restriction.selector !== "TryStatement";
-        }),
-      ],
     },
   },
   {
@@ -586,20 +570,17 @@ export default [
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
       // The production cron exposes aggregate Phase 2 outcomes, but cannot
-      // construct or inspect the exact archive, usage, worker, PostgreSQL
-      // concurrency, publication, Storage notification, and selection state
+      // construct or inspect the exact usage, worker, PostgreSQL concurrency,
+      // generic Storage publication guard, notification, and selection state
       // matrices covered by these focused tests.
-      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
-      "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
+      // #31937 requires the real Guest/CLI and PostgreSQL control boundary.
+      "src/signals/services/__tests__/pi-memory-maintenance.boundary.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.test-fixture.ts",
-      // Terra route activation is explicitly deferred, so its pre-admission
-      // provider/transport compatibility matrix has no endpoint boundary yet.
-      "src/signals/services/__tests__/pi-sandbox-config.test.ts",
       // Preview job-ref aliases are process environment state, and both Stripe
       // metadata entry points must share one value-free resolution matrix that
       // cannot be observed completely through a single production API route.

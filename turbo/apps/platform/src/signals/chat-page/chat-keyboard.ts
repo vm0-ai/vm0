@@ -297,13 +297,13 @@ const setupChatPageShortcutActions$ = command(
               await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
             }
           },
-          toggleVoiceInput: async () => {
+          toggleVoiceInput: () => {
             if (!get(voiceInputV2Enabled$)) {
               return;
             }
             const thread = focusedThread();
             if (thread) {
-              await set(thread.composer.voice.toggle$, signal);
+              set(thread.composer.voice.toggle$);
             }
           },
         },

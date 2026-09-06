@@ -1,5 +1,4 @@
 import { command, type Command } from "ccstate";
-import type { ChatThreadDraft } from "@okouai/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -11,13 +10,6 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import { createRestoredAttachment } from "../okou-page/chat-draft.ts";
-import {
-  draftToEditorDoc,
-  messageDocumentToPrompt,
-  userMessageDraftAttachments,
-  type RestoredDraftState,
-} from "../okou-page/user-message-document-codec.ts";
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
@@ -79,88 +71,22 @@ interface PaneSpec {
   onNotFoundReady$?: Command<void, [AbortSignal]>;
 }
 
-function userMessageDraftState(
-  threadDraft: ChatThreadDraft,
-): RestoredDraftState | null {
-  const document = threadDraft.draftUserMessage;
-  if (draftToEditorDoc(document) === null) {
-    return null;
-  }
-  const content = document ? messageDocumentToPrompt(document) : "";
-  if (content === null) {
-    return null;
-  }
-  return {
-    content,
-    userMessage: document,
-    attachments: document
-      ? userMessageDraftAttachments(
-          document,
-          threadDraft.draftAttachments ?? [],
-        )
-      : [],
-  };
-}
-
-const loadDraft$ = command(
-  async (
-    { get, set },
-    thread: ChatPanelSignals,
-    isNew: boolean,
-    signal: AbortSignal,
-  ) => {
-    const threadDraft = await get(thread.threadDraft$);
-    signal.throwIfAborted();
-
-    if (!threadDraft) {
-      return;
-    }
-
-    const restoredDraft = userMessageDraftState(threadDraft);
-    if (!restoredDraft) {
-      return;
-    }
-    const hasDraft =
-      restoredDraft.content.length > 0 ||
-      restoredDraft.userMessage !== null ||
-      restoredDraft.attachments.length > 0;
-    if (isNew && hasDraft) {
-      const restoredAttachments = restoredDraft.attachments.map(
-        createRestoredAttachment,
-      );
-      const removedUnavailableAttachments = await set(
-        thread.composer.draft.seed$,
-        {
-          content: restoredDraft.content,
-          userMessage: restoredDraft.userMessage,
-          generationTemplate: undefined,
-          attachments: restoredAttachments,
-        },
-        signal,
-      );
-      if (removedUnavailableAttachments) {
-        await set(thread.composer.draft.save$, signal);
-      }
-    }
-  },
-);
 const resolvePaneThread$ = command(
   async (
     { set },
     args: {
       thread: ChatPanelSignals;
-      isNew: boolean;
       initialEventId: string | null;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const { thread, isNew, initialEventId } = args;
+    const { thread, initialEventId } = args;
 
     L.debug("resolvePaneThread$ Promise.all start", {
       threadId: thread.threadId,
     });
     await Promise.all([
-      set(loadDraft$, thread, isNew, signal),
+      set(thread.composer.draft.load$, signal),
       set(thread.subscribeChatThread$, signal),
       initialEventId
         ? set(
@@ -214,7 +140,7 @@ const setupPaneThread$ = command(
 
     L.debug("setupPaneThread$ start", { threadId });
     const chatEvents = createChatEventSignals(threadId);
-    const { thread, isNew } = set(
+    const { thread } = set(
       createCachedChatPanelSignals$,
       chatEvents,
       meta.agentId,
@@ -226,7 +152,6 @@ const setupPaneThread$ = command(
       resolvePaneThread$,
       {
         thread,
-        isNew,
         initialEventId,
       },
       signal,

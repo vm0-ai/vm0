@@ -65,12 +65,11 @@ import {
   type WorkspaceSearchChatThread,
 } from "../../signals/okou-page/workspace-chat-search.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { stableChatThreadNavigationEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
-  searchResultShortcutHintsVisible$,
-  searchResultShortcutIndex$,
-  setSearchResultShortcutElement$,
-} from "../../signals/okou-page/search-result-number-shortcuts.ts";
+  threadNumberShortcutsEnabled$,
+  threadNumberShortcutIndex$,
+} from "../../signals/okou-page/thread-number-shortcuts.ts";
+import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import {
@@ -504,8 +503,6 @@ function SpotlightRowMeta({
   readonly timestamp: string;
   readonly shortcutNumber: number | undefined;
 }) {
-  const showShortcutHints = useGet(searchResultShortcutHintsVisible$);
-
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2.5">
       {/* w-3.5 fits the widest indicator (RunningIndicator is 0.86rem) so the
@@ -514,14 +511,7 @@ function SpotlightRowMeta({
         <ChatThreadCommandIndicator indicator={indicator} />
       </span>
       <span className="text-xs text-[hsl(var(--gray-700))]">{timestamp}</span>
-      {showShortcutHints && shortcutNumber !== undefined ? (
-        <kbd
-          aria-hidden="true"
-          className='pointer-events-none inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-background px-1 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
-        >
-          {shortcutNumber}
-        </kbd>
-      ) : null}
+      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
     </span>
   );
 }
@@ -1008,7 +998,7 @@ function SpotlightSearchResults({
   onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
-  const numberShortcutsEnabled = useGet(stableChatThreadNavigationEnabled$);
+  const numberShortcutsEnabled = useGet(threadNumberShortcutsEnabled$);
   const shortcutNumber = (index: number) => {
     return numberShortcutsEnabled && index < 9 ? index + 1 : undefined;
   };
@@ -1140,8 +1130,7 @@ export function ThreeColumnSearchDialog({
   const filter = useGet(threeColumnSearchFilter$);
   const setFilter = useSet(setThreeColumnSearchFilter$);
   const threadLoadable = useLoadable(threeColumnSearchChatThreads$);
-  const setShortcutElement = useSet(setSearchResultShortcutElement$);
-  const shortcutIndex = useSet(searchResultShortcutIndex$);
+  const shortcutIndex = useSet(threadNumberShortcutIndex$);
   const threadMap = useGet(workspaceSearchChatThreadMap$);
   const messageLoadable = useLoadable(workspaceSearchChatMessages$);
   const workflowLoadable = useLoadable(threeColumnWorkflowSearchResults$);
@@ -1267,7 +1256,6 @@ export function ThreeColumnSearchDialog({
       }}
     >
       <div
-        ref={setShortcutElement}
         className="contents"
         onKeyDownCapture={(event) => {
           const index = shortcutIndex(event.nativeEvent);

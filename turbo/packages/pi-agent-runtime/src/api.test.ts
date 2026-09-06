@@ -3,7 +3,10 @@ import { createServer, type ServerResponse } from "node:http";
 
 import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
 import { materializePiAgentModelConfig } from "./credential";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +14,7 @@ import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
   inspectPiSessionJsonl,
+  projectPiSessionJsonlForExport,
   PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
   UnsupportedPiSessionVersionError,
@@ -1078,6 +1082,45 @@ describe("Pi API facade", () => {
         cacheWrite: 2,
       },
     });
+  });
+
+  it("hides citation envelopes while preserving structured provenance and canonical JSONL", () => {
+    const hidden =
+      "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
+    const nativeMessage: AssistantMessage = {
+      ...fauxAssistantMessage(
+        [
+          { type: "text", text: `before${hidden.slice(0, 10)}` },
+          { type: "text", text: `${hidden.slice(10)}after` },
+        ],
+        { timestamp: 123 },
+      ),
+      errorMessage: `provider failed${hidden}`,
+    };
+    const nativeBefore = JSON.stringify(nativeMessage);
+    const projected = projectPiApiAssistantMessage(nativeMessage);
+    expect(projected.content).toEqual([
+      { type: "text", text: "before" },
+      { type: "text", text: "after" },
+    ]);
+    expect(projected.memoryCitation).toEqual({
+      entries: [{ path: "memory.md", lineStart: 2, lineEnd: 3, note: "used" }],
+      rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+    });
+    expect(JSON.stringify(nativeMessage)).toBe(nativeBefore);
+
+    const session = MemoryPiSession.create({
+      cwd: "/workspace",
+      id: SESSION_ID,
+    });
+    session.appendMessage(nativeMessage);
+    const canonical = session.toJsonl();
+    expect(canonical).toContain(hidden.slice(0, 10));
+    expect(canonical).toContain(hidden.slice(10));
+    const exported = projectPiSessionJsonlForExport(canonical);
+    expect(exported).not.toContain("<oai-mem-citation>");
+    expect(exported).toContain('"errorMessage":"provider failed"');
+    expect(session.toJsonl()).toBe(canonical);
   });
 
   it("projects only a content-free usage-limit classification", () => {

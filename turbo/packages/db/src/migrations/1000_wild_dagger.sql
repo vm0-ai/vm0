@@ -1,1 +1,0 @@
-ALTER TABLE "connector_catalog_runtime_projections" DROP COLUMN "connector";

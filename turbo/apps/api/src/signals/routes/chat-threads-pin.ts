@@ -8,7 +8,8 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { notFound } from "../../lib/error";
+import { isChatThreadPinOrder } from "@okouai/core/chat-thread-pin-order";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
 import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
@@ -20,11 +21,16 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(chatThreadPinContract.pin));
   signal.throwIfAborted();
 
+  if (query?.pinOrder !== undefined && !isChatThreadPinOrder(query.pinOrder)) {
+    return badRequestMessage("Invalid pin order");
+  }
+  const pinOrder = query?.pinOrder ?? null;
   const writeDb = set(writeDb$);
   const updated = await writeDb.transaction(async (tx) => {
+    const pinnedAt = nowDate();
     const [thread] = await tx
       .update(chatThreads)
-      .set({ pinnedAt: nowDate() })
+      .set({ pinnedAt, pinOrder })
       .where(
         and(
           eq(chatThreads.id, params.id),
@@ -47,6 +53,8 @@ const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       chatThreadId: thread.id,
       agentId: thread.agentId,
       eventId: query?.eventId,
+      pinOrder,
+      createdAt: pinnedAt,
     });
     return true;
   });

@@ -1,5 +1,94 @@
 # Changelog
 
+## [8.625.11](https://github.com/vm0-ai/vm0/compare/core-v8.625.10...core-v8.625.11) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.0
+
+## [8.625.10](https://github.com/vm0-ai/vm0/compare/core-v8.625.9...core-v8.625.10) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.1
+
+## [8.625.9](https://github.com/vm0-ai/vm0/compare/core-v8.625.8...core-v8.625.9) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+
+## [8.625.8](https://github.com/vm0-ai/vm0/compare/core-v8.625.7...core-v8.625.8) (2026-09-06)
+
+
+### Performance Improvements
+
+* avoid duplicate pinned reverse-template guide load ([#31969](https://github.com/vm0-ai/vm0/issues/31969)) ([e8843ea](https://github.com/vm0-ai/vm0/commit/e8843ea6642f706a2214569cbe4726164ae7a766))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+
+## [8.625.7](https://github.com/vm0-ai/vm0/compare/core-v8.625.6...core-v8.625.7) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ui:** follow base ui popup transitions and positioning ([#31942](https://github.com/vm0-ai/vm0/issues/31942)) ([38edfa5](https://github.com/vm0-ai/vm0/commit/38edfa57f3e1318ec0bfdd13a1fd840ab8929203))
+
+## [8.625.6](https://github.com/vm0-ai/vm0/compare/core-v8.625.5...core-v8.625.6) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+
+## [8.625.5](https://github.com/vm0-ai/vm0/compare/core-v8.625.4...core-v8.625.5) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.6
+
+## [8.625.4](https://github.com/vm0-ai/vm0/compare/core-v8.625.3...core-v8.625.4) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+
+## [8.625.3](https://github.com/vm0-ai/vm0/compare/core-v8.625.2...core-v8.625.3) (2026-09-05)
+
+
+### Refactoring
+
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+
 ## [8.625.2](https://github.com/vm0-ai/vm0/compare/core-v8.625.1...core-v8.625.2) (2026-09-05)
 
 

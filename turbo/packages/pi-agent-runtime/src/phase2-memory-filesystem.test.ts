@@ -26,6 +26,7 @@ import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  applyValidatedPiMemoryPhase2Result,
   createPiMemoryPhase2Workspace,
   Phase2InputInvalidError,
   Phase2OutputInvalidError,
@@ -33,7 +34,9 @@ import {
   PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES,
   PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES,
   piEvidencePath,
+  preparedSetFromSnapshot,
   removePiMemoryPhase2Workspace,
+  snapshotMountedPiMemoryPhase2Base,
   snapshotPiMemoryPhase2Input,
   truncatePiMemoryPhase2WorkspaceDiff,
   validatePiMemoryPhase2Output,
@@ -195,6 +198,47 @@ describe("Pi memory Phase 2 filesystem", () => {
         new AbortController().signal,
       );
     }).toThrow(Phase2InputInvalidError);
+  });
+
+  it("leaves an interrupted mounted apply unpublished for checkpoint recovery", async () => {
+    const memoryRoot = await mkdtemp(
+      join(tmpdir(), "pi-memory-phase2-mounted-apply-test-"),
+    );
+    temporaryDirectories.push(memoryRoot);
+    await writeFile(join(memoryRoot, "MEMORY.md"), "# Task Group: before\n");
+    await writeFile(
+      join(memoryRoot, "memory_summary.md"),
+      "v1\n## User Profile\n- before\n",
+    );
+    const baseFiles = await snapshotMountedPiMemoryPhase2Base(memoryRoot);
+    const blockedTarget = join(memoryRoot, "skills", "blocked", "SKILL.md");
+    await mkdir(blockedTarget, { recursive: true });
+    const prepared = new Map<string, Buffer>([
+      ["MEMORY.md", Buffer.from("# Task Group: after\n")],
+      ["memory_summary.md", Buffer.from("v1\n## User Profile\n- after\n")],
+      [
+        "skills/blocked/SKILL.md",
+        Buffer.from(
+          "---\nname: blocked\ndescription: interrupted fixture\n---\n",
+        ),
+      ],
+    ]);
+    const validated = preparedSetFromSnapshot("storage-phase2", prepared);
+
+    await expect(
+      applyValidatedPiMemoryPhase2Result({
+        memoryRoot,
+        memoryStorageId: "storage-phase2",
+        baseFiles,
+        files: validated.files,
+        contentIdentity: validated.contentIdentity,
+      }),
+    ).rejects.toBeDefined();
+
+    expect(await readFile(join(memoryRoot, "MEMORY.md"), "utf8")).toBe(
+      "# Task Group: after\n",
+    );
+    await expect(readFile(blockedTarget)).rejects.toBeDefined();
   });
 
   it("rejects unsafe, ambiguous, non-file, and mismatched base inventory", () => {

@@ -1,4 +1,5 @@
 import type { SharedMessage } from "@okouai/api-contracts/contracts/shared-threads";
+import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agents } from "@okouai/db/schema/agent";
@@ -330,7 +331,20 @@ export const readSharedThread$ = command(
       .where(eq(sharedThreads.id, id))
       .limit(1);
     signal.throwIfAborted();
-    return row ?? null;
+    return row
+      ? {
+          ...row,
+          title: visiblePiMemoryCitationText(row.title),
+          messages: row.messages.map((message) => {
+            return message.role === "assistant"
+              ? {
+                  ...message,
+                  content: visiblePiMemoryCitationText(message.content),
+                }
+              : message;
+          }),
+        }
+      : null;
   },
 );
 
@@ -345,6 +359,8 @@ export const readSharedThreadMeta$ = command(
       .where(eq(sharedThreads.id, id))
       .limit(1);
     signal.throwIfAborted();
-    return row ?? null;
+    return row
+      ? { ...row, title: visiblePiMemoryCitationText(row.title) }
+      : null;
   },
 );
