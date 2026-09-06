@@ -65,8 +65,6 @@ import { shouldIgnoreImageArtifactNavigationKey } from "./artifact-image-navigat
 import type { ZoomableImageControls } from "./zoomable-image-canvas.tsx";
 
 const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
-const ARTIFACT_FLOATING_TRANSITION_CLASS =
-  "transition-[opacity,transform] duration-[180ms] ease data-open:!animate-none data-closed:!animate-none data-open:translate-y-0 data-open:opacity-100 data-closed:translate-y-2 data-closed:opacity-0";
 
 function siteSlugFromUrl(value: string): string | null {
   if (!URL.canParse(value)) {
@@ -157,10 +155,7 @@ export function ArtifactActionTooltip({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger render={trigger} />
-        <TooltipContent
-          side={side}
-          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
-        >
+        <TooltipContent side={side}>
           <p className="text-xs">{label}</p>
         </TooltipContent>
       </Tooltip>
@@ -502,10 +497,7 @@ function GoogleDriveMenuItem({
             </DropdownMenuItem>
           }
         />
-        <TooltipContent
-          side="left"
-          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
-        >
+        <TooltipContent side="left">
           {t(($) => {
             return $.artifacts.googleDrive.connectTooltip;
           })}
@@ -657,7 +649,7 @@ export function ArtifactDownloadMenu({
         onCloseAutoFocus={(event) => {
           event.preventDefault();
         }}
-        className={cn("w-56", ARTIFACT_FLOATING_TRANSITION_CLASS)}
+        className="w-56"
       >
         <DropdownMenuItem
           onClick={() => {

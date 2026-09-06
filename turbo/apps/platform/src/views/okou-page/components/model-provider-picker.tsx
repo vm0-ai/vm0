@@ -61,7 +61,6 @@ import {
 } from "../../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../signals/page-signal";
 import { resolveExplicitModelSelection$ } from "../../../signals/okou-page/model-default-selection";
-import { modelPickerPanelHeightRef$ } from "../../../signals/okou-page/model-picker-panel-height";
 import { detach, Reason } from "../../../signals/utils";
 import {
   getMediaModelPriceTierLabel,
@@ -1033,10 +1032,7 @@ function ModelPickerListHeader({
     // floating in a band nearly four times its own ink. `py-1` seats the
     // switch on the same 4px inset the rows sit on, and `-mb-1` takes back the
     // list's `gap-1` so the header's own padding is the whole distance.
-    <div
-      data-model-picker-header
-      className="sticky top-0 z-10 -mx-1 -mt-1 -mb-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2"
-    >
+    <div className="sticky top-0 z-10 -mx-1 -mt-1 -mb-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2">
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {label}
       </span>
@@ -1138,29 +1134,8 @@ function ModelFirstModelPickerContentLayout({
     },
   );
   const mediaModelPanelOpen = activeMediaModelCategory !== undefined;
-  const setPanelHeightRef = useSet(modelPickerPanelHeightRef$);
   return (
-    <SelectContent
-      // Categories hold different numbers of rows, so switching one for
-      // another changes how tall this popup is; the ref animates between the
-      // two heights instead of letting it snap.
-      ref={setPanelHeightRef}
-      className={cn(
-        // The same width every model picker uses. The wider panel width was
-        // there for the media rows' variant segments, which sat beside the
-        // model name; now that a family contributes one row, the widest row is
-        // a name beside a badge again.
-        "min-w-[260px]",
-        // No row-count cap: a fixed one made the popup taller than the space it
-        // had on short viewports and shorter than its own list on tall ones.
-        // The image category was the list that outgrew it, so switching to it
-        // animated the popup up to the cap, stopped short of the height the
-        // animation was still travelling to, and then dropped a scrollbar in
-        // when the animation restored the overflow. The available height is
-        // the only real limit, and the popup carries its own list under it.
-        "max-h-[var(--available-height)]",
-      )}
-    >
+    <SelectContent className="min-w-[260px] max-h-[var(--available-height)]">
       {/* A media-model panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
       {(mediaModelPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
@@ -1298,7 +1273,7 @@ function ModelFirstSelectPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      {open !== false && content}
+      {content}
     </Select>
   );
 }
