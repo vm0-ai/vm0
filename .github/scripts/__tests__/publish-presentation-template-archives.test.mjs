@@ -46,7 +46,7 @@ async function createTemplateFixture(sourceDir, release) {
     ),
     writeFile(path.join(templateDir, "design-system.md"), "# Design system\n"),
     writeFile(
-      path.join(templateDir, "layouts/_shell.html"),
+      path.join(templateDir, "layouts/shared-shell.html"),
       `<link rel="stylesheet" href="../color-systems/${release.defaultColorSystem}.css">\n`,
     ),
     writeFile(
