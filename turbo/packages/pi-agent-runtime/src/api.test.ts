@@ -1087,13 +1087,16 @@ describe("Pi API facade", () => {
   it("hides citation envelopes while preserving structured provenance and canonical JSONL", () => {
     const hidden =
       "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
-    const nativeMessage = fauxAssistantMessage(
-      [
-        { type: "text", text: `before${hidden.slice(0, 10)}` },
-        { type: "text", text: `${hidden.slice(10)}after` },
-      ],
-      { timestamp: 123 },
-    );
+    const nativeMessage: AssistantMessage = {
+      ...fauxAssistantMessage(
+        [
+          { type: "text", text: `before${hidden.slice(0, 10)}` },
+          { type: "text", text: `${hidden.slice(10)}after` },
+        ],
+        { timestamp: 123 },
+      ),
+      errorMessage: `provider failed${hidden}`,
+    };
     const nativeBefore = JSON.stringify(nativeMessage);
     const projected = projectPiApiAssistantMessage(nativeMessage);
     expect(projected.content).toEqual([
@@ -1114,9 +1117,9 @@ describe("Pi API facade", () => {
     const canonical = session.toJsonl();
     expect(canonical).toContain(hidden.slice(0, 10));
     expect(canonical).toContain(hidden.slice(10));
-    expect(projectPiSessionJsonlForExport(canonical)).not.toContain(
-      "<oai-mem-citation>",
-    );
+    const exported = projectPiSessionJsonlForExport(canonical);
+    expect(exported).not.toContain("<oai-mem-citation>");
+    expect(exported).toContain('"errorMessage":"provider failed"');
     expect(session.toJsonl()).toBe(canonical);
   });
 

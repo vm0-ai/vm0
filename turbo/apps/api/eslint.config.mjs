@@ -420,6 +420,10 @@ export default [
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Route BDDs cover citation persistence and public projection; this
+      // privacy-boundary matrix separately pins semantic deduplication and
+      // byte-identical non-Pi passthrough without coupling either to a DB row.
+      "src/signals/services/__tests__/pi-memory-citation-events.test.ts",
       // Pi resource snapshots are a byte-identical discovery contract shared
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
