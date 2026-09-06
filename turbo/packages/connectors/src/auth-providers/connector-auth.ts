@@ -114,6 +114,7 @@ import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
 import { paypalProvider } from "./connectors/paypal/provider";
+import { procountorProvider } from "./connectors/procountor/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
 import { rampProvider } from "./connectors/ramp/provider";
 import { reckonProvider } from "./connectors/reckon/provider";
@@ -1055,6 +1056,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("outlook-mail", "oauth", outlookMailProvider),
   authCodeRefreshProviderEntry("posthog", "oauth", posthogProvider),
   refreshProviderEntry("paypal", "api-token", paypalProvider),
+  refreshProviderEntry("procountor", "api-token", procountorProvider),
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
   refreshProviderEntry("ramp", "api-token", rampProvider),
