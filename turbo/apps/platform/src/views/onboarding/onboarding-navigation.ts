@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../signals/onboarding/onboarding-state.ts";
+import { desktopRecordingHandoffSearchParams } from "../../signals/okou-page/desktop-recording-handoff.ts";
 import { ROUTES, type RoutePath } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../signals/route.ts";
 
@@ -28,7 +29,7 @@ function updatedSearchParams(
 ): URLSearchParams {
   const next =
     options.preserve === false
-      ? new URLSearchParams()
+      ? desktopRecordingHandoffSearchParams(current)
       : new URLSearchParams(current);
   for (const key of options.remove ?? []) {
     next.delete(key);
