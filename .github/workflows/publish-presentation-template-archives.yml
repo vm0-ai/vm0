@@ -33,15 +33,15 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Decode GitHub App private key
+      - name: Normalize GitHub App private key
         id: source-private-key
         env:
-          SOURCE_PRIVATE_KEY_BASE64: ${{ secrets.OKOU_GITHUB_APP_PRIVATE_KEY }}
+          SOURCE_PRIVATE_KEY_PEM: ${{ secrets.OKOU_GITHUB_APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           private_key="$(
-            printf '%s' "$SOURCE_PRIVATE_KEY_BASE64" |
-              bash .github/scripts/decode-github-app-private-key.sh
+            printf '%s' "$SOURCE_PRIVATE_KEY_PEM" |
+              bash .github/scripts/normalize-github-app-private-key.sh
           )"
           printf '::add-mask::%s\n' "$private_key"
           printf 'private-key=%s\n' "$private_key" >> "$GITHUB_OUTPUT"
