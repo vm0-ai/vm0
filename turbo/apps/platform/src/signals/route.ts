@@ -1,3 +1,4 @@
+import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "./route-paths";
@@ -241,7 +242,10 @@ const navigate$ = command(
   ) => {
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
-    L.debug("navigating to", newPath);
+    L.debug(
+      "navigating to",
+      isDesktopAuthFlow(new URL(newPath, location.origin)) ? pathname : newPath,
+    );
     set(clearPageForRouteBoundary$, pathname);
     if (options.replace) {
       replaceState({}, "", newPath);

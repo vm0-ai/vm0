@@ -1,3 +1,4 @@
+import { isDesktopAuthFlow } from "./desktop-auth-flow.ts";
 import * as Sentry from "@sentry/browser";
 import type { BrowserOptions, Contexts, User } from "@sentry/browser";
 
@@ -65,18 +66,20 @@ export function createPlatformSentryOptions(
     // Preserve native fetch errors for application-level error handling.
     enhanceFetchErrorMessages: false,
 
-    ...(runtime === "shared-worker"
-      ? {
-          // Worker console output is controlled by the local debug loggers and
-          // must not be attached to later Sentry error events as breadcrumbs.
-          beforeBreadcrumb(breadcrumb) {
-            return breadcrumb.category === "console" ? null : breadcrumb;
-          },
-        }
-      : {}),
+    beforeBreadcrumb(breadcrumb) {
+      if (runtime === "page" && isDesktopAuthFlow()) {
+        return null;
+      }
+      return runtime === "shared-worker" && breadcrumb.category === "console"
+        ? null
+        : breadcrumb;
+    },
 
     // Filter out expected errors
     beforeSend(event, hint) {
+      if (runtime === "page" && isDesktopAuthFlow()) {
+        return null;
+      }
       // Filter out 4xx client errors that are expected
       const statusCode = event.contexts?.response?.status_code;
       if (
