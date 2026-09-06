@@ -46,6 +46,7 @@ async def test_bulk_headers_preserve_semantics_without_per_header_rebuilds(
         "Content-Length": "999",
         "Transfer-Encoding": "chunked",
         "Proxy-Authorization": "Basic filtered",
+        "X-Latin-1": "café",
         **bulk_headers,
     }
     flow = real_flow(
@@ -124,5 +125,6 @@ async def test_bulk_headers_preserve_semantics_without_per_header_rebuilds(
         (b"X-Keep", b"two"),
         (b"X-Bulk-0000", b"resolved-0"),
         (b"Content-Length", b"7"),
+        (b"X-Latin-1", b"caf\xe9"),
         *((name.encode(), value.encode()) for name, value in list(bulk_headers.items())[1:]),
     )

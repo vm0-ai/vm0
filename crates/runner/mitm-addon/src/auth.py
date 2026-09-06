@@ -631,8 +631,8 @@ def _apply_header_query_injection(
     if auth_pairs:
         resolved_fields_by_name: dict[bytes, tuple[bytes, bytes]] = {}
         for header_name, header_value in auth_pairs:
-            encoded_name = header_name.encode()
-            encoded_value = header_value.encode()
+            encoded_name = header_name.encode("ascii")
+            encoded_value = header_value.encode("latin-1")
             normalized_name = encoded_name.lower()
             existing_field = resolved_fields_by_name.get(normalized_name)
             if existing_field is None:
