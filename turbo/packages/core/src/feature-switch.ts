@@ -278,17 +278,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
     enabledEmailHashes: ["6490c77f", "9fd4ee92"], // bingjie@okou.ai, bingjie@vm0.ai
   },
-  [FeatureSwitchKey.NewChatDefaultModelAction]: {
+  [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Make changing the personal default model an explicit action in the new-chat model picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CloudBrowserPreference]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Let members choose whether Cloud browser is enabled by default in new chats.",
+      "Enable dedicated Chat settings and explicit new-chat default actions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

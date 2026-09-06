@@ -5149,6 +5149,10 @@
           "description": "Attiva il browser cloud per impostazione predefinita nelle nuove chat. Puoi modificarlo in qualsiasi chat.",
           "title": "Browser cloud"
         },
+        "defaultModel": {
+          "description": "Utilizzato a meno che una chat o un'esecuzione non scelga un altro modello.",
+          "title": "Modello predefinito"
+        },
         "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",
         "sectionTitle": "Chat"
       },

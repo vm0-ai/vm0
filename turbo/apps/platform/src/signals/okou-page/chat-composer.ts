@@ -31,7 +31,7 @@ type NewThreadComputerAccess =
   | { readonly kind: "cloudBrowser" }
   | { readonly kind: "computerUse"; readonly hostId: string };
 
-async function computerAccessFromCloudBrowserPreference(
+async function computerAccessFromSavedCloudBrowserDefault(
   cloudBrowserEnabled: Promise<boolean>,
 ): Promise<NewThreadComputerAccess> {
   return (await cloudBrowserEnabled)
@@ -53,7 +53,7 @@ export const newThreadCloudBrowserEnabled$ = computed(
       return selection.kind === "cloudBrowser";
     }
     const preferenceEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.CloudBrowserPreference] ?? false;
+      get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;
     return preferenceEnabled ? get(cloudBrowserEnabledByDefault$) : true;
   },
 );
@@ -73,7 +73,7 @@ export const newThreadComputerAccess$ = computed(
     if (typeof cloudBrowserEnabled === "boolean") {
       return cloudBrowserEnabled ? { kind: "cloudBrowser" } : { kind: "none" };
     }
-    return computerAccessFromCloudBrowserPreference(cloudBrowserEnabled);
+    return computerAccessFromSavedCloudBrowserDefault(cloudBrowserEnabled);
   },
 );
 

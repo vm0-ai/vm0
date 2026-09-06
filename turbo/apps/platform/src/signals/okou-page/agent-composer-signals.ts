@@ -71,7 +71,7 @@ const setModelSelection$ = command(
     set(setChatPageModelSelection$, selection);
     const selectedModel = selection?.selectedModel;
     const explicitDefaultActionEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
+      get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;
     if (!explicitDefaultActionEnabled && isSupportedRunModel(selectedModel)) {
       await set(
         updateUserModelPreference$,
@@ -102,8 +102,7 @@ function createMediaModelSetter<M extends ImageModel | VideoModel>(
     ): Promise<void> => {
       set(setSelection$, model);
       const explicitDefaultActionEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ??
-        false;
+        get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;
       if (explicitDefaultActionEnabled) {
         // The composer card carries an explicit "Use this for future chats" action,
         // so picking a media model only scopes the next new chat.

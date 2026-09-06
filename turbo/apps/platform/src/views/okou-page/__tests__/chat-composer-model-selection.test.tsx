@@ -170,7 +170,7 @@ test("Choose Standard or Fast Codex execution", async () => {
     path: NEW_CHAT_PATH,
     featureSwitches: {
       [FeatureSwitchKey.CodexFastMode]: true,
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -226,7 +226,7 @@ test("Make a temporary Codex speed the default", async () => {
     path: NEW_CHAT_PATH,
     featureSwitches: {
       [FeatureSwitchKey.CodexFastMode]: true,
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -273,7 +273,7 @@ test("Make a new-chat model choice the default immediately", async () => {
     context,
     path: NEW_CHAT_PATH,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: false,
+      [FeatureSwitchKey.ChatPreference]: false,
     },
   });
 
@@ -313,7 +313,7 @@ test("Temporarily choose a model for a new chat", async () => {
     context,
     path: NEW_CHAT_PATH,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -531,7 +531,7 @@ test("Confirm a chat model and Fast with only the compact menu switch", async ()
     featureSwitches: {
       [FeatureSwitchKey.ModelPickerMenu]: true,
       [FeatureSwitchKey.CodexFastMode]: false,
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
   await readyComposer();

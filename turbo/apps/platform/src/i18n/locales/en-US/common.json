@@ -5085,6 +5085,10 @@
           "description": "Enable Cloud browser by default in new chats. You can still change it in any chat.",
           "title": "Cloud browser"
         },
+        "defaultModel": {
+          "description": "Used unless a chat or run chooses another model.",
+          "title": "Default model"
+        },
         "description": "Choose defaults for new chats and how messages are sent.",
         "sectionTitle": "Chat"
       },

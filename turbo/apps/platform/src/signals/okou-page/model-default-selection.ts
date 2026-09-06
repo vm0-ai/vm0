@@ -61,11 +61,22 @@ export function resolveModelFirstUserDefaultSelection(params: {
   policies: OrgModelPoliciesResponse | null | undefined;
   codexFastModeEnabled: boolean;
 }): ModelProviderSelection | null {
+  const userSelection = resolveModelFirstStoredUserSelection(params);
+  return (
+    userSelection ?? resolveModelFirstWorkspaceDefaultSelection(params.policies)
+  );
+}
+
+export function resolveModelFirstStoredUserSelection(params: {
+  userPreference: UserModelDefaultSource | null | undefined;
+  policies: OrgModelPoliciesResponse | null | undefined;
+  codexFastModeEnabled: boolean;
+}): ModelProviderSelection | null {
   const userSelection = createModelFirstSelection(
     params.userPreference?.selectedModel,
   );
   if (!userSelection) {
-    return resolveModelFirstWorkspaceDefaultSelection(params.policies);
+    return null;
   }
   if (
     params.userPreference?.serviceTier === "priority" &&

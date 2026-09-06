@@ -473,7 +473,7 @@ function createTemporaryModelNoticeEnabled(
   return computed((get): boolean => {
     return (
       options.threadId === undefined &&
-      (get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false)
+      (get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false)
     );
   });
 }
