@@ -2577,6 +2577,10 @@ async fn try_reuse_from_pool(
                 IdleSandboxKind::Exact => SandboxReuseResult::PoolMiss,
                 IdleSandboxKind::Blank => miss_result,
             };
+            let unpark_failure_reuse_result = match entry_kind {
+                IdleSandboxKind::Exact => SandboxReuseResult::UnparkFailed,
+                IdleSandboxKind::Blank => miss_result,
+            };
             if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
                 let started_at = Instant::now();
                 let validation = entry.validate_workspace_promotion_identity(
@@ -2720,7 +2724,7 @@ async fn try_reuse_from_pool(
                             Ok((
                                 None,
                                 job_lease,
-                                SandboxReuseResult::UnparkFailed,
+                                unpark_failure_reuse_result,
                                 Some(snapshot),
                                 needs_reuse_state_refresh,
                                 None,
@@ -2737,7 +2741,7 @@ async fn try_reuse_from_pool(
                                 "reuse_unpark_failed",
                             );
                             Err(ReuseFromPoolFailure {
-                                reuse_result: SandboxReuseResult::UnparkFailed,
+                                reuse_result: unpark_failure_reuse_result,
                                 error: "idle sandbox cleanup was uncertain; fresh replacement was not started"
                                     .to_owned(),
                             })

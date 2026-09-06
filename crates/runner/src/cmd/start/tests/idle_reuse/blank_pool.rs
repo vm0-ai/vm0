@@ -1,7 +1,8 @@
 use super::super::super::*;
 use super::super::support::{
-    context_with_session, minimal_context, mock_run_config, push_job, seed_workspace_cache_state,
-    shutdown, test_profiles, two_profiles, wait_idle_pool_len,
+    context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
+    push_job, seed_workspace_cache_state, shutdown, test_profiles, two_profiles,
+    wait_idle_pool_len,
 };
 
 use crate::paths::RunnerPaths;
@@ -87,6 +88,43 @@ async fn blank_backed_run_becomes_exact_reuse_and_wins_over_refilled_blank() {
     assert_eq!(second.reuse_result, Some(SandboxReuseResult::Reused));
     assert_eq!(second.sandbox_id, Some(blank_sandbox_id));
     assert_eq!(idle_pool.lock().await.blank_len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn blank_unpark_failure_falls_back_without_changing_cold_attribution() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated blank unpark failure".into(),
+    }));
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "session-blank-unpark-failure")),
+    );
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should complete");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_ne!(completion.sandbox_id, Some(blank_sandbox_id));
+    assert_eq!(calls.unpark_call_count(), 1);
+    assert_eq!(calls.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
 }
