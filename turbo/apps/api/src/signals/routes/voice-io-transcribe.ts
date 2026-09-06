@@ -1,10 +1,11 @@
 import {
-  VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS,
   VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
-  VOICE_IO_TRANSCRIBE_MAX_FILES,
+  VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS,
+  voiceIoTranscribeSegmentOptionsSchema,
   voiceIoTranscribeContract,
   voiceIoEditorContextSchema,
   type VoiceIoEditorContext,
+  type VoiceIoTranscribeSegmentOptions,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -25,11 +26,10 @@ import {
   badRequest,
   getAudioDuration,
   MAX_STT_FILE_SIZE,
-  MAX_STT_REQUEST_DURATION_SECONDS,
   recordSttUsage$,
   sttDailyPolicy$,
 } from "../services/voice-io-post.service";
-import { transcribeVoiceDraft$ } from "../services/voice-io-transcribe.service";
+import { transcribeVoiceSegment$ } from "../services/voice-io-transcribe.service";
 import { safeJsonParse } from "../utils";
 import { userPreferences } from "../services/user-data.service";
 
@@ -104,7 +104,81 @@ function editorReference(
   return parsed.success ? parsed.data : null;
 }
 
-const postVoiceIoTranscribe$ = command(
+function parseVoiceDraftForm(formData: FormData) {
+  const options = voiceIoTranscribeSegmentOptionsSchema.safeParse(
+    safeJsonParse(String(formData.get("options"))),
+  );
+  if (!options.success) {
+    return badRequest("Invalid voice segment options");
+  }
+  const segment = options.data;
+  const files =
+    segment.final && formData.getAll("file").length === 0
+      ? []
+      : audioFiles(formData);
+  if (!files) {
+    return badRequest("No audio file provided");
+  }
+  if (files.length > 1) {
+    return badRequest("Voice segments must contain at most one audio file");
+  }
+  const reference = lastAssistantReference(formData);
+  if (reference === null) {
+    return badRequest("Invalid last assistant message");
+  }
+  const editorContext = editorReference(formData);
+  if (editorContext === null) {
+    return badRequest("Invalid editor context");
+  }
+
+  const totalBytes = files.reduce((total, file) => {
+    return total + file.size;
+  }, 0);
+  if (totalBytes > MAX_STT_FILE_SIZE) {
+    return badRequest("Audio files are too large (max 25 MB)");
+  }
+  for (const file of files) {
+    if (!isAllowedVoiceDraftMimeType(file.type)) {
+      return badRequest("Voice draft audio must be 16 kHz PCM WAV");
+    }
+  }
+
+  return { files, segment, reference, editorContext };
+}
+
+async function validateVoiceDraftDuration(
+  files: readonly File[],
+  segment: VoiceIoTranscribeSegmentOptions,
+  signal: AbortSignal,
+) {
+  const durations = await Promise.all(
+    files.map(async (file) => {
+      return await getAudioDuration(file);
+    }),
+  );
+  signal.throwIfAborted();
+  const validDurations = durations.filter((duration): duration is number => {
+    return duration !== null && duration > 0;
+  });
+  if (validDurations.length !== durations.length) {
+    return badRequest("Voice draft audio contains an invalid WAV file");
+  }
+  const durationSeconds = validDurations.reduce((total, duration) => {
+    return total + duration;
+  }, 0);
+  if (
+    durationSeconds > VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS ||
+    durationSeconds > segment.totalDurationSeconds
+  ) {
+    return badRequest(
+      "Voice segment duration exceeds its recording or segment limit",
+      "AUDIO_DURATION_TOO_LONG",
+    );
+  }
+  return { durationSeconds };
+}
+
+const voiceIoTranscribeHandler$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const featureContext = await get(voiceIoFeatureContext$);
     signal.throwIfAborted();
@@ -147,64 +221,17 @@ const postVoiceIoTranscribe$ = command(
 
     const formData = await get(request$).raw.formData();
     signal.throwIfAborted();
-    const files = audioFiles(formData);
-    if (!files) {
-      return badRequest("No audio file provided");
+    const parsed = parseVoiceDraftForm(formData);
+    if ("status" in parsed) {
+      return parsed;
     }
-    if (files.length > VOICE_IO_TRANSCRIBE_MAX_FILES) {
-      return badRequest(
-        `Too many voice draft audio files (max ${String(VOICE_IO_TRANSCRIBE_MAX_FILES)})`,
-      );
-    }
-    const reference = lastAssistantReference(formData);
-    if (reference === null) {
-      return badRequest("Invalid last assistant message");
-    }
-    const editorContext = editorReference(formData);
-    if (editorContext === null) {
-      return badRequest("Invalid editor context");
-    }
-
-    const totalBytes = files.reduce((total, file) => {
-      return total + file.size;
-    }, 0);
-    if (totalBytes > MAX_STT_FILE_SIZE) {
-      return badRequest("Audio files are too large (max 25 MB)");
-    }
-    for (const file of files) {
-      if (!isAllowedVoiceDraftMimeType(file.type)) {
-        return badRequest("Voice draft audio must be 16 kHz PCM WAV");
-      }
-    }
-
-    const durations = await Promise.all(
-      files.map(async (file) => {
-        return await getAudioDuration(file);
-      }),
-    );
+    const { files, segment, reference, editorContext } = parsed;
+    const duration = await validateVoiceDraftDuration(files, segment, signal);
     signal.throwIfAborted();
-    const validDurations = durations.filter((duration): duration is number => {
-      return duration !== null && duration > 0;
-    });
-    if (validDurations.length !== durations.length) {
-      return badRequest("Voice draft audio contains an invalid WAV file");
+    if ("status" in duration) {
+      return duration;
     }
-    const durationSeconds = validDurations.reduce((total, duration) => {
-      return total + duration;
-    }, 0);
-    if (durationSeconds > MAX_STT_REQUEST_DURATION_SECONDS) {
-      return badRequest(
-        `Audio duration (${durationSeconds}s) exceeds maximum (${MAX_STT_REQUEST_DURATION_SECONDS}s)`,
-        "AUDIO_DURATION_TOO_LONG",
-      );
-    }
-    const longRecording =
-      durationSeconds > VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS;
-    if (!longRecording && files.length !== 1) {
-      return badRequest(
-        "Short voice drafts must contain exactly one audio file",
-      );
-    }
+    const { durationSeconds } = duration;
 
     const policy = await set(
       sttDailyPolicy$,
@@ -217,16 +244,16 @@ const postVoiceIoTranscribe$ = command(
       return policy;
     }
 
+    const input = {
+      files,
+      model,
+      debug: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext),
+      ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
+      ...(editorContext === undefined ? {} : { editorContext }),
+    };
     const result = await set(
-      transcribeVoiceDraft$,
-      {
-        files,
-        longRecording,
-        model,
-        debug: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext),
-        ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
-        ...(editorContext === undefined ? {} : { editorContext }),
-      },
+      transcribeVoiceSegment$,
+      { ...input, ...segment },
       signal,
     );
     if (result.status !== 200) {
@@ -235,7 +262,12 @@ const postVoiceIoTranscribe$ = command(
 
     await set(
       recordSttUsage$,
-      { ...policy, orgId: auth.orgId, userId: auth.userId },
+      {
+        ...policy,
+        recordLifetimeUsage: policy.recordLifetimeUsage && segment.final,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      },
       signal,
     );
     return result;
@@ -244,14 +276,14 @@ const postVoiceIoTranscribe$ = command(
 
 export const voiceIoTranscribeRoutes: readonly RouteEntry[] = [
   {
-    route: voiceIoTranscribeContract.post,
+    route: voiceIoTranscribeContract.segment,
     handler: authRoute(
       {
         accept: ["session"],
         requireOrganization: true,
         missingOrganizationStatus: 401,
       },
-      postVoiceIoTranscribe$,
+      voiceIoTranscribeHandler$,
     ),
   },
 ];

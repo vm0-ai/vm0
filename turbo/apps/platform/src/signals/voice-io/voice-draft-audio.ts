@@ -3,9 +3,10 @@ import { SileroV5 } from "@ricky0123/vad-web/dist/models/v5";
 import sileroModelUrl from "@ricky0123/vad-web/dist/silero_vad_v5.onnx?url";
 import * as ort from "onnxruntime-web/wasm";
 import ortWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url";
-import { VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS } from "@okouai/api-contracts/contracts/voice-io-transcribe";
+import { VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 
 import { bestEffort, withCleanup } from "../utils";
+import type { VoiceDraftSegment } from "../external/voice-draft-store";
 import {
   decodeVoiceDraftPcmWav,
   encodeVoiceDraftPcmWav,
@@ -33,11 +34,6 @@ interface VoiceDraftPause {
   readonly seconds: number;
   readonly duration: number;
   readonly depth: number;
-}
-
-interface VoiceDraftChunkRange {
-  readonly startSample: number;
-  readonly endSample: number;
 }
 
 function absoluteAssetUrl(value: string): string {
@@ -214,45 +210,6 @@ function bestBoundary(
   }, undefined);
 }
 
-export function voiceDraftChunkRanges(
-  sampleCount: number,
-  pauses: readonly VoiceDraftPause[],
-): readonly VoiceDraftChunkRange[] {
-  const durationSeconds = sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE;
-  if (durationSeconds <= VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS) {
-    return [{ startSample: 0, endSample: sampleCount }];
-  }
-
-  const ranges: VoiceDraftChunkRange[] = [];
-  let startSample = 0;
-  while (startSample < sampleCount) {
-    const remainingSamples = sampleCount - startSample;
-    if (
-      remainingSamples <=
-      CHUNK_TARGET_SECONDS * VOICE_DRAFT_PCM_SAMPLE_RATE
-    ) {
-      ranges.push({ startSample, endSample: sampleCount });
-      break;
-    }
-    const startSeconds = startSample / VOICE_DRAFT_PCM_SAMPLE_RATE;
-    const boundarySeconds = bestBoundary(pauses, startSeconds);
-    if (boundarySeconds === undefined) {
-      ranges.push({ startSample, endSample: sampleCount });
-      break;
-    }
-    const endSample = Math.round(boundarySeconds * VOICE_DRAFT_PCM_SAMPLE_RATE);
-    const finalSeconds =
-      (sampleCount - endSample) / VOICE_DRAFT_PCM_SAMPLE_RATE;
-    if (endSample <= startSample || finalSeconds < CHUNK_MINIMUM_SECONDS) {
-      ranges.push({ startSample, endSample: sampleCount });
-      break;
-    }
-    ranges.push({ startSample, endSample });
-    startSample = endSample;
-  }
-  return ranges;
-}
-
 async function pausesForSamples(
   samples: Float32Array,
   signal: AbortSignal,
@@ -275,27 +232,48 @@ async function recordingSamples(
   return samples;
 }
 
-export async function prepareVoiceDraftAudio(
+export async function nextVoiceDraftSegment(
   recording: Blob,
+  startSample: number,
+  finished: boolean,
   signal: AbortSignal,
-): Promise<readonly File[]> {
+): Promise<VoiceDraftSegment | null> {
   const samples = await recordingSamples(recording, signal);
-  if (samples.length === 0) {
-    return [];
+  const remaining = samples.length - startSample;
+  const maximumSamples =
+    VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS * VOICE_DRAFT_PCM_SAMPLE_RATE;
+  if (remaining <= 0 || (!finished && remaining < maximumSamples)) {
+    return null;
   }
-  const durationSeconds = samples.length / VOICE_DRAFT_PCM_SAMPLE_RATE;
-  const pauses =
-    durationSeconds > VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS
-      ? await pausesForSamples(samples, signal)
-      : [];
-  signal.throwIfAborted();
-  const ranges = voiceDraftChunkRanges(samples.length, pauses);
-  return ranges.map((range, index) => {
-    const blob = encodeVoiceDraftPcmWav(
-      samples.slice(range.startSample, range.endSample),
-    );
-    return new File([blob], `voice-draft-${String(index + 1)}.wav`, {
-      type: "audio/wav",
-    });
-  });
+  if (finished && remaining <= maximumSamples) {
+    return { startSample, endSample: samples.length, final: true };
+  }
+  const window = samples.slice(startSample, startSample + maximumSamples);
+  const pauses = await pausesForSamples(window, signal);
+  const boundary = bestBoundary(pauses, 0);
+  const length =
+    boundary === undefined
+      ? maximumSamples
+      : Math.min(
+          maximumSamples,
+          Math.round(boundary * VOICE_DRAFT_PCM_SAMPLE_RATE),
+        );
+  return { startSample, endSample: startSample + length, final: false };
+}
+
+export async function voiceDraftSegmentFile(
+  recording: Blob,
+  segment: VoiceDraftSegment,
+  signal: AbortSignal,
+): Promise<File> {
+  const samples = await recordingSamples(recording, signal);
+  return new File(
+    [
+      encodeVoiceDraftPcmWav(
+        samples.slice(segment.startSample, segment.endSample),
+      ),
+    ],
+    `voice-draft-${String(segment.startSample)}.wav`,
+    { type: "audio/wav" },
+  );
 }

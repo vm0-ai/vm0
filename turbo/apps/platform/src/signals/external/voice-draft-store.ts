@@ -1,4 +1,5 @@
 import { openDB, type DBSchema } from "idb";
+import type { VoiceIoTranscribeContext } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { observeClientOperation } from "../../lib/client-telemetry.ts";
 import { withCleanup } from "../utils.ts";
 import { encodeVoiceDraftPcmWav } from "../voice-io/voice-draft-pcm.ts";
@@ -8,6 +9,21 @@ export interface VoiceDraftRecordingRecord {
   readonly id: string;
   readonly sampleCount: number;
   readonly chunkCount: number;
+  readonly progress?: VoiceDraftProgress;
+}
+
+export interface VoiceDraftSegment {
+  readonly startSample: number;
+  readonly endSample: number;
+  readonly final: boolean;
+  readonly transcript?: string;
+}
+
+export interface VoiceDraftProgress {
+  readonly revision: number;
+  readonly context: VoiceIoTranscribeContext;
+  readonly segments: readonly VoiceDraftSegment[];
+  readonly text?: string;
 }
 
 interface VoiceDraftRecordingDatabase extends DBSchema {
@@ -128,13 +144,49 @@ export async function appendVoiceDraftSamples(
         await track(
           drafts.put(
             {
-              id,
+              ...recording,
               chunkCount: sequence + 1,
               sampleCount: recording.sampleCount + samples.length,
             },
             key,
           ),
         );
+      },
+    ),
+    () => {
+      return database.close();
+    },
+  );
+}
+
+/** Commit a checkpoint without overwriting audio appended during transcription. */
+export async function saveVoiceDraftProgress(
+  key: string,
+  id: string,
+  progress: VoiceDraftProgress,
+): Promise<void> {
+  const database = await openVoiceDraftRecordingDatabase();
+  await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "voice_drafts",
+        template: "voice_drafts.checkpoint",
+        transaction_mode: "readwrite",
+      },
+      () => {
+        return database.transaction("drafts", "readwrite");
+      },
+      async (transaction, track) => {
+        const current = await track(transaction.store.get(key));
+        if (
+          current?.id !== id ||
+          (current.progress?.revision ?? 0) + 1 !== progress.revision
+        ) {
+          throw new Error(
+            "Voice recording ownership or transcription checkpoint changed",
+          );
+        }
+        await track(transaction.store.put({ ...current, progress }, key));
       },
     ),
     () => {

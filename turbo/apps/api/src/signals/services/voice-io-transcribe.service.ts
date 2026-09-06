@@ -1,7 +1,8 @@
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
 import type {
   VoiceIoTranscribeContext,
-  VoiceIoTranscribeResponse,
+  VoiceIoTranscribeSegmentOptions,
+  VoiceIoTranscribeSegmentResponse,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import {
   DEFAULT_VOICE_INPUT_MODEL,
@@ -19,8 +20,8 @@ import {
 import {
   OPENROUTER_VOICE_NO_SPEECH,
   polishLongVoiceTranscript,
-  transcribeAndPolishVoice,
   transcribeVoice,
+  finishIncrementalVoice,
   type OpenRouterVoiceAudio,
 } from "../external/openrouter-voice";
 import {
@@ -30,29 +31,21 @@ import {
 } from "../external/voice-input-transcription";
 import { settle } from "../utils";
 
-const MAX_CONCURRENT_VOICE_TRANSCRIPTIONS = 3;
-
-interface VoiceDraftTranscriptionInput extends VoiceIoTranscribeContext {
-  readonly files: readonly File[];
-  readonly longRecording: boolean;
-  readonly model: VoiceInputModel;
-  readonly debug: boolean;
-}
-
-interface VoiceDraftResult {
-  readonly body: VoiceIoTranscribeResponse | null;
-  readonly transcriptionMs: number;
-  readonly polishMs: number;
-}
+type VoiceDraftTranscriptionInput = VoiceIoTranscribeContext &
+  VoiceIoTranscribeSegmentOptions & {
+    readonly files: readonly File[];
+    readonly model: VoiceInputModel;
+    readonly debug: boolean;
+  };
 
 function voicePolishModel(
   input: VoiceDraftTranscriptionInput,
 ): MultimodalVoiceInputModelId {
-  // The GPT Audio gateway rejects the text-only request used after stitching.
-  // Short recordings still transcribe and polish together with audio attached.
+  // GPT Audio requires audio input. Finalization without a remaining audio
+  // segment uses the shared text-capable polish model.
   if (
     input.model.kind === "transcription" ||
-    (input.longRecording &&
+    (input.files.length === 0 &&
       (input.model.id === "openai/gpt-audio" ||
         input.model.id === "openai/gpt-audio-mini"))
   ) {
@@ -100,66 +93,6 @@ async function voiceAudio(
   };
 }
 
-async function mapWithConcurrency<T, Result>(
-  values: readonly T[],
-  maximumConcurrency: number,
-  signal: AbortSignal,
-  map: (value: T, signal: AbortSignal) => Promise<Result>,
-): Promise<readonly Result[]> {
-  const results: (Result | undefined)[] = Array.from({
-    length: values.length,
-  });
-  const batchController = new AbortController();
-  const batchSignal = AbortSignal.any([signal, batchController.signal]);
-  let nextIndex = 0;
-  let failed = false;
-  let firstError: unknown;
-
-  const worker = async (): Promise<void> => {
-    while (!failed && nextIndex < values.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const value = values[index];
-      if (value === undefined) {
-        firstError = new Error("Voice transcription worker received no input");
-        failed = true;
-        batchController.abort(firstError);
-        return;
-      }
-      const [outcome] = await Promise.allSettled([map(value, batchSignal)]);
-      if (!outcome) {
-        firstError = new Error("Voice transcription worker did not settle");
-        failed = true;
-        batchController.abort(firstError);
-        return;
-      }
-      if (outcome.status === "rejected") {
-        if (!failed) {
-          firstError = outcome.reason;
-          failed = true;
-          batchController.abort(firstError);
-        }
-        return;
-      }
-      results[index] = outcome.value;
-    }
-  };
-
-  await Promise.all(
-    Array.from({ length: Math.min(maximumConcurrency, values.length) }, worker),
-  );
-  signal.throwIfAborted();
-  if (failed) {
-    throw firstError;
-  }
-  return results.map((result) => {
-    if (result === undefined) {
-      throw new Error("Voice transcription worker returned no result");
-    }
-    return result;
-  });
-}
-
 function stitchTranscripts(pieces: readonly string[]): string {
   const transcript = pieces
     .map((piece) => {
@@ -176,93 +109,81 @@ function stitchTranscripts(pieces: readonly string[]): string {
   return transcript;
 }
 
-async function transcribeThenPolishVoiceDraft(
+async function transcribeIncrementalVoice(
   input: VoiceDraftTranscriptionInput,
   signal: AbortSignal,
-): Promise<VoiceDraftResult> {
-  const startedAt = performance.now();
-  const pieces = await mapWithConcurrency(
-    input.files,
-    MAX_CONCURRENT_VOICE_TRANSCRIPTIONS,
-    signal,
-    async (file, workerSignal) => {
-      const audio = await voiceAudio(file, workerSignal);
-      if (input.model.kind === "transcription") {
-        return await transcribeVoiceInputAudio(
-          input.model,
-          audio,
-          workerSignal,
-        );
-      }
-      const result = await transcribeVoice(
-        audio,
-        input,
-        input.model.id,
-        workerSignal,
-      );
-      if (result === null) {
-        throw new Error("OpenRouter voice transcription is not configured");
-      }
-      return result.transcript;
-    },
-  );
-  signal.throwIfAborted();
-  const transcript = stitchTranscripts(pieces);
-  const transcriptionMs = performance.now() - startedAt;
-  if (!transcript) {
-    return { body: null, transcriptionMs, polishMs: 0 };
+): Promise<VoiceIoTranscribeSegmentResponse> {
+  const file = input.files[0];
+  const audio = file ? await voiceAudio(file, signal) : undefined;
+  if (audio && input.final && input.model.kind === "multimodal") {
+    const result = await finishIncrementalVoice(
+      audio,
+      input,
+      input.model.id,
+      signal,
+    );
+    if (!result) {
+      throw new Error("Voice transcription is not configured");
+    }
+    return {
+      ...result,
+      transcript:
+        result.transcript === OPENROUTER_VOICE_NO_SPEECH
+          ? ""
+          : result.transcript,
+      polishedText:
+        result.polishedText === OPENROUTER_VOICE_NO_SPEECH
+          ? ""
+          : result.polishedText,
+    };
   }
-  const polishStartedAt = performance.now();
-  const polished = await polishLongVoiceTranscript(
+  const result = audio
+    ? input.model.kind === "transcription"
+      ? {
+          transcript: await transcribeVoiceInputAudio(
+            input.model,
+            audio,
+            signal,
+          ),
+          language: "und",
+        }
+      : await transcribeVoice(audio, input, input.model.id, signal)
+    : { transcript: "", language: "und" };
+  if (!result) {
+    throw new Error("Voice transcription is not configured");
+  }
+  const transcript =
+    result.transcript === OPENROUTER_VOICE_NO_SPEECH ? "" : result.transcript;
+  if (!input.final) {
+    return { transcript, language: result.language };
+  }
+  const completeTranscript = stitchTranscripts([
+    input.previousTranscript,
     transcript,
+  ]);
+  if (!completeTranscript) {
+    return { transcript, polishedText: "", language: result.language };
+  }
+  const polished = await polishLongVoiceTranscript(
+    completeTranscript,
     input,
     voicePolishModel(input),
     signal,
   );
-  if (polished === null) {
-    throw new Error("OpenRouter voice transcription is not configured");
+  if (!polished) {
+    throw new Error("Voice transcription is not configured");
   }
   return {
-    body: {
-      transcript,
-      polishedText: polished.polishedText,
-      language: polished.language,
-    },
-    transcriptionMs,
-    polishMs: performance.now() - polishStartedAt,
+    transcript,
+    ...polished,
+    polishedText:
+      polished.polishedText === OPENROUTER_VOICE_NO_SPEECH
+        ? ""
+        : polished.polishedText,
   };
 }
 
-async function transcribeShortVoiceDraft(
-  input: VoiceDraftTranscriptionInput,
-  signal: AbortSignal,
-): Promise<VoiceDraftResult> {
-  if (input.model.kind !== "multimodal") {
-    throw new Error("Combined voice transcription requires a multimodal model");
-  }
-  const startedAt = performance.now();
-  const file = input.files[0];
-  if (!file) {
-    throw new Error("Voice draft transcription requires one audio file");
-  }
-  const audio = await voiceAudio(file, signal);
-  const result = await transcribeAndPolishVoice(
-    audio,
-    input,
-    input.model.id,
-    signal,
-  );
-  if (result === null) {
-    throw new Error("OpenRouter voice transcription is not configured");
-  }
-  return {
-    body: result,
-    transcriptionMs: performance.now() - startedAt,
-    polishMs: 0,
-  };
-}
-
-export const transcribeVoiceDraft$ = command(
+export const transcribeVoiceSegment$ = command(
   async (
     { get, set },
     input: VoiceDraftTranscriptionInput,
@@ -270,22 +191,18 @@ export const transcribeVoiceDraft$ = command(
   ) => {
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
-    if (!isLlmConfigured()) {
-      return notConfigured("Voice draft transcription is not configured");
-    }
     if (
-      input.model.kind === "transcription" &&
-      !isVoiceTranscriptionConfigured(input.model)
+      !isLlmConfigured() ||
+      (input.model.kind === "transcription" &&
+        !isVoiceTranscriptionConfigured(input.model))
     ) {
-      return notConfigured(
-        "The selected voice transcription provider is not configured",
-      );
+      return notConfigured("Voice transcription is not configured");
     }
-
-    const combined = !input.longRecording && input.model.kind === "multimodal";
     if (input.debug) {
       set(setResHeader$, "X-Voice-Input-Model", input.model.id);
-      set(setResHeader$, "X-Voice-Polish-Model", voicePolishModel(input));
+      if (input.final) {
+        set(setResHeader$, "X-Voice-Polish-Model", voicePolishModel(input));
+      }
       set(
         setResHeader$,
         "Access-Control-Expose-Headers",
@@ -293,31 +210,35 @@ export const transcribeVoiceDraft$ = command(
         { append: true },
       );
     }
-
+    const startedAt = performance.now();
     const generated = await settle(
-      combined
-        ? transcribeShortVoiceDraft(input, requestSignal)
-        : transcribeThenPolishVoiceDraft(input, requestSignal),
+      transcribeIncrementalVoice(input, requestSignal),
     );
     signal.throwIfAborted();
     if (!generated.ok) {
       return providerError(generated.error);
     }
-    if (input.debug) {
-      const { transcriptionMs, polishMs } = generated.value;
-      const timing = combined
-        ? `voice_combined;dur=${transcriptionMs.toFixed(2)}`
-        : `voice_transcribe;dur=${transcriptionMs.toFixed(2)}, voice_polish;dur=${polishMs.toFixed(2)}`;
-      set(setResHeader$, "Server-Timing", timing, { append: true });
-    }
-    const body = generated.value.body;
     if (
-      body === null ||
-      body.transcript === OPENROUTER_VOICE_NO_SPEECH ||
-      body.polishedText === OPENROUTER_VOICE_NO_SPEECH
+      input.final &&
+      (input.previousTranscript.trim() || generated.value.transcript.trim()) &&
+      !generated.value.polishedText?.trim()
+    ) {
+      return providerError(new Error("Voice polish discarded recorded speech"));
+    }
+    if (input.debug) {
+      set(
+        setResHeader$,
+        "Server-Timing",
+        `voice_segment;dur=${(performance.now() - startedAt).toFixed(2)}`,
+        { append: true },
+      );
+    }
+    if (
+      !generated.value.transcript &&
+      (!input.final || !generated.value.polishedText)
     ) {
       return { status: 204 as const, body: undefined };
     }
-    return { status: 200 as const, body };
+    return { status: 200 as const, body: generated.value };
   },
 );

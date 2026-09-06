@@ -48,7 +48,7 @@ test.each(["user", "org", "target"] as const)(
     const firstPage = createChildAbortController(context.signal);
     const secondPage = createChildAbortController(secondContext.signal);
     let successful = false;
-    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
       return successful
         ? HttpResponse.json({
             transcript: "original",
