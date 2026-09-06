@@ -197,6 +197,7 @@ import {
   holdThreadSessionConversationClearFixture,
   insertPiApiFirstTurnUsageEventsFixture,
   readCanonicalChatEventStorageFixture,
+  readRunOutputMemoryCitationsFixture,
   readRunUsageEventsFixture,
   releaseBddVm0ApiKey,
   removeChatCallbackPublicBrandFixture,
@@ -9004,7 +9005,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("projects complete API-first text blocks in source order and completes at N", async () => {
+  it("projects citation-free API-first blocks and durable private provenance", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
@@ -9042,11 +9043,13 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       ),
       http.post("https://api.openai.com/v1/responses", () => {
+        const hidden =
+          "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
         return new HttpResponse(
           piResponsesContentSse({
             blocks: [
-              { type: "text", text: "alpha" },
-              { type: "text", text: "beta" },
+              { type: "text", text: `alpha${hidden.slice(0, 17)}` },
+              { type: "text", text: `${hidden.slice(17)}beta` },
               { type: "text", text: "gamma" },
               { type: "text", text: "delta" },
             ],
@@ -9065,6 +9068,28 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await waitForRunStatus(actor, run.runId, "completed");
     await flushWaitUntilForTest();
+
+    const serializedAxiomEvents = JSON.stringify(consumedAgentEvents);
+    expect(serializedAxiomEvents).not.toContain("oai-mem-citation");
+    expect(serializedAxiomEvents).not.toContain("memory.md");
+    await expect(
+      readRunOutputMemoryCitationsFixture(run.runId),
+    ).resolves.toStrictEqual([
+      {
+        sequenceNumber: 3,
+        citation: {
+          entries: [
+            {
+              path: "memory.md",
+              lineStart: 2,
+              lineEnd: 3,
+              note: "used",
+            },
+          ],
+          rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+        },
+      },
+    ]);
 
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",

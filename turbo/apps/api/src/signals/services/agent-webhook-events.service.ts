@@ -239,7 +239,7 @@ export const receiveAgentEvents$ = command(
         },
       },
       acceptedEvents: {
-        payload,
+        payload: projectionResult.value.payload,
         chatProjection: projectionResult.value.chatProjection,
       },
     };

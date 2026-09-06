@@ -35,6 +35,7 @@ mod event_delivery;
 mod exec_boundary;
 mod jsonl_result;
 mod line_reader;
+mod pi_memory_citation;
 mod pi_rpc;
 mod process_group;
 mod provider_event_normalization;

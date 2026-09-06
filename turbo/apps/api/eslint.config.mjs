@@ -420,6 +420,10 @@ export default [
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
+      // Pi citation normalization is the rolling old/new Guest compatibility
+      // boundary. Route behavior cannot construct both webhook payload shapes
+      // or assert that non-Pi payload object identity remains unchanged.
+      "src/signals/services/__tests__/pi-memory-citation-events.test.ts",
       // Pi resource snapshots are a byte-identical discovery contract shared
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.

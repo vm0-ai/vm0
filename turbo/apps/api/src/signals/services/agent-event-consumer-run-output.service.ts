@@ -6,6 +6,7 @@ import {
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import { runOutputMemoryCitations } from "@okouai/db/schema/run-output-memory-citation";
 
 import type {
   AgentEvent,
@@ -26,6 +27,10 @@ import {
 import { chatThreadForRunFromDb } from "./chat-thread.service";
 import { writeRunMetadataInTransaction } from "./agent-run-metadata-write.service";
 import { lockChatQueueThread } from "./chat-event-queue.service";
+import {
+  normalizeRunOutputEvents,
+  type EventCitation,
+} from "./pi-memory-citation-events";
 
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
@@ -51,6 +56,7 @@ type RunOutputMaterializationResult =
   | {
       readonly outcome: "accepted";
       readonly chatProjection: MaterializedChatProjection | null;
+      readonly payload: EventConsumerPayload;
     }
   | { readonly outcome: "ignored-timeout" };
 
@@ -281,6 +287,28 @@ type OutputMaterializationTransactionResult =
   | RunOutputMaterializationResult
   | { readonly outcome: "retry" };
 
+async function insertMemoryCitations(
+  tx: Tx,
+  runId: string,
+  citations: readonly EventCitation[],
+): Promise<void> {
+  if (citations.length === 0) {
+    return;
+  }
+  await tx
+    .insert(runOutputMemoryCitations)
+    .values(
+      citations.map((item) => {
+        return {
+          runId,
+          sequenceNumber: item.sequenceNumber,
+          citation: item.citation,
+        };
+      }),
+    )
+    .onConflictDoNothing();
+}
+
 async function materializeAdmittedRunOutputEvents(
   args: {
     readonly tx: Tx;
@@ -288,10 +316,11 @@ async function materializeAdmittedRunOutputEvents(
     readonly thread: MaterializedChatProjection["thread"] | null;
     readonly latestResult: OutputCandidate | null;
     readonly latestOutput: OutputCandidate | null;
+    readonly citations: readonly EventCitation[];
   },
   signal: AbortSignal,
 ): Promise<RunOutputMaterializationResult> {
-  const { tx, payload, thread, latestResult, latestOutput } = args;
+  const { tx, payload, thread, latestResult, latestOutput, citations } = args;
   let insertedRowCount = 0;
   let shouldAttemptFirstAssistantEventClaim = false;
   if (thread) {
@@ -341,10 +370,11 @@ async function materializeAdmittedRunOutputEvents(
         },
       });
   }
+  await insertMemoryCitations(tx, payload.runId, citations);
   signal.throwIfAborted();
 
   if (!thread) {
-    return { outcome: "accepted", chatProjection: null };
+    return { outcome: "accepted", chatProjection: null, payload };
   }
 
   const acknowledgedAt = nowDate();
@@ -367,6 +397,7 @@ async function materializeAdmittedRunOutputEvents(
 
   return {
     outcome: "accepted",
+    payload,
     chatProjection: {
       thread,
       insertedRowCount,
@@ -387,8 +418,29 @@ async function materializeRunOutputEvents(
   payload: EventConsumerPayload,
   signal: AbortSignal,
 ): Promise<RunOutputMaterializationResult> {
-  const latestResult = latestCandidate(payload.events, resultText);
-  const latestOutput = latestCandidate(payload.events, callbackOutputText);
+  const [runProjection] = await writeDb
+    .select({ launchSnapshot: agentRuns.launchSnapshot })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, payload.runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!runProjection) {
+    throw new AgentEventRunNotFoundError(payload.runId);
+  }
+  // A promoted API can receive raw citation markup from an already-running Pi
+  // Guest. Remove this text-parsing bridge only after the Runner/Sandbox drain
+  // and retained rollback-artifact gates tracked by #31964 have passed.
+  const parseLegacyGuestCitationText =
+    runProjection.launchSnapshot?.framework === "pi";
+  const normalized = normalizeRunOutputEvents(
+    payload,
+    parseLegacyGuestCitationText,
+  );
+  const latestResult = latestCandidate(normalized.payload.events, resultText);
+  const latestOutput = latestCandidate(
+    normalized.payload.events,
+    callbackOutputText,
+  );
 
   let expectedThread = await chatThreadForRunFromDb(writeDb, payload.runId);
   signal.throwIfAborted();
@@ -418,7 +470,14 @@ async function materializeRunOutputEvents(
         }
 
         return await materializeAdmittedRunOutputEvents(
-          { tx, payload, thread, latestResult, latestOutput },
+          {
+            tx,
+            payload: normalized.payload,
+            thread,
+            latestResult,
+            latestOutput,
+            citations: normalized.citations,
+          },
           signal,
         );
       });
