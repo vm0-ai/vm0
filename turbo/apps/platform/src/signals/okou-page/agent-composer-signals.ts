@@ -20,6 +20,7 @@ import {
   type EnsuredAgentDraft,
 } from "./agent-draft.ts";
 import { selectedComputerUseHostId } from "./computer-use-hosts.ts";
+import type { DraftSignals } from "./chat-draft.ts";
 import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import {
   createComposerSignals,
@@ -171,11 +172,20 @@ const noOp$ = command((): void => {});
 interface AgentComposerOptions {
   readonly forward?: ChatForwardContext;
   readonly onOptimisticSend?: () => void;
+  readonly draftScope?: "agent" | "standalone";
+}
+
+/** Programmatic task input has no mounted editor or inline template. */
+interface TextSubmission {
+  readonly prompt: string;
+  readonly generationTemplate: undefined;
+  readonly editorDocument?: undefined;
+  readonly videoRunOptions?: undefined;
 }
 
 function createAgentSubmitMessage(
   agentId: string,
-  agentDraft: EnsuredAgentDraft,
+  draft: DraftSignals,
   connector: ReturnType<typeof createComposerConnectorSignals>,
   options: AgentComposerOptions,
 ) {
@@ -183,7 +193,7 @@ function createAgentSubmitMessage(
     async (
       { get, set },
       action: "send" | "queue",
-      submission: ComposerSubmission,
+      submission: ComposerSubmission | TextSubmission,
       signal: AbortSignal,
     ): Promise<boolean> => {
       if (action !== "send") {
@@ -240,7 +250,8 @@ function createAgentSubmitMessage(
         send,
         {
           agentId,
-          draft: agentDraft.draft,
+          draft,
+          draftScope: options.draftScope,
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
@@ -286,7 +297,7 @@ function createAgentComposerSignalsWithDraft(
   const connector = createComposerConnectorSignals(agentId);
   const submitMessage$ = createAgentSubmitMessage(
     agentId,
-    agentDraft,
+    agentDraft.draft,
     connector,
     options,
   );
@@ -327,6 +338,17 @@ function createAgentComposerSignalsWithDraft(
     removeAutomationEvent$: noOpEventAction$,
     cancelActiveGoal$: noOpAction$,
     openActiveGoal$: noOp$,
+  });
+}
+
+/** A task dialog owns its attachments and must not consume the chat draft. */
+export function createStandaloneAgentSubmission(
+  agentId: string,
+  draft: DraftSignals,
+  connector: ReturnType<typeof createComposerConnectorSignals>,
+) {
+  return createAgentSubmitMessage(agentId, draft, connector, {
+    draftScope: "standalone",
   });
 }
 

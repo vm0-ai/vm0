@@ -21,10 +21,21 @@ import {
   avatarVideoVoicesResponseSchema,
 } from "@okouai/api-contracts/contracts/avatar-video";
 import type {
+  IntroVideoAvatarsQuery,
+  IntroVideoAvatarsResponse,
   IntroVideoPresenterGenerateRequest,
   IntroVideoPresenterGenerateResponse,
+  IntroVideoStylesQuery,
+  IntroVideoStylesResponse,
   IntroVideoVoiceGenerateRequest,
   IntroVideoVoiceGenerateResponse,
+  IntroVideoVoicesQuery,
+  IntroVideoVoicesResponse,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
+import {
+  introVideoAvatarsResponseSchema,
+  introVideoStylesResponseSchema,
+  introVideoVoicesResponseSchema,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
@@ -1086,6 +1097,76 @@ export async function generateWebIntroVideoVoice(
     token,
     fallback: "Failed to generate Intro Video narration",
   });
+}
+
+function introVideoCatalogUrl(
+  baseUrl: string,
+  collection: "avatars" | "styles" | "voices",
+  query: Record<string, string | number | undefined>,
+): URL {
+  const url = new URL(`/api/intro-video/${collection}`, baseUrl);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url;
+}
+
+async function getIntroVideoCatalog(
+  url: URL,
+  fallback: string,
+): Promise<unknown> {
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders({
+      Authorization: `Bearer ${token}`,
+    }),
+  });
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(response, fallback);
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return await response.json();
+}
+
+export async function listWebIntroVideoAvatars(
+  query: IntroVideoAvatarsQuery,
+): Promise<IntroVideoAvatarsResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoAvatarsResponseSchema.parse(
+    await getIntroVideoCatalog(
+      introVideoCatalogUrl(baseUrl, "avatars", query),
+      "Failed to list Intro Video avatars",
+    ),
+  );
+}
+
+export async function listWebIntroVideoStyles(
+  query: IntroVideoStylesQuery,
+): Promise<IntroVideoStylesResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoStylesResponseSchema.parse(
+    await getIntroVideoCatalog(
+      introVideoCatalogUrl(baseUrl, "styles", query),
+      "Failed to list Intro Video styles",
+    ),
+  );
+}
+
+export async function listWebIntroVideoVoices(
+  query: IntroVideoVoicesQuery,
+): Promise<IntroVideoVoicesResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoVoicesResponseSchema.parse(
+    await getIntroVideoCatalog(
+      introVideoCatalogUrl(baseUrl, "voices", query),
+      "Failed to list Intro Video voices",
+    ),
+  );
 }
 
 function avatarVideoCollectionUrl(

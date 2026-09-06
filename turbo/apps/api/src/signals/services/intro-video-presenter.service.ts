@@ -44,6 +44,7 @@ interface IntroVideoPresenterErrorResponse {
 
 export interface IntroVideoPresenterOptions {
   readonly avatarId: string;
+  readonly avatarGroupId: string | undefined;
   readonly audioUrl: string;
   readonly aspectRatio: "landscape";
   readonly videoName: string | undefined;
@@ -72,6 +73,10 @@ function errorBody(message: string, code: string): ErrorBody {
 
 function badRequest(message: string): IntroVideoPresenterErrorResponse {
   return { status: 400, body: errorBody(message, "BAD_REQUEST") };
+}
+
+export function introVideoPresenterAvatarUnavailable(): IntroVideoPresenterErrorResponse {
+  return badRequest("HeyGen avatar is not available in Intro Video");
 }
 
 export function introVideoPresenterServiceUnavailable(
@@ -118,11 +123,15 @@ export function parseIntroVideoPresenterOptions(
   if (!parsed.success) {
     return badRequest(parsed.error.issues[0]?.message ?? "Invalid request");
   }
-  if (!isHeyGenIntroVideoAvatarId(parsed.data.avatarId)) {
-    return badRequest("HeyGen avatar is not available in Intro Video");
+  if (
+    !parsed.data.avatarGroupId &&
+    !isHeyGenIntroVideoAvatarId(parsed.data.avatarId)
+  ) {
+    return introVideoPresenterAvatarUnavailable();
   }
   return {
     avatarId: parsed.data.avatarId,
+    avatarGroupId: parsed.data.avatarGroupId,
     audioUrl: parsed.data.audioUrl,
     aspectRatio: "landscape",
     videoName: parsed.data.videoName,
@@ -254,6 +263,7 @@ export const recordGeneratedIntroVideoPresenter$ = command(
           sourceUrl: params.generation.sourceUrl,
           durationSeconds: params.generation.durationSeconds,
           avatarId: params.generation.options.avatarId,
+          avatarGroupId: params.generation.options.avatarGroupId,
           inputType: "audio",
           aspectRatio: params.generation.options.aspectRatio,
           outputFormat: "webm",

@@ -1970,84 +1970,72 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Otomatis · Okou memilih",
+        "autoDescription": "Pilih presenter publik HeyGen yang sesuai dengan permintaan",
         "heading": "Pilih avatar",
-        "help": "Pilih presenter atau lanjutkan tanpa avatar",
+        "label": "Avatar",
         "none": "Tanpa avatar",
-        "placementHeading": "Di mana presenter sebaiknya berdiri?",
-        "placementLeft": "Kiri — slide berada di kanan",
-        "placementOverlay": "Di atas slide — slide memenuhi bingkai",
-        "placementRight": "Kanan — slide berada di kiri"
+        "noneDescription": "Buat video tanpa presenter",
+        "previewLook": "Pratinjau tampilan {{name}}"
       },
-      "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
-      "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
-      "desktop": {
-        "checkingCompatibility": "Memeriksa kompatibilitas",
-        "description": "Perekaman layar ada di aplikasi desktop {{desktopProductName}}, yang menangkap jendela apa pun dan merekam tempat Anda mengeklik.",
-        "download": "Unduh untuk macOS",
-        "handoffDetail": "Hasil rekaman terbuka di sini, siap diberi presenter dan suara.",
-        "handoffTitle": "Kembali ke wizard ini secara otomatis",
-        "heading": "Rekam dengan {{desktopProductName}} Desktop",
-        "illustration": "Perekaman berlangsung di {{desktopProductName}} Desktop",
-        "installDetail": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-        "installTitle": "Unduh dan pasang {{desktopProductName}} Desktop",
-        "recordDetail": "Hentikan dari menu yang sama setelah selesai.",
-        "recordTitle": "Mulai perekaman dari bilah menu",
-        "unsupportedIntelMac": "Memerlukan Mac Apple silicon"
+      "cardDescription": "Ubah ide atau materi menjadi video siap pakai",
+      "catalog": {
+        "empty": "Tidak ada pilihan publik HeyGen yang tersedia.",
+        "error": "Katalog HeyGen tidak dapat dimuat.",
+        "loading": "Memuat pilihan lainnya",
+        "reload": "Muat ulang katalog",
+        "retry": "Coba lagi"
       },
+      "description": "Tambahkan materi, jelaskan keinginan Anda, lalu pilih gaya, avatar, dan suara HeyGen jika diperlukan.",
       "errors": {
-        "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
-        "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
+        "sendFailed": "Utas chat tidak dapat dibuat. Permintaan Anda masih ada di sini agar Anda dapat mencoba lagi.",
+        "uploadFailed": "Satu atau beberapa file tidak dapat diunggah. Hapus file tersebut atau coba lagi."
       },
       "footer": {
-        "back": "Kembali",
-        "createInChat": "Buat di chat",
-        "download": "Unduh sumber",
-        "next": "Berikutnya"
+        "cancel": "Batal",
+        "create": "Buat video",
+        "hint": "Tambahkan instruksi, file, atau keduanya"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Tinjau video intro Anda",
-        "help": "Konfirmasikan pilihan yang akan diterima {{assistantName}} di utas chat baru",
-        "instructions": "Petunjuk pengeditan",
-        "source": "Sumber",
-        "voice": "Suara"
+      "format": {
+        "auto": "Otomatis",
+        "filter": "Filter referensi gaya berdasarkan format",
+        "landscape": "Lanskap · 16:9",
+        "output": "Format keluaran",
+        "portrait": "Potret · 9:16"
+      },
+      "heading": "Buat video intro Anda",
+      "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
+      "prompt": {
+        "label": "Apa yang harus disampaikan video ini?",
+        "placeholder": "Jelaskan tujuan, audiens, bahasa, nada, atau detail penting lainnya"
       },
       "source": {
-        "documentDescription": "Ubah slide Anda menjadi video intro bernarasi",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Unggah slide",
-        "heading": "Bagaimana Anda ingin memulai?",
-        "help": "Unggah slide yang sudah Anda miliki, atau rekam layar dengan {{desktopProductName}} Desktop",
-        "recordDescription": "Rekam demo dengan aplikasi desktop",
-        "recordDetail": "Perlu {{desktopProductName}} Desktop di macOS",
-        "recordTitle": "Rekam layar Anda",
-        "uploadDescription": "Pilih berkas dari komputer Anda",
-        "uploadTitle": "Unggah sumber"
+        "drop": "Letakkan file di sini atau klik untuk mengunggah",
+        "remove": "Hapus {{filename}}"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Sumber Anda sudah siap",
-        "help": "Periksa file sebelum melanjutkan",
-        "inAccount": "Di akun Anda",
-        "replace": "Ganti sumber",
-        "saved": "Tersimpan",
-        "source": "Sumber"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Langkah video intro",
-        "review": "Tinjau",
-        "source": "Sumber",
-        "voice": "Suara"
+      "style": {
+        "auto": "Biarkan Okou memilih",
+        "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
+        "emptyFormat": "Tidak ada referensi gaya yang sesuai dengan format ini.",
+        "heading": "Pilih referensi gaya",
+        "label": "Referensi gaya",
+        "preview": "Pratinjau {{title}}",
+        "previewUnavailable": "Pratinjau video tidak tersedia untuk gaya ini."
       },
       "title": "Buat video intro",
       "voice": {
+        "auto": "Biarkan Okou memilih",
+        "autoDescription": "Okou memilih suara publik HeyGen yang sesuai",
+        "default": "Default · Mengikuti avatar",
+        "defaultDescription": "Gunakan suara default avatar yang dipilih",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Gunakan suara HeyGen default milik {{avatar}}",
         "heading": "Pilih suara",
-        "help": "Dengarkan sampel sebelum melanjutkan",
+        "label": "Suara",
         "none": "Tanpa narasi",
-        "noneDescription": "Buat video berbasis teks tanpa narasi",
+        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",
         "original": "Audio asli",
-        "originalDescription": "Pertahankan audio dari video atau rekaman yang diunggah"
+        "originalDescription": "Pertahankan audio sumber yang dipilih tanpa menambahkan ucapan buatan"
       }
     },
     "mail": {

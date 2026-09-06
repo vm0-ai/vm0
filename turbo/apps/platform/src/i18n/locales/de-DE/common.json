@@ -1973,84 +1973,72 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Automatisch · Okou entscheidet",
+        "autoDescription": "Einen öffentlichen HeyGen-Präsentator passend zur Anfrage wählen",
         "heading": "Avatar auswählen",
-        "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
+        "label": "Avatar",
         "none": "Kein Avatar",
-        "placementHeading": "Wo soll der Präsentator stehen?",
-        "placementLeft": "Links — die Folie steht rechts",
-        "placementOverlay": "Über der Folie — die Folie füllt das Bild",
-        "placementRight": "Rechts — die Folie steht links"
+        "noneDescription": "Das Video ohne Präsentator erstellen",
+        "previewLook": "Look {{name}} ansehen"
       },
-      "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
-      "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",
-      "desktop": {
-        "checkingCompatibility": "Kompatibilität prüfen",
-        "description": "Die Bildschirmaufnahme läuft in der {{desktopProductName}}-Desktop-App, die jedes Fenster aufnimmt und deine Klicks mitschneidet.",
-        "download": "Für macOS herunterladen",
-        "handoffDetail": "Deine Aufnahme öffnet sich hier, bereit für Avatar und Stimme.",
-        "handoffTitle": "Automatisch zu diesem Assistenten zurückkehren",
-        "heading": "Mit {{desktopProductName}} Desktop aufnehmen",
-        "illustration": "Die Aufnahme läuft in {{desktopProductName}} Desktop",
-        "installDetail": "Erfordert einen Apple Silicon Mac mit macOS 14 oder neuer. Intel-Macs werden nicht unterstützt.",
-        "installTitle": "{{desktopProductName}} Desktop herunterladen und installieren",
-        "recordDetail": "Beende sie über dasselbe Menü, wenn du fertig bist.",
-        "recordTitle": "Aufnahme über die Menüleiste starten",
-        "unsupportedIntelMac": "Erfordert einen Apple Silicon Mac"
+      "cardDescription": "Eine Idee oder Materialien in ein fertiges Video verwandeln",
+      "catalog": {
+        "empty": "Keine öffentlichen HeyGen-Optionen verfügbar.",
+        "error": "Der HeyGen-Katalog konnte nicht geladen werden.",
+        "loading": "Weitere Optionen werden geladen",
+        "reload": "Katalog neu laden",
+        "retry": "Erneut versuchen"
       },
+      "description": "Füge Materialien hinzu, beschreibe dein Ziel und wähle optional einen HeyGen-Stil, einen Avatar und eine Stimme.",
       "errors": {
-        "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Quelle ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen.",
-        "uploadFailed": "Die Quelle konnte nicht hochgeladen werden. Sie ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen."
+        "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Anfrage ist noch hier. Du kannst es erneut versuchen.",
+        "uploadFailed": "Eine oder mehrere Dateien konnten nicht hochgeladen werden. Entferne sie oder versuche es erneut."
       },
       "footer": {
-        "back": "Zurück",
-        "createInChat": "Im Chat erstellen",
-        "download": "Quelle herunterladen",
-        "next": "Weiter"
+        "cancel": "Abbrechen",
+        "create": "Video erstellen",
+        "hint": "Anweisungen, Dateien oder beides hinzufügen"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Intro-Video prüfen",
-        "help": "Bestätige die Auswahl, die {{assistantName}} im neuen Chat-Thread erhält",
-        "instructions": "Bearbeitungsanweisungen",
-        "source": "Quelle",
-        "voice": "Stimme"
+      "format": {
+        "auto": "Automatisch",
+        "filter": "Stilreferenzen nach Format filtern",
+        "landscape": "Querformat · 16:9",
+        "output": "Ausgabeformat",
+        "portrait": "Hochformat · 9:16"
+      },
+      "heading": "Erstelle dein Intro-Video",
+      "help": "Füge Materialien hinzu, beschreibe dein Ziel oder mache beides. Okou erledigt den Rest.",
+      "prompt": {
+        "label": "Was soll das Video vermitteln?",
+        "placeholder": "Beschreibe Ziel, Zielgruppe, Sprache, Ton oder andere wichtige Details"
       },
       "source": {
-        "documentDescription": "Verwandle deine Folien in ein vertontes Intro-Video",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Folien hochladen",
-        "heading": "Wie möchtest du beginnen?",
-        "help": "Lade vorhandene Folien hoch oder nimm deinen Bildschirm mit {{desktopProductName}} Desktop auf",
-        "recordDescription": "Nimm eine Demo mit der Desktop-App auf",
-        "recordDetail": "Benötigt {{desktopProductName}} Desktop für macOS",
-        "recordTitle": "Bildschirm aufnehmen",
-        "uploadDescription": "Wähle eine Datei von deinem Computer",
-        "uploadTitle": "Quelle hochladen"
+        "drop": "Dateien hier ablegen oder zum Hochladen klicken",
+        "remove": "{{filename}} entfernen"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Deine Quelle ist bereit",
-        "help": "Prüfe die Datei, bevor du fortfährst",
-        "inAccount": "In deinem Konto",
-        "replace": "Quelle ersetzen",
-        "saved": "Gespeichert",
-        "source": "Quelle"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Schritte für das Intro-Video",
-        "review": "Prüfen",
-        "source": "Quelle",
-        "voice": "Stimme"
+      "style": {
+        "auto": "Okou wählen lassen",
+        "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
+        "emptyFormat": "Keine Stilreferenzen für dieses Format.",
+        "heading": "Stilreferenz wählen",
+        "label": "Stilreferenz",
+        "preview": "Vorschau von {{title}}",
+        "previewUnavailable": "Für diesen Stil ist keine Videovorschau verfügbar."
       },
       "title": "Intro-Video erstellen",
       "voice": {
+        "auto": "Okou wählen lassen",
+        "autoDescription": "Okou wählt eine passende öffentliche HeyGen-Stimme",
+        "default": "Standard · Folgt dem Avatar",
+        "defaultDescription": "Die Standardstimme des gewählten Avatars verwenden",
+        "defaultForAvatar": "Standard · {{avatar}}",
+        "defaultForAvatarDescription": "Die HeyGen-Standardstimme von {{avatar}} verwenden",
         "heading": "Stimme auswählen",
-        "help": "Höre dir vor dem Fortfahren eine Probe an",
+        "label": "Stimme",
         "none": "Kein Voiceover",
-        "noneDescription": "Erstelle ein untertitelgeführtes Video ohne Vertonung",
+        "noneDescription": "Keine Erzählstimme hinzufügen; Originalton behalten, sofern du ihn nicht stummschalten möchtest.",
         "original": "Originalaudio",
-        "originalDescription": "Audio des hochgeladenen Videos oder der Aufnahme beibehalten"
+        "originalDescription": "Den ausgewählten Originalton ohne zusätzliche generierte Sprache behalten"
       }
     },
     "mail": {

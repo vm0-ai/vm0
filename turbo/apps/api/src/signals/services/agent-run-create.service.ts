@@ -107,7 +107,11 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/seed-skills";
+import {
+  GOAL_SKILL_NAME,
+  INTRO_VIDEO_SKILL_NAME,
+  SEED_SKILLS,
+} from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -179,6 +183,10 @@ import {
 } from "../../lib/error";
 import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
 import { previewAutomationBypass$ } from "../context/hono";
+import {
+  systemSkillStorageResolution$,
+  type SystemSkillStorageResolution,
+} from "../context/system-skill-storage-resolution";
 import { writeDb$, type Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
@@ -995,6 +1003,8 @@ export interface CreateAgentRunArgs {
   readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
+  /** Immutable Intro Video eligibility captured with the caller's switch context. */
+  readonly introVideoEnabled?: boolean;
   readonly platformEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -1197,6 +1207,7 @@ function buildExactConnectorSkillVolume(args: {
 function buildLegacySystemSkillVolumes(
   skillNames: readonly string[],
   skillsRoot: string,
+  storageResolution: SystemSkillStorageResolution,
 ): readonly AdditionalVolume[] {
   return [...new Set(skillNames)].flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
@@ -1206,7 +1217,8 @@ function buildLegacySystemSkillVolumes(
     }
     return [
       {
-        name: getSkillStorageName(parsed.fullPath),
+        name:
+          storageResolution[skillName] ?? getSkillStorageName(parsed.fullPath),
         mountPath: skillMountPath(skillsRoot, parsed.skillName),
         system: true,
       },
@@ -1346,6 +1358,8 @@ function buildCustomConnectorSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
+    readonly introVideoEnabled: boolean;
+    readonly systemSkillStorageResolution: SystemSkillStorageResolution;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSelection: RunConnectorCatalogSelection;
     readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
@@ -1359,15 +1373,32 @@ function buildInjectedSkillVolumes(
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(SEED_SKILLS, skillsRoot).map((volume) => {
+      buildLegacySystemSkillVolumes(
+        SEED_SKILLS,
+        skillsRoot,
+        args.systemSkillStorageResolution,
+      ).map((volume) => {
         return { ...volume, baselineCandidate: true };
       }),
       "system_skill",
     ) ?? []),
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes([GOAL_SKILL_NAME], skillsRoot),
+      buildLegacySystemSkillVolumes(
+        [GOAL_SKILL_NAME],
+        skillsRoot,
+        args.systemSkillStorageResolution,
+      ),
       "system_skill",
     ) ?? []),
+    ...(args.introVideoEnabled
+      ? buildLegacySystemSkillVolumes(
+          [INTRO_VIDEO_SKILL_NAME],
+          skillsRoot,
+          args.systemSkillStorageResolution,
+        ).map((volume) => {
+          return { volume, source: "system_skill" as const };
+        })
+      : []),
     ...(args.connectorCatalogSelection.kind === "scoped"
       ? buildConnectorSkillVolumes(
           args.allowedConnectorSlugs,
@@ -8963,6 +8994,7 @@ async function buildPreparedPermissionManifest(args: {
 
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly systemSkillStorageResolution: SystemSkillStorageResolution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -8976,6 +9008,13 @@ function preparedRunAdditionalVolumes(args: {
   const injectedSkillVolumes = buildInjectedSkillVolumes(
     {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
+      systemSkillStorageResolution: args.systemSkillStorageResolution,
+      introVideoEnabled:
+        args.createArgs.introVideoEnabled ??
+        isFeatureEnabled(
+          FeatureSwitchKey.IntroVideo,
+          args.featureSwitchContext,
+        ),
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSelection: args.connectorCatalogSelection,
       officialWorkflowRun: args.officialWorkflowRun,
@@ -9582,6 +9621,7 @@ async function connectorCatalogSelectionForRun(args: {
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly systemSkillStorageResolution: SystemSkillStorageResolution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -9598,6 +9638,7 @@ function prepareRunOutputMetadata(args: {
 } {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
+    systemSkillStorageResolution: args.systemSkillStorageResolution,
     connectorScope: args.connectorScope,
     connectorCatalogSelection: args.connectorCatalogSelection,
     customConnectorContext: args.customConnectorContext,
@@ -9843,6 +9884,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
+              systemSkillStorageResolution: get(systemSkillStorageResolution$),
               connectorScope: runtimeContext.connectorScope,
               connectorCatalogSelection:
                 runtimeContext.connectorCatalogSelection,

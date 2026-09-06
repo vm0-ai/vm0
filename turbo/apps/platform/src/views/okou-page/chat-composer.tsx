@@ -42,6 +42,7 @@ import type {
 } from "../../signals/okou-page/presentation-template-library.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
+import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
@@ -311,7 +312,6 @@ import {
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 
-const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -8949,7 +8949,7 @@ function useComposerFileUpload(
   const rootSignal = useGet(rootSignal$);
   const { t } = useTranslation();
   return (file) => {
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > CHAT_UPLOAD_MAX_FILE_SIZE) {
       toast.error(
         t(
           ($) => {

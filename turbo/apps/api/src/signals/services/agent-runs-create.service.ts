@@ -459,6 +459,7 @@ function buildAgentToolsPrompt(args: {
       : []),
     ...(args.introVideoEnabled
       ? [
+          "- Intro-video creation: read and follow the `intro-video` skill for requests from the Create an intro video flow.",
           "- Click-driven intro-video camera moves: when a screen recording includes a synchronized same-stem `.clicks.json` sidecar, run `okou video camera --help` and follow its plan/review workflow.",
         ]
       : []),
@@ -975,6 +976,10 @@ function buildCreateAgentRunArgs(args: {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
+  const introVideoEnabled = isFeatureEnabled(
+    FeatureSwitchKey.IntroVideo,
+    args.featureSwitchContext,
+  );
   const productAgentExecutionPlan = {
     content: buildAgentExecutionConfig(args.agent.name),
   };
@@ -994,10 +999,7 @@ function buildCreateAgentRunArgs(args: {
         FeatureSwitchKey.Banking,
         args.featureSwitchContext,
       ),
-      introVideoEnabled: isFeatureEnabled(
-        FeatureSwitchKey.IntroVideo,
-        args.featureSwitchContext,
-      ),
+      introVideoEnabled,
       presentationScreenshotEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationScreenshot,
         args.featureSwitchContext,
@@ -1041,6 +1043,7 @@ function buildCreateAgentRunArgs(args: {
     okouTokenPublicBrand: command.publicBrand,
     okouTokenComputerUseHostId: command.computerUseHostId,
     okouTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
+    introVideoEnabled,
     enforceBuiltInCredits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },

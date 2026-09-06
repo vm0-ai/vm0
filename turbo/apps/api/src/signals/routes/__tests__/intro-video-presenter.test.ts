@@ -38,6 +38,8 @@ const store = createStore();
 const mocks = createRouteMocks(context);
 
 const HEYGEN_CREATE_URL = "https://api.heygen.com/v3/videos";
+const HEYGEN_AVATARS_URL = "https://api.heygen.com/v3/avatars/looks";
+const HEYGEN_STYLES_URL = "https://api.heygen.com/v3/video-agents/styles";
 const HEYGEN_VOICES_URL = "https://api.heygen.com/v3/voices";
 const HEYGEN_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
 const HEYGEN_VIDEO_ID = "heygen-video-123";
@@ -209,6 +211,7 @@ describe("Intro Video HeyGen presenter route", () => {
 
   it("rejects agent requests while Intro Video is disabled", async () => {
     const fixture = await seedFixture();
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -241,6 +244,51 @@ describe("Intro Video HeyGen presenter route", () => {
         code: "FORBIDDEN",
         message: "Intro Video is not enabled",
       },
+    });
+  });
+
+  it("honors the Intro Video email rollout for catalog requests", async () => {
+    const fixture = await seedFixture();
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        {
+          id: fixture.userId,
+          primaryEmailAddressId: "email_bingjie",
+          emailAddresses: [
+            {
+              id: "email_bingjie",
+              emailAddress: "bingjie@vm0.ai",
+            },
+          ],
+        },
+      ],
+    });
+    server.use(
+      http.get(HEYGEN_VOICES_URL, () => {
+        return HttpResponse.json({
+          data: [],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/voices?pageSize=24", {
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      voices: [],
+      hasMore: false,
+      nextToken: null,
+    });
+    expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+      userId: [fixture.userId],
+      limit: 1,
     });
   });
 
@@ -377,6 +425,219 @@ describe("Intro Video HeyGen presenter route", () => {
     });
   });
 
+  it("lists public HeyGen styles and Avatar III looks for the simple form", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    server.use(
+      http.get(HEYGEN_STYLES_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          limit: "24",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              style_id: "349d91e1ad2444eabab2672a9057f298",
+              name: "Thriller",
+              thumbnail_url: "https://files.heygen.test/thriller.jpg",
+              preview_video_url: "https://files.heygen.test/thriller.mp4",
+              tags: ["cinematic"],
+              aspect_ratio: "16:9",
+            },
+            { style_id: "invalid/style", name: "Malformed style" },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+      http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          ownership: "public",
+          avatar_type: "studio_avatar",
+          limit: "50",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              id: "Daphne_public_1",
+              group_id: "c1926d821b4d43d6a5f07f2985bb5cd1",
+              name: "Daphne in Grey blazer",
+              default_voice_id: "812d4eea4a8442a382dcaf2dbaddbd93",
+              preview_image_url: "https://files.heygen.test/daphne.webp",
+              preview_video_url: "https://files.heygen.test/daphne.mp4",
+              gender: "female",
+              image_width: 1080,
+              image_height: 1080,
+              preferred_orientation: "portrait",
+              status: "completed",
+              supported_api_engines: ["avatar_iii"],
+            },
+            {
+              id: "Legacy_public_1",
+              group_id: "legacy-group",
+              name: "Legacy",
+              default_voice_id: "legacy-voice",
+              status: "completed",
+              supported_api_engines: ["avatar_iv"],
+            },
+            {
+              id: "invalid/avatar",
+              group_id: "malformed-group",
+              name: "Malformed avatar",
+              default_voice_id: "malformed-voice",
+              status: "completed",
+              supported_api_engines: ["avatar_iii"],
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const app = createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    );
+
+    const [stylesResponse, avatarsResponse] = await Promise.all([
+      app.request("/api/intro-video/styles?pageSize=24", {
+        headers: authHeaders(),
+      }),
+      app.request("/api/intro-video/avatars?pageSize=100", {
+        headers: authHeaders(),
+      }),
+    ]);
+
+    expect(stylesResponse.status).toBe(200);
+    await expect(stylesResponse.json()).resolves.toStrictEqual({
+      styles: [
+        {
+          id: "349d91e1ad2444eabab2672a9057f298",
+          name: "Thriller",
+          thumbnailUrl: "https://files.heygen.test/thriller.jpg",
+          previewVideoUrl: "https://files.heygen.test/thriller.mp4",
+          tags: ["cinematic"],
+          aspectRatio: "16:9",
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+    expect(avatarsResponse.status).toBe(200);
+    await expect(avatarsResponse.json()).resolves.toStrictEqual({
+      avatars: [
+        {
+          id: "Daphne_public_1",
+          groupId: "c1926d821b4d43d6a5f07f2985bb5cd1",
+          name: "Daphne in Grey blazer",
+          defaultVoiceId: "812d4eea4a8442a382dcaf2dbaddbd93",
+          previewImageUrl: "https://files.heygen.test/daphne.webp",
+          previewVideoUrl: "https://files.heygen.test/daphne.mp4",
+          gender: "female",
+          imageWidth: 1080,
+          imageHeight: 1080,
+          preferredOrientation: "portrait",
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+
+  it.each(["avatars", "styles"] as const)(
+    "preserves the provider's invalid-cursor error for %s",
+    async (catalog) => {
+      const fixture = await seedFixture();
+      await enableIntroVideo(fixture);
+      server.use(
+        http.get(
+          catalog === "avatars" ? HEYGEN_AVATARS_URL : HEYGEN_STYLES_URL,
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Invalid pagination token" } },
+              { status: 400 },
+            );
+          },
+        ),
+      );
+      const client = introVideoPresenterClient(fixture.usagePricingResolution);
+      const request = {
+        headers: authHeaders(),
+        query: { token: "expired-cursor" },
+      };
+      const result =
+        catalog === "avatars"
+          ? await accept(client.avatars(request), [400])
+          : await accept(client.styles(request), [400]);
+      expect(result.body).toStrictEqual({
+        error: {
+          code: "BAD_REQUEST",
+          message: "HeyGen rejected the request: Invalid pagination token",
+        },
+      });
+    },
+  );
+
+  it("rejects a dynamically selected avatar that is not public", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    server.use(
+      http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          ownership: "public",
+          avatar_type: "studio_avatar",
+          limit: "50",
+          group_id: "private-group",
+        });
+        return HttpResponse.json({
+          data: [],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/presenter/generate", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${okouToken({ ...fixture, runId })}`,
+      },
+      body: JSON.stringify({
+        avatarId: "Private_avatar_1",
+        avatarGroupId: "private-group",
+        audioUrl: "https://example.com/narration.mp3",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "HeyGen avatar is not available in Intro Video",
+      },
+    });
+  });
+
   it("generates the selected HeyGen voice once for presenter and mix", async () => {
     const fixture = await seedFixture();
     await enableIntroVideo(fixture);
@@ -399,6 +660,26 @@ describe("Intro Video HeyGen presenter route", () => {
     let speechRequests = 0;
     let audioDownloads = 0;
     server.use(
+      http.get(HEYGEN_VOICES_URL, ({ request }) => {
+        expect(
+          Object.fromEntries(new URL(request.url).searchParams),
+        ).toStrictEqual({
+          type: "public",
+          engine: "starfish",
+          limit: "100",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              voice_id: voiceId,
+              name: "Annie - Lifelike",
+              type: "public",
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
       http.post(HEYGEN_SPEECH_URL, async ({ request }) => {
         speechRequests += 1;
         expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
@@ -477,236 +758,286 @@ describe("Intro Video HeyGen presenter route", () => {
     await expect(orgCredits(fixture)).resolves.toBe(9959);
   });
 
-  it("renders a curated presenter through HeyGen v3 idempotently", async () => {
-    const fixture = await seedFixture();
-    await enableIntroVideo(fixture);
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-      },
-      context.signal,
-    );
-    const audioKey = buildArtifactKey(
-      fixture.userId,
-      randomUUID(),
-      "narration.mp3",
-    );
-    const audioUrl = buildFileUrlFromKey(audioKey, "okou");
-    const token = okouToken({ ...fixture, runId, publicBrand: "okou" });
-    const observedCreateRequests: {
-      readonly body: Record<string, unknown>;
-      readonly idempotencyKey: string | null;
-    }[] = [];
-    let statusCalls = 0;
-    let videoDownloads = 0;
-    server.use(
-      http.post(HEYGEN_CREATE_URL, async ({ request }) => {
-        observedCreateRequests.push({
-          body: asRecord(await request.json()),
-          idempotencyKey: request.headers.get("idempotency-key"),
-        });
-        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
-        if (observedCreateRequests.length === 1) {
-          return HttpResponse.json(
-            { error: { message: "slow down" } },
-            { status: 429, headers: { "retry-after": "0" } },
-          );
-        }
-        return HttpResponse.json({
-          data: {
-            video_id: HEYGEN_VIDEO_ID,
-            status: "pending",
-            output_format: "webm",
-          },
-        });
-      }),
-      http.get(HEYGEN_STATUS_URL, () => {
-        statusCalls += 1;
-        if (statusCalls === 1) {
-          return HttpResponse.json(
-            { error: { message: "temporary provider outage" } },
-            { status: 503 },
-          );
-        }
-        return HttpResponse.json({
-          data:
-            statusCalls === 2
-              ? { id: HEYGEN_VIDEO_ID, status: "processing" }
-              : {
-                  id: HEYGEN_VIDEO_ID,
-                  status: "completed",
-                  video_url: HEYGEN_VIDEO_URL,
-                  duration: 61,
-                },
-        });
-      }),
-      http.get(HEYGEN_VIDEO_URL, () => {
-        videoDownloads += 1;
-        return new HttpResponse(VIDEO_BYTES, {
-          headers: { "content-type": "video/webm" },
-        });
-      }),
-    );
-    const app = createIntroVideoPresenterTestApp(
-      fixture.usagePricingResolution,
-    );
-    const response = await app.request("/api/intro-video/presenter/generate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        avatarId: "Abigail_standing_office_front",
-        audioUrl,
-      }),
-    });
-
-    expect(response.status).toBe(202);
-    const generationId = readGenerationId(
-      await response.json(),
-      fixture.userId,
-    );
-    expect(observedCreateRequests).toHaveLength(2);
-    expect(observedCreateRequests[0]?.idempotencyKey).toBe(generationId);
-    expect(observedCreateRequests[1]?.idempotencyKey).toBe(generationId);
-    expect(observedCreateRequests[0]?.body).toStrictEqual(
-      observedCreateRequests[1]?.body,
-    );
-    const createBody = observedCreateRequests[1]?.body;
-    expect(createBody).toMatchObject({
-      type: "avatar",
-      engine: { type: "avatar_iii" },
-      avatar_id: "Abigail_standing_office_front",
-      audio_url: expect.stringMatching(/^https:\/\/r2\.example\.com\//u),
-      aspect_ratio: "16:9",
-      resolution: "1080p",
-      output_format: "webm",
-      callback_id: generationId,
-      callback_url: expect.stringContaining(
-        `/api/webhooks/built-in-generations/heygen/${generationId}?token=`,
-      ),
-    });
-    expect(createBody).not.toHaveProperty("voice_id");
-    expect(createBody).not.toHaveProperty("script");
-    expect(createBody).not.toHaveProperty("background");
-    const callbackUrl = new URL(String(createBody?.callback_url));
-
-    for (let index = 0; index < 2; index += 1) {
-      const additionalResponse = await app.request(
+  it.each([
+    {
+      kind: "curated",
+      avatarId: "Abigail_standing_office_front",
+      avatarGroupId: undefined,
+    },
+    {
+      kind: "public catalog",
+      avatarId: "Public_presenter_office",
+      avatarGroupId: "public-presenter-group",
+    },
+  ])(
+    "renders a $kind presenter through HeyGen v3 idempotently",
+    async ({ avatarId, avatarGroupId }) => {
+      const fixture = await seedFixture();
+      await enableIntroVideo(fixture);
+      const { composeId } = await store.set(
+        seedCompose$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      );
+      const { runId } = await store.set(
+        seedRun$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          composeId,
+          triggerSource: "web",
+        },
+        context.signal,
+      );
+      const audioKey = buildArtifactKey(
+        fixture.userId,
+        randomUUID(),
+        "narration.mp3",
+      );
+      const audioUrl = buildFileUrlFromKey(audioKey, "okou");
+      const token = okouToken({ ...fixture, runId, publicBrand: "okou" });
+      const observedCreateRequests: {
+        readonly body: Record<string, unknown>;
+        readonly idempotencyKey: string | null;
+      }[] = [];
+      let statusCalls = 0;
+      let videoDownloads = 0;
+      server.use(
+        http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+          const token = new URL(request.url).searchParams.get("token");
+          expect(
+            Object.fromEntries(new URL(request.url).searchParams),
+          ).toStrictEqual({
+            ownership: "public",
+            avatar_type: "studio_avatar",
+            limit: "50",
+            group_id: avatarGroupId,
+            ...(token ? { token: "next-public-look" } : {}),
+          });
+          return HttpResponse.json({
+            data: [
+              {
+                id: token ? avatarId : "Another_public_look",
+                group_id: avatarGroupId,
+                name: token
+                  ? "Public presenter in office"
+                  : "Public presenter outdoors",
+                default_voice_id: "330290724a1b470fb63153f34d4c0183",
+                status: "completed",
+                supported_api_engines: ["avatar_iii"],
+              },
+            ],
+            has_more: !token,
+            next_token: token ? null : "next-public-look",
+          });
+        }),
+        http.post(HEYGEN_CREATE_URL, async ({ request }) => {
+          observedCreateRequests.push({
+            body: asRecord(await request.json()),
+            idempotencyKey: request.headers.get("idempotency-key"),
+          });
+          expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+          if (observedCreateRequests.length === 1) {
+            return HttpResponse.json(
+              { error: { message: "slow down" } },
+              { status: 429, headers: { "retry-after": "0" } },
+            );
+          }
+          return HttpResponse.json({
+            data: {
+              video_id: HEYGEN_VIDEO_ID,
+              status: "pending",
+              output_format: "webm",
+            },
+          });
+        }),
+        http.get(HEYGEN_STATUS_URL, () => {
+          statusCalls += 1;
+          if (statusCalls === 1) {
+            return HttpResponse.json(
+              { error: { message: "temporary provider outage" } },
+              { status: 503 },
+            );
+          }
+          return HttpResponse.json({
+            data:
+              statusCalls === 2
+                ? { id: HEYGEN_VIDEO_ID, status: "processing" }
+                : {
+                    id: HEYGEN_VIDEO_ID,
+                    status: "completed",
+                    video_url: HEYGEN_VIDEO_URL,
+                    duration: 61,
+                  },
+          });
+        }),
+        http.get(HEYGEN_VIDEO_URL, () => {
+          videoDownloads += 1;
+          return new HttpResponse(VIDEO_BYTES, {
+            headers: { "content-type": "video/webm" },
+          });
+        }),
+      );
+      const app = createIntroVideoPresenterTestApp(
+        fixture.usagePricingResolution,
+      );
+      const response = await app.request(
         "/api/intro-video/presenter/generate",
         {
           method: "POST",
           headers: { authorization: `Bearer ${token}` },
           body: JSON.stringify({
-            avatarId: "Abigail_standing_office_front",
+            avatarId,
+            avatarGroupId,
             audioUrl,
           }),
         },
       );
-      expect(additionalResponse.status).toBe(202);
-    }
-    const limitedResponse = await accept(
-      introVideoPresenterClient(fixture.usagePricingResolution).generate({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          avatarId: "Abigail_standing_office_front",
-          audioUrl,
-        },
-      }),
-      [429],
-    );
-    expect(limitedResponse.body).toMatchObject({
-      error: { code: "BUILT_IN_RUN_CONCURRENCY_LIMIT" },
-    });
-    expect(observedCreateRequests).toHaveLength(4);
 
-    const invalidCallback = new URL(callbackUrl);
-    invalidCallback.searchParams.set("token", "invalid");
-    const invalidResponse = await app.request(
-      `${invalidCallback.pathname}${invalidCallback.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(invalidResponse.status).toBe(401);
+      expect(response.status).toBe(202);
+      const generationId = readGenerationId(
+        await response.json(),
+        fixture.userId,
+      );
+      expect(observedCreateRequests).toHaveLength(2);
+      expect(observedCreateRequests[0]?.idempotencyKey).toBe(generationId);
+      expect(observedCreateRequests[1]?.idempotencyKey).toBe(generationId);
+      expect(observedCreateRequests[0]?.body).toStrictEqual(
+        observedCreateRequests[1]?.body,
+      );
+      const createBody = observedCreateRequests[1]?.body;
+      expect(createBody).toMatchObject({
+        type: "avatar",
+        engine: { type: "avatar_iii" },
+        avatar_id: avatarId,
+        audio_url: expect.stringMatching(/^https:\/\/r2\.example\.com\//u),
+        aspect_ratio: "16:9",
+        resolution: "1080p",
+        output_format: "webm",
+        callback_id: generationId,
+        callback_url: expect.stringContaining(
+          `/api/webhooks/built-in-generations/heygen/${generationId}?token=`,
+        ),
+      });
+      expect(createBody).not.toHaveProperty("voice_id");
+      expect(createBody).not.toHaveProperty("script");
+      expect(createBody).not.toHaveProperty("background");
+      const callbackUrl = new URL(String(createBody?.callback_url));
 
-    const providerUnavailableResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(providerUnavailableResponse.status).toBe(503);
-    const activeStatusResponse = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(activeStatusResponse.status).toBe(200);
-    expect(asRecord(await activeStatusResponse.json()).status).toBe("running");
-
-    const pendingResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(pendingResponse.status).toBe(503);
-
-    const completedResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(completedResponse.status).toBe(200);
-    await flushWaitUntilForTest();
-
-    const status = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(status.status).toBe(200);
-    const statusBody = asRecord(await status.json());
-    expect(statusBody.status).toBe("completed");
-    expect(statusBody.result).toStrictEqual({
-      id: expect.any(String),
-      filename: expect.stringMatching(/^intro-video-presenter-.*\.webm$/u),
-      contentType: "video/webm",
-      size: VIDEO_BYTES.byteLength,
-      url: expect.any(String),
-      durationSeconds: 61,
-      creditsCharged: 1271,
-      avatarId: "Abigail_standing_office_front",
-    });
-    expect(videoDownloads).toBe(1);
-    expect(
-      context.mocks.s3.send.mock.calls.some(([command]) => {
-        return (
-          command instanceof PutObjectCommand &&
-          command.input.ContentType === "video/webm" &&
-          command.input.Metadata?.["public-brand"] === "okou"
+      for (let index = 0; index < 2; index += 1) {
+        const additionalResponse = await app.request(
+          "/api/intro-video/presenter/generate",
+          {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              avatarId,
+              avatarGroupId,
+              audioUrl,
+            }),
+          },
         );
-      }),
-    ).toBeTruthy();
+        expect(additionalResponse.status).toBe(202);
+      }
+      const limitedResponse = await accept(
+        introVideoPresenterClient(fixture.usagePricingResolution).generate({
+          headers: { authorization: `Bearer ${token}` },
+          body: {
+            avatarId,
+            avatarGroupId,
+            audioUrl,
+          },
+        }),
+        [429],
+      );
+      expect(limitedResponse.body).toMatchObject({
+        error: { code: "BUILT_IN_RUN_CONCURRENCY_LIMIT" },
+      });
+      expect(observedCreateRequests).toHaveLength(4);
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    for (const query of ["", "?kind=avatar", "?kind=file", "?kind=video"]) {
-      const catalogResponse = await app.request(
-        `/api/artifacts/catalog${query}`,
+      const invalidCallback = new URL(callbackUrl);
+      invalidCallback.searchParams.set("token", "invalid");
+      const invalidResponse = await app.request(
+        `${invalidCallback.pathname}${invalidCallback.search}`,
+        { method: "POST", body: "{}" },
+      );
+      expect(invalidResponse.status).toBe(401);
+
+      const providerUnavailableResponse = await app.request(
+        `${callbackUrl.pathname}${callbackUrl.search}`,
+        { method: "POST", body: "{}" },
+      );
+      expect(providerUnavailableResponse.status).toBe(503);
+      const activeStatusResponse = await app.request(
+        `/api/built-in-generations/${generationId}`,
         { headers: authHeaders() },
       );
-      expect(catalogResponse.status).toBe(200);
-      expect(asRecord(await catalogResponse.json()).artifacts).toStrictEqual(
-        [],
+      expect(activeStatusResponse.status).toBe(200);
+      expect(asRecord(await activeStatusResponse.json()).status).toBe(
+        "running",
       );
-    }
 
-    const duplicateResponse = await app.request(
-      `${callbackUrl.pathname}${callbackUrl.search}`,
-      { method: "POST", body: "{}" },
-    );
-    expect(duplicateResponse.status).toBe(200);
-    await flushWaitUntilForTest();
-    expect(videoDownloads).toBe(1);
-    await expect(orgCredits(fixture)).resolves.toBe(8729);
-  });
+      const pendingResponse = await app.request(
+        `${callbackUrl.pathname}${callbackUrl.search}`,
+        { method: "POST", body: "{}" },
+      );
+      expect(pendingResponse.status).toBe(503);
+
+      const completedResponse = await app.request(
+        `${callbackUrl.pathname}${callbackUrl.search}`,
+        { method: "POST", body: "{}" },
+      );
+      expect(completedResponse.status).toBe(200);
+      await flushWaitUntilForTest();
+
+      const status = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: authHeaders() },
+      );
+      expect(status.status).toBe(200);
+      const statusBody = asRecord(await status.json());
+      expect(statusBody.status).toBe("completed");
+      expect(statusBody.result).toStrictEqual({
+        id: expect.any(String),
+        filename: expect.stringMatching(/^intro-video-presenter-.*\.webm$/u),
+        contentType: "video/webm",
+        size: VIDEO_BYTES.byteLength,
+        url: expect.any(String),
+        durationSeconds: 61,
+        creditsCharged: 1271,
+        avatarId,
+      });
+      expect(videoDownloads).toBe(1);
+      expect(
+        context.mocks.s3.send.mock.calls.some(([command]) => {
+          return (
+            command instanceof PutObjectCommand &&
+            command.input.ContentType === "video/webm" &&
+            command.input.Metadata?.["public-brand"] === "okou"
+          );
+        }),
+      ).toBeTruthy();
+
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      for (const query of ["", "?kind=avatar", "?kind=file", "?kind=video"]) {
+        const catalogResponse = await app.request(
+          `/api/artifacts/catalog${query}`,
+          { headers: authHeaders() },
+        );
+        expect(catalogResponse.status).toBe(200);
+        expect(asRecord(await catalogResponse.json()).artifacts).toStrictEqual(
+          [],
+        );
+      }
+
+      const duplicateResponse = await app.request(
+        `${callbackUrl.pathname}${callbackUrl.search}`,
+        { method: "POST", body: "{}" },
+      );
+      expect(duplicateResponse.status).toBe(200);
+      await flushWaitUntilForTest();
+      expect(videoDownloads).toBe(1);
+      await expect(orgCredits(fixture)).resolves.toBe(8729);
+    },
+  );
 });

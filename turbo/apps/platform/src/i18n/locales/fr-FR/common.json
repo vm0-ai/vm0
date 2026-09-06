@@ -2005,84 +2005,72 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou décide",
+        "autoDescription": "Choisir un présentateur public HeyGen adapté à votre demande",
         "heading": "Choisir un avatar",
-        "help": "Choisissez un présentateur ou continuez sans avatar",
+        "label": "Avatar",
         "none": "Aucun avatar",
-        "placementHeading": "Où placer le présentateur ?",
-        "placementLeft": "À gauche — la diapositive est à droite",
-        "placementOverlay": "Sur la diapositive — la diapositive remplit le cadre",
-        "placementRight": "À droite — la diapositive est à gauche"
+        "noneDescription": "Créer la vidéo sans présentateur",
+        "previewLook": "Aperçu de l’apparence {{name}}"
       },
-      "cardDescription": "Transformez un fichier ou un enregistrement d'écran en vidéo finalisée",
-      "description": "Ajoutez une source, choisissez éventuellement un avatar et une voix, puis créez la vidéo dans un fil de discussion.",
-      "desktop": {
-        "checkingCompatibility": "Vérification de la compatibilité",
-        "description": "L'enregistrement d'écran se fait dans l'application de bureau {{desktopProductName}}, qui capture n'importe quelle fenêtre et note vos clics.",
-        "download": "Télécharger pour macOS",
-        "handoffDetail": "Votre prise s'ouvre ici, prête pour un présentateur et une voix.",
-        "handoffTitle": "Revenez automatiquement à cet assistant",
-        "heading": "Enregistrer avec {{desktopProductName}} Desktop",
-        "illustration": "L'enregistrement a lieu dans {{desktopProductName}} Desktop",
-        "installDetail": "Nécessite un Mac avec puce Apple et macOS 14 ou version ultérieure. Les Mac Intel ne sont pas pris en charge.",
-        "installTitle": "Téléchargez et installez {{desktopProductName}} Desktop",
-        "recordDetail": "Arrêtez-le depuis le même menu une fois terminé.",
-        "recordTitle": "Lancez un enregistrement depuis la barre de menus",
-        "unsupportedIntelMac": "Nécessite un Mac avec puce Apple"
+      "cardDescription": "Transformez une idée ou vos contenus en vidéo finalisée",
+      "catalog": {
+        "empty": "Aucune option publique HeyGen n’est disponible.",
+        "error": "Le catalogue HeyGen n’a pas pu être chargé.",
+        "loading": "Chargement d’autres options",
+        "reload": "Recharger le catalogue",
+        "retry": "Réessayer"
       },
+      "description": "Ajoutez des contenus, décrivez votre objectif et choisissez éventuellement un style, un avatar et une voix HeyGen.",
       "errors": {
-        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre source reste enregistrée localement et a été téléchargée comme sauvegarde.",
-        "uploadFailed": "La source n'a pas pu être importée. Elle reste enregistrée localement et a été téléchargée comme sauvegarde."
+        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre demande est toujours ici, vous pouvez réessayer.",
+        "uploadFailed": "Un ou plusieurs fichiers n'ont pas pu être importés. Supprimez-les ou réessayez."
       },
       "footer": {
-        "back": "Retour",
-        "createInChat": "Créer dans le chat",
-        "download": "Télécharger la source",
-        "next": "Suivant"
+        "cancel": "Annuler",
+        "create": "Créer la vidéo",
+        "hint": "Ajoutez des consignes, des fichiers ou les deux"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Vérifier votre vidéo d'introduction",
-        "help": "Confirmez les choix que {{assistantName}} recevra dans le nouveau fil de discussion",
-        "instructions": "Instructions de montage",
-        "source": "Source",
-        "voice": "Voix"
+      "format": {
+        "auto": "Automatique",
+        "filter": "Filtrer les références de style par format",
+        "landscape": "Paysage · 16:9",
+        "output": "Format de sortie",
+        "portrait": "Portrait · 9:16"
+      },
+      "heading": "Créez votre vidéo d’introduction",
+      "help": "Ajoutez des contenus, décrivez votre objectif ou faites les deux. Okou s’occupe du reste.",
+      "prompt": {
+        "label": "Que doit transmettre la vidéo ?",
+        "placeholder": "Décrivez l’objectif, le public, la langue, le ton ou tout autre détail important"
       },
       "source": {
-        "documentDescription": "Transformez vos diapositives en vidéo d'introduction commentée",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Importer des diapositives",
-        "heading": "Comment souhaitez-vous commencer ?",
-        "help": "Importez les diapositives dont vous disposez ou enregistrez votre écran avec {{desktopProductName}} Desktop",
-        "recordDescription": "Capturez une démo avec l'application de bureau",
-        "recordDetail": "Nécessite {{desktopProductName}} Desktop sur macOS",
-        "recordTitle": "Enregistrer votre écran",
-        "uploadDescription": "Choisissez un fichier sur votre ordinateur",
-        "uploadTitle": "Importer une source"
+        "drop": "Déposez vos fichiers ici ou cliquez pour les importer",
+        "remove": "Retirer {{filename}}"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Votre source est prête",
-        "help": "Vérifiez le fichier avant de continuer",
-        "inAccount": "Dans votre compte",
-        "replace": "Remplacer la source",
-        "saved": "Enregistrée",
-        "source": "Source"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Étapes de la vidéo d'introduction",
-        "review": "Vérification",
-        "source": "Source",
-        "voice": "Voix"
+      "style": {
+        "auto": "Laisser Okou choisir",
+        "autoDescription": "Adapter la direction visuelle à vos consignes et contenus",
+        "emptyFormat": "Aucune référence de style ne correspond à ce format.",
+        "heading": "Choisir une référence de style",
+        "label": "Référence de style",
+        "preview": "Aperçu de {{title}}",
+        "previewUnavailable": "Aucun aperçu vidéo n’est disponible pour ce style."
       },
       "title": "Créer une vidéo d'introduction",
       "voice": {
+        "auto": "Laisser Okou choisir",
+        "autoDescription": "Okou choisit une voix publique HeyGen adaptée",
+        "default": "Par défaut · Suit l’avatar",
+        "defaultDescription": "Utiliser la voix par défaut de l’avatar choisi",
+        "defaultForAvatar": "Par défaut · {{avatar}}",
+        "defaultForAvatarDescription": "Utiliser la voix HeyGen par défaut de {{avatar}}",
         "heading": "Choisir une voix",
-        "help": "Écoutez un extrait avant de continuer",
+        "label": "Voix",
         "none": "Sans voix off",
-        "noneDescription": "Créez une vidéo guidée par les sous-titres sans narration",
+        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine.",
         "original": "Audio d'origine",
-        "originalDescription": "Conservez l'audio de la vidéo ou de l'enregistrement importé"
+        "originalDescription": "Conserver le son d’origine sélectionné sans ajouter de voix générée"
       }
     },
     "mail": {

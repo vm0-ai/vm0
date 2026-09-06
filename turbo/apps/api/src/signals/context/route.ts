@@ -14,6 +14,10 @@ import {
 import { initHono$ } from "./hono";
 import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
+import {
+  setSystemSkillStorageResolution$,
+  type SystemSkillStorageResolution,
+} from "./system-skill-storage-resolution";
 
 export type SignalRouteHandler<T> = Computed<T> | Command<T, [AbortSignal]>;
 
@@ -101,6 +105,7 @@ export function honoSignalHandler(
   contract: AppRoute,
   signal: AbortSignal,
   usagePricingResolution?: UsagePricingResolution,
+  systemSkillStorageResolution?: SystemSkillStorageResolution,
 ): Handler {
   return async (context) => {
     const apiStartTime = now();
@@ -109,6 +114,9 @@ export function honoSignalHandler(
     store.set(initHono$, context, contract, apiStartTime);
     if (usagePricingResolution) {
       store.set(setUsagePricingResolution$, usagePricingResolution);
+    }
+    if (systemSkillStorageResolution) {
+      store.set(setSystemSkillStorageResolution$, systemSkillStorageResolution);
     }
 
     // Mirror the contract client order: path/query validation

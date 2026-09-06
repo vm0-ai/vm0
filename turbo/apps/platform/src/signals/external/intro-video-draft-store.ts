@@ -8,7 +8,7 @@ import { runIndexedDbTransaction } from "./indexeddb-client.ts";
  * Which entry of the source step the user came in through, which is all the
  * wizard knows about a source until an agent opens it.
  */
-export type IntroVideoSourceKind = "file" | "presentation" | "video";
+type IntroVideoSourceKind = "file" | "presentation" | "video";
 
 /**
  * The kind a stored draft names.
@@ -32,7 +32,7 @@ function knownKind(kind: string): IntroVideoSourceKind {
   }
 }
 
-export interface IntroVideoDraftRecord {
+interface IntroVideoDraftRecord {
   readonly blob: Blob;
   readonly contentType: string;
   readonly createdAt: number;

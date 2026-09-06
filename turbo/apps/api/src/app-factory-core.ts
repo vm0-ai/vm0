@@ -43,6 +43,7 @@ import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat
 import { configureOfficialWorkflowReconciliationDispatcher } from "./signals/services/official-workflow-reconciliation-registration.service";
 import { configurePiApiFirstTurnDispatcher } from "./signals/services/pi-api-first-turn-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
+import type { SystemSkillStorageResolution } from "./signals/context/system-skill-storage-resolution";
 import {
   isAbortError,
   normalizeThrown,
@@ -554,12 +555,14 @@ interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
   readonly usagePricingResolution?: UsagePricingResolution;
+  readonly systemSkillStorageResolution?: SystemSkillStorageResolution;
 }
 
 export function createAppWithRoutes({
   routes,
   signal,
   usagePricingResolution,
+  systemSkillStorageResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
   configureOfficialWorkflowReconciliationDispatcher();
@@ -621,6 +624,7 @@ export function createAppWithRoutes({
       route,
       signal,
       usagePricingResolution,
+      systemSkillStorageResolution,
     );
     app.on(route.method, route.path, routeHandler);
   }

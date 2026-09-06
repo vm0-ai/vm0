@@ -10,6 +10,7 @@ import {
   type SandboxTokenPayload,
 } from "./lib/api/sandbox-token.js";
 import { getOkouToken } from "./lib/okou-env.js";
+import { introVideoCatalogCommand } from "./commands/__intro-video-catalog.js";
 
 interface CommandDefinition {
   name: string;
@@ -90,6 +91,13 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description: "Internal sandbox agent loop",
     load: async () => {
       return (await import("./commands/__agent-loop")).agentLoopCommand;
+    },
+  },
+  {
+    name: "__intro-video-catalog",
+    description: "Internal public HeyGen catalog discovery for Intro Video",
+    load: async () => {
+      return introVideoCatalogCommand;
     },
   },
   {

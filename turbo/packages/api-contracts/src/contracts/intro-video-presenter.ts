@@ -20,6 +20,64 @@ export const introVideoVoiceIdSchema = z
   .max(200)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
+export const introVideoAvatarGroupIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9._:-]+$/);
+
+export const introVideoStyleIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9._:-]+$/);
+
+export const introVideoAvatarSchema = z.object({
+  id: introVideoPresenterAvatarIdSchema,
+  groupId: introVideoAvatarGroupIdSchema,
+  name: z.string().trim().min(1),
+  defaultVoiceId: introVideoVoiceIdSchema,
+  previewImageUrl: z.url().optional(),
+  previewVideoUrl: z.url().optional(),
+  gender: z.enum(["female", "male"]).optional(),
+  imageWidth: z.number().int().positive().optional(),
+  imageHeight: z.number().int().positive().optional(),
+  preferredOrientation: z.enum(["landscape", "portrait", "square"]).optional(),
+});
+
+export const introVideoAvatarsQuerySchema = z.object({
+  token: z.string().trim().min(1).max(2_000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const introVideoAvatarsResponseSchema = z.object({
+  avatars: z.array(introVideoAvatarSchema),
+  hasMore: z.boolean(),
+  nextToken: z.string().nullable(),
+});
+
+export const introVideoStyleSchema = z.object({
+  id: introVideoStyleIdSchema,
+  name: z.string().trim().min(1),
+  thumbnailUrl: z.url().optional(),
+  previewVideoUrl: z.url().optional(),
+  tags: z.array(z.string().trim().min(1)),
+  aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional(),
+});
+
+export const introVideoStylesQuerySchema = z.object({
+  token: z.string().trim().min(1).max(2_000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const introVideoStylesResponseSchema = z.object({
+  styles: z.array(introVideoStyleSchema),
+  hasMore: z.boolean(),
+  nextToken: z.string().nullable(),
+});
+
 export const introVideoVoiceSchema = z.object({
   id: introVideoVoiceIdSchema,
   name: z.string().trim().min(1),
@@ -63,6 +121,7 @@ export const introVideoVoiceGenerateResponseSchema = z.object({
 
 export const introVideoPresenterGenerateRequestSchema = z.object({
   avatarId: introVideoPresenterAvatarIdSchema,
+  avatarGroupId: introVideoAvatarGroupIdSchema.optional(),
   audioUrl: z.url(),
   videoName: z.string().trim().min(1).optional(),
 });
@@ -89,6 +148,18 @@ export type IntroVideoPresenterGenerateRequest = z.infer<
 export type IntroVideoPresenterGenerateResponse = z.infer<
   typeof introVideoPresenterGenerateResponseSchema
 >;
+export type IntroVideoAvatar = z.infer<typeof introVideoAvatarSchema>;
+export type IntroVideoAvatarsQuery = z.infer<
+  typeof introVideoAvatarsQuerySchema
+>;
+export type IntroVideoAvatarsResponse = z.infer<
+  typeof introVideoAvatarsResponseSchema
+>;
+export type IntroVideoStyle = z.infer<typeof introVideoStyleSchema>;
+export type IntroVideoStylesQuery = z.infer<typeof introVideoStylesQuerySchema>;
+export type IntroVideoStylesResponse = z.infer<
+  typeof introVideoStylesResponseSchema
+>;
 export type IntroVideoVoice = z.infer<typeof introVideoVoiceSchema>;
 export type IntroVideoVoicesQuery = z.infer<typeof introVideoVoicesQuerySchema>;
 export type IntroVideoVoicesResponse = z.infer<
@@ -102,6 +173,36 @@ export type IntroVideoVoiceGenerateResponse = z.infer<
 >;
 
 export const introVideoPresenterContract = c.router({
+  avatars: {
+    method: "GET",
+    path: "/api/intro-video/avatars",
+    headers: authHeadersSchema,
+    query: introVideoAvatarsQuerySchema,
+    responses: {
+      200: introVideoAvatarsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      502: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "List public HeyGen avatars supported by Intro Video",
+  },
+  styles: {
+    method: "GET",
+    path: "/api/intro-video/styles",
+    headers: authHeadersSchema,
+    query: introVideoStylesQuerySchema,
+    responses: {
+      200: introVideoStylesResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      502: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "List public HeyGen Video Agent styles for Intro Video",
+  },
   voices: {
     method: "GET",
     path: "/api/intro-video/voices",

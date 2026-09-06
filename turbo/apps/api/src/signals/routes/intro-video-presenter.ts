@@ -5,11 +5,14 @@ import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/int
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { userCache } from "@okouai/db/schema/user-cache";
+import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
+import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
@@ -24,11 +27,16 @@ import { heyGenBuiltInGenerationWebhookUrl } from "../services/built-in-generati
 import {
   generateHeyGenSpeech,
   isHeyGenErrorResponse,
+  listHeyGenPublicAvatars,
+  listHeyGenPublicStyles,
   listHeyGenPublicVoices,
   submitHeyGenAvatarVideo,
+  verifyHeyGenPublicAvatar,
+  verifyHeyGenPublicVoice,
 } from "../services/heygen.service";
 import {
   checkIntroVideoPresenterCredits$,
+  introVideoPresenterAvatarUnavailable,
   introVideoPresenterInsufficientCredits,
   introVideoPresenterPricing$,
   introVideoPresenterRequiresPaidPlan,
@@ -43,6 +51,7 @@ import {
   introVideoVoicePricing$,
   introVideoVoiceRequiresPaidPlan,
   introVideoVoiceServiceUnavailable,
+  introVideoVoiceUnavailable,
   isIntroVideoVoiceErrorResponse,
   parseIntroVideoVoiceOptions,
   recordGeneratedIntroVideoVoice$,
@@ -58,6 +67,8 @@ import {
 import { onRejection } from "../utils";
 
 const generateBody$ = bodyResultOf(introVideoPresenterContract.generate);
+const avatarsQuery$ = queryOf(introVideoPresenterContract.avatars);
+const stylesQuery$ = queryOf(introVideoPresenterContract.styles);
 const voicesQuery$ = queryOf(introVideoPresenterContract.voices);
 const voiceGenerateBody$ = bodyResultOf(
   introVideoPresenterContract.voiceGenerate,
@@ -75,12 +86,42 @@ const introVideoDisabled = Object.freeze({
 
 const introVideoEnabled$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  const clerk = get(clerk$);
   const context = await loadUserFeatureSwitchContext(
-    get(db$),
+    db,
     auth.orgId,
     auth.userId,
   );
-  return isFeatureEnabled(FeatureSwitchKey.IntroVideo, context);
+  if (isFeatureEnabled(FeatureSwitchKey.IntroVideo, context)) {
+    return true;
+  }
+
+  const [user] = await db
+    .select({ email: userCache.email })
+    .from(userCache)
+    .where(eq(userCache.userId, auth.userId))
+    .limit(1);
+  if (user?.email) {
+    return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
+      ...context,
+      email: user.email,
+    });
+  }
+
+  const users = await clerk.users.getUserList({
+    userId: [auth.userId],
+    limit: 1,
+  });
+  const profile = users.data[0];
+  const email =
+    profile?.emailAddresses.find((candidate) => {
+      return candidate.id === profile.primaryEmailAddressId;
+    })?.emailAddress ?? profile?.emailAddresses[0]?.emailAddress;
+  return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
+    ...context,
+    email,
+  });
 });
 
 function acceptedIntroVideoPresenterResponse(
@@ -104,6 +145,7 @@ function introVideoPresenterRequestRecord(
   return {
     purpose: "intro-video-presenter",
     avatarId: options.avatarId,
+    ...(options.avatarGroupId ? { avatarGroupId: options.avatarGroupId } : {}),
     audioUrl: options.audioUrl,
     ...(options.videoName ? { videoName: options.videoName } : {}),
   };
@@ -211,6 +253,58 @@ const getVoicesInner$ = command(async ({ get }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
+const getAvatarsInner$ = command(async ({ get }, signal: AbortSignal) => {
+  if (!(await get(introVideoEnabled$))) {
+    return introVideoDisabled;
+  }
+  signal.throwIfAborted();
+  const apiKey = env("HEYGEN_API_KEY");
+  if (!apiKey) {
+    return introVideoPresenterServiceUnavailable(
+      "HeyGen Intro Video avatars are not configured",
+    );
+  }
+  const query = get(avatarsQuery$);
+  const result = await listHeyGenPublicAvatars(
+    {
+      token: query.token,
+      pageSize: query.pageSize ?? 24,
+    },
+    apiKey,
+    signal,
+  );
+  if (isHeyGenErrorResponse(result)) {
+    return result;
+  }
+  return { status: 200 as const, body: result };
+});
+
+const getStylesInner$ = command(async ({ get }, signal: AbortSignal) => {
+  if (!(await get(introVideoEnabled$))) {
+    return introVideoDisabled;
+  }
+  signal.throwIfAborted();
+  const apiKey = env("HEYGEN_API_KEY");
+  if (!apiKey) {
+    return introVideoPresenterServiceUnavailable(
+      "HeyGen Intro Video styles are not configured",
+    );
+  }
+  const query = get(stylesQuery$);
+  const result = await listHeyGenPublicStyles(
+    {
+      token: query.token,
+      pageSize: query.pageSize ?? 24,
+    },
+    apiKey,
+    signal,
+  );
+  if (isHeyGenErrorResponse(result)) {
+    return result;
+  }
+  return { status: 200 as const, body: result };
+});
+
 const postVoiceGenerateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -238,6 +332,24 @@ const postVoiceGenerateInner$ = command(
       return options;
     }
 
+    const apiKey = env("HEYGEN_API_KEY");
+    if (!apiKey) {
+      return introVideoVoiceServiceUnavailable(
+        "HeyGen Intro Video voices are not configured",
+      );
+    }
+    const verified = await verifyHeyGenPublicVoice(
+      options.voiceId,
+      apiKey,
+      signal,
+    );
+    if (isHeyGenErrorResponse(verified)) {
+      return verified;
+    }
+    if (!verified) {
+      return introVideoVoiceUnavailable();
+    }
+
     const hasCredits = await set(
       checkIntroVideoVoiceCredits$,
       { orgId: auth.orgId, userId: auth.userId },
@@ -254,13 +366,6 @@ const postVoiceGenerateInner$ = command(
         "HeyGen Intro Video voice pricing is not configured",
       );
     }
-    const apiKey = env("HEYGEN_API_KEY");
-    if (!apiKey) {
-      return introVideoVoiceServiceUnavailable(
-        "HeyGen Intro Video voices are not configured",
-      );
-    }
-
     const admission = await set(
       startRunBuiltInAdmission$,
       { runId: auth.runId, kind: "voice" },
@@ -345,6 +450,27 @@ const postGenerateInner$ = command(
       return options;
     }
 
+    const apiKey = env("HEYGEN_API_KEY");
+    if (!apiKey) {
+      return introVideoPresenterServiceUnavailable(
+        "HeyGen Intro Video presenter generation is not configured",
+      );
+    }
+    if (options.avatarGroupId) {
+      const verified = await verifyHeyGenPublicAvatar(
+        options.avatarId,
+        options.avatarGroupId,
+        apiKey,
+        signal,
+      );
+      if (isHeyGenErrorResponse(verified)) {
+        return verified;
+      }
+      if (!verified) {
+        return introVideoPresenterAvatarUnavailable();
+      }
+    }
+
     const hasCredits = await set(
       checkIntroVideoPresenterCredits$,
       { orgId: auth.orgId, userId: auth.userId },
@@ -361,12 +487,6 @@ const postGenerateInner$ = command(
         "HeyGen Intro Video presenter pricing is not configured",
       );
     }
-    if (!env("HEYGEN_API_KEY")) {
-      return introVideoPresenterServiceUnavailable(
-        "HeyGen Intro Video presenter generation is not configured",
-      );
-    }
-
     const generationId = randomUUID();
     const realtime = await createBuiltInGenerationRealtimeSubscription(
       auth.userId,
@@ -422,6 +542,20 @@ const postGenerateInner$ = command(
 );
 
 export const introVideoPresenterRoutes: readonly RouteEntry[] = [
+  {
+    route: introVideoPresenterContract.avatars,
+    handler: authRoute(
+      { requireOrganization: true, requiredCapability: "file:write" },
+      getAvatarsInner$,
+    ),
+  },
+  {
+    route: introVideoPresenterContract.styles,
+    handler: authRoute(
+      { requireOrganization: true, requiredCapability: "file:write" },
+      getStylesInner$,
+    ),
+  },
   {
     route: introVideoPresenterContract.voices,
     handler: authRoute(

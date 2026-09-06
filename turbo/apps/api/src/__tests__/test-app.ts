@@ -9,6 +9,7 @@ import {
 
 import { createAppWithRoutes } from "../app-factory-core";
 import type { UsagePricingResolution } from "../signals/context/usage-pricing-resolution";
+import type { SystemSkillStorageResolution } from "../signals/context/system-skill-storage-resolution";
 import type { RouteEntry } from "../signals/route-entry";
 import type { TestContext } from "./test-context";
 
@@ -22,6 +23,7 @@ interface SetupAppWithRoutesOptions extends TestAppWithRoutesOptions {
   readonly baseUrl?: string;
   readonly rethrowErrors?: boolean;
   readonly usagePricingResolution?: UsagePricingResolution;
+  readonly systemSkillStorageResolution?: SystemSkillStorageResolution;
 }
 
 function parseResponseBody(response: Response): Promise<unknown> | undefined {
@@ -59,17 +61,19 @@ async function requestApp(
   };
 }
 
-function createAppFetcher(
-  context: TestContext,
-  routes: readonly RouteEntry[],
-  signal?: AbortSignal,
-  rethrowErrors?: boolean,
-  usagePricingResolution?: UsagePricingResolution,
-): ApiFetcher {
+function createAppFetcher({
+  context,
+  routes,
+  signal,
+  rethrowErrors,
+  usagePricingResolution,
+  systemSkillStorageResolution,
+}: SetupAppWithRoutesOptions): ApiFetcher {
   const app = createAppWithRoutes({
     signal: signal ?? context.signal,
     routes,
     usagePricingResolution,
+    systemSkillStorageResolution,
   });
   if (rethrowErrors) {
     app.onError((error) => {
@@ -113,14 +117,16 @@ export function setupAppWithRoutes({
   signal,
   rethrowErrors,
   usagePricingResolution,
+  systemSkillStorageResolution,
 }: SetupAppWithRoutesOptions) {
-  const app = createAppFetcher(
+  const app = createAppFetcher({
     context,
     routes,
     signal,
     rethrowErrors,
     usagePricingResolution,
-  );
+    systemSkillStorageResolution,
+  });
 
   return <TContract extends AppRouter>(
     contract: TContract,

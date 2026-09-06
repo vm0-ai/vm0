@@ -38,34 +38,49 @@ describe("internal Intro Video presenter command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("submits only the curated avatar and resolved audio", async () => {
-    server.use(
-      http.post(GENERATE_URL, async ({ request }) => {
-        expect(request.headers.get("authorization")).toBe(
-          "Bearer test-run-token",
-        );
-        expect(await request.json()).toStrictEqual({
-          avatarId: "Abigail_standing_office_front",
-          audioUrl: "https://example.com/voice.mp3",
-        });
-        return HttpResponse.json(PRESENTER_RESULT);
-      }),
-    );
+  it.each([
+    {
+      kind: "curated",
+      avatarId: "Abigail_standing_office_front",
+      avatarGroupId: undefined,
+    },
+    {
+      kind: "public catalog",
+      avatarId: "Public_presenter_office",
+      avatarGroupId: "public-presenter-group",
+    },
+  ])(
+    "submits the $kind avatar and resolved audio",
+    async ({ avatarId, avatarGroupId }) => {
+      const result = { ...PRESENTER_RESULT, avatarId };
+      server.use(
+        http.post(GENERATE_URL, async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-run-token",
+          );
+          expect(await request.json()).toStrictEqual({
+            avatarId,
+            ...(avatarGroupId ? { avatarGroupId } : {}),
+            audioUrl: "https://example.com/voice.mp3",
+          });
+          return HttpResponse.json(result);
+        }),
+      );
 
-    await introVideoPresenterCommand.parseAsync([
-      "node",
-      "cli",
-      "--avatar-id",
-      "Abigail_standing_office_front",
-      "--audio-url",
-      "https://example.com/voice.mp3",
-      "--json",
-    ]);
+      await introVideoPresenterCommand.parseAsync([
+        "node",
+        "cli",
+        "--avatar-id",
+        avatarId,
+        ...(avatarGroupId ? ["--avatar-group-id", avatarGroupId] : []),
+        "--audio-url",
+        "https://example.com/voice.mp3",
+        "--json",
+      ]);
 
-    expect(mockConsoleLog.mock.calls).toEqual([
-      [JSON.stringify(PRESENTER_RESULT)],
-    ]);
-  });
+      expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(result)]]);
+    },
+  );
 
   it("rejects malformed avatar IDs before calling the API", async () => {
     const generate = vi.fn();
