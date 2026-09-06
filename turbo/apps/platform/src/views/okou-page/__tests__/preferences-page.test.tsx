@@ -18,7 +18,7 @@ const context = testContext();
 
 test("Debug preferences restore, change, and reset the voice input model", async () => {
   const updates = mockPreferences({
-    voiceInputModel: "google/gemini-3.8-flash",
+    voiceInputModel: "google/gemini-3.6-flash",
   });
   await setupPage({
     context,
@@ -29,7 +29,7 @@ test("Debug preferences restore, change, and reset the voice input model", async
     name: "Voice input model",
   });
   await waitFor(() => {
-    return expect(picker).toHaveTextContent("Gemini 3.8 Flash");
+    return expect(picker).toHaveTextContent("Gemini 3.6 Flash");
   });
   click(picker);
   click(await screen.findByRole("option", { name: "ElevenLabs Scribe v2" }));
@@ -41,10 +41,12 @@ test("Debug preferences restore, change, and reset the voice input model", async
   });
   click(picker);
   click(
-    await screen.findByRole("option", { name: "Default (Gemini 3.6 Flash)" }),
+    await screen.findByRole("option", {
+      name: "Default (Gemini 3.1 Flash-Lite)",
+    }),
   );
   await waitFor(() => {
-    return expect(picker).toHaveTextContent("Default (Gemini 3.6 Flash)");
+    return expect(picker).toHaveTextContent("Default (Gemini 3.1 Flash-Lite)");
   });
   expect(updates).toContainEqual({ voiceInputModel: null });
 });

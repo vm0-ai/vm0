@@ -27,6 +27,7 @@ const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 interface OpenRouterRequest {
+  readonly model: string;
   readonly reasoning?: {
     readonly effort?: string;
     readonly enabled?: boolean;
@@ -192,7 +193,7 @@ describe("POST /api/voice-io/transcribe", () => {
     await accept(
       preferencesClient().update({
         headers,
-        body: { voiceInputModel: "google/gemini-3.8-flash" },
+        body: { voiceInputModel: "google/gemini-3.6-flash" },
       }),
       [200],
     );
@@ -230,9 +231,9 @@ describe("POST /api/voice-io/transcribe", () => {
       language: "en",
     });
     expect(models).toStrictEqual([
-      "google/gemini-3.8-flash",
-      "google/gemini-3.8-flash",
-      "google/gemini-3.8-flash",
+      "google/gemini-3.6-flash",
+      "google/gemini-3.6-flash",
+      "google/gemini-3.6-flash",
     ]);
   });
 
@@ -294,7 +295,11 @@ describe("POST /api/voice-io/transcribe", () => {
         }),
         [200],
       );
-      expect(models).toStrictEqual([model, model, "google/gemini-3.6-flash"]);
+      expect(models).toStrictEqual([
+        model,
+        model,
+        "google/gemini-3.1-flash-lite",
+      ]);
       expect(response.body).toStrictEqual({
         transcript: "Ship Monday Ship Monday",
         polishedText: "Ship Monday.",
@@ -302,7 +307,7 @@ describe("POST /api/voice-io/transcribe", () => {
       });
       expect(response.headers.get("X-Voice-Input-Model")).toBe(model);
       expect(response.headers.get("X-Voice-Polish-Model")).toBe(
-        "google/gemini-3.6-flash",
+        "google/gemini-3.1-flash-lite",
       );
     },
   );
@@ -364,6 +369,11 @@ describe("POST /api/voice-io/transcribe", () => {
     },
     {
       model: "google/gemini-3.1-flash-lite",
+      reasoning: "minimal",
+      maxTokens: 65_536,
+    },
+    {
+      model: "google/gemini-3.6-flash",
       reasoning: "minimal",
       maxTokens: 65_536,
     },
@@ -506,10 +516,12 @@ describe("POST /api/voice-io/transcribe", () => {
             }
           : { model, input_audio: { format: "wav" }, response_format: "json" },
       );
-      expect(polishRequest).toMatchObject({ model: "google/gemini-3.6-flash" });
+      expect(polishRequest).toMatchObject({
+        model: "google/gemini-3.1-flash-lite",
+      });
       expect(response.headers.get("X-Voice-Input-Model")).toBe(model);
       expect(response.headers.get("X-Voice-Polish-Model")).toBe(
-        "google/gemini-3.6-flash",
+        "google/gemini-3.1-flash-lite",
       );
       expect(response.headers.get("Server-Timing")).toContain(
         "voice_transcribe;dur=",
@@ -573,7 +585,9 @@ describe("POST /api/voice-io/transcribe", () => {
       [200],
     );
     expect(response.body.polishedText).toBe("Hello.");
-    expect(providerRequest).toMatchObject({ model: "google/gemini-3.6-flash" });
+    expect(providerRequest).toMatchObject({
+      model: "google/gemini-3.1-flash-lite",
+    });
   });
 
   it.each([
@@ -750,7 +764,7 @@ describe("POST /api/voice-io/transcribe", () => {
       language: "en-US",
     });
     expect(providerRequest).toMatchObject({
-      model: "google/gemini-3.6-flash",
+      model: "google/gemini-3.1-flash-lite",
       max_tokens: 65_536,
       reasoning: { effort: "minimal" },
       temperature: 0,
@@ -920,11 +934,21 @@ describe("POST /api/voice-io/transcribe", () => {
 
   it("uses transcript-only audio processing and one global polish for a long single file", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    await enabledActor();
+    const actor = await enabledActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId },
+      { [FeatureSwitchKey.OkouDebug]: true },
+    );
     const schemaNames: string[] = [];
+    const models: string[] = [];
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         const body = (await request.json()) as OpenRouterRequest;
+        models.push(body.model);
         const reasoningError = rejectDisabledReasoning(body);
         if (reasoningError) {
           return reasoningError;
@@ -965,6 +989,16 @@ describe("POST /api/voice-io/transcribe", () => {
       "voice_transcript",
       "polished_voice_transcript",
     ]);
+    expect(models).toStrictEqual([
+      "google/gemini-3.1-flash-lite",
+      "google/gemini-3.1-flash-lite",
+    ]);
+    expect(response.headers.get("X-Voice-Input-Model")).toBe(
+      "google/gemini-3.1-flash-lite",
+    );
+    expect(response.headers.get("X-Voice-Polish-Model")).toBe(
+      "google/gemini-3.1-flash-lite",
+    );
   });
 
   it("rejects more files than the five-minute chunk policy can produce", async () => {
