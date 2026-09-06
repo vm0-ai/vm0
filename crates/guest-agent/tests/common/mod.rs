@@ -29,7 +29,7 @@ use std::future::Future;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
@@ -668,41 +668,73 @@ fn push_recorded_event(events: &Arc<Mutex<Vec<RecordedHttpEvent>>>, event: Recor
 }
 
 /// Integration tests call `execute_cli` directly, bypassing the runner-side
-/// workspace-drive mount. Create the canonical mountpoint once at the host-test
-/// boundary so tests exercise the same cwd contract as production.
+/// workspace-drive mount. Create the canonical mountpoint and match the
+/// production mount's ownership at the host-test boundary so tests exercise
+/// the same cwd and write-access contract.
 pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
     let path = Path::new(guest_agent::paths::CANONICAL_WORKING_DIR);
-    if path.is_dir() {
-        return Ok(());
-    }
-
-    match std::fs::create_dir_all(path) {
-        Ok(()) => return Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {}
-        Err(e) => {
-            return Err(format!(
-                "create canonical workspace {}: {e}",
-                path.display()
-            ));
+    if !path.is_dir() {
+        match std::fs::create_dir_all(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                let status = std::process::Command::new("sudo")
+                    .args(["-n", "mkdir", "-p"])
+                    .arg(path)
+                    .status()
+                    .map_err(|e| format!("invoke sudo mkdir for {}: {e}", path.display()))?;
+                if !status.success() {
+                    return Err(format!(
+                        "sudo mkdir failed for canonical workspace {} with status {status}",
+                        path.display()
+                    ));
+                }
+            }
+            Err(e) => {
+                return Err(format!(
+                    "create canonical workspace {}: {e}",
+                    path.display()
+                ));
+            }
         }
     }
 
-    let status = std::process::Command::new("sudo")
-        .args(["-n", "mkdir", "-p"])
-        .arg(path)
-        .status()
-        .map_err(|e| format!("invoke sudo mkdir for {}: {e}", path.display()))?;
-    if !status.success() {
-        return Err(format!(
-            "sudo mkdir failed for canonical workspace {} with status {status}",
-            path.display()
-        ));
-    }
     if !path.is_dir() {
         return Err(format!(
             "canonical workspace was not created as a directory: {}",
             path.display()
         ));
+    }
+
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|e| format!("inspect canonical workspace {}: {e}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "canonical workspace must not be a symlink: {}",
+            path.display()
+        ));
+    }
+    // SAFETY: effective process IDs are read-only process metadata.
+    let (effective_uid, effective_gid) = unsafe { (libc::geteuid(), libc::getegid()) };
+    if metadata.uid() != effective_uid || metadata.gid() != effective_gid {
+        let owner = format!("{effective_uid}:{effective_gid}");
+        let mut command = if effective_uid == 0 {
+            std::process::Command::new("chown")
+        } else {
+            let mut command = std::process::Command::new("sudo");
+            command.args(["-n", "chown"]);
+            command
+        };
+        let status = command
+            .args(["-h", "--", &owner])
+            .arg(path)
+            .status()
+            .map_err(|e| format!("set canonical workspace ownership {}: {e}", path.display()))?;
+        if !status.success() {
+            return Err(format!(
+                "chown failed for canonical workspace {} with status {status}",
+                path.display()
+            ));
+        }
     }
     Ok(())
 }

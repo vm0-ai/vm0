@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use super::CliRuntimeConfig;
+use super::{CliRuntimeConfig, runtime_npx_cache};
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";
@@ -42,12 +42,16 @@ pub(super) fn values_with_inputs(
     user_env: &HashMap<String, String>,
     api_url: &str,
 ) -> Vec<(String, String)> {
+    let runtime_npx_cache = runtime_npx_cache::prepare(user_env);
     let mut values = Vec::new();
     for (key, value) in base_child_env(home_dir) {
         values.push((key.to_string(), value));
     }
     for (key, value) in user_env {
-        if key == guest_contracts::env::CANONICAL_API_URL_ENV {
+        if key == guest_contracts::env::CANONICAL_API_URL_ENV
+            || runtime_npx_cache.is_some()
+                && key.eq_ignore_ascii_case(runtime_npx_cache::NPM_CACHE_ENV_KEY)
+        {
             continue;
         }
         values.push((key.clone(), value.clone()));
@@ -55,6 +59,9 @@ pub(super) fn values_with_inputs(
     apply_runner_visible_env(api_url, |key, value| {
         values.push((key.to_string(), value));
     });
+    if let Some(cache_dir) = runtime_npx_cache {
+        values.push((runtime_npx_cache::NPM_CACHE_ENV_KEY.to_string(), cache_dir));
+    }
     normalize_values(values)
 }
 
