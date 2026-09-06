@@ -529,7 +529,7 @@ account changes and the full inventory remain open.
 
 ### Recording delivery through onboarding
 
-[Current `84e627ef` CI acceptance](https://cdn.vm0.io/artifacts/btwjegxg1x.json)
+[Earlier `84e627ef` CI acceptance](https://cdn.vm0.io/artifacts/btwjegxg1x.json)
 verified all nine Desktop/server command kinds and two window recordings. An
 already-onboarded account received the uploaded recording in ordinary Safari's
 source review; actual playback advanced from 2 to 25 to 37 seconds. Floating
@@ -542,16 +542,73 @@ and opened chat without the recording. Onboarding navigation now retains only th
 validated recording handoff when clearing its other parameters. The redirect for
 an already-onboarded user visiting an onboarding URL does the same. The existing
 feature gate and file API still control whether the recording can be restored.
-Both page integration regressions failed before the repair. Deployed browser
-acceptance of this repair remains pending and is tracked in the PR.
+Both page integration regressions failed before the repair. Deployed acceptance
+on `131de6bd` now verifies this repair, as detailed below.
 
 Later, the independent browser's Clerk token endpoint returned 404 with the SDK
 degraded; native feature refresh returned 401 and finalized the active capture
 without delivery before signing out. The source-close test was interrupted and
-is not accepted. The identity's disappearance and recovery, plus a fresh owner
-API check of the stopped host, remain unverified. Test processes quit normally;
+was not accepted in that run. A later working, freshly registered identity also
+returned 404 through the current Clerk Backend connector. Its instance scope is
+unestablished; these Backend responses do not prove account deletion. Test
+processes quit normally;
 the original app/document/preferences hashes, clipboard and callback handlers
 were preserved.
+
+### Current packaged preview acceptance
+
+[Live `131de6bd` evidence](https://a.okou.io/nxa1ogyixm.json) verifies the downloaded
+0.46.26 CI package against the matching App and API previews. All 102 checks
+completed: 81 succeeded and 21 were skipped. The configured test copy preserves
+all 48 file-backed main executable sections and all three CI helpers. Its
+dedicated identity and ad-hoc signature do not establish production signing or
+Developer ID update acceptance.
+
+A fresh account completed ordinary Safari email/password/test-code registration.
+Native Sign In reused that browser session and the normal macOS Allow prompt;
+no callback or token was injected. Native workspace selection and a normal
+quit/relaunch retained the owned user and workspace. The same Desktop process
+and bundled helper passed 11 authenticated API commands covering all nine kinds,
+including Unicode selection/replacement and independently observed fractional
+scrolling.
+
+With both clients selecting the owned workspace, a 42.36-second window recording
+reached onboarding with all seven parameters. Choosing "I will explore on my own"
+completed onboarding and automatically opened the correct source review. Safari
+playback advanced from 14 to 40 seconds, and the full file decoded without errors
+using its original timebase. [Actual review](https://a.okou.io/9h73mv2hcg.png).
+The initial take exposed a separate boundary: external Safari retained its prior
+workspace, and switching workspaces cleared the handoff parameters. A subsequent
+off-preview desktop-auth navigation was observed in the owned browser window;
+its cause and cross-workspace delivery remain unverified.
+
+Closing the captured owned TextEdit window stopped capture and retained the
+28.60-second file with Retry Upload available. The owned host remained online;
+Retry Upload opened the matching Safari source review, playback reached the end,
+and the full file decoded. This verifies source-loss recovery without the earlier
+authentication failure confound, not network-failure retry behavior.
+
+A dragged 560-by-300-point region produced a 560-by-300 video at the virtual
+display's reported 1x scale. A click at screen (500, 300) mapped to frame
+(230, 150); the floating controls sat below the crop and their stop click was
+excluded. Stereo AAC contained the known six-second 880 Hz system-audio fixture.
+The 123.70-second file decoded fully and played in Safari. Its audio track ends
+about 2.63 seconds before the video during the silent tail; sound through stop
+and longer synchronization need focused validation. Microphone, Retina area
+capture and multiple displays remain open.
+
+After replacing this ad-hoc test bundle, the visible TCC grants still referenced
+its old code requirement. App-scoped `tccutil reset` and fresh native permission
+prompts repaired only the owned Accessibility and Screen Capture grants;
+unrelated service records were unchanged and the database was not edited directly.
+Runtime revocation and browser Automation still require their own acceptance.
+
+Native Stop followed by a freshly authenticated owned-workspace API read verified
+the host offline. The client, observer, API browser and VNC stopped normally.
+Only owned windows closed; the original Safari windows, tabs and selections,
+app/document/preferences hashes, clipboard and callback handlers were preserved.
+Full parity, both production identities, signed update/rollback validation and
+Ethan's final manual acceptance remain open.
 
 ### Configurable preview environment
 
