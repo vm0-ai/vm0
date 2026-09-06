@@ -3549,13 +3549,16 @@
       },
       "video": {
         "chinese-ink-art": "中国の水墨画",
+        "cursor-led-variant-world": "カーソル駆動バリアントワールド",
         "cyberpunk-anime": "サイバーパンクアニメ",
         "epic-grandeur": "壮大な壮大さ",
         "fashion-editorial": "ファッション社説",
         "gourmet-documentary": "グルメドキュメンタリー",
         "hand-drawn-fantasy-anime": "手描きファンタジーアニメ",
         "japanese-wabi-sabi": "日本のわびさび",
+        "kinetic-editorial-collage": "キネティック・エディトリアル・コラージュ",
         "luxury-product": "高級品マクロ",
+        "poster-tableau-dissolve": "ポスター・タブロー・ディゾルブ",
         "shortform-viral": "短編バイラル",
         "sports-performance-ad": "スポーツパフォーマンス広告"
       }

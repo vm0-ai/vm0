@@ -342,6 +342,30 @@ const VIDEO_TEMPLATE_REGISTRY: readonly VideoTemplateRegistryEntry[] = [
       "Chinese ink-wash video style with monochrome brush texture, white space, mist, and calm classical-poetry mood.",
     source: videoTemplateSource("video-template/chinese-ink-art"),
   },
+  {
+    id: "video-template:cursor-led-variant-world",
+    kind: "video-template",
+    name: "Cursor-Led Variant World",
+    description:
+      "Fixed front-facing catalog film where a visible cursor selects variants and each selection re-themes the hero, exact title, palette, and motif world.",
+    source: videoTemplateSource("video-template/cursor-led-variant-world"),
+  },
+  {
+    id: "video-template:poster-tableau-dissolve",
+    kind: "video-template",
+    name: "Poster-Tableau Dissolve",
+    description:
+      "Flat editorial title film of locked poster tableaux joined by geometry-aware dissolves while one recurring subject travels in one screen direction.",
+    source: videoTemplateSource("video-template/poster-tableau-dissolve"),
+  },
+  {
+    id: "video-template:kinetic-editorial-collage",
+    kind: "video-template",
+    name: "Kinetic Editorial Collage",
+    description:
+      "Fast modular editorial collage where one persistent asset inventory repacks around oversized exact typography through object-carried handoffs.",
+    source: videoTemplateSource("video-template/kinetic-editorial-collage"),
+  },
 ];
 
 // These targets mirror each skill's `od.mode` in the pinned Open Design commit.

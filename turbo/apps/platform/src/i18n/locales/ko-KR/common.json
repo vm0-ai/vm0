@@ -3549,13 +3549,16 @@
       },
       "video": {
         "chinese-ink-art": "중국 먹 그림",
+        "cursor-led-variant-world": "커서 기반 배리언트 월드",
         "cyberpunk-anime": "사이버펑크 애니메이션",
         "epic-grandeur": "서사적 웅장함",
         "fashion-editorial": "패션 에디토리얼",
         "gourmet-documentary": "미식 다큐멘터리",
         "hand-drawn-fantasy-anime": "손그림 판타지 애니메이션",
         "japanese-wabi-sabi": "일본 와비사비",
+        "kinetic-editorial-collage": "키네틱 에디토리얼 콜라주",
         "luxury-product": "럭셔리 제품 매크로",
+        "poster-tableau-dissolve": "포스터 타블로 디졸브",
         "shortform-viral": "쇼트폼 바이럴",
         "sports-performance-ad": "스포츠 퍼포먼스 광고"
       }

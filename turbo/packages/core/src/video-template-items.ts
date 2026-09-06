@@ -37,6 +37,12 @@ const VIDEO_TEMPLATE_PREVIEW_IMAGES: Readonly<Record<string, string>> = {
     "https://static.vm0.io/vm0/artifact-templates/video/40ab801f-16bc-4e29-8370-6b10cd394e30/thumbnail-shortform-viral.jpg",
   "sports-performance-ad":
     "https://static.vm0.io/vm0/artifact-templates/video/5a95669a-b86c-4817-9d82-250da7509b54/thumbnail-athletic-motivation.jpg",
+  "cursor-led-variant-world":
+    "https://static.vm0.io/vm0/artifact-templates/video/ba839737-b025-4b32-994e-f2084018a3cc/thumbnail-cursor-led-variant-world.jpg",
+  "poster-tableau-dissolve":
+    "https://static.vm0.io/vm0/artifact-templates/video/8684bf6d-daf4-45c4-a287-163d48724867/thumbnail-poster-tableau-dissolve.jpg",
+  "kinetic-editorial-collage":
+    "https://static.vm0.io/vm0/artifact-templates/video/40667930-5be5-4894-a592-0d052ae35996/thumbnail-kinetic-editorial-collage.jpg",
 };
 
 const VIDEO_TEMPLATE_CARD_PREVIEW_IMAGES: Readonly<Record<string, string>> = {
@@ -60,6 +66,12 @@ const VIDEO_TEMPLATE_CARD_PREVIEW_IMAGES: Readonly<Record<string, string>> = {
     "https://static.vm0.io/vm0/artifact-templates/video/1d690a29-2be1-404b-9698-638f18685513/template-card-video-cyberpunk-anime-480x270.jpg",
   "chinese-ink-art":
     "https://static.vm0.io/vm0/artifact-templates/video/0bad21ee-4b92-4ea0-ad15-5453573aad7b/template-card-video-chinese-ink-art-480x270.jpg",
+  "cursor-led-variant-world":
+    "https://static.vm0.io/vm0/artifact-templates/video/ba839737-b025-4b32-994e-f2084018a3cc/card-cursor-led-variant-world-480x270.jpg",
+  "poster-tableau-dissolve":
+    "https://static.vm0.io/vm0/artifact-templates/video/8684bf6d-daf4-45c4-a287-163d48724867/card-poster-tableau-dissolve-480x270.jpg",
+  "kinetic-editorial-collage":
+    "https://static.vm0.io/vm0/artifact-templates/video/40667930-5be5-4894-a592-0d052ae35996/card-kinetic-editorial-collage-480x270.jpg",
 };
 
 const VIDEO_TEMPLATE_PREVIEW_VIDEOS: Readonly<Record<string, string>> = {
@@ -83,6 +95,12 @@ const VIDEO_TEMPLATE_PREVIEW_VIDEOS: Readonly<Record<string, string>> = {
     "https://static.vm0.io/vm0/artifact-templates/video/4bac1319-dba7-47a0-bc1b-4d1e932f71fd/video-4bac1319.mp4",
   "sports-performance-ad":
     "https://static.vm0.io/vm0/artifact-templates/video/104ad36a-4d0c-472b-8416-d04cc2f06e75/video-104ad36a.mp4",
+  "cursor-led-variant-world":
+    "https://static.vm0.io/vm0/artifact-templates/video/ba839737-b025-4b32-994e-f2084018a3cc/preview-cursor-led-variant-world.mp4",
+  "poster-tableau-dissolve":
+    "https://static.vm0.io/vm0/artifact-templates/video/8684bf6d-daf4-45c4-a287-163d48724867/preview-poster-tableau-dissolve.mp4",
+  "kinetic-editorial-collage":
+    "https://static.vm0.io/vm0/artifact-templates/video/40667930-5be5-4894-a592-0d052ae35996/preview-kinetic-editorial-collage.mp4",
 };
 
 const VIDEO_TEMPLATE_PREVIEW_WEBMS: Readonly<Record<string, string>> = {
@@ -106,6 +124,12 @@ const VIDEO_TEMPLATE_PREVIEW_WEBMS: Readonly<Record<string, string>> = {
     "https://static.vm0.io/vm0/artifact-templates/video/0b1dbbb8-782e-451d-87e9-6652f60116bf/shortform-viral.webm",
   "sports-performance-ad":
     "https://static.vm0.io/vm0/artifact-templates/video/a6dab950-dddc-4116-9bc3-624265b35c12/sports-performance-ad.webm",
+  "cursor-led-variant-world":
+    "https://static.vm0.io/vm0/artifact-templates/video/ba839737-b025-4b32-994e-f2084018a3cc/preview-cursor-led-variant-world.webm",
+  "poster-tableau-dissolve":
+    "https://static.vm0.io/vm0/artifact-templates/video/8684bf6d-daf4-45c4-a287-163d48724867/preview-poster-tableau-dissolve.webm",
+  "kinetic-editorial-collage":
+    "https://static.vm0.io/vm0/artifact-templates/video/40667930-5be5-4894-a592-0d052ae35996/preview-kinetic-editorial-collage.webm",
 };
 
 function videoTemplateSlug(entry: VideoTemplateRegistryEntry): string {
