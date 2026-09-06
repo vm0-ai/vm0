@@ -270,17 +270,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NewChatDefaultModelAction]: {
+  [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Make changing the personal default model an explicit action in the new-chat model picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CloudBrowserPreference]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Let members choose whether Cloud browser is enabled by default in new chats.",
+      "Enable dedicated Chat settings and explicit new-chat default actions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

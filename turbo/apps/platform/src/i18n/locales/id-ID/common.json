@@ -5074,6 +5074,10 @@
           "description": "Aktifkan browser cloud secara default di chat baru. Anda tetap bisa mengubahnya di chat mana pun.",
           "title": "Browser cloud"
         },
+        "defaultModel": {
+          "description": "Digunakan kecuali chat atau proses memilih model lain.",
+          "title": "Model default"
+        },
         "description": "Pilih default untuk chat baru dan cara pesan dikirim.",
         "sectionTitle": "Chat"
       },

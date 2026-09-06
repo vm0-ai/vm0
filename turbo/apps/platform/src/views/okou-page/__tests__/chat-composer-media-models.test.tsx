@@ -506,7 +506,7 @@ test("Switch Chat, Image, and Video from one model picker in a desktop new chat"
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -523,7 +523,7 @@ test("Switch Chat, Image, and Video from one model picker in a mobile new chat",
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -614,7 +614,7 @@ test("Temporarily choose an image model for a new chat", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -703,7 +703,7 @@ test("Temporarily choose a video model for a new chat", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 
@@ -770,7 +770,7 @@ test("Persist a new-chat video choice when temporary choices are unavailable", a
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: false,
+      [FeatureSwitchKey.ChatPreference]: false,
     },
   });
 

@@ -143,6 +143,8 @@ interface ModelProviderPickerProps {
   disabled?: boolean;
   /** Enables the inline Codex Fast choices in the model list. */
   codexFastModeEnabled?: boolean;
+  /** Lets settings callers clear a personal choice and inherit workspace default. */
+  showInheritOption?: boolean;
   /** Media-model category panel state for composer callers. */
   mediaModelPanel?: MediaModelPanelState;
   /** Model omitted from this caller's list of available choices. */
@@ -606,6 +608,8 @@ function ModelFirstPolicyItems({
   selection,
   modelCapabilities,
   codexFastModeEnabled,
+  placeholder,
+  showInheritOption,
   showSeparator = true,
   showModelsLabel = true,
 }: {
@@ -613,6 +617,8 @@ function ModelFirstPolicyItems({
   selection: ModelProviderSelection | null;
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
+  placeholder: string;
+  showInheritOption: boolean;
   showSeparator?: boolean;
   /** When false, the media-model header already carries the category title. */
   showModelsLabel?: boolean;
@@ -626,6 +632,9 @@ function ModelFirstPolicyItems({
     });
   return (
     <>
+      {showInheritOption && (
+        <SelectItem value={INHERIT_SENTINEL}>{placeholder}</SelectItem>
+      )}
       {showSeparator && (!hasExplicitSelectedPolicy || policies.length > 0) && (
         <SelectSeparator className="my-0" />
       )}
@@ -1114,6 +1123,7 @@ interface ModelFirstModelPickerContentBaseProps {
   codexFastModeEnabled: boolean;
   fastLabel: string;
   mediaModelPanel: MediaModelPanelState | undefined;
+  showInheritOption: boolean;
 }
 
 function ModelFirstModelPickerContentLayout({
@@ -1125,6 +1135,7 @@ function ModelFirstModelPickerContentLayout({
   codexFastModeEnabled,
   fastLabel,
   mediaModelPanel,
+  showInheritOption,
 }: ModelFirstModelPickerContentBaseProps) {
   const { t } = useTranslation();
   const activeMediaModelCategoryId = mediaModelPanel?.activeCategory;
@@ -1138,7 +1149,9 @@ function ModelFirstModelPickerContentLayout({
     <SelectContent className="min-w-[260px] max-h-[var(--available-height)]">
       {/* A media-model panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
-      {(mediaModelPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
+      {(mediaModelPanelOpen ||
+        (isHiddenModelFirstSelectValue(selectValue) &&
+          !(showInheritOption && selectValue === INHERIT_SENTINEL))) && (
         <SelectItem
           value={selectValue}
           className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
@@ -1172,7 +1185,9 @@ function ModelFirstModelPickerContentLayout({
           selection={selection}
           modelCapabilities={modelCapabilities}
           codexFastModeEnabled={codexFastModeEnabled}
-          showSeparator={false}
+          placeholder={placeholder}
+          showInheritOption={showInheritOption}
+          showSeparator={showInheritOption}
           showModelsLabel={!mediaModelPanel}
         />
       )}
@@ -1342,6 +1357,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
   fastLabel,
   mediaModelPanel,
   excludedModel,
+  showInheritOption,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
@@ -1349,6 +1365,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
   fastLabel: string;
   mediaModelPanel: MediaModelPanelState | undefined;
   excludedModel: SupportedRunModel | undefined;
+  showInheritOption: boolean;
 }) {
   const { t } = useTranslation();
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
@@ -1392,6 +1409,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
       mediaModelPanel={mediaModelPanel}
+      showInheritOption={showInheritOption}
     />
   );
 }
@@ -1451,6 +1469,7 @@ function EnabledExplicitModelFirstModelPicker(
           fastLabel={props.fastLabel}
           mediaModelPanel={props.mediaModelPanel}
           excludedModel={props.excludedModel}
+          showInheritOption={props.showInheritOption ?? false}
         />
       }
       placeholder={props.placeholder}
@@ -1477,6 +1496,7 @@ export function ModelProviderPicker({
   modal,
   disabled = false,
   codexFastModeEnabled = false,
+  showInheritOption = false,
   mediaModelPanel,
   excludedModel,
 }: ModelProviderPickerProps) {
@@ -1512,6 +1532,7 @@ export function ModelProviderPicker({
       onOpenChange={onOpenChange}
       modal={modal}
       codexFastModeEnabled={codexFastModeEnabled}
+      showInheritOption={showInheritOption}
       fastLabel={fastLabel}
       excludedModel={excludedModel}
       {...(mediaModelPanel ? { mediaModelPanel } : {})}

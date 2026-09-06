@@ -214,7 +214,7 @@ test("Use the saved Cloud browser default for an untouched new chat", async () =
   await setupPage({
     context,
     path: NEW_CHAT_PATH,
-    featureSwitches: { [FeatureSwitchKey.CloudBrowserPreference]: true },
+    featureSwitches: { [FeatureSwitchKey.ChatPreference]: true },
   });
 
   await readyChat();

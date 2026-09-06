@@ -1,8 +1,10 @@
 import { command, computed, state } from "ccstate";
 import type { UsagePackManagementResponse } from "@okouai/api-contracts/contracts/billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$, usagePackManagementAsync$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
 import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
@@ -30,6 +32,7 @@ import {
 // used to live at the bottom of it.
 export const SETTINGS_SECTIONS = [
   "preference",
+  "chat",
   "model",
   "debug",
   "general",
@@ -51,10 +54,26 @@ const ADMIN_ONLY_SETTINGS_SECTIONS_LIST = [
   "invoices",
 ] as const satisfies readonly SettingsSection[];
 
-export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
+function isAdminOnlySettingsSection(section: SettingsSection): boolean {
   return (
     ADMIN_ONLY_SETTINGS_SECTIONS_LIST as readonly SettingsSection[]
   ).includes(section);
+}
+
+export function resolveAvailableSettingsSection(
+  section: SettingsSection,
+  options: {
+    readonly isAdmin: boolean;
+    readonly chatPreferenceEnabled: boolean;
+  },
+): SettingsSection {
+  if (
+    (!options.isAdmin && isAdminOnlySettingsSection(section)) ||
+    (!options.chatPreferenceEnabled && section === "chat")
+  ) {
+    return "preference";
+  }
+  return section;
 }
 
 const internalSettingsDialogOpen$ = state(false);
@@ -335,8 +354,11 @@ export const checkUnifiedSettingsParam$ = command(
       return;
     }
 
-    const resolved: SettingsSection =
-      !isAdmin && isAdminOnlySettingsSection(section) ? "preference" : section;
+    const resolved = resolveAvailableSettingsSection(section, {
+      isAdmin,
+      chatPreferenceEnabled:
+        get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false,
+    });
     set(internalActiveSection$, resolved);
     set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
     if (opensBuyCredits && resolved === "billing") {

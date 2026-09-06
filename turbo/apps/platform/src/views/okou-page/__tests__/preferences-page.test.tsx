@@ -4,7 +4,12 @@ import {
   type UpdateUserPreferencesRequest,
   type UserPreferencesResponse,
 } from "@okouai/api-contracts/contracts/user-preferences";
-import { screen, waitFor } from "@testing-library/react";
+import {
+  userModelPreferenceContract,
+  type UpdateUserModelPreferenceRequest,
+} from "@okouai/api-contracts/contracts/user-model-preference";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import {
@@ -232,39 +237,108 @@ test("Gradient color themes stay hidden when the capability is disabled", async 
   expect(document.documentElement).not.toHaveAttribute("data-color-theme");
 });
 
-test("Cloud browser defaults stay hidden without the preference capability", async () => {
+test("Chat settings fall back to Preference while the capability is disabled", async () => {
   mockPreferences({ cloudBrowserEnabledByDefault: false });
 
   await setupPage({
     context,
-    path: "/settings",
+    path: "/?settings=chat",
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.CloudBrowserPreference]: false },
+    featureSwitches: { [FeatureSwitchKey.ChatPreference]: false },
   });
 
-  await expect(screen.findByText("Send message with")).resolves.toBeVisible();
-  expect(screen.queryByRole("switch", { name: "Cloud browser" })).toBeNull();
+  const dialog = await screen.findByRole("dialog", { name: "Settings" });
   expect(
-    screen.queryByText("Let agents use a cloud browser in new chats"),
+    within(dialog).getByRole("heading", { name: "Preference" }),
+  ).toBeVisible();
+  expect(within(dialog).queryByText("Chat")).not.toBeInTheDocument();
+  expect(within(dialog).getByText("Send message with")).toBeVisible();
+  expect(
+    within(dialog).queryByRole("switch", { name: "Cloud browser" }),
   ).toBeNull();
+  expect(within(dialog).queryByText("Default model")).toBeNull();
+  expect(new URLSearchParams(window.location.search).get("settings")).toBe(
+    "preference",
+  );
 });
 
-test("A user can save the Cloud browser default for new chats", async () => {
+test("Chat settings keep the agreed row order and save chat defaults", async () => {
+  const user = userEvent.setup({ delay: null });
   const updates = mockPreferences({ cloudBrowserEnabledByDefault: false });
+  context.mocks.data.userModelPreference({
+    selectedModel: "gpt-5.6-sol",
+    serviceTier: null,
+    selectedVideoModel: null,
+    selectedImageModel: null,
+    updatedAt: "2026-09-06T00:00:00.000Z",
+  });
+  const modelUpdates: UpdateUserModelPreferenceRequest[] = [];
+  context.mocks.api(userModelPreferenceContract.update, ({ body, respond }) => {
+    modelUpdates.push(body);
+    return respond(200, {
+      selectedModel: body.selectedModel,
+      serviceTier: body.serviceTier,
+      selectedVideoModel: null,
+      selectedImageModel: null,
+      updatedAt: "2026-09-06T00:00:01.000Z",
+    });
+  });
 
   await setupPage({
     context,
-    path: "/settings",
+    path: "/?settings=chat",
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.CloudBrowserPreference]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.ChatPreference]: true,
+      [FeatureSwitchKey.CodexFastMode]: true,
+    },
   });
 
-  await expect(
-    screen.findByText(
+  const dialog = await screen.findByRole("dialog", { name: "Settings" });
+  expect(within(dialog).getByRole("heading", { name: "Chat" })).toBeVisible();
+  expect(
+    within(dialog).getByText(
       "Choose defaults for new chats and how messages are sent.",
     ),
-  ).resolves.toBeVisible();
-  const cloudBrowser = screen.getByRole("switch", {
+  ).toBeVisible();
+  const defaultModel = within(dialog).getByText("Default model");
+  const cloudBrowserTitle = within(dialog).getByText("Cloud browser");
+  const sendMode = within(dialog).getByText("Send message with");
+  expect(
+    defaultModel.compareDocumentPosition(cloudBrowserTitle) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    cloudBrowserTitle.compareDocumentPosition(sendMode) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+
+  await user.click(
+    await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }),
+  );
+  await user.click(
+    await screen.findByRole("option", { name: "GPT 5.6 Sol Fast" }),
+  );
+  await waitFor(() => {
+    expect(modelUpdates).toContainEqual({
+      selectedModel: "gpt-5.6-sol",
+      serviceTier: "priority",
+    });
+  });
+  await user.click(
+    await within(dialog).findByRole("combobox", { name: "GPT 5.6 Sol" }),
+  );
+  await user.click(
+    await screen.findByRole("option", { name: "Inherit from org default" }),
+  );
+  await waitFor(() => {
+    expect(modelUpdates).toContainEqual({
+      selectedModel: null,
+      serviceTier: null,
+    });
+  });
+
+  const cloudBrowser = within(dialog).getByRole("switch", {
     name: "Cloud browser",
   });
   expect(cloudBrowser).not.toBeChecked();
@@ -273,7 +347,14 @@ test("A user can save the Cloud browser default for new chats", async () => {
 
   await waitFor(() => {
     expect(updates).toContainEqual({ cloudBrowserEnabledByDefault: true });
-    expect(screen.getByRole("switch", { name: "Cloud browser" })).toBeChecked();
+    expect(
+      within(dialog).getByRole("switch", { name: "Cloud browser" }),
+    ).toBeChecked();
+  });
+
+  click(getFastRole("button", "⌘ Enter", dialog));
+  await waitFor(() => {
+    expect(updates).toContainEqual({ sendMode: "cmd-enter" });
   });
 });
 

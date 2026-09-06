@@ -152,7 +152,7 @@ test("Edit only the model for an existing thread", async () => {
     context,
     path: RUN_PATH,
     featureSwitches: {
-      [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      [FeatureSwitchKey.ChatPreference]: true,
     },
   });
 

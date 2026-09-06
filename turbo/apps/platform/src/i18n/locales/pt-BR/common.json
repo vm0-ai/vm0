@@ -5139,6 +5139,10 @@
           "description": "Ative o navegador na nuvem por padrão em novos chats. Você pode alterar isso em qualquer chat.",
           "title": "Navegador na nuvem"
         },
+        "defaultModel": {
+          "description": "Usado a menos que um chat ou uma execução escolha outro modelo.",
+          "title": "Modelo padrão"
+        },
         "description": "Escolha os padrões para novos chats e como as mensagens são enviadas.",
         "sectionTitle": "Chat"
       },

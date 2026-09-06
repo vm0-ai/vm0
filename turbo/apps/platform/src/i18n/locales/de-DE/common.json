@@ -5083,6 +5083,10 @@
           "description": "Cloud-Browser in neuen Chats standardmäßig aktivieren. Du kannst das in jedem Chat ändern.",
           "title": "Cloud-Browser"
         },
+        "defaultModel": {
+          "description": "Wird verwendet, sofern ein Chat oder Lauf kein anderes Modell auswählt.",
+          "title": "Standardmodell"
+        },
         "description": "Lege Standardeinstellungen für neue Chats und die Art des Nachrichtenversands fest.",
         "sectionTitle": "Chat"
       },
