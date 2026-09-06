@@ -29,6 +29,7 @@ import {
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
 import { registerPinnedThreadDragSession$ } from "./chat-thread-pin-drag-lifecycle.ts";
+import { createPinnedThreadTouchDrag } from "./chat-thread-pin-touch.ts";
 
 export const pinnedThreadReorderEnabled$ = computed((get) => {
   return get(stableChatThreadNavigationEnabled$) && !get(chatThreadOnlyUnread$);
@@ -134,6 +135,8 @@ interface PinDragPointer {
   readonly x: number;
   readonly y: number;
   readonly width: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
 }
 
 interface PinDragPreview extends PinDragPointer {
@@ -166,6 +169,10 @@ export interface PinnedThreadDragSignals {
   readonly step$: Command<void, [-1 | 1]>;
   readonly drop$: Command<Promise<void>, [AbortSignal]>;
   readonly dropPointer$: Command<Promise<void>, [AbortSignal]>;
+  readonly startTouch$: Command<
+    Promise<void>,
+    [HTMLElement, TouchEvent, AbortSignal]
+  >;
 }
 
 function createPinDragInteraction(
@@ -259,20 +266,39 @@ function createPinDragInteraction(
     })!;
     return { ...pointer, title: source.title };
   });
-  return { cancel$, cancelKeyboard$, mount$, start$, preview$ };
+  const movePointer$ = command(({ get, set }, x: number, y: number) => {
+    const pointer = get(pointer$);
+    if (pointer && get(drag$)) {
+      set(pointer$, { ...pointer, x, y });
+    }
+  });
+  return { cancel$, cancelKeyboard$, mount$, start$, preview$, movePointer$ };
 }
 
 function createPinDragRowMount(
   internalDrag$: State<PinDrag | null>,
   start$: PinnedThreadDragSignals["start$"],
+  cancelTouch$: Command<void, [string]>,
 ) {
   return onRef(
-    command(({ set }, row: HTMLElement, signal: AbortSignal) => {
+    command(({ get, set }, row: HTMLElement, signal: AbortSignal) => {
       const threadId = row.dataset.threadId;
       const handle = row.querySelector(".okou-thread-drag-handle");
       if (!threadId || !(handle instanceof HTMLElement)) {
         throw new Error("Missing pinned thread drag elements");
       }
+      // Safari needs a non-passive listener before touchstart to let a later
+      // long press prevent scrolling. Pending holds still allow native swipes.
+      row.addEventListener(
+        "touchmove",
+        (event) => {
+          const drag = get(internalDrag$);
+          if (drag?.threadId === threadId && !drag.keyboard) {
+            event.preventDefault();
+          }
+        },
+        { signal, passive: false },
+      );
       const cleanup = draggable({
         element: handle,
         getInitialData: () => {
@@ -290,10 +316,19 @@ function createPinDragRowMount(
             x: location.current.input.clientX,
             y: location.current.input.clientY,
             width: row.getBoundingClientRect().width,
+            offsetX: 16,
+            offsetY: 16,
           });
         },
       });
-      signal.addEventListener("abort", cleanup, { once: true });
+      signal.addEventListener(
+        "abort",
+        () => {
+          cleanup();
+          set(cancelTouch$, threadId);
+        },
+        { once: true },
+      );
     }),
   );
 }
@@ -417,7 +452,7 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
       ? drag
       : null;
   });
-  const { cancel$, cancelKeyboard$, mount$, start$, preview$ } =
+  const { cancel$, cancelKeyboard$, mount$, start$, preview$, movePointer$ } =
     createPinDragInteraction(internalDrag$, drag$);
   const { placement$, target$ } = createPinDragPlacement(internalDrag$, drag$);
   const step$ = command(({ get, set }, direction: -1 | 1) => {
@@ -438,6 +473,44 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
       await set(drop$, signal);
     }
   });
+  const moveTouch$ = command(
+    ({ get, set }, row: HTMLElement, x: number, y: number) => {
+      if (!get(drag$)) {
+        return false;
+      }
+      set(movePointer$, x, y);
+      const zone = row.closest('[data-testid="pinned-thread-drop-zone"]');
+      const bounds = zone?.getBoundingClientRect();
+      const list = zone?.querySelector(
+        '[data-testid="sidebar-chat-threads-virtual-list"]',
+      );
+      if (
+        !bounds ||
+        !list ||
+        x < bounds.left ||
+        x > bounds.right ||
+        y < bounds.top ||
+        y > bounds.bottom
+      ) {
+        return false;
+      }
+      set(
+        target$,
+        Math.floor(
+          (y - list.getBoundingClientRect().top) /
+            CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+        ),
+      );
+      return true;
+    },
+  );
+  const { startTouch$, cancelRow$ } = createPinnedThreadTouchDrag({
+    drag$,
+    start$,
+    drop$,
+    cancel$,
+    move$: moveTouch$,
+  });
   const announcement$ = computed((get) => {
     const drag = get(drag$);
     if (!drag?.keyboard) {
@@ -457,13 +530,14 @@ export function createPinnedThreadDragSignals(): PinnedThreadDragSignals {
     placement$,
     preview$,
     mount$,
-    mountRow$: createPinDragRowMount(internalDrag$, start$),
+    mountRow$: createPinDragRowMount(internalDrag$, start$, cancelRow$),
     mountDropZone$: createPinDragDropZoneMount(internalDrag$, drag$, target$),
     cancelKeyboard$,
     start$,
     step$,
     drop$,
     dropPointer$,
+    startTouch$,
     announcement$,
   };
 }
