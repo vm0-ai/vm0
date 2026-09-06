@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.848.0](https://github.com/vm0-ai/vm0/compare/app-v0.847.0...app-v0.848.0) (2026-09-06)
+
+
+### Features
+
+* add cursor context and light polish to voice input ([#31968](https://github.com/vm0-ai/vm0/issues/31968)) ([12d0c92](https://github.com/vm0-ai/vm0/commit/12d0c9232684f9223ade010c40f3fad752b079df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+    * @okouai/core bumped to 8.625.9
+
 ## [0.847.0](https://github.com/vm0-ai/vm0/compare/app-v0.846.0...app-v0.847.0) (2026-09-06)
 
 
