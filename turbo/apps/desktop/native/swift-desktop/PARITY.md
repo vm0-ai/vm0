@@ -18,6 +18,22 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The unchanged `c79b8b0c` release also reproduced a separate window-selection
+failure: with the main window ordered out and a floating panel visible, it still
+selected the hidden main window and failed to capture. Space membership does not
+prove visibility, and hidden WindowServer records may omit the onscreen flag.
+Candidates now come from the onscreen WindowServer list; elevated app surfaces
+must match an AX window's bounds. Fully transparent surfaces are excluded from
+interactive targets. The existing all-Space inspection fallback remains.
+
+[Candidate red/green evidence](https://cdn.vm0.io/artifacts/yteqpiat3h.json) passed nine live cases with 14 requests:
+floating-panel capture and AX/coordinate clicks, occluded-main capture, four
+rejected hidden-window snapshot mutations with unchanged fixture values, and
+explicit all-hidden failure. All 136 helper tests passed, including a separate
+AppKit process that exercises the production WindowServer query through
+occlusion, hiding, panel-only visibility, and restoration. The new package and
+actual Desktop/server round trip still require separate acceptance.
+
 The unchanged `98c344f0` CI helper reproduced a captured-window metadata mismatch
 with an owned AppKit main window and floating panel: `windowId` and the screenshot
 selected the main window, while `windowTitle` named the first AX floating panel.
@@ -30,8 +46,11 @@ source. AX ordering and positional element IDs remain unchanged.
 All 135 helper tests and eight live candidate cases passed, including two-window
 selection, owned text replacement, floating-panel visibility, and rejection of
 stale keyboard focus and moved coordinate snapshots without editing either
-document. This is independent helper acceptance; the subsequent downloadable
-package and actual Desktop/server round trip need their own evidence.
+document. The subsequent unchanged `c79b8b0c` release and configured preview app
+passed [separately attributed acceptance](https://cdn.vm0.io/artifacts/p2pnolo3ri.json),
+including eight release cases, 11 real API requests across all nine kinds, normal
+Safari handoff and floating controls. Its hidden-window selection failure is the
+separate repair above.
 
 The downloaded `5bbc2f28` app completed a new
 [actual Desktop/server and recording walkthrough](https://cdn.vm0.io/artifacts/141aiw6e9l.json):

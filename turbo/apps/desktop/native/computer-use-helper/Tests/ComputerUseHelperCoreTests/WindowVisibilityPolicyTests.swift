@@ -119,35 +119,32 @@ struct WindowVisibilityPolicyTests {
     }
 
     @Test
-    func treatsVisibleWindowsOnAnotherDisplayAsReachable() {
-        #expect(
-            isWindowCandidateReachableFromCurrentDisplayContext(
-                currentSpaceId: 1,
-                windowSpaceIds: [2],
-                isOnScreen: true
-            )
-        )
+    func acceptsAXBackedFloatingAndModalWindows() {
+        let frame = CGRect(x: 100, y: 200, width: 268, height: 60)
+        for layer in [3, 8] {
+            #expect(isControllableWindowLayer(layer, frame: frame, accessibilityWindowFrames: [frame]))
+        }
+        #expect(isControllableWindowLayer(0, frame: frame, accessibilityWindowFrames: []))
     }
 
     @Test
-    func rejectsOffscreenWindowsOnAnotherSpace() {
-        #expect(
-            !isWindowCandidateReachableFromCurrentDisplayContext(
-                currentSpaceId: 1,
-                windowSpaceIds: [2],
-                isOnScreen: false
-            )
-        )
+    func excludesUnmatchedElevatedSurfacesAndDesktopLayers() {
+        let frame = CGRect(x: 100, y: 200, width: 268, height: 60)
+        #expect(!isControllableWindowLayer(3, frame: frame, accessibilityWindowFrames: []))
+        #expect(!isControllableWindowLayer(24, frame: frame, accessibilityWindowFrames: [
+            CGRect(x: 0, y: 0, width: 640, height: 480)
+        ]))
+        #expect(!isControllableWindowLayer(-1, frame: frame, accessibilityWindowFrames: [frame]))
     }
 
     @Test
-    func acceptsWindowsOnTheCurrentSpaceEvenWithoutOnscreenMetadata() {
-        #expect(
-            isWindowCandidateReachableFromCurrentDisplayContext(
-                currentSpaceId: 1,
-                windowSpaceIds: [1],
-                isOnScreen: false
-            )
-        )
+    func matchesPanelGeometryWithBoundedAXRoundingTolerance() {
+        let frame = CGRect(x: 100, y: 200, width: 268, height: 60)
+        #expect(isControllableWindowLayer(3, frame: frame, accessibilityWindowFrames: [
+            CGRect(x: 101, y: 201, width: 267, height: 59)
+        ]))
+        #expect(!isControllableWindowLayer(3, frame: frame, accessibilityWindowFrames: [
+            CGRect(x: 102, y: 202, width: 267, height: 59)
+        ]))
     }
 }

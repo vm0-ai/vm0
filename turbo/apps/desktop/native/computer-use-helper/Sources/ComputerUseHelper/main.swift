@@ -2359,49 +2359,38 @@ enum CGWindowCandidateScope {
 }
 
 func cgWindowCandidates(pid: pid_t, scope: CGWindowCandidateScope = .currentSpace) -> [CGWindowCandidate] {
-    let options: CGWindowListOption = [.excludeDesktopElements]
-    guard let rawList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
-        return []
-    }
+    let rawList = windowServerWindows(ownerPID: pid, onScreenOnly: scope == .currentSpace)
 
     let currentSpaceId = WindowSpaceDetector.currentSpaceId()
+    let accessibilityWindowFrames = axWindowInfos(root: applicationElement(forProcessIdentifier: pid))
+        .compactMap(\.frame)
     let candidates = rawList.compactMap { record -> CGWindowCandidate? in
         guard (record[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
-              (record[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+              let layer = (record[kCGWindowLayer as String] as? NSNumber)?.intValue,
               let windowNumber = (record[kCGWindowNumber as String] as? NSNumber)?.intValue,
               let frame = cgWindowBounds(record[kCGWindowBounds as String]),
               frame.width > 0,
-              frame.height > 0
+              frame.height > 0,
+              isControllableWindowLayer(layer, frame: frame, accessibilityWindowFrames: accessibilityWindowFrames)
         else {
             return nil
         }
         let title = stringValue(record[kCGWindowName as String])
         let spaceIds = WindowSpaceDetector.spaceIds(forWindowNumber: windowNumber)
+        if scope == .currentSpace, cgWindowAlpha(record[kCGWindowAlpha as String]) <= 0.01 {
+            return nil
+        }
         return CGWindowCandidate(
             windowNumber: windowNumber,
             title: title,
             frame: frame,
             area: Double(frame.width * frame.height),
-            isOnScreen: cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String]),
+            isOnScreen: scope == .currentSpace || cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String]),
             currentSpaceId: currentSpaceId,
             spaceIds: spaceIds
         )
     }
-    if scope == .anySpace {
-        return candidates
-    }
-    if let currentSpaceId {
-        return candidates.filter { candidate in
-            isWindowCandidateReachableFromCurrentDisplayContext(
-                currentSpaceId: currentSpaceId,
-                windowSpaceIds: candidate.spaceIds,
-                isOnScreen: candidate.isOnScreen
-            )
-        }
-    }
-    return candidates.filter { candidate in
-        candidate.isOnScreen
-    }
+    return candidates
 }
 
 func rectDistance(_ left: CGRect, _ right: CGRect) -> Double {

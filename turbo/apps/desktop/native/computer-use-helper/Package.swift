@@ -43,7 +43,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ComputerUseHelperIntegrationTests",
-            dependencies: ["ComputerUseHelper"]
+            dependencies: ["ComputerUseHelper", "ComputerUseHelperCore"]
         ),
         .testTarget(
             name: "ComputerUseHelperCoreTests",
