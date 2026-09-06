@@ -5,6 +5,7 @@ struct BackgroundMenuShortcut {
     let window: AXUIElement
     let textElement: AXUIElement
     let selection: CFRange
+    let isSafariWebContent: Bool
 }
 
 func backgroundMenuShortcut(
@@ -12,6 +13,7 @@ func backgroundMenuShortcut(
 ) throws -> BackgroundMenuShortcut? {
     guard parsed.flags & Int(CGEventFlags.maskCommand.rawValue) != 0,
           currentFrontmostApplication()?.processIdentifier != target.pid else { return nil }
+    if let web = try safariEditingShortcut(parsed, target: target, deadline: deadline) { return web }
     let app = applicationElement(forProcessIdentifier: target.pid)
     guard let focused = axElementValue(attribute(app, kAXFocusedUIElementAttribute as CFString)),
           [kAXTextAreaRole, kAXTextFieldRole].contains(role(focused) ?? ""),
@@ -23,8 +25,8 @@ func backgroundMenuShortcut(
     for _ in 0..<limits.maxDepth {
         try ensureKeyboardDeliveryDeadline(readDeadline)
         guard let element = ancestor else { break }
-        // Web key handlers already receive process-addressed events. Acquiring
-        // a native key window would change their browser's shortcut handling.
+        // Safari editing commands have a separate window-scoped focus check.
+        // Other web handlers retain their existing process-addressed events.
         if role(element) == "AXWebArea" { return nil }
         if CFEqual(element, window) { foundWindow = true; break }
         ancestor = axElementValue(attribute(element, kAXParentAttribute as CFString))
@@ -32,14 +34,19 @@ func backgroundMenuShortcut(
     guard foundWindow else {
         throw HelperFailure(code: "window_unavailable", message: "The focused text control is outside the keyboard target window; no input was sent")
     }
-    guard let menu = axElementValue(attribute(app, kAXMenuBarAttribute as CFString)) else { return nil }
+    guard try backgroundMenuBindingMatches(parsed, app: app, deadline: readDeadline) else { return nil }
+    return BackgroundMenuShortcut(window: window, textElement: focused, selection: selection, isSafariWebContent: false)
+}
+
+func backgroundMenuBindingMatches(_ parsed: ParsedKeyPress, app: AXUIElement, deadline: TimeInterval) throws -> Bool {
+    guard let menu = axElementValue(attribute(app, kAXMenuBarAttribute as CFString)) else { return false }
     let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(parsed.keyCode), keyDown: true)
     event?.flags = CGEventFlags(rawValue: UInt64(parsed.flags))
     let character = event.flatMap { NSEvent(cgEvent: $0)?.charactersIgnoringModifiers }
     var pending = [menu]
     var visited = 0
     while let item = pending.popLast() {
-        try ensureKeyboardDeliveryDeadline(readDeadline)
+        try ensureKeyboardDeliveryDeadline(deadline)
         visited += 1
         guard visited <= 2_000 else {
             throw HelperFailure(code: "unsupported_command", message: "The app menu is too large to validate this shortcut; no input was sent")
@@ -52,12 +59,12 @@ func backgroundMenuShortcut(
             } ?? false
             if (key?.intValue == parsed.keyCode || (key == nil && characterMatches)),
                (attribute(item, kAXMenuItemCmdModifiersAttribute as CFString) as? NSNumber)?.intValue == menuModifierMask(parsed) {
-                return BackgroundMenuShortcut(window: window, textElement: focused, selection: selection)
+                return true
             }
         }
         pending.append(contentsOf: attributeArray(item, kAXChildrenAttribute as CFString))
     }
-    return nil
+    return false
 }
 
 func backgroundKeyboardTitlebarPoint(_ shortcut: BackgroundMenuShortcut, target: WindowTarget, deadline: TimeInterval) throws -> CGPoint {
@@ -75,8 +82,17 @@ func backgroundKeyboardTitlebarPoint(_ shortcut: BackgroundMenuShortcut, target:
         var hit: AXUIElement?
         // Only empty window chrome is eligible. Never click a title, proxy icon,
         // toolbar button, or document control to acquire the native key window.
-        if AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success,
-           axElementsEqual(hit, shortcut.window) {
+        guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success,
+              let hit else { continue }
+        if CFEqual(hit, shortcut.window) {
+            return point
+        }
+        // Safari integrates its titlebar into a toolbar. A hit on the toolbar
+        // itself is empty chrome; labels, address fields, and buttons are not.
+        // AXShowMenu is its contextual menu, not a left-click action.
+        if shortcut.isSafariWebContent, role(hit) == kAXToolbarRole,
+           axElementsEqual(axElementValue(attribute(hit, kAXWindowAttribute as CFString)), shortcut.window),
+           actionNames(hit).allSatisfy({ $0 == kAXShowMenuAction }) {
             return point
         }
     }
@@ -120,7 +136,10 @@ func performBackgroundMenuShortcut(
     try dispatcher.postMouse(.leftMouseUp, at: point, button: .left, clickState: 1, pressure: 0)
     usleep(50_000)
     try ensureKeyboardDeliveryDeadline(deadline)
-    guard axElementsEqual(axElementValue(attribute(app, kAXFocusedUIElementAttribute as CFString)), shortcut.textElement),
+    let focused = shortcut.isSafariWebContent
+        ? try focusedSafariWebTextElement(window: shortcut.window, deadline: deadline)
+        : axElementValue(attribute(app, kAXFocusedUIElementAttribute as CFString))
+    guard axElementsEqual(focused, shortcut.textElement),
           axElementsEqual(axElementValue(attribute(app, kAXFocusedWindowAttribute as CFString)), shortcut.window),
           let selection = selectedTextRange(shortcut.textElement),
           selection.location == shortcut.selection.location, selection.length == shortcut.selection.length else {

@@ -524,6 +524,45 @@ returns 404 for retired product feeds. This review does not restore a retired
 release line or authorize a release. The primary Okou Developer ID signed update,
 rollback, and release-promotion integration still require acceptance.
 
+### Safari background clipboard and editing history
+
+The downloaded `ca7d5c7` helper passes 42 native clipboard/history operations
+across a text area and a single-line field under all three policies. In Safari,
+Copy, Cut, Paste, and Undo return success without executing under both background
+policies; explicit foreground controls work. Web keydown handlers still receive
+the original keys, but the inactive native window omits the editing command.
+Bare activation, bare toolbar clicking, and alternate event routing do not fix it.
+
+Safari C/X/V/Z shortcuts now validate the actual menu binding and resolve one
+focused web text control within the inspected window. App-local activation and a
+window-addressed click on AX-verified empty toolbar chrome establish the native
+key window. The toolbar must belong to that window and expose no left-click
+accessibility action; titles, address fields, and buttons remain ineligible.
+Original focus and selection are checked before sending the original keys, so
+keydown and clipboard handlers retain their overrides. The internal inactive
+state is restored after dispatch. Other browser controls and shortcuts retain
+their existing paths and remain in the broader acceptance inventory.
+
+The debug candidate passes all 123 helper tests, 21 Safari standard editing keys,
+27 custom clipboard/keydown handler cases, and the 42 native clipboard/history
+regressions. A foreground native fixture retains its active/key window, text, and
+selection while Safari performs seven background editing commands; its own
+Undo/Redo works immediately afterward without reactivation. Custom native menu
+bindings and blocked-titlebar rejection/recovery also retain their behavior.
+Background cases preserve actual system frontmost without restoration.
+
+The old foreground browser pastes a precomposed accent from a copied combining
+sequence. Candidate text, UTF-16 selection, and event counters match that actual
+foreground sequence through both Undo levels and Redo. The helper does not
+normalize or replace clipboard content. The initially empty general clipboard is
+saved privately and restored after each batch; ownership/change-count checks
+avoid overwriting unrelated concurrent changes. Only owned Safari tabs are closed.
+
+[Baseline and debug candidate evidence](https://cdn.vm0.io/artifacts/q33y1n26tf.json) records helper SHA-256
+`ddd3e52e8a58384409ffc6281d95edcfb5000fcb92334989a8e82fa56ee0a894`.
+The PR's latest build/progress record identifies the subsequent downloaded release
+and configured Desktop/server validation. Full PARITY remains open.
+
 ## Completion gate
 
 The PR is kept in draft while these acceptance items are open. A compiling app
