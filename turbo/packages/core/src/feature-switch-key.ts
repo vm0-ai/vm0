@@ -62,6 +62,7 @@ export enum FeatureSwitchKey {
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
+  SshAccess = "_sshAccess",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   PresentationScreenshot = "presentationScreenshot",

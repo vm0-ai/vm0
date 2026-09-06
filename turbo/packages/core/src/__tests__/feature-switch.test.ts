@@ -23,6 +23,7 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
+    expect(FeatureSwitchKey.SshAccess).toBe("_sshAccess");
     expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
     expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
       "progressiveArtifactPreview",
@@ -49,6 +50,12 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.SshAccess, {})).toBe(false);
+    expect(getFeatureSwitchMetadata()[FeatureSwitchKey.SshAccess]).toEqual({
+      maintainer: "ethan@vm0.ai",
+      description: "Enable standalone Runner-mediated SSH configuration",
+      rolloutStage: "internal",
+    });
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -203,6 +210,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SshAccess]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",

@@ -467,6 +467,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SshAccess]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable standalone Runner-mediated SSH configuration",
+    enabled: false,
+  },
   [FeatureSwitchKey.NewUi]: {
     maintainer: "ming@vm0.ai",
     description:
