@@ -25,15 +25,18 @@
 //! - lifecycle signals are registered before slow startup work;
 //! - discovery is pinned across `select!` ticks so heartbeat and lifecycle
 //!   branches do not restart polling;
-//! - heartbeat work is pinned and single-flight so its I/O does not stall the
-//!   main reactor or overlap a newer snapshot;
+//! - heartbeat and status retry tasks run independently of the reactor so its
+//!   inline resource waits cannot strand a queued task ahead of it;
 //! - workspace-cache watcher work is pinned across reactor turns so async
 //!   metadata classification cannot lose already-drained kernel events;
-//! - routine workspace-cache GC is pinned and process-local single-flight, and
+//! - routine workspace-cache GC is independently scheduled and single-flight, and
 //!   its host-global cadence is coordinated through the capacity lock;
 //! - the first routine heartbeat tick is deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
+//!
+//! See `docs/runner-reactor-progress.md` for the shared-resource audit and
+//! cancellation/teardown ownership rules.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -44,9 +47,9 @@ use clap::Args;
 use futures_util::future::BoxFuture;
 use sandbox::{RuntimeProvider, SandboxRuntime};
 use tokio::sync::mpsc;
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{Instrument, error, info, warn};
 use uuid::Uuid;
 
 use crate::duration::duration_ms as saturated_duration_ms;
@@ -80,7 +83,7 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::runner_process_identity::RunnerProcessIdentity;
-use crate::status::{StatusResult, StatusTracker, remove_stale_status_file};
+use crate::status::{StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::{
     WorkspaceCacheChange, WorkspaceCacheWatcher, WorkspaceImageCache,
 };
@@ -169,20 +172,25 @@ async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     }
 }
 
-enum RoutineHeartbeatTrigger {
+enum MaintenanceTrigger {
     Interval(tokio::time::Interval),
     #[cfg(test)]
     Manual(mpsc::UnboundedReceiver<()>),
 }
 
-impl RoutineHeartbeatTrigger {
-    fn interval() -> Self {
-        let mut interval = tokio::time::interval_at(
-            tokio::time::Instant::now() + HEARTBEAT_PERIOD,
-            HEARTBEAT_PERIOD,
-        );
+impl MaintenanceTrigger {
+    fn interval(period: Duration) -> Self {
+        let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         Self::Interval(interval)
+    }
+
+    fn reset(&mut self) {
+        match self {
+            Self::Interval(interval) => interval.reset(),
+            #[cfg(test)]
+            Self::Manual(_) => {}
+        }
     }
 
     async fn tick(&mut self) {
@@ -195,7 +203,7 @@ impl RoutineHeartbeatTrigger {
                 receiver
                     .recv()
                     .await
-                    .expect("manual routine heartbeat sender should remain open");
+                    .expect("manual maintenance sender should remain open");
             }
         }
     }
@@ -228,30 +236,40 @@ async fn next_workspace_cache_change(
     }
 }
 
-type WorkspaceCacheGcFuture = BoxFuture<'static, RunnerResult<Option<u64>>>;
-
-fn workspace_cache_gc_future(cache: WorkspaceImageCache) -> WorkspaceCacheGcFuture {
-    Box::pin(async move { cache.try_routine_gc(WORKSPACE_CACHE_GC_PERIOD).await })
+// Maintenance tasks are joined during teardown, not aborted: filesystem work
+// may continue after its async future is dropped. If the reactor itself is
+// cancelled, these tasks retain their locks until their work completes.
+fn workspace_cache_gc_task(cache: WorkspaceImageCache) -> JoinHandle<()> {
+    tokio::spawn(
+        async move {
+            match cache.try_routine_gc(WORKSPACE_CACHE_GC_PERIOD).await {
+                Ok(Some(freed_bytes)) if freed_bytes > 0 => {
+                    info!(freed_bytes, "periodic workspace image cache GC completed");
+                }
+                Ok(Some(_) | None) => {}
+                Err(error) => warn!(%error, "periodic workspace image cache GC failed"),
+            }
+        }
+        .in_current_span(),
+    )
 }
 
-async fn next_workspace_cache_gc(
-    future: &mut Option<WorkspaceCacheGcFuture>,
-) -> RunnerResult<Option<u64>> {
-    match future {
-        Some(future) => future.await,
-        None => std::future::pending().await,
-    }
+fn status_retry_task(status: Arc<StatusTracker>) -> JoinHandle<()> {
+    tokio::spawn(
+        async move {
+            if let Err(error) = status.retry_unpublished_snapshot().await {
+                warn!(%error, "failed to retry unpublished runner status");
+            }
+        }
+        .in_current_span(),
+    )
 }
 
-type StatusRetryFuture = BoxFuture<'static, StatusResult<()>>;
-
-fn status_retry_future(status: Arc<StatusTracker>) -> StatusRetryFuture {
-    Box::pin(async move { status.retry_unpublished_snapshot().await })
-}
-
-async fn next_status_retry(future: &mut Option<StatusRetryFuture>) -> StatusResult<()> {
-    match future {
-        Some(future) => future.await,
+async fn next_maintenance_task(task: &mut Option<JoinHandle<()>>, name: &str) -> RunnerResult<()> {
+    match task {
+        Some(task) => task
+            .await
+            .map_err(|error| RunnerError::Internal(format!("{name} task failed: {error}"))),
         None => std::future::pending().await,
     }
 }
@@ -969,6 +987,7 @@ async fn run_start_with_home(
             before_initial_workspace_cache_scan: None,
             after_initial_workspace_cache_scan: None,
             manual_routine_heartbeat_rx: None,
+            manual_workspace_cache_gc_rx: None,
         },
     };
 
@@ -1104,6 +1123,7 @@ struct RunTestHooks {
     before_initial_workspace_cache_scan: Option<StartLoopTestGate>,
     after_initial_workspace_cache_scan: Option<StartLoopTestGate>,
     manual_routine_heartbeat_rx: Option<mpsc::UnboundedReceiver<()>>,
+    manual_workspace_cache_gc_rx: Option<mpsc::UnboundedReceiver<()>>,
 }
 
 enum SignalSource {
@@ -1123,6 +1143,7 @@ enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     RoutineHeartbeatRequested { mode: RunnerMode },
     WorkspaceCacheChangeObserved,
+    MaintenanceDrainEntered,
     DestroyTasksDrainEntered,
     DestroyTasksDrainCompleted,
     FinalizingCapacityWaitEntered { run_id: RunId },
@@ -1835,11 +1856,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     #[cfg(test)]
     let mut heartbeat_tick = match test_hooks.manual_routine_heartbeat_rx.take() {
-        Some(receiver) => RoutineHeartbeatTrigger::Manual(receiver),
-        None => RoutineHeartbeatTrigger::interval(),
+        Some(receiver) => MaintenanceTrigger::Manual(receiver),
+        None => MaintenanceTrigger::interval(HEARTBEAT_PERIOD),
     };
     #[cfg(not(test))]
-    let mut heartbeat_tick = RoutineHeartbeatTrigger::interval();
+    let mut heartbeat_tick = MaintenanceTrigger::interval(HEARTBEAT_PERIOD);
 
     // -----------------------------------------------------------------------
     // Main loop
@@ -1879,7 +1900,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         group: &runner.group,
         profiles: &runner.profiles,
         budget: &capacity.budget,
-        provider: &*provider_state.provider,
+        provider: Arc::clone(&provider_state.provider),
         workspace_cache: exec_config.workspace_cache.clone(),
         active_runs: &active_runs,
         workspace_cache_snapshot: workspace_cache_snapshot.clone(),
@@ -1967,19 +1988,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         #[cfg(test)]
         test_observer: test_hooks.test_observer.clone(),
     };
-    let mut workspace_cache_gc_tick = tokio::time::interval_at(
-        tokio::time::Instant::now() + WORKSPACE_CACHE_GC_PERIOD,
-        WORKSPACE_CACHE_GC_PERIOD,
-    );
-    workspace_cache_gc_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    #[cfg(test)]
+    let mut workspace_cache_gc_tick = match test_hooks.manual_workspace_cache_gc_rx.take() {
+        Some(receiver) => MaintenanceTrigger::Manual(receiver),
+        None => MaintenanceTrigger::interval(WORKSPACE_CACHE_GC_PERIOD),
+    };
+    #[cfg(not(test))]
+    let mut workspace_cache_gc_tick = MaintenanceTrigger::interval(WORKSPACE_CACHE_GC_PERIOD);
     let mut workspace_cache_reconciliation_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + WORKSPACE_CACHE_RECONCILIATION_INITIAL_DELAY,
         WORKSPACE_CACHE_RECONCILIATION_PERIOD,
     );
     workspace_cache_reconciliation_tick
         .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut workspace_cache_gc_fut = None;
-    let mut status_retry_fut = None;
+    let mut workspace_cache_gc_handle = None;
+    let mut status_retry_handle = None;
     let mut draining_idle_pool_drained = false;
     let mut pending_finalizing_candidate = None;
     let mut terminal_error = None;
@@ -2030,7 +2053,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     if transitioned {
                         // Live observability: fire an immediate "stopping"
                         // heartbeat before teardown removes the runner.
-                        heartbeat.flush(RunnerMode::Stopping).await?;
+                        if let Err(error) = heartbeat.flush(RunnerMode::Stopping).await {
+                            terminal_error = Some(error);
+                            break;
+                        }
                     }
                     continue;
                 }
@@ -2154,13 +2180,20 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     heartbeat.request(live_mode)?;
                 }
             }
-            // The active heartbeat future is pinned in the controller so
-            // network and state-refresh waits yield to every other reactor
-            // branch instead of being awaited by a trigger handler.
+            // Observe independently scheduled heartbeat work without cancelling
+            // it when another branch wins or waits for a shared resource.
             result = heartbeat.wait_for_send(), if heartbeat_sending => {
-                result?;
                 let live_mode = *mode_rx.borrow();
-                heartbeat.finish_send(live_mode)?;
+                if let Err(error) = result.and_then(|()| heartbeat.finish_send(live_mode)) {
+                    handle_stopping_signal(
+                        "heartbeat task failure",
+                        &provider_state.cancel,
+                        &provider_state.cancel_tokens,
+                        &lifecycle,
+                    ).await;
+                    terminal_error = Some(error);
+                    break;
+                }
             }
             (watcher, result) = next_workspace_cache_change(&mut workspace_cache_change_fut) => {
                 match result {
@@ -2195,32 +2228,38 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     )?;
                 }
             }
-            result = next_workspace_cache_gc(&mut workspace_cache_gc_fut) => {
-                workspace_cache_gc_fut = None;
+            result = next_maintenance_task(&mut workspace_cache_gc_handle, "workspace cache GC") => {
+                workspace_cache_gc_handle = None;
                 workspace_cache_gc_tick.reset();
-                match result {
-                    Ok(Some(freed_bytes)) if freed_bytes > 0 => info!(
-                        freed_bytes,
-                        "periodic workspace image cache GC completed"
-                    ),
-                    Ok(Some(_) | None) => {}
-                    Err(error) => warn!(
-                        error = %error,
-                        "periodic workspace image cache GC failed"
-                    ),
+                if let Err(error) = result {
+                    handle_stopping_signal(
+                        "workspace cache GC task failure",
+                        &provider_state.cancel,
+                        &provider_state.cancel_tokens,
+                        &lifecycle,
+                    ).await;
+                    terminal_error = Some(error);
+                    break;
                 }
             }
-            result = next_status_retry(&mut status_retry_fut) => {
-                status_retry_fut = None;
+            result = next_maintenance_task(&mut status_retry_handle, "status retry") => {
+                status_retry_handle = None;
                 if let Err(error) = result {
-                    warn!(%error, "failed to retry unpublished runner status");
+                    handle_stopping_signal(
+                        "status retry task failure",
+                        &provider_state.cancel,
+                        &provider_state.cancel_tokens,
+                        &lifecycle,
+                    ).await;
+                    terminal_error = Some(error);
+                    break;
                 }
             }
             _ = workspace_cache_gc_tick.tick() => {
-                if workspace_cache_gc_fut.is_none()
+                if workspace_cache_gc_handle.is_none()
                     && let Some(cache) = exec_config.workspace_cache.clone()
                 {
-                    workspace_cache_gc_fut = Some(workspace_cache_gc_future(cache));
+                    workspace_cache_gc_handle = Some(workspace_cache_gc_task(cache));
                 }
             }
             // Mode changes (signals)
@@ -2316,8 +2355,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
                 heartbeat.request(live_mode)?;
-                if status_retry_fut.is_none() {
-                    status_retry_fut = Some(status_retry_future(Arc::clone(&shared.status)));
+                if status_retry_handle.is_none() {
+                    status_retry_handle = Some(status_retry_task(Arc::clone(&shared.status)));
                 }
                 #[cfg(test)]
                 test_hooks
@@ -2405,20 +2444,36 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
-    drop(workspace_cache_gc_fut);
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
 
     let phase = teardown.phase_start("heartbeat_drain");
-    heartbeat.drain().await;
-    if let Some(retry) = status_retry_fut.take()
-        && let Err(error) = retry.await
-    {
-        warn!(%error, "failed to finish runner status retry during teardown");
+    if let Err(error) = heartbeat.drain().await {
+        error!(%error, "failed to drain heartbeat task");
+        terminal_error.get_or_insert(error);
     }
     let final_heartbeat_sequence = heartbeat.into_next_snapshot_sequence();
     teardown.phase_complete("heartbeat_drain", phase);
+
+    let phase = teardown.phase_start("maintenance_drain");
+    #[cfg(test)]
+    test_hooks
+        .test_observer
+        .record(StartLoopEvent::MaintenanceDrainEntered);
+    for (name, task) in [
+        ("status retry", &mut status_retry_handle),
+        ("workspace cache GC", &mut workspace_cache_gc_handle),
+    ] {
+        if task.is_some()
+            && let Err(error) = next_maintenance_task(task, name).await
+        {
+            error!(%error, "failed to drain maintenance task");
+            terminal_error.get_or_insert(error);
+        }
+        *task = None;
+    }
+    teardown.phase_complete("maintenance_drain", phase);
 
     // Drop the pinned discover future before provider shutdown so any
     // provider-local discovery resources are released first. This also keeps
