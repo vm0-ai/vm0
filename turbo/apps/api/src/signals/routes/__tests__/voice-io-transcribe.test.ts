@@ -236,6 +236,77 @@ describe("POST /api/voice-io/transcribe", () => {
     ]);
   });
 
+  it.each(["openai/gpt-audio", "openai/gpt-audio-mini"] as const)(
+    "transcribes long audio with %s and uses a text-capable model for polish",
+    async (model) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      const actor = await enabledActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { userId: actor.userId, orgId: actor.orgId },
+        { [FeatureSwitchKey.OkouDebug]: true },
+      );
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      const models: string[] = [];
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          const body = (await request.json()) as OpenRouterRequest & {
+            model: string;
+          };
+          models.push(body.model);
+          const textOnly = typeof body.messages[1]?.content === "string";
+          if (textOnly && body.model === model) {
+            return HttpResponse.json(
+              { error: { message: "An audio modality is required" } },
+              { status: 400 },
+            );
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify(
+                    textOnly
+                      ? { polishedText: "Ship Monday.", language: "en" }
+                      : { transcript: "Ship Monday", language: "en" },
+                  ),
+                },
+              },
+            ],
+          });
+        }),
+      );
+      const response = await accept(
+        client().post({
+          headers,
+          body: form([audioFile(1, 50), audioFile(2, 50)]),
+        }),
+        [200],
+      );
+      expect(models).toStrictEqual([model, model, "google/gemini-3.6-flash"]);
+      expect(response.body).toStrictEqual({
+        transcript: "Ship Monday Ship Monday",
+        polishedText: "Ship Monday.",
+        language: "en",
+      });
+      expect(response.headers.get("X-Voice-Input-Model")).toBe(model);
+      expect(response.headers.get("X-Voice-Polish-Model")).toBe(
+        "google/gemini-3.6-flash",
+      );
+    },
+  );
+
   it("treats a dedicated transcription model's empty result as no speech", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();

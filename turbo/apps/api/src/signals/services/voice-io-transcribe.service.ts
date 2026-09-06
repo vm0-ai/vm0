@@ -5,6 +5,7 @@ import type {
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import {
   DEFAULT_VOICE_INPUT_MODEL,
+  type MultimodalVoiceInputModelId,
   type VoiceInputModel,
 } from "@okouai/api-contracts/contracts/voice-input-models";
 import { command } from "ccstate";
@@ -42,6 +43,22 @@ interface VoiceDraftResult {
   readonly body: VoiceIoTranscribeResponse | null;
   readonly transcriptionMs: number;
   readonly polishMs: number;
+}
+
+function voicePolishModel(
+  input: VoiceDraftTranscriptionInput,
+): MultimodalVoiceInputModelId {
+  // The GPT Audio gateway rejects the text-only request used after stitching.
+  // Short recordings still transcribe and polish together with audio attached.
+  if (
+    input.model.kind === "transcription" ||
+    (input.longRecording &&
+      (input.model.id === "openai/gpt-audio" ||
+        input.model.id === "openai/gpt-audio-mini"))
+  ) {
+    return DEFAULT_VOICE_INPUT_MODEL;
+  }
+  return input.model.id;
 }
 
 function transcriptionError<Status extends number>(
@@ -199,9 +216,7 @@ async function transcribeThenPolishVoiceDraft(
   const polished = await polishLongVoiceTranscript(
     transcript,
     input,
-    input.model.kind === "multimodal"
-      ? input.model.id
-      : DEFAULT_VOICE_INPUT_MODEL,
+    voicePolishModel(input),
     signal,
   );
   if (polished === null) {
@@ -270,13 +285,7 @@ export const transcribeVoiceDraft$ = command(
     const combined = !input.longRecording && input.model.kind === "multimodal";
     if (input.debug) {
       set(setResHeader$, "X-Voice-Input-Model", input.model.id);
-      set(
-        setResHeader$,
-        "X-Voice-Polish-Model",
-        input.model.kind === "multimodal"
-          ? input.model.id
-          : DEFAULT_VOICE_INPUT_MODEL,
-      );
+      set(setResHeader$, "X-Voice-Polish-Model", voicePolishModel(input));
       set(
         setResHeader$,
         "Access-Control-Expose-Headers",
