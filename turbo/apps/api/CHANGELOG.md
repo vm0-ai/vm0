@@ -8,6 +8,25 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.557.0](https://github.com/vm0-ai/vm0/compare/api-v1.556.0...api-v1.557.0) (2026-09-06)
+
+
+### Features
+
+* **connectors:** add Procountor M2M token provider ([#32057](https://github.com/vm0-ai/vm0/issues/32057)) ([98c9ce9](https://github.com/vm0-ai/vm0/commit/98c9ce91c46d07b3732ded53af686553eb77f0b1))
+* **connectors:** add reckon oauth refresh provider ([#32047](https://github.com/vm0-ai/vm0/issues/32047)) ([4ae3498](https://github.com/vm0-ai/vm0/commit/4ae3498b78b5929feaa40380ada13ca6471e9c7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.2
+    * @okouai/connectors bumped to 3.5.0
+    * @okouai/core bumped to 8.628.0
+    * @okouai/db bumped to 1.244.2
+    * @okouai/pi-agent-runtime bumped to 1.21.7
+
 ## [1.556.0](https://github.com/vm0-ai/vm0/compare/api-v1.555.0...api-v1.556.0) (2026-09-06)
 
 

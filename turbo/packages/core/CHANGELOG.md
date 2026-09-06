@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.628.0](https://github.com/vm0-ai/vm0/compare/core-v8.627.0...core-v8.628.0) (2026-09-06)
+
+
+### Features
+
+* **app:** add a chat thread pin shortcut ([#32046](https://github.com/vm0-ai/vm0/issues/32046)) ([31977ef](https://github.com/vm0-ai/vm0/commit/31977ef5d4475edfd8bfb6dcc0de87f856ed22aa))
+* **platform:** add dedicated chat preferences ([#32041](https://github.com/vm0-ai/vm0/issues/32041)) ([e4c4768](https://github.com/vm0-ai/vm0/commit/e4c4768a8e24bac790a0a09333ddae80bee8f3d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.2
+
 ## [8.627.0](https://github.com/vm0-ai/vm0/compare/core-v8.626.0...core-v8.627.0) (2026-09-06)
 
 
