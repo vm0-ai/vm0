@@ -4,6 +4,7 @@ import SwiftUI
 
 struct DesktopView: View {
   @ObservedObject var model: DesktopModel
+  var previewSettings: DesktopPreviewSettings?
   @State private var tab = 0
   @State private var mcpJSON = ""
 
@@ -39,6 +40,10 @@ struct DesktopView: View {
         }
         if model.debugAvailable && model.debugEnabled {
           diagnostics.tabItem { Label("Activity", systemImage: "terminal") }.tag(3)
+        }
+        if let previewSettings {
+          PreviewEnvironmentView(settings: previewSettings, active: model.configuration)
+            .tabItem { Label("Environment", systemImage: "network") }.tag(4)
         }
       }.padding([.horizontal, .bottom], 16)
     }

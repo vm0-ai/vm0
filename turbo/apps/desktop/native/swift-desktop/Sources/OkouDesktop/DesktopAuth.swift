@@ -10,6 +10,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
 {
   private let configuration: DesktopConfiguration
   private let preferences: DesktopPreferences
+  private let websiteDataStore: WKWebsiteDataStore
   private var token: String?
   private var tokenRevision = 0
   private var windowID: UUID?
@@ -71,6 +72,10 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
   init(configuration: DesktopConfiguration, preferences: DesktopPreferences) {
     self.configuration = configuration
     self.preferences = preferences
+    websiteDataStore =
+      configuration.previewEnvironmentID.map {
+        WKWebsiteDataStore(forIdentifier: $0)
+      } ?? .default()
   }
 
   func getToken(force: Bool) async throws -> String? {
@@ -192,7 +197,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     organization = .null
     signingIn = false
     interactionID = nil
-    let store = WKWebsiteDataStore.default()
+    let store = websiteDataStore
     await store.removeData(
       ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     signingOut = false
@@ -228,7 +233,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     try Task.checkCancellation()
     let currentEpoch = epoch
     for cookie in configuration.previewCookies {
-      await WKWebsiteDataStore.default().httpCookieStore.setCookie(cookie)
+      await websiteDataStore.httpCookieStore.setCookie(cookie)
       try Task.checkCancellation()
       guard epoch == currentEpoch else { throw CancellationError() }
     }
@@ -237,7 +242,7 @@ final class DesktopAuth: NSObject, WKNavigationDelegate, WKUIDelegate,
     }
     self.interactive = interactive
     let configuration = WKWebViewConfiguration()
-    configuration.websiteDataStore = .default()
+    configuration.websiteDataStore = websiteDataStore
     let controller = WKUserContentController()
     controller.addScriptMessageHandler(self, contentWorld: .page, name: "desktopAuth")
     controller.addUserScript(

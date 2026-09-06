@@ -51,13 +51,35 @@ bash turbo/apps/desktop/native/swift-desktop/scripts/build.sh
 packaging here remains ad-hoc signed; it does not publish a release. Signed
 release promotion and its compatibility audit remain separate acceptance work.
 
-Protected staging/PR environments also require their preview access credential.
-Supply it at launch through `OKOU_DESKTOP_PREVIEW_BYPASS` after building with the
-actual preview `--platform-url`. It is read from the process environment, never
-written into the bundle or preferences, and accepted only for preview service
-origins (or a local integration-test origin). Authentication pages receive
-host-scoped, one-hour cookies; API credentials are never forwarded through
-redirects. Production builds do not read this environment variable.
+## Select a preview environment
+
+Open the native **Environment** tab and enable **Use a preview environment**.
+Paste the App URL reported by `deploy-app`; a URL containing
+`x-vercel-protection-bypass` automatically moves its token into the secure field.
+The token can also be entered separately. Other App URL query parameters are
+preserved when opening the App or reviewing a recording.
+
+For the standard PR App origins, the matching PR API is selected automatically.
+Desktop sign-in uses the App's `/desktop-auth/*` pages, so the browser, native
+WebKit handoff, host commands and uploads use the same preview. **Service
+addresses** can override the API and sign-in origins with their actual deployment
+URLs; those deployments must use the same API and authentication instance.
+
+Choose **Save for Next Launch**, then quit and reopen. The currently displayed
+origins continue to apply until the app restarts and existing work has drained.
+Settings are saved in the application's `desktop-preview.json` with mode `0600`.
+Each saved environment has separate preferences, installation ID, recordings and
+WebKit website storage. Changing the environment starts a new profile; unchanged
+settings retain their profile. Disabling it restores the bundled environment.
+The application's bundle identity and callback scheme stay unchanged, and
+production updates are disabled while a preview is selected.
+
+Bypass access is scoped to the selected App/API/sign-in hosts. API requests reject
+redirects; storage uploads and Clerk requests do not inherit a global bypass
+header. Native authentication pages receive host-scoped, one-hour cookies, and
+system-browser entry URLs establish their own access. The existing
+`OKOU_DESKTOP_PREVIEW_BYPASS` launch variable remains supported for bundles built
+with a preview `--platform-url`; it is not read by production bundles.
 
 User-selected filesystem folders, MCP configurations, keep-awake preference,
 and installation ID use the existing `desktop-preferences.json` format in the

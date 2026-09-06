@@ -14,45 +14,107 @@ public struct DesktopConfiguration: Sendable {
   public let version: String
   public let production: Bool
   public let previewBypass: String?
+  public let previewEnvironmentID: UUID?
 
   public init(
     platformURL: String, product: String = "okou", version: String, preview: Bool = false,
-    previewBypass: String? = nil
+    previewBypass: String? = nil, previewEnvironment: DesktopPreviewEnvironment? = nil
   )
     throws
   {
     guard ["okou", "zero"].contains(product),
-      let url = URL(string: platformURL),
+      let bundledURL = URL(string: platformURL),
+      let source = URLComponents(string: previewEnvironment?.platformURL ?? platformURL),
+      let url = source.url,
       ["https", "http"].contains(url.scheme), url.host != nil,
       url.user == nil, url.password == nil
     else {
       throw DesktopFailure("configuration", "Invalid desktop platform URL or product")
     }
-    self.platformURL = url
+    let access = source.queryItems?.filter { $0.name == "x-vercel-protection-bypass" } ?? []
+    guard access.count <= 1 else {
+      throw DesktopFailure("configuration", "The preview URL contains multiple access tokens")
+    }
+    let bypass =
+      access.first?.value
+      ?? (previewEnvironment != nil ? previewEnvironment?.bypass : previewBypass)
+    var clean = source
+    clean.queryItems = source.queryItems?.filter {
+      !["x-vercel-protection-bypass", "x-vercel-set-bypass-cookie"].contains($0.name)
+    }
+    if clean.queryItems?.isEmpty == true { clean.queryItems = nil }
+    clean.fragment = nil
+    self.platformURL = clean.url!
     self.product = product
     self.version = version
-    production = !preview && ["app.okou.ai", "app.vm0.ai"].contains(url.host)
+    let productionIdentity = !preview && ["app.okou.ai", "app.vm0.ai"].contains(bundledURL.host)
+    production = productionIdentity && previewEnvironment == nil
     name =
       product == "okou"
-      ? (production ? "Okou" : "Okou Dev") : (production ? "Zero Computer Use" : "Zero CU Dev")
+      ? (productionIdentity ? "Okou" : "Okou Dev")
+      : (productionIdentity ? "Zero Computer Use" : "Zero CU Dev")
     bundleID =
-      (product == "okou" ? "ai.okou.desktop" : "ai.vm0.zero.desktop") + (production ? "" : ".dev")
-    apiURL = try Self.serviceURL(url, target: "api")
-    webURL = try Self.serviceURL(url, target: "www")
-    if let previewBypass {
-      let host = apiURL.host ?? ""
-      let previewHost =
-        host.range(
-          of: "^(staging|pr-[0-9]+)-api\\.vm6\\.ai$", options: .regularExpression) != nil
-      let loopback = ["127.0.0.1", "localhost", "::1"].contains(host)
-      guard preview, !production, (previewHost && apiURL.scheme == "https") || loopback,
-        !previewBypass.isEmpty,
-        previewBypass.unicodeScalars.allSatisfy({ (33...126).contains($0.value) })
+      (product == "okou" ? "ai.okou.desktop" : "ai.vm0.zero.desktop")
+      + (productionIdentity ? "" : ".dev")
+    apiURL =
+      try previewEnvironment?.apiURL.map(Self.previewOrigin)
+      ?? Self.serviceURL(url, target: "api")
+    webURL =
+      try previewEnvironment?.authURL.map(Self.previewOrigin)
+      ?? (previewEnvironment == nil
+        ? Self.serviceURL(url, target: "www") : Self.origin(url))
+    if previewEnvironment != nil {
+      for service in [self.platformURL, apiURL, webURL] {
+        guard Self.isPreviewOrigin(service) else {
+          throw DesktopFailure("configuration", "Use preview App, API and sign-in addresses")
+        }
+      }
+    }
+    if let bypass {
+      guard preview || previewEnvironment != nil, !production,
+        [self.platformURL, apiURL, webURL].allSatisfy(Self.isPreviewOrigin),
+        !bypass.isEmpty,
+        bypass.unicodeScalars.allSatisfy({ (33...126).contains($0.value) })
       else {
         throw DesktopFailure("configuration", "Preview access requires an explicit preview origin")
       }
     }
-    self.previewBypass = previewBypass
+    self.previewBypass = bypass
+    previewEnvironmentID = previewEnvironment?.id
+  }
+
+  private static func origin(_ url: URL) throws -> URL {
+    guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+      throw DesktopFailure("configuration", "Invalid preview address")
+    }
+    parts.path = ""
+    parts.query = nil
+    parts.fragment = nil
+    return parts.url!
+  }
+
+  private static func previewOrigin(_ value: String) throws -> URL {
+    guard let url = URL(string: value), isPreviewOrigin(url),
+      url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+      url.path.isEmpty || url.path == "/"
+    else {
+      throw DesktopFailure("configuration", "Use a preview service origin without a path or query")
+    }
+    return try origin(url)
+  }
+
+  private static func isPreviewOrigin(_ url: URL) -> Bool {
+    guard let host = url.host, url.user == nil, url.password == nil else { return false }
+    if ["127.0.0.1", "localhost", "::1"].contains(host) {
+      return ["http", "https"].contains(url.scheme)
+    }
+    guard url.scheme == "https" else { return false }
+    return host.range(
+      of: "^(staging|pr-[0-9]+)-(app|api|www)\\.(vm6\\.ai|omby\\.ai)$",
+      options: .regularExpression) != nil
+      || host.hasSuffix("-okou-app-preview.vm0.workers.dev")
+      || host.hasSuffix(".vercel.app") || host.hasSuffix(".pages.dev")
+      || (host.hasPrefix("vm0-") && host.hasSuffix(".vm6.ai"))
   }
 
   public static func serviceURL(_ url: URL, target: String) throws -> URL {
@@ -105,7 +167,9 @@ public struct DesktopConfiguration: Sendable {
   public func platformPage(query: [URLQueryItem] = []) -> URL {
     var parts = URLComponents(url: platformURL, resolvingAgainstBaseURL: false)!
     parts.path = "/"
-    let items = query + previewBrowserQuery
+    let overrides = Set(query.map(\.name))
+    let original = (parts.queryItems ?? []).filter { !overrides.contains($0.name) }
+    let items = original + query + previewBrowserQuery
     parts.queryItems = items.isEmpty ? nil : items
     return parts.url!
   }

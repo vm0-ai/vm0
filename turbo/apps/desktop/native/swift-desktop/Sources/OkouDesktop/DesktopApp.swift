@@ -30,6 +30,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
   private var resumeHostAfterUpdateFailure = false
   private var pendingURLs: [URL] = []
   private var startupFailure: (DesktopConfiguration, any Error)?
+  private var previewSettings: DesktopPreviewSettings?
 
   private struct BundledConfiguration: Decodable {
     let platformUrl: String
@@ -50,10 +51,16 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
           as? String,
         !version.isEmpty
       else { throw DesktopFailure("configuration", "The app bundle has no desktop version") }
-      let config = try DesktopConfiguration(
+      let bundled = try DesktopConfiguration(
         platformURL: raw.platformUrl, product: raw.product, version: version, preview: raw.preview,
         previewBypass: raw.preview
           ? ProcessInfo.processInfo.environment["OKOU_DESKTOP_PREVIEW_BYPASS"] : nil)
+      let root = FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(
+          bundled.name)
+      let previewSettings = try DesktopPreviewSettings(bundled: bundled, directory: root)
+      self.previewSettings = previewSettings
+      let config = try previewSettings.configuration(for: previewSettings.value)
       if let dsn = raw.sentryDsn, !dsn.isEmpty {
         SentrySDK.start { options in
           options.dsn = dsn
@@ -65,9 +72,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
       }
       // A native preview uses the existing development identity. It can
       // coexist with the production app and its permission grants.
-      let directory = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(
-          config.name)
+      let directory = previewSettings.runtimeDirectory(for: config)
       guard try claimInstance(config, directory: directory) else { return }
       let line = config.product == "okou" ? "ai-okou-desktop" : "zero"
       let feed = DesktopUpdateFeed(
@@ -280,7 +285,8 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered,
         defer: false)
       window.title = model.configuration.name
-      window.contentView = NSHostingView(rootView: DesktopView(model: model))
+      window.contentView = NSHostingView(
+        rootView: DesktopView(model: model, previewSettings: previewSettings))
       window.minSize = NSSize(width: 620, height: 640)
       window.delegate = self
       window.isReleasedWhenClosed = false

@@ -504,6 +504,21 @@ remain open.
 
 ## Feature inventory and evidence
 
+### Configurable preview environment
+
+The native Environment tab accepts the deployed App URL, including its Vercel
+bypass query parameter, and optional explicit API/sign-in origins. Settings take
+effect on the next launch. The app preserves its installed callback identity,
+isolates preview preferences and WebKit storage, and disables production updates
+while using the preview. The default preview auth origin is the App, whose current
+upstream desktop-auth routes share that deployment's API.
+
+The preview access HTTP integration exercises persisted settings across a fresh
+loader, native API bypass, redirect refusal, browser query preservation, invalid
+origin rejection, and restoration of the bundled environment. Current packaged
+UI and complete live preview handoff/capture evidence must be recorded before
+this addition closes any of the remaining live acceptance requirements.
+
 | Existing behavior                                                                                | Native implementation                                                               | Acceptance still required                                                                   |
 | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Okou/Zero, production/development identities, macOS 14+, arm64                                   | `DesktopConfiguration`, packaging script                                            | Both product bundles, URL scheme registration, icon and permission identity                 |
