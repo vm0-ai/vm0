@@ -25,6 +25,7 @@ import {
   type CapturedChatSend,
 } from "./chat-capability-test-helpers.ts";
 import { findEnabledButton } from "./chat-run-test-fixtures.ts";
+import { buttonByLabel } from "./chat-lifecycle-test-helpers.ts";
 
 const FIRST_PASSAGE = "The launch plan has three careful stages.";
 const SECOND_PASSAGE = "The unrelated answer covers a separate decision.";
@@ -232,7 +233,8 @@ test("Manage multiple quoted passages in one feedback message", async () => {
   await user.type(notes[1]!, "Acknowledge the separate decision.");
   expect(notes[0]).toHaveTextContent("Add an owner to this stage.");
 
-  click(await findEnabledButton("Send"));
+  await findEnabledButton("Send");
+  click(buttonByLabel("Send"));
 
   const commented = await waitForSend(sends, 1);
   expect(feedbackParts(commented.userMessage)).toMatchObject([
@@ -258,7 +260,10 @@ test("Manage multiple quoted passages in one feedback message", async () => {
   expect(notes[0]).not.toHaveTextContent("Add an owner to this stage.");
   expect(notes[1]).not.toHaveTextContent("Acknowledge the separate decision.");
 
-  click(await findEnabledButton("Send"));
+  // The action can replace its button while waitFor drains pending renders.
+  // Resolve the current button after readiness instead of clicking that old node.
+  await findEnabledButton("Send");
+  click(buttonByLabel("Send"));
 
   const uncommented = await waitForSend(sends, 2);
   expect(feedbackParts(uncommented.userMessage)).toMatchObject([
