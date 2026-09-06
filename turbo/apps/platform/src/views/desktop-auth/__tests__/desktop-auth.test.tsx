@@ -539,9 +539,10 @@ test("browser completion waits through pending and consumed, and manual reopen n
   expect(polls).toBe(3);
 });
 
-test("browser polling is bounded and retry explicitly navigates to a fresh callback attempt", async () => {
+test("browser polling stops on an unusable status and retry explicitly navigates to a fresh callback attempt", async () => {
   const documents = navigation();
   context.mocks.browser.locationAssign();
+  const unusable = context.mocks.deferred<void>();
   let polls = 0;
   let creates = 0;
   context.mocks.api(desktopAuthHandoffContract.create, ({ respond }) => {
@@ -551,14 +552,25 @@ test("browser polling is bounded and retry explicitly navigates to a fresh callb
       handoffId: HANDOFF,
     });
   });
-  context.mocks.api(desktopAuthHandoffContract.status, ({ respond }) => {
+  context.mocks.api(desktopAuthHandoffContract.status, async ({ respond }) => {
     polls += 1;
-    return respond(200, { status: "consumed" });
+    if (polls === 1) {
+      return respond(200, { status: "pending" });
+    }
+    await unusable.promise;
+    return respond(500, {
+      error: { code: "INTERNAL_SERVER_ERROR", message: TICKET },
+    });
   });
   await page(`/desktop-auth/callback?callbackScheme=${SCHEME}`);
+  await screen.findByRole("region", {
+    description: "Open Desktop to continue signing in.",
+  });
+  unusable.resolve();
   await failed();
-  expect(polls).toBe(120);
+  expect(polls).toBe(2);
   expect(creates).toBe(1);
+  expect(document.body.textContent).not.toContain(TICKET);
   click(button("Try again"));
   expect(documents).toStrictEqual([CALLBACK]);
 });
