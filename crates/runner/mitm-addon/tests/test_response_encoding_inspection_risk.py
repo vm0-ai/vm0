@@ -255,15 +255,19 @@ class TestResponseEncodingInspectionRisk:
         assert metadata_keys.STREAM_BUFFER in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
 
+    @pytest.mark.parametrize(
+        "negotiation_outcome",
+        ["preserved_client_constraints", "preserved_work_budget"],
+    )
     def test_unknown_connector_encoding_does_not_retain_unusable_fallback(
-        self, real_flow, tmp_path, mitm_ctx
+        self, real_flow, tmp_path, mitm_ctx, negotiation_outcome: str
     ) -> None:
         flow = make_x_pipeline_flow(
             real_flow,
             tmp_path,
             content_encoding="private-encoding-value",
         )
-        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "preserved_client_constraints"
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = negotiation_outcome
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
@@ -273,7 +277,7 @@ class TestResponseEncodingInspectionRisk:
         assert entry["decode_skip_reason"] == "unsupported content encoding"
         assert entry["firewall_billable"] is True
         assert entry["inspection_disposition"] == "fail_closed"
-        assert entry["request_encoding_negotiation"] == "preserved_client_constraints"
+        assert entry["request_encoding_negotiation"] == negotiation_outcome
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert response_stream(flow)(b"unknown-connector-encoding") == b""
