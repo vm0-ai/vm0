@@ -2281,7 +2281,7 @@ pub(super) async fn activate_reserved_idle(
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
-            fallback_reuse_result,
+            miss_result,
             "reserved_reuse_session_mismatch",
             ctx,
         )

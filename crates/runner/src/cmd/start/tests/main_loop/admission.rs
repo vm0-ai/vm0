@@ -566,6 +566,41 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
 }
 
 #[tokio::test]
+async fn reserved_reuse_claim_without_reuse_key_preserves_no_reuse_attribution() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let reuse_key = "candidate-only-reuse-key";
+    let reserved_sandbox_id =
+        seed_idle_pool(&idle_pool, &budget, reuse_key, "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(minimal_context(run_id)));
+    env.handle
+        .discover_tx
+        .send(matching_preference_candidate(run_id, reuse_key))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("claim without a reuse key should fall back to a fresh sandbox");
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::NoReuseKey)
+    );
+    assert_ne!(completion.sandbox_id, Some(reserved_sandbox_id));
+    assert_eq!(idle_pool.lock().await.len(), 0);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
 async fn reserved_reuse_persists_preparing_before_unpark_without_post_unpark_pool_wait() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
