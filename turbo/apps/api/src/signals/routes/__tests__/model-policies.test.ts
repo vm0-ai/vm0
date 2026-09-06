@@ -68,7 +68,7 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
   });
 }
 
-function makeVm0Policy(
+function makeBuiltInPolicy(
   model: UpdateOrgModelPolicy["model"],
   isDefault = false,
 ): UpdateOrgModelPolicy {
@@ -164,7 +164,7 @@ describe("GET/PUT /api/model-policies", () => {
         body: {
           policies: [
             ...toUpdate(existing.body),
-            makeVm0Policy("claude-fable-5"),
+            makeBuiltInPolicy("claude-fable-5"),
           ],
         },
       }),
@@ -658,8 +658,8 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
-      makeVm0Policy("deepseek-v4-pro"),
+      makeBuiltInPolicy("claude-opus-5"),
+      makeBuiltInPolicy("deepseek-v4-pro"),
     ];
     const configuredModels = new Set(
       updates.map((policy) => {
@@ -695,8 +695,8 @@ describe("GET/PUT /api/model-policies", () => {
       headers: authHeaders(),
       body: {
         policies: [
-          makeVm0Policy("deepseek-v4-flash", true),
-          makeVm0Policy("deepseek-v4-pro"),
+          makeBuiltInPolicy("deepseek-v4-flash", true),
+          makeBuiltInPolicy("deepseek-v4-pro"),
         ],
       },
     });
@@ -744,7 +744,7 @@ describe("GET/PUT /api/model-policies", () => {
       body: {
         policies: [
           {
-            ...makeVm0Policy("claude-sonnet-5"),
+            ...makeBuiltInPolicy("claude-sonnet-5"),
             isDefault: true,
             defaultProviderType: "openrouter-api-key",
             credentialScope: "org",
@@ -779,8 +779,8 @@ describe("GET/PUT /api/model-policies", () => {
         body: {
           policies: [
             ...toUpdate(listResponse.body),
-            makeVm0Policy("gpt-5.5"),
-            makeVm0Policy("claude-sonnet-4-6"),
+            makeBuiltInPolicy("gpt-5.5"),
+            makeBuiltInPolicy("claude-sonnet-4-6"),
           ],
         },
       }),
@@ -872,7 +872,7 @@ describe("GET/PUT /api/model-policies", () => {
     const listed = await accept(client.list({ headers: authHeaders() }), [200]);
     const updates = [
       ...toUpdate(listed.body),
-      makeVm0Policy("claude-sonnet-5"),
+      makeBuiltInPolicy("claude-sonnet-5"),
     ].map((policy) => {
       return policy.model === "claude-sonnet-5"
         ? {
@@ -1420,7 +1420,7 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
+      makeBuiltInPolicy("claude-opus-5"),
     ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
@@ -1466,7 +1466,7 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
+      makeBuiltInPolicy("claude-opus-5"),
     ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;
@@ -1532,7 +1532,7 @@ describe("GET/PUT /api/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-5"),
+      makeBuiltInPolicy("claude-opus-5"),
     ].map((policy) => {
       if (policy.model !== "claude-opus-5") {
         return policy;

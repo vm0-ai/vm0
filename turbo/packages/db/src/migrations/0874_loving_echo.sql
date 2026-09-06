@@ -1,1 +1,0 @@
-ALTER TABLE "org_members_metadata" ADD COLUMN "service_tier" varchar(32);

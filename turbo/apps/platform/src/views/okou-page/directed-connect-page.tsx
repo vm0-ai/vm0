@@ -6,15 +6,15 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
-import type {
-  ConnectorAccountConnection,
-  ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorAccountConnection } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   CustomConnectorResponse,
   CustomConnectorSlug,
 } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import type {
+  PlatformConnectorAccountMutationIntent,
+  PlatformConnectorCatalogStatusItem,
+} from "../../signals/connector-domain.ts";
 import { Input } from "@okouai/ui/components/ui/input";
 import {
   Dialog,
@@ -106,7 +106,7 @@ function runDirectedConnect(
         readonly connectorLabel?: string;
         readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
         readonly agentId?: string;
-        readonly account?: ConnectorAccountMutationIntent;
+        readonly account: PlatformConnectorAccountMutationIntent;
         readonly useDefaultConnectorProjection?: boolean;
         readonly authorizeVisibleAgents?: boolean;
       },
@@ -119,7 +119,7 @@ function runDirectedConnect(
         readonly options: {
           readonly connectorLabel?: string;
           readonly agentId?: string;
-          readonly account?: ConnectorAccountMutationIntent;
+          readonly account: PlatformConnectorAccountMutationIntent;
           readonly useDefaultConnectorProjection?: boolean;
           readonly authorizeVisibleAgents?: boolean;
         };

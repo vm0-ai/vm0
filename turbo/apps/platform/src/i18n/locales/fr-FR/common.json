@@ -1025,6 +1025,20 @@
       "accessNotAllowed": "L'accès n'est pas autorisé.",
       "userBanned": "L'accès au compte a été suspendu car l'activité sur ce compte a violé les Conditions d'utilisation de {{brandName}}. Si vous avez des questions, contactez {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Vous êtes connecté à Desktop. Vous pouvez fermer cette fenêtre.",
+        "connecting": "Connexion de votre session de bureau.",
+        "consumed": "Finalisation de la connexion dans Desktop. Gardez cette fenêtre ouverte.",
+        "failed": "La connexion n’a pas pu aboutir. Recommencez depuis Desktop ou réessayez dans ce navigateur.",
+        "no-workspaces": "Créez ou rejoignez un espace de travail dans l’application web, puis reconnectez-vous depuis Desktop.",
+        "pending": "Ouvrez Desktop pour poursuivre la connexion.",
+        "selecting": "Choisissez un espace de travail pour cet ordinateur."
+      },
+      "reopen": "Ouvrir Desktop",
+      "retry": "Réessayer",
+      "title": "Se connecter à Desktop"
+    },
     "documentTitles": {
       "signIn": "Se connecter",
       "signUp": "S'inscrire"
@@ -2282,14 +2296,20 @@
       "draft": "Brouillon",
       "empty": "Commencez une conversation et elle apparaîtra ici",
       "markUnread": "Marquer comme non lu",
+      "movePinDown": "Déplacer vers le bas",
+      "movePinUp": "Déplacer vers le haut",
       "newChatWith": "Nouvelle discussion avec {{agentName}}",
       "noUnread": "Aucune discussion non lue",
       "openChatMenu": "Ouvrir le menu de discussion",
       "openListMenu": "Ouvrir le menu de la liste de discussion",
       "pin": "Épingler la discussion",
+      "pinDropAfter": "Déposer après {{title}}",
+      "pinDropBefore": "Déposer avant {{title}}",
       "pinned": "Épinglé",
       "rename": "Renommer la discussion",
       "renameDescription": "Entrez un nouveau nom pour ce fil de discussion.",
+      "reorderInstructions": "Faites glisser pour réorganiser. Appuyez sur Espace pour sélectionner, sur les flèches pour déplacer, sur Espace pour déposer ou sur Échap pour annuler.",
+      "reorderThread": "Réorganiser {{title}}",
       "titlePlaceholder": "Titre de la discussion",
       "unpin": "Détacher la discussion",
       "unread": "Non lu",
@@ -2412,7 +2432,9 @@
     },
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
+      "cleanupFailed": "Le texte a été ajouté, mais l’enregistrement sauvegardé n’a pas pu être supprimé.",
       "confirmRecording": "OK",
+      "discarding": "Suppression du brouillon vocal...",
       "input": "Entrée vocale",
       "inputLimitReached": "Limite d'entrée vocale atteinte. Passez à Pro ou Team pour des limites plus élevées.",
       "inputLimitReachedMember": "Limite d'entrée vocale atteinte. Demandez à un administrateur de l'espace de travail d'effectuer une mise à niveau pour obtenir des limites plus élevées.",
@@ -2421,8 +2443,13 @@
       "inputLimitReachedReset": "Limite d'entrée vocale atteinte. Veuillez attendre la réinitialisation de votre limite.",
       "microphoneAccessDenied": "L'accès au microphone a été refusé. Autorisez l'accès au microphone et réessayez.",
       "openingMicrophone": "Ouverture du microphone...",
+      "removeDraft": "Supprimer le brouillon vocal",
+      "restoreFailed": "Impossible de charger votre brouillon vocal. Réessayez.",
+      "retry": "Réessayer",
+      "retryReady": "Votre enregistrement est conservé. Réessayez la transcription.",
       "starting": "Démarrage de l'entrée vocale",
       "stopRecording": "Arrêter l'enregistrement",
+      "storageFailed": "Impossible de sauvegarder le son. Réessayer ne récupère que le son déjà enregistré sur cet appareil.",
       "transcribing": "Transcription",
       "transcribingProgress": "Transcription en cours...",
       "transcriptionFailed": "Échec de la transcription vocale. Réessayez."
@@ -2783,12 +2810,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Plus d'options",
-      "statusConnected": "Connecté",
       "toasts": {
         "connected": "Connecté",
         "created": "Créé \"{{connector}}\"",
         "deleted": "Connecteur personnalisé supprimé",
-        "disconnected": "Déconnecté",
         "updated": "Mis à jour \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3295,15 +3320,13 @@
       "redirectTitle": "Redirection vers {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connecté",
-      "disconnected": "{{connector}} déconnecté"
+      "connected": "{{connector}} connecté"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "La requête a échoué",
-      "sharedDatabaseUnavailable": "L’application a rencontré un problème. Veuillez patienter un moment, puis actualiser la page pour réessayer."
+      "requestFailed": "La requête a échoué"
     },
     "realtime": {
       "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page.",
@@ -5054,6 +5077,7 @@
         "remaining_many": "{{value}} réinitialisations restantes",
         "remaining_other": "{{value}} réinitialisations restantes",
         "remainingUnavailable": "Réinitialisations restantes non disponibles",
+        "remainingUnknown": "Réinitialisations —",
         "remainingWithExpiry_one": "{{value}} réinitialisation restante · expire {{expiry}}",
         "remainingWithExpiry_many": "{{value}} réinitialisations restantes · expirent {{expiry}}",
         "remainingWithExpiry_other": "{{value}} réinitialisations restantes · expirent {{expiry}}",
@@ -5180,6 +5204,32 @@
           "workerLoading": "Chargement",
           "workerTitle": "Diagnostic de connexion du shared worker",
           "workerUnavailable": "Indisponible"
+        },
+        "indexedDb": {
+          "countExplanation": "Le comptage utilise des transactions en lecture seule et ne lit pas le contenu des enregistrements.",
+          "description": "Consultez le nombre d’enregistrements du cache de discussion local géré par le worker partagé.",
+          "loading": "Chargement du stockage IndexedDB...",
+          "measurementUnavailable": "La mesure du snapshot a échoué. Réessayez.",
+          "measureSnapshot": "Mesurer le snapshot",
+          "measuring": "Mesure en cours...",
+          "records": "enregistrements",
+          "refresh": "Actualiser",
+          "schema": "schéma",
+          "snapshotDescription": "Un enregistrement peut contenir de nombreuses conversations. La taille estime le JSON UTF-8 hors surcharge de la base ; le temps de lecture exclut cette estimation.",
+          "snapshotEmpty": "Aucun snapshot des conversations en cache.",
+          "snapshotPayload": "Taille estimée",
+          "snapshotReadDuration": "Temps de lecture IndexedDB",
+          "snapshotThreads": "Conversations dans le snapshot",
+          "snapshotTitle": "Snapshot des conversations",
+          "stores": "magasins d’objets",
+          "title": "Stockage IndexedDB",
+          "unavailable": "Le stockage IndexedDB est indisponible."
+        },
+        "voiceInput": {
+          "default": "Par défaut ({{model}})",
+          "description": "Choisissez le modèle pour la saisie vocale v2. Les modèles de transcription utilisent {{model}} pour améliorer le texte.",
+          "title": "Modèle de saisie vocale",
+          "unavailable": "Modèle indisponible ({{model}})"
         }
       },
       "language": {

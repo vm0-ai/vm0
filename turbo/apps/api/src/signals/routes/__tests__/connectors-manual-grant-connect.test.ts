@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_CLI,
   CLIENT_TYPE_HEADER,
@@ -117,15 +116,31 @@ async function deleteConnector(
   connectorSlug: (typeof CONNECTOR_SLUGS_TO_CLEAN_UP)[number],
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context, routes: connectorAccountRoutes })(
-      connectorAccountsContract,
-    ).disconnectSingleAccount({
-      headers: authHeaders(),
-      body: { target: { kind: "builtin", connectorSlug } },
-    }),
-    [204, 404],
+  const client = setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
   );
+  while (true) {
+    const listed = await accept(
+      client.connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug, limit: 50 },
+      }),
+      [200],
+    );
+    if (listed.body.connections.length === 0) {
+      return;
+    }
+    for (const connection of listed.body.connections) {
+      await accept(
+        client.delete({
+          headers: authHeaders(),
+          params: { connectionId: connection.id },
+          body: { target: { kind: "builtin", connectorSlug } },
+        }),
+        [200, 404],
+      );
+    }
+  }
 }
 
 async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
@@ -176,7 +191,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "openai" },
-        body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: { apiKey: "sk-test" },
+        },
         headers: {},
       }),
       [401],
@@ -194,7 +213,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "openai" },
-        body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: { apiKey: "sk-test" },
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [401],
@@ -219,53 +242,6 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     expect(response.status).toBe(400);
   });
 
-  it("requires identified CLI callers to send account-explicit intent", async () => {
-    await seedFixture();
-    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
-    const request = (account?: { intent: "single-account" }) => {
-      return app.request("/api/connectors/openai/manual-grant", {
-        method: "POST",
-        headers: {
-          ...cliAuthHeaders(),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          authMethod: "api-token",
-          values: { apiKey: "sk-retired-cli" },
-          ...(account ? { account } : {}),
-        }),
-      });
-    };
-
-    const omitted = await request();
-    expect(omitted.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
-    await expect(omitted.json()).resolves.toStrictEqual({
-      error: {
-        message: "Update the CLI to connect this connector",
-        code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
-      },
-    });
-
-    const singleton = await request({ intent: "single-account" });
-    expect(singleton.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
-    await expect(singleton.json()).resolves.toStrictEqual({
-      error: {
-        message: "Update the CLI to connect this connector",
-        code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
-      },
-    });
-
-    const list = await accept(
-      setupApp({ context, routes: connectorsRoutes })(
-        connectorsMainContract,
-      ).list({ headers: authHeaders() }),
-      [200],
-    );
-    expect(list.body.connectors).not.toContainEqual(
-      expect.objectContaining({ slug: "openai" }),
-    );
-  });
-
   it("accepts server-authored identity syntax before catalog rejection", async () => {
     await seedFixture();
     const connectorSlug = "server-authored-connector";
@@ -277,7 +253,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug },
-        body: { authMethod, values: { apiKey: "secret" } },
+        body: {
+          authMethod,
+          account: { intent: "add" },
+          values: { apiKey: "secret" },
+        },
         headers: authHeaders(),
       }),
       [400],
@@ -374,7 +354,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     );
   });
 
-  it("preserves App single-account manual grants with connector-owned state", async () => {
+  it("stores App manual grants in connector-owned state", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
@@ -385,7 +365,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           values: { apiKey: " sk-test\n" },
         },
         headers: appAuthHeaders(),
@@ -408,11 +388,8 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     });
   });
 
-  it("accepts CLI add and reconnect while preserving account errors", async () => {
+  it("accepts CLI add and reconnect while preserving sibling accounts", async () => {
     const fixture = await seedFixture();
-    await updateFeatureSwitches(fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: false,
-    });
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
     );
@@ -454,11 +431,24 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         },
         headers: cliAuthHeaders(),
       }),
-      [409],
+      [200],
     );
-    expect(sibling.body.error.message).toBe(
-      "Additional connector accounts are not enabled yet",
+    expect(sibling.body.id).not.toBe(added.body.id);
+    const accounts = await accept(
+      setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      ).connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai" },
+      }),
+      [200],
     );
+    expect(
+      accounts.body.connections.map(({ id }) => {
+        return id;
+      }),
+    ).toStrictEqual(expect.arrayContaining([added.body.id, sibling.body.id]));
+    expect(accounts.body.connections).toHaveLength(2);
 
     const missing = await accept(
       client.connect({
@@ -512,11 +502,8 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     expect(stored.body.id).toBe(added.body.id);
   });
 
-  it("serializes concurrent first-account adds", async () => {
-    const fixture = await seedFixture();
-    await updateFeatureSwitches(fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: false,
-    });
+  it("allows concurrent first-account adds", async () => {
+    await seedFixture();
     const client = setupApp({ context, routes: connectorsRoutes })(
       connectorManualGrantContract,
     );
@@ -539,7 +526,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
           return response.status;
         })
         .sort(),
-    ).toStrictEqual([200, 409]);
+    ).toStrictEqual([200, 200]);
   });
 
   it("connects Zendesk manual grant fields through the API", async () => {
@@ -553,6 +540,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: " zendesk\n-token ",
             email: " support@example.com ",
@@ -606,6 +594,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: "zendesk-token",
             email: "support@example.com",
@@ -664,6 +653,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: "zendesk-token",
             email: "support@example.com",
@@ -701,7 +691,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
       encryptedValue: "owner-value",
       description: "owner description",
     });
-    await seedConnectorStorageRow(context, {
+    const existingConnectionId = await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
       connectorSlug: "openai",
@@ -717,6 +707,10 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         headers: authHeaders(),
         body: {
           authMethod: "api-token",
+          account: {
+            intent: "reconnect",
+            connectionId: existingConnectionId,
+          },
           values: { apiKey: "replacement" },
         },
       }),
@@ -778,6 +772,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "insforge" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiKey: "ik_test-key",
             domain: "https://9ksx253h.us-west.insforge.app/api/",
@@ -808,6 +803,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             appId: " cli_a123 ",
             appSecret: " lark-app-secret\n",
@@ -839,6 +835,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             appId: "cli_old",
             appSecret: "old-lark-app-secret",
@@ -854,6 +851,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             appId: "cli_new",
             appSecret: "new-lark-app-secret",
@@ -886,6 +884,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "test-oauth" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: "old-manual-test-oauth-token",
             inputVariable: "old-input-variable",
@@ -902,6 +901,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "test-oauth" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: "manual-test-oauth-token",
             inputVariable: "manual-input-variable",
@@ -927,6 +927,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "gitlab" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             accessToken: "old-token",
             host: "gitlab.example.com",
@@ -942,6 +943,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "gitlab" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: { accessToken: "new-token" },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -968,6 +970,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: { OPENAI_TOKEN: "sk-private" },
         },
         headers: { authorization: "Bearer clerk-session" },
@@ -991,6 +994,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiKey: "sk-test",
             unknownField: "secret-value-should-not-echo",
@@ -1017,7 +1021,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "openai" },
-        body: { authMethod: "api-token", values: {} },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: {},
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -1036,7 +1044,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "openai" },
-        body: { authMethod: "api-token", values: { apiKey: " \n\t " } },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: { apiKey: " \n\t " },
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -1055,7 +1067,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "github" },
-        body: { authMethod: "api-token", values: {} },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: {},
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -1075,7 +1091,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "stripe" },
-        body: { authMethod: "oauth", values: { apiKey: "sk_test_key" } },
+        body: {
+          authMethod: "oauth",
+          account: { intent: "add" },
+          values: { apiKey: "sk_test_key" },
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -1097,6 +1117,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "bentoml" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: "bento-token",
             endpoint: "https://example.bentoml.test",
@@ -1123,7 +1144,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "cloudflare" },
-        body: { authMethod: "api-token", values: {} },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: {},
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -1146,7 +1171,11 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
     await accept(
       client.connect({
         params: { connectorSlug: "openai" },
-        body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
+        body: {
+          authMethod: "api-token",
+          account: { intent: "add" },
+          values: { apiKey: "sk-test" },
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1177,6 +1206,7 @@ describe("POST /api/connectors/:connectorSlug/manual-grant", () => {
         params: { connectorSlug: "bentoml" },
         body: {
           authMethod: "api-token",
+          account: { intent: "add" },
           values: {
             apiToken: "bento-token",
             endpoint: "https://example.bentoml.test",

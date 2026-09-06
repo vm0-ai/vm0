@@ -1,6 +1,6 @@
 {
   "name": "@okouai/db",
-  "version": "1.241.1",
+  "version": "1.243.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -42,16 +42,15 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:retired-agent-plane-contraction && pnpm test:morning-brief-phase-b-cleanup && pnpm test:morning-brief-default-eligibility-expansion && tsx scripts/test-migration-consistency-schema.ts",
-    "test:morning-brief-default-eligibility-expansion": "tsx scripts/test-morning-brief-default-eligibility-expansion.ts",
-    "test:morning-brief-phase-b-cleanup": "tsx scripts/test-morning-brief-phase-b-cleanup.ts",
-    "test:retired-agent-plane-contraction": "tsx scripts/test-retired-agent-plane-contraction.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:pi-memory-checkpoint-settlement && pnpm test:pi-memory-citations && tsx scripts/test-migration-consistency-schema.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
-    "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"
+    "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts",
+    "test:pi-memory-checkpoint-settlement": "tsx scripts/test-pi-memory-checkpoint-settlement.ts",
+    "test:pi-memory-citations": "tsx scripts/test-pi-memory-citation-migration.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-kms": "^3.1116.0",
-    "@aws-sdk/client-s3": "^3.1116.0",
+    "@aws-sdk/client-kms": "^3.1121.0",
+    "@aws-sdk/client-s3": "^3.1121.0",
     "@clerk/backend": "^3.13.1",
     "@okouai/api-contracts": "workspace:*",
     "@okouai/core": "workspace:*",
@@ -71,6 +70,6 @@
     "tsx": "^4.21.0",
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

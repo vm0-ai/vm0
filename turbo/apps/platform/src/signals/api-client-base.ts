@@ -34,7 +34,7 @@ interface AuthedClientOptions {
 }
 
 const API_BOOTSTRAP_SELECTOR =
-  'script[type="application/json"][data-vm0-api-bootstrap]';
+  'script[type="application/json"][data-okou-api-bootstrap]';
 
 function takeBootstrapResponse(
   method: string,

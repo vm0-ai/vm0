@@ -440,7 +440,6 @@ function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
-  readonly connectorAccountsEnabled: boolean;
   readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
@@ -503,12 +502,8 @@ function buildAgentToolsPrompt(args: {
       : []),
     "- Static web artifacts can be published with `okou host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `okou host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `okou connector search <keyword>`. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
-    ...(args.connectorAccountsEnabled
-      ? [
-          "- Connector accounts: inspect the current account with `okou connector status <slug> --json` and list alternatives with `okou connector account list <slug> --json`. Use only an exact `connectionId` returned by these commands; never invent an ID or reuse one from another connector.",
-          "- Request one account switch in the current web chat with `okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>`. This changes only the current thread's override for future runs, not the current run or global default. Keep the callback prompt concise and do not include secrets because it is included in the URL. Share the returned link and end the turn; Okou starts the callback round only after the user confirms and the selection succeeds.",
-        ]
-      : []),
+    "- Connector accounts: inspect the current account with `okou connector status <slug> --json` and list alternatives with `okou connector account list <slug> --json`. Use only an exact `connectionId` returned by these commands; never invent an ID or reuse one from another connector.",
+    "- Request one account switch in the current web chat with `okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>`. This changes only the current thread's override for future runs, not the current run or global default. Keep the callback prompt concise and do not include secrets because it is included in the URL. Share the returned link and end the turn; Okou starts the callback round only after the user confirms and the selection succeeds.",
     "- Custom connectors: when the user wants to add their own custom connector, run `okou connector custom -h` first and follow its guidance.",
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `okou model ls` to list allowed models, `okou model switch` for model-switching guidance, and `okou model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `okou doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins. If it says credit purchases are unavailable, do not run `okou credit`.",
@@ -586,7 +581,6 @@ function buildAppendSystemPrompt(args: {
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
-  readonly connectorAccountsEnabled: boolean;
   readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
@@ -600,7 +594,6 @@ function buildAppendSystemPrompt(args: {
       triggerSource: args.triggerSource,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
-      connectorAccountsEnabled: args.connectorAccountsEnabled,
       introVideoEnabled: args.introVideoEnabled,
       presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
@@ -640,7 +633,7 @@ async function inferAgentIdFromSession(
   return session?.agentId ?? null;
 }
 
-async function loadZeroAgent(
+async function loadAgent(
   db: Db,
   agentId: string,
 ): Promise<AgentRunRecord | null> {
@@ -786,7 +779,6 @@ function createRunBody(args: {
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
-  readonly connectorAccountsEnabled: boolean;
   readonly introVideoEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
@@ -800,7 +792,6 @@ function createRunBody(args: {
     triggerSource,
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
-    connectorAccountsEnabled: args.connectorAccountsEnabled,
     introVideoEnabled: args.introVideoEnabled,
     presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
@@ -830,7 +821,7 @@ function createRunBody(args: {
   };
 }
 
-function measureZeroPreCreate<T>(
+function measureAgentRunPreCreate<T>(
   timing: ApiDispatchTimingCollector | undefined,
   actionType: ApiDispatchTimingActionType,
   operation: () => T | Promise<T>,
@@ -852,7 +843,7 @@ function serviceEntryTiming(args: {
   const timing = args.timing ?? new ApiDispatchTimingCollector();
   if (!args.timing) {
     timing.recordElapsed(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
       "nested",
       args.apiStartTime,
     );
@@ -888,9 +879,9 @@ async function loadAgentRunPostAuthorizationContext(
   signal: AbortSignal,
 ) {
   let measuredSnapshotRows: RunBootstrapSnapshotRows | undefined;
-  const snapshotRows = await measureZeroPreCreate(
+  const snapshotRows = await measureAgentRunPreCreate(
     args.timing,
-    "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+    "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
     async () => {
       const loadedRows = await loadRunBootstrapSnapshotRows(db, {
         userId: args.userId,
@@ -908,9 +899,9 @@ async function loadAgentRunPostAuthorizationContext(
   signal.throwIfAborted();
 
   let measuredBootstrapContext: RunBootstrapContext | undefined;
-  const bootstrapContext = await measureZeroPreCreate(
+  const bootstrapContext = await measureAgentRunPreCreate(
     args.timing,
-    "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+    "api_dispatch_pre_create_agent_materialize_bootstrap_context",
     () => {
       const context = materializeRunBootstrapContext(snapshotRows, {
         userId: args.userId,
@@ -941,9 +932,9 @@ async function loadAgentRunPostAuthorizationContext(
           }),
         };
   signal.throwIfAborted();
-  const runPermissionPolicies = await measureZeroPreCreate(
+  const runPermissionPolicies = await measureAgentRunPreCreate(
     args.timing,
-    "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+    "api_dispatch_pre_create_agent_resolve_firewall_metadata",
     async () => {
       const storedPermissionPolicies = permissionGrantsToFirewallPolicies(
         bootstrapContext.permissionGrants,
@@ -967,7 +958,7 @@ async function loadAgentRunPostAuthorizationContext(
   };
 }
 
-function buildZeroCreateAgentRunArgs(args: {
+function buildCreateAgentRunArgs(args: {
   readonly command: AnyCreateAgentRunCommandArgs;
   readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
@@ -1001,10 +992,6 @@ function buildZeroCreateAgentRunArgs(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: isFeatureEnabled(
         FeatureSwitchKey.Banking,
-        args.featureSwitchContext,
-      ),
-      connectorAccountsEnabled: isFeatureEnabled(
-        FeatureSwitchKey.ConnectorAccounts,
         args.featureSwitchContext,
       ),
       introVideoEnabled: isFeatureEnabled(
@@ -1054,7 +1041,7 @@ function buildZeroCreateAgentRunArgs(args: {
     okouTokenPublicBrand: command.publicBrand,
     okouTokenComputerUseHostId: command.computerUseHostId,
     okouTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
-    enforceVm0Credits: true,
+    enforceBuiltInCredits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
     requiredOfficialWorkflowIds: command.requiredOfficialWorkflowIds,
@@ -1116,7 +1103,7 @@ async function captureCodexSubscriptionAccount(
         input.featureSwitchContext,
       )) ||
     command.agentRunModelPin?.modelProvider !== "codex-oauth-token" ||
-    command.threadSessionRoute?.modelProvider !== "codex-oauth-token"
+    command.threadSessionRoute === undefined
   ) {
     return input;
   }
@@ -1137,10 +1124,6 @@ async function captureCodexSubscriptionAccount(
       modelProviderId: account.id,
       agentRunModelPin: {
         ...command.agentRunModelPin,
-        modelProviderId: account.id,
-      },
-      threadSessionRoute: {
-        ...command.threadSessionRoute,
         modelProviderId: account.id,
       },
     },
@@ -1193,9 +1176,9 @@ async function resolveThreadSessionForAgentRun(
   if (!threadSessionRoute) {
     throw new Error("Thread-bound agent run is missing its model route");
   }
-  const resolution = await measureZeroPreCreate(
+  const resolution = await measureAgentRunPreCreate(
     input.timing,
-    "api_dispatch_pre_create_zero_resolve_thread_session",
+    "api_dispatch_pre_create_agent_resolve_thread_session",
     () => {
       return resolveChatThreadSession({
         db,
@@ -1213,9 +1196,9 @@ async function resolveThreadSessionForAgentRun(
   });
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
   const sessionPrompt = webChatSessionPromptContext
-    ? await measureZeroPreCreate(
+    ? await measureAgentRunPreCreate(
         input.timing,
-        "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context",
+        "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context",
         () => {
           return resolveWebChatSessionPrompt({
             db,
@@ -1252,7 +1235,7 @@ async function resolveThreadSessionForAgentRun(
 
 const THREAD_SESSION_PREPARATION_ATTEMPTS = 3;
 
-const createAgentRunAfterZeroPreCreate$ = command(
+const createAgentRunAfterPreCreate$ = command(
   async ({ set }, input: AgentRunAfterPreCreate, signal: AbortSignal) => {
     const db = set(writeDb$);
     const capturedInput = await captureCodexSubscriptionAccount(db, input);
@@ -1267,11 +1250,11 @@ const createAgentRunAfterZeroPreCreate$ = command(
         capturedInput,
       );
       signal.throwIfAborted();
-      const baseCreateAgentRunArgs = await measureZeroPreCreate(
+      const baseCreateAgentRunArgs = await measureAgentRunPreCreate(
         capturedInput.timing,
-        "api_dispatch_pre_create_zero_build_create_run_args",
+        "api_dispatch_pre_create_agent_build_create_run_args",
         () => {
-          return buildZeroCreateAgentRunArgs(attemptInput);
+          return buildCreateAgentRunArgs(attemptInput);
         },
       );
       signal.throwIfAborted();
@@ -1341,9 +1324,9 @@ const createAgentRunInternal$ = command(
     });
     const db = set(writeDb$);
 
-    const agentId = await measureZeroPreCreate(
+    const agentId = await measureAgentRunPreCreate(
       timing,
-      "api_dispatch_pre_create_zero_resolve_agent_id",
+      "api_dispatch_pre_create_agent_resolve_agent_id",
       async () => {
         return await resolveAgentRunAgentId(db, args);
       },
@@ -1356,11 +1339,11 @@ const createAgentRunInternal$ = command(
         : badRequestMessage("Missing agentId or sessionId");
     }
 
-    const agent = await measureZeroPreCreate(
+    const agent = await measureAgentRunPreCreate(
       timing,
-      "api_dispatch_pre_create_zero_load_agent",
+      "api_dispatch_pre_create_agent_load_agent",
       async () => {
-        return await loadZeroAgent(db, agentId);
+        return await loadAgent(db, agentId);
       },
     );
     signal.throwIfAborted();
@@ -1416,7 +1399,7 @@ const createAgentRunInternal$ = command(
     );
 
     return await set(
-      createAgentRunAfterZeroPreCreate$,
+      createAgentRunAfterPreCreate$,
       {
         command: args,
         agent,

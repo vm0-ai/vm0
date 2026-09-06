@@ -228,6 +228,7 @@ pub mod failure_diagnostics;
 mod failure_patterns;
 pub mod heartbeat;
 pub mod http;
+pub mod maintenance_usage;
 pub mod masker;
 pub mod metrics;
 mod nofollow_fs;
@@ -244,6 +245,46 @@ pub mod workload_containment;
 
 #[cfg(test)]
 static SYSTEM_LOG_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(test)]
+static SANDBOX_OPS_TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(test)]
+pub(crate) struct SandboxOpsTestGuard {
+    _ownership: tokio::sync::MutexGuard<'static, ()>,
+    override_installed: bool,
+}
+
+#[cfg(test)]
+impl SandboxOpsTestGuard {
+    pub(crate) async fn lock() -> Self {
+        let ownership = SANDBOX_OPS_TEST_MUTEX.lock().await;
+        Self {
+            _ownership: ownership,
+            override_installed: false,
+        }
+    }
+
+    pub(crate) async fn with_override(path: &std::path::Path) -> Self {
+        let mut guard = Self::lock().await;
+        guard.install_override(path);
+        guard
+    }
+
+    pub(crate) fn install_override(&mut self, path: &std::path::Path) {
+        guest_common::telemetry::set_sandbox_ops_log_file(path);
+        self.override_installed = true;
+    }
+}
+
+#[cfg(test)]
+impl Drop for SandboxOpsTestGuard {
+    fn drop(&mut self) {
+        if self.override_installed {
+            guest_common::telemetry::clear_sandbox_ops_log_file();
+        }
+    }
+}
 
 #[cfg(test)]
 pub(crate) fn lock_system_log_test_state() -> tokio::sync::MutexGuard<'static, ()> {

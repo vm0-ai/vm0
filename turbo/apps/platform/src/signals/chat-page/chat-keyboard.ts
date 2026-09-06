@@ -22,7 +22,7 @@ import {
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { composerVoiceInputShortcutEnabled$ } from "../external/feature-switch.ts";
+import { voiceInputV2Enabled$ } from "../external/feature-switch.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -297,13 +297,13 @@ const setupChatPageShortcutActions$ = command(
               await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
             }
           },
-          toggleVoiceInput: async () => {
-            if (!get(composerVoiceInputShortcutEnabled$)) {
+          toggleVoiceInput: () => {
+            if (!get(voiceInputV2Enabled$)) {
               return;
             }
             const thread = focusedThread();
             if (thread) {
-              await set(thread.composer.voice.toggle$, signal);
+              set(thread.composer.voice.toggle$);
             }
           },
         },

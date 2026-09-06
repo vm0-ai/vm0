@@ -17,6 +17,10 @@ const APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS = "app-bootstrap-skeleton--hidden";
 
 const internalBootstrapSkeletonActive$ = state(false);
 
+export const mainStylesheetLoaded$ = computed(async () => {
+  return (await window.__mainStylesheetLoaded) !== "failed";
+});
+
 export const bootstrapSkeletonActive$ = computed((get) => {
   return get(internalBootstrapSkeletonActive$);
 });

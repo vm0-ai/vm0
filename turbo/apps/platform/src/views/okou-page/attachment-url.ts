@@ -9,12 +9,12 @@ import { logger } from "../../signals/log.ts";
 import { throwIfAbort } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 
-const log = logger("zero-attachment-url");
+const log = logger("okou-attachment-url");
 
 const LEGACY_FILE_PATH_PATTERN = /^\/f\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const CLERK_USER_ID_PREFIX = "user_";
-const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
+const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__okou-dev-artifact-fetch";
 
 export function attachmentFilenameFromUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];

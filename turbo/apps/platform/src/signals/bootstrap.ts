@@ -1,7 +1,9 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { clerk$, watchOrgSwitch$ } from "./auth.ts";
+import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
+import { setupDesktopAuthPage } from "./desktop-auth/desktop-auth.ts";
+import { clerk$, setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import {
   runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
@@ -160,6 +162,32 @@ function setupAuthSidebarPageWrapper(
 }
 
 const ROUTE_CONFIG = [
+  {
+    path: ROUTES.desktopAuthStart,
+    setup: setupPageWrapper(setupDesktopAuthPage("start")),
+    analytics: false,
+  },
+  {
+    path: ROUTES.desktopAuthCallback,
+    setup: setupPageWrapper(setupDesktopAuthPage("callback")),
+    analytics: false,
+  },
+  {
+    path: ROUTES.desktopAuthConsume,
+    setup: setupPageWrapper(setupDesktopAuthPage("consume")),
+    analytics: false,
+  },
+  {
+    path: ROUTES.desktopAuthToken,
+    setup: setupPageWrapper(setupDesktopAuthPage("token")),
+    analytics: false,
+  },
+  {
+    path: ROUTES.desktopAuthSelectOrg,
+    setup: setupPageWrapper(setupDesktopAuthPage("select-org")),
+    analytics: false,
+  },
+
   {
     path: ROUTES.sharedThread,
     setup: setupSharedThreadPage$,
@@ -508,6 +536,18 @@ const completeBootstrap$ = command(
 
     render();
 
+    // These public protocol pages also run before an embedded Clerk session exists.
+    // Auth v2 task continuations retain the same ownership via redirect_url.
+    if (isDesktopAuthFlow()) {
+      await Promise.all([
+        set(setupClerk$, signal),
+        set(watchOrgSwitch$, signal),
+        set(setupRoutes$, signal),
+      ]);
+      signal.throwIfAborted();
+      return;
+    }
+
     set(handleSlackRedirect$);
 
     await Promise.all([
@@ -574,8 +614,12 @@ export const bootstrap$ = command(
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
-    const sharedDatabaseDaemon = set(setupSharedDatabaseBridge$, signal);
-    const authenticatedRealtimeDaemon = set(runAuthenticatedRealtime$, signal);
+    const sharedDatabaseDaemon = isDesktopAuthFlow()
+      ? Promise.resolve()
+      : set(setupSharedDatabaseBridge$, signal);
+    const authenticatedRealtimeDaemon = isDesktopAuthFlow()
+      ? Promise.resolve()
+      : set(runAuthenticatedRealtime$, signal);
     const ready = set(completeBootstrap$, render, signal);
 
     return {

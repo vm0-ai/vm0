@@ -17,7 +17,7 @@ type PlausibleFn = {
 
 declare global {
   interface Window {
-    __vm0PlausibleLoadScheduled?: boolean;
+    __okouPlausibleLoadScheduled?: boolean;
     plausible?: PlausibleFn;
   }
 }
@@ -72,11 +72,11 @@ function loadPlausible(): void {
 }
 
 export async function initPlausible(signal: AbortSignal): Promise<void> {
-  if (window.__vm0PlausibleLoadScheduled || !plausibleScriptUrl()) {
+  if (window.__okouPlausibleLoadScheduled || !plausibleScriptUrl()) {
     return;
   }
   signal.throwIfAborted();
-  window.__vm0PlausibleLoadScheduled = true;
+  window.__okouPlausibleLoadScheduled = true;
 
   if (typeof window.requestIdleCallback === "function") {
     const idleLoad: { callbackId?: number; pending: boolean } = {

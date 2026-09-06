@@ -222,6 +222,21 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     });
   });
 
+  it("defensively hides citation envelopes from historical cached rows", () => {
+    const projected = chatEventFromRow(
+      canonicalRow({
+        payload: {
+          content:
+            "visible<oai-mem-citation><citation_entries>private:1-1|note=[secret]</citation_entries></oai-mem-citation>",
+        },
+      }),
+    );
+    expect(projected).toMatchObject({
+      eventType: "output.message",
+      content: "visible",
+    });
+  });
+
   it("reads canonical usage and error payloads", () => {
     const usage = {
       version: 1,

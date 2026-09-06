@@ -31,6 +31,8 @@ import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-rou
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import { runOutputLegacyPiEvents } from "@okouai/db/schema/run-output-legacy-pi-event";
+import { runOutputMemoryCitations } from "@okouai/db/schema/run-output-memory-citation";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import {
@@ -1106,7 +1108,7 @@ export async function queueOtherWorkerChatEventReadFixture(args: {
   readonly done: Promise<void>;
 }> {
   const started = createDeferredPromise<void>(args.signal);
-  const applicationName = `vm0-api-test-other-${randomUUID()}`;
+  const applicationName = `okou-api-test-other-${randomUUID()}`;
   const missingEventId = randomUUID();
   const done = onRejection(
     db().transaction(async (tx) => {
@@ -2682,6 +2684,45 @@ export async function holdRunOutputMaterializationRowFixture(args: {
       return await transitiveBlockedWaiterCount(holderPid);
     },
   };
+}
+
+export async function readRunOutputMemoryCitationsFixture(runId: string) {
+  return await db()
+    .select({
+      sequenceNumber: runOutputMemoryCitations.sequenceNumber,
+      citation: runOutputMemoryCitations.citation,
+    })
+    .from(runOutputMemoryCitations)
+    .where(eq(runOutputMemoryCitations.runId, runId))
+    .orderBy(asc(runOutputMemoryCitations.sequenceNumber));
+}
+
+export async function readRunOutputLegacyPiEventsFixture(runId: string) {
+  return await db()
+    .select({
+      sequenceNumber: runOutputLegacyPiEvents.sequenceNumber,
+      serializedEvent: runOutputLegacyPiEvents.serializedEvent,
+    })
+    .from(runOutputLegacyPiEvents)
+    .where(eq(runOutputLegacyPiEvents.runId, runId))
+    .orderBy(asc(runOutputLegacyPiEvents.sequenceNumber));
+}
+
+export async function readRunOutputMaterializationFixture(runId: string) {
+  const [row] = await db()
+    .select({
+      processedThroughSequence:
+        runOutputMaterializations.processedThroughSequence,
+      pendingSequenceNumbers: runOutputMaterializations.pendingSequenceNumbers,
+      latestResultSequence: runOutputMaterializations.latestResultSequence,
+      latestResultText: runOutputMaterializations.latestResultText,
+      latestOutputSequence: runOutputMaterializations.latestOutputSequence,
+      latestOutputText: runOutputMaterializations.latestOutputText,
+    })
+    .from(runOutputMaterializations)
+    .where(eq(runOutputMaterializations.runId, runId))
+    .limit(1);
+  return row ?? null;
 }
 
 /** Starts one event insert with reservation and persistence in one transaction. */

@@ -1,7 +1,15 @@
+import { zstdDecompressSync } from "node:zlib";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +22,7 @@ import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 import {
   piSandboxAgentConfigFromEnv,
   recordPiMemoryToolSourceUse,
+  runPiSandboxAgentLoop,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
@@ -190,7 +199,10 @@ class ProviderHarness {
           chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         }
         const body = JSON.parse(
-          Buffer.concat(chunks).toString("utf8"),
+          (request.headers["content-encoding"] === "zstd"
+            ? zstdDecompressSync(Buffer.concat(chunks))
+            : Buffer.concat(chunks)
+          ).toString("utf8"),
         ) as unknown;
         const sequence = harness.requests.length + 1;
         const providerRequest: ProviderRequest = {
@@ -351,7 +363,7 @@ class RpcHost {
 }
 
 beforeEach(async () => {
-  launchPayloadDirectory = await mkdtemp(join(tmpdir(), "vm0-pi-launch-"));
+  launchPayloadDirectory = await mkdtemp(join(tmpdir(), "okou-pi-launch-"));
   launchPayloadFile = join(launchPayloadDirectory, "payload.json");
   await writeFile(launchPayloadFile, JSON.stringify(CONFIG.launchPayload));
 });
@@ -410,13 +422,16 @@ function prepareDeepSeekModel(session: MemoryPiSession, baseUrl: string): void {
 function prepareTerraModel(
   session: MemoryPiSession,
   baseUrl: string,
-  provider: "openai" | "openrouter" = "openai",
+  provider: "openai" | "openrouter" | "openai-codex" = "openai",
 ): void {
   session.prepareModelTurn(
     {
       id: provider === "openrouter" ? "openai/gpt-5.6-terra" : "gpt-5.6-terra",
       name: "GPT 5.6 Terra",
-      api: "openai-responses",
+      api:
+        provider === "openai-codex"
+          ? "openai-codex-responses"
+          : "openai-responses",
       provider,
       baseUrl,
       reasoning: true,
@@ -443,8 +458,8 @@ async function startOwnershipTransferHost(args: {
     | "settled-session-continuation";
   readonly baseSessionSha256: string | null;
   readonly providerBaseUrl: string;
-  readonly model?: "deepseek" | "openrouter-terra" | "terra";
-  readonly serviceTier?: "priority";
+  readonly model?: "deepseek" | "openrouter-terra" | "terra" | "codex-terra";
+  readonly serviceTier?: "priority" | "fast";
 }): Promise<{
   readonly host: RpcHost;
   readonly handoffServer: Server;
@@ -527,26 +542,56 @@ async function startOwnershipTransferHost(args: {
     OKOU_RUN_ID: RUN_ID,
     OKOU_PI_SESSION_ID: SESSION_ID,
     OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
-    OKOU_PI_MODEL_CONFIG: JSON.stringify({
-      provider: openrouter ? "openrouter" : terra ? "openai" : "deepseek",
-      baseUrl: args.providerBaseUrl,
-      model: openrouter
-        ? "openai/gpt-5.6-terra"
-        : terra
-          ? "gpt-5.6-terra"
-          : "deepseek-v4-flash",
-      ...(terra
-        ? { api: "openai-responses" as const, thinkingLevel: "low" as const }
-        : {}),
-      ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
-      apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: openrouter
-        ? "OPENROUTER_API_KEY"
-        : terra
-          ? "OPENAI_API_KEY"
-          : "DEEPSEEK_API_KEY",
-    }),
+    OKOU_PI_MODEL_CONFIG: JSON.stringify(
+      args.model === "codex-terra"
+        ? {
+            schemaVersion: 3,
+            dialect: "openai-codex-responses",
+            transport: "sse",
+            provider: "openai-codex",
+            baseUrl: args.providerBaseUrl,
+            model: "gpt-5.6-terra",
+            thinkingLevel: "low",
+            serviceTier: args.serviceTier,
+            credentialBindings: [
+              {
+                kind: "access-token",
+                environment: "CHATGPT_ACCESS_TOKEN",
+                secretName: "CHATGPT_ACCESS_TOKEN",
+              },
+              {
+                kind: "account-id",
+                environment: "CHATGPT_ACCOUNT_ID",
+                secretName: "CHATGPT_ACCOUNT_ID",
+              },
+            ],
+          }
+        : {
+            provider: openrouter ? "openrouter" : terra ? "openai" : "deepseek",
+            baseUrl: args.providerBaseUrl,
+            model: openrouter
+              ? "openai/gpt-5.6-terra"
+              : terra
+                ? "gpt-5.6-terra"
+                : "deepseek-v4-flash",
+            ...(terra
+              ? {
+                  api: "openai-responses" as const,
+                  thinkingLevel: "low" as const,
+                }
+              : {}),
+            ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
+            apiKeyEnv: "OPENAI_API_KEY",
+            credentialSecretName: openrouter
+              ? "OPENROUTER_API_KEY"
+              : terra
+                ? "OPENAI_API_KEY"
+                : "DEEPSEEK_API_KEY",
+          },
+    ),
     OPENAI_API_KEY: "pi-ownership-transfer-test-key",
+    CHATGPT_ACCESS_TOKEN: "opaque-access-token-placeholder",
+    CHATGPT_ACCOUNT_ID: "opaque-account-id-placeholder",
   };
   return {
     host: new RpcHost({ cwd: args.root, agentDir, sessionDir, env }),
@@ -567,6 +612,128 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 describe("sandbox Pi agent loop", () => {
+  it("writes the private maintenance attestation only after mounted validation", async () => {
+    const validationFile = join(
+      launchPayloadDirectory,
+      "maintenance-validation.json",
+    );
+    const memoryRoot = join(launchPayloadDirectory, "memory");
+    const storageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+    const memory = "# Durable memory\n";
+    const summary = "v1\nDurable memory\n";
+    await mkdir(memoryRoot, { recursive: true });
+    await writeFile(join(memoryRoot, "MEMORY.md"), memory);
+    await writeFile(join(memoryRoot, "memory_summary.md"), summary);
+    const versionEntries = [
+      `MEMORY.md:${createHash("sha256").update(memory).digest("hex")}`,
+      `memory_summary.md:${createHash("sha256").update(summary).digest("hex")}`,
+    ].sort();
+    const validatedVersionId = createHash("sha256")
+      .update(`storage:${storageId}\n${versionEntries.join("\n")}`)
+      .digest("hex");
+    const selectionEncoding = Buffer.from(
+      "vm0.pi-memory.phase2.selection.v1",
+      "utf8",
+    );
+    const selectionEncodingLength = Buffer.alloc(4);
+    selectionEncodingLength.writeUInt32BE(selectionEncoding.length);
+    const emptySelectionLength = Buffer.alloc(4);
+    emptySelectionLength.writeUInt32BE(0);
+    const selectionDigest = createHash("sha256")
+      .update(
+        Buffer.concat([
+          selectionEncodingLength,
+          selectionEncoding,
+          emptySelectionLength,
+        ]),
+      )
+      .digest("hex");
+    const maintenance = {
+      schemaVersion: 1 as const,
+      memoryStorageId: storageId,
+      claimedRevision: 7,
+      claimedBaseVersionId: validatedVersionId,
+      leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+      selectionDigest,
+      selected: [],
+    };
+    await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
+
+    await runPiSandboxAgentLoop({
+      config: {
+        ...CONFIG,
+        launchPayload: {
+          ...CONFIG.launchPayload,
+          launchConfig: {
+            ...CONFIG.launchPayload.launchConfig,
+            maintenance,
+          },
+        },
+      },
+      memoryRoot,
+      maintenanceValidationFile: validationFile,
+    });
+
+    await expect(readFile(join(memoryRoot, "MEMORY.md"), "utf8")).resolves.toBe(
+      memory,
+    );
+    await expect(
+      readFile(join(memoryRoot, "memory_summary.md"), "utf8"),
+    ).resolves.toBe(summary);
+    await expect(readFile(validationFile, "utf8")).resolves.toBe(
+      JSON.stringify({
+        schemaVersion: 1,
+        runId: RUN_ID,
+        memoryStorageId: maintenance.memoryStorageId,
+        claimedRevision: maintenance.claimedRevision,
+        claimedBaseVersionId: maintenance.claimedBaseVersionId,
+        leaseToken: maintenance.leaseToken,
+        selectionDigest: maintenance.selectionDigest,
+        validatedVersionId,
+      }),
+    );
+    expect((await stat(validationFile)).mode & 0o777).toBe(0o600);
+  });
+
+  it("removes a stale maintenance attestation when validation fails", async () => {
+    const validationFile = join(
+      launchPayloadDirectory,
+      "maintenance-validation.json",
+    );
+    const memoryRoot = join(launchPayloadDirectory, "memory");
+    await mkdir(memoryRoot, { recursive: true });
+    await writeFile(join(memoryRoot, "MEMORY.md"), "# Partial memory\n");
+    await writeFile(validationFile, "stale-attestation", { mode: 0o600 });
+
+    await expect(
+      runPiSandboxAgentLoop({
+        config: {
+          ...CONFIG,
+          launchPayload: {
+            ...CONFIG.launchPayload,
+            launchConfig: {
+              ...CONFIG.launchPayload.launchConfig,
+              maintenance: {
+                schemaVersion: 1,
+                memoryStorageId: "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63",
+                claimedRevision: 7,
+                claimedBaseVersionId: "a".repeat(64),
+                leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+                selectionDigest: "b".repeat(64),
+                selected: [],
+              },
+            },
+          },
+        },
+        memoryRoot,
+        maintenanceValidationFile: validationFile,
+      }),
+    ).rejects.toThrow("Pi memory Phase 2 input was invalid");
+    await expect(readFile(validationFile)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("records content-free memory source use with run and session correlation", () => {
     const writes: string[] = [];
     const write = vi
@@ -711,16 +878,69 @@ describe("sandbox Pi agent loop", () => {
     });
   });
 
-  it("materializes only the opaque subscription placeholders from V2", async () => {
-    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
-    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
-      schemaVersion: 2,
+  it.each([2, 3] as const)(
+    "materializes exact subscription bindings from generation %s",
+    async (schemaVersion) => {
+      const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+      env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+        schemaVersion,
+        ...(schemaVersion === 3 ? { serviceTier: "fast" } : {}),
+        dialect: "openai-codex-responses",
+        transport: "sse",
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        model: "gpt-5.6-terra",
+        thinkingLevel: "low",
+        credentialBindings: [
+          {
+            kind: "access-token",
+            environment: "CHATGPT_ACCESS_TOKEN",
+            secretName: "CHATGPT_ACCESS_TOKEN",
+          },
+          {
+            kind: "account-id",
+            environment: "CHATGPT_ACCOUNT_ID",
+            secretName: "CHATGPT_ACCOUNT_ID",
+          },
+        ],
+      });
+      delete env.OPENAI_API_KEY;
+      env.CHATGPT_ACCESS_TOKEN = "opaque-access-token-placeholder";
+      env.CHATGPT_ACCOUNT_ID = "opaque-account-id-placeholder";
+
+      await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+        model: {
+          provider: "openai-codex",
+          baseUrl: "https://chatgpt.com/backend-api",
+          model: "gpt-5.6-terra",
+          api: "openai-codex-responses",
+          ...(schemaVersion === 3 ? { serviceTier: "fast" } : {}),
+          dialect: "openai-codex-responses",
+          transport: "sse",
+          apiKey: "opaque-access-token-placeholder",
+          accountId: "opaque-account-id-placeholder",
+        },
+      });
+    },
+  );
+
+  it.each([
+    {
+      dialect: "openai-responses",
+      provider: "openai",
+      serviceTier: "fast",
+      credentialBindings: [
+        {
+          kind: "api-key",
+          environment: "OPENAI_API_KEY",
+          secretName: "OPENAI_API_KEY",
+        },
+      ],
+    },
+    {
       dialect: "openai-codex-responses",
-      transport: "sse",
       provider: "openai-codex",
-      baseUrl: "https://chatgpt.com/backend-api",
-      model: "gpt-5.6-terra",
-      thinkingLevel: "low",
+      serviceTier: "priority",
       credentialBindings: [
         {
           kind: "access-token",
@@ -733,24 +953,21 @@ describe("sandbox Pi agent loop", () => {
           secretName: "CHATGPT_ACCOUNT_ID",
         },
       ],
-    });
-    delete env.OPENAI_API_KEY;
-    env.CHATGPT_ACCESS_TOKEN = "opaque-access-token-placeholder";
-    env.CHATGPT_ACCOUNT_ID = "opaque-account-id-placeholder";
-
-    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
-      model: {
-        provider: "openai-codex",
-        baseUrl: "https://chatgpt.com/backend-api",
-        model: "gpt-5.6-terra",
-        api: "openai-codex-responses",
-        dialect: "openai-codex-responses",
+    },
+  ])(
+    "rejects generation 3 $serviceTier on $dialect before credential materialization",
+    async (route) => {
+      const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+      env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+        ...route,
+        schemaVersion: 3,
         transport: "sse",
-        apiKey: "opaque-access-token-placeholder",
-        accountId: "opaque-account-id-placeholder",
-      },
-    });
-  });
+        baseUrl: "https://example.test/v1",
+        model: "gpt-5.6-terra",
+      });
+      await expect(piSandboxAgentConfigFromEnv(env)).rejects.toThrow();
+    },
+  );
 
   it("requires the run id", async () => {
     await expect(piSandboxAgentConfigFromEnv(piEnv({}))).rejects.toThrowError(
@@ -796,127 +1013,152 @@ describe("sandbox Pi agent loop", () => {
     }
   });
 
-  it("restores Terra H1, executes its pending tool, and checkpoints H2", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-terra-handoff-rpc-"));
-    const sourceFile = join(root, "terra-handoff-source.txt");
-    const prompt = "read the Terra handoff source exactly once";
-    const provider = await ProviderHarness.start();
-    const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
-    prepareTerraModel(memory, provider.baseUrl, "openrouter");
-    memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
-    memory.appendMessage({
-      role: "assistant",
-      content: [
-        {
-          type: "thinking",
-          thinking: "Terra reasoning preserved for the Okou handoff",
-          thinkingSignature: JSON.stringify({
-            type: "reasoning",
-            id: "rs_terra_okou_handoff",
-            content: [
-              {
-                type: "reasoning_text",
-                text: "Terra reasoning preserved for the Okou handoff",
-              },
-            ],
-            summary: [],
-          }),
+  it.each(["openrouter-terra", "codex-terra"] as const)(
+    "restores %s H1, executes its pending tool, and checkpoints H2",
+    async (route) => {
+      const root = await mkdtemp(join(tmpdir(), "okou-pi-terra-handoff-rpc-"));
+      const sourceFile = join(root, "terra-handoff-source.txt");
+      const prompt = "read the Terra handoff source exactly once";
+      const provider = await ProviderHarness.start();
+      const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+      prepareTerraModel(
+        memory,
+        provider.baseUrl,
+        route === "codex-terra" ? "openai-codex" : "openrouter",
+      );
+      memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
+      memory.appendMessage({
+        role: "assistant",
+        content: [
+          {
+            type: "thinking",
+            thinking: "Terra reasoning preserved for the Okou handoff",
+            thinkingSignature: JSON.stringify({
+              type: "reasoning",
+              id: "rs_terra_okou_handoff",
+              content: [
+                {
+                  type: "reasoning_text",
+                  text: "Terra reasoning preserved for the Okou handoff",
+                },
+              ],
+              summary: [],
+            }),
+          },
+          {
+            type: "toolCall",
+            id: "api-terra-read-call",
+            name: "read",
+            arguments: { path: sourceFile },
+          },
+        ],
+        api:
+          route === "codex-terra"
+            ? "openai-codex-responses"
+            : "openai-responses",
+        provider: route === "codex-terra" ? "openai-codex" : "openrouter",
+        model:
+          route === "codex-terra" ? "gpt-5.6-terra" : "openai/gpt-5.6-terra",
+        usage: {
+          input: 5,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 8,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         },
-        {
-          type: "toolCall",
-          id: "api-terra-read-call",
-          name: "read",
-          arguments: { path: sourceFile },
-        },
-      ],
-      api: "openai-responses",
-      provider: "openrouter",
-      model: "openai/gpt-5.6-terra",
-      usage: {
-        input: 5,
-        output: 3,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 8,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "toolUse",
-      timestamp: 2,
-    });
-    const h1 = memory.toJsonl();
-    let host: RpcHost | undefined;
-    let handoffServer: Server | undefined;
-
-    try {
-      await writeFile(
-        sourceFile,
-        "Terra tool output from the sandbox filesystem",
-      );
-      const started = await startOwnershipTransferHost({
-        root,
-        jsonl: h1,
-        mode: "pending-tool-continuation",
-        baseSessionSha256: null,
-        providerBaseUrl: provider.baseUrl,
-        model: "openrouter-terra",
-        serviceTier: "priority",
+        stopReason: "toolUse",
+        timestamp: 2,
       });
-      host = started.host;
-      handoffServer = started.handoffServer;
+      const h1 = memory.toJsonl();
+      let host: RpcHost | undefined;
+      let handoffServer: Server | undefined;
 
-      const state = await host.state("terra-handoff-state");
-      expect(host.records[0]).toStrictEqual({
-        type: "vm0_pi_api_first_turn_boundary",
-        schemaVersion: 2,
-        sandboxEventSequenceStart: 4,
-        ownershipTransferMode: "pending-tool-continuation",
-      });
-      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 2 });
-      expect(String(state.sessionFile)).toContain("api-first-turn-");
+      try {
+        await writeFile(
+          sourceFile,
+          "Terra tool output from the sandbox filesystem",
+        );
+        const started = await startOwnershipTransferHost({
+          root,
+          jsonl: h1,
+          mode: "pending-tool-continuation",
+          baseSessionSha256: null,
+          providerBaseUrl: provider.baseUrl,
+          model: route,
+          serviceTier: route === "codex-terra" ? "fast" : "priority",
+        });
+        host = started.host;
+        handoffServer = started.handoffServer;
 
-      host.send({ id: "terra-handoff", type: "prompt", message: prompt });
-      const continuationRequest = await provider.nextRequest();
-      const continuationBody = JSON.stringify(continuationRequest.body);
-      expect(continuationBody).toContain(
-        "Terra tool output from the sandbox filesystem",
-      );
-      expect(continuationBody).toContain("rs_terra_okou_handoff");
-      expect(occurrences(continuationBody, prompt)).toBe(1);
-      expect(continuationRequest.body).toMatchObject({
-        service_tier: "priority",
-      });
-      continuationRequest.respond("Terra Okou handoff complete");
-      await host.waitFor((record) => {
-        return record.type === "agent_settled";
-      });
-      await host.close();
-      host = undefined;
+        const state = await host.state("terra-handoff-state");
+        expect(host.records[0]).toStrictEqual({
+          type: "vm0_pi_api_first_turn_boundary",
+          schemaVersion: 2,
+          sandboxEventSequenceStart: 4,
+          ownershipTransferMode: "pending-tool-continuation",
+        });
+        expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 2 });
+        expect(String(state.sessionFile)).toContain("api-first-turn-");
 
-      expect(provider.requests).toHaveLength(1);
-      const persisted = await readFile(String(state.sessionFile), "utf8");
-      expect(occurrences(persisted, prompt)).toBe(1);
-      expect(persisted).not.toContain("serviceTier");
-      expect(persisted).not.toContain("service_tier");
-      expect(persisted).toContain("api-terra-read-call");
-      expect(persisted).toContain(
-        "Terra tool output from the sandbox filesystem",
-      );
-      expect(persisted).toContain("Terra Okou handoff complete");
-      expect(MemoryPiSession.fromJsonl(persisted).isSettledCheckpoint()).toBe(
-        true,
-      );
-    } finally {
-      await host?.terminate();
-      if (handoffServer) {
-        await closeServer(handoffServer);
+        host.send({ id: "terra-handoff", type: "prompt", message: prompt });
+        const continuationRequest = await provider.nextRequest();
+        const continuationBody = JSON.stringify(continuationRequest.body);
+        expect(continuationBody).toContain(
+          "Terra tool output from the sandbox filesystem",
+        );
+        expect(continuationBody).toContain("rs_terra_okou_handoff");
+        expect(occurrences(continuationBody, prompt)).toBe(1);
+        expect(continuationRequest.body).toMatchObject({
+          service_tier: "priority",
+        });
+        continuationRequest.respond("Terra Okou handoff complete");
+        await host.waitFor((record) => {
+          return record.type === "agent_settled";
+        });
+        host.send({
+          id: "terra-followup",
+          type: "prompt",
+          message: "answer one more turn",
+        });
+        const nextRequest = await provider.nextRequest();
+        expect(nextRequest.body).toMatchObject({
+          service_tier: "priority",
+        });
+        nextRequest.respond("Terra followup complete");
+        await host.waitFor((record) => {
+          return record.type === "agent_settled";
+        });
+        await host.close();
+        host = undefined;
+
+        expect(provider.requests).toHaveLength(2);
+        const persisted = await readFile(String(state.sessionFile), "utf8");
+        expect(occurrences(persisted, prompt)).toBe(1);
+        expect(persisted).not.toContain("serviceTier");
+        expect(persisted).not.toContain("service_tier");
+        expect(persisted).toContain("api-terra-read-call");
+        expect(persisted).toContain(
+          "Terra tool output from the sandbox filesystem",
+        );
+        expect(persisted).toContain("Terra Okou handoff complete");
+        expect(MemoryPiSession.fromJsonl(persisted).isSettledCheckpoint()).toBe(
+          true,
+        );
+      } finally {
+        await host?.terminate();
+        if (handoffServer) {
+          await closeServer(handoffServer);
+        }
+        await provider.close();
+        await rm(root, { recursive: true, force: true });
       }
-      await provider.close();
-      await rm(root, { recursive: true, force: true });
-    }
-  }, 30_000);
+    },
+    30_000,
+  );
 
   it("keeps standard Terra tierless on the sandbox-first AgentSession call", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-sandbox-first-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-sandbox-first-rpc-"));
     const prompt = "execute this sandbox-owned first turn once";
     const provider = await ProviderHarness.start();
     const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
@@ -970,7 +1212,7 @@ describe("sandbox Pi agent loop", () => {
   }, 20_000);
 
   it("keeps OpenRouter priority on an official AgentSession retry", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-retry-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-retry-rpc-"));
     const prompt = "retry this sandbox-owned prompt exactly once";
     const provider = await ProviderHarness.start();
     const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
@@ -1024,7 +1266,7 @@ describe("sandbox Pi agent loop", () => {
   }, 20_000);
 
   it("keeps priority on compaction and the original AgentSession prompt", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-compaction-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-compaction-rpc-"));
     const priorPrompt = "prior context that requires official compaction";
     const prompt = "run this original prompt after official compaction";
     const compactionSummary = "official compacted context summary";
@@ -1191,7 +1433,7 @@ describe("sandbox Pi agent loop", () => {
   }, 20_000);
 
   it("acknowledges a settled transfer without replaying its original prompt", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-settled-rpc-"));
+    const root = await mkdtemp(join(tmpdir(), "okou-pi-settled-rpc-"));
     const originalPrompt = "the API already completed this prompt";
     const continuation = "start the newly owned continuation";
     const provider = await ProviderHarness.start();

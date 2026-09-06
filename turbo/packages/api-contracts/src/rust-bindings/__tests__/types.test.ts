@@ -29,6 +29,11 @@ import {
 
 const expectedBindings = [
   {
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustTypeName: "Request",
+    direction: "request",
+  },
+  {
     rustModulePath: ["runners", "runs"],
     rustTypeName: "CodexRuntimeConfig",
     direction: "response",
@@ -46,6 +51,11 @@ const expectedBindings = [
   {
     rustModulePath: ["runners", "runs"],
     rustTypeName: "PiModelConfigV2",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfigV3",
     direction: "response",
   },
   {
@@ -291,6 +301,10 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub enum PiModelConfigServiceTier {");
     expect(firstRender).toContain("pub enum PiModelConfigApiKeyEnv {");
     expect(firstRender).toContain("pub struct PiModelConfigV2 {");
+    expect(firstRender).toContain("pub enum PiModelConfigV3 {");
+    expect(firstRender).toContain(
+      "pub enum PiModelConfigV3OpenaiCodexResponsesServiceTier {",
+    );
     expect(firstRender).toContain("pub enum PiModelConfigV2Dialect {");
     expect(firstRender).toContain("pub enum PiModelConfigV2Provider {");
     expect(firstRender).toContain(

@@ -1,5 +1,5 @@
 diff --git a/dist/api/openai-codex-responses.d.ts b/dist/api/openai-codex-responses.d.ts
-index 704476da084be53d6aa194a5f774fa3ad47f5e9a..ffd6c5bde0ddd3b480af7bac0b49492abfa4b850 100644
+index 704476da084be53d6aa194a5f774fa3ad47f5e9a..8274468318617744f206f551fe5c0c22e935c7ef 100644
 --- a/dist/api/openai-codex-responses.d.ts
 +++ b/dist/api/openai-codex-responses.d.ts
 @@ -1,6 +1,7 @@

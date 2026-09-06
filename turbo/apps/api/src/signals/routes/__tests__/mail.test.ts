@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -337,7 +336,7 @@ async function seedGmailMailCardFixture() {
     throw new Error("Expected Gmail OAuth state");
   }
   await connectors.completeOauthCallback("gmail", {
-    code: "zero-mail-code",
+    code: "okou-mail-code",
     state,
   });
   const gmail = await connectors.readConnectorBySlug(actor, "gmail");
@@ -405,9 +404,7 @@ async function addGmailAccount(
     readonly subject: string;
   },
 ): Promise<string> {
-  await connectors.updateFeatureSwitches(fixture.actor, {
-    [FeatureSwitchKey.ConnectorAccounts]: true,
-  });
+  await connectors.updateFeatureSwitches(fixture.actor, {});
   mockGmailConnectorOAuth(args);
   const start = await connectors.startOauth(
     fixture.actor,
@@ -534,9 +531,7 @@ describe("POST /api/mail/drafts/link", () => {
   it("uses a healthy Gmail connection with unknown historical grants", async () => {
     const fixture = await seedGmailMailCardFixture();
     await setGmailOAuthScopeFacts(fixture, null);
-    await connectors.updateFeatureSwitches(fixture.actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(fixture.actor, {});
     const gmail = mockGmailDraftApi();
 
     await expect(
@@ -680,9 +675,10 @@ describe("POST /api/mail/drafts/link", () => {
       "Connect and authorize Gmail for this agent first",
     );
 
-    await connectors.disconnectSingleBuiltinConnectorAccount(
+    await connectors.deleteBuiltinConnectorAccount(
       fixture.actor,
       "gmail",
+      connectorId,
     );
     await expect(
       readThreadConnectorSelectionState(context, {
@@ -691,7 +687,7 @@ describe("POST /api/mail/drafts/link", () => {
       }),
     ).resolves.toBeFalsy();
 
-    const disconnectSingleCustomConnectorAccountId = randomUUID();
+    const deleteDefaultCustomConnectorAccountId = randomUUID();
     const deleteCustomConnectorId = randomUUID();
     await seedCustomConnectorRuntimeConnectors(context, {
       orgId: fixture.actor.orgId ?? "",
@@ -699,7 +695,7 @@ describe("POST /api/mail/drafts/link", () => {
       agentId: fixture.agent.agentId,
       customConnectors: [
         {
-          id: disconnectSingleCustomConnectorAccountId,
+          id: deleteDefaultCustomConnectorAccountId,
           slug: "_disconnect-selection-cleanup",
           displayName: "Disconnect selection cleanup",
           prefixTemplate: "https://disconnect-selection.example.com/",
@@ -716,7 +712,7 @@ describe("POST /api/mail/drafts/link", () => {
       await readCustomConnectorCredentialStorageParent(context, {
         orgId: fixture.actor.orgId ?? "",
         userId: fixture.actor.userId,
-        customConnectorId: disconnectSingleCustomConnectorAccountId,
+        customConnectorId: deleteDefaultCustomConnectorAccountId,
       });
     const disconnectMemberConnectorId = disconnectCustomStorage.connector?.id;
     if (!disconnectMemberConnectorId) {
@@ -725,11 +721,11 @@ describe("POST /api/mail/drafts/link", () => {
     await seedCustomThreadConnectorSelection(context, {
       chatThreadId: fixture.thread.id,
       connectorId: disconnectMemberConnectorId,
-      customConnectorId: disconnectSingleCustomConnectorAccountId,
+      customConnectorId: deleteDefaultCustomConnectorAccountId,
     });
-    await connectors.disconnectSingleCustomConnectorAccount(
+    await connectors.deleteDefaultCustomConnectorAccount(
       fixture.actor,
-      disconnectSingleCustomConnectorAccountId,
+      deleteDefaultCustomConnectorAccountId,
     );
     await expect(
       readThreadConnectorSelectionState(context, {
@@ -765,7 +761,7 @@ describe("POST /api/mail/drafts/link", () => {
     ).resolves.toBeFalsy();
     await connectors.deleteCustomConnector(
       fixture.actor,
-      disconnectSingleCustomConnectorAccountId,
+      deleteDefaultCustomConnectorAccountId,
     );
   });
 
@@ -1022,7 +1018,7 @@ describe("POST /api/mail/drafts/link", () => {
     const gmail = mockGmailDraftApi();
     const linked = await linkDraft(fixture);
 
-    await connectors.disconnectSingleBuiltinConnectorAccount(
+    await connectors.deleteDefaultBuiltinConnectorAccount(
       fixture.actor,
       "gmail",
     );
@@ -1032,7 +1028,7 @@ describe("POST /api/mail/drafts/link", () => {
       throw new Error("Expected Gmail OAuth state");
     }
     await connectors.completeOauthCallback("gmail", {
-      code: "zero-mail-reconnect-code",
+      code: "okou-mail-reconnect-code",
       state,
     });
 
@@ -1069,9 +1065,14 @@ describe("POST /api/mail/drafts/link", () => {
       throw new Error("Expected Gmail OAuth state");
     }
     await connectors.completeOauthCallback("gmail", {
-      code: "zero-mail-replacement-account-code",
+      code: "okou-mail-replacement-account-code",
       state,
     });
+    await connectors.deleteBuiltinConnectorAccount(
+      fixture.actor,
+      "gmail",
+      fixture.gmail.id,
+    );
 
     const detached = await accept(
       client().getDraft({
@@ -1115,6 +1116,11 @@ describe("POST /api/mail/drafts/link", () => {
       code: "replace-original-mail-account",
       state: replacementState,
     });
+    await connectors.deleteBuiltinConnectorAccount(
+      fixture.actor,
+      "gmail",
+      fixture.gmail.id,
+    );
 
     const recoveredConnectorId = await addGmailAccount(fixture, {
       accessToken: "recovered-gmail-token",

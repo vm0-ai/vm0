@@ -1,3 +1,8 @@
+import {
+  useComposerActions,
+  type ComposerActions,
+} from "./composer-actions.ts";
+import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type {
@@ -14,6 +19,7 @@ import {
   useLoadableState,
   useLastLoadable,
   useLastResolved,
+  useResolved,
   type Loadable,
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -64,6 +70,7 @@ import {
   Square,
   SwatchBook,
   Target,
+  Trash2,
   User,
   UserCheck,
   Users,
@@ -169,7 +176,6 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ImageModelBrandIcon,
   ModelProviderPicker,
@@ -222,10 +228,8 @@ import {
 import {
   chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
-  composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
-  featureSwitch$,
-  voiceDraftEnabled$,
+  voiceInputV2Enabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -252,18 +256,14 @@ import type {
   ComposerImageModelSignals,
   ComposerSignals,
   ComposerVideoModelSignals,
-  ComposerVoiceInputStatus,
 } from "../../signals/okou-page/composer-signals.ts";
 import {
   audioInputAvailable$,
   audioInputQuota$,
   sttRecording$,
-  sttRecordingStartedAt$,
   sttStarting$,
   sttTranscribing$,
   sttVoiceLevel$,
-  sttVoiceLevelSamples$,
-  stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";
 import { shouldUseUserMessage } from "../../signals/okou-page/user-message-document-codec.ts";
@@ -7489,7 +7489,7 @@ function ComposerConnectorAccountMenu({
       <PopoverContent
         side="right"
         align="start"
-        className="w-72 p-0"
+        className="flex max-h-[min(25rem,var(--available-height))] w-72 flex-col overflow-hidden p-0"
         aria-label={t(($) => {
           return $.chat.connectors.accountForThread;
         })}
@@ -7796,7 +7796,12 @@ function ComposerConnectorAccountMenuContent({
   };
 
   return (
-    <div className="flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden">
+    <div
+      className={cn(
+        "flex max-h-[min(25rem,var(--available-height))] min-h-0 flex-col overflow-hidden",
+        showSearch && "h-[min(25rem,var(--available-height))]",
+      )}
+    >
       <div className="flex h-12 shrink-0 items-center gap-0.5 border-b border-border/60 pl-1.5 pr-2 text-sm font-medium text-foreground">
         <Button
           type="button"
@@ -7931,42 +7936,6 @@ function deriveComposerConnectorPopoverState(args: {
   return { visibleConnectors, permissionConnector };
 }
 
-const COMPOSER_CONNECTOR_COLLISION_AVOIDANCE = {
-  fallbackAxisSide: "none",
-} as const;
-
-function composerConnectorCollisionAvoidance(enabled: boolean) {
-  return enabled ? COMPOSER_CONNECTOR_COLLISION_AVOIDANCE : undefined;
-}
-
-function composerConnectorPopoverContentClass(enabled: boolean): string {
-  return cn(
-    "w-72 p-0",
-    enabled
-      ? "group/connector-popover pointer-events-none relative overflow-visible border-0 bg-transparent"
-      : "max-h-[var(--available-height)] overflow-hidden rounded-lg",
-  );
-}
-
-function composerConnectorPopoverSurfaceClass(enabled: boolean): string {
-  return cn(
-    "min-h-0 overflow-hidden",
-    enabled &&
-      "pointer-events-auto absolute inset-x-0 flex max-h-full flex-col rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-lg group-data-[side=bottom]/connector-popover:top-0 group-data-[side=top]/connector-popover:bottom-0",
-  );
-}
-
-function composerConnectorPopoverContentStyle(
-  enabled: boolean,
-): CSSProperties | undefined {
-  return enabled
-    ? {
-        boxShadow: "none",
-        height: "min(25rem, var(--available-height))",
-      }
-    : undefined;
-}
-
 function ConnectorsPopoverButton({
   signals,
   agentId,
@@ -8003,11 +7972,6 @@ function ConnectorsPopoverButton({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
-  const connectorAccountsEnabled = useGet(signals.connector.accounts.enabled$);
-  const stablePopoverPlacementEnabled =
-    useGet(featureSwitch$)[
-      FeatureSwitchKey.ComposerConnectorPopoverPlacement
-    ] ?? false;
   const accountPreferenceLoadable = useLastLoadable(
     signals.connector.accounts.preferenceState$,
   );
@@ -8035,8 +7999,6 @@ function ConnectorsPopoverButton({
     }),
   ];
   const showSearch = connectorItems.length > 20;
-  const stableConnectorPopoverLayoutEnabled =
-    stablePopoverPlacementEnabled && showSearch;
   const accountPreference =
     accountPreferenceLoadable.state === "hasData"
       ? accountPreferenceLoadable.data
@@ -8066,7 +8028,6 @@ function ConnectorsPopoverButton({
     });
   const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
     if (
-      !connectorAccountsEnabled ||
       !item.connector.authorized ||
       (item.kind === "custom" &&
         isIntegrationManagedCustomConnector(item.connector))
@@ -8172,212 +8133,193 @@ function ConnectorsPopoverButton({
         aria-label={t(($) => {
           return $.chat.connectors.title;
         })}
-        collisionAvoidance={composerConnectorCollisionAvoidance(
-          stableConnectorPopoverLayoutEnabled,
-        )}
-        className={composerConnectorPopoverContentClass(
-          stableConnectorPopoverLayoutEnabled,
-        )}
-        style={composerConnectorPopoverContentStyle(
-          stableConnectorPopoverLayoutEnabled,
-        )}
+        collisionAvoidance={{ fallbackAxisSide: "none" }}
+        className="flex max-h-[var(--available-height)] w-72 flex-col overflow-hidden p-0"
+        // Keep the search field and actions stationary as results change.
+        style={{ height: showSearch ? "25rem" : undefined }}
       >
-        <div
-          className={composerConnectorPopoverSurfaceClass(
-            stableConnectorPopoverLayoutEnabled,
-          )}
-        >
-          <div className="flex min-h-0 flex-col">
-            {(connectorItems.length > 0 || connectorsLoading) && (
-              <div className="flex min-h-0 flex-col py-1">
-                {showSearch && (
-                  <div className="px-3 py-1 border-b border-border/50">
-                    <input
-                      type="text"
-                      placeholder={t(($) => {
-                        return $.chat.connectors.find;
-                      })}
-                      value={search}
-                      onChange={(e) => {
-                        return updateConnectorUi({
-                          popoverSearch: e.target.value,
-                        });
-                      }}
-                      className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-                    />
-                  </div>
-                )}
-                {connectorsLoading ? (
-                  <div className="flex flex-col animate-pulse">
-                    {Array.from({ length: 3 }, (_, i) => {
-                      return (
-                        <div
-                          key={i}
-                          className="flex items-center gap-2 px-3 py-2"
-                        >
-                          <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                          <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
-                          <span className="h-3 w-6 rounded-full bg-muted/50" />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div
-                    role="list"
-                    aria-label={t(($) => {
-                      return $.chat.connectors.title;
-                    })}
-                    className="flex max-h-64 min-h-0 flex-col overflow-y-auto"
-                  >
-                    {visibleConnectors.map((item) => {
-                      if (item.kind === "custom") {
-                        const connector = item.connector;
-                        return (
-                          <ComposerConnectorAccessRow
-                            key={connector.id}
-                            icon={
-                              <CustomConnectorIcon
-                                id={connector.id}
-                                displayName={connector.displayName}
-                                size={16}
-                              />
-                            }
-                            connectorLabel={connector.displayName}
-                            actions={accountModeButton(item)}
-                            checked={connector.authorized}
-                            onCheckedChange={onDomEventFn(async (checked) => {
-                              await onToggleCustom(connector.id, checked);
-                            })}
-                            loading={savingCustomConnectorId === connector.id}
-                            ariaLabel={
-                              connector.authorized
-                                ? t(
-                                    ($) => {
-                                      return $.chat.connectors.remove;
-                                    },
-                                    {
-                                      connectorName: connector.displayName,
-                                    },
-                                  )
-                                : t(
-                                    ($) => {
-                                      return $.chat.connectors.add;
-                                    },
-                                    {
-                                      connectorName: connector.displayName,
-                                    },
-                                  )
-                            }
-                          />
-                        );
-                      }
-                      const connector = item.connector;
-                      const accountAction = accountModeButton(item);
-                      const showPermissionAction =
-                        Boolean(agentId) &&
-                        connector.authorized &&
-                        connector.permissionSummary.hasPermissions;
-                      return (
-                        <ComposerConnectorAccessRow
-                          key={connector.slug}
-                          icon={
-                            <ConnectorIcon icon={connector.icon} size={16} />
-                          }
-                          connectorLabel={connector.label}
-                          actions={
-                            showPermissionAction || accountAction ? (
-                              <>
-                                {accountAction}
-                                {showPermissionAction ? (
-                                  <PopoverClose asChild>
-                                    <Button
-                                      showTooltip
-                                      type="button"
-                                      onClick={() => {
-                                        updateConnectorUi({
-                                          permissionConnectorSlug:
-                                            connector.slug,
-                                        });
-                                      }}
-                                      aria-label={t(
-                                        ($) => {
-                                          return $.chat.connectors
-                                            .configurePermissions;
-                                        },
-                                        { connectorName: connector.label },
-                                      )}
-                                      variant="quiet"
-                                      size="icon-2xs"
-                                      className="shrink-0"
-                                    >
-                                      <SlidersHorizontal size={15} />
-                                    </Button>
-                                  </PopoverClose>
-                                ) : null}
-                              </>
-                            ) : null
-                          }
-                          checked={connector.authorized}
-                          onCheckedChange={onDomEventFn(async (checked) => {
-                            await onToggle(connector.slug, checked);
-                          })}
-                          loading={savingConnectorSlug === connector.slug}
-                          ariaLabel={
-                            connector.authorized
-                              ? t(
-                                  ($) => {
-                                    return $.chat.connectors.remove;
-                                  },
-                                  {
-                                    connectorName: connector.label,
-                                  },
-                                )
-                              : t(
-                                  ($) => {
-                                    return $.chat.connectors.add;
-                                  },
-                                  {
-                                    connectorName: connector.label,
-                                  },
-                                )
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+        {(connectorItems.length > 0 || connectorsLoading) && (
+          <div className="flex min-h-0 flex-1 flex-col py-1">
+            {showSearch && (
+              <div className="shrink-0 px-3 py-1 border-b border-border/50">
+                <input
+                  type="text"
+                  placeholder={t(($) => {
+                    return $.chat.connectors.find;
+                  })}
+                  value={search}
+                  onChange={(e) => {
+                    return updateConnectorUi({
+                      popoverSearch: e.target.value,
+                    });
+                  }}
+                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                />
               </div>
             )}
-            <div className="flex shrink-0 flex-col p-1">
-              {(connectorItems.length > 0 || connectorsLoading) && (
-                <div className="mx-2 mb-1 border-t border-border/50" />
-              )}
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-                onClick={() => {
-                  return onOpenAddDialog();
-                }}
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-                  <Plus size={13} />
-                </span>
-                {t(($) => {
-                  return $.chat.connectors.addConnectors;
+            {connectorsLoading ? (
+              <div className="flex flex-col animate-pulse">
+                {Array.from({ length: 3 }, (_, i) => {
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2">
+                      <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                      <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                      <span className="h-3 w-6 rounded-full bg-muted/50" />
+                    </div>
+                  );
                 })}
-              </button>
-            </div>
-            {computerUse && (
-              <ComputerUseConnectorMenuSection
-                computerUse={computerUse}
-                onOpenDownloadDialog={() => {
-                  setDownloadDialogOpen(true);
-                }}
-              />
+              </div>
+            ) : (
+              <div
+                role="list"
+                aria-label={t(($) => {
+                  return $.chat.connectors.title;
+                })}
+                className="flex max-h-64 min-h-0 flex-1 flex-col overflow-y-auto"
+              >
+                {visibleConnectors.map((item) => {
+                  if (item.kind === "custom") {
+                    const connector = item.connector;
+                    return (
+                      <ComposerConnectorAccessRow
+                        key={connector.id}
+                        icon={
+                          <CustomConnectorIcon
+                            id={connector.id}
+                            displayName={connector.displayName}
+                            size={16}
+                          />
+                        }
+                        connectorLabel={connector.displayName}
+                        actions={accountModeButton(item)}
+                        checked={connector.authorized}
+                        onCheckedChange={onDomEventFn(async (checked) => {
+                          await onToggleCustom(connector.id, checked);
+                        })}
+                        loading={savingCustomConnectorId === connector.id}
+                        ariaLabel={
+                          connector.authorized
+                            ? t(
+                                ($) => {
+                                  return $.chat.connectors.remove;
+                                },
+                                {
+                                  connectorName: connector.displayName,
+                                },
+                              )
+                            : t(
+                                ($) => {
+                                  return $.chat.connectors.add;
+                                },
+                                {
+                                  connectorName: connector.displayName,
+                                },
+                              )
+                        }
+                      />
+                    );
+                  }
+                  const connector = item.connector;
+                  const accountAction = accountModeButton(item);
+                  const showPermissionAction =
+                    Boolean(agentId) &&
+                    connector.authorized &&
+                    connector.permissionSummary.hasPermissions;
+                  return (
+                    <ComposerConnectorAccessRow
+                      key={connector.slug}
+                      icon={<ConnectorIcon icon={connector.icon} size={16} />}
+                      connectorLabel={connector.label}
+                      actions={
+                        showPermissionAction || accountAction ? (
+                          <>
+                            {accountAction}
+                            {showPermissionAction ? (
+                              <PopoverClose asChild>
+                                <Button
+                                  showTooltip
+                                  type="button"
+                                  onClick={() => {
+                                    updateConnectorUi({
+                                      permissionConnectorSlug: connector.slug,
+                                    });
+                                  }}
+                                  aria-label={t(
+                                    ($) => {
+                                      return $.chat.connectors
+                                        .configurePermissions;
+                                    },
+                                    { connectorName: connector.label },
+                                  )}
+                                  variant="quiet"
+                                  size="icon-2xs"
+                                  className="shrink-0"
+                                >
+                                  <SlidersHorizontal size={15} />
+                                </Button>
+                              </PopoverClose>
+                            ) : null}
+                          </>
+                        ) : null
+                      }
+                      checked={connector.authorized}
+                      onCheckedChange={onDomEventFn(async (checked) => {
+                        await onToggle(connector.slug, checked);
+                      })}
+                      loading={savingConnectorSlug === connector.slug}
+                      ariaLabel={
+                        connector.authorized
+                          ? t(
+                              ($) => {
+                                return $.chat.connectors.remove;
+                              },
+                              {
+                                connectorName: connector.label,
+                              },
+                            )
+                          : t(
+                              ($) => {
+                                return $.chat.connectors.add;
+                              },
+                              {
+                                connectorName: connector.label,
+                              },
+                            )
+                      }
+                    />
+                  );
+                })}
+              </div>
             )}
           </div>
+        )}
+        <div className="flex shrink-0 flex-col p-1">
+          {(connectorItems.length > 0 || connectorsLoading) && (
+            <div className="mx-2 mb-1 border-t border-border/50" />
+          )}
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+            onClick={() => {
+              return onOpenAddDialog();
+            }}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+              <Plus size={13} />
+            </span>
+            {t(($) => {
+              return $.chat.connectors.addConnectors;
+            })}
+          </button>
         </div>
+        {computerUse && (
+          <ComputerUseConnectorMenuSection
+            computerUse={computerUse}
+            onOpenDownloadDialog={() => {
+              setDownloadDialogOpen(true);
+            }}
+          />
+        )}
       </PopoverContent>
       {computerUse && (
         <ComputerUseDownloadDialog
@@ -8551,28 +8493,49 @@ function micButtonTooltip(status: MicButtonStatus): string {
   });
 }
 
-function MicButton({ signals }: { signals: ComposerSignals }) {
+function voiceDraftMicButtonStatus(
+  recording: boolean,
+  action: ComposerActions["voiceAction"],
+) {
+  return {
+    recording: recording && action !== "start",
+    starting: action === "start",
+    transcribing: action === "finish" || action === "retry",
+  };
+}
+
+function MicButton({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quotaState = useLoadableState(audioInputQuota$);
-  const quota = useLastResolved(audioInputQuota$) ?? null;
-  const quotaResolved = quota !== null;
-  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
-  const voiceDraftStatus = useGet(signals.voice.status$);
+  const quotaResolved = useLastResolved(audioInputQuota$) !== undefined;
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
+  const voiceDraftStatus = useResolved(signals.voice.state$)?.status;
   const sttRecording = useGet(sttRecording$);
-  const starting = useGet(sttStarting$);
+  const sttStarting = useGet(sttStarting$);
   const sttTranscribing = useGet(sttTranscribing$);
-  const recording = voiceDraftEnabled
-    ? voiceDraftStatus === "recording"
-    : sttRecording;
-  const transcribing = voiceDraftEnabled
-    ? voiceDraftStatus === "transcribing"
-    : sttTranscribing;
+  const capture = useGet(signals.voice.capture$);
+  const { recording, starting, transcribing } = voiceInputV2Enabled
+    ? voiceDraftMicButtonStatus(capture !== null, actions.voiceAction)
+    : {
+        recording: sttRecording,
+        starting: sttStarting,
+        transcribing: sttTranscribing,
+      };
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
-  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
-  const toggleVoiceInput = useSet(signals.voice.toggle$);
+
   const signal = useGet(pageSignal$);
-  const disabled = starting || transcribing || (!recording && !quotaResolved);
+  const disabled =
+    starting ||
+    transcribing ||
+    (voiceInputV2Enabled && voiceDraftStatus === undefined) ||
+    (!recording && !quotaResolved);
   const status = {
     recording,
     starting,
@@ -8585,7 +8548,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   }
 
   const handleClick = () => {
-    detach(toggleVoiceInput(signal), Reason.DomCallback);
+    detach(actions.voice("toggle", signal), Reason.DomCallback);
   };
 
   return (
@@ -8602,11 +8565,13 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
               (recording || starting || transcribing) &&
                 "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
             )}
+            data-composer-voice-toggle
             onClick={handleClick}
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
+            aria-busy={starting || transcribing}
             aria-keyshortcuts={
-              voiceInputShortcutEnabled
+              voiceInputV2Enabled
                 ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
                 : undefined
             }
@@ -8633,7 +8598,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {micButtonTooltip(status)}
-          {voiceInputShortcutEnabled
+          {voiceInputV2Enabled
             ? ` (${getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})`
             : null}
         </TooltipContent>
@@ -8653,22 +8618,76 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 
 function VoiceDraftFooter({
   signals,
+  actions,
   status,
+  recordingAvailable,
+  voiceMessage,
 }: {
   signals: ComposerSignals;
+  actions: ComposerActions;
   status: Exclude<ComposerVoiceInputStatus, "idle">;
+  recordingAvailable: boolean;
+  voiceMessage: string | undefined;
 }) {
   const { t } = useTranslation();
-  const recording = useGet(sttRecording$);
-  const starting = useGet(sttStarting$);
-  const recordingStartedAt = useGet(sttRecordingStartedAt$);
-  const toggleVoiceInput = useSet(signals.voice.toggle$);
-  const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
-  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
-  const signal = useGet(pageSignal$);
-  const processing = status === "transcribing";
+  const capture = useGet(signals.voice.capture$);
+  const recording = capture !== null;
+  const starting = actions.voiceAction === "start";
+  const recordingStartedAt = capture?.startedAt ?? null;
 
-  if (processing) {
+  const voiceLevelSamples = useGet(signals.voice.voiceLevelSamples$);
+  const signal = useGet(pageSignal$);
+
+  if (status === "failed") {
+    return (
+      <div className="flex min-h-8 w-full items-center gap-3">
+        <span
+          role="status"
+          className="min-w-0 flex-1 text-sm text-muted-foreground"
+        >
+          {voiceMessage ??
+            (recordingAvailable
+              ? t(($) => {
+                  return $.chat.voice.retryReady;
+                })
+              : t(($) => {
+                  return $.chat.voice.restoreFailed;
+                }))}
+        </span>
+        {recordingAvailable && (
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            aria-label={t(($) => {
+              return $.chat.voice.removeDraft;
+            })}
+            onClick={() => {
+              detach(actions.voice("discard", signal), Reason.DomCallback);
+            }}
+          >
+            <Trash2 size={16} />
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-w-14 shrink-0 bg-background"
+          data-composer-voice-toggle
+          onClick={() => {
+            detach(actions.voice("retry", signal), Reason.DomCallback);
+          }}
+        >
+          {t(($) => {
+            return $.chat.voice.retry;
+          })}
+        </Button>
+      </div>
+    );
+  }
+
+  if (status !== "recording") {
     return (
       <div
         className="flex min-h-8 w-full items-center justify-center gap-2.5 text-sm text-muted-foreground"
@@ -8676,9 +8695,13 @@ function VoiceDraftFooter({
       >
         <Loader2 size={16} className="animate-spin text-[#2E9E9F]" />
         <span>
-          {t(($) => {
-            return $.chat.voice.transcribingProgress;
-          })}
+          {status === "discarding"
+            ? t(($) => {
+                return $.chat.voice.discarding;
+              })
+            : t(($) => {
+                return $.chat.voice.transcribingProgress;
+              })}
         </span>
       </div>
     );
@@ -8712,14 +8735,11 @@ function VoiceDraftFooter({
         size="sm"
         className="ml-auto min-w-14 shrink-0 bg-background"
         aria-label={stopRecordingLabel}
-        aria-keyshortcuts={
-          voiceInputShortcutEnabled
-            ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
-            : undefined
-        }
+        data-composer-voice-toggle
+        aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
         disabled={starting || !recording}
         onClick={() => {
-          detach(toggleVoiceInput(signal), Reason.DomCallback);
+          detach(actions.voice("toggle", signal), Reason.DomCallback);
         }}
       >
         {t(($) => {
@@ -8889,24 +8909,26 @@ function useComposerTemplatePicker(
 
 function useComposerPrimaryAction(
   signals: ComposerSignals,
+  actions: ComposerActions,
 ): ComposerPrimaryAction {
-  const action =
-    useLastResolved(signals.submission.primaryAction$) ?? "disabled";
+  const action = useResolved(signals.submission.primaryAction$) ?? "disabled";
   const selectedModelOauthAvailable =
     useLastResolved(signals.model.selectedModelOauthAvailable$) ?? true;
-  return selectedModelOauthAvailable ? action : "disabled";
+  return selectedModelOauthAvailable &&
+    (!actions.submitting || action === "stop") &&
+    actions.voiceAction === null
+    ? action
+    : "disabled";
 }
 
 function startComposerSubmission(
   {
     action,
     activate,
-    completeVoiceInput,
     ensurePushSubscription,
   }: {
     action: ComposerPrimaryAction;
     activate: (signal: AbortSignal) => Promise<boolean>;
-    completeVoiceInput: (signal: AbortSignal) => Promise<void>;
     ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
   },
   signal: AbortSignal,
@@ -8917,13 +8939,7 @@ function startComposerSubmission(
   if (action === "send") {
     detach(ensurePushSubscription(signal), Reason.DomCallback);
   }
-  detach(
-    (async () => {
-      await completeVoiceInput(signal);
-      await activate(signal);
-    })(),
-    Reason.DomCallback,
-  );
+  detach(activate(signal), Reason.DomCallback);
 }
 
 function useComposerFileUpload(
@@ -8949,7 +8965,13 @@ function useComposerFileUpload(
   };
 }
 
-function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
+function ComposerInputSlot({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
@@ -8957,9 +8979,8 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
-  const primaryAction = useComposerPrimaryAction(signals);
-  const submitCurrentInput = useSet(signals.submission.submitCurrentInput$);
-  const completeVoiceInput = useSet(stopAndTranscribe$);
+  const primaryAction = useComposerPrimaryAction(signals, actions);
+
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const sendModeLoadable = useLastLoadable(sendMode$);
@@ -9027,9 +9048,8 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
       {
         action: primaryAction,
         activate: (signal) => {
-          return submitCurrentInput(primaryAction, signal);
+          return actions.submit(primaryAction, signal);
         },
-        completeVoiceInput,
         ensurePushSubscription,
       },
       rootSignal,
@@ -9108,12 +9128,15 @@ function ComposerSendButton({
   );
 }
 
-function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
-  const action = useComposerPrimaryAction(signals);
-  const activatePrimaryAction = useSet(
-    signals.submission.activatePrimaryAction$,
-  );
-  const completeVoiceInput = useSet(stopAndTranscribe$);
+function ComposerSendControl({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
+  const action = useComposerPrimaryAction(signals, actions);
+  const activatePrimaryAction = actions.submit;
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
   const activate = () => {
@@ -9127,7 +9150,6 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
         activate: (signal) => {
           return activatePrimaryAction(action, signal);
         },
-        completeVoiceInput,
         ensurePushSubscription,
       },
       rootSignal,
@@ -10553,13 +10575,39 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerFooter({ signals }: { signals: ComposerSignals }) {
-  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
-  const voiceDraftStatus = useGet(signals.voice.status$);
+function ComposerFooter({
+  signals,
+  actions,
+}: {
+  signals: ComposerSignals;
+  actions: ComposerActions;
+}) {
+  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
+  const voiceDraft = useResolved(signals.voice.state$);
+  const capture = useGet(signals.voice.capture$);
+  const status =
+    actions.voiceAction === "start"
+      ? "idle"
+      : actions.voiceAction === "discard"
+        ? "discarding"
+        : actions.voiceAction === "finish" || actions.voiceAction === "retry"
+          ? "transcribing"
+          : capture
+            ? "recording"
+            : voiceDraft?.status;
   return (
     <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
-      {voiceDraftEnabled && voiceDraftStatus !== "idle" ? (
-        <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
+      {voiceInputV2Enabled &&
+      status &&
+      status !== "idle" &&
+      (status !== "recording" || capture) ? (
+        <VoiceDraftFooter
+          signals={signals}
+          actions={actions}
+          status={status}
+          recordingAvailable={Boolean(voiceDraft?.recording)}
+          voiceMessage={voiceDraft?.message}
+        />
       ) : (
         <>
           <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
@@ -10574,8 +10622,8 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
             <ComposerModelPickerSlot signals={signals} />
-            <MicButton signals={signals} />
-            <ComposerSendControl signals={signals} />
+            <MicButton signals={signals} actions={actions} />
+            <ComposerSendControl signals={signals} actions={actions} />
           </div>
         </>
       )}
@@ -10584,6 +10632,7 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
 }
 
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
+  const actions = useComposerActions(signals);
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
@@ -10617,14 +10666,14 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       }}
     >
       <CardContent className="p-0">
-        <div className="flex flex-col">
+        <div ref={actions.bind} className="flex flex-col">
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
-          <ComposerInputSlot signals={signals} />
+          <ComposerInputSlot signals={signals} actions={actions} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}
-          <ComposerFooter signals={signals} />
+          <ComposerFooter signals={signals} actions={actions} />
         </div>
       </CardContent>
     </Card>

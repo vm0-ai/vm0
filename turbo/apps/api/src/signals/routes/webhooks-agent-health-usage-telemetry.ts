@@ -3,6 +3,7 @@ import {
   webhookHeartbeatContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
+  webhookPiMemoryPhase2UsageContract,
   type RunnerPreSpawnConcurrencyBucket,
   type RunnerResourceBudgetLeaseCountBucket,
   type RunnerResourceBudgetUtilizationBucket,
@@ -10,6 +11,7 @@ import {
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
@@ -34,6 +36,8 @@ import {
   unauthorizedRunMismatch,
 } from "./agent-webhook-auth";
 import { usageUnderbillingFields } from "../usage-underbilling";
+import { piMemoryPhase2MaintenanceCallbackPayloadSchema } from "../services/pi-memory-phase2-maintenance.service";
+import { recordPiMemoryPhase2Usage } from "../services/pi-memory-phase2-usage.service";
 
 const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
@@ -216,6 +220,53 @@ const heartbeat$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const usageEventBody$ = bodyResultOf(webhookUsageEventContract.send);
+const maintenanceUsageBody$ = bodyResultOf(
+  webhookPiMemoryPhase2UsageContract.send,
+);
+const maintenanceUsage$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const result = await get(maintenanceUsageBody$);
+  signal.throwIfAborted();
+  if (!result.ok) {
+    return result.response;
+  }
+  const body = result.data;
+  const auth = getSandboxAuthForRun(body.runId, get(authorization$));
+  if (!auth) {
+    return unauthorizedRunMismatch;
+  }
+  const db = set(writeDb$);
+  const [callback] = await db
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, auth.runId),
+        eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  const binding = piMemoryPhase2MaintenanceCallbackPayloadSchema.safeParse(
+    callback?.payload,
+  );
+  if (
+    !binding.success ||
+    binding.data.orgId !== auth.orgId ||
+    binding.data.userId !== auth.userId ||
+    binding.data.memoryStorageId !== body.memoryStorageId ||
+    binding.data.leaseToken !== body.leaseToken ||
+    binding.data.claimedRevision !== body.claimedRevision ||
+    binding.data.claimedBaseVersionId !== body.claimedBaseVersionId ||
+    binding.data.selectionDigest !== body.selectionDigest
+  ) {
+    return notFound("Pi memory maintenance usage binding not found");
+  }
+  for (const attempt of body.attempts) {
+    await recordPiMemoryPhase2Usage(db, { ...binding.data, ...attempt });
+    signal.throwIfAborted();
+  }
+  return { status: 200 as const, body: { success: true } };
+});
 const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(usageEventBody$);
   signal.throwIfAborted();
@@ -454,6 +505,10 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
 });
 
 export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
+  {
+    route: webhookPiMemoryPhase2UsageContract.send,
+    handler: maintenanceUsage$,
+  },
   {
     route: webhookHeartbeatContract.send,
     handler: heartbeat$,

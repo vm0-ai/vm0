@@ -100,22 +100,6 @@ function customConnectorValuesClient() {
   return setupApp({ context, routes })(customConnectorValuesContract);
 }
 
-async function setConnectorAccountsEnabled(
-  fixture: Fixture,
-  enabled: boolean,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    featureClient().update({
-      headers: authHeaders(),
-      body: {
-        switches: { [FeatureSwitchKey.ConnectorAccounts]: enabled },
-      },
-    }),
-    [200],
-  );
-}
-
 async function cleanupFixture(fixture: Fixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   for (const connectorSlug of ["openai", "github"] as const) {
@@ -207,15 +191,14 @@ describe("connector account lifecycle routes", () => {
     return fixture;
   }
 
-  it("hides canonical account resources while the feature is disabled", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, false);
+  it("exposes canonical account resources without feature setup", async () => {
+    await seedFixture();
     const response = await accept(
       accountClient().summaries({ headers: authHeaders() }),
-      [404],
+      [200],
     );
 
-    expect(response.body.error.message).toBe("Resource not found");
+    expect(response.body.summaries).toStrictEqual([]);
     const exact = await accept(
       accountClient().connection({
         headers: authHeaders(),
@@ -224,15 +207,15 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-    expect(exact.body.error.message).toBe("Resource not found");
+    expect(exact.body.error.message).toBe("Connector account not found");
     const inspection = await accept(
       accountClient().inspect({
         headers: authHeaders(),
         body: { selections: [] },
       }),
-      [404],
+      [200],
     );
-    expect(inspection.body.error.message).toBe("Resource not found");
+    expect(inspection.body.results).toStrictEqual([]);
     const scopeDiff = await accept(
       accountClient().scopeDiff({
         headers: authHeaders(),
@@ -241,12 +224,11 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-    expect(scopeDiff.body.error.message).toBe("Resource not found");
+    expect(scopeDiff.body.error.message).toBe("Connector account not found");
   });
 
   it("reviews requested scopes for one exact account across default changes", async () => {
     const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
     const currentScopes = ["repo", "project", "workflow"] as const;
     const staleId = await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
@@ -401,8 +383,7 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-    const foreign = await seedFixture();
-    await setConnectorAccountsEnabled(foreign, true);
+    await seedFixture();
     await accept(
       accountClient().scopeDiff({
         headers: authHeaders(),
@@ -432,8 +413,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("inspects only exact owned accounts without leaking credentials", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
     const connected = await accept(
       connectorClient().connect({
         headers: authHeaders(),
@@ -499,7 +479,6 @@ describe("connector account lifecycle routes", () => {
 
   it("requires connector read capability for account inspection", async () => {
     const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
     mockClerkMembership(
       context,
       {
@@ -537,8 +516,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("accepts one bounded inspection batch and rejects a larger one", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
     const selection = {
       connectionId: randomUUID(),
       target: { kind: "builtin" as const, connectorSlug: "openai" },
@@ -583,8 +561,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("adds siblings and manages exact default and deletion lifecycle", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const first = await accept(
       connectorClient().connect({
@@ -777,8 +754,7 @@ describe("connector account lifecycle routes", () => {
   });
 
   it("keeps concurrent sibling creation to exactly one default", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const responses = await Promise.all(
       ["Concurrent A", "Concurrent B"].map((displayName) => {
@@ -807,17 +783,6 @@ describe("connector account lifecycle routes", () => {
     );
     expect(accounts.body.connections).toHaveLength(2);
 
-    const disconnect = await accept(
-      accountClient().disconnectSingleAccount({
-        headers: authHeaders(),
-        body: { target: { kind: "builtin", connectorSlug: "openai" } },
-      }),
-      [409],
-    );
-    expect(disconnect.body.error.message).toBe(
-      "Multiple connector accounts require an exact choice",
-    );
-
     const preserved = await accept(
       accountClient().connections({
         headers: authHeaders(),
@@ -833,165 +798,8 @@ describe("connector account lifecycle routes", () => {
     ).toHaveLength(1);
   });
 
-  it("reuses an explicit single account and rejects an ambiguous target", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
-
-    const first = await accept(
-      connectorClient().connect({
-        headers: authHeaders(),
-        params: { connectorSlug: "openai" },
-        body: {
-          authMethod: "api-token",
-          account: { intent: "single-account" },
-          values: { apiKey: "sk-single-first" },
-        },
-      }),
-      [200],
-    );
-    const replaced = await accept(
-      connectorClient().connect({
-        headers: authHeaders(),
-        params: { connectorSlug: "openai" },
-        body: {
-          authMethod: "api-token",
-          account: { intent: "single-account" },
-          values: { apiKey: "sk-single-replaced" },
-        },
-      }),
-      [200],
-    );
-    expect(replaced.body.id).toBe(first.body.id);
-
-    const sibling = await accept(
-      connectorClient().connect({
-        headers: authHeaders(),
-        params: { connectorSlug: "openai" },
-        body: {
-          authMethod: "api-token",
-          account: { intent: "add", displayName: "Sibling" },
-          values: { apiKey: "sk-single-sibling" },
-        },
-      }),
-      [200],
-    );
-    expect(sibling.body.id).not.toBe(first.body.id);
-
-    const ambiguous = await accept(
-      connectorClient().connect({
-        headers: authHeaders(),
-        params: { connectorSlug: "openai" },
-        body: {
-          authMethod: "api-token",
-          account: { intent: "single-account" },
-          values: { apiKey: "sk-single-ambiguous" },
-        },
-      }),
-      [409],
-    );
-    expect(ambiguous.body.error.message).toBe(
-      "Multiple connector accounts require an exact choice",
-    );
-
-    const omittedIntent = await accept(
-      connectorClient().connect({
-        headers: authHeaders(),
-        params: { connectorSlug: "openai" },
-        body: {
-          authMethod: "api-token",
-          values: { apiKey: "sk-omitted-ambiguous" },
-        },
-      }),
-      [409],
-    );
-    expect(omittedIntent.body.error.message).toBe(
-      "Multiple connector accounts require an exact choice",
-    );
-
-    const accounts = await accept(
-      accountClient().connections({
-        headers: authHeaders(),
-        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
-      }),
-      [200],
-    );
-    expect(accounts.body.connections).toHaveLength(2);
-  });
-
-  it("serializes concurrent single-account writes and disconnects", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
-
-    const responses = await Promise.all(
-      ["first", "second"].map((suffix) => {
-        return accept(
-          connectorClient().connect({
-            headers: authHeaders(),
-            params: { connectorSlug: "openai" },
-            body: {
-              authMethod: "api-token",
-              account: { intent: "single-account" },
-              values: { apiKey: `sk-single-concurrent-${suffix}` },
-            },
-          }),
-          [200],
-        );
-      }),
-    );
-    expect(
-      responses.map((response) => {
-        return response.status;
-      }),
-    ).toStrictEqual([200, 200]);
-    expect(responses[1]?.body.id).toBe(responses[0]?.body.id);
-
-    const accounts = await accept(
-      accountClient().connections({
-        headers: authHeaders(),
-        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
-      }),
-      [200],
-    );
-    expect(accounts.body.connections).toHaveLength(1);
-    expect(accounts.body.connections[0]).toMatchObject({
-      id: responses[0]?.body.id,
-      displayName: null,
-      isDefault: true,
-    });
-
-    const disconnects = await Promise.all([
-      accountClient().disconnectSingleAccount({
-        headers: authHeaders(),
-        body: { target: { kind: "builtin", connectorSlug: "openai" } },
-      }),
-      accountClient().disconnectSingleAccount({
-        headers: authHeaders(),
-        body: { target: { kind: "builtin", connectorSlug: "openai" } },
-      }),
-    ]);
-    expect(
-      disconnects
-        .map((response) => {
-          return response.status;
-        })
-        .sort((left, right) => {
-          return left - right;
-        }),
-    ).toStrictEqual([204, 404]);
-
-    const disconnectedAccounts = await accept(
-      accountClient().connections({
-        headers: authHeaders(),
-        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
-      }),
-      [200],
-    );
-    expect(disconnectedAccounts.body.connections).toStrictEqual([]);
-  });
-
   it("paginates and searches more than one hundred accounts", async () => {
-    const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
+    await seedFixture();
 
     const createdAccountIds: string[] = [];
     for (let index = 0; index < 101; index += 1) {
@@ -1132,7 +940,6 @@ describe("connector account lifecycle routes", () => {
 
   it("does not enumerate or mutate another member account", async () => {
     const owner = await seedFixture();
-    await setConnectorAccountsEnabled(owner, true);
     const account = await accept(
       connectorClient().connect({
         headers: authHeaders(),
@@ -1146,7 +953,6 @@ describe("connector account lifecycle routes", () => {
       [200],
     );
     const other = await seedFixture({ orgId: owner.orgId });
-    await setConnectorAccountsEnabled(other, true);
     mocks.clerk.session(other.userId, other.orgId);
 
     const listed = await accept(
@@ -1203,8 +1009,7 @@ describe("connector account lifecycle routes", () => {
       [404],
     );
 
-    const outsider = await seedFixture();
-    await setConnectorAccountsEnabled(outsider, true);
+    await seedFixture();
     const crossOrganization = await accept(
       accountClient().inspect({
         headers: authHeaders(),
@@ -1224,7 +1029,6 @@ describe("connector account lifecycle routes", () => {
 
   it("treats a removed built-in catalog target as absent", async () => {
     const fixture = await seedFixture();
-    await setConnectorAccountsEnabled(fixture, true);
     const accountId = await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -1312,7 +1116,6 @@ describe("connector account lifecycle routes", () => {
           headers: authHeaders(),
           body: {
             switches: {
-              [FeatureSwitchKey.ConnectorAccounts]: true,
               [FeatureSwitchKey.CustomConnectorMcp]: true,
             },
           },
@@ -1448,7 +1251,6 @@ describe("connector account lifecycle routes", () => {
           headers: authHeaders(),
           body: {
             switches: {
-              [FeatureSwitchKey.ConnectorAccounts]: true,
               [FeatureSwitchKey.CustomConnectorMcp]: true,
             },
           },
@@ -1570,22 +1372,6 @@ describe("connector account lifecycle routes", () => {
         },
       ]);
 
-      const safeDisconnect = await accept(
-        accountClient().disconnectSingleAccount({
-          headers: authHeaders(),
-          body: {
-            target: {
-              kind: "custom",
-              customConnectorId: definition.body.id,
-            },
-          },
-        }),
-        [409],
-      );
-      expect(safeDisconnect.body.error.message).toBe(
-        "Multiple connector accounts require an exact choice",
-      );
-
       const work = accounts.body.connections.find((account) => {
         return account.displayName === null;
       });
@@ -1690,9 +1476,10 @@ describe("connector account lifecycle routes", () => {
         { id: work.id, displayName: null, isDefault: true },
       ]);
 
-      const disconnects = await Promise.all([
-        accountClient().disconnectSingleAccount({
+      await accept(
+        accountClient().delete({
           headers: authHeaders(),
+          params: { connectionId: work.id },
           body: {
             target: {
               kind: "custom",
@@ -1700,25 +1487,8 @@ describe("connector account lifecycle routes", () => {
             },
           },
         }),
-        accountClient().disconnectSingleAccount({
-          headers: authHeaders(),
-          body: {
-            target: {
-              kind: "custom",
-              customConnectorId: definition.body.id,
-            },
-          },
-        }),
-      ]);
-      expect(
-        disconnects
-          .map((response) => {
-            return response.status;
-          })
-          .sort((left, right) => {
-            return left - right;
-          }),
-      ).toStrictEqual([204, 404]);
+        [200],
+      );
       const disconnected = await accept(
         accountClient().connections({
           headers: authHeaders(),

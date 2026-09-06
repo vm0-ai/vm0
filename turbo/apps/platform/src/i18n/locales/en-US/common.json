@@ -1006,6 +1006,20 @@
       "accessNotAllowed": "Access is not allowed.",
       "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Desktop is signed in. You can close this window.",
+        "connecting": "Connecting your desktop session.",
+        "consumed": "Finishing sign-in in Desktop. Keep this window open.",
+        "failed": "Sign-in could not finish. Start again from Desktop, or retry in this browser.",
+        "no-workspaces": "Create or join a workspace in the web app, then sign in again from Desktop.",
+        "pending": "Open Desktop to continue signing in.",
+        "selecting": "Choose a workspace for this computer."
+      },
+      "reopen": "Open Desktop",
+      "retry": "Try again",
+      "title": "Sign in to Desktop"
+    },
     "documentTitles": {
       "signIn": "Sign in",
       "signUp": "Sign up"
@@ -2239,14 +2253,20 @@
       "draft": "Draft",
       "empty": "Start a conversation and it'll show up here",
       "markUnread": "Mark unread",
+      "movePinDown": "Move down",
+      "movePinUp": "Move up",
       "newChatWith": "New chat with {{agentName}}",
       "noUnread": "No unread chats",
       "openChatMenu": "Open chat menu",
       "openListMenu": "Open chat list menu",
       "pin": "Pin chat",
+      "pinDropAfter": "Drop after {{title}}",
+      "pinDropBefore": "Drop before {{title}}",
       "pinned": "Pinned",
       "rename": "Rename chat",
       "renameDescription": "Enter a new name for this chat thread.",
+      "reorderInstructions": "Drag to reorder. Press Space to pick up, arrow keys to move, Space to drop, or Escape to cancel.",
+      "reorderThread": "Reorder {{title}}",
       "titlePlaceholder": "Chat title",
       "unpin": "Unpin chat",
       "unread": "Unread",
@@ -2369,7 +2389,9 @@
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",
+      "cleanupFailed": "Text was added, but the saved recording could not be removed.",
       "confirmRecording": "OK",
+      "discarding": "Removing voice draft...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
       "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
@@ -2378,8 +2400,13 @@
       "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
+      "removeDraft": "Remove voice draft",
+      "restoreFailed": "Couldn’t load your voice draft. Try again.",
+      "retry": "Retry",
+      "retryReady": "Your recording is kept. Retry transcription.",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
+      "storageFailed": "Audio could not be saved. Retry can recover only audio already saved on this device.",
       "transcribing": "Transcribing",
       "transcribingProgress": "Transcribing...",
       "transcriptionFailed": "Voice transcription failed. Try again."
@@ -2728,12 +2755,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "More options",
-      "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
-        "disconnected": "Disconnected",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3237,15 +3262,13 @@
       "redirectTitle": "Redirecting to {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connected",
-      "disconnected": "{{connector}} disconnected"
+      "connected": "{{connector}} connected"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Request failed",
-      "sharedDatabaseUnavailable": "The app ran into a problem. Please wait a moment, then refresh the page to try again."
+      "requestFailed": "Request failed"
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page.",
@@ -4991,6 +5014,7 @@
         "remaining_one": "{{value}} reset left",
         "remaining_other": "{{value}} resets left",
         "remainingUnavailable": "Resets left unavailable",
+        "remainingUnknown": "Resets —",
         "remainingWithExpiry_one": "{{value}} reset left · expires {{expiry}}",
         "remainingWithExpiry_other": "{{value}} resets left · expires {{expiry}}",
         "title": "Reset Codex usage?"
@@ -5115,6 +5139,32 @@
           "workerLoading": "Loading",
           "workerTitle": "Shared worker connection diagnostics",
           "workerUnavailable": "Unavailable"
+        },
+        "indexedDb": {
+          "countExplanation": "Counts use read-only transactions and do not read record bodies.",
+          "description": "Inspect record counts in the local chat cache owned by the shared worker.",
+          "loading": "Loading IndexedDB storage...",
+          "measurementUnavailable": "Snapshot measurement failed. Try again.",
+          "measureSnapshot": "Measure snapshot",
+          "measuring": "Measuring...",
+          "records": "records",
+          "refresh": "Refresh",
+          "schema": "schema",
+          "snapshotDescription": "One record can contain many threads. Size estimates UTF-8 JSON, excluding database overhead; read time excludes size estimation.",
+          "snapshotEmpty": "No cached thread snapshot.",
+          "snapshotPayload": "Estimated payload",
+          "snapshotReadDuration": "IndexedDB read time",
+          "snapshotThreads": "Threads in snapshot",
+          "snapshotTitle": "Thread snapshot",
+          "stores": "object stores",
+          "title": "IndexedDB storage",
+          "unavailable": "IndexedDB storage is unavailable."
+        },
+        "voiceInput": {
+          "default": "Default ({{model}})",
+          "description": "Choose the model for voice input v2. Speech-to-text models and GPT Audio recordings over 90 seconds use {{model}} for cleanup.",
+          "title": "Voice input model",
+          "unavailable": "Unavailable model ({{model}})"
         }
       },
       "language": {

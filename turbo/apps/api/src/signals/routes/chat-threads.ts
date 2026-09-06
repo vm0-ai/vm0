@@ -53,6 +53,7 @@ import { chatThreadModelSelectionRoutes } from "./chat-threads-model-selection";
 import { chatThreadVideoModelRoutes } from "./chat-threads-video-model";
 import { chatThreadPatchRoutes } from "./chat-threads-patch";
 import { chatThreadPinRoutes } from "./chat-threads-pin";
+import { chatThreadPinOrderRoutes } from "./chat-threads-pin-order";
 import { chatThreadRenameRoutes } from "./chat-threads-rename";
 import { chatThreadUnpinRoutes } from "./chat-threads-unpin";
 
@@ -477,6 +478,7 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
   ...chatThreadModelSelectionRoutes,
   ...chatThreadPatchRoutes,
   ...chatThreadPinRoutes,
+  ...chatThreadPinOrderRoutes,
   ...chatThreadRenameRoutes,
   ...chatThreadUnpinRoutes,
   ...chatThreadVideoModelRoutes,

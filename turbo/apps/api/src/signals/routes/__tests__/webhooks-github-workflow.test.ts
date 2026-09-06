@@ -797,10 +797,10 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     {
       name: "renamed official App",
       storedAppId: "123456",
-      storedAppSlug: "vm0-test",
+      storedAppSlug: "okou-test",
       expectedAppId: "123456",
       expectedBotUsername: "@okou[bot]",
-      excludedBotUsername: "@vm0-test[bot]",
+      excludedBotUsername: "@okou-test[bot]",
       subjectNumber: 81_001,
     },
     {
@@ -809,7 +809,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       storedAppSlug: null,
       expectedAppId: "123456",
       expectedBotUsername: "@okou[bot]",
-      excludedBotUsername: "@vm0-test[bot]",
+      excludedBotUsername: "@okou-test[bot]",
       subjectNumber: 81_002,
     },
     {
@@ -1182,14 +1182,14 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         }),
       );
       for (const actionType of [
-        "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-        "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
-        "api_dispatch_pre_create_zero_automation_event_background_start_gap",
-        "api_dispatch_pre_create_zero_automation_event_load_source_state",
-        "api_dispatch_pre_create_zero_automation_event_load_automations",
-        "api_dispatch_pre_create_zero_automation_event_match_automations",
-        "api_dispatch_pre_create_zero_automation_event_record_processed_event",
-        "api_dispatch_pre_create_zero_automation_event_handoff_run",
+        "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
+        "api_dispatch_pre_create_agent_workflow_automation_queue_admission",
+        "api_dispatch_pre_create_agent_automation_event_background_start_gap",
+        "api_dispatch_pre_create_agent_automation_event_load_source_state",
+        "api_dispatch_pre_create_agent_automation_event_load_automations",
+        "api_dispatch_pre_create_agent_automation_event_match_automations",
+        "api_dispatch_pre_create_agent_automation_event_record_processed_event",
+        "api_dispatch_pre_create_agent_automation_event_handoff_run",
       ]) {
         expect(actionTypes).toContain(actionType);
       }
@@ -1197,7 +1197,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         expect.arrayContaining([
           expect.objectContaining({
             op_type:
-              "api_dispatch_pre_create_zero_automation_event_handoff_run",
+              "api_dispatch_pre_create_agent_automation_event_handoff_run",
             automation_event_source: "github",
             trigger_source: "automation-event",
             agent_run_origin: "workflow_automation",

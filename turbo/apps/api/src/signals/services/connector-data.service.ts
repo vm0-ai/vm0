@@ -110,10 +110,6 @@ import {
   type ConnectorConnectionMutationResolution,
   type StoredConnectorConnectionRow as StoredConnectorRow,
 } from "./connector-connection-write.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  normalizeConnectorAccountMutation,
-} from "./connector-account-mutation.service";
 import { reprojectWorkflowAutomationsForOwner } from "./workflow-automation-account-projection.service";
 
 const log = logger("api:connector-data");
@@ -187,7 +183,7 @@ export function connectorConnectionWriteFailureMessage(
       return "Multiple connector accounts require an exact choice";
     }
     case "siblingDisabled": {
-      return "Additional connector accounts are not enabled yet";
+      return "This connector does not support additional accounts";
     }
   }
 }
@@ -909,7 +905,7 @@ async function reconcileAccountBoundAutomationWatches(
 }
 
 type ConnectorAccountForDeletion =
-  | { readonly kind: "missing" | "ambiguous" }
+  | { readonly kind: "missing" }
   | {
       readonly kind: "resolved";
       readonly connector: {
@@ -925,7 +921,7 @@ async function loadConnectorAccountForDeletion(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorSlug: string;
-    readonly sourceId?: string;
+    readonly sourceId: string;
   },
   signal: AbortSignal,
 ): Promise<ConnectorAccountForDeletion> {
@@ -934,15 +930,10 @@ async function loadConnectorAccountForDeletion(
     userId: args.userId,
     request: {
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
-      selection: args.sourceId
-        ? { kind: "exact", sourceId: args.sourceId }
-        : { kind: "target-only-client-singleton" },
+      selection: { kind: "exact", sourceId: args.sourceId },
     },
   });
   signal.throwIfAborted();
-  if (resolution.kind === "ambiguous") {
-    return { kind: "ambiguous" };
-  }
   if (resolution.kind !== "resolved") {
     return { kind: "missing" };
   }
@@ -983,22 +974,8 @@ async function prepareBuiltinConnectorAccountDeletion(
   );
 }
 
-function completedConnectorDeletionResult(
-  exactAccount: boolean,
-  deletion: {
-    readonly resolvedSelectionCount: number;
-    readonly promotedDefaultConnectionId: string | null;
-  },
-) {
-  return exactAccount
-    ? { kind: "deleted" as const, ...deletion }
-    : ("deleted" as const);
-}
-
 type DeleteConnectorLocalStateResult =
-  | "deleted"
   | "missing"
-  | "ambiguous"
   | {
       readonly kind: "deleted";
       readonly resolvedSelectionCount: number;
@@ -1009,7 +986,7 @@ interface DeleteConnectorLocalStateArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorSlug: string;
-  readonly sourceId?: string;
+  readonly sourceId: string;
   readonly snapshot?: ConnectorRuntimeSnapshot | null;
 }
 
@@ -1333,10 +1310,12 @@ export const deleteConnectorLocalState$ = command(
     }
     signal.throwIfAborted();
 
-    return completedConnectorDeletionResult(
-      args.sourceId !== undefined,
-      deleteResult.deletion,
-    );
+    return {
+      kind: "deleted",
+      resolvedSelectionCount: deleteResult.deletion.resolvedSelectionCount,
+      promotedDefaultConnectionId:
+        deleteResult.deletion.promotedDefaultConnectionId,
+    };
   },
 );
 
@@ -1484,7 +1463,7 @@ async function commitManualGrantConnector(
     readonly userId: string;
     readonly runtimeMethod: ConnectorRuntimeMethod;
     readonly snapshot: ConnectorRuntimeSnapshot;
-    readonly account?: ConnectorAccountMutationIntent;
+    readonly account: ConnectorAccountMutationIntent;
     readonly prepared: PreparedManualGrantConnect;
     readonly encryptedSecrets: readonly EncryptedManualGrantSecret[];
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -1505,10 +1484,8 @@ async function commitManualGrantConnector(
       kind: "builtin",
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
-    mutation: normalizeConnectorAccountMutation(args.account),
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    mutation: args.account,
+    allowSiblings: true,
   });
   signal.throwIfAborted();
   if (resolution.kind !== "ready") {
@@ -1595,7 +1572,7 @@ export const connectManualGrantConnector$ = command(
       readonly runtimeMethod: ConnectorRuntimeMethod;
       readonly snapshot: ConnectorRuntimeSnapshot;
       readonly values: Readonly<Record<string, string>>;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<ConnectManualGrantConnectorResult> => {
@@ -1675,7 +1652,7 @@ export const connectNoAuthConnector$ = command(
       readonly userId: string;
       readonly runtimeMethod: ConnectorRuntimeMethod;
       readonly snapshot: ConnectorRuntimeSnapshot;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
     },
     signal: AbortSignal,
   ): Promise<ConnectNoAuthConnectorResult> => {
@@ -1698,9 +1675,8 @@ export const connectNoAuthConnector$ = command(
           kind: "builtin",
           connectorSlug: args.runtimeMethod.connectorSlug,
         },
-        mutation: normalizeConnectorAccountMutation(args.account),
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        mutation: args.account,
+        allowSiblings: true,
       });
       signal.throwIfAborted();
       if (resolution.kind !== "ready") {
@@ -2169,12 +2145,12 @@ async function upsertPreparedConnectorTokenState(
 }
 
 function isExplicitReconnectIdentityMismatch(args: {
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
   readonly existing: StoredConnectorRow | null;
   readonly nextExternalId: string;
 }): boolean {
   return (
-    args.account?.intent === "reconnect" &&
+    args.account.intent === "reconnect" &&
     args.existing?.externalId !== null &&
     args.existing?.externalId !== undefined &&
     args.existing.externalId !== args.nextExternalId
@@ -2226,7 +2202,7 @@ async function loadPendingConnectorTokenRevokeForTokenConnect(
 }
 
 function authorizedExternalIdForMutation(args: {
-  readonly mutation: ReturnType<typeof normalizeConnectorAccountMutation>;
+  readonly mutation: ConnectorAccountMutationIntent;
   readonly matchExistingExternalIdentity: boolean | undefined;
   readonly externalId: string;
 }): string | undefined {
@@ -2247,7 +2223,7 @@ interface CommitConnectorTokenConnectionArgs {
   readonly oauthRequestedScopes: readonly string[];
   readonly oauthGrantedScopes: readonly string[];
   readonly tokenExpiresAt: Date | null;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: ConnectorAccountMutationIntent;
   readonly matchExistingExternalIdentity?: boolean;
   readonly insertConnectionId?: string;
 }
@@ -2351,7 +2327,7 @@ async function commitConnectorTokenConnection(
   | ConnectorConnectionMutationFailure
   | { readonly status: "identityMismatch" }
 > {
-  const mutation = normalizeConnectorAccountMutation(args.account);
+  const mutation = args.account;
   const resolution = await resolveConnectorConnectionMutation(args.db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -2360,9 +2336,7 @@ async function commitConnectorTokenConnection(
       connectorSlug: args.runtimeMethod.connectorSlug,
     },
     mutation,
-    allowSiblings: connectorAccountSiblingWritesEnabled(
-      args.featureSwitchContext,
-    ),
+    allowSiblings: true,
     matchExternalId: authorizedExternalIdForMutation({
       mutation,
       matchExistingExternalIdentity: args.matchExistingExternalIdentity,
@@ -2471,7 +2445,7 @@ export const upsertConnectorTokenConnection$ = command(
       readonly oauthGrantedScopes: readonly string[];
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
-      readonly account?: ConnectorAccountMutationIntent;
+      readonly account: ConnectorAccountMutationIntent;
       readonly matchExistingExternalIdentity?: boolean;
       readonly insertConnectionId?: string;
     },

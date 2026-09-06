@@ -5,8 +5,8 @@ import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getProviderRuntimeModel,
-  getVm0ConcreteProviderType,
-  getVm0Vendor,
+  getBuiltInConcreteProviderType,
+  getBuiltInVendor,
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -18,7 +18,7 @@ import {
   type ConnectorRuntimeSyncResult,
   type ExecutionContext,
   type Job as RunnerJob,
-  type PiModelConfigV2,
+  type PiModelConfig,
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -153,13 +153,13 @@ import {
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
-  seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
-  seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
+  seedBuiltInDefaultModelKey as seedBuiltInDefaultModelKeyState,
+  seedBuiltInModelKey as seedBuiltInModelKeyState,
   setCustomConnectorAuthTemplateFixture,
   setRunModelProviderStateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
-  setRunnerJobPiContextAsV2Writer,
+  setRunnerJobPiContextAsVersionedWriter,
 } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import {
@@ -412,10 +412,11 @@ const CONNECTOR_CATALOG_RAW_SIZE_BUCKETS = [
   "4_8_mib",
   "8_16_mib",
   "16_32_mib",
+  "32_64_mib",
 ] as const;
 const CONNECTOR_CATALOG_COMPRESSED_SIZE_BUCKETS = [
   ...CONNECTOR_CATALOG_RAW_SIZE_BUCKETS,
-  "32_64_mib",
+  "64_128_mib",
 ] as const;
 const CONNECTOR_CATALOG_RESOLVED_CONNECTOR_FRACTION_BUCKETS = [
   "not_applicable",
@@ -466,28 +467,28 @@ const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_direct_parse_body",
   "api_dispatch_pre_create_direct_prepare_args",
 ] as const;
-const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_parse_body",
-  "api_dispatch_pre_create_zero_prepare_args",
-  "api_dispatch_pre_create_zero_resolve_agent_id",
-  "api_dispatch_pre_create_zero_load_agent",
-  "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
-  "api_dispatch_pre_create_zero_materialize_bootstrap_context",
-  "api_dispatch_pre_create_zero_resolve_firewall_metadata",
-  "api_dispatch_pre_create_zero_build_create_run_args",
+const API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_parse_body",
+  "api_dispatch_pre_create_agent_prepare_args",
+  "api_dispatch_pre_create_agent_resolve_agent_id",
+  "api_dispatch_pre_create_agent_load_agent",
+  "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
+  "api_dispatch_pre_create_agent_materialize_bootstrap_context",
+  "api_dispatch_pre_create_agent_resolve_firewall_metadata",
+  "api_dispatch_pre_create_agent_build_create_run_args",
 ] as const;
-const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_entrypoint_gap",
+const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_entrypoint_gap",
 ] as const;
-const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-  "api_dispatch_pre_create_zero_web_chat_check_active_run",
-  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
-  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
+  "api_dispatch_pre_create_agent_web_chat_check_active_run",
+  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
+  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
 ] as const;
 const API_DISPATCH_STORED_CONNECTOR_SNAPSHOT_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_snapshot_rows",
@@ -644,13 +645,13 @@ function findFirewallEntry(
   });
 }
 
-async function seedVm0BuiltInDefaultModelKey(): Promise<string> {
-  const fixture = await seedVm0BuiltInDefaultModelKeyState(context);
+async function seedBuiltInDefaultModelKey(): Promise<string> {
+  const fixture = await seedBuiltInDefaultModelKeyState(context);
   return fixture.selectedModel;
 }
 
-async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
-  const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
+async function seedBuiltInModelKey(selectedModel: string): Promise<string> {
+  const fixture = await seedBuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
 }
 
@@ -661,10 +662,10 @@ async function expectBuiltInModelRunRuntimeRoute(
   await expect(readRunModelRuntimeRouteFixture(runId)).resolves.toStrictEqual({
     modelProvider: "built-in",
     selectedModel,
-    modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
+    modelRuntimeProvider: getBuiltInConcreteProviderType(selectedModel),
     modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
     builtInModelKeyId: expect.any(String),
-    builtInModelKeyVendor: getVm0Vendor(selectedModel),
+    builtInModelKeyVendor: getBuiltInVendor(selectedModel),
   });
 }
 
@@ -785,6 +786,24 @@ function availableCustomConnectorRuntime(
     throw new Error("Expected the custom runtime target to be available");
   }
   return result;
+}
+
+async function defaultCustomConnectorAccountId(
+  connectorApi: ReturnType<typeof createConnectorBddApi>,
+  actor: ApiTestUser,
+  customConnectorId: string,
+): Promise<string> {
+  const accounts = await connectorApi.listCustomConnectorAccounts(
+    actor,
+    customConnectorId,
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.isDefault;
+  });
+  if (!account) {
+    throw new Error("Expected a default custom connector account");
+  }
+  return account.id;
 }
 
 function customConnectorRuntimeAuthBody(
@@ -1695,6 +1714,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "./generated/resources/reverse-template/SKILL.md",
     );
+    expect(appendSystemPrompt).toContain(
+      "https://github.com/vm0-ai/Template-artifact/tree/<commit>/reverse-template",
+    );
+    expect(appendSystemPrompt).toContain(
+      "do not pull or compare the registry copy",
+    );
   });
 
   it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
@@ -1874,11 +1899,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
     expectNoApiDispatchActions(
@@ -1887,11 +1912,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expect(
       singleApiDispatchEvent(
@@ -3544,15 +3569,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_PRE_CREATE_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectNoApiDispatchActions(
       timingEvents,
-      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expect(
       singleApiDispatchEvent(
@@ -5799,10 +5824,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
   });
 
-  it("reuses built-in continuation across provider aliases and isolates runtime changes", async () => {
+  it("resumes direct sessions only on the same runtime and family", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const selectedModel = await seedVm0BuiltInDefaultModelKey();
+    const selectedModel = await seedBuiltInDefaultModelKey();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
@@ -5818,7 +5843,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected canonical Storage mounts for the direct run");
     }
     const initialStorageMounts = initialStorageManifest.storageMounts;
-    const cliAgentSessionId = `bdd-vm0-direct-${first.runId}`;
+    const cliAgentSessionId = `bdd-okou-direct-${first.runId}`;
     const firstHistory = `managed direct history ${first.runId}`;
     const firstHistoryHash = createHash("sha256")
       .update(firstHistory)
@@ -5838,10 +5863,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
-    await setRunModelProviderFixture({
-      runId: first.runId,
-      modelProvider: "built-in",
-    });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),
       group: runnerGroup,
@@ -5851,7 +5872,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "reuse the same built-in model runtime route",
+      prompt: "continue on the same runtime and model family",
       modelProvider: "built-in",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
@@ -5871,56 +5892,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await expectBuiltInModelRunRuntimeRoute(resumed.runId, selectedModel);
 
-    const resumedHistory = `managed resumed history ${resumed.runId}`;
-    const resumedHistoryHash = createHash("sha256")
-      .update(resumedHistory)
-      .digest("hex");
-    mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
-    await webhooks.requestAgentComplete(
-      {
-        runId: resumed.runId,
-        exitCode: 0,
-        lastEventSequence: 0,
-        checkpoint: {
-          cliAgentType: resumedClaim.cliAgentType,
-          cliAgentSessionId,
-          cliAgentSessionHistoryHash: resumedHistoryHash,
-        },
-      },
-      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
-      [200],
-    );
-    await setRunModelRuntimeRouteFixture({
-      runId: resumed.runId,
-      modelRuntimeProvider: "openai-api-key",
-      modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
-    });
-    await api.requestHeartbeatRunner(true, [200], {
-      runnerId: randomUUID(),
-      group: runnerGroup,
-      admittableProfiles: [],
-    });
+    await api.requestCancelRun(actor, resumed.runId, [200]);
 
-    const rotated = await api.createRun(actor, {
+    const changedRuntime = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
-      prompt: "discard a checkpoint from another built-in model provider route",
-      modelProvider: "built-in",
+      prompt: "continue on a different native runtime",
+      modelProvider: "anthropic-api-key",
     });
-    expect(rotated.sessionId).toBe(first.sessionId);
-    const rotatedClaim = await api.claimRunnerJob(rotated.runId);
-    expect(rotatedClaim.resumeSession).toBeNull();
-    const rotatedStorageManifest = expectCanonicalStorageManifest(
-      rotatedClaim.storageManifest,
-    );
-    if (!rotatedStorageManifest) {
-      throw new Error("Expected canonical Storage mounts for the rotated run");
-    }
-    expect(rotatedStorageManifest.storageMounts).toStrictEqual(
-      initialStorageMounts,
-    );
-    await expectBuiltInModelRunRuntimeRoute(rotated.runId, selectedModel);
-    await api.requestCancelRun(actor, rotated.runId, [200]);
+    const changedRuntimeClaim = await api.claimRunnerJob(changedRuntime.runId);
+    expect(changedRuntimeClaim.cliAgentType).toBe("claude-code");
+    expect(changedRuntimeClaim.cliAgentType).not.toBe(firstClaim.cliAgentType);
+    expect(changedRuntimeClaim.resumeSession).toBeNull();
+    await api.requestCancelRun(actor, changedRuntime.runId, [200]);
   });
 
   it("validates same-thread reuse heartbeat inventory shapes", async () => {
@@ -7895,7 +7879,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         dataset === "vm0-sandbox-op-log-dev" &&
         Array.isArray(events) &&
         events.some((event) => {
-          return isRecord(event) && event.op_type === "enqueue_zero_run";
+          return isRecord(event) && event.op_type === "enqueue_agent_run";
         })
       ) {
         throw new Error("enqueue telemetry failed");
@@ -7916,7 +7900,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     expect(sandboxOperationEventsForRun(queued.runId)).toContainEqual(
       expect.objectContaining({
-        op_type: "enqueue_zero_run",
+        op_type: "enqueue_agent_run",
         run_id: queued.runId,
       }),
     );
@@ -8027,14 +8011,14 @@ describe("RUN-01: agent run authorization and session boundaries", () => {
     expectApiError(sandboxDenied.body);
     expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-    const zeroDenied = await api.requestCancelRunAs(
+    const okouDenied = await api.requestCancelRunAs(
       `Bearer ${api.okouTokenForRunWithCapabilities(actor, run.runId, [
         "agent-run:read",
       ])}`,
       run.runId,
       [403],
     );
-    expectApiError(zeroDenied.body);
+    expectApiError(okouDenied.body);
     expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
     const pat = await api.createCliToken(actor);
@@ -8272,7 +8256,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
       "gpt-5.6-luna",
     ] as const) {
-      await seedVm0BuiltInModelKey(model);
+      await seedBuiltInModelKey(model);
       const sent = await chat.requestSendEvent(
         actor,
         {
@@ -8316,8 +8300,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
     const api = createRunsApi(context);
-    const selectedModel = await seedVm0BuiltInDefaultModelKey();
-    const concreteProvider = getVm0ConcreteProviderType(selectedModel);
+    const selectedModel = await seedBuiltInDefaultModelKey();
+    const concreteProvider = getBuiltInConcreteProviderType(selectedModel);
     const expectedFirewall = getModelProviderFirewall(concreteProvider)?.name;
     if (!expectedFirewall) {
       throw new Error(
@@ -8366,7 +8350,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "gpt-5.6-sol";
-    await seedVm0BuiltInModelKey(selectedModel);
+    await seedBuiltInModelKey(selectedModel);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await api.updateOrgModelPolicies(actor, [
@@ -8460,7 +8444,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       { orgId: slackOrgId, userId: slackUserId },
       context.signal,
     );
-    await seedVm0BuiltInModelKey(selectedModel);
+    await seedBuiltInModelKey(selectedModel);
     await releaseSlackFixture();
 
     const { actor, agentId } = await entitledRunActor();
@@ -8496,7 +8480,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     async (selectedModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
-      await seedVm0BuiltInModelKey(selectedModel);
+      await seedBuiltInModelKey(selectedModel);
       const { actor, agentId, runnerGroup } = await entitledRunActor();
 
       await api.updateOrgModelPolicies(actor, [
@@ -9225,10 +9209,10 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
-      `test-run-lifecycle-zero-scoped-runtime-${randomUUID()}`,
+      `test-run-lifecycle-okou-scoped-runtime-${randomUUID()}`,
     );
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-zero-scoped-runtime-setup-${randomUUID()}`,
+      catalogVersion: `okou-scoped-runtime-setup-${randomUUID()}`,
     });
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -9246,7 +9230,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
     expect(enabled).toContain("x");
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-zero-scoped-runtime-run-${randomUUID()}`,
+      catalogVersion: `okou-scoped-runtime-run-${randomUUID()}`,
     });
 
     const run = await api.createRun(actor, {
@@ -9696,9 +9680,12 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      accessToken: "glpat-bdd",
-    });
+    const gitlabConnection = await connectors.connectManualGrant(
+      actor,
+      "gitlab",
+      "api-token",
+      { accessToken: "glpat-bdd" },
+    );
     await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
 
     const withoutHost = await api.createRun(actor, {
@@ -9717,10 +9704,17 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
 
     // Reconnecting with the optional variable threads it into the next run.
-    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
-      accessToken: "glpat-bdd",
-      host: "gitlab.example.com",
-    });
+    await connectors.connectManualGrant(
+      actor,
+      "gitlab",
+      "api-token",
+      {
+        accessToken: "glpat-bdd",
+        host: "gitlab.example.com",
+      },
+      undefined,
+      { intent: "reconnect", connectionId: gitlabConnection.id },
+    );
     const withHost = await api.createRun(actor, {
       agentId,
       prompt: "use gitlab with the optional host",
@@ -9868,9 +9862,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     const connected = await connectors.connectManualGrant(
       actor,
@@ -9988,9 +9980,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await installApiTestConnectorCatalog();
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
     const connected = await connectors.connectManualGrant(
       actor,
       "lark",
@@ -10438,50 +10428,150 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("leaves Pi V2 jobs queued until a capable Runner claims them", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "claim a dialect-aware Pi route",
-      modelProvider: "anthropic-api-key",
-    });
-    const piModelConfig: PiModelConfigV2 = {
-      schemaVersion: 2,
-      dialect: "openai-responses",
-      transport: "sse",
-      provider: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      model: "gpt-5.4",
-      credentialBindings: [
-        {
-          kind: "api-key",
-          environment: "OPENAI_API_KEY",
-          secretName: "OPENAI_API_KEY",
-        },
-      ],
-    };
-    await setRunnerJobPiContextAsV2Writer(context, run.runId, piModelConfig);
-    await api.heartbeatRunner(runnerGroup);
+  // Current admission cannot produce generation 3 or future/invalid rows.
+  // The explicit stored-writer fixture exercises claim/read API behavior first.
+  it.each([1, 2, 3] as const)(
+    "claims stored Pi generation %s only with compatible capabilities",
+    async (generation) => {
+      const api = createRunsApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "claim a dialect-aware Pi route",
+        modelProvider: "anthropic-api-key",
+      });
+      const piModelConfig: PiModelConfig =
+        generation === 1
+          ? {
+              provider: "openai",
+              baseUrl: "https://api.openai.com/v1",
+              model: "gpt-5.6-terra",
+              apiKeyEnv: "OPENAI_API_KEY",
+              credentialSecretName: "OPENAI_API_KEY",
+            }
+          : generation === 3
+            ? {
+                schemaVersion: 3,
+                dialect: "openai-codex-responses",
+                transport: "sse",
+                provider: "openai-codex",
+                baseUrl: "https://chatgpt.com/backend-api",
+                model: "gpt-5.6-terra",
+                serviceTier: "fast",
+                credentialBindings: [
+                  {
+                    kind: "access-token",
+                    environment: "CHATGPT_ACCESS_TOKEN",
+                    secretName: "CHATGPT_ACCESS_TOKEN",
+                  },
+                  {
+                    kind: "account-id",
+                    environment: "CHATGPT_ACCOUNT_ID",
+                    secretName: "CHATGPT_ACCOUNT_ID",
+                  },
+                ],
+              }
+            : {
+                schemaVersion: 2,
+                dialect: "openai-responses",
+                transport: "sse",
+                provider: "openai",
+                baseUrl: "https://api.openai.com/v1",
+                model: "gpt-5.4",
+                credentialBindings: [
+                  {
+                    kind: "api-key",
+                    environment: "OPENAI_API_KEY",
+                    secretName: "OPENAI_API_KEY",
+                  },
+                ],
+              };
+      await setRunnerJobPiContextAsVersionedWriter(
+        context,
+        run.runId,
+        piModelConfig,
+      );
+      await api.heartbeatRunner(runnerGroup);
 
-    const legacyClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
-    expectApiError(legacyClaim.body);
-    expect(legacyClaim.body.error.message).toBe("Job not found in queue");
-    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-      status: "pending",
-    });
+      const incompatibleCapabilities =
+        generation === 3
+          ? [undefined, { piModelConfigGenerations: [1, 2] }]
+          : generation === 2
+            ? [undefined]
+            : [];
+      for (const capabilities of incompatibleCapabilities) {
+        const legacyClaim = await api.requestClaimRunnerJob(
+          true,
+          run.runId,
+          [404],
+          { capabilities },
+        );
+        expectApiError(legacyClaim.body);
+        expect(legacyClaim.body.error.message).toBe("Job not found in queue");
+        await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+          status: "pending",
+        });
+      }
 
-    const capableClaim = await api.claimRunnerJob(run.runId, {
-      capabilities: { piModelConfigGenerations: [1, 2] },
-    });
-    expect(capableClaim).toMatchObject({
-      cliAgentType: "pi",
-      piSessionId: run.runId,
-      piModelConfig,
-    });
+      const capableClaim = await api.claimRunnerJob(run.runId, {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      expect(capableClaim).toMatchObject({
+        cliAgentType: "pi",
+        piSessionId: run.runId,
+        piModelConfig,
+      });
 
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
+
+  it.each([
+    {
+      schemaVersion: 4,
+      serviceTier: "priority",
+      status: 404,
+      runStatus: "pending",
+    },
+    { schemaVersion: 3, serviceTier: "fast", status: 400, runStatus: "failed" },
+  ] as const)(
+    "handles stored Pi generation $schemaVersion with $serviceTier without downgrading",
+    async (route) => {
+      const api = createRunsApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "claim only a supported exact Pi route",
+        modelProvider: "anthropic-api-key",
+      });
+      await setRunnerJobPiContextAsVersionedWriter(context, run.runId, {
+        schemaVersion: route.schemaVersion,
+        serviceTier: route.serviceTier,
+        dialect: "openai-responses",
+        transport: "sse",
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        credentialBindings: [
+          {
+            kind: "api-key",
+            environment: "OPENAI_API_KEY",
+            secretName: "OPENAI_API_KEY",
+          },
+        ],
+      });
+      await api.heartbeatRunner(runnerGroup);
+      await api.requestClaimRunnerJob(true, run.runId, [route.status], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
+      });
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: route.runStatus,
+      });
+      if (route.runStatus === "pending") {
+        await api.requestCancelRun(actor, run.runId, [200]);
+      }
+    },
+  );
 
   it("restores prepared masking values from direct run environments", async () => {
     const bdd = createBddApi(context);
@@ -11008,6 +11098,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "secret", kind: "secret", value: "custom-secret-value" },
       { key: "tenant", kind: "variable", value: "acme" },
     ]);
+    const customConnectionId = await defaultCustomConnectorAccountId(
+      connectors,
+      actor,
+      custom.id,
+    );
     const wrongTargetConnection = await connectors.connectManualGrant(
       actor,
       "figma",
@@ -11152,6 +11247,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       actor,
       custom.id,
       "updated-custom-secret-value",
+      [200],
+      { intent: "reconnect", connectionId: customConnectionId },
     );
     const currentUpdatedAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -11209,6 +11306,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       actor,
       custom.id,
       "recovered-custom-secret-value",
+      [200],
+      { intent: "reconnect", connectionId: customConnectionId },
     );
     const recoveredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -11272,14 +11371,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
-    await connectors.setCustomConnectorValues(actor, custom.id, [
-      {
-        key: "secret",
-        kind: "secret",
-        value: "restored-custom-secret-value",
-      },
-      { key: "tenant", kind: "variable", value: "changed" },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      custom.id,
+      [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "restored-custom-secret-value",
+        },
+        { key: "tenant", kind: "variable", value: "changed" },
+      ],
+      { intent: "reconnect", connectionId: customConnectionId },
+    );
     const restoredCredentialsAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       missingCredentialsAuthBody,
@@ -11466,7 +11570,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
-    await connectors.disconnectSingleCustomConnectorAccount(actor, custom.id);
+    await connectors.deleteDefaultCustomConnectorAccount(actor, custom.id);
     const [deletedExactRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -11966,6 +12070,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       userId: actor.userId,
       customConnectors: [runtimeConnector],
     });
+    const runtimeConnectionId = await defaultCustomConnectorAccountId(
+      connectors,
+      actor,
+      runtimeConnector.id,
+    );
     const listedRuntimeConnectors =
       await connectors.listCustomConnectors(actor);
     expect(
@@ -11984,13 +12093,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.updateAgentCustomConnectors(actor, agentId, [
       runtimeConnector.id,
     ]);
-    await connectors.setCustomConnectorValues(actor, runtimeConnector.id, [
-      {
-        key: "optional_secret",
-        kind: "secret",
-        value: "canonical-runtime-secret",
-      },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      runtimeConnector.id,
+      [
+        {
+          key: "optional_secret",
+          kind: "secret",
+          value: "canonical-runtime-secret",
+        },
+      ],
+      { intent: "reconnect", connectionId: runtimeConnectionId },
+    );
 
     const run = await api.createRun(actor, {
       agentId,
@@ -12511,9 +12625,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",
@@ -13333,10 +13445,22 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(kms.decryptCalls).toBe(1);
 
     context.mocks.ably.publish.mockClear();
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "subdomain", kind: "variable", value: "later-run" },
-      { key: "scope", kind: "variable", value: "later-scope" },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        { key: "subdomain", kind: "variable", value: "later-run" },
+        { key: "scope", kind: "variable", value: "later-scope" },
+      ],
+      {
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
+      },
+    );
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       "connector-runtime-sync",
       expect.anything(),
@@ -13514,8 +13638,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       tenant: `\${{ secrets.${tenantVarKey} }}`,
     });
 
+    const runtimeTarget = customConnectorRuntimeRegistration(
+      claim,
+      saved.connector.id,
+    );
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
-      targets: [customConnectorRuntimeRegistration(claim, saved.connector.id)],
+      targets: [runtimeTarget],
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     const { api: runtimeApi, body: runtimeAuthBody } =
@@ -13538,13 +13666,25 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(missingHeaderAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        {
+          key: "secondary_token",
+          kind: "secret",
+          value: "optional-secondary",
+        },
+      ],
       {
-        key: "secondary_token",
-        kind: "secret",
-        value: "optional-secondary",
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
       },
-    ]);
+    );
     const restoredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -13808,6 +13948,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           value: "rewritten-reconnect-required-secret",
         },
       ],
+      {
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
+      },
     );
     expect(reconnected).toMatchObject({ connected: true });
     await expect(
@@ -13875,7 +14023,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await connectors.disconnectSingleCustomConnectorAccount(
+    await connectors.deleteDefaultCustomConnectorAccount(
       actor,
       saved.connector.id,
     );
@@ -13914,10 +14062,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "api_key", kind: "secret", value: "recovered-key" },
-      { key: "subdomain", kind: "variable", value: longSubdomain },
-    ]);
+    const recoveredConnection = await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        { key: "api_key", kind: "secret", value: "recovered-key" },
+        { key: "subdomain", kind: "variable", value: longSubdomain },
+      ],
+    );
+    if (!recoveredConnection.connectedAccountId) {
+      throw new Error("Expected the recovered custom connector account");
+    }
 
     const fixedPrefix = "very-long-fixed-prefix-for-custom-runtime-";
     await connectors.updateCustomConnector(actor, saved.connector.id, {
@@ -13951,9 +14106,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.requestCancelRun(actor, unroutableRun.runId, [200]);
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "subdomain", kind: "variable", value: "version-two" },
-    ]);
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [{ key: "subdomain", kind: "variable", value: "version-two" }],
+      {
+        intent: "reconnect",
+        connectionId: recoveredConnection.connectedAccountId,
+      },
+    );
 
     const recoveredRun = await api.createRun(actor, {
       agentId,
@@ -14066,13 +14227,25 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(missingQueryAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+    await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        {
+          key: "tenant",
+          kind: "variable",
+          value: "restored-tenant",
+        },
+      ],
       {
-        key: "tenant",
-        kind: "variable",
-        value: "restored-tenant",
+        intent: "reconnect",
+        connectionId: await defaultCustomConnectorAccountId(
+          connectors,
+          actor,
+          saved.connector.id,
+        ),
       },
-    ]);
+    );
     const restoredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -15231,14 +15404,14 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
-      "api_dispatch_pre_create_zero_materialize_bootstrap_context",
-      "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+      "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
+      "api_dispatch_pre_create_agent_materialize_bootstrap_context",
+      "api_dispatch_pre_create_agent_resolve_firewall_metadata",
     ]);
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_load_bootstrap_snapshot_rows",
+        "api_dispatch_pre_create_agent_load_bootstrap_snapshot_rows",
       ),
     ).toStrictEqual(
       expect.objectContaining({
@@ -15249,7 +15422,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_materialize_bootstrap_context",
+        "api_dispatch_pre_create_agent_materialize_bootstrap_context",
       ),
     ).toStrictEqual(
       expect.objectContaining({
@@ -15620,40 +15793,17 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
   });
 
-  it("advertises connector account switching only while the feature is enabled", async () => {
+  it("advertises connector account switching", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: false,
-    });
-    const gatedOff = await api.createRun(actor, {
-      agentId,
-      prompt: "switch my connector account",
-      modelProvider: "anthropic-api-key",
-    });
-    const gatedOffPrompt =
-      (await api.readRun(actor, gatedOff.runId)).appendSystemPrompt ?? "";
-    expect(gatedOffPrompt).not.toContain(
-      "okou connector account switch-request",
-    );
-    expect(gatedOffPrompt).toContain("return that exact URL verbatim");
-    expect(gatedOffPrompt).toContain(
-      "Never rewrite, shorten, reconstruct, or omit any query parameters",
-    );
-    await api.requestCancelRun(actor, gatedOff.runId, [200]);
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
-    const gatedOn = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "switch my connector account",
       modelProvider: "anthropic-api-key",
     });
     const appendSystemPrompt =
-      (await api.readRun(actor, gatedOn.runId)).appendSystemPrompt ?? "";
+      (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
       "okou connector account list <slug> --json",
     );
@@ -15673,7 +15823,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       "only after the user confirms and the selection succeeds",
     );
 
-    await api.requestCancelRun(actor, gatedOn.runId, [200]);
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("advertises managed SEO tools by default", async () => {
@@ -18148,7 +18298,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await seedVm0BuiltInDefaultModelKey();
+    await seedBuiltInDefaultModelKey();
     const modelProvider = `bdd-model-pricing-${randomUUID()}`;
     onTestFinished(async () => {
       await deleteUsagePricingRows({
@@ -18861,7 +19011,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
   it("suppresses reviewed expected failures from generic completion logs", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    await seedVm0BuiltInDefaultModelKey();
+    await seedBuiltInDefaultModelKey();
     const { actor, agentId } = await entitledRunActor();
     const suppressedReasons = [
       "insufficient_credits",
@@ -19097,12 +19247,19 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       const api = createRunsApi(context);
       const webhooks = createWebhookCallbackApi(context);
       const { actor, agentId } = await entitledRunActor();
+      const modelProvider =
+        cliAgentType === "codex" ? "openai-api-key" : "anthropic-api-key";
+      await api.createOrgModelProvider(actor, {
+        type: modelProvider,
+        secret: `bdd-${cliAgentType}-key`,
+      });
       const run = await api.createRun(actor, {
         agentId,
         prompt: `complete with ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const claim = await api.claimRunnerJob(run.runId);
+      expect(claim.cliAgentType).toBe(cliAgentType);
       const history = `bdd combined ${cliAgentType} history ${run.runId}`;
       const historyHash = createHash("sha256").update(history).digest("hex");
       const cliAgentSessionId = `bdd-combined-${cliAgentType}-${run.runId}`;
@@ -19198,7 +19355,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentId,
         sessionId: run.sessionId,
         prompt: `resume combined ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const continuedClaim = await api.claimRunnerJob(continued.runId);
       expect(continuedClaim.resumeSession).toMatchObject({
@@ -19236,7 +19393,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentId,
         sessionId: run.sessionId,
         prompt: `resume successor ${cliAgentType} checkpoint`,
-        modelProvider: "anthropic-api-key",
+        modelProvider,
       });
       const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
       expect(afterRetryClaim.resumeSession).toMatchObject({

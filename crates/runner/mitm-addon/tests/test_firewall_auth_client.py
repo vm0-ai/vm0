@@ -101,7 +101,9 @@ class _LifecycleSocket(_REAL_SOCKET):
 
 @dataclass
 class _LifecycleSocketFactory:
+    constructor_errors: tuple[OSError | None, ...] = ()
     tcp_nodelay_errors: tuple[OSError | None, ...] = ()
+    constructor_families: list[int] = field(default_factory=list)
     sockets: list[_LifecycleSocket] = field(default_factory=list)
 
     def __call__(
@@ -113,6 +115,15 @@ class _LifecycleSocketFactory:
     ) -> socket.socket:
         if fileno is not None:
             return _REAL_SOCKET(family, socket_type, proto, fileno)
+        constructor_index = len(self.constructor_families)
+        self.constructor_families.append(family)
+        constructor_error = (
+            self.constructor_errors[constructor_index]
+            if constructor_index < len(self.constructor_errors)
+            else None
+        )
+        if constructor_error is not None:
+            raise constructor_error
         socket_index = len(self.sockets)
         tcp_nodelay_error = (
             self.tcp_nodelay_errors[socket_index]
@@ -129,12 +140,14 @@ class _LifecycleSocketFactory:
         return created
 
 
-@dataclass(frozen=True)
+@dataclass
 class _OrderedResolver:
     expected_host: str
     addresses: tuple[str, ...]
+    lookups: list[str] = field(default_factory=list)
 
     async def lookup_ip(self, host: str) -> list[str]:
+        self.lookups.append(host)
         assert host == self.expected_host
         return list(self.addresses)
 
@@ -1430,6 +1443,81 @@ class TestFirewallAuthAsyncTransport:
         assert failed_socket.close_call_count == 1
         assert winner_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
         assert winner_socket.shutdown_calls == []
+
+    async def test_uses_later_address_after_socket_creation_failure(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+        loop = asyncio.get_running_loop()
+        socket_factory = _LifecycleSocketFactory(
+            constructor_errors=(OSError(errno.EAFNOSUPPORT, "address family unsupported"), None)
+        )
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("2001:db8::1", "192.0.2.1"),
+        )
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        async with _run_test_server(handle_client) as port:
+            connect_probe = _SimultaneousSockConnect(
+                loop.sock_connect,
+                ("127.0.0.1", port),
+                participant_count=1,
+            )
+            expected_address: _SocketAddress = ("192.0.2.1", port)
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert resolver.lookups == ["firewall-auth.invalid"]
+        assert socket_factory.constructor_families == [socket.AF_INET6, socket.AF_INET]
+        assert connect_probe.attempted_addresses == [expected_address]
+        assert connect_probe.completed_addresses == [expected_address]
+        assert len(socket_factory.sockets) == 1
+        winner_socket = socket_factory.sockets[0]
+        assert winner_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+        assert winner_socket.shutdown_calls == []
+        assert winner_socket.fileno() == -1
+
+    async def test_propagates_final_socket_creation_error(self, mitm_ctx):
+        final_error = OSError(errno.EMFILE, "file table overflow")
+        socket_factory = _LifecycleSocketFactory(
+            constructor_errors=(
+                OSError(errno.EAFNOSUPPORT, "address family unsupported"),
+                final_error,
+            )
+        )
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("2001:db8::1", "192.0.2.1"),
+        )
+
+        with (
+            patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+            patch.object(auth_client, "_dns_resolver", resolver),
+            patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            mitm_ctx(api_url="http://firewall-auth.invalid"),
+            pytest.raises(OSError, match=r"file table overflow$") as exc_info,
+        ):
+            await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert exc_info.value is final_error
+        assert resolver.lookups == ["firewall-auth.invalid"]
+        assert socket_factory.constructor_families == [socket.AF_INET6, socket.AF_INET]
+        assert socket_factory.sockets == []
 
     async def test_retries_next_resolved_address_after_connect_failure(self, mitm_ctx):
         class OrderedResolver:

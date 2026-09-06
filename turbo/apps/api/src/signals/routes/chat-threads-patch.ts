@@ -21,17 +21,12 @@ const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-
-  // Pre-#31562 App clients may omit this for about two days. Remove this
-  // old-App -> new-API bridge with #31612 after the client-version floor moves.
-  const draftVoice = bodyResult.data.draftVoice ?? null;
   const result = await set(
     updateChatThreadDraft$,
     {
       threadId: params.id,
       userId: auth.userId,
       draftUserMessage: bodyResult.data.draftUserMessage ?? null,
-      draftVoice,
       draftAttachments: bodyResult.data.draftAttachments ?? null,
     },
     signal,

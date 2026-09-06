@@ -1005,6 +1005,20 @@
       "accessNotAllowed": "アクセスは許可されていません。",
       "userBanned": "このアカウントでのアクティビティが {{brandName}} 利用規約に違反したため、アカウントへのアクセスが停止されました。ご質問がある場合は、{{supportEmail}} までお問い合わせください。"
     },
+    "desktop": {
+      "phases": {
+        "completed": "Desktop にサインインしました。このウィンドウを閉じられます。",
+        "connecting": "デスクトップのセッションを接続しています。",
+        "consumed": "Desktop でサインインを完了しています。このウィンドウを開いたままにしてください。",
+        "failed": "サインインを完了できませんでした。Desktop からやり直すか、このブラウザーで再試行してください。",
+        "no-workspaces": "ウェブアプリでワークスペースを作成するか参加してから、Desktop で再度サインインしてください。",
+        "pending": "Desktop を開いてサインインを続けてください。",
+        "selecting": "このコンピューターで使うワークスペースを選んでください。"
+      },
+      "reopen": "Desktop を開く",
+      "retry": "再試行",
+      "title": "Desktop にサインイン"
+    },
     "documentTitles": {
       "signIn": "サインイン",
       "signUp": "サインアップ"
@@ -2235,14 +2249,20 @@
       "draft": "草案",
       "empty": "会話を開始するとここに表示されます",
       "markUnread": "未読にする",
+      "movePinDown": "下に移動",
+      "movePinUp": "上に移動",
       "newChatWith": "{{agentName}} との新しいチャット",
       "noUnread": "未読のチャットはありません",
       "openChatMenu": "チャットメニューを開く",
       "openListMenu": "チャットリストメニューを開く",
       "pin": "チャットをピン留めする",
+      "pinDropAfter": "「{{title}}」の後に配置",
+      "pinDropBefore": "「{{title}}」の前に配置",
       "pinned": "ピン留め済み",
       "rename": "チャットの名前を変更する",
       "renameDescription": "このチャット スレッドの新しい名前を入力します。",
+      "reorderInstructions": "ドラッグして並べ替えます。スペースキーで選択し、矢印キーで移動、スペースキーで配置、Escキーでキャンセルします。",
+      "reorderThread": "「{{title}}」を並べ替え",
       "titlePlaceholder": "チャットのタイトル",
       "unpin": "チャットの固定を解除する",
       "unread": "未読",
@@ -2365,7 +2385,9 @@
     },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
+      "cleanupFailed": "テキストは追加されましたが、保存済みの録音を削除できませんでした。",
       "confirmRecording": "OK",
+      "discarding": "音声の下書きを削除中...",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
       "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
@@ -2374,8 +2396,13 @@
       "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
+      "removeDraft": "音声の下書きを削除",
+      "restoreFailed": "音声の下書きを読み込めませんでした。再試行してください。",
+      "retry": "再試行",
+      "retryReady": "録音は保持されています。文字起こしを再試行してください。",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
+      "storageFailed": "音声を保存できませんでした。再試行で復元できるのは、この端末に保存済みの音声のみです。",
       "transcribing": "文字起こし",
       "transcribingProgress": "転記中...",
       "transcriptionFailed": "音声の転写に失敗しました。もう一度やり直してください。"
@@ -2728,12 +2755,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "その他のオプション",
-      "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
-        "disconnected": "切断されました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -3237,15 +3262,13 @@
       "redirectTitle": "{{connector}} にリダイレクトしています…"
     },
     "toasts": {
-      "connected": "{{connector}} が接続されました",
-      "disconnected": "{{connector}} が切断されました"
+      "connected": "{{connector}} が接続されました"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "リクエストが失敗しました",
-      "sharedDatabaseUnavailable": "アプリで問題が発生しました。少し待ってから、ページを更新してもう一度お試しください。"
+      "requestFailed": "リクエストが失敗しました"
     },
     "realtime": {
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
@@ -4991,6 +5014,7 @@
         "remaining_one": "リセット残り{{value}}回",
         "remaining_other": "リセット残り{{value}}回",
         "remainingUnavailable": "残りのリセット回数を取得できません",
+        "remainingUnknown": "リセット —",
         "remainingWithExpiry_other": "リセット残り{{value}}回 · 有効期限{{expiry}}",
         "title": "Codexの使用量をリセットしますか？"
       },
@@ -5114,6 +5138,32 @@
           "workerLoading": "読み込み中",
           "workerTitle": "共有ワーカーの接続診断",
           "workerUnavailable": "利用不可"
+        },
+        "indexedDb": {
+          "countExplanation": "件数は読み取り専用トランザクションで取得し、レコード本体は読み取りません。",
+          "description": "Shared Worker が管理するローカルチャットキャッシュのレコード件数を確認します。",
+          "loading": "IndexedDB ストレージを読み込んでいます...",
+          "measurementUnavailable": "スナップショットの測定に失敗しました。再試行してください。",
+          "measureSnapshot": "スナップショットを測定",
+          "measuring": "測定中...",
+          "records": "レコード",
+          "refresh": "更新",
+          "schema": "スキーマ",
+          "snapshotDescription": "1件のレコードに多数のスレッドが含まれる場合があります。サイズはデータベースの管理領域を除く UTF-8 JSON の推定値で、読み取り時間にはサイズの推定処理を含みません。",
+          "snapshotEmpty": "キャッシュにスレッドのスナップショットがありません。",
+          "snapshotPayload": "推定データサイズ",
+          "snapshotReadDuration": "IndexedDB 読み取り時間",
+          "snapshotThreads": "スナップショット内のスレッド数",
+          "snapshotTitle": "スレッドのスナップショット",
+          "stores": "オブジェクトストア",
+          "title": "IndexedDB ストレージ",
+          "unavailable": "IndexedDB ストレージを利用できません。"
+        },
+        "voiceInput": {
+          "default": "デフォルト（{{model}}）",
+          "description": "音声入力 v2 のモデルを選択します。文字起こしモデルは {{model}} で文章を整えます。",
+          "title": "音声入力モデル",
+          "unavailable": "利用できないモデル（{{model}}）"
         }
       },
       "language": {

@@ -25,7 +25,6 @@ import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
 } from "./avatar-video";
-import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "./voice-io-polish";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
@@ -238,10 +237,11 @@ const chatThreadArtifactGoogleDriveRecoverySchema = z.discriminatedUnion(
 );
 
 const chatThreadArtifactGoogleDriveAccountReadyShape = {
-  // New App -> old API fallback. Current APIs always emit this marker after
-  // resolving the thread account, credentials, and agent authorization.
-  // Keep it optional while pre-marker APIs remain available for rollback.
-  accountReady: z.literal(true).optional(),
+  /**
+   * Emitted after the thread account, credentials, and agent authorization
+   * resolve. The disconnected variant carries no readiness marker.
+   */
+  accountReady: z.literal(true),
 };
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
@@ -326,6 +326,8 @@ const chatThreadSnapshotProjectionSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   pinnedAt: z.string().nullable(),
+  // Optional for existing snapshots and browser caches without manual ordering.
+  pinOrder: z.string().nullable().optional(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
@@ -368,6 +370,8 @@ const chatThreadEventSchema = z.object({
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
+  // On sort_touched, this changes pin rank instead of activity recency.
+  pinOrder: z.string().nullable().optional(),
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
@@ -522,14 +526,6 @@ const userMessageTemplatePartSchema = z
     type: z.literal("template"),
     titleSnapshot: z.string().min(1),
     template: generationTemplateRequestSchema,
-  })
-  .strict();
-
-const draftVoiceSchema = z
-  .object({
-    version: z.literal(1),
-    id: z.string().uuid(),
-    transcript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
   })
   .strict();
 
@@ -1036,9 +1032,6 @@ const chatThreadMetadataSchema = z.object({
 const chatThreadDraftSchema = z
   .object({
     draftUserMessage: userMessageInputDocumentSchema.nullable(),
-    // New App clients may receive responses from a pre-#31562 API while it is
-    // serving or retained for rollback. Remove with #31612 after that window.
-    draftVoice: draftVoiceSchema.nullable().optional(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
@@ -1324,9 +1317,6 @@ export const chatThreadByIdContract = c.router({
     body: z
       .object({
         draftUserMessage: userMessageInputDocumentSchema.nullable(),
-        // Pre-#31562 App clients may omit this for about two days. Remove the
-        // optional bridge with #31612 once the client-version floor excludes them.
-        draftVoice: draftVoiceSchema.nullable().optional(),
         draftAttachments: z
           .array(persistedAttachmentSchema)
           .nullable()
@@ -1465,7 +1455,12 @@ export const chatThreadPinContract = c.router({
     path: "/api/chat-threads/:id/pin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
+    query: z
+      .object({
+        eventId: chatThreadEventIdSchema.optional(),
+        pinOrder: z.string().min(2).max(2048).optional(),
+      })
+      .optional(),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -1474,6 +1469,27 @@ export const chatThreadPinContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Pin a chat thread to the top of the sidebar",
+  },
+});
+
+export const chatThreadPinOrderContract = c.router({
+  reorder: {
+    method: "POST",
+    path: "/api/chat-threads/:id/pin-order",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: z.object({
+      pinOrder: z.string().min(2).max(2048),
+      eventId: chatThreadEventIdSchema,
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Set a pinned chat thread's order",
   },
 });
 
@@ -1972,6 +1988,7 @@ export type ChatThreadMarkUnreadContract = typeof chatThreadMarkUnreadContract;
 export type ChatThreadMarkAgentReadContract =
   typeof chatThreadMarkAgentReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
+export type ChatThreadPinOrderContract = typeof chatThreadPinOrderContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatThreadMetadataContract = typeof chatThreadMetadataContract;
@@ -1995,7 +2012,6 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
-  draftVoiceSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   userMessageInputPartSchema,
@@ -2037,7 +2053,6 @@ export type UserMessageInputDocument = z.infer<
 >;
 export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
-export type DraftVoice = z.infer<typeof draftVoiceSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
   "workflow" | "website"

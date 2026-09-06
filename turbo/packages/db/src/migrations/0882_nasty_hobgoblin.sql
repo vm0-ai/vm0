@@ -1,1 +1,0 @@
-ALTER TABLE "chat_events" ADD COLUMN "payload" jsonb;

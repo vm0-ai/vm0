@@ -97,6 +97,46 @@ pub mod runners {
             },
         }
 
+        /// One bounded Stage 1 candidate snapshot.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiLaunchConfigMaintenanceSelected {
+            /// Canonical Pi session identity.
+            pub pi_session_id: String,
+            /// Run that produced the candidate.
+            pub source_run_id: String,
+            /// Exact source session-history hash.
+            pub source_history_hash: String,
+            /// Completion time of the source run.
+            pub source_completed_at: String,
+            /// Restricted Stage 1 memory candidate.
+            pub raw_memory: String,
+            /// Restricted Stage 1 rollout summary.
+            pub rollout_summary: String,
+            /// Optional safe rollout evidence slug.
+            pub rollout_slug: Option<String>,
+        }
+
+        /// Private input for one sandbox Pi memory maintenance run.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiLaunchConfigMaintenance {
+            /// Pi memory maintenance input version.
+            pub schema_version: i64,
+            /// Canonical mounted memory Storage identity.
+            pub memory_storage_id: String,
+            /// Exact claimed Phase 2 input revision.
+            pub claimed_revision: i64,
+            /// Exact memory version mounted for the claim.
+            pub claimed_base_version_id: String,
+            /// Opaque token fencing this maintenance claim.
+            pub lease_token: String,
+            /// Digest of the bounded selected candidate set.
+            pub selection_digest: String,
+            /// Bounded Stage 1 candidate snapshots selected by the claim.
+            pub selected: Vec<PiLaunchConfigMaintenanceSelected>,
+        }
+
         /// API-owned launch configuration forwarded to Pi in the sandbox.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -108,6 +148,9 @@ pub mod runners {
             /// Optional frozen memory-summary selection for API and Sandbox parity.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub memory_recall: Option<PiLaunchConfigMemoryRecall>,
+            /// Optional authenticated input for a first-party Pi memory maintenance run.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub maintenance: Option<PiLaunchConfigMaintenance>,
         }
 
         /// Model providers supported by the Pi runtime contract.
@@ -368,6 +411,257 @@ pub mod runners {
             pub service_tier: Option<PiModelConfigV2ServiceTier>,
             /// Bounded non-secret credential bindings materialized only at an execution edge.
             pub credential_bindings: Vec<PiModelConfigV2CredentialBinding>,
+        }
+
+        /// Required Responses streaming transport.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesTransport {
+            /// Server-sent events only.
+            #[serde(rename = "sse")]
+            Sse,
+        }
+
+        /// Native Pi catalog providers for this dialect.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesProvider {
+            /// DeepSeek provider.
+            #[serde(rename = "deepseek")]
+            Deepseek,
+            /// OpenAI public API provider.
+            #[serde(rename = "openai")]
+            Openai,
+            /// OpenRouter provider.
+            #[serde(rename = "openrouter")]
+            Openrouter,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Dialect-constrained request service tiers.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiResponsesServiceTier {
+            /// Public Responses priority service tier.
+            #[serde(rename = "priority")]
+            Priority,
+        }
+
+        /// Non-secret custom gateway credential header policy.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigV3OpenaiResponsesCredentialBindingApiKeyCredentialHeader {
+            /// Request header name.
+            pub name: String,
+            /// Header value template containing the credential placeholder exactly once.
+            pub value_template: String,
+        }
+
+        /// One non-secret execution-edge credential binding.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "kind", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV3OpenaiResponsesCredentialBinding {
+            /// Public Responses API-key binding.
+            #[serde(rename = "api-key")]
+            ApiKey {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+                /// Optional non-secret custom gateway header policy.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                credential_header:
+                    Option<PiModelConfigV3OpenaiResponsesCredentialBindingApiKeyCredentialHeader>,
+            },
+            /// ChatGPT access-token binding.
+            #[serde(rename = "access-token")]
+            AccessToken {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+            /// ChatGPT account-ID binding.
+            #[serde(rename = "account-id")]
+            AccountId {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+        }
+
+        /// Required Responses streaming transport.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesTransport {
+            /// Server-sent events only.
+            #[serde(rename = "sse")]
+            Sse,
+        }
+
+        /// Native Pi catalog providers for this dialect.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesProvider {
+            /// OpenAI Codex subscription provider.
+            #[serde(rename = "openai-codex")]
+            OpenaiCodex,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Dialect-constrained request service tiers.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV3OpenaiCodexResponsesServiceTier {
+            /// Native Codex Responses fast service tier.
+            #[serde(rename = "fast")]
+            Fast,
+        }
+
+        /// Non-secret custom gateway credential header policy.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigV3OpenaiCodexResponsesCredentialBindingApiKeyCredentialHeader {
+            /// Request header name.
+            pub name: String,
+            /// Header value template containing the credential placeholder exactly once.
+            pub value_template: String,
+        }
+
+        /// One non-secret execution-edge credential binding.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "kind", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV3OpenaiCodexResponsesCredentialBinding {
+            /// Public Responses API-key binding.
+            #[serde(rename = "api-key")]
+            ApiKey {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+                /// Optional non-secret custom gateway header policy.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                credential_header: Option<
+                    PiModelConfigV3OpenaiCodexResponsesCredentialBindingApiKeyCredentialHeader,
+                >,
+            },
+            /// ChatGPT access-token binding.
+            #[serde(rename = "access-token")]
+            AccessToken {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+            /// ChatGPT account-ID binding.
+            #[serde(rename = "account-id")]
+            AccountId {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+        }
+
+        /// API-owned dialect-aware non-secret Pi model configuration.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "dialect", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV3 {
+            /// Public Responses route with optional priority tier.
+            #[serde(rename = "openai-responses")]
+            OpenaiResponses {
+                /// Pi model configuration generation.
+                schema_version: i64,
+                /// Transport policy selected by the route.
+                transport: PiModelConfigV3OpenaiResponsesTransport,
+                /// Native Pi catalog provider selected by the route.
+                provider: PiModelConfigV3OpenaiResponsesProvider,
+                /// Exact base URL used for model requests.
+                base_url: String,
+                /// Exact provider model identifier sent with requests.
+                model: String,
+                /// Optional native Pi catalog model used for trusted public Responses metadata.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                catalog_model: Option<String>,
+                /// Explicit Pi thinking level.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                thinking_level: Option<PiModelConfigV3OpenaiResponsesThinkingLevel>,
+                /// Optional dialect-constrained request service tier.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                service_tier: Option<PiModelConfigV3OpenaiResponsesServiceTier>,
+                /// Bounded non-secret credential bindings materialized only at an execution edge.
+                credential_bindings: Vec<PiModelConfigV3OpenaiResponsesCredentialBinding>,
+            },
+            /// Native Codex Responses route with optional fast tier.
+            #[serde(rename = "openai-codex-responses")]
+            OpenaiCodexResponses {
+                /// Pi model configuration generation.
+                schema_version: i64,
+                /// Transport policy selected by the route.
+                transport: PiModelConfigV3OpenaiCodexResponsesTransport,
+                /// Native Pi catalog provider selected by the route.
+                provider: PiModelConfigV3OpenaiCodexResponsesProvider,
+                /// Exact base URL used for model requests.
+                base_url: String,
+                /// Exact provider model identifier sent with requests.
+                model: String,
+                /// Optional native Pi catalog model used for trusted public Responses metadata.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                catalog_model: Option<String>,
+                /// Explicit Pi thinking level.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                thinking_level: Option<PiModelConfigV3OpenaiCodexResponsesThinkingLevel>,
+                /// Optional dialect-constrained request service tier.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                service_tier: Option<PiModelConfigV3OpenaiCodexResponsesServiceTier>,
+                /// Bounded non-secret credential bindings materialized only at an execution edge.
+                credential_bindings: Vec<PiModelConfigV3OpenaiCodexResponsesCredentialBinding>,
+            },
         }
 
         /// DTOs for durable active-input delivery.
@@ -921,6 +1215,60 @@ pub mod webhooks {
             }
         }
 
+        /// Private Pi memory maintenance control.
+        pub mod pi_memory_phase2 {
+            /// Bounded provider-attempt accounting.
+            pub mod usage {
+                /// Background token quantities, separate from foreground accounting.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct RequestAttemptUsage {
+                    /// Uncached input tokens.
+                    pub input: u64,
+                    /// Output tokens.
+                    pub output: u64,
+                    /// Cached input tokens.
+                    pub cache_read: u64,
+                    /// Cache creation tokens.
+                    pub cache_write: u64,
+                    /// Reasoning tokens included in output.
+                    pub reasoning: u64,
+                }
+
+                /// One observed provider attempt.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct RequestAttempt {
+                    /// Provider response or exact lease-attempt identity.
+                    pub response_id: String,
+                    /// Token quantities incurred by this attempt.
+                    pub usage: RequestAttemptUsage,
+                }
+
+                /// Private maintenance provider-attempt usage; contains no memory content.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct Request {
+                    /// Private journal schema version.
+                    pub schema_version: i64,
+                    /// Authenticated maintenance run.
+                    pub run_id: String,
+                    /// Exact mounted Storage owner.
+                    pub memory_storage_id: String,
+                    /// Exact dispatched claim token.
+                    pub lease_token: String,
+                    /// Claimed input revision.
+                    pub claimed_revision: i64,
+                    /// Pinned mounted base version.
+                    pub claimed_base_version_id: String,
+                    /// Bounded candidate selection identity.
+                    pub selection_digest: String,
+                    /// Provider attempts observed by the private child.
+                    pub attempts: Vec<RequestAttempt>,
+                }
+            }
+        }
+
         /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.
         pub mod storages {
             /// File metadata entry used to compute and commit content-addressed storage uploads.
@@ -937,6 +1285,24 @@ pub mod webhooks {
 
             /// DTOs for committing direct sandbox storage uploads.
             pub mod commit {
+                /// Private proof of a validated Pi memory maintenance tree.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct RequestMaintenanceAttestation {
+                    /// Maintenance checkpoint attestation version.
+                    pub schema_version: u64,
+                    /// Opaque token fencing the maintenance claim.
+                    pub lease_token: String,
+                    /// Exact claimed Phase 2 input revision.
+                    pub claimed_revision: i64,
+                    /// Exact memory version mounted for the claim.
+                    pub claimed_base_version_id: String,
+                    /// Digest of the bounded selected candidate set.
+                    pub selection_digest: String,
+                    /// Content hash of the validated mounted tree.
+                    pub validated_version_id: String,
+                }
+
                 /// Request body for committing a direct sandbox storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
@@ -955,6 +1321,9 @@ pub mod webhooks {
                     /// Optional commit message associated with the storage version.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub message: Option<String>,
+                    /// Private validation proof required for Pi memory maintenance publication.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub maintenance_attestation: Option<RequestMaintenanceAttestation>,
                 }
 
                 /// Response body returned after committing a direct sandbox storage upload.
@@ -991,6 +1360,24 @@ pub mod webhooks {
                     pub deleted: Vec<String>,
                 }
 
+                /// Private proof of a validated Pi memory maintenance tree.
+                #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                pub struct RequestMaintenanceAttestation {
+                    /// Maintenance checkpoint attestation version.
+                    pub schema_version: u64,
+                    /// Opaque token fencing the maintenance claim.
+                    pub lease_token: String,
+                    /// Exact claimed Phase 2 input revision.
+                    pub claimed_revision: i64,
+                    /// Exact memory version mounted for the claim.
+                    pub claimed_base_version_id: String,
+                    /// Digest of the bounded selected candidate set.
+                    pub selection_digest: String,
+                    /// Content hash of the validated mounted tree.
+                    pub validated_version_id: String,
+                }
+
                 /// Request body for preparing a direct sandbox storage upload.
                 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
                 #[serde(rename_all = "camelCase")]
@@ -1013,6 +1400,9 @@ pub mod webhooks {
                     /// Optional incremental file changes from the base version.
                     #[serde(default, skip_serializing_if = "Option::is_none")]
                     pub changes: Option<RequestChanges>,
+                    /// Private validation proof required for Pi memory maintenance publication.
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pub maintenance_attestation: Option<RequestMaintenanceAttestation>,
                 }
 
                 /// Presigned upload target for the storage archive object.

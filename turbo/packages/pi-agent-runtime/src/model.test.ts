@@ -1,3 +1,6 @@
+import { zstdDecompressSync } from "node:zlib";
+import { once } from "node:events";
+import { createServer, type IncomingHttpHeaders } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
@@ -9,6 +12,52 @@ const OPENAI_TERRA = {
   model: "gpt-5.6-terra",
   dialect: "openai-responses",
 } as const;
+
+async function retryableCodexProvider() {
+  const requests: Array<{ headers: IncomingHttpHeaders; body: unknown }> = [];
+  const server = createServer((request, response) => {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const bytes = Buffer.concat(chunks);
+      requests.push({
+        headers: request.headers,
+        body: JSON.parse(
+          (request.headers["content-encoding"] === "zstd"
+            ? zstdDecompressSync(bytes)
+            : bytes
+          ).toString("utf8"),
+        ) as unknown,
+      });
+      response.writeHead(429, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "stop" } }));
+    })().catch((error: unknown) => {
+      response.destroy(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected a TCP provider address");
+  }
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    requests,
+    close() {
+      return new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    },
+  };
+}
 
 describe("Pi agent model adapter", () => {
   it.each([
@@ -201,54 +250,87 @@ describe("Pi agent model adapter", () => {
     ).toBeNull();
   });
 
-  it("passes an explicit account ID to native Codex Responses over SSE", async () => {
-    const config = {
-      provider: "openai-codex",
-      baseUrl: "https://chatgpt.com/backend-api",
-      model: "gpt-5.6-terra",
-      apiKey: "opaque-not-a-jwt",
-      accountId: "account-id-from-binding",
-      dialect: "openai-codex-responses",
-      transport: "sse",
-    } as const;
-    const model = resolvePiAgentModel(config);
-    if (!model || model.api !== "openai-codex-responses") {
-      throw new Error("Expected a native Codex Responses model");
-    }
-    let requestHeaders: Headers | undefined;
-    const providerFetch = vi.fn(
-      async (
-        _input: Parameters<typeof globalThis.fetch>[0],
-        init?: Parameters<typeof globalThis.fetch>[1],
-      ) => {
-        requestHeaders = new Headers(init?.headers);
-        return new Response(JSON.stringify({ error: { message: "stop" } }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
+  it.each([
+    { dialect: "openai-responses", serviceTier: "fast" },
+    { dialect: "openai-codex-responses", serviceTier: "priority" },
+  ] as const)(
+    "rejects $serviceTier on $dialect before a provider request",
+    (policy) => {
+      const config = {
+        ...OPENAI_TERRA,
+        ...policy,
+        provider:
+          policy.dialect === "openai-codex-responses"
+            ? "openai-codex"
+            : "openai",
+        accountId: "exact-account-id",
+        transport: "sse" as const,
+      };
+      expect(resolvePiAgentModel(config)).toBeNull();
+      const model = resolvePiAgentModel({ ...config, serviceTier: undefined });
+      if (!model) throw new Error("Expected a supported standard model");
+      expect(() => {
+        return piAgentStreamForConfig(config)(model, {
+          messages: [],
+          tools: [],
         });
-      },
-    );
+      }).toThrow("service tier");
+    },
+  );
 
-    const stream = piAgentStreamForConfig(config)(
-      model,
-      {
-        messages: [{ role: "user", content: "hello", timestamp: 1 }],
-        tools: [],
-      },
-      { apiKey: config.apiKey, fetch: providerFetch },
-    );
-    for await (const _event of stream) {
-      // Drain the expected provider error so the adapter completes its task.
-    }
-
-    expect(providerFetch).toHaveBeenCalledOnce();
-    expect(requestHeaders?.get("authorization")).toBe(
-      "Bearer opaque-not-a-jwt",
-    );
-    expect(requestHeaders?.get("chatgpt-account-id")).toBe(
-      "account-id-from-binding",
-    );
-  });
+  it.each([undefined, "fast"] as const)(
+    "normalizes native config tier %s with exact credentials and no retry over SSE",
+    async (serviceTier) => {
+      const provider = await retryableCodexProvider();
+      try {
+        const config = {
+          provider: "openai-codex",
+          baseUrl: provider.baseUrl,
+          model: "gpt-5.6-terra",
+          apiKey: "opaque-not-a-jwt",
+          accountId: "account-id-from-binding",
+          dialect: "openai-codex-responses",
+          transport: "sse",
+          serviceTier,
+        } as const;
+        const model = resolvePiAgentModel(config);
+        if (!model || model.api !== "openai-codex-responses") {
+          throw new Error("Expected a native Codex Responses model");
+        }
+        const stream = piAgentStreamForConfig(config)(
+          model,
+          {
+            messages: [{ role: "user", content: "hello", timestamp: 1 }],
+            tools: [],
+          },
+          { apiKey: config.apiKey, serviceTier: "priority" },
+        );
+        for await (const _event of stream) {
+          // Drain the retryable provider error so the adapter completes its task.
+        }
+        expect(provider.requests).toHaveLength(1);
+        const request = provider.requests[0];
+        if (serviceTier === undefined) {
+          expect(request?.body).not.toHaveProperty("service_tier");
+        } else {
+          expect(config.serviceTier).toBe("fast");
+          expect(request?.body).toMatchObject({ service_tier: "priority" });
+        }
+        expect(request?.body).toMatchObject({
+          model: "gpt-5.6-terra",
+          store: false,
+          stream: true,
+        });
+        expect(request?.body).not.toHaveProperty("previous_response_id");
+        expect(request?.headers.authorization).toBe("Bearer opaque-not-a-jwt");
+        expect(request?.headers["chatgpt-account-id"]).toBe(
+          "account-id-from-binding",
+        );
+      } finally {
+        await provider.close();
+      }
+    },
+  );
 
   it("preserves a native Codex Responses tool call over forced SSE", async () => {
     const config = {

@@ -24,6 +24,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
+import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import {
   chatEventTerminalPredicate,
   chatEvents,
@@ -231,29 +232,29 @@ const PRIOR_MESSAGE_CHAR_CAP = 4000;
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
 type ChatCallbackPreCreateTimingActionType =
-  | "api_dispatch_pre_create_zero_chat_callback_load_terminal"
-  | "api_dispatch_pre_create_zero_chat_callback_prepare_completed"
-  | "api_dispatch_pre_create_zero_chat_callback_prepare_failed"
-  | "api_dispatch_pre_create_zero_chat_callback_load_db_output_state"
-  | "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items"
-  | "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker"
-  | "api_dispatch_pre_create_zero_chat_callback_load_followup_context"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_template_context"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_append_marker"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals";
+  | "api_dispatch_pre_create_agent_chat_callback_load_terminal"
+  | "api_dispatch_pre_create_agent_chat_callback_prepare_completed"
+  | "api_dispatch_pre_create_agent_chat_callback_prepare_failed"
+  | "api_dispatch_pre_create_agent_chat_callback_load_db_output_state"
+  | "api_dispatch_pre_create_agent_chat_callback_insert_assistant_items"
+  | "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker"
+  | "api_dispatch_pre_create_agent_chat_callback_load_followup_context"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_load_agent"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_build_prior_context"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_computer_use_host"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_template_context"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_build_prompt"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_attachments"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_check_active_run"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_append_marker"
+  | "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals";
 
 interface ChatCallbackPreCreateTimingRecord {
   readonly actionType: ChatCallbackPreCreateTimingActionType;
@@ -974,11 +975,6 @@ function buildQueuedCreateAgentRunArgs(
       : {}),
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
-      modelProvider: input.effectiveModelProvider ?? null,
-      modelProviderId: input.modelPin.modelProviderId,
-      modelRuntimeProvider:
-        input.builtInModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: input.builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: input.cliAgentType,
     },
     body: {
@@ -1067,7 +1063,7 @@ async function loadDbCompletedChatOutput(args: {
     state.latestResultText !== null
       ? {
           sequenceNumber: state.latestResultSequence,
-          content: state.latestResultText,
+          content: visiblePiMemoryCitationText(state.latestResultText),
         }
       : null;
   return {
@@ -1087,7 +1083,7 @@ async function loadCompletedChatOutput(
 ): Promise<CompletedChatOutputLoad> {
   const dbOutput = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
+    "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
     "nested",
     () => {
       return loadDbCompletedChatOutput({
@@ -1965,7 +1961,7 @@ async function materializeCompletedChatResult(
   if (assistantItemsToInsert.length > 0) {
     await measureChatCallbackPreCreateTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "api_dispatch_pre_create_agent_chat_callback_insert_assistant_items",
       "nested",
       () => {
         return args.insertAssistantItems(assistantItemsToInsert);
@@ -1986,7 +1982,7 @@ async function materializeCompletedChatResult(
   if (shouldInsertResultFallback) {
     await measureChatCallbackPreCreateTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "api_dispatch_pre_create_agent_chat_callback_insert_assistant_items",
       "nested",
       () => {
         return args.insertAssistantItems([resultFallback]);
@@ -2057,7 +2053,7 @@ async function handleCompletedChatCallback(
 
   const inserted = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
+    "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
     "nested",
     () => {
       return insertRunLifecycleMarker({
@@ -2085,7 +2081,7 @@ async function handleCompletedChatCallback(
 
   const followupContext = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
+    "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
     "nested",
     () => {
       return loadRecommendedFollowupContextForCompletedRun({
@@ -2674,7 +2670,7 @@ async function resolveQueuedMessageModelRoute(args: {
 }): Promise<QueuedMessageModelRouteResolution> {
   const modelContext = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
     "nested",
     () => {
       return resolveRunChatThreadModelContext({
@@ -2736,7 +2732,7 @@ function loadQueuedMessageSessionState(
 ) {
   return measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
     "nested",
     async () => {
       const sessionResolution = await resolveChatThreadSession({
@@ -2747,12 +2743,6 @@ function loadQueuedMessageSessionState(
         agentId: args.agent.id,
         route: {
           selectedModel: modelRoute.modelPin.selectedModel,
-          modelProvider: modelRoute.effectiveModelProvider ?? null,
-          modelProviderId: modelRoute.modelPin.modelProviderId,
-          modelRuntimeProvider:
-            modelRoute.builtInModelRuntimeRoute?.providerType ?? null,
-          modelRuntimeModel:
-            modelRoute.builtInModelRuntimeRoute?.upstreamModel ?? null,
           cliAgentType: modelRoute.cliAgentType,
         },
       });
@@ -3103,7 +3093,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_template_context",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_template_context",
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
@@ -3205,7 +3195,7 @@ function resolveQueuedMessageComputerUseHostGrant(
 ) {
   return measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_computer_use_host",
     "nested",
     () => {
       return loadComputerUseHostGrantForAutoSend({
@@ -3274,7 +3264,7 @@ async function buildCreateQueuedChatRunInput(
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_build_prior_context",
     "nested",
     () => {
       return buildQueuedPriorContext({
@@ -3383,7 +3373,7 @@ async function createAutoSentQueuedRun(args: {
 }): Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null> {
   return await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
     "top_level",
     () => {
       return args.createRun(args.runInput);
@@ -3402,7 +3392,7 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
   }
   return await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_append_marker",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_append_marker",
     "nested",
     () => {
       return appendAutoSentQueuedRunMarker({
@@ -3423,7 +3413,7 @@ async function publishAutoSentQueuedRunSignals(args: {
 }): Promise<void> {
   await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
       await publishChatThreadMessageCreatedSafely({
@@ -4051,7 +4041,7 @@ async function prepareAutoSendQueuedMessageRunInput(input: {
   const { args, agent, queuedMessage } = input;
   return await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
     "top_level",
     () => {
       return buildCreateQueuedChatRunInput({
@@ -4082,7 +4072,7 @@ function autoSendAdmissionBlocked(
 ): Promise<boolean> {
   return measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_check_active_run",
     "nested",
     () => {
       return chatThreadAdmissionBlockedForAutoSend(args, threadId);
@@ -4122,7 +4112,7 @@ async function autoSendQueuedMessageForThread(
 
   const queuedMessage = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
     "nested",
     () => {
       return loadNextUnclaimedQueuedUserMessage(
@@ -4138,7 +4128,7 @@ async function autoSendQueuedMessageForThread(
 
   args.timing.recordElapsed({
     actionType:
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
     spanKind: "nested",
     startedAt: queuedMessage.createdAt.getTime(),
     finishedAt: args.admissionTime,
@@ -4146,7 +4136,7 @@ async function autoSendQueuedMessageForThread(
 
   const agent = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
+    "api_dispatch_pre_create_agent_chat_callback_auto_send_load_agent",
     "nested",
     () => {
       return loadAgentForAutoSend(args.db, args.agentId);
@@ -4335,7 +4325,7 @@ async function prepareCompletedTerminalChatCallbackWork(
 ): Promise<TerminalChatCallbackWork> {
   const prepared = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
+    "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
     "top_level",
     async () => {
       const completed = await handleCompletedChatCallback(
@@ -4435,7 +4425,7 @@ async function prepareFailedTerminalChatCallbackWork(
 ): Promise<TerminalChatCallbackWork> {
   const failed = await measureChatCallbackPreCreateTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_prepare_failed",
+    "api_dispatch_pre_create_agent_chat_callback_prepare_failed",
     "top_level",
     () => {
       return handleFailedChatCallback({
@@ -4862,7 +4852,7 @@ async function processTerminalChatCallback(
 
   const loaded = await measureChatCallbackPreCreateTiming(
     timing,
-    "api_dispatch_pre_create_zero_chat_callback_load_terminal",
+    "api_dispatch_pre_create_agent_chat_callback_load_terminal",
     "top_level",
     () => {
       return loadTerminalChatCallback(
@@ -5553,7 +5543,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     const db = set(writeDb$);
     const [thread] = await measureChatCallbackPreCreateTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
       "nested",
       () => {
         return db

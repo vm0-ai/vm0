@@ -368,7 +368,7 @@ export function WorkflowPreviewDiagram({
           className="owf-diagram-node-zero"
           iconClassName="owf-diagram-avatar"
         >
-          <span className="owf-diagram-zero-icon" aria-hidden="true">
+          <span className="owf-diagram-okou-icon" aria-hidden="true">
             <img src={ZERO_AVATAR_HEAD_IMG} alt="" aria-hidden />
             <img src={ZERO_AVATAR_HAIR_IMG} alt="" aria-hidden />
             <img src={ZERO_AVATAR_FACE_IMG} alt="" aria-hidden />

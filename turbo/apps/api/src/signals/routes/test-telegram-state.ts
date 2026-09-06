@@ -3,7 +3,7 @@ import { command, computed } from "ccstate";
 import { and, count, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
+  getBuiltInVendor,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTelegramStateContract,
@@ -56,7 +56,7 @@ const DEFAULT_TEST_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
 const TELEGRAM_E2E_FIXTURES = {
-  botUsername: "vm0_e2e_bot",
+  botUsername: "e2e_test_bot",
   botToken: "123456:e2e-test-bot-token",
   webhookSecret: "e2e-telegram-webhook-secret",
 } as const;
@@ -783,18 +783,18 @@ async function seedTelegramPostModelKeys(
     .insert(builtInModelKeys)
     .values([
       {
-        vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-        apiKey: `vm0-key-default-${seed.composeId}`,
+        vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+        apiKey: `built-in-key-default-${seed.composeId}`,
         label: seed.composeId,
       },
       {
         vendor: "anthropic",
-        apiKey: `vm0-key-anthropic-${seed.composeId}`,
+        apiKey: `built-in-key-anthropic-${seed.composeId}`,
         label: seed.composeId,
       },
       {
         vendor: "moonshot",
-        apiKey: `vm0-key-moonshot-${seed.composeId}`,
+        apiKey: `built-in-key-moonshot-${seed.composeId}`,
         label: seed.composeId,
       },
     ])
@@ -1257,61 +1257,6 @@ async function seedRunningRunForAction(
   return actionOk({ agent_session_id: sessionId });
 }
 
-async function seedCompletedRunForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const required = requiredActionStrings(body, [
-    "org_id",
-    "user_id",
-    "version_id",
-    "compose_id",
-    "selected_model",
-  ]);
-  if (!required) {
-    return actionBadRequest(
-      "org_id, user_id, version_id, compose_id, and selected_model are required",
-    );
-  }
-  const sessionId = await insertAgentSessionForAction(
-    db,
-    {
-      orgId: required.org_id!,
-      userId: required.user_id!,
-      agentId: required.compose_id!,
-    },
-    signal,
-  );
-  if (!sessionId) {
-    return actionBadRequest("failed to seed agent session");
-  }
-  const metadata = normalizeRunMetadata({
-    triggerSource: "telegram",
-    modelProvider: readActionNullableString(body, "model_provider"),
-    selectedModel: required.selected_model!,
-  });
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      userId: required.user_id!,
-      orgId: required.org_id!,
-      sessionId,
-      status: "completed",
-      prompt: "previous telegram session",
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      startedAt: new Date("2026-01-01T00:00:00.000Z"),
-      completedAt: new Date("2026-01-01T00:01:00.000Z"),
-      ...metadata,
-    })
-    .returning({ id: agentRuns.id });
-  signal.throwIfAborted();
-  if (!run) {
-    return actionBadRequest("failed to seed completed run");
-  }
-  return actionOk({ agent_session_id: sessionId, run_id: run.id });
-}
-
 async function seedModelPoliciesForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -1357,7 +1302,7 @@ async function seedModelPoliciesForAction(
     .insert(builtInModelKeys)
     .values({
       vendor: "anthropic",
-      apiKey: "vm0-key-anthropic",
+      apiKey: "built-in-key-anthropic",
       label: required.compose_id!,
     })
     .onConflictDoNothing({ target: builtInModelKeys.vendor });
@@ -1375,24 +1320,6 @@ async function seedModelPoliciesForAction(
         selectedModel: readActionNullableString(body, "selected_model") ?? null,
       },
     });
-  signal.throwIfAborted();
-  return actionOk();
-}
-
-async function seedOrgCreditsForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const orgId = readActionString(body, "org_id");
-  const credits = typeof body.credits === "number" ? body.credits : null;
-  if (!orgId || credits === null) {
-    return actionBadRequest("org_id and credits are required");
-  }
-  await db
-    .update(orgMetadata)
-    .set({ credits })
-    .where(eq(orgMetadata.orgId, orgId));
   signal.throwIfAborted();
   return actionOk();
 }
@@ -1838,9 +1765,7 @@ const telegramStateActionHandlers = {
   "get-post-run-state": getTelegramPostRunStateForAction,
   "get-telegram-link-id": getTelegramLinkIdForAction,
   "seed-running-run": seedRunningRunForAction,
-  "seed-completed-run": seedCompletedRunForAction,
   "seed-model-policies": seedModelPoliciesForAction,
-  "seed-org-credits": seedOrgCreditsForAction,
   "get-selected-model": getSelectedModelForAction,
   "seed-pending-user-link": seedPendingUserLinkForAction,
   "update-run-callback": updateRunCallbackForAction,

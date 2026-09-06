@@ -1,8 +1,6 @@
 import type { InboundMessage } from "ably";
-import { command, computed, state } from "ccstate";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { command, computed, state, type Command } from "ccstate";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 import { delay } from "signal-timers";
 
@@ -10,7 +8,6 @@ import { resolvePlatformEnvironment } from "../lib/platform-host.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import { now } from "../lib/time.ts";
-import { accept } from "../lib/accept.ts";
 import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
@@ -36,7 +33,12 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import { settle, withCleanup } from "../signals/utils.ts";
+import {
+  createDeferredPromise,
+  onRejection,
+  settle,
+  withCleanup,
+} from "../signals/utils.ts";
 import {
   chatThreadIndicators$,
   reloadChatThreadIndicators$,
@@ -87,59 +89,6 @@ function requireRuntime(
 const CHAT_EVENT_CATCH_UP_THROTTLE_MS = 1000;
 const RECENT_CHAT_EVENT_CATCH_UP_THREAD_COUNT = 100;
 
-const batchChatEventCatchUpEnabled$ = computed(
-  async (get): Promise<boolean> => {
-    const signal = get(rootSignal$);
-    signal.throwIfAborted();
-    const client = get(apiClient$)(featureSwitchesContract);
-    const response = await accept(
-      client.get({ fetchOptions: { signal } }),
-      [200],
-    );
-    return (
-      response.body.effectiveSwitches[FeatureSwitchKey.BatchChatEventCatchUp] ??
-      false
-    );
-  },
-);
-
-const catchUpLegacyChatEvents$ = command(
-  async (
-    { get },
-    indicators: ChatThreadIndicators,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
-    const runtime = requireRuntime(get(workerRuntimeState$));
-    await Promise.all(
-      Object.keys(indicators.threads).map((threadId) => {
-        return runtime.query(
-          {
-            dataKey: { kind: "chat-event", threadId },
-            afterSeqId: null,
-            consistency: "catch-up",
-          },
-          signal,
-        );
-      }),
-    );
-  },
-);
-
-interface CatchUpChatEventThrottle {
-  lastStartedAt: number | null;
-  active: Promise<void> | null;
-  trailing: {
-    readonly owner: object;
-    readonly promise: Promise<void>;
-  } | null;
-}
-
-const catchUpChatEventThrottle$ = computed((get): CatchUpChatEventThrottle => {
-  get(rootSignal$).throwIfAborted();
-  return { lastStartedAt: null, active: null, trailing: null };
-});
-
 const executeCatchUpChatEvent$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
@@ -182,77 +131,116 @@ const executeCatchUpChatEvent$ = command(
   },
 );
 
-const runCatchUpChatEventNow$ = command(
-  async (
-    { set },
-    throttle: CatchUpChatEventThrottle,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    throttle.lastStartedAt = now();
-    const execution = set(executeCatchUpChatEvent$, signal);
-    throttle.active = execution;
-    await withCleanup(execution, () => {
-      if (throttle.active === execution) {
-        throttle.active = null;
-      }
-    });
-  },
-);
+type CatchUpChatEventCompletion = ReturnType<
+  typeof createDeferredPromise<void>
+>;
 
-const runTrailingCatchUpChatEvent$ = command(
-  async (
-    { set },
-    throttle: CatchUpChatEventThrottle,
-    owner: object,
-    active: Promise<void> | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (active) {
-      await settle(active, signal);
+/** Keep catch-up scheduling state private to one Worker lifecycle. */
+function createCatchUpChatEventThrottle(): Command<
+  Promise<void>,
+  [AbortSignal]
+> {
+  const lastStartedAt$ = state<number | null>(null);
+  const active$ = state<CatchUpChatEventCompletion | null>(null);
+  const trailing$ = state<CatchUpChatEventCompletion | null>(null);
+
+  const executeScheduledCatchUp$ = command(
+    async (
+      { get, set },
+      completion: CatchUpChatEventCompletion,
+      previous: Promise<void> | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      signal.throwIfAborted();
+      if (previous) {
+        await settle(previous, signal);
+      }
+      const lastStartedAt = get(lastStartedAt$);
+      const remaining =
+        lastStartedAt === null
+          ? 0
+          : Math.max(
+              0,
+              lastStartedAt + CHAT_EVENT_CATCH_UP_THROTTLE_MS - now(),
+            );
+      if (remaining > 0) {
+        await delay(remaining, { signal });
+      }
+      signal.throwIfAborted();
+
+      if (get(trailing$) === completion) {
+        set(trailing$, null);
+      }
+      set(active$, completion);
+      set(lastStartedAt$, now());
+      await set(executeCatchUpChatEvent$, signal);
+    },
+  );
+
+  const runScheduledCatchUp$ = command(
+    async (
+      { get, set },
+      completion: CatchUpChatEventCompletion,
+      previous: Promise<void> | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await onRejection(
+        withCleanup(
+          set(executeScheduledCatchUp$, completion, previous, signal),
+          () => {
+            if (get(active$) === completion) {
+              set(active$, null);
+            }
+            if (get(trailing$) === completion) {
+              set(trailing$, null);
+            }
+          },
+        ),
+        (error) => {
+          if (!completion.settled()) {
+            completion.reject(error);
+          }
+        },
+      );
+      signal.throwIfAborted();
+      completion.resolve(undefined);
+    },
+  );
+
+  return command(({ get, set }, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    const trailing = get(trailing$);
+    if (trailing) {
+      return trailing.promise;
     }
-    const lastStartedAt = throttle.lastStartedAt;
-    if (lastStartedAt === null) {
-      throw new Error("Trailing ChatEvent catch-up has no prior start time");
-    }
-    const remaining = Math.max(
-      0,
-      lastStartedAt + CHAT_EVENT_CATCH_UP_THROTTLE_MS - now(),
+
+    const active = get(active$);
+    const lastStartedAt = get(lastStartedAt$);
+    const leading =
+      active === null &&
+      (lastStartedAt === null ||
+        now() - lastStartedAt >= CHAT_EVENT_CATCH_UP_THROTTLE_MS);
+    const completion = createDeferredPromise<void>(signal);
+    // Publish ownership before starting work: a trailing call may have no
+    // remaining delay by the time it starts executing.
+    set(leading ? active$ : trailing$, completion);
+    return set(
+      runScheduledCatchUp$,
+      completion,
+      active?.promise ?? null,
+      signal,
     );
-    if (remaining > 0) {
-      await delay(remaining, { signal });
-    }
-    if (throttle.trailing?.owner === owner) {
-      throttle.trailing = null;
-    }
-    await set(runCatchUpChatEventNow$, throttle, signal);
-  },
-);
+  });
+}
+
+const catchUpChatEventThrottle$ = computed((get) => {
+  get(rootSignal$).throwIfAborted();
+  return createCatchUpChatEventThrottle();
+});
 
 /** Globally serialize ChatEvent catch-up with leading and trailing throttle. */
 const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
-  const signal = get(rootSignal$);
-  signal.throwIfAborted();
-  const throttle = get(catchUpChatEventThrottle$);
-  if (throttle.trailing) {
-    return throttle.trailing.promise;
-  }
-  if (
-    throttle.active === null &&
-    (throttle.lastStartedAt === null ||
-      now() - throttle.lastStartedAt >= CHAT_EVENT_CATCH_UP_THROTTLE_MS)
-  ) {
-    return set(runCatchUpChatEventNow$, throttle, signal);
-  }
-  const owner = {};
-  const promise = set(
-    runTrailingCatchUpChatEvent$,
-    throttle,
-    owner,
-    throttle.active,
-    signal,
-  );
-  throttle.trailing = { owner, promise };
-  return promise;
+  return set(get(catchUpChatEventThrottle$), get(rootSignal$));
 });
 
 interface WorkerChatThreadIndicatorsCache {
@@ -269,20 +257,13 @@ const workerChatThreadIndicatorsCache$ = computed(
 
 const loadWorkerChatThreadIndicators$ = command(
   async (
-    { get, set },
+    { set },
     source: Promise<ChatThreadIndicators>,
     signal: AbortSignal,
   ): Promise<ChatThreadIndicators> => {
-    const [indicators, batchCatchUpEnabled] = await Promise.all([
-      source,
-      get(batchChatEventCatchUpEnabled$),
-    ]);
+    const indicators = await source;
     signal.throwIfAborted();
-    if (batchCatchUpEnabled) {
-      await set(catchUpChatEvent$);
-    } else {
-      await set(catchUpLegacyChatEvents$, indicators, signal);
-    }
+    await set(catchUpChatEvent$);
     signal.throwIfAborted();
     return indicators;
   },
@@ -692,6 +673,18 @@ export const getComputedStoreMessage$ = command(
     set(requireConnectionSignal$, connectionId, signal);
     if (message.computedKey === "connection-diagnostics") {
       return get(connectionDiagnostics$);
+    }
+    if (message.computedKey === "indexeddb-diagnostics") {
+      const diagnostics = await requireRuntime(
+        get(workerRuntimeState$),
+      ).getIndexedDbDiagnostics(signal);
+      signal.throwIfAborted();
+      return diagnostics;
+    }
+    if (message.computedKey === "indexeddb-snapshot-measurement") {
+      return await requireRuntime(
+        get(workerRuntimeState$),
+      ).measureIndexedDbSnapshot(signal);
     }
     const value =
       message.computedKey === "chat-thread-indicators"

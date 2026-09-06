@@ -1140,7 +1140,7 @@ function ActivityDetailContent({
             {displayName}
           </span>
         </nav>
-        <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
+        <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-[max(2rem,var(--sab))]">
           <ActivityHeaderCard
             displayName={displayName}
             status={status}
@@ -1265,7 +1265,7 @@ function ActivitySkeleton() {
           )}
           <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
         </nav>
-        <div className="mx-auto max-w-[900px] px-4 sm:px-6 pt-4 pb-8 w-full">
+        <div className="mx-auto max-w-[900px] px-4 sm:px-6 pt-4 pb-[max(2rem,var(--sab))] w-full">
           {/* Header card skeleton */}
           <div className="okou-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2 gap-x-3">

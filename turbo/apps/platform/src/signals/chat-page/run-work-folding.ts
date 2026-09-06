@@ -41,6 +41,7 @@ export interface RunWorkSection {
   readonly collapsible: boolean;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
+  readonly previewMessages: readonly EnrichedChatEvent[];
   readonly remainingArtifactCards: readonly RunWorkArtifactCard[];
   readonly startTime: number;
   readonly endTime?: number;
@@ -54,6 +55,12 @@ type RunWorkArtifactCard = Extract<
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
   readonly sectionsByAnchorEventId: Map<string, RunWorkSection>;
+  readonly statusTail: RunWorkStatusTail | null;
+}
+
+interface RunWorkStatusTail {
+  readonly anchorEventId: string | undefined;
+  readonly events: readonly EnrichedChatEvent[];
 }
 
 function chatEventDisplayError(event: ChatEvent): string | undefined {
@@ -509,23 +516,13 @@ function eventTime(event: EnrichedChatEvent | undefined): number | null {
   if (event === undefined) {
     return null;
   }
-  const timestamp = Date.parse(event.createdAt);
+  const timestamp = Date.parse(event.inputCreatedAt ?? event.createdAt);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 function firstEventTime(events: readonly EnrichedChatEvent[]): number | null {
   for (const event of events) {
     const timestamp = eventTime(event);
-    if (timestamp !== null) {
-      return timestamp;
-    }
-  }
-  return null;
-}
-
-function lastEventTime(events: readonly EnrichedChatEvent[]): number | null {
-  for (let index = events.length - 1; index >= 0; index--) {
-    const timestamp = eventTime(events[index]);
     if (timestamp !== null) {
       return timestamp;
     }
@@ -546,37 +543,56 @@ function lastEventMatching(
   return undefined;
 }
 
-interface RunWorkPhaseFolding {
+interface RunWorkGroupFolding {
   readonly visibleEvents: readonly EnrichedChatEvent[];
   readonly section: RunWorkSection | null;
+  readonly statusTail: RunWorkStatusTail;
 }
 
-interface RunWorkPhaseIdentity {
-  readonly key: string;
-  readonly runGroupId: string | undefined;
-  readonly runIds: readonly string[];
+// A work group is bounded by visible user inputs, independently of execution:
+// one run can span several groups, and goal continuations can span several runs.
+interface RunWorkGroup {
+  readonly unit: RunWorkUnit;
+  readonly events: readonly EnrichedChatEvent[];
+  readonly endTime: number | undefined;
 }
 
-function foldRunWorkPhase(
-  identity: RunWorkPhaseIdentity,
-  events: readonly EnrichedChatEvent[],
-  endTime: number | undefined,
-  hiddenUserEventIds: ReadonlySet<string>,
+function foldRunWorkGroup(
+  group: RunWorkGroup,
   foldedEventIds: ReadonlySet<string>,
-): RunWorkPhaseFolding {
+): RunWorkGroupFolding {
+  const { unit, events, endTime } = group;
+  const { hiddenUserEventIds } = unit;
   const outputMessages = events.filter(isRunWorkMessage);
   const anchorEvent = outputMessages.at(-1);
+  const anchorIndex =
+    anchorEvent === undefined ? -1 : events.indexOf(anchorEvent);
+  const latestRunId = latestRunIdForEvents(events);
+  const trailingStatusEvents = events.slice(anchorIndex + 1).filter((event) => {
+    return (
+      isRenderableAssistantEvent(event) && Boolean(chatEventDisplayError(event))
+    );
+  });
+  const statusTail = {
+    anchorEventId: anchorEvent?.id,
+    events: trailingStatusEvents.filter((event) => {
+      return event.runId === latestRunId;
+    }),
+  };
   const startTime = firstEventTime(events);
   if (anchorEvent === undefined || startTime === null) {
     return {
       visibleEvents: events.filter((event) => {
-        return !hiddenUserEventIds.has(event.id);
+        return (
+          !hiddenUserEventIds.has(event.id) &&
+          !trailingStatusEvents.includes(event)
+        );
       }),
       section: null,
+      statusTail,
     };
   }
 
-  const anchorIndex = events.indexOf(anchorEvent);
   const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
     return (
       isRunWorkAssistantOutput(event) ||
@@ -588,33 +604,22 @@ function foldRunWorkPhase(
     .filter((event) => {
       return hiddenUserEventIds.has(event.id) && foldedEventIds.has(event.id);
     });
-  const hiddenEventIds = new Set(
-    [...hiddenEvents, ...hiddenEventsAfterAnchor].map((event) => {
-      return event.id;
-    }),
-  );
-  const trailingStatusEvents = events.slice(anchorIndex + 1).filter((event) => {
-    return (
-      !hiddenEventIds.has(event.id) &&
-      !hiddenUserEventIds.has(event.id) &&
-      isRenderableAssistantEvent(event) &&
-      !isRunWorkMessage(event)
-    );
-  });
   const userEvents = events.filter((event) => {
     return visibleRunWorkUserEvent(event, hiddenUserEventIds);
   });
 
   return {
-    visibleEvents: [...userEvents, anchorEvent, ...trailingStatusEvents],
+    visibleEvents: [...userEvents, anchorEvent],
+    statusTail,
     section: {
-      key: `${identity.key}:${events[0]!.id}`,
-      runGroupId: identity.runGroupId,
-      runIds: identity.runIds,
+      key: `${unit.key ?? events[0]!.id}:${events[0]!.id}`,
+      runGroupId: unit.runGroupId,
+      runIds: unit.runIds,
       anchorEventId: anchorEvent.id,
       collapsible: outputMessages.length > 1,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
+      previewMessages: outputMessages.slice(-4, -1),
       remainingArtifactCards: remainingArtifactCards(outputMessages),
       startTime,
       ...(endTime === undefined ? {} : { endTime }),
@@ -660,77 +665,84 @@ function mergedUsageForRunIds(
   );
 }
 
-function phaseEndTime(
-  phase: readonly EnrichedChatEvent[],
-  isFinalPhase: boolean,
-  terminalEvent: EnrichedChatEvent | undefined,
-): number | undefined {
-  if (!isFinalPhase) {
-    return lastEventTime(phase) ?? undefined;
+function runWorkGroups(events: readonly EnrichedChatEvent[]): RunWorkGroup[] {
+  const groups = runWorkUnits(events).flatMap((unit) => {
+    return splitRunWorkEventsAtUsers(unit.events, unit.hiddenUserEventIds).map(
+      (events) => {
+        return { unit, events };
+      },
+    );
+  });
+  const workGroups: RunWorkGroup[] = [];
+  let nextInputTime: number | undefined;
+  for (let index = groups.length - 1; index >= 0; index--) {
+    const group = groups[index]!;
+    const terminalTime =
+      eventTime(terminalEventForLatestRun(group.events)) ?? undefined;
+    const endTime =
+      terminalTime === undefined
+        ? nextInputTime
+        : nextInputTime === undefined
+          ? terminalTime
+          : Math.min(terminalTime, nextInputTime);
+    workGroups.push({ ...group, endTime });
+
+    const input = group.events.find((event) => {
+      return visibleRunWorkUserEvent(event, group.unit.hiddenUserEventIds);
+    });
+    if (input !== undefined) {
+      nextInputTime = eventTime(input) ?? undefined;
+    }
   }
-  if (terminalEvent === undefined) {
-    return undefined;
-  }
-  return eventTime(terminalEvent) ?? lastEventTime(phase) ?? undefined;
+  return workGroups.reverse();
 }
 
 export function buildRunWorkFolding(
   groups: readonly ChatEventGroup[],
   foldedEventIds: ReadonlySet<string> = new Set(),
-): RunWorkFolding | null {
+): RunWorkFolding {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
     return group.events;
   });
   const visibleEvents: EnrichedChatEvent[] = [];
   const sections: RunWorkSection[] = [];
+  let statusTail: RunWorkStatusTail | null = null;
   const usageByAnchorEventId = new Map<string, ChatEventUsagePayload>();
+  const finalSectionByUnit = new Map<RunWorkUnit, RunWorkSection>();
 
-  for (const unit of runWorkUnits(events)) {
-    if (unit.key === undefined) {
-      visibleEvents.push(
-        ...unit.events.filter((event) => {
-          return !unit.hiddenUserEventIds.has(event.id);
-        }),
-      );
-      continue;
+  for (const group of runWorkGroups(events)) {
+    const folding = foldRunWorkGroup(group, foldedEventIds);
+    visibleEvents.push(...folding.visibleEvents);
+    // Work groups exist before their first output, so a pending input retires
+    // the previous tail immediately. Bookkeeping alone does not start a group.
+    if (
+      group.events.some((event) => {
+        return (
+          isChatInputEventType(event.eventType) ||
+          isRenderableAssistantEvent(event) ||
+          event.eventType === "output.thinking"
+        );
+      })
+    ) {
+      statusTail = folding.statusTail;
     }
-
-    const terminalEvent = terminalEventForLatestRun(unit.events);
-    const phases = splitRunWorkEventsAtUsers(
-      unit.events,
-      unit.hiddenUserEventIds,
-    );
-    const firstSectionIndex = sections.length;
-    for (const [phaseIndex, phase] of phases.entries()) {
-      const phaseFolding = foldRunWorkPhase(
-        {
-          key: unit.key,
-          runGroupId: unit.runGroupId,
-          runIds: unit.runIds,
-        },
-        phase,
-        phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
-        unit.hiddenUserEventIds,
-        foldedEventIds,
-      );
-      visibleEvents.push(...phaseFolding.visibleEvents);
-      if (phaseFolding.section !== null) {
-        sections.push(phaseFolding.section);
-      }
+    if (folding.section !== null) {
+      sections.push(folding.section);
+      finalSectionByUnit.set(group.unit, folding.section);
     }
-    if (unit.runGroupId !== undefined && sections.length > firstSectionIndex) {
+  }
+  for (const [unit, finalSection] of finalSectionByUnit) {
+    if (unit.runGroupId !== undefined) {
       const mergedUsage = mergedUsageForRunIds(unit.runIds, usageByRunId);
-      const finalSection = sections[sections.length - 1];
-      if (mergedUsage !== undefined && finalSection !== undefined) {
+      if (mergedUsage !== undefined) {
         usageByAnchorEventId.set(finalSection.anchorEventId, mergedUsage);
       }
     }
   }
 
-  if (sections.length === 0) {
-    return null;
-  }
+  // Historical errors stay in the source events; only the latest tail is rendered.
+  visibleEvents.push(...(statusTail?.events ?? []));
 
   const workAnchorEventIds = new Set(
     sections.map((section) => {
@@ -738,6 +750,7 @@ export function buildRunWorkFolding(
     }),
   );
   return {
+    statusTail,
     visibleGroups: attachUsageToRunWorkGroups(
       groupEventsForRunWorkDisplay(visibleEvents, workAnchorEventIds),
       usageByRunId,

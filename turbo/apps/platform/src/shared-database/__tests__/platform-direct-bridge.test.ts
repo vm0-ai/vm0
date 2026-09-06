@@ -6,7 +6,6 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test, vi } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
@@ -25,7 +24,11 @@ import {
   upgradeChatIdb,
 } from "../../signals/external/chat-idb-schema.ts";
 import { openDB } from "idb";
-import { setSharedDatabaseConnectionStatus$ } from "../../signals/shared-database.ts";
+import {
+  indexedDbSnapshotMeasurementFromWorker$,
+  measureIndexedDbSnapshotFromWorker$,
+  setSharedDatabaseConnectionStatus$,
+} from "../../signals/shared-database.ts";
 import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 const context = testContext();
@@ -86,6 +89,69 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
   }
 }
 
+test("Preserve exact UTF-8 snapshot bytes across the worker protocol", async () => {
+  // The Settings page rounds payload sizes to KB/MB, so it cannot assert the
+  // exact UTF-8 byte contract for non-ASCII text. Keep only that wire-level
+  // invariant here; counts, empty results, measurement, and reset use page tests.
+  const snapshotThread: ChatThreadSnapshotProjection = {
+    id: crypto.randomUUID(),
+    agentId: crypto.randomUUID(),
+    title: "Snapshot 文 😀",
+    sortAt: CREATED_AT,
+    createdAt: CREATED_AT,
+    updatedAt: CREATED_AT,
+    pinnedAt: null,
+    renamedAt: null,
+    selectedModel: null,
+    serviceTier: null,
+    computerUseHostId: null,
+  };
+  const snapshot = {
+    chatThreads: [snapshotThread],
+    latestEventId: crypto.randomUUID(),
+    latestSeqId: 1,
+  };
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
+  });
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, snapshot);
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+
+  await setupPage({
+    context,
+    path: "/error",
+    sharedWorkerTestTransport: "message-port",
+    auth: {
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      organization: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+    },
+  });
+  await vi.waitFor(() => {
+    expect(
+      context.store.get(eventDrivenChatThreads$).find((thread) => {
+        return thread.id === snapshotThread.id;
+      })?.title,
+    ).toBe(snapshotThread.title);
+  });
+
+  context.store.set(measureIndexedDbSnapshotFromWorker$);
+  const measurement = await context.store.get(
+    indexedDbSnapshotMeasurementFromWorker$,
+  );
+  const serializedSnapshot = JSON.stringify({ id: "current", ...snapshot });
+  const expectedBytes = new Blob([serializedSnapshot]).size;
+  expect(expectedBytes).toBeGreaterThan(serializedSnapshot.length);
+  expect(measurement?.payloadBytes).toBe(expectedBytes);
+});
+
 test("Show cached chat data before catching up live", async () => {
   const threadId = crypto.randomUUID();
   const unreadThreadId = crypto.randomUUID();
@@ -104,6 +170,17 @@ test("Show cached chat data before catching up live", async () => {
       threads: { [unreadThreadId]: "unread" },
     });
   });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          prewarmedThreadIds.push(threadId);
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+  });
   context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
     return respond(404, {
       error: {
@@ -114,11 +191,7 @@ test("Show cached chat data before catching up live", async () => {
   });
   context.mocks.api(
     chatThreadEventsContract.rows,
-    async ({ params, query, respond }) => {
-      if (params.threadId === unreadThreadId) {
-        prewarmedThreadIds.push(params.threadId);
-        return respond(200, chatEventRowsResponse([], query));
-      }
+    async ({ query, respond }) => {
       requestedSeqIds.push(query.sinceSeqId);
       if (query.sinceSeqId === 1) {
         await initialPage.promise;
@@ -250,7 +323,6 @@ test("Cache incoming chat messages before the conversation is opened", async () 
   await setupPage({
     context,
     path: "/error",
-    featureSwitches: { [FeatureSwitchKey.BatchChatEventCatchUp]: true },
     sharedWorkerTestTransport: "message-port",
     auth: {
       user: { id: userId(), fullName: "Direct Bridge User" },
@@ -295,6 +367,17 @@ test("Preserve every message during a burst of realtime notifications", async ()
       threads: { [unopenedThreadId]: "unread" },
     });
   });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          prewarmedThreadIds.push(threadId);
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+  });
   context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
     return respond(404, {
       error: {
@@ -305,11 +388,7 @@ test("Preserve every message during a burst of realtime notifications", async ()
   });
   context.mocks.api(
     chatThreadEventsContract.rows,
-    async ({ params, query, respond }) => {
-      if (params.threadId === unopenedThreadId) {
-        prewarmedThreadIds.push(params.threadId);
-        return respond(200, chatEventRowsResponse([], query));
-      }
+    async ({ query, respond }) => {
       catchUpRequests += 1;
       if (query.sinceSeqId === 1 && !catchUpStarted.settled()) {
         catchUpStarted.resolve();

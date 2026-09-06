@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.86.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.1...guest-agent-v0.86.2) (2026-09-06)
+
+
+### Performance Improvements
+
+* **guest-agent:** persist runtime npx cache in workspace ([#31981](https://github.com/vm0-ai/vm0/issues/31981)) ([69b2150](https://github.com/vm0-ai/vm0/commit/69b2150a993f7e2f7d359f4d359352ffa542dba9))
+
+## [0.86.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.0...guest-agent-v0.86.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* make pi memory citations safe across version skew ([#31976](https://github.com/vm0-ai/vm0/issues/31976)) ([63d4035](https://github.com/vm0-ai/vm0/commit/63d40353754fa03271b61b84d42ec3ee8cfe88f5))
+
+## [0.86.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.8...guest-agent-v0.86.0) (2026-09-06)
+
+
+### Features
+
+* **pi-memory:** hide citation envelopes and preserve provenance ([#31965](https://github.com/vm0-ai/vm0/issues/31965)) ([5cecc7c](https://github.com/vm0-ai/vm0/commit/5cecc7cbcebb48899e4a9b251f209bbfb176f3f9))
+
+## [0.85.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.7...guest-agent-v0.85.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* settle private pi maintenance at the generic checkpoint boundary ([#31947](https://github.com/vm0-ai/vm0/issues/31947)) ([2db67fc](https://github.com/vm0-ai/vm0/commit/2db67fc8be4f1fa863c4faf8ed4905acfc65cdb5))
+
+## [0.85.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.6...guest-agent-v0.85.7) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** reconcile cancellation and input at native settlement ([#31934](https://github.com/vm0-ai/vm0/issues/31934)) ([5784c62](https://github.com/vm0-ai/vm0/commit/5784c629ebac08ffdd4087444e6318b2f857d70c))
+
+## [0.85.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.5...guest-agent-v0.85.6) (2026-09-05)
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
+## [0.85.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.4...guest-agent-v0.85.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** own pending-tool handoff through native settlement ([#31924](https://github.com/vm0-ai/vm0/issues/31924)) ([cdcbfcc](https://github.com/vm0-ai/vm0/commit/cdcbfccdb7e2e32cecfe1a7aff2829d32f28f675))
+
+## [0.85.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.3...guest-agent-v0.85.4) (2026-09-05)
+
+
+### Performance Improvements
+
+* **guest-agent:** bound overlapping match ranges ([#31877](https://github.com/vm0-ai/vm0/issues/31877)) ([2e92d0e](https://github.com/vm0-ai/vm0/commit/2e92d0ef3aee22e455619eb3774eb9873fd71eec))
+
+## [0.85.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.2...guest-agent-v0.85.3) (2026-09-05)
+
 ## [0.85.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.85.1...guest-agent-v0.85.2) (2026-09-04)
 
 

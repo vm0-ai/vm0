@@ -74,7 +74,7 @@ const XERO_OAUTH_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 const AIRTABLE_OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
-const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_oauth_start_";
+const AUTH_REQUEST_USER_ID_PREFIX = "user_okou_connectors_oauth_start_";
 const YOUTUBE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/youtube",
   "https://www.googleapis.com/auth/youtube.force-ssl",
@@ -716,7 +716,6 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
 async function requestOauthStart(
   connectorSlug: string,
   options: {
-    readonly accountIntent?: "add" | "single-account";
     readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly callbackTarget?: "app";
@@ -738,7 +737,7 @@ async function requestOauthStart(
     headers,
     body: JSON.stringify({
       authMethod: options.authMethod ?? "oauth",
-      account: { intent: options.accountIntent ?? "single-account" },
+      account: { intent: "add" },
       ...(options.callbackTarget
         ? { callbackTarget: options.callbackTarget }
         : {}),
@@ -1029,7 +1028,6 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
 
   it("returns the future connection id for an unnamed account addition", async () => {
     const response = await requestOauthStart("test-oauth", {
-      accountIntent: "add",
       authenticated: true,
     });
 
@@ -1356,7 +1354,6 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("airtable", {
-      accountIntent: "add",
       callbackTarget: "app",
       headers: authHeaders(),
       origin: OKOU_API_ORIGIN,

@@ -4,7 +4,10 @@ import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
-import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
+import {
+  queryMessageBody,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
   cancelledEvent,
@@ -189,9 +192,9 @@ test("Review goal continuations as one work history", async () => {
   expect(screen.getByText("The launch is ready in every region")).toBeVisible();
   expect(screen.getByLabelText("Credit usage 10")).toBeVisible();
   expect(
-    screen.queryByText("Checked the initial launch evidence"),
+    queryMessageBody("Checked the initial launch evidence"),
   ).not.toBeInTheDocument();
-  expect(screen.queryByText("Validated the regional rollout")).toBeNull();
+  expect(queryMessageBody("Validated the regional rollout")).toBeNull();
   expect(screen.queryByText("Keep checking launch readiness")).toBeNull();
   expect(screen.queryByText("Finish checking launch readiness")).toBeNull();
 
@@ -566,13 +569,13 @@ test("Start a fresh work history after interrupting a goal continuation", async 
   await readyChat();
   const workHistories = buttonsNamed("Expand work history");
   expect(workHistories).toHaveLength(2);
-  expect(screen.queryByText("Checked the first rollout logs")).toBeNull();
-  expect(screen.queryByText("Checked the replacement rollout logs")).toBeNull();
+  expect(queryMessageBody("Checked the first rollout logs")).toBeNull();
+  expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();
 
   click(workHistories[0]!);
 
   await expect(
     screen.findByText("Checked the first rollout logs"),
   ).resolves.toBeVisible();
-  expect(screen.queryByText("Checked the replacement rollout logs")).toBeNull();
+  expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();
 });

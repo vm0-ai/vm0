@@ -311,6 +311,7 @@ const createTestConnector$ = command(
         userId,
         runtimeMethod: resolved.runtimeMethod,
         snapshot: resolved.snapshot,
+        account: { intent: "add" },
         outputs: testConnectorTokenOutputs({
           connectorSlug,
           authMethodId: authMethod,

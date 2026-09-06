@@ -2107,7 +2107,7 @@ describe("okou workflow automations", () => {
       ),
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "google-forms",
     );
@@ -3322,7 +3322,7 @@ describe("okou workflow automations", () => {
           return;
         }
         deleteConnector = false;
-        await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+        await connectorsApi.deleteDefaultBuiltinConnectorAccount(
           scenario.actor,
           "google-calendar",
         );
@@ -3536,7 +3536,7 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "google-calendar",
     );
@@ -4171,7 +4171,7 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       scenario.actor,
       "gmail",
     );
@@ -4864,22 +4864,22 @@ describe("okou workflow automations", () => {
       }),
     );
     for (const actionType of [
-      "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_workflow_automation_check_active_run",
-      "api_dispatch_pre_create_zero_workflow_automation_resolve_model_context",
-      "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
-      "api_dispatch_pre_create_zero_workflow_automation_create_run",
+      "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
+      "api_dispatch_pre_create_agent_workflow_automation_check_active_run",
+      "api_dispatch_pre_create_agent_workflow_automation_resolve_model_context",
+      "api_dispatch_pre_create_agent_workflow_automation_build_run_input",
+      "api_dispatch_pre_create_agent_workflow_automation_create_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
     );
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           op_type:
-            "api_dispatch_pre_create_zero_workflow_automation_create_run",
+            "api_dispatch_pre_create_agent_workflow_automation_create_run",
           trigger_source: "automation-schedule",
           agent_run_origin: "workflow_automation",
           span_kind: "nested",

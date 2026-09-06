@@ -273,7 +273,7 @@ function buildSkillSyncContext(extracted: ExtractedSkill): SkillSyncContext {
 async function createSkillArchive(
   files: readonly ExtractedFile[],
 ): Promise<{ archiveBuffer: Buffer; manifestBuffer: Buffer }> {
-  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-skill-"));
+  const tmpDir = await mkdtemp(join(tmpdir(), "api-skill-"));
   await Promise.all(
     files.map((file) => {
       const filePath = join(tmpDir, file.path);

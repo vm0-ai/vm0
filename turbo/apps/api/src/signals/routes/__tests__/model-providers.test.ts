@@ -22,7 +22,7 @@ import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
 } from "./helpers/feature-switches";
-import { setVm0BuiltInCandidateCooldownFixture } from "./helpers/runtime-state";
+import { setBuiltInCandidateCooldownFixture } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 import { modelProvidersRoutes } from "../model-providers";
@@ -554,25 +554,25 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       upstream_model: `${selectedModelPrefix}-expired`,
       model_key_id: randomUUID(),
     };
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-b`,
       firstRoute,
       earlierDeadline,
     );
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-b`,
       firstRoute,
       laterDeadline,
     );
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-a`,
       secondRoute,
       earlierDeadline,
     );
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       `${selectedModelPrefix}-expired`,
       expiredRoute,
@@ -649,7 +649,7 @@ describe("DELETE /api/model-providers/cooldown-diagnostics", () => {
       upstream_model: `${selectedModel}-upstream`,
       model_key_id: randomUUID(),
     };
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       selectedModel,
       route,
@@ -720,13 +720,13 @@ describe("DELETE /api/model-providers/cooldown-diagnostics", () => {
       upstream_model: `${selectedModel}-sibling`,
       model_key_id: randomUUID(),
     };
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       selectedModel,
       selectedRoute,
       unavailableUntil,
     );
-    await setVm0BuiltInCandidateCooldownFixture(
+    await setBuiltInCandidateCooldownFixture(
       context,
       selectedModel,
       siblingRoute,
@@ -1073,7 +1073,7 @@ describe("POST /api/model-providers", () => {
   });
 
   it("rejects the exact vm0 provider discriminator", async () => {
-    const fixture = uniqueOrgUser("zmp-vm0");
+    const fixture = uniqueOrgUser("zmp-okou");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const response = await setupRawAppRequest({
       context,

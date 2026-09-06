@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "vm0-ai/Template-artifact",
+    "ref": "main",
+    "directory": "Template-Presentation"
+  },
+  "templates": [
+    {
+      "slug": "bloom",
+      "resourceId": "template:html-ppt-bloom-pitch-runbook",
+      "defaultColorSystem": "carnival",
+      "storageId": "7e505c00-a899-43c2-b5d1-dc235345955b"
+    },
+    {
+      "slug": "blueprint-academy",
+      "resourceId": "template:html-ppt-blueprint-academy-runbook",
+      "defaultColorSystem": "forest_editorial",
+      "storageId": "b8ef50ca-8ee4-415b-a71e-941668916400"
+    },
+    {
+      "slug": "botane-organic",
+      "resourceId": "template:html-ppt-botane-organic-runbook",
+      "defaultColorSystem": "mauve_dusk",
+      "storageId": "d8c53e2d-f429-4c1d-82c1-7aa31b5eed78"
+    },
+    {
+      "slug": "business-data",
+      "resourceId": "template:html-ppt-business-data-runbook",
+      "defaultColorSystem": "berry_pop",
+      "storageId": "ed178a00-ce55-4ed2-a0fc-1cfc023b4360"
+    },
+    {
+      "slug": "crayon",
+      "resourceId": "template:html-ppt-crayon-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "df8e31db-5778-436e-a213-f85842afd88b"
+    },
+    {
+      "slug": "creative-agency",
+      "resourceId": "template:html-ppt-creative-agency-runbook",
+      "defaultColorSystem": "coral_studio",
+      "storageId": "de8affca-d175-4ad3-bbf3-9b8bb657ad6a"
+    },
+    {
+      "slug": "data-report",
+      "resourceId": "template:html-ppt-data-report-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "34447e8f-84c3-4fa4-9e51-2a4d4e35715d"
+    },
+    {
+      "slug": "editorial-magazine",
+      "resourceId": "template:html-ppt-editorial-magazine-runbook",
+      "defaultColorSystem": "warm_sand",
+      "storageId": "b408d1e4-050f-4c41-b391-68b96ee20ee2"
+    },
+    {
+      "slug": "landing-consulting",
+      "resourceId": "template:html-ppt-landing-consulting-runbook",
+      "defaultColorSystem": "pop_art",
+      "storageId": "ee578871-08bb-42b1-9165-de793b7264d3"
+    },
+    {
+      "slug": "lumina",
+      "resourceId": "template:html-ppt-lumina-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "6f399d30-86a2-4139-b809-1607c667dda7"
+    },
+    {
+      "slug": "meridian",
+      "resourceId": "template:html-ppt-meridian-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "257bef44-6470-4dc2-92a9-0a0ed55a180a"
+    },
+    {
+      "slug": "mosaic-geometric",
+      "resourceId": "template:html-ppt-mosaic-geometric-runbook",
+      "defaultColorSystem": "carnival",
+      "storageId": "b416a10f-20d4-4ccd-80e4-ef89718cc0c9"
+    },
+    {
+      "slug": "neo-brutalism",
+      "resourceId": "template:html-ppt-neo-brutalism-runbook",
+      "defaultColorSystem": "mono_ink",
+      "storageId": "7f2a6e3d-76b2-4fa3-b1f0-ac4f774855b2"
+    },
+    {
+      "slug": "nocturne",
+      "resourceId": "template:html-ppt-nocturne-runbook",
+      "defaultColorSystem": "midnight_mono",
+      "storageId": "b8bf385b-f134-4d74-943b-38d66d3592ec"
+    },
+    {
+      "slug": "pixel-glitch",
+      "resourceId": "template:html-ppt-pixel-glitch-runbook",
+      "defaultColorSystem": "bauhaus_primary",
+      "storageId": "4133f8ac-50d9-4048-a240-3562a79978a1"
+    },
+    {
+      "slug": "playful-launch",
+      "resourceId": "template:html-ppt-playful-launch-runbook",
+      "defaultColorSystem": "carnival",
+      "storageId": "029cd47b-7d5b-4189-a4e5-03f3056ec45e"
+    },
+    {
+      "slug": "playful-pop",
+      "resourceId": "template:html-ppt-playful-pop-runbook",
+      "defaultColorSystem": "pop_art",
+      "storageId": "a2e89563-3a8c-460a-8e42-036f0d5799b4"
+    },
+    {
+      "slug": "prospectus",
+      "resourceId": "template:html-ppt-prospectus-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "39bd1f3e-70c3-4f86-8900-00597874ee57"
+    },
+    {
+      "slug": "schoolhouse",
+      "resourceId": "template:html-ppt-schoolhouse-runbook",
+      "defaultColorSystem": "bauhaus_primary",
+      "storageId": "ed26bc87-163b-47cc-8a23-66e5cd25fad6"
+    },
+    {
+      "slug": "sticker-scrapbook",
+      "resourceId": "template:html-ppt-sticker-scrapbook-runbook",
+      "defaultColorSystem": "prism",
+      "storageId": "ff93c4c2-7a50-4da2-8dce-ed62502b3082"
+    },
+    {
+      "slug": "strata",
+      "resourceId": "template:html-ppt-strata-runbook",
+      "defaultColorSystem": "mono_ink",
+      "storageId": "5e6ef9a6-5d0f-447f-bda3-e0cd199660b9"
+    },
+    {
+      "slug": "taped-consulting",
+      "resourceId": "template:html-ppt-taped-consulting-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "e4a6e0cf-df85-45a3-b946-cb1159bd8890"
+    },
+    {
+      "slug": "vantage",
+      "resourceId": "template:html-ppt-vantage-runbook",
+      "defaultColorSystem": "slate_corporate",
+      "storageId": "641241f9-290b-4484-a9ef-33fb16aa7b7b"
+    }
+  ]
+}

@@ -77,7 +77,7 @@ import {
   readOfficialWorkflowRunStateFixture,
   readWorkflowAutomationAutonomyFixture,
   retargetWorkflowAutomationFixture,
-  seedVm0BuiltInModelKey,
+  seedBuiltInModelKey,
   setOfficialWorkflowAutomationAdmissionStateFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -135,7 +135,7 @@ function authHeaders(actor: ApiTestUser) {
 }
 
 async function selectBuiltInDefaultModel(actor: ApiTestUser): Promise<void> {
-  await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
+  await seedBuiltInModelKey(context, "claude-sonnet-5");
   await runs.updateOrgModelPolicies(actor, [
     {
       model: "claude-sonnet-5",
@@ -1472,7 +1472,17 @@ async function connectStripeOAuthForOfficialWorkflow(
     code: args.code,
     state,
   });
-  return (await connectors.readConnectorBySlug(actor, "stripe")).id;
+  const accounts = await connectors.listBuiltinConnectorAccounts(
+    actor,
+    "stripe",
+  );
+  const connected = accounts.find((account) => {
+    return account.externalId === args.accountId;
+  });
+  if (!connected) {
+    throw new Error(`Expected Stripe account ${args.accountId}`);
+  }
+  return connected.id;
 }
 
 function configureResultEmailRecipient(actor: ApiTestUser): void {
@@ -4586,7 +4596,6 @@ describe.sequential("Official Workflow installations", () => {
       context,
       { orgId: actor.orgId, userId: actor.userId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.OfficialWorkflows]: true,
       },
     );
@@ -5782,9 +5791,7 @@ describe.sequential("Official Workflow installations", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      },
+      {},
     );
     const firstAccessToken = `calendar-transition-first-${suffix}`;
     const secondAccessToken = `calendar-transition-second-${suffix}`;
@@ -6639,7 +6646,7 @@ describe.sequential("Official Workflow installations", () => {
     ]);
   });
 
-  it("revalidates a prepared Stripe transition after the same connector changes accounts", async () => {
+  it("revalidates a prepared Stripe transition after the default account changes", async () => {
     installCatalogStorageFixture();
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-stripe-binding-race-${suffix}`;
@@ -6704,7 +6711,12 @@ describe.sequential("Official Workflow installations", () => {
       accountId: "acct_official_after",
       code: `stripe-after-${suffix}`,
     });
-    expect(reconnectedId).toBe(connectorId);
+    expect(reconnectedId).not.toBe(connectorId);
+    await connectors.deleteBuiltinConnectorAccount(
+      actor,
+      "stripe",
+      connectorId,
+    );
     await resumeStructureTransitionPromotion();
     await olderWorker;
 
@@ -6741,7 +6753,7 @@ describe.sequential("Official Workflow installations", () => {
         kind: "event",
         eventType: "stripe-invoice-paid",
         eventConfig: expect.objectContaining({
-          connectorId,
+          connectorId: reconnectedId,
           stripeAccountId: "acct_official_after",
           mode: "live",
         }),
@@ -6778,11 +6790,6 @@ describe.sequential("Official Workflow installations", () => {
       await cleanupCatalog();
     });
     await setOfficialWorkflowsEnabled(actor, true);
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
 
     const firstAccountSpec = {
       code: `meet-race-first-${suffix}`,

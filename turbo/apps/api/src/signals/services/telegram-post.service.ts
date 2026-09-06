@@ -10,7 +10,7 @@ import {
 import { v5 as uuidv5 } from "uuid";
 import {
   getCanonicalModelDisplayName,
-  getVm0VisibleModels,
+  getBuiltInVisibleModels,
   isSupportedRunModel,
   normalizeRunModelId,
   type SupportedRunModel,
@@ -2121,7 +2121,7 @@ const handleModelCommand$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const visibleModels = new Set(getVm0VisibleModels());
+    const visibleModels = new Set(getBuiltInVisibleModels());
     const [policies, preference] = await Promise.all([
       set(
         listOrgModelPolicies$,

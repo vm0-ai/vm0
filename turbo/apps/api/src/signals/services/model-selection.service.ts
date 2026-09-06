@@ -1,6 +1,6 @@
 import {
   getFrameworkForType,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   isCodexFastModeModel,
   isBuiltInModelProviderType,
   getRunModelAccess,
@@ -677,7 +677,7 @@ export async function resolveModelFirstProviderAdmission(params: {
     ? getFrameworkForType(
         isBuiltInModelProviderType(knownProvider) &&
           isSupportedRunModel(selectedModel)
-          ? getVm0ConcreteProviderType(selectedModel)
+          ? getBuiltInConcreteProviderType(selectedModel)
           : knownProvider,
       )
     : null;

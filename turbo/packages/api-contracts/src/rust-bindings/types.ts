@@ -9,6 +9,7 @@ import {
   piLaunchConfigSchema,
   piModelConfigLegacySchema,
   piModelConfigV2Schema,
+  piModelConfigV3Schema,
   runnersModelProviderFailuresContract,
   sessionHistoryEncodingSchema,
   storageMountEntrySchema,
@@ -20,6 +21,7 @@ import {
   webhookCompleteContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
+  webhookPiMemoryPhase2UsageContract,
 } from "../contracts/webhooks";
 
 export interface RustTypeBinding {
@@ -50,6 +52,14 @@ export const rustTypeRootDoc = [
 ] as const;
 
 export const rustTypeModuleDocs = [
+  {
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2"],
+    rustDoc: ["Private Pi memory maintenance control."],
+  },
+  {
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustDoc: ["Bounded provider-attempt accounting."],
+  },
   {
     rustModulePath: ["runners"],
     rustDoc: ["Runner-facing DTOs generated from TypeScript API contracts."],
@@ -120,6 +130,51 @@ export const rustTypeModuleDocs = [
 
 export const rustTypeBindings = [
   {
+    schema: webhookPiMemoryPhase2UsageContract.send.body,
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustTypeName: "Request",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "Request",
+        rustDoc: [
+          "Private maintenance provider-attempt usage; contains no memory content.",
+        ],
+        fields: {
+          schemaVersion: ["Private journal schema version."],
+          runId: ["Authenticated maintenance run."],
+          memoryStorageId: ["Exact mounted Storage owner."],
+          leaseToken: ["Exact dispatched claim token."],
+          claimedRevision: ["Claimed input revision."],
+          claimedBaseVersionId: ["Pinned mounted base version."],
+          selectionDigest: ["Bounded candidate selection identity."],
+          attempts: ["Provider attempts observed by the private child."],
+        },
+      },
+      {
+        rustTypeName: "RequestAttempt",
+        rustDoc: ["One observed provider attempt."],
+        fields: {
+          responseId: ["Provider response or exact lease-attempt identity."],
+          usage: ["Token quantities incurred by this attempt."],
+        },
+      },
+      {
+        rustTypeName: "RequestAttemptUsage",
+        rustDoc: [
+          "Background token quantities, separate from foreground accounting.",
+        ],
+        fields: {
+          input: ["Uncached input tokens."],
+          output: ["Output tokens."],
+          cacheRead: ["Cached input tokens."],
+          cacheWrite: ["Cache creation tokens."],
+          reasoning: ["Reasoning tokens included in output."],
+        },
+      },
+    ],
+  },
+  {
     schema: modelProviderCodexRuntimeConfigSchema,
     rustModulePath: ["runners", "runs"],
     rustTypeName: "CodexRuntimeConfig",
@@ -172,6 +227,37 @@ export const rustTypeBindings = [
           memoryRecall: [
             "Optional frozen memory-summary selection for API and Sandbox parity.",
           ],
+          maintenance: [
+            "Optional authenticated input for a first-party Pi memory maintenance run.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMaintenance",
+        rustDoc: ["Private input for one sandbox Pi memory maintenance run."],
+        fields: {
+          schemaVersion: ["Pi memory maintenance input version."],
+          memoryStorageId: ["Canonical mounted memory Storage identity."],
+          claimedRevision: ["Exact claimed Phase 2 input revision."],
+          claimedBaseVersionId: ["Exact memory version mounted for the claim."],
+          leaseToken: ["Opaque token fencing this maintenance claim."],
+          selectionDigest: ["Digest of the bounded selected candidate set."],
+          selected: [
+            "Bounded Stage 1 candidate snapshots selected by the claim.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMaintenanceSelected",
+        rustDoc: ["One bounded Stage 1 candidate snapshot."],
+        fields: {
+          piSessionId: ["Canonical Pi session identity."],
+          sourceRunId: ["Run that produced the candidate."],
+          sourceHistoryHash: ["Exact source session-history hash."],
+          sourceCompletedAt: ["Completion time of the source run."],
+          rawMemory: ["Restricted Stage 1 memory candidate."],
+          rolloutSummary: ["Restricted Stage 1 rollout summary."],
+          rolloutSlug: ["Optional safe rollout evidence slug."],
         },
       },
       {
@@ -411,6 +497,119 @@ export const rustTypeBindings = [
           ],
         },
       },
+    ],
+  },
+  {
+    schema: piModelConfigV3Schema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfigV3",
+    direction: "response",
+    fieldTypeOverrides: {
+      environment: "String",
+      secretName: "String",
+    },
+    declarations: [
+      {
+        rustTypeName: "PiModelConfigV3",
+        rustDoc: ["API-owned dialect-aware non-secret Pi model configuration."],
+        variants: {
+          "openai-responses": [
+            "Public Responses route with optional priority tier.",
+          ],
+          "openai-codex-responses": [
+            "Native Codex Responses route with optional fast tier.",
+          ],
+        },
+        fields: {
+          schemaVersion: ["Pi model configuration generation."],
+          transport: ["Transport policy selected by the route."],
+          provider: ["Native Pi catalog provider selected by the route."],
+          baseUrl: ["Exact base URL used for model requests."],
+          model: ["Exact provider model identifier sent with requests."],
+          catalogModel: [
+            "Optional native Pi catalog model used for trusted public Responses metadata.",
+          ],
+          thinkingLevel: ["Explicit Pi thinking level."],
+          serviceTier: ["Optional dialect-constrained request service tier."],
+          credentialBindings: [
+            "Bounded non-secret credential bindings materialized only at an execution edge.",
+          ],
+        },
+      },
+      ...(["OpenaiResponses", "OpenaiCodexResponses"] as const).flatMap(
+        (dialect): RustTypeDeclarationDoc[] => {
+          return [
+            {
+              rustTypeName: `PiModelConfigV3${dialect}Transport`,
+              rustDoc: ["Required Responses streaming transport."],
+              variants: { sse: ["Server-sent events only."] },
+            },
+            {
+              rustTypeName: `PiModelConfigV3${dialect}Provider`,
+              rustDoc: ["Native Pi catalog providers for this dialect."],
+              variants:
+                dialect === "OpenaiResponses"
+                  ? {
+                      deepseek: ["DeepSeek provider."],
+                      openai: ["OpenAI public API provider."],
+                      openrouter: ["OpenRouter provider."],
+                    }
+                  : { "openai-codex": ["OpenAI Codex subscription provider."] },
+            },
+            {
+              rustTypeName: `PiModelConfigV3${dialect}ThinkingLevel`,
+              rustDoc: ["Thinking levels supported by Pi sessions."],
+              variants: {
+                off: ["Disable model thinking."],
+                minimal: ["Minimal thinking."],
+                low: ["Low thinking."],
+                medium: ["Medium thinking."],
+                high: ["High thinking."],
+                xhigh: ["Extra-high thinking."],
+                max: ["Maximum thinking."],
+              },
+            },
+            {
+              rustTypeName: `PiModelConfigV3${dialect}ServiceTier`,
+              rustDoc: ["Dialect-constrained request service tiers."],
+              variants:
+                dialect === "OpenaiResponses"
+                  ? { priority: ["Public Responses priority service tier."] }
+                  : { fast: ["Native Codex Responses fast service tier."] },
+            },
+            {
+              rustTypeName: `PiModelConfigV3${dialect}CredentialBinding`,
+              rustDoc: ["One non-secret execution-edge credential binding."],
+              fields: {
+                environment: [
+                  "Sandbox environment entry containing the value.",
+                ],
+                secretName: [
+                  "API-owned encrypted secret containing the value.",
+                ],
+                credentialHeader: [
+                  "Optional non-secret custom gateway header policy.",
+                ],
+              },
+              variants: {
+                "api-key": ["Public Responses API-key binding."],
+                "access-token": ["ChatGPT access-token binding."],
+                "account-id": ["ChatGPT account-ID binding."],
+              },
+            },
+            {
+              rustTypeName: `PiModelConfigV3${dialect}CredentialBindingApiKeyCredentialHeader`,
+              rustDoc: ["Non-secret custom gateway credential header policy."],
+              fields: {
+                name: ["Request header name."],
+                valueTemplate: [
+                  "Header value template containing the credential placeholder exactly once.",
+                ],
+              },
+            },
+          ];
+        },
+      ),
     ],
   },
   {
@@ -940,6 +1139,18 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
+        rustTypeName: "RequestMaintenanceAttestation",
+        rustDoc: ["Private proof of a validated Pi memory maintenance tree."],
+        fields: {
+          schemaVersion: ["Maintenance checkpoint attestation version."],
+          leaseToken: ["Opaque token fencing the maintenance claim."],
+          claimedRevision: ["Exact claimed Phase 2 input revision."],
+          claimedBaseVersionId: ["Exact memory version mounted for the claim."],
+          selectionDigest: ["Digest of the bounded selected candidate set."],
+          validatedVersionId: ["Content hash of the validated mounted tree."],
+        },
+      },
+      {
         rustTypeName: "RequestChanges",
         rustDoc: [
           "Incremental file change set sent while preparing a partial storage upload.",
@@ -969,6 +1180,9 @@ export const rustTypeBindings = [
             "Optional base version identifier for an incremental upload.",
           ],
           changes: ["Optional incremental file changes from the base version."],
+          maintenanceAttestation: [
+            "Private validation proof required for Pi memory maintenance publication.",
+          ],
         },
       },
     ],
@@ -1032,6 +1246,18 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
+        rustTypeName: "RequestMaintenanceAttestation",
+        rustDoc: ["Private proof of a validated Pi memory maintenance tree."],
+        fields: {
+          schemaVersion: ["Maintenance checkpoint attestation version."],
+          leaseToken: ["Opaque token fencing the maintenance claim."],
+          claimedRevision: ["Exact claimed Phase 2 input revision."],
+          claimedBaseVersionId: ["Exact memory version mounted for the claim."],
+          selectionDigest: ["Digest of the bounded selected candidate set."],
+          validatedVersionId: ["Content hash of the validated mounted tree."],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: [
           "Request body for committing a direct sandbox storage upload.",
@@ -1050,6 +1276,9 @@ export const rustTypeBindings = [
           ],
           message: [
             "Optional commit message associated with the storage version.",
+          ],
+          maintenanceAttestation: [
+            "Private validation proof required for Pi memory maintenance publication.",
           ],
         },
       },

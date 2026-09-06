@@ -98,24 +98,31 @@ function connectorRowCount(popup: HTMLElement): number {
 }
 
 function connectorListHeight(popup: HTMLElement): number {
+  const fixedHeight = requestedPopupHeight(popup);
+  if (fixedHeight !== null) {
+    return Math.min(
+      CONNECTOR_LIST_MAX_HEIGHT,
+      fixedHeight - CONNECTOR_POPOVER_CHROME_HEIGHT,
+    );
+  }
   return Math.min(
     connectorRowCount(popup) * CONNECTOR_ROW_HEIGHT,
     CONNECTOR_LIST_MAX_HEIGHT,
   );
 }
 
-function requestedFrameHeight(popup: HTMLElement): number | null {
-  const match = /min\(([\d.]+)rem,/u.exec(popup.style.height);
-  return match ? Number(match[1]) * 16 : null;
+function requestedPopupHeight(popup: HTMLElement): number | null {
+  const height = popup.style.height;
+  return height.endsWith("rem") ? Number.parseFloat(height) * 16 : null;
 }
 
 function connectorPopupHeight(
   popup: HTMLElement,
   viewportHeight: number,
 ): number {
-  const frameHeight = requestedFrameHeight(popup);
-  if (frameHeight !== null) {
-    return Math.min(frameHeight, viewportHeight);
+  const fixedHeight = requestedPopupHeight(popup);
+  if (fixedHeight !== null) {
+    return Math.min(fixedHeight, viewportHeight);
   }
   return CONNECTOR_POPOVER_CHROME_HEIGHT + connectorListHeight(popup);
 }
@@ -271,9 +278,10 @@ export function mockConnectorPopoverLayout(
   replaceProperty(HTMLElement.prototype, "scrollHeight", {
     get(this: HTMLElement): number {
       if (connectorList(this)) {
-        return (
+        return Math.max(
+          this.clientHeight,
           this.querySelectorAll('[role="listitem"]').length *
-          CONNECTOR_ROW_HEIGHT
+            CONNECTOR_ROW_HEIGHT,
         );
       }
       return scrollHeightDescriptor?.get?.call(this) ?? 0;

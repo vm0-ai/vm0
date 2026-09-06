@@ -17,7 +17,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
+import { seedBuiltInModelKey } from "./helpers/runtime-state";
 import { createFixtureOperationOwner } from "./helpers/fixture-operation-owner";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -30,6 +30,8 @@ import {
   testPiMemoryStage1StateContract,
   testPiMemoryStage1StateRoutes,
 } from "../test-pi-memory-stage1-state";
+
+import { runInIsolatedProcess } from "../../../../../../scripts/run-isolated-test.mjs";
 
 const context = testContext();
 const BUCKET = "pi-memory-stage1-worker-test";
@@ -474,7 +476,7 @@ beforeEach(async () => {
   mockEnv("CRON_SECRET", CRON_SECRET);
   context.sessionHistoryBlobs.clear();
   installS3Objects();
-  await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+  await seedBuiltInModelKey(context, "gpt-5.6-terra");
 });
 
 describe("Pi memory Stage 1 worker", () => {
@@ -673,7 +675,10 @@ describe("Pi memory Stage 1 worker", () => {
     expect(serializedLogs).not.toContain(OUTPUT_SECRET);
   });
 
-  it("isolates malformed, future, wrong-session, and unsettled sources before the provider", async () => {
+  it("isolates malformed and cyclic sources permanently before the provider", async () => {
+    if (await runInIsolatedProcess(import.meta.url)) {
+      return;
+    }
     const storage = createStorageFixture();
     const futureId = randomUUID();
     const wrongExpectedId = randomUUID();
@@ -711,6 +716,29 @@ describe("Pi memory Stage 1 worker", () => {
         raw: Buffer.from(unsettled.toJsonl(), "utf8"),
       }),
     ];
+    for (const duplicate of [false, true]) {
+      const id = randomUUID();
+      const history = settledHistory(id, "invalid graph candidate").toString(
+        "utf8",
+      );
+      const record = JSON.stringify({
+        type: "model_change",
+        id: "graph-entry",
+        parentId: duplicate ? null : "graph-entry",
+        timestamp: "2026-09-05T00:00:00.000Z",
+        provider: "openai",
+        modelId: "gpt-5.6-terra",
+      });
+      invalid.push(
+        await storage.seed({
+          piSessionId: id,
+          raw: Buffer.from(
+            `${history}${record}\n${duplicate ? `${record}\n` : ""}`,
+            "utf8",
+          ),
+        }),
+      );
+    }
     const validId = randomUUID();
     const valid = await storage.seed({
       piSessionId: validId,
@@ -719,9 +747,9 @@ describe("Pi memory Stage 1 worker", () => {
     const provider = installProvider();
 
     await expect(runScoped(storage)).resolves.toMatchObject({
-      claimed: 5,
+      claimed: 7,
       succeeded: 1,
-      terminalFailure: 4,
+      terminalFailure: 6,
     });
     expect(provider.calls).toHaveLength(1);
     for (const fixture of invalid) {
@@ -733,7 +761,7 @@ describe("Pi memory Stage 1 worker", () => {
     await expect(inspect(valid)).resolves.toMatchObject({
       status: "succeeded",
     });
-  });
+  }, 150_000);
 
   it("fences concurrent claims and stale workers while recording both provider usages", async () => {
     const storage = createStorageFixture();

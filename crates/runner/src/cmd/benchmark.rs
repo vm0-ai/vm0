@@ -639,6 +639,40 @@ mod tests {
     }
 
     #[test]
+    fn benchmark_exit_codes_match_terminal_states() {
+        for (case, termination, expected_exit_code) in [
+            ("exited zero", ExecTermination::Exited { exit_code: 0 }, 0),
+            (
+                "exited u8 maximum",
+                ExecTermination::Exited { exit_code: 255 },
+                255,
+            ),
+            (
+                "exited below u8 range",
+                ExecTermination::Exited { exit_code: -1 },
+                1,
+            ),
+            (
+                "exited above u8 range",
+                ExecTermination::Exited { exit_code: 256 },
+                1,
+            ),
+            ("timed out", ExecTermination::TimedOut, 124),
+            ("cancelled", ExecTermination::Cancelled, 1),
+            ("start failed", ExecTermination::StartFailed, 1),
+            ("wait failed", ExecTermination::WaitFailed, 1),
+        ] {
+            let result = exec_result(termination, b"", b"", "");
+
+            assert_eq!(
+                benchmark_exit_code(&result),
+                expected_exit_code,
+                "case={case}"
+            );
+        }
+    }
+
+    #[test]
     fn benchmark_output_preserves_timeout_stderr_fallback() {
         let result = exec_result(ExecTermination::TimedOut, b"partial stdout\n", b"", "");
         let mut stdout = Vec::new();

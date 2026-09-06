@@ -371,7 +371,7 @@ async function expectExactFeishuMemberConnector(args: {
   const unlinkedStart = await oauthApp.request(appConnectUrl);
   expect(unlinkedStart.status).toBe(400);
   await expect(unlinkedStart.json()).resolves.toStrictEqual({
-    error: "Additional connector accounts are not enabled yet",
+    error: "This connector does not support additional accounts",
   });
   const unlinked = await accept(
     args.client.getStatus({
@@ -2189,7 +2189,7 @@ describe("Feishu integration", () => {
       customConnectorOAuthClient.start({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
-        body: { account: { intent: "single-account" } },
+        body: { account: { intent: "add" } },
       }),
       [403],
     );
@@ -2272,7 +2272,7 @@ describe("Feishu integration", () => {
         params: { id: managedConnector.id },
         body: {
           values: [],
-          account: { intent: "single-account" },
+          account: { intent: "add" },
         },
       }),
       [403],
@@ -2314,22 +2314,6 @@ describe("Feishu integration", () => {
       [403],
     );
     expect(managedProposal.body.error.message).toBe(
-      "This connector is managed by its integration",
-    );
-
-    const managedAccountDisconnect = await accept(
-      connectorAccountsClient().disconnectSingleAccount({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          target: {
-            kind: "custom",
-            customConnectorId: managedConnector.id,
-          },
-        },
-      }),
-      [403],
-    );
-    expect(managedAccountDisconnect.body.error.message).toBe(
       "This connector is managed by its integration",
     );
 
@@ -2482,51 +2466,6 @@ describe("Feishu integration", () => {
       },
     });
 
-    const persistedSingletonState = `managed-feishu-${randomUUID()}`;
-    await seedCustomConnectorOAuthStateContext(context, {
-      state: persistedSingletonState,
-      orgId: requireValue(member.orgId, "Expected an organization"),
-      userId: member.userId,
-      customConnectorId: managedConnector.id,
-      storageVersion: managedConnector.storageVersion,
-      redirectUri: `${APP_ORIGIN}/connectors/feishu/callback`,
-      oauthContext: {
-        version: 2,
-        authMode: "oauth",
-        connectorId: managedConnector.id,
-        storageVersion: managedConnector.storageVersion,
-        providerContext: {
-          provider: "feishu",
-          completionTarget: "feishu",
-          installationId,
-          expectedOpenId: "ou_oauth_user",
-        },
-      },
-    });
-    await expect(
-      readConnectorOAuthAccountMutation(context, persistedSingletonState),
-    ).resolves.toMatchObject({
-      account_mutation: { intent: "single-account" },
-    });
-    oauthUserOpenId = "ou_oauth_user";
-    clearConnectorInvalidationMocks();
-    const persistedSingletonResponse = await oauthApp.request(
-      `${feishuOauthContract.callback.path}?${new URLSearchParams({
-        code: "persisted-singleton-feishu-code",
-        responseMode: "json",
-        state: persistedSingletonState,
-      })}`,
-    );
-    expect(persistedSingletonResponse.status).toBe(200);
-    expectCustomConnectorInvalidations([member.userId]);
-    await expect(persistedSingletonResponse.json()).resolves.toStrictEqual({
-      redirectUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
-    });
-    expect(oauthTokenRedirectUris).toStrictEqual([
-      `${APP_ORIGIN}/connectors/feishu/callback`,
-      `${APP_ORIGIN}/connectors/feishu/callback`,
-    ]);
-
     const legacyReplacementOpenId = "ou_legacy_replacement_user";
     oauthUserOpenId = legacyReplacementOpenId;
     clearConnectorInvalidationMocks();
@@ -2546,7 +2485,6 @@ describe("Feishu integration", () => {
     expect(legacyCallbackResponse.status).toBe(200);
     expectCustomConnectorInvalidations([member.userId]);
     expect(oauthTokenRedirectUris).toStrictEqual([
-      `${APP_ORIGIN}/connectors/feishu/callback`,
       `${APP_ORIGIN}/connectors/feishu/callback`,
       `${FEISHU_CALLBACK_ORIGIN}/api/integrations/feishu/oauth/callback`,
     ]);
@@ -4226,7 +4164,6 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
     await enableFeishuIntegration(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.OkouDebug]: true,
     });
     await connectFixtureUser(fixture);

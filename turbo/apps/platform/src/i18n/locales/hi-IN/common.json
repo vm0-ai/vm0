@@ -1006,6 +1006,20 @@
       "accessNotAllowed": "प्रवेश की अनुमति नहीं है।",
       "userBanned": "खाता पहुंच निलंबित कर दी गई क्योंकि इस खाते पर गतिविधि ने {{brandName}} उपयोग की शर्तों का उल्लंघन किया। यदि आपके कोई प्रश्न हैं, तो {{supportEmail}} से संपर्क करें।"
     },
+    "desktop": {
+      "phases": {
+        "completed": "Desktop में साइन इन हो गया है। आप यह विंडो बंद कर सकते हैं।",
+        "connecting": "आपका डेस्कटॉप सत्र कनेक्ट किया जा रहा है।",
+        "consumed": "Desktop में साइन इन पूरा हो रहा है। यह विंडो खुली रखें।",
+        "failed": "साइन इन पूरा नहीं हो सका। Desktop से फिर शुरू करें या इस ब्राउज़र में दोबारा कोशिश करें।",
+        "no-workspaces": "वेब ऐप में वर्कस्पेस बनाएँ या उसमें शामिल हों, फिर Desktop से दोबारा साइन इन करें।",
+        "pending": "साइन इन जारी रखने के लिए Desktop खोलें।",
+        "selecting": "इस कंप्यूटर के लिए वर्कस्पेस चुनें।"
+      },
+      "reopen": "Desktop खोलें",
+      "retry": "फिर कोशिश करें",
+      "title": "Desktop में साइन इन करें"
+    },
     "documentTitles": {
       "signIn": "दाखिल करना",
       "signUp": "साइन अप करें"
@@ -2239,14 +2253,20 @@
       "draft": "मसौदा",
       "empty": "बातचीत शुरू करें और यह यहां दिखाई देगी",
       "markUnread": "अपठित के रूप में चिह्नित करें",
+      "movePinDown": "नीचे ले जाएँ",
+      "movePinUp": "ऊपर ले जाएँ",
       "newChatWith": "{{agentName}} के साथ नई चैट",
       "noUnread": "कोई अपठित चैट नहीं",
       "openChatMenu": "चैट मेनू खोलें",
       "openListMenu": "चैट सूची मेनू खोलें",
       "pin": "चैट पिन करें",
+      "pinDropAfter": "{{title}} के बाद छोड़ें",
+      "pinDropBefore": "{{title}} से पहले छोड़ें",
       "pinned": "पिन की गई",
       "rename": "चैट का नाम बदलें",
       "renameDescription": "इस चैट थ्रेड के लिए एक नया नाम दर्ज करें।",
+      "reorderInstructions": "क्रम बदलने के लिए खींचें। चुनने के लिए स्पेस, स्थान बदलने के लिए तीर वाली कुंजियाँ, छोड़ने के लिए स्पेस या रद्द करने के लिए Esc दबाएँ।",
+      "reorderThread": "{{title}} का क्रम बदलें",
       "titlePlaceholder": "चैट शीर्षक",
       "unpin": "चैट अनपिन करें",
       "unread": "अपठित",
@@ -2369,7 +2389,9 @@
     },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
+      "cleanupFailed": "टेक्स्ट जोड़ दिया गया, लेकिन सहेजी गई रिकॉर्डिंग हटाई नहीं जा सकी।",
       "confirmRecording": "OK",
+      "discarding": "वॉइस ड्राफ़्ट हटाया जा रहा है...",
       "input": "ध्वनि इनपुट",
       "inputLimitReached": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए प्रो या टीम में अपग्रेड करें।",
       "inputLimitReachedMember": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए किसी वर्कस्पेस व्यवस्थापक से अपग्रेड करने के लिए कहें।",
@@ -2378,8 +2400,13 @@
       "inputLimitReachedReset": "ध्वनि इनपुट सीमा पूरी हो गई. कृपया अपनी सीमा रीसेट होने तक प्रतीक्षा करें।",
       "microphoneAccessDenied": "माइक्रोफ़ोन पहुंच अस्वीकृत कर दी गई थी. माइक्रोफ़ोन एक्सेस की अनुमति दें और पुनः प्रयास करें।",
       "openingMicrophone": "माइक्रोफ़ोन खुल रहा है...",
+      "removeDraft": "वॉइस ड्राफ़्ट हटाएँ",
+      "restoreFailed": "आपका वॉइस ड्राफ़्ट लोड नहीं हो सका। फिर से कोशिश करें।",
+      "retry": "फिर से कोशिश करें",
+      "retryReady": "आपकी रिकॉर्डिंग सुरक्षित है। ट्रांसक्रिप्शन फिर से आज़माएँ।",
       "starting": "ध्वनि इनपुट प्रारंभ करना",
       "stopRecording": "रिकॉर्डिंग बंद करें",
+      "storageFailed": "ऑडियो सहेजा नहीं जा सका। दोबारा प्रयास करने पर केवल इस डिवाइस पर पहले से सहेजा गया ऑडियो मिलेगा।",
       "transcribing": "प्रतिलेखन",
       "transcribingProgress": "प्रतिलेखन...",
       "transcriptionFailed": "ध्वनि प्रतिलेखन विफल रहा. पुनः प्रयास करें।"
@@ -2736,12 +2763,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "अधिक विकल्प",
-      "statusConnected": "जुड़े हुए",
       "toasts": {
         "connected": "जुड़े हुए",
         "created": "\"{{connector}}\" बनाया गया",
         "deleted": "कस्टम कनेक्टर हटा दिया गया",
-        "disconnected": "डिस्कनेक्ट किया गया",
         "updated": "अपडेट किया गया \"{{connector}}\""
       },
       "updateConfirm": {
@@ -3245,15 +3270,13 @@
       "redirectTitle": "{{connector}} पर पुनर्निर्देशित किया जा रहा है..."
     },
     "toasts": {
-      "connected": "{{connector}} कनेक्ट हुआ",
-      "disconnected": "{{connector}} डिस्कनेक्ट हो गया"
+      "connected": "{{connector}} कनेक्ट हुआ"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "अनुरोध विफल रहा",
-      "sharedDatabaseUnavailable": "ऐप में कोई समस्या आ गई है। कृपया कुछ देर प्रतीक्षा करें, फिर दोबारा कोशिश करने के लिए पेज रीफ़्रेश करें।"
+      "requestFailed": "अनुरोध विफल रहा"
     },
     "realtime": {
       "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें.",
@@ -4999,6 +5022,7 @@
         "remaining_one": "{{value}} रीसेट बचे हैं",
         "remaining_other": "{{value}} रीसेट बचे हैं",
         "remainingUnavailable": "रीसेट उपलब्ध नहीं हैं",
+        "remainingUnknown": "रीसेट —",
         "remainingWithExpiry_one": "{{value}} रीसेट बचा है · {{expiry}} समाप्त",
         "remainingWithExpiry_other": "{{value}} रीसेट बचे हैं · {{expiry}} समाप्त",
         "title": "Codex उपयोग रीसेट करें?"
@@ -5123,6 +5147,32 @@
           "workerLoading": "लोड हो रहा है",
           "workerTitle": "शेयर्ड वर्कर कनेक्शन डायग्नोस्टिक्स",
           "workerUnavailable": "अनुपलब्ध"
+        },
+        "indexedDb": {
+          "countExplanation": "गिनती के लिए रीड-ओनली ट्रांज़ैक्शन का उपयोग होता है और रिकॉर्ड का डेटा नहीं पढ़ा जाता।",
+          "description": "Shared Worker के स्थानीय चैट कैश में रिकॉर्ड की संख्या देखें।",
+          "loading": "IndexedDB स्टोरेज लोड हो रहा है...",
+          "measurementUnavailable": "स्नैपशॉट का मापन विफल हुआ। फिर से कोशिश करें।",
+          "measureSnapshot": "स्नैपशॉट मापें",
+          "measuring": "मापा जा रहा है...",
+          "records": "रिकॉर्ड",
+          "refresh": "रीफ़्रेश करें",
+          "schema": "स्कीमा",
+          "snapshotDescription": "एक रिकॉर्ड में कई थ्रेड हो सकते हैं। आकार UTF-8 JSON का अनुमान है, जिसमें डेटाबेस का अतिरिक्त स्थान शामिल नहीं है; पढ़ने के समय में आकार का अनुमान शामिल नहीं है।",
+          "snapshotEmpty": "कैश में कोई थ्रेड स्नैपशॉट नहीं है।",
+          "snapshotPayload": "अनुमानित डेटा आकार",
+          "snapshotReadDuration": "IndexedDB पढ़ने का समय",
+          "snapshotThreads": "स्नैपशॉट में थ्रेड",
+          "snapshotTitle": "थ्रेड स्नैपशॉट",
+          "stores": "ऑब्जेक्ट स्टोर",
+          "title": "IndexedDB स्टोरेज",
+          "unavailable": "IndexedDB स्टोरेज उपलब्ध नहीं है।"
+        },
+        "voiceInput": {
+          "default": "डिफ़ॉल्ट ({{model}})",
+          "description": "वॉइस इनपुट v2 के लिए मॉडल चुनें। स्पीच-टू-टेक्स्ट मॉडल टेक्स्ट सुधारने के लिए {{model}} का उपयोग करते हैं।",
+          "title": "वॉइस इनपुट मॉडल",
+          "unavailable": "मॉडल उपलब्ध नहीं है ({{model}})"
         }
       },
       "language": {

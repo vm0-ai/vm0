@@ -3,8 +3,11 @@ import { Buffer } from "node:buffer";
 import {
   VOICE_IO_TRANSCRIBE_MAX_FILES,
   voiceIoTranscribeContract,
+  type VoiceIoEditorContext,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
+import { userPreferencesRoutes } from "../user-preferences";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -24,6 +27,10 @@ const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 interface OpenRouterRequest {
+  readonly reasoning?: {
+    readonly effort?: string;
+    readonly enabled?: boolean;
+  };
   readonly messages: readonly {
     readonly role: string;
     readonly content:
@@ -45,6 +52,12 @@ interface OpenRouterRequest {
 function client() {
   return setupApp({ context, routes: voiceIoTranscribeRoutes })(
     voiceIoTranscribeContract,
+  );
+}
+
+function preferencesClient() {
+  return setupApp({ context, routes: userPreferencesRoutes })(
+    userPreferencesContract,
   );
 }
 
@@ -110,7 +123,11 @@ async function waitForAbort(
   await aborted.promise;
 }
 
-function form(files: readonly File[], reference?: string): FormData {
+function form(
+  files: readonly File[],
+  reference?: string,
+  editorContext?: VoiceIoEditorContext,
+): FormData {
   const data = new FormData();
   for (const file of files) {
     data.append("file", file);
@@ -118,13 +135,14 @@ function form(files: readonly File[], reference?: string): FormData {
   if (reference !== undefined) {
     data.append("lastAssistantMessage", reference);
   }
+  if (editorContext !== undefined) {
+    data.append("editorContext", JSON.stringify(editorContext));
+  }
   return data;
 }
 
 async function enabledActor() {
-  const actor = createBddApi(context).user({
-    orgId: createUniqueStaffOrgIdFixture(),
-  });
+  const actor = createBddApi(context).user();
   if (!actor.orgId) {
     throw new Error("Voice draft tests require an organization");
   }
@@ -133,7 +151,7 @@ async function enabledActor() {
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-    { [FeatureSwitchKey.VoiceDraft]: true },
+    { [FeatureSwitchKey.VoiceInputV2]: true },
   );
   return actor;
 }
@@ -146,12 +164,423 @@ function requestAudioParts(request: OpenRouterRequest) {
   return userMessage.content;
 }
 
+function rejectDisabledReasoning(request: OpenRouterRequest) {
+  if (
+    request.reasoning?.effort === "none" ||
+    request.reasoning?.enabled === false
+  ) {
+    return HttpResponse.json(
+      {
+        error: {
+          message:
+            "Reasoning is mandatory for this endpoint and cannot be disabled.",
+          code: 400,
+          metadata: { provider_name: null },
+        },
+      },
+      { status: 400 },
+    );
+  }
+  return undefined;
+}
+
 describe("POST /api/voice-io/transcribe", () => {
+  it("uses the selected multimodal model for every long-recording chunk and polish", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      preferencesClient().update({
+        headers,
+        body: { voiceInputModel: "google/gemini-3.8-flash" },
+      }),
+      [200],
+    );
+    const models: string[] = [];
+    server.use(
+      http.post(OPENROUTER_URL, async ({ request }) => {
+        const body = (await request.json()) as OpenRouterRequest & {
+          model: string;
+        };
+        models.push(body.model);
+        const result =
+          body.response_format.json_schema.name === "voice_transcript"
+            ? { transcript: "Monday", language: "en" }
+            : { polishedText: "Monday.", language: "en" };
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: JSON.stringify(result) },
+            },
+          ],
+        });
+      }),
+    );
+    const response = await accept(
+      client().post({
+        headers,
+        body: form([audioFile(1, 50), audioFile(2, 50)]),
+      }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({
+      transcript: "Monday Monday",
+      polishedText: "Monday.",
+      language: "en",
+    });
+    expect(models).toStrictEqual([
+      "google/gemini-3.8-flash",
+      "google/gemini-3.8-flash",
+      "google/gemini-3.8-flash",
+    ]);
+  });
+
+  it.each(["openai/gpt-audio", "openai/gpt-audio-mini"] as const)(
+    "transcribes long audio with %s and uses a text-capable model for polish",
+    async (model) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      const actor = await enabledActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { userId: actor.userId, orgId: actor.orgId },
+        { [FeatureSwitchKey.OkouDebug]: true },
+      );
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      const models: string[] = [];
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          const body = (await request.json()) as OpenRouterRequest & {
+            model: string;
+          };
+          models.push(body.model);
+          const textOnly = typeof body.messages[1]?.content === "string";
+          if (textOnly && body.model === model) {
+            return HttpResponse.json(
+              { error: { message: "An audio modality is required" } },
+              { status: 400 },
+            );
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify(
+                    textOnly
+                      ? { polishedText: "Ship Monday.", language: "en" }
+                      : { transcript: "Ship Monday", language: "en" },
+                  ),
+                },
+              },
+            ],
+          });
+        }),
+      );
+      const response = await accept(
+        client().post({
+          headers,
+          body: form([audioFile(1, 50), audioFile(2, 50)]),
+        }),
+        [200],
+      );
+      expect(models).toStrictEqual([model, model, "google/gemini-3.6-flash"]);
+      expect(response.body).toStrictEqual({
+        transcript: "Ship Monday Ship Monday",
+        polishedText: "Ship Monday.",
+        language: "en",
+      });
+      expect(response.headers.get("X-Voice-Input-Model")).toBe(model);
+      expect(response.headers.get("X-Voice-Polish-Model")).toBe(
+        "google/gemini-3.6-flash",
+      );
+    },
+  );
+
+  it("treats a dedicated transcription model's empty result as no speech", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      preferencesClient().update({
+        headers,
+        body: { voiceInputModel: "qwen/qwen3-asr-1.7b" },
+      }),
+      [200],
+    );
+    server.use(
+      http.post("https://openrouter.ai/api/v1/audio/transcriptions", () => {
+        return HttpResponse.json({ text: "" });
+      }),
+    );
+    const response = await client().post({
+      headers,
+      body: form([audioFile(0)]),
+    });
+    expect(response.status).toBe(204);
+  });
+
+  it("reports a selected transcription provider failure without changing models", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      preferencesClient().update({
+        headers,
+        body: { voiceInputModel: "fal-ai/elevenlabs/speech-to-text/scribe-v2" },
+      }),
+      [200],
+    );
+    server.use(
+      http.post(
+        "https://fal.run/fal-ai/elevenlabs/speech-to-text/scribe-v2",
+        () => {
+          return new HttpResponse(null, { status: 429 });
+        },
+      ),
+    );
+    const response = await accept(
+      client().post({ headers, body: form([audioFile(1)]) }),
+      [503],
+    );
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+  });
+
+  it.each([
+    {
+      model: "google/gemini-2.5-flash-lite",
+      reasoning: "none",
+      maxTokens: 65_535,
+    },
+    {
+      model: "google/gemini-3.1-flash-lite",
+      reasoning: "minimal",
+      maxTokens: 65_536,
+    },
+    {
+      model: "google/gemini-3.8-flash",
+      reasoning: "minimal",
+      maxTokens: 65_536,
+    },
+    { model: "openai/gpt-audio", reasoning: null, maxTokens: 16_384 },
+    { model: "openai/gpt-audio-mini", reasoning: null, maxTokens: 16_384 },
+  ] as const)(
+    "uses the persisted $model preference for a non-staff user",
+    async ({ model, reasoning, maxTokens }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      const saved = await accept(preferencesClient().get({ headers }), [200]);
+      expect(saved.body.voiceInputModel).toBe(model);
+      let providerRequest: unknown;
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          providerRequest = await request.json();
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    transcript: "Ship on Monday.",
+                    polishedText: "Ship on Monday.",
+                    language: "en",
+                  }),
+                },
+              },
+            ],
+          });
+        }),
+      );
+      const response = await accept(
+        client().post({ headers, body: form([audioFile(1)]) }),
+        [200],
+      );
+      expect(response.body.polishedText).toBe("Ship on Monday.");
+      expect(providerRequest).toMatchObject({ model, max_tokens: maxTokens });
+      if (reasoning) {
+        expect(providerRequest).toMatchObject({
+          reasoning: { effort: reasoning },
+          response_format: { type: "json_schema" },
+        });
+      } else {
+        expect(providerRequest).not.toHaveProperty("reasoning");
+        expect(providerRequest).not.toHaveProperty("response_format");
+        expect(providerRequest).toMatchObject({ modalities: ["text"] });
+      }
+      expect(response.headers.get("X-Voice-Input-Model")).toBeNull();
+    },
+  );
+
+  it.each([
+    "qwen/qwen3-asr-flash-2026-02-10",
+    "qwen/qwen3-asr-1.7b",
+    "qwen/qwen3-asr-0.6b",
+    "openai/gpt-transcribe",
+    "openai/gpt-4o-transcribe",
+    "openai/gpt-4o-mini-transcribe",
+    "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+  ] as const)(
+    "transcribes with %s and applies the shared polish model",
+    async (model) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      const actor = await enabledActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { userId: actor.userId, orgId: actor.orgId },
+        { [FeatureSwitchKey.OkouDebug]: true },
+      );
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      const elevenLabs = model.startsWith("fal-ai/");
+      let transcriptionRequest: unknown;
+      let polishRequest: unknown;
+      server.use(
+        http.post(
+          elevenLabs
+            ? `https://fal.run/${model}`
+            : "https://openrouter.ai/api/v1/audio/transcriptions",
+          async ({ request }) => {
+            transcriptionRequest = await request.json();
+            return HttpResponse.json({ text: "um ship Monday" });
+          },
+        ),
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          polishRequest = await request.json();
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    polishedText: "Ship Monday.",
+                    language: "en",
+                  }),
+                },
+              },
+            ],
+          });
+        }),
+      );
+      const response = await accept(
+        client().post({ headers, body: form([audioFile(7)]) }),
+        [200],
+      );
+      expect(response.body).toStrictEqual({
+        transcript: "um ship Monday",
+        polishedText: "Ship Monday.",
+        language: "en",
+      });
+      expect(transcriptionRequest).toMatchObject(
+        elevenLabs
+          ? {
+              audio_url: expect.stringContaining("data:audio/wav;base64,"),
+              tag_audio_events: false,
+              diarize: false,
+            }
+          : { model, input_audio: { format: "wav" }, response_format: "json" },
+      );
+      expect(polishRequest).toMatchObject({ model: "google/gemini-3.6-flash" });
+      expect(response.headers.get("X-Voice-Input-Model")).toBe(model);
+      expect(response.headers.get("X-Voice-Polish-Model")).toBe(
+        "google/gemini-3.6-flash",
+      );
+      expect(response.headers.get("Server-Timing")).toContain(
+        "voice_transcribe;dur=",
+      );
+      expect(response.headers.get("Server-Timing")).toContain(
+        "voice_polish;dur=",
+      );
+    },
+  );
+
+  it("preserves a model through older preference writes, isolates users, and resets to the default", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    const actor = await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      preferencesClient().update({
+        headers,
+        body: { voiceInputModel: "google/gemini-3.8-flash" },
+      }),
+      [200],
+    );
+    await accept(
+      preferencesClient().update({ headers, body: { theme: "dark" } }),
+      [200],
+    );
+    const preserved = await accept(preferencesClient().get({ headers }), [200]);
+    expect(preserved.body.voiceInputModel).toBe("google/gemini-3.8-flash");
+    const other = createBddApi(context).user({ orgId: actor.orgId });
+    mocks.clerk.session(other.userId, other.orgId, "org:member");
+    const isolated = await accept(preferencesClient().get({ headers }), [200]);
+    expect(isolated.body.voiceInputModel).toBeNull();
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    await accept(
+      preferencesClient().update({ headers, body: { voiceInputModel: null } }),
+      [200],
+    );
+    const reset = await accept(preferencesClient().get({ headers }), [200]);
+    expect(reset.body.voiceInputModel).toBeNull();
+    let providerRequest: unknown;
+    server.use(
+      http.post(OPENROUTER_URL, async ({ request }) => {
+        providerRequest = await request.json();
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  transcript: "Hello.",
+                  polishedText: "Hello.",
+                  language: "en",
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const response = await accept(
+      client().post({ headers, body: form([audioFile(1)]) }),
+      [200],
+    );
+    expect(response.body.polishedText).toBe("Hello.");
+    expect(providerRequest).toMatchObject({ model: "google/gemini-3.6-flash" });
+  });
+
   it.each([
     { label: "short recording", durations: [1] },
     { label: "long recording", durations: [30, 30, 30, 30] },
   ])(
-    "rejects a $label containing no intelligible speech",
+    "completes a $label containing no intelligible speech without content",
     async ({ durations }) => {
       mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       await enabledActor();
@@ -191,10 +620,10 @@ describe("POST /api/voice-io/transcribe", () => {
             }),
           ),
         }),
-        [502],
+        [204],
       );
 
-      expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+      expect(response.body).toBeUndefined();
       expect(schemaNames).toStrictEqual(
         durations.map(() => {
           return durations.length === 1
@@ -277,10 +706,19 @@ describe("POST /api/voice-io/transcribe", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
     const reference = "The current release is called Project Nebula.";
+    const editorContext = {
+      before: "Please review Project Nebula\n",
+      selected: "the previous scope",
+      after: " before shipping version 1.5.",
+    };
     let providerRequest: OpenRouterRequest | undefined;
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         providerRequest = (await request.json()) as OpenRouterRequest;
+        const reasoningError = rejectDisabledReasoning(providerRequest);
+        if (reasoningError) {
+          return reasoningError;
+        }
         return HttpResponse.json({
           choices: [
             {
@@ -301,7 +739,7 @@ describe("POST /api/voice-io/transcribe", () => {
     const response = await accept(
       client().post({
         headers: { authorization: "Bearer clerk-session" },
-        body: form([audioFile(1)], reference),
+        body: form([audioFile(1)], reference, editorContext),
       }),
       [200],
     );
@@ -314,7 +752,7 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(providerRequest).toMatchObject({
       model: "google/gemini-3.6-flash",
       max_tokens: 65_536,
-      reasoning: { effort: "none" },
+      reasoning: { effort: "minimal" },
       temperature: 0,
       store: false,
       response_format: {
@@ -344,6 +782,16 @@ describe("POST /api/voice-io/transcribe", () => {
       }),
     ).toStrictEqual(["text", "text", "input_audio"]);
     expect(parts[0]?.text).toContain(reference);
+    expect(parts[0]?.text).toContain(
+      JSON.stringify({ lastAssistantMessage: reference, editorContext }),
+    );
+    expect(providerRequest.messages[0]?.content).not.toContain(
+      editorContext.before,
+    );
+    expect(providerRequest.messages[0]?.content).toContain("# Light polish");
+    expect(providerRequest.messages[0]?.content).toContain(
+      "Never turn 'may need to change' into 'needs to change'",
+    );
     expect(parts[1]?.text).toContain(
       "The audio that follows is the ONLY content to transcribe.",
     );
@@ -376,6 +824,13 @@ describe("POST /api/voice-io/transcribe", () => {
     const firstWave = createDeferredPromise<void>(context.signal);
     const firstWaveStarted = createDeferredPromise<void>(context.signal);
     let globalPolishContent = "";
+    let globalPolishSystem = "";
+    const chunkReferences: string[] = [];
+    const editorContext = {
+      before: "Review the plan first: ",
+      selected: "",
+      after: "\nDo not implement yet.",
+    };
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         const body = (await request.json()) as OpenRouterRequest;
@@ -384,6 +839,11 @@ describe("POST /api/voice-io/transcribe", () => {
           const userMessage = body.messages[1];
           globalPolishContent =
             typeof userMessage?.content === "string" ? userMessage.content : "";
+          const systemMessage = body.messages[0];
+          globalPolishSystem =
+            typeof systemMessage?.content === "string"
+              ? systemMessage.content
+              : "";
           return HttpResponse.json({
             choices: [
               {
@@ -400,6 +860,7 @@ describe("POST /api/voice-io/transcribe", () => {
         }
 
         transcriptionRequests += 1;
+        chunkReferences.push(requestAudioParts(body)[0]?.text ?? "");
         activeTranscriptions += 1;
         maximumActiveTranscriptions = Math.max(
           maximumActiveTranscriptions,
@@ -433,7 +894,7 @@ describe("POST /api/voice-io/transcribe", () => {
 
     const pendingResponse = client().post({
       headers: { authorization: "Bearer clerk-session" },
-      body: form(files, "Use the exact product spelling."),
+      body: form(files, "Use the exact product spelling.", editorContext),
     });
     await firstWaveStarted.promise;
     expect(transcriptionRequests).toBe(3);
@@ -448,6 +909,13 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(transcriptionRequests).toBe(4);
     expect(maximumActiveTranscriptions).toBe(3);
     expect(globalPolishContent).toContain("part 1 part 2 part 3 part 4");
+    for (const reference of [...chunkReferences, globalPolishContent]) {
+      expect(reference).toContain(JSON.stringify(editorContext));
+    }
+    expect(globalPolishSystem).toContain("# Light polish");
+    expect(globalPolishSystem).toContain(
+      "Never turn 'may need to change' into 'needs to change'",
+    );
   });
 
   it("uses transcript-only audio processing and one global polish for a long single file", async () => {
@@ -457,6 +925,10 @@ describe("POST /api/voice-io/transcribe", () => {
     server.use(
       http.post(OPENROUTER_URL, async ({ request }) => {
         const body = (await request.json()) as OpenRouterRequest;
+        const reasoningError = rejectDisabledReasoning(body);
+        if (reasoningError) {
+          return reasoningError;
+        }
         const schemaName = body.response_format.json_schema.name;
         schemaNames.push(schemaName);
         return HttpResponse.json({
@@ -569,6 +1041,31 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(abortedRequests).toBe(2);
   });
 
+  it.each([
+    { label: "malformed JSON", value: "not valid json" },
+    {
+      label: "oversized selection",
+      value: JSON.stringify({
+        before: "",
+        selected: "x".repeat(1001),
+        after: "",
+      }),
+    },
+  ])(
+    "rejects invalid editor context before contacting the provider: $label",
+    async ({ value }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const body = form([audioFile(1)]);
+      body.append("editorContext", value);
+      const response = await client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body,
+      });
+      expect(response.status).toBe(400);
+    },
+  );
+
   it("requires the voice draft switch and rejects oversized reference context", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const actor = createBddApi(context).user({
@@ -581,7 +1078,7 @@ describe("POST /api/voice-io/transcribe", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: false },
+      { [FeatureSwitchKey.VoiceInputV2]: false },
     );
     const disabled = await client().post({
       headers: { authorization: "Bearer clerk-session" },
@@ -593,7 +1090,7 @@ describe("POST /api/voice-io/transcribe", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceDraft]: true },
+      { [FeatureSwitchKey.VoiceInputV2]: true },
     );
     const oversized = await client().post({
       headers: { authorization: "Bearer clerk-session" },

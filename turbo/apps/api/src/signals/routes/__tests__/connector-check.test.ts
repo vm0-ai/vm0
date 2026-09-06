@@ -47,7 +47,7 @@ interface ConnectedFixture {
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
   async (fixture) => {
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(
       fixture.actor,
       fixture.connectorSlug,
     );
@@ -116,7 +116,7 @@ async function issueDevicePat(actor: ApiTestUser): Promise<string> {
   return token.body.access_token;
 }
 
-async function seedZeroMembership(actor: ApiTestUser): Promise<void> {
+async function seedAdminMembership(actor: ApiTestUser): Promise<void> {
   await trackOrgMembershipFixture(
     store.set(
       seedOrgMembership$,
@@ -216,7 +216,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     expect(withoutOrganization.body.error.code).toBe("UNAUTHORIZED");
 
     const actor = bdd.user();
-    await seedZeroMembership(actor);
+    await seedAdminMembership(actor);
     const runId = await createOwnedRun(actor);
     const withoutConnectorRead = await accept(
       client().check({
@@ -698,7 +698,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
   it("uses only an owned agent run snapshot, including dynamic bases and final policies", async () => {
     const owner = bdd.user();
     const runId = await createOwnedRun(owner);
-    await seedZeroMembership(owner);
+    await seedAdminMembership(owner);
     const token = okouToken(owner, runId, ["connector:read", "agent-run:read"]);
     const runBase = "https://prod.api.reap.global/v1";
     const secondRunBase = "https://sandbox.api.reap.global/v1";
@@ -863,7 +863,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
     });
 
     const intruder = bdd.user({ orgId: requireOrgId(owner) });
-    await seedZeroMembership(intruder);
+    await seedAdminMembership(intruder);
     const wrongOwner = await accept(
       client().check({
         headers: {
@@ -888,7 +888,7 @@ describe("POST /api/connectors/diagnostics/check", () => {
   it("diagnoses historical and execution inline entries without exposing their source snapshot", async () => {
     const actor = bdd.user();
     const runId = await createOwnedRun(actor);
-    await seedZeroMembership(actor);
+    await seedAdminMembership(actor);
     const token = okouToken(actor, runId, ["connector:read", "agent-run:read"]);
     const inlineBase = "https://legacy-github.example.com";
     context.mocks.axiom.query.mockResolvedValue([

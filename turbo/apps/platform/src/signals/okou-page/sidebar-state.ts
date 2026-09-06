@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { clearThreadNumberShortcutHints$ } from "./thread-number-shortcuts.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
@@ -160,6 +161,9 @@ export const threeColumnSearchOpen$ = computed((get) => {
   return get(internalThreeColumnSearchOpen$);
 });
 export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
+  if (!open) {
+    set(clearThreadNumberShortcutHints$);
+  }
   set(internalThreeColumnSearchOpen$, open);
 });
 
@@ -174,6 +178,7 @@ export const setThreeColumnSearchFilter$ = command(
 );
 
 export const openThreeColumnSearchDialog$ = command(({ set }) => {
+  set(clearThreadNumberShortcutHints$);
   set(internalChatListQuery$, "");
   set(internalThreeColumnSearchFilter$, "all");
   set(internalThreeColumnSearchOpen$, true);

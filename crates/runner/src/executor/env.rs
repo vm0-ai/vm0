@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::constants::runners::PI_MODEL_CONFIG_CURRENT_GENERATION;
+use api_contracts::generated::constants::runners::{
+    PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+};
 use api_contracts::generated::types::runners::{
-    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig, PiModelConfigV2},
+    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig, PiModelConfigV2, PiModelConfigV3},
     storage::ArtifactEntryMissingRootPolicy,
 };
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
@@ -218,7 +220,10 @@ fn validate_pi_model_config_common(
     model: &str,
     catalog_model: Option<&serde_json::Value>,
 ) -> Result<(), PiModelConfigCommonError> {
-    url::Url::parse(base_url).map_err(|_| PiModelConfigCommonError::InvalidBaseUrl)?;
+    let parsed = url::Url::parse(base_url).map_err(|_| PiModelConfigCommonError::InvalidBaseUrl)?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(PiModelConfigCommonError::InvalidBaseUrl);
+    }
     if model.is_empty() {
         return Err(PiModelConfigCommonError::EmptyModel);
     }
@@ -410,11 +415,41 @@ fn validate_pi_v2_credential_bindings(
 fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> {
     let model: PiModelConfigV2 = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi model config v2 is invalid: {error}"))?;
-    if model.schema_version != i64::from(PI_MODEL_CONFIG_CURRENT_GENERATION) {
-        return Err("Pi model config schemaVersion is unsupported".to_string());
-    }
-    validate_pi_model_config_common(&model.base_url, &model.model, value.get("catalogModel"))
-        .map_err(|error| match error {
+    validate_pi_versioned_model_config(
+        value,
+        &model.base_url,
+        &model.model,
+        PI_MODEL_CONFIG_CURRENT_GENERATION,
+    )
+}
+
+fn validate_pi_model_config_v3(value: &serde_json::Value) -> Result<(), String> {
+    let model: PiModelConfigV3 = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi model config v3 is invalid: {error}"))?;
+    let (base_url, model_name) = match &model {
+        PiModelConfigV3::OpenaiResponses {
+            base_url, model, ..
+        }
+        | PiModelConfigV3::OpenaiCodexResponses {
+            base_url, model, ..
+        } => (base_url, model),
+    };
+    validate_pi_versioned_model_config(
+        value,
+        base_url,
+        model_name,
+        PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+    )
+}
+
+fn validate_pi_versioned_model_config(
+    value: &serde_json::Value,
+    base_url: &str,
+    model: &str,
+    generation: u32,
+) -> Result<(), String> {
+    validate_pi_model_config_common(base_url, model, value.get("catalogModel")).map_err(
+        |error| match error {
             PiModelConfigCommonError::InvalidBaseUrl => {
                 "Pi model config baseUrl is invalid".to_string()
             }
@@ -422,12 +457,13 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
             PiModelConfigCommonError::InvalidCatalogModel => {
                 "Pi model config catalogModel is invalid".to_string()
             }
-        })?;
-    if model.model.encode_utf16().count() > 512 {
+        },
+    )?;
+    if model.encode_utf16().count() > 512 {
         return Err("Pi model config model is invalid".to_string());
     }
     let Some(object) = value.as_object() else {
-        return Err("Pi model config v2 is invalid".to_string());
+        return Err(format!("Pi model config v{generation} is invalid"));
     };
     if !has_exact_object_fields(
         object,
@@ -453,18 +489,25 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
             "credentialBindings",
         ],
     ) {
-        return Err("Pi model config v2 fields are invalid".to_string());
+        return Err(format!("Pi model config v{generation} fields are invalid"));
     }
     if object.get("transport").and_then(serde_json::Value::as_str) != Some("sse") {
         return Err("Pi model config transport must be sse".to_string());
     }
-    if model
-        .catalog_model
-        .as_deref()
+    if object
+        .get("catalogModel")
+        .and_then(serde_json::Value::as_str)
         .is_some_and(|catalog_model| catalog_model.encode_utf16().count() > 512)
     {
         return Err("Pi model config catalogModel is invalid".to_string());
     }
+    validate_pi_model_config_dialect(object, generation)
+}
+
+fn validate_pi_model_config_dialect(
+    object: &serde_json::Map<String, serde_json::Value>,
+    generation: u32,
+) -> Result<(), String> {
     let dialect = object
         .get("dialect")
         .and_then(serde_json::Value::as_str)
@@ -480,12 +523,21 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
         "openai-codex-responses"
             if provider != "openai-codex"
                 || object.contains_key("catalogModel")
-                || object.contains_key("serviceTier") =>
+                || (generation == PI_MODEL_CONFIG_CURRENT_GENERATION
+                    && object.contains_key("serviceTier")) =>
         {
             return Err("Pi Codex Responses route is invalid".to_string());
         }
         "openai-responses" | "openai-codex-responses" => {}
         _ => return Err("Pi model config dialect is unsupported".to_string()),
+    }
+    // Serde Option accepts null; the new wire contract permits omission only.
+    if generation == PI_MODEL_CONFIG_DIALECT_TIER_GENERATION {
+        for field in ["thinkingLevel", "serviceTier"] {
+            if object.get(field).is_some_and(serde_json::Value::is_null) {
+                return Err(format!("Pi model config {field} is invalid"));
+            }
+        }
     }
     validate_pi_v2_credential_bindings(
         object
@@ -502,6 +554,11 @@ fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
             if generation.as_u64() == Some(u64::from(PI_MODEL_CONFIG_CURRENT_GENERATION)) =>
         {
             validate_pi_model_config_v2(value)
+        }
+        Some(serde_json::Value::Number(generation))
+            if generation.as_u64() == Some(u64::from(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION)) =>
+        {
+            validate_pi_model_config_v3(value)
         }
         Some(_) => Err("Pi model config generation is unsupported".to_string()),
     }

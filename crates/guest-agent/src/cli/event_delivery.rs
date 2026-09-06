@@ -37,6 +37,7 @@ const EVENT_DELIVERY_DRAIN_TIMEOUT: Duration = Duration::from_secs(120);
 struct PreparedEvent {
     sequence: u32,
     event: Bytes,
+    private_citation: Option<Bytes>,
     conservative_bytes: usize,
     byte_budget: OwnedSemaphorePermit,
 }
@@ -52,15 +53,18 @@ impl EventDeliverySender {
     pub(super) fn try_send(
         &self,
         sequence: u32,
-        event: serde_json::Value,
+        mut event: serde_json::Value,
     ) -> Result<(), AgentError> {
+        let private_citation = self
+            .payload_envelope
+            .take_private_citation(sequence, &mut event)?;
         let serialized_event = serde_json::to_vec(&event)?;
         drop(event);
-        self.try_send_serialized(sequence, serialized_event)
+        self.try_send_prepared(sequence, serialized_event, private_citation)
     }
 
     pub(super) fn max_serialized_event_bytes(&self) -> usize {
-        EVENT_DELIVERY_MAX_REQUEST_BYTES.saturating_sub(self.payload_envelope.singleton_bytes(0))
+        EVENT_DELIVERY_MAX_REQUEST_BYTES.saturating_sub(self.payload_envelope.singleton_bytes(0, 0))
     }
 
     pub(super) fn try_send_serialized(
@@ -68,8 +72,19 @@ impl EventDeliverySender {
         sequence: u32,
         serialized_event: Vec<u8>,
     ) -> Result<(), AgentError> {
+        self.try_send_prepared(sequence, serialized_event, None)
+    }
+
+    fn try_send_prepared(
+        &self,
+        sequence: u32,
+        serialized_event: Vec<u8>,
+        private_citation: Option<Bytes>,
+    ) -> Result<(), AgentError> {
         let event = Bytes::from(serialized_event.into_boxed_slice());
-        let conservative_bytes = self.payload_envelope.singleton_bytes(event.len());
+        let conservative_bytes = self
+            .payload_envelope
+            .singleton_bytes(event.len(), private_citation.as_ref().map_or(0, Bytes::len));
         if conservative_bytes > EVENT_DELIVERY_MAX_REQUEST_BYTES {
             return Err(AgentError::Execution(format!(
                 "CLI event delivery payload at sequence {sequence} is {conservative_bytes} bytes, exceeding the {EVENT_DELIVERY_MAX_REQUEST_BYTES}-byte request limit"
@@ -89,6 +104,7 @@ impl EventDeliverySender {
         let prepared = PreparedEvent {
             sequence,
             event,
+            private_citation,
             conservative_bytes,
             byte_budget,
         };
@@ -133,11 +149,15 @@ impl EventDeliveryRuntime {
         http: HttpClient,
         run_id: &str,
         first_sequence: u32,
+        pi_memory_citation_transport: bool,
     ) -> Result<Self, AgentError> {
         let (tx, event_rx) = mpsc::channel(EVENT_DELIVERY_QUEUE_CAPACITY);
         let pressure = Arc::new(DeliveryPressure::default());
         let progress = Arc::new(Mutex::new(DeliveryProgress::new(first_sequence)));
-        let payload_envelope = Arc::new(events::EventPayloadEnvelope::new(run_id)?);
+        let payload_envelope = Arc::new(events::EventPayloadEnvelope::new(
+            run_id,
+            pi_memory_citation_transport,
+        )?);
         let sender = EventDeliverySender {
             tx,
             byte_budget: Arc::new(Semaphore::new(EVENT_DELIVERY_MAX_BYTES)),
@@ -592,19 +612,23 @@ impl EventBatch {
     fn new(events: Vec<PreparedEvent>, payload_envelope: &events::EventPayloadEnvelope) -> Self {
         let mut sequences = Vec::with_capacity(events.len());
         let mut event_bytes = Vec::with_capacity(events.len());
+        let mut private_citations = Vec::new();
         let mut conservative_bytes = 0usize;
         let mut byte_budgets = Vec::with_capacity(events.len());
 
         for event in events {
             sequences.push(event.sequence);
             event_bytes.push(event.event);
+            if let Some(citation) = event.private_citation {
+                private_citations.push(citation);
+            }
             conservative_bytes += event.conservative_bytes;
             byte_budgets.push(event.byte_budget);
         }
 
         Self {
             sequences,
-            payload: payload_envelope.payload(&event_bytes),
+            payload: payload_envelope.payload(&event_bytes, &private_citations),
             conservative_bytes,
             byte_budgets,
         }

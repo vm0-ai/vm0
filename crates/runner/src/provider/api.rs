@@ -11,8 +11,8 @@ use tracing::{error, info, warn};
 use api_contracts::generated::{
     constants::runners::{
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
-        PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_LEGACY_GENERATION,
-        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+        PI_MODEL_CONFIG_LEGACY_GENERATION, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -71,7 +71,7 @@ struct ClaimRequestBody<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunnerClaimCapabilities {
-    pi_model_config_generations: [u32; 2],
+    pi_model_config_generations: [u32; 3],
 }
 
 #[derive(Serialize)]
@@ -1696,6 +1696,7 @@ fn claim_request_body<'a>(
             pi_model_config_generations: [
                 PI_MODEL_CONFIG_LEGACY_GENERATION,
                 PI_MODEL_CONFIG_CURRENT_GENERATION,
+                PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
             ],
         },
         telemetry: ClaimRequestTelemetry {
@@ -3156,7 +3157,7 @@ mod tests {
         assert!(!body.to_string().contains("path"));
         assert_eq!(
             body["capabilities"]["piModelConfigGenerations"],
-            serde_json::json!([1, 2])
+            serde_json::json!([1, 2, 3])
         );
 
         let runner_identity = test_runner_identity();

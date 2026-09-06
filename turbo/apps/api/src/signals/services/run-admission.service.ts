@@ -84,6 +84,22 @@ export async function loadRunCreditAdmissionState(params: {
   return run;
 }
 
+export async function resolveActiveRunCreditAdmission(params: {
+  readonly db: Db;
+  readonly runId: string | undefined;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<boolean> {
+  if (!params.runId) {
+    return false;
+  }
+  const run = await loadRunCreditAdmissionState({
+    ...params,
+    runId: params.runId,
+  });
+  return run !== undefined && runHasActiveCreditAdmission(run);
+}
+
 export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
   readonly orgId: string;

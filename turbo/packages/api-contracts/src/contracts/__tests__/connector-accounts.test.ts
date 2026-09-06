@@ -61,16 +61,10 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("distinguishes single-account, add, and exact reconnect intent", () => {
-    expect(
-      connectorAccountMutationIntentSchema.parse({
-        intent: "single-account",
-      }),
-    ).toStrictEqual({ intent: "single-account" });
+  it("distinguishes add and exact reconnect intent", () => {
     expect(
       connectorAccountMutationIntentSchema.safeParse({
         intent: "single-account",
-        connectionId,
       }).success,
     ).toBe(false);
     expect(
@@ -126,20 +120,20 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("preserves manual grant inputs and declares the CLI retirement response", () => {
+  it("requires explicit account intent for manual grants", () => {
     expect(
       connectorManualGrantContract.connect.body.safeParse({
         authMethod: "api-token",
         values: { apiKey: "test" },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       connectorManualGrantContract.connect.body.safeParse({
         authMethod: "api-token",
         account: { intent: "single-account" },
         values: { apiKey: "test" },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       connectorManualGrantContract.connect.body.safeParse({
         authMethod: "api-token",
@@ -152,14 +146,6 @@ describe("connector account contracts", () => {
         authMethod: "api-token",
         account: { intent: "reconnect", connectionId },
         values: { apiKey: "test" },
-      }).success,
-    ).toBe(true);
-    expect(
-      connectorManualGrantContract.connect.responses[426].safeParse({
-        error: {
-          message: "Update the CLI to connect this connector",
-          code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
-        },
       }).success,
     ).toBe(true);
   });
@@ -330,27 +316,6 @@ describe("connector account contracts", () => {
       connectorAccountsContract.delete.body.safeParse({
         target: { kind: "builtin", connectorSlug: "github" },
         selectionResolution: { kind: "clear" },
-      }).success,
-    ).toBe(false);
-  });
-
-  it("accepts only a target for safe single-account disconnect", () => {
-    expect(
-      connectorAccountsContract.disconnectSingleAccount.body.parse({
-        target: { kind: "builtin", connectorSlug: "github" },
-      }),
-    ).toStrictEqual({
-      target: { kind: "builtin", connectorSlug: "github" },
-    });
-    expect(
-      connectorAccountsContract.disconnectSingleAccount.body.parse({
-        target: { kind: "custom", customConnectorId },
-      }),
-    ).toStrictEqual({ target: { kind: "custom", customConnectorId } });
-    expect(
-      connectorAccountsContract.disconnectSingleAccount.body.safeParse({
-        target: { kind: "builtin", connectorSlug: "github" },
-        connectionId,
       }).success,
     ).toBe(false);
   });

@@ -1,6 +1,12 @@
+import { zstdDecompressSync } from "node:zlib";
 import { createServer, type ServerResponse } from "node:http";
 
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
+import { materializePiAgentModelConfig } from "./credential";
+import {
+  fauxAssistantMessage,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +14,7 @@ import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
   inspectPiSessionJsonl,
+  projectPiSessionJsonlForExport,
   PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
   UnsupportedPiSessionVersionError,
@@ -193,8 +200,11 @@ describe("Pi API facade", () => {
         );
         responsesToolSse(response, {
           callId: "memory-call-1",
-          name: "memories_read",
-          arguments: { path: "MEMORY.md" },
+          name: "add_ad_hoc_note",
+          arguments: {
+            filename: "2026-09-05T16-05-00-api-handoff.md",
+            note: "API-first must hand this write to the sandbox.",
+          },
         });
       })().catch((error: unknown) => {
         response.destroy(
@@ -219,7 +229,7 @@ describe("Pi API facade", () => {
         cwd: "/home/user/workspace",
         agentDir: "/home/user/.pi/agent",
         sessionId: SESSION_ID,
-        prompt: "read the frozen memory index",
+        prompt: "remember this through the sandbox",
         appendSystemPrompt: null,
         model: {
           provider: "openai",
@@ -251,16 +261,50 @@ describe("Pi API facade", () => {
             return tool.name;
           })
           .filter((name) => {
-            return name?.startsWith("memories_");
+            return name?.startsWith("memories_") || name === "add_ad_hoc_note";
           }),
-      ).toStrictEqual(["memories_list", "memories_search", "memories_read"]);
+      ).toStrictEqual([
+        "memories_list",
+        "memories_search",
+        "memories_read",
+        "add_ad_hoc_note",
+      ]);
+      expect(
+        (
+          requestTools as Array<{
+            name?: string;
+            parameters?: unknown;
+          }>
+        ).find((tool) => {
+          return tool.name === "add_ad_hoc_note";
+        }),
+      ).toMatchObject({
+        parameters: {
+          additionalProperties: false,
+          properties: {
+            filename: {
+              maxLength: 128,
+              minLength: 24,
+              pattern:
+                "^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-[a-z0-9][a-z0-9-]{0,79}\\.md$",
+              type: "string",
+            },
+            note: { maxLength: 65_536, minLength: 1, type: "string" },
+          },
+          required: ["filename", "note"],
+          type: "object",
+        },
+      });
       expect(result.handoffRequired).toBe(true);
       expect(result.assistantMessage.content).toStrictEqual([
         {
           type: "toolCall",
           id: "memory-call-1|fc_pi_memory_tool",
-          name: "memories_read",
-          arguments: { path: "MEMORY.md" },
+          name: "add_ad_hoc_note",
+          arguments: {
+            filename: "2026-09-05T16-05-00-api-handoff.md",
+            note: "API-first must hand this write to the sandbox.",
+          },
         },
       ]);
       expect(inspectPiSessionJsonl(result.sessionJsonl)).toMatchObject({
@@ -309,115 +353,191 @@ describe("Pi API facade", () => {
     });
   });
 
-  it("normalizes legacy transport input and applies Terra request policy", async () => {
-    const providerRequests: Array<{
-      readonly url: string | undefined;
-      readonly body: unknown;
-    }> = [];
-    const server = createServer((request, response) => {
-      void (async () => {
-        const chunks: Buffer[] = [];
-        for await (const chunk of request) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        }
-        providerRequests.push({
-          url: request.url,
-          body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
-        });
-        responsesTextSse(response, "Terra API-first answer");
-      })().catch((error: unknown) => {
-        response.destroy(
-          error instanceof Error ? error : new Error(String(error)),
-        );
-      });
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    if (address === null || typeof address === "string") {
-      throw new Error("Terra API-first test server has no TCP address");
-    }
-
-    try {
-      const runTurn = async (
-        serviceTier: "priority" | undefined,
-        api: "openai-completions" | "openai-codex-responses",
-      ) => {
-        return runPiApiFirstTurn({
-          cwd: "/home/user/workspace",
-          agentDir: "/home/user/.pi/agent",
-          sessionId: SESSION_ID,
-          prompt: "answer through Terra",
-          appendSystemPrompt: null,
-          model: {
-            provider: "openai",
-            baseUrl: `http://127.0.0.1:${address.port}/v1`,
-            apiKey: "test-key",
-            model: "gpt-5.6-terra",
-            api,
-            dialect: "openai-responses",
-            thinkingLevel: "low",
-            ...(serviceTier ? { serviceTier } : {}),
-          },
-          resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
-          ownership: createPiApiFirstTurnOwnership(),
-        });
-      };
-      const standardResult = await runTurn(undefined, "openai-completions");
-      const priorityResult = await runTurn(
-        "priority",
-        "openai-codex-responses",
-      );
-
-      expect(providerRequests).toHaveLength(2);
-      expect(providerRequests[0]).toMatchObject({
-        url: "/v1/responses",
-        body: {
-          model: "gpt-5.6-terra",
-          reasoning: { effort: "low" },
-        },
-      });
-      expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
-      expect(providerRequests[1]).toMatchObject({
-        url: "/v1/responses",
-        body: {
-          model: "gpt-5.6-terra",
-          reasoning: { effort: "low" },
-          service_tier: "priority",
-        },
-      });
-      expect(standardResult.assistantMessage.content).toStrictEqual([
-        { type: "text", text: "Terra API-first answer" },
-      ]);
-      expect(priorityResult.assistantMessage.content).toStrictEqual([
-        { type: "text", text: "Terra API-first answer" },
-      ]);
-      expect(standardResult.observedServiceTier).toBeUndefined();
-      expect(priorityResult.observedServiceTier).toBeUndefined();
-      expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
-      expect(priorityResult.sessionJsonl).not.toContain("service_tier");
-      expect(
-        MemoryPiSession.fromJsonl(
-          priorityResult.sessionJsonl,
-        ).buildSessionContext().thinkingLevel,
-      ).toBe("low");
-    } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
+  it.each(["public", "native"] as const)(
+    "applies %s Terra API-first request policy",
+    async (route) => {
+      const providerRequests: Array<{
+        readonly url: string | undefined;
+        readonly body: unknown;
+        readonly accountId: string | string[] | undefined;
+        readonly authorization: string | undefined;
+      }> = [];
+      const server = createServer((request, response) => {
+        void (async () => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of request) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           }
+          providerRequests.push({
+            url: request.url,
+            accountId: request.headers["chatgpt-account-id"],
+            authorization: request.headers.authorization,
+            body: JSON.parse(
+              (request.headers["content-encoding"] === "zstd"
+                ? zstdDecompressSync(Buffer.concat(chunks))
+                : Buffer.concat(chunks)
+              ).toString("utf8"),
+            ) as unknown,
+          });
+          responsesTextSse(response, "Terra API-first answer");
+        })().catch((error: unknown) => {
+          response.destroy(
+            error instanceof Error ? error : new Error(String(error)),
+          );
         });
       });
-    }
-  });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Terra API-first test server has no TCP address");
+      }
+
+      try {
+        let sessionJsonl: string | undefined;
+        const runTurn = async (
+          serviceTier: "priority" | "fast" | undefined,
+          api: "openai-completions" | "openai-codex-responses",
+        ) => {
+          const result = await runPiApiFirstTurn({
+            cwd: "/home/user/workspace",
+            agentDir: "/home/user/.pi/agent",
+            sessionId: SESSION_ID,
+            sessionJsonl,
+            prompt: "answer through Terra",
+            appendSystemPrompt: null,
+            model:
+              route === "native"
+                ? await materializePiAgentModelConfig({
+                    config: piModelConfigSchema.parse({
+                      schemaVersion: serviceTier === undefined ? 2 : 3,
+                      dialect: "openai-codex-responses",
+                      transport: "sse",
+                      provider: "openai-codex",
+                      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                      model: "gpt-5.6-terra",
+                      thinkingLevel: "low",
+                      ...(serviceTier === undefined ? {} : { serviceTier }),
+                      credentialBindings: [
+                        {
+                          kind: "access-token",
+                          environment: "CHATGPT_ACCESS_TOKEN",
+                          secretName: "CHATGPT_ACCESS_TOKEN",
+                        },
+                        {
+                          kind: "account-id",
+                          environment: "CHATGPT_ACCOUNT_ID",
+                          secretName: "CHATGPT_ACCOUNT_ID",
+                        },
+                      ],
+                    }),
+                    target: "direct",
+                    resolveCredential(binding) {
+                      return binding.kind === "account-id"
+                        ? "exact-account-id"
+                        : "opaque-access-token";
+                    },
+                  })
+                : {
+                    provider: "openai",
+                    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                    apiKey: "test-key",
+                    model: "gpt-5.6-terra",
+                    api,
+                    dialect: "openai-responses",
+                    thinkingLevel: "low",
+                    ...(serviceTier ? { serviceTier } : {}),
+                  },
+            resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+            ownership: createPiApiFirstTurnOwnership(),
+          });
+          sessionJsonl = result.sessionJsonl;
+          return result;
+        };
+        const standardResult = await runTurn(undefined, "openai-completions");
+        const priorityResult = await runTurn(
+          route === "native" ? "fast" : "priority",
+          "openai-codex-responses",
+        );
+        const standardReturnResult = await runTurn(
+          undefined,
+          "openai-completions",
+        );
+
+        expect(providerRequests).toHaveLength(3);
+        if (route === "native") {
+          expect(
+            providerRequests.map((request) => {
+              return request.accountId;
+            }),
+          ).toEqual([
+            "exact-account-id",
+            "exact-account-id",
+            "exact-account-id",
+          ]);
+          for (const request of providerRequests) {
+            expect(request.authorization).toBe("Bearer opaque-access-token");
+            expect(request.body).toMatchObject({ store: false, stream: true });
+            expect(request.body).not.toHaveProperty("previous_response_id");
+          }
+        }
+        expect(providerRequests[0]).toMatchObject({
+          url: route === "native" ? "/v1/codex/responses" : "/v1/responses",
+          body: {
+            model: "gpt-5.6-terra",
+            reasoning: { effort: "low" },
+          },
+        });
+        expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
+        expect(providerRequests[1]).toMatchObject({
+          url: route === "native" ? "/v1/codex/responses" : "/v1/responses",
+          body: {
+            model: "gpt-5.6-terra",
+            reasoning: { effort: "low" },
+            service_tier: "priority",
+          },
+        });
+        expect(providerRequests[2]?.body).not.toHaveProperty("service_tier");
+        expect(
+          inspectPiSessionJsonl(standardReturnResult.sessionJsonl),
+        ).toMatchObject({
+          sessionId: SESSION_ID,
+          messageCount: 6,
+        });
+        expect(standardResult.assistantMessage.content).toStrictEqual([
+          { type: "text", text: "Terra API-first answer" },
+        ]);
+        expect(priorityResult.assistantMessage.content).toStrictEqual([
+          { type: "text", text: "Terra API-first answer" },
+        ]);
+        expect(standardResult.observedServiceTier).toBeUndefined();
+        expect(priorityResult.observedServiceTier).toBeUndefined();
+        expect(standardReturnResult.sessionJsonl).not.toMatch(
+          /serviceTier|service_tier|exact-account-id|opaque-access-token|test-key/,
+        );
+        expect(
+          MemoryPiSession.fromJsonl(
+            priorityResult.sessionJsonl,
+          ).buildSessionContext().thinkingLevel,
+        ).toBe("low");
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+    },
+  );
 
   it("sends direct DeepSeek through Responses with the stable Pi identity and no Chat fields", async () => {
     const providerRequests: Array<{
@@ -962,6 +1082,45 @@ describe("Pi API facade", () => {
         cacheWrite: 2,
       },
     });
+  });
+
+  it("hides citation envelopes while preserving structured provenance and canonical JSONL", () => {
+    const hidden =
+      "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
+    const nativeMessage: AssistantMessage = {
+      ...fauxAssistantMessage(
+        [
+          { type: "text", text: `before${hidden.slice(0, 10)}` },
+          { type: "text", text: `${hidden.slice(10)}after` },
+        ],
+        { timestamp: 123 },
+      ),
+      errorMessage: `provider failed${hidden}`,
+    };
+    const nativeBefore = JSON.stringify(nativeMessage);
+    const projected = projectPiApiAssistantMessage(nativeMessage);
+    expect(projected.content).toEqual([
+      { type: "text", text: "before" },
+      { type: "text", text: "after" },
+    ]);
+    expect(projected.memoryCitation).toEqual({
+      entries: [{ path: "memory.md", lineStart: 2, lineEnd: 3, note: "used" }],
+      rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+    });
+    expect(JSON.stringify(nativeMessage)).toBe(nativeBefore);
+
+    const session = MemoryPiSession.create({
+      cwd: "/workspace",
+      id: SESSION_ID,
+    });
+    session.appendMessage(nativeMessage);
+    const canonical = session.toJsonl();
+    expect(canonical).toContain(hidden.slice(0, 10));
+    expect(canonical).toContain(hidden.slice(10));
+    const exported = projectPiSessionJsonlForExport(canonical);
+    expect(exported).not.toContain("<oai-mem-citation>");
+    expect(exported).toContain('"errorMessage":"provider failed"');
+    expect(session.toJsonl()).toBe(canonical);
   });
 
   it("projects only a content-free usage-limit classification", () => {

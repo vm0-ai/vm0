@@ -483,44 +483,66 @@ fn redaction_ranges(
 ) -> Vec<Range<usize>> {
     let canonicalized =
         url_encoded_matcher.and_then(|_| canonicalize_lowercase_percent_escapes(haystack));
-    let mut ranges = Vec::new();
-    if let Some(matcher) = matcher {
-        push_match_ranges(matcher, haystack, &mut ranges);
-    }
+    let ranges = matcher
+        .map(|matcher| merged_match_ranges(matcher, haystack))
+        .unwrap_or_default();
     if let (Some(matcher), Some(canonicalized)) = (url_encoded_matcher, canonicalized.as_deref()) {
-        push_match_ranges(matcher, canonicalized, &mut ranges);
+        return merge_sorted_ranges(ranges, merged_match_ranges(matcher, canonicalized));
     }
-    merge_overlapping_ranges(ranges)
+    ranges
 }
 
-fn push_match_ranges(matcher: &AhoCorasick, haystack: &str, ranges: &mut Vec<Range<usize>>) {
+fn merged_match_ranges(matcher: &AhoCorasick, haystack: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut previous_end = 0;
     for matched in matcher.find_overlapping_iter(haystack) {
-        ranges.push(matched.start()..matched.end());
+        // Overlapping search reports every match at one haystack position
+        // before advancing, so match ends are nondecreasing. Match starts and
+        // equal-end pattern order are not ordered.
+        debug_assert!(matched.end() >= previous_end);
+        previous_end = matched.end();
+        push_merged_range(&mut ranges, matched.start()..matched.end());
     }
+    ranges
 }
 
-fn merge_overlapping_ranges(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
-    if ranges.len() < 2 {
-        return ranges;
+fn merge_sorted_ranges(first: Vec<Range<usize>>, second: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    if first.is_empty() {
+        return second;
+    }
+    if second.is_empty() {
+        return first;
     }
 
-    ranges.sort_by_key(|range| (range.start, range.end));
-    let mut merged: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
-    for range in ranges {
-        if range.is_empty() {
-            continue;
-        }
-        if let Some(last) = merged.last_mut()
-            && range.start < last.end
-        {
-            if range.end > last.end {
-                last.end = range.end;
+    let mut merged = Vec::with_capacity(first.len() + second.len());
+    let mut first = first.into_iter().peekable();
+    let mut second = second.into_iter().peekable();
+    loop {
+        let next = match (first.peek(), second.peek()) {
+            (Some(left), Some(right)) => {
+                if (left.start, left.end) <= (right.start, right.end) {
+                    first.next()
+                } else {
+                    second.next()
+                }
             }
-            continue;
+            (Some(_), None) => first.next(),
+            (None, Some(_)) => second.next(),
+            (None, None) => break,
+        };
+        if let Some(range) = next {
+            push_merged_range(&mut merged, range);
         }
-        merged.push(range);
     }
     merged
+}
+
+fn push_merged_range(ranges: &mut Vec<Range<usize>>, mut range: Range<usize>) {
+    while let Some(previous) = ranges.pop_if(|previous| range.start < previous.end) {
+        range.start = range.start.min(previous.start);
+        range.end = range.end.max(previous.end);
+    }
+    ranges.push(range);
 }
 
 fn push_diagnostic_multiline_patterns(secret: &str, patterns: &mut Vec<String>) {
@@ -616,6 +638,42 @@ mod tests {
         let masker = masker_from_secrets(&["ababa"]);
 
         assert_eq!(masker.mask_string("abababa"), "***");
+    }
+
+    #[test]
+    fn equal_end_containing_matches_merge_in_both_orders() {
+        for patterns in [vec!["bcdef", "abcdef"], vec!["abcdef", "bcdef"]] {
+            let masker = masker_with(patterns);
+            assert_eq!(masker.mask_string("abcdef"), "***");
+        }
+    }
+
+    #[test]
+    fn later_match_bridges_prior_disjoint_ranges() {
+        let masker = masker_with(vec!["abcde", "fghij", "eXfghijY"]);
+
+        assert_eq!(masker.mask_string("abcdeXfghijY"), "***");
+    }
+
+    #[test]
+    fn self_overlapping_secret_range_storage_is_bounded() {
+        const INPUT_BYTES: usize = 16 * 1024 * 1024;
+
+        let masker = masker_from_secrets(&["aaaaa"]);
+        let input = "a".repeat(INPUT_BYTES);
+        let ranges = redaction_ranges(
+            masker.matcher.as_ref(),
+            masker.url_encoded_matcher.as_ref(),
+            &input,
+        );
+
+        assert_eq!(ranges.first(), Some(&(0..INPUT_BYTES)));
+        assert!(
+            ranges.capacity() < 1024,
+            "one connected redaction range retained capacity for {} ranges",
+            ranges.capacity()
+        );
+        assert_eq!(redact_ranges(input, &ranges), "***");
     }
 
     #[test]
@@ -1074,6 +1132,16 @@ mod tests {
         let masker = SecretMasker::from_raw(&encoded);
 
         assert_eq!(masker.mask_string("token%2Fa and %2f"), "*** and %2f");
+    }
+
+    #[test]
+    fn original_and_canonicalized_url_ranges_merge_in_input_order() {
+        let masker = masker_from_secrets(&["token/a"]);
+
+        assert_eq!(
+            masker.mask_string("token%2Fa|token%2fa|token%2Fa"),
+            "***|***|***"
+        );
     }
 
     #[test]

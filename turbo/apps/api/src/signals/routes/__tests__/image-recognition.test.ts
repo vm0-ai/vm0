@@ -26,6 +26,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 import { imageRecognitionRoutes } from "../image-recognition";
 import { usageRecordRoutes } from "../usage-record";
 
@@ -106,6 +107,40 @@ async function seedActor(): Promise<RecognitionActor> {
   const run = await api.createDirectRun(actor, {
     agentId: compose.agentId,
     prompt: "Recognize an uploaded image",
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        role: actor.orgRole ?? "org:admin",
+        organization: { id: actor.orgId },
+        publicUserData: { userId: actor.userId },
+      },
+    ],
+  });
+  return { ...actor, orgId: actor.orgId, runId: run.runId };
+}
+
+async function seedAdmittedActor(): Promise<RecognitionActor> {
+  await seedBuiltInDefaultModelKey(context);
+  const bdd = createBddApi(context);
+  const api = createRunsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Recognition tests require an organization");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.configureRunnerGroup();
+  const completed = await bdd.completeOnboarding(actor);
+  expect(completed.status).toBe(200);
+  await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1 });
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Admitted recognition agent",
+    visibility: "private",
+  });
+  const run = await api.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "Recognize after credit exhaustion",
+    modelProvider: "built-in",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
     data: [
@@ -304,6 +339,54 @@ describe("POST /api/recognize", () => {
         runId: actor.runId,
         tokens: 8000,
         credits: EXPECTED_CHARGE * 2,
+      }),
+    ]);
+  });
+
+  it("continues an admitted run after credits are exhausted", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "An admitted run image." },
+            },
+          ],
+          usage: {
+            prompt_tokens: 3000,
+            completion_tokens: 1000,
+            prompt_tokens_details: { cached_tokens: 1000 },
+          },
+        });
+      }),
+    );
+    const actor = await seedAdmittedActor();
+    const pricing = await createConfiguredRecognitionPricing();
+    await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
+    const fileId = randomUUID();
+    setStoredObjects([
+      { userId: actor.userId, id: fileId, filename: "screen.png", size: 1024 },
+    ]);
+
+    const response = await requestRecognition({
+      token: okouToken(actor),
+      fileId,
+      usagePricingResolution: pricing.resolution,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toStrictEqual({
+      text: "An admitted run image.",
+      metadata: { creditsCharged: EXPECTED_CHARGE },
+    });
+    await expect(
+      createRunsApi(context).readBillingStatus(actor),
+    ).resolves.toMatchObject({ credits: -EXPECTED_CHARGE });
+    await expect(readUsageRecord(actor)).resolves.toStrictEqual([
+      expect.objectContaining({
+        credits: EXPECTED_CHARGE,
       }),
     ]);
   });

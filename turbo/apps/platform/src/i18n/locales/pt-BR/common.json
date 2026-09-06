@@ -1025,6 +1025,20 @@
       "accessNotAllowed": "Acesso não permitido.",
       "userBanned": "Acesso à conta suspenso porque a atividade nesta conta violou os Termos de Uso do {{brandName}}. Se você tiver dúvidas, entre em contato pelo {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Você entrou no Desktop. Pode fechar esta janela.",
+        "connecting": "Conectando sua sessão do desktop.",
+        "consumed": "Finalizando a entrada no Desktop. Mantenha esta janela aberta.",
+        "failed": "Não foi possível concluir a entrada. Comece novamente pelo Desktop ou tente de novo neste navegador.",
+        "no-workspaces": "Crie ou entre em um espaço de trabalho no aplicativo web e entre novamente pelo Desktop.",
+        "pending": "Abra o Desktop para continuar entrando.",
+        "selecting": "Escolha um espaço de trabalho para este computador."
+      },
+      "reopen": "Abrir Desktop",
+      "retry": "Tentar novamente",
+      "title": "Entrar no Desktop"
+    },
     "documentTitles": {
       "signIn": "Entrar",
       "signUp": "Criar conta"
@@ -2282,14 +2296,20 @@
       "draft": "Rascunho",
       "empty": "Nenhuma conversa ainda",
       "markUnread": "Marcar como não lida",
+      "movePinDown": "Mover para baixo",
+      "movePinUp": "Mover para cima",
       "newChatWith": "Nova conversa com {{agentName}}",
       "noUnread": "Nenhuma conversa não lida",
       "openChatMenu": "Abrir menu da conversa",
       "openListMenu": "Abrir menu da lista de conversas",
       "pin": "Fixar",
+      "pinDropAfter": "Soltar depois de {{title}}",
+      "pinDropBefore": "Soltar antes de {{title}}",
       "pinned": "Fixada",
       "rename": "Renomear conversa",
       "renameDescription": "Escolha um novo nome para esta conversa.",
+      "reorderInstructions": "Arraste para reordenar. Pressione Espaço para selecionar, as setas para mover, Espaço para soltar ou Esc para cancelar.",
+      "reorderThread": "Reordenar {{title}}",
       "titlePlaceholder": "Título da conversa",
       "unpin": "Desafixar conversa",
       "unread": "Não lida",
@@ -2412,7 +2432,9 @@
     },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
+      "cleanupFailed": "O texto foi adicionado, mas não foi possível remover a gravação salva.",
       "confirmRecording": "OK",
+      "discarding": "Removendo rascunho de voz...",
       "input": "Entrada de voz",
       "inputLimitReached": "Limite de entrada de voz atingido. Faça upgrade para Pro ou Team para aumentar os limites.",
       "inputLimitReachedMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade e aumentar os limites.",
@@ -2421,8 +2443,13 @@
       "inputLimitReachedReset": "Limite de entrada de voz atingido. Aguarde até que seu limite seja redefinido.",
       "microphoneAccessDenied": "O acesso ao microfone foi negado. Permita o acesso e tente novamente.",
       "openingMicrophone": "Abrindo microfone...",
+      "removeDraft": "Remover rascunho de voz",
+      "restoreFailed": "Não foi possível carregar seu rascunho de voz. Tente novamente.",
+      "retry": "Tentar novamente",
+      "retryReady": "Sua gravação foi mantida. Tente transcrever novamente.",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Parar gravação",
+      "storageFailed": "Não foi possível salvar o áudio. Tentar novamente recupera apenas o áudio já salvo neste dispositivo.",
       "transcribing": "Transcrevendo",
       "transcribingProgress": "Transcrevendo...",
       "transcriptionFailed": "Falha na transcrição de voz. Tente novamente."
@@ -2783,12 +2810,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Mais opções",
-      "statusConnected": "Conectado",
       "toasts": {
         "connected": "Conectado",
         "created": "\"{{connector}}\" criado",
         "deleted": "Conector personalizado excluído",
-        "disconnected": "Desconectado",
         "updated": "\"{{connector}}\" atualizado"
       },
       "updateConfirm": {
@@ -3295,15 +3320,13 @@
       "redirectTitle": "Redirecionando para {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} conectado",
-      "disconnected": "{{connector}} desconectado"
+      "connected": "{{connector}} conectado"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Falha na solicitação",
-      "sharedDatabaseUnavailable": "O app encontrou um problema. Aguarde um momento e atualize a página para tentar novamente."
+      "requestFailed": "Falha na solicitação"
     },
     "realtime": {
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página.",
@@ -5054,6 +5077,7 @@
         "remaining_many": "{{value}} redefinições restantes",
         "remaining_other": "{{value}} redefinições restantes",
         "remainingUnavailable": "Redefinições restantes indisponíveis",
+        "remainingUnknown": "Redefinições —",
         "remainingWithExpiry_one": "{{value}} redefinição restante · expira {{expiry}}",
         "remainingWithExpiry_many": "{{value}} redefinições restantes · expiram {{expiry}}",
         "remainingWithExpiry_other": "{{value}} redefinições restantes · expiram {{expiry}}",
@@ -5180,6 +5204,32 @@
           "workerLoading": "Carregando",
           "workerTitle": "Diagnóstico de conexão do shared worker",
           "workerUnavailable": "Indisponível"
+        },
+        "indexedDb": {
+          "countExplanation": "A contagem usa transações somente leitura e não lê o conteúdo dos registros.",
+          "description": "Confira a quantidade de registros no cache local de chats gerenciado pelo worker compartilhado.",
+          "loading": "Carregando armazenamento do IndexedDB...",
+          "measurementUnavailable": "Falha ao medir o snapshot. Tente novamente.",
+          "measureSnapshot": "Medir snapshot",
+          "measuring": "Medindo...",
+          "records": "registros",
+          "refresh": "Atualizar",
+          "schema": "esquema",
+          "snapshotDescription": "Um registro pode conter muitas conversas. O tamanho estima o JSON UTF-8 sem a sobrecarga do banco; o tempo de leitura exclui essa estimativa.",
+          "snapshotEmpty": "Nenhum snapshot de conversas em cache.",
+          "snapshotPayload": "Tamanho estimado",
+          "snapshotReadDuration": "Tempo de leitura do IndexedDB",
+          "snapshotThreads": "Conversas no snapshot",
+          "snapshotTitle": "Snapshot das conversas",
+          "stores": "armazenamentos de objetos",
+          "title": "Armazenamento do IndexedDB",
+          "unavailable": "O armazenamento do IndexedDB não está disponível."
+        },
+        "voiceInput": {
+          "default": "Padrão ({{model}})",
+          "description": "Escolha o modelo para entrada de voz v2. Os modelos de transcrição usam {{model}} para refinar o texto.",
+          "title": "Modelo de entrada de voz",
+          "unavailable": "Modelo indisponível ({{model}})"
         }
       },
       "language": {

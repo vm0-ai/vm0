@@ -10,6 +10,7 @@ import {
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
+import { isDesktopAuthFlow } from "../../lib/desktop-auth-flow.ts";
 
 interface AuthShellProps {
   readonly authBrand: AuthBrandContext;
@@ -23,7 +24,7 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
 
   return (
     <div
-      className="okou-app relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
+      className="okou-app relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6 pb-[max(1.5rem,var(--sab))]"
       data-testid="app-auth-layout"
     >
       <div
@@ -76,31 +77,35 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
         })}
       </span>
 
-      <a
-        href={authBrand.homeUrl}
-        aria-label={t(
-          ($) => {
-            return $.auth.homeLink;
-          },
-          { brandName: authBrand.brandName },
-        )}
-        className={cn(
-          "absolute flex items-center gap-2 transition-opacity hover:opacity-75 focus-visible:opacity-75 focus-visible:outline-none",
-          "left-6 top-6",
-        )}
-      >
-        {authBrand.brandName === "Okou" ? (
-          <ProductBrandMark brandName={authBrand.brandName} size="compact" />
-        ) : (
-          <img
-            src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
-            alt={authBrand.brandName}
-            crossOrigin="anonymous"
-            width={82}
-            height={20}
-          />
-        )}
-      </a>
+      {!isDesktopAuthFlow() && (
+        <a
+          href={authBrand.homeUrl}
+          aria-label={t(
+            ($) => {
+              return $.auth.homeLink;
+            },
+            { brandName: authBrand.brandName },
+          )}
+          className={cn(
+            "absolute flex items-center gap-2 transition-opacity hover:opacity-75 focus-visible:opacity-75 focus-visible:outline-none",
+            "left-6 top-6",
+          )}
+        >
+          {authBrand.brandName === "Okou" ? (
+            <ProductBrandMark brandName={authBrand.brandName} size="compact" />
+          ) : (
+            <img
+              src={
+                theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg
+              }
+              alt={authBrand.brandName}
+              crossOrigin="anonymous"
+              width={82}
+              height={20}
+            />
+          )}
+        </a>
+      )}
 
       <main className="relative z-10 m-auto flex w-full min-w-0 justify-center py-14 sm:py-16">
         {children}

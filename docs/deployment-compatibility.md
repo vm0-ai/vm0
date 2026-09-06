@@ -44,8 +44,12 @@ a handled API request.
 The shared database Worker reports the same response to its connected tabs as
 a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
 that event through the same update dialog instead of reloading automatically.
-Other Worker-unavailable reasons continue to use the bounded automatic reload
-recovery and raise an error so the failure remains visible in Sentry.
+Worker load and transport failures reject pending requests with their original
+error and mark the connection disconnected. Queries and computed reads have no
+time limit and remain cancellable through their owning lifecycle. An IndexedDB
+version change closes the affected connection and reports it as unavailable.
+These failures propagate through the normal error handling without reloading
+the page.
 
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
@@ -71,6 +75,47 @@ The backend must therefore tolerate requests from the previous frontend version
 after a backend deployment. When changing an API used by the frontend, keep the
 old request shape working until old browser clients can no longer reasonably be
 active, or introduce a versioned/new endpoint and migrate the frontend first.
+
+#### Connector App retirement
+
+The first singleton-free connector App release is `0.843.1`, built from
+`3795939e97660ef4228122a57e3f6425b1e413c2` and promoted on
+2026-09-05 at 04:24:28 UTC after #29773 / #31780. Issue #29775 raises the API
+App floor to that version in a later release. Verify the deployed artifact,
+not only the GitHub deployment's moving-main SHA: the preceding `0.843.0`
+release deployed `30aadb42008af91a999faac6170262dd1de881cb`, which predates
+the connector producer cleanup.
+
+Older identified App bundles receive `426` before route handling and use the
+existing update dialog to refresh into the supported App. This applies to
+all handled App API requests, not only connector actions; idle pages are not
+automatically refreshed. No passive browser-expiry window or rollback gate
+is required for #29775.
+
+The floor does not retire CLI, unidentified, or missing/unparseable-version
+requests. Keep singleton request and persisted authorization-state decoding
+until their independent gates pass. The later API artifact
+`9def066b4f04898a173da14407a10dc6a0cf66e1` (`api-v1.548.1`) enforced the App
+floor on 2026-09-05 at 05:52:29 UTC. The pre-cutoff production request evidence
+on #29775 is not proof that account mutations were exercised or stored callbacks
+have drained.
+
+For #29776, the explicit retirement decision on 2026-09-05 invalidates all
+remaining `single-account` authorization attempts, without waiting for natural
+completion or requiring a terminal status. Migration `1078` deletes only rows
+with that mutation intent from `connector_oauth_states`,
+`connector_oauth_device_authorization_sessions`, and
+`connector_external_code_sessions`. It preserves explicit `add` / `reconnect`
+attempts and does not delete connected accounts, credentials, or permissions.
+An old callback or poll that can no longer find its state uses the existing
+missing/invalid response; the user must start a new connection attempt.
+
+Deleting a row does not universally cancel requests that already loaded it or
+revoke an account they already created. Keep current request and stored-state
+decoders in the cleanup release. The normal migration transaction and timeouts
+apply; a failed cleanup blocks release and rolls back. #29777 removes the
+remaining singleton contract only after this migration release succeeds.
+Investigate unexpected new singleton writes rather than adding a cleanup loop.
 
 ### Backend
 

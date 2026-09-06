@@ -1,11 +1,8 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
-import { i18n } from "../i18n/index.ts";
-import { now } from "../lib/time.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
@@ -31,7 +28,6 @@ import {
 } from "./chat-page/chat-event-signal-registry.ts";
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { reportForceUpgradeRequired } from "./force-upgrade.ts";
-import { logger } from "./log.ts";
 import {
   installSharedDatabaseBridge$,
   setBridgeConnected$,
@@ -43,10 +39,6 @@ import {
 } from "./shared-database.ts";
 import { createDeferredPromise, onRejection } from "./utils.ts";
 
-const SHARED_DATABASE_RELOAD_MARKER = "okou-shared-database-reload";
-const SHARED_DATABASE_RELOAD_WINDOW_MS = 60_000;
-const L = logger("SharedWorkerBridge");
-
 export interface SharedDatabaseBridgeHost {
   createBridge(
     identity: SharedDatabaseIdentity,
@@ -57,33 +49,6 @@ export interface SharedDatabaseBridgeHost {
   ): SharedDatabaseBridge;
 }
 
-function handleSharedDatabaseReloadRequired(
-  reason: SharedDatabaseWorkerUnavailableReason,
-): void {
-  const url = new URL(location.href);
-  const reloadAtMs = now();
-  const reloadMarker = url.searchParams.get(SHARED_DATABASE_RELOAD_MARKER);
-  const previousReloadAtMs =
-    reloadMarker === null ? Number.NaN : Number(reloadMarker);
-  if (
-    Number.isFinite(previousReloadAtMs) &&
-    reloadAtMs - previousReloadAtMs < SHARED_DATABASE_RELOAD_WINDOW_MS
-  ) {
-    url.searchParams.delete(SHARED_DATABASE_RELOAD_MARKER);
-    history.replaceState(history.state, "", url);
-    toast.error(
-      i18n.t(($) => {
-        return $.global.errors.sharedDatabaseUnavailable;
-      }),
-    );
-    return;
-  }
-
-  url.searchParams.set(SHARED_DATABASE_RELOAD_MARKER, String(reloadAtMs));
-  L.debug("Reloading app", { reason });
-  location.replace(url.toString());
-}
-
 function handleSharedDatabaseWorkerUnavailable(
   reason: SharedDatabaseWorkerUnavailableReason,
 ): void {
@@ -92,14 +57,8 @@ function handleSharedDatabaseWorkerUnavailable(
     return;
   }
 
-  handleSharedDatabaseReloadRequired(reason);
-  if (reason === "indexeddb-version-changed") {
-    throw new Error(
-      "Shared database worker is unavailable after an IndexedDB version change",
-    );
-  }
   throw new Error(
-    "Shared database worker failed to load or its transport became unrecoverable",
+    "Shared database worker is unavailable after an IndexedDB version change",
   );
 }
 
@@ -138,21 +97,15 @@ function createBrowserSharedDatabaseBridge(
     signal,
     getToken,
   );
-  let failureHandled = false;
   worker.addEventListener(
     "error",
     (event) => {
-      if (failureHandled) {
-        return;
-      }
-      failureHandled = true;
       const workerError: unknown = event.error;
       portBridge.fail(
         workerError instanceof Error
           ? workerError
           : new Error("Shared database worker failed to load"),
       );
-      events.workerUnavailable("worker-load-or-transport-failure");
     },
     { signal },
   );

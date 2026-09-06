@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { modelProviderCooldownDiagnosticsContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import {
   type UserLocale,
@@ -72,6 +73,7 @@ function createPreferences(
     theme: "system",
     colorTheme: "blue-horizon",
     captureNetworkBodiesRemaining: 0,
+    voiceInputModel: null,
   };
 }
 
@@ -103,6 +105,22 @@ function builtInModelCooldownDisclosure(region: HTMLElement): {
   }
   if (!(details instanceof HTMLDetailsElement)) {
     throw new Error("Built-in model cooldown disclosure not found");
+  }
+  return { details, summary };
+}
+
+function indexedDbDisclosure(region: HTMLElement): {
+  readonly details: HTMLDetailsElement;
+  readonly summary: HTMLElement;
+} {
+  const title = within(region).getByText("IndexedDB storage");
+  const summary = title.closest("summary");
+  const details = summary?.closest("details");
+  if (!(summary instanceof HTMLElement)) {
+    throw new Error("IndexedDB diagnostics summary not found");
+  }
+  if (!(details instanceof HTMLDetailsElement)) {
+    throw new Error("IndexedDB diagnostics disclosure not found");
   }
   return { details, summary };
 }
@@ -465,6 +483,158 @@ test("Inspect built-in model cooldown diagnostics", async () => {
       "No built-in model routes are currently in global cooldown.",
     ),
   ).toBeInTheDocument();
+});
+
+test("Inspect empty IndexedDB storage before the first snapshot arrives", async () => {
+  const releaseSnapshot = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+    await releaseSnapshot.promise;
+    return respond(200, {
+      chatThreads: [],
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  await setupPage({
+    context,
+    path: "/?settings=debug",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+    sharedWorkerTestTransport: "message-port",
+  });
+  await screen.findByRole("dialog", { name: "Settings" });
+
+  const diagnostics = await screen.findByRole("region", {
+    name: "IndexedDB storage",
+  });
+  await waitFor(() => {
+    expect(
+      within(diagnostics).getByText("IndexedDB storage").closest("summary"),
+    ).not.toBeNull();
+  });
+  const { details, summary } = indexedDbDisclosure(diagnostics);
+  expect(details.open).toBeFalsy();
+  expect(summary).toHaveTextContent("object stores: 5");
+  expect(summary).toHaveTextContent("records: 0");
+
+  click(summary);
+  expect(details.open).toBeTruthy();
+  for (const storeName of [
+    "chat_events",
+    "chat_event_cursors",
+    "chat_thread_snapshot",
+    "chat_thread_events",
+    "chat_thread_event_sync",
+  ]) {
+    const row = within(diagnostics).getByText(storeName).parentElement;
+    if (!row) {
+      throw new Error(`Expected record count for ${storeName}`);
+    }
+    expect(within(row).getByRole("definition")).toHaveTextContent(/^0$/u);
+  }
+  expect(within(diagnostics).getAllByRole("definition")).toHaveLength(5);
+  expect(
+    within(diagnostics).queryByText("Threads in snapshot"),
+  ).not.toBeInTheDocument();
+  const snapshot = within(diagnostics).getByRole("region", {
+    name: "Thread snapshot",
+  });
+  click(buttonWithText(snapshot, "Measure snapshot"));
+  await expect(
+    within(snapshot).findByRole("status"),
+  ).resolves.toHaveTextContent("No cached thread snapshot.");
+  expect(within(snapshot).queryByRole("definition")).not.toBeInTheDocument();
+});
+
+test("Measure the threads inside a singleton snapshot on demand", async () => {
+  const agentId = crypto.randomUUID();
+  const snapshotRequested = context.mocks.deferred<void>();
+  const releaseSnapshot = context.mocks.deferred<void>();
+  context.mocks.data.agents([{ agentId }]);
+  context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+    if (!snapshotRequested.settled()) {
+      snapshotRequested.resolve();
+    }
+    await releaseSnapshot.promise;
+    return respond(200, {
+      chatThreads: ["Snapshot 文 😀", "Second thread", "Third thread"].map(
+        (title) => {
+          return {
+            id: crypto.randomUUID(),
+            agentId,
+            title,
+            sortAt: "2026-09-05T00:00:00Z",
+            createdAt: "2026-09-05T00:00:00Z",
+            updatedAt: "2026-09-05T00:00:00Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
+          };
+        },
+      ),
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${agentId}/chat`,
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+    sharedWorkerTestTransport: "message-port",
+  });
+  const sidebar = await screen.findByTestId("sidebar-scroll-area");
+  // Page content can render before the Worker requests its first snapshot.
+  // Release it after both are ready, then observe the committed snapshot.
+  await snapshotRequested.promise;
+  expect(within(sidebar).queryByText("Snapshot 文 😀")).not.toBeInTheDocument();
+  releaseSnapshot.resolve();
+  await within(sidebar).findByText("Snapshot 文 😀");
+  const rail = await screen.findByTestId("labeled-nav-rail");
+  click(within(rail).getByLabelText("Test User"));
+  const accountMenu = await screen.findByRole("menu");
+  click(within(accountMenu).getByText("Settings"));
+  const dialog = await screen.findByRole("dialog", { name: "Settings" });
+  click(buttonWithText(dialog, "Debug"));
+  const diagnostics = await screen.findByRole("region", {
+    name: "IndexedDB storage",
+  });
+  const { details, summary } = await waitFor(() => {
+    return indexedDbDisclosure(diagnostics);
+  });
+  click(summary);
+  const snapshot = within(diagnostics).getByRole("region", {
+    name: "Thread snapshot",
+  });
+  expect(within(snapshot).queryByRole("definition")).not.toBeInTheDocument();
+
+  click(buttonWithText(snapshot, "Measure snapshot"));
+  await within(snapshot).findByText("Threads in snapshot");
+  const values = within(snapshot).getAllByRole("definition");
+  expect(values[0]).toHaveTextContent("3");
+  expect(values[1]).toHaveTextContent(/^[1-9][\d.]*KB$/u);
+  expect(values[2]).toHaveTextContent(/^[\d,.]+ ms$/u);
+
+  click(buttonWithText(diagnostics, "Refresh"));
+  await waitFor(() => {
+    expect(buttonWithText(diagnostics, "Refresh")).toBeEnabled();
+    expect(within(snapshot).queryByRole("definition")).not.toBeInTheDocument();
+  });
+  expect(details.open).toBeTruthy();
+  const snapshotRow = within(diagnostics).getByText(
+    "chat_thread_snapshot",
+  ).parentElement;
+  if (!snapshotRow) {
+    throw new Error("Expected snapshot record count");
+  }
+  expect(within(snapshotRow).getByRole("definition")).toHaveTextContent("1");
+
+  click(buttonWithText(snapshot, "Measure snapshot"));
+  await within(snapshot).findByText("Threads in snapshot");
+  expect(within(snapshot).getAllByRole("definition")[0]).toHaveTextContent("3");
 });
 
 test("Cancel a global built-in model cooldown as staff", async () => {

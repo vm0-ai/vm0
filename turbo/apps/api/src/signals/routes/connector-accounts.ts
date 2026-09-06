@@ -4,11 +4,8 @@ import {
   connectorAccountsContract,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import { logger } from "../../lib/log";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
@@ -29,24 +26,11 @@ import {
   connectorScopeDiff,
   deleteConnectorLocalState$,
 } from "../services/connector-data.service";
-import {
-  deleteCustomConnectorAccount$,
-  disconnectCustomConnector$,
-  integrationManagedCustomConnectorMutationForbidden,
-} from "../services/custom-connector.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { deleteCustomConnectorAccount$ } from "../services/custom-connector.service";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 import { reconcileGoogleCalendarWatchesForUser } from "../services/google-calendar-automation-event.service";
 import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
 import { reconcileGoogleMeetSubscriptionsForUser } from "../services/google-meet-automation-event.service";
-
-const log = logger("api:connector-account-mutation");
-
-const connectorAccountsEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const context = await get(userFeatureSwitchContext(auth.orgId, auth.userId));
-  return isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, context);
-});
 
 function targetFromQuery(
   query: ConnectorAccountTarget,
@@ -58,9 +42,6 @@ function targetFromQuery(
 
 const inspectInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const body = await get(bodyResultOf(connectorAccountsContract.inspect));
   if (!body.ok) {
     return body.response;
@@ -108,18 +89,12 @@ const inspectInner$ = computed(async (get) => {
 
 const summariesInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const summaries = await listConnectorAccountSummaries(get(db$), auth);
   return { status: 200 as const, body: { summaries: [...summaries] } };
 });
 
 const connectionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const query = get(queryOf(connectorAccountsContract.connections));
   const result = await listConnectorAccountsForTarget(get(db$), {
     orgId: auth.orgId,
@@ -152,9 +127,6 @@ const connectionsInner$ = computed(async (get) => {
 
 const connectionInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(connectorAccountsContract.connection));
   const query = get(queryOf(connectorAccountsContract.connection));
   const account = await getConnectorAccount(get(db$), {
@@ -170,9 +142,6 @@ const connectionInner$ = computed(async (get) => {
 
 const scopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(connectorAccountsContract.scopeDiff));
   const query = get(queryOf(connectorAccountsContract.scopeDiff));
   const diff = await get(
@@ -191,9 +160,6 @@ const scopeDiffInner$ = computed(async (get) => {
 const renameInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(pathParamsOf(connectorAccountsContract.rename));
     const body = await get(bodyResultOf(connectorAccountsContract.rename));
     signal.throwIfAborted();
@@ -234,9 +200,6 @@ const renameInner$ = command(
 const setDefaultInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(pathParamsOf(connectorAccountsContract.setDefault));
     const body = await get(bodyResultOf(connectorAccountsContract.setDefault));
     signal.throwIfAborted();
@@ -314,9 +277,6 @@ const setDefaultInner$ = command(
 
 const deletionImpactInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  if (!(await get(connectorAccountsEnabled$))) {
-    return notFound("Resource not found");
-  }
   const params = get(pathParamsOf(connectorAccountsContract.deletionImpact));
   const query = get(queryOf(connectorAccountsContract.deletionImpact));
   const request = {
@@ -338,133 +298,9 @@ const deletionImpactInner$ = computed(async (get) => {
   };
 });
 
-type SingleAccountDisconnectOutcome =
-  | "missing"
-  | "ambiguous"
-  | "managed"
-  | "deleted";
-
-function observeSingleAccountDisconnect(args: {
-  readonly targetKind: ConnectorAccountTarget["kind"];
-  readonly outcome: SingleAccountDisconnectOutcome;
-  readonly accountCardinality?: "zero" | "one" | "multiple";
-}): void {
-  log.debug("Resolved single-account connector disconnect", {
-    targetKind: args.targetKind,
-    outcome: args.outcome,
-    ...(args.accountCardinality
-      ? { accountCardinality: args.accountCardinality }
-      : {}),
-  });
-}
-
-const disconnectSingleAccountInner$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
-    const auth = get(organizationAuthContext$);
-    const body = await get(
-      bodyResultOf(connectorAccountsContract.disconnectSingleAccount),
-    );
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-
-    if (body.data.target.kind === "builtin") {
-      const result = await set(
-        deleteConnectorLocalState$,
-        {
-          orgId: auth.orgId,
-          userId: auth.userId,
-          connectorSlug: body.data.target.connectorSlug,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (result === "deleted") {
-        observeSingleAccountDisconnect({
-          targetKind: "builtin",
-          outcome: "deleted",
-          accountCardinality: "one",
-        });
-        return { status: 204 as const, body: undefined };
-      }
-      if (result === "missing") {
-        observeSingleAccountDisconnect({
-          targetKind: "builtin",
-          outcome: "missing",
-          accountCardinality: "zero",
-        });
-        return notFound("Connector account not found");
-      }
-      if (result === "ambiguous") {
-        observeSingleAccountDisconnect({
-          targetKind: "builtin",
-          outcome: "ambiguous",
-          accountCardinality: "multiple",
-        });
-        return conflict("Multiple connector accounts require an exact choice");
-      }
-      throw new Error(
-        "Single-account built-in deletion returned an exact-account result",
-      );
-    }
-
-    const result = await set(
-      disconnectCustomConnector$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorId: body.data.target.customConnectorId,
-        requireAccount: true,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (result === "deleted") {
-      observeSingleAccountDisconnect({
-        targetKind: "custom",
-        outcome: "deleted",
-        accountCardinality: "one",
-      });
-      return { status: 204 as const, body: undefined };
-    }
-    if (result === "missing-account") {
-      observeSingleAccountDisconnect({
-        targetKind: "custom",
-        outcome: "missing",
-        accountCardinality: "zero",
-      });
-      return notFound("Connector account not found");
-    }
-    if (result === "missing-definition") {
-      observeSingleAccountDisconnect({
-        targetKind: "custom",
-        outcome: "missing",
-      });
-      return notFound("Connector target not found");
-    }
-    if (result === "ambiguous") {
-      observeSingleAccountDisconnect({
-        targetKind: "custom",
-        outcome: "ambiguous",
-        accountCardinality: "multiple",
-      });
-      return conflict("Multiple connector accounts require an exact choice");
-    }
-    observeSingleAccountDisconnect({
-      targetKind: "custom",
-      outcome: "managed",
-    });
-    return integrationManagedCustomConnectorMutationForbidden();
-  },
-);
-
 const deleteInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(organizationAuthContext$);
-    if (!(await get(connectorAccountsEnabled$))) {
-      return notFound("Resource not found");
-    }
     const params = get(pathParamsOf(connectorAccountsContract.delete));
     const body = await get(bodyResultOf(connectorAccountsContract.delete));
     signal.throwIfAborted();
@@ -503,14 +339,8 @@ const deleteInner$ = command(
             signal,
           );
     signal.throwIfAborted();
-    if (typeof result === "string") {
-      if (result === "missing") {
-        return notFound("Connector account not found");
-      }
-      if (result === "ambiguous") {
-        return conflict("Multiple connector accounts require an exact choice");
-      }
-      throw new Error("Exact connector account deletion returned no result");
+    if (result === "missing") {
+      return notFound("Connector account not found");
     }
     if (result.kind === "missing" || result.kind === "managed") {
       return notFound("Connector account not found");
@@ -570,10 +400,6 @@ export const connectorAccountRoutes: readonly RouteEntry[] = [
   {
     route: connectorAccountsContract.deletionImpact,
     handler: authRoute(readAuth, deletionImpactInner$),
-  },
-  {
-    route: connectorAccountsContract.disconnectSingleAccount,
-    handler: authRoute(writeAuth, disconnectSingleAccountInner$),
   },
   {
     route: connectorAccountsContract.delete,

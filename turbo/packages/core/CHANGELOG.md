@@ -1,5 +1,178 @@
 # Changelog
 
+## [8.625.11](https://github.com/vm0-ai/vm0/compare/core-v8.625.10...core-v8.625.11) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.0
+
+## [8.625.10](https://github.com/vm0-ai/vm0/compare/core-v8.625.9...core-v8.625.10) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.1
+
+## [8.625.9](https://github.com/vm0-ai/vm0/compare/core-v8.625.8...core-v8.625.9) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+
+## [8.625.8](https://github.com/vm0-ai/vm0/compare/core-v8.625.7...core-v8.625.8) (2026-09-06)
+
+
+### Performance Improvements
+
+* avoid duplicate pinned reverse-template guide load ([#31969](https://github.com/vm0-ai/vm0/issues/31969)) ([e8843ea](https://github.com/vm0-ai/vm0/commit/e8843ea6642f706a2214569cbe4726164ae7a766))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+
+## [8.625.7](https://github.com/vm0-ai/vm0/compare/core-v8.625.6...core-v8.625.7) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ui:** follow base ui popup transitions and positioning ([#31942](https://github.com/vm0-ai/vm0/issues/31942)) ([38edfa5](https://github.com/vm0-ai/vm0/commit/38edfa57f3e1318ec0bfdd13a1fd840ab8929203))
+
+## [8.625.6](https://github.com/vm0-ai/vm0/compare/core-v8.625.5...core-v8.625.6) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+
+## [8.625.5](https://github.com/vm0-ai/vm0/compare/core-v8.625.4...core-v8.625.5) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.6
+
+## [8.625.4](https://github.com/vm0-ai/vm0/compare/core-v8.625.3...core-v8.625.4) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+
+## [8.625.3](https://github.com/vm0-ai/vm0/compare/core-v8.625.2...core-v8.625.3) (2026-09-05)
+
+
+### Refactoring
+
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+
+## [8.625.2](https://github.com/vm0-ai/vm0/compare/core-v8.625.1...core-v8.625.2) (2026-09-05)
+
+
+### Refactoring
+
+* **platform:** fully roll out batch chat event catch-up ([#31890](https://github.com/vm0-ai/vm0/issues/31890)) ([523f917](https://github.com/vm0-ai/vm0/commit/523f917203f26c95e91ef1e94df04d439a82f1f7))
+
+## [8.625.1](https://github.com/vm0-ai/vm0/compare/core-v8.625.0...core-v8.625.1) (2026-09-05)
+
+
+### Refactoring
+
+* unify voice input feature switches ([#31884](https://github.com/vm0-ai/vm0/issues/31884)) ([4537935](https://github.com/vm0-ai/vm0/commit/453793580a047239a98c91d92568b56898e58c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.3
+
+## [8.625.0](https://github.com/vm0-ai/vm0/compare/core-v8.624.0...core-v8.625.0) (2026-09-05)
+
+
+### Features
+
+* **platform:** stabilize pinned chats and add numbered search navigation ([#31833](https://github.com/vm0-ai/vm0/issues/31833)) ([6040bad](https://github.com/vm0-ai/vm0/commit/6040bada98116cff9254300136962e5080c03021))
+
+
+### Refactoring
+
+* **voice:** remove draft compatibility and encoded audio fallback ([#31792](https://github.com/vm0-ai/vm0/issues/31792)) ([83979d4](https://github.com/vm0-ai/vm0/commit/83979d4a271483500bce0e63f837b5a9db279262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.2
+
+## [8.624.0](https://github.com/vm0-ai/vm0/compare/core-v8.623.2...core-v8.624.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Bug Fixes
+
+* **api:** reuse sessions by runtime and model family ([#31796](https://github.com/vm0-ai/vm0/issues/31796)) ([6fd1c6f](https://github.com/vm0-ai/vm0/commit/6fd1c6ff18aa9bbeaf7d55c833bb1336d193be7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+
+## [8.623.2](https://github.com/vm0-ai/vm0/compare/core-v8.623.1...core-v8.623.2) (2026-09-05)
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+* **platform:** roll out base ui sidebar scroll area ([#31822](https://github.com/vm0-ai/vm0/issues/31822)) ([eae726c](https://github.com/vm0-ai/vm0/commit/eae726c7761929845a30c58286dd8a28af3f0622))
+* **platform:** roll out markdown hex color previews ([#31826](https://github.com/vm0-ai/vm0/issues/31826)) ([82f7578](https://github.com/vm0-ai/vm0/commit/82f7578886827deb17f678c0e90c7d7d977ebee2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+
+## [8.623.1](https://github.com/vm0-ai/vm0/compare/core-v8.623.0...core-v8.623.1) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.1
+
 ## [8.623.0](https://github.com/vm0-ai/vm0/compare/core-v8.622.0...core-v8.623.0) (2026-09-05)
 
 

@@ -213,12 +213,9 @@ function SharedAssistantGroup({
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <SharedAssistantAvatar assistantName={assistantName} />
         <div className="relative flex min-w-0 flex-col gap-2">
-          {group.messages.map((message, index) => {
+          {group.messages.map((message) => {
             return (
-              <ChatAssistantMessageBody
-                key={message.messageIndex}
-                compactTop={index > 0}
-              >
+              <ChatAssistantMessageBody key={message.messageIndex}>
                 {message.tree === undefined && richContent !== undefined ? (
                   <SharedRichMessageBody
                     messageIndex={message.messageIndex}
@@ -285,7 +282,7 @@ function SharedThreadHandoff({
       data-shared-thread-handoff=""
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
-        paddingBottom: "max(0.5rem - var(--sab), 0px)",
+        paddingBottom: "max(0.5rem, var(--sab))",
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />

@@ -338,7 +338,6 @@ async function setupGoogleFormsAutomation() {
     { orgId: actor.orgId, userId: actor.userId },
     {
       [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
     },
   );
   mockGoogleFormsConnectorOAuth();
@@ -695,7 +694,6 @@ describe("Google Forms Pub/Sub webhook", () => {
       { orgId: actor.orgId, userId: actor.userId },
       {
         [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
       },
     );
     mockGoogleFormsConnectorOAuth();
@@ -1052,7 +1050,7 @@ describe("Google Forms Pub/Sub webhook", () => {
       "google-forms",
       "oauth",
       agentId,
-      { intent: "single-account" },
+      { intent: "add" },
     );
     const replaceState = new URL(
       replaceOauth.authorizationUrl,
@@ -1068,17 +1066,40 @@ describe("Google Forms Pub/Sub webhook", () => {
       actor,
       "google-forms",
     );
-    expect(replacedAccounts).toStrictEqual([
-      expect.objectContaining({
-        id: firstConnector.id,
-        externalEmail: "bdd-google-forms-replaced@example.test",
+    const replacementAccount = replacedAccounts.find((account) => {
+      return account.externalEmail === "bdd-google-forms-replaced@example.test";
+    });
+    if (!replacementAccount) {
+      throw new Error("Expected the replacement Google Forms account");
+    }
+    expect(replacementAccount.id).not.toBe(firstConnector.id);
+    expect(replacedAccounts).toHaveLength(2);
+    expect(formsApi.watchIds).toHaveLength(2);
+
+    const deletedFirst = await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(),
+        params: { connectionId: firstConnector.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "google-forms" },
+        },
       }),
-    ]);
+      [200],
+    );
+    expect(deletedFirst.body).toStrictEqual({
+      deletedConnectionId: firstConnector.id,
+      resolvedSelectionCount: 0,
+      promotedDefaultConnectionId: replacementAccount.id,
+    });
     expect(formsApi.watchIds).toHaveLength(3);
     const replacementWatchId = formsApi.watchIds[2];
     if (!replacementWatchId) {
       throw new Error("Expected a replacement Google Forms watch");
     }
+    expect(formsApi.stoppedWatchIds).toStrictEqual([
+      secondWatchId,
+      firstWatchId,
+    ]);
     const replacedAccountPush = await postWebhook(
       formsPushBody("pubsub-replaced-account", firstWatchId),
     );
@@ -1090,7 +1111,7 @@ describe("Google Forms Pub/Sub webhook", () => {
     const deletedLast = await accept(
       connectorAccountsClient().delete({
         headers: authHeaders(),
-        params: { connectionId: firstConnector.id },
+        params: { connectionId: replacementAccount.id },
         body: {
           target: { kind: "builtin", connectorSlug: "google-forms" },
         },
@@ -1098,12 +1119,13 @@ describe("Google Forms Pub/Sub webhook", () => {
       [200],
     );
     expect(deletedLast.body).toStrictEqual({
-      deletedConnectionId: firstConnector.id,
+      deletedConnectionId: replacementAccount.id,
       resolvedSelectionCount: 0,
       promotedDefaultConnectionId: null,
     });
     expect(formsApi.stoppedWatchIds).toStrictEqual([
       secondWatchId,
+      firstWatchId,
       replacementWatchId,
     ]);
     const removedLastAccountPush = await postWebhook(

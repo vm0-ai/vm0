@@ -15,7 +15,6 @@ import {
   workflowAutomationsContract,
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -45,7 +44,7 @@ import {
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   clearWorkflowAutomationEventConnectorAsPreviousApi,
-  seedVm0BuiltInModelKey,
+  seedBuiltInModelKey,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
@@ -447,7 +446,7 @@ function expectResponseStatus(
 async function configureWorkspaceModelProvider(
   actor: ApiTestUser,
 ): Promise<void> {
-  await configureVm0BuiltInModelKey();
+  await configureBuiltInModelKey();
   const policies = await miscApi.listModelPolicies(actor);
   const workspacePolicy = policies.policies.find((policy) => {
     return policy.model === GMAIL_WORKSPACE_MODEL;
@@ -481,8 +480,8 @@ async function configureWorkspaceModelProvider(
   });
 }
 
-async function configureVm0BuiltInModelKey(): Promise<void> {
-  await seedVm0BuiltInModelKey(context, GMAIL_WORKSPACE_MODEL);
+async function configureBuiltInModelKey(): Promise<void> {
+  await seedBuiltInModelKey(context, GMAIL_WORKSPACE_MODEL);
 }
 
 async function configureAutomationThreadModel(
@@ -553,11 +552,20 @@ async function connectGmail(
     code: "gmail-code",
     state,
   });
-  const connector = await connectorsApi.readConnectorBySlug(actor, "gmail");
+  const connector = (
+    await connectorsApi.listBuiltinConnectorAccounts(actor, "gmail")
+  ).find((candidate) => {
+    return account?.intent === "reconnect"
+      ? candidate.id === account.connectionId
+      : candidate.externalId === subject;
+  });
+  if (!connector) {
+    throw new Error("Expected the connected Gmail account");
+  }
   expect(connector).toMatchObject({
     authMethod: "oauth",
     externalEmail: gmailEmail,
-    slug: "gmail",
+    target: { kind: "builtin", connectorSlug: "gmail" },
   });
   return connector.id;
 }
@@ -656,9 +664,7 @@ interface MultiAccountGmailTestFixture extends GmailTestFixture {
 
 async function setupMultiAccountGmailFixture(): Promise<MultiAccountGmailTestFixture> {
   const fixture = await setupFixture();
-  await updateFeatureSwitchesForUser(context, fixture.actor, {
-    [FeatureSwitchKey.ConnectorAccounts]: true,
-  });
+  await updateFeatureSwitchesForUser(context, fixture.actor, {});
   const firstEmail = uniqueGmailEmail();
   const secondEmail = uniqueGmailEmail();
   const firstConnectorId = await connectGmail(
@@ -793,7 +799,7 @@ async function completeRunThroughSandbox(
 }
 
 describe("POST /api/webhooks/gmail", () => {
-  it("invalidates Gmail label ids when OAuth replaces the connector identity", async () => {
+  it("invalidates Gmail label ids when the selected account is replaced", async () => {
     configureGmailEnv();
     configureGmailWatchMock();
     configureGmailLabelsMockSequence([
@@ -826,15 +832,17 @@ describe("POST /api/webhooks/gmail", () => {
       eventConfig: { resolvedLabelId: "Label_old_account" },
     });
 
-    await connectGmail(actor, uniqueGmailEmail(), "gmail-label-account-two");
-    const replacementConnection = await connectorsApi.readConnectorBySlug(
+    const replacementConnectionId = await connectGmail(
+      actor,
+      uniqueGmailEmail(),
+      "gmail-label-account-two",
+    );
+    expect(replacementConnectionId).not.toBe(initialConnection.id);
+    await connectorsApi.deleteBuiltinConnectorAccount(
       actor,
       "gmail",
+      initialConnection.id,
     );
-    expect(replacementConnection).toMatchObject({
-      id: initialConnection.id,
-      externalId: "gmail-label-account-two",
-    });
     const updated = await readAutomation(actor, created.body.id);
     if (
       updated.kind !== "event" ||
@@ -845,7 +853,7 @@ describe("POST /api/webhooks/gmail", () => {
     expect(updated.eventConfig).not.toHaveProperty("resolvedLabelId");
   });
 
-  it("rejects an in-flight Gmail event after the connector identity changes", async () => {
+  it("rejects an in-flight Gmail event after the selected account is removed", async () => {
     const oldEmail = uniqueGmailEmail();
     const newEmail = uniqueGmailEmail();
     configureGmailEnv();
@@ -879,7 +887,11 @@ describe("POST /api/webhooks/gmail", () => {
     );
 
     const { actor, workflowId } = await setupFixture();
-    await connectGmail(actor, oldEmail, "gmail-race-account-one");
+    const initialConnectionId = await connectGmail(
+      actor,
+      oldEmail,
+      "gmail-race-account-one",
+    );
     await configureWorkspaceModelProvider(actor);
     const created = await accept(
       automationsClient().create({
@@ -909,6 +921,11 @@ describe("POST /api/webhooks/gmail", () => {
     );
     await labelLookupStarted.promise;
     await connectGmail(actor, newEmail, "gmail-race-account-two");
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "gmail",
+      initialConnectionId,
+    );
     releaseLabelLookup.resolve();
 
     const response = await webhookRequest;
@@ -932,7 +949,7 @@ describe("POST /api/webhooks/gmail", () => {
     );
   });
 
-  it("keeps same-account watch state and drops it when reconnect changes accounts", async () => {
+  it("keeps same-account watch state and drops it when the account switches", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
     const watch = configureGmailWatchMock();
@@ -986,15 +1003,17 @@ describe("POST /api/webhooks/gmail", () => {
     expectResponseStatus(sameAccountEvent, 200);
     expect(sameAccountEvent.body).toMatchObject({ watchStates: 1 });
 
-    await connectGmail(actor, `replacement-${gmailEmail}`, "gmail-account-two");
-    const replacementConnection = await connectorsApi.readConnectorBySlug(
+    const replacementConnectionId = await connectGmail(
+      actor,
+      `replacement-${gmailEmail}`,
+      "gmail-account-two",
+    );
+    expect(replacementConnectionId).not.toBe(initialConnection.id);
+    await connectorsApi.deleteBuiltinConnectorAccount(
       actor,
       "gmail",
+      initialConnection.id,
     );
-    expect(replacementConnection).toMatchObject({
-      id: initialConnection.id,
-      externalId: "gmail-account-two",
-    });
     const oldAccountEvent = await postGmailWebhook(
       gmailPushBody({
         emailAddress: renamedGmailEmail,
@@ -1426,21 +1445,21 @@ describe("POST /api/webhooks/gmail", () => {
       }),
     );
     for (const actionType of [
-      "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_automation_event_load_source_state",
-      "api_dispatch_pre_create_zero_automation_event_load_external_events",
-      "api_dispatch_pre_create_zero_automation_event_load_automations",
-      "api_dispatch_pre_create_zero_automation_event_match_automations",
-      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
-      "api_dispatch_pre_create_zero_automation_event_build_run_input",
-      "api_dispatch_pre_create_zero_automation_event_handoff_run",
+      "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
+      "api_dispatch_pre_create_agent_automation_event_load_source_state",
+      "api_dispatch_pre_create_agent_automation_event_load_external_events",
+      "api_dispatch_pre_create_agent_automation_event_load_automations",
+      "api_dispatch_pre_create_agent_automation_event_match_automations",
+      "api_dispatch_pre_create_agent_automation_event_record_processed_event",
+      "api_dispatch_pre_create_agent_automation_event_build_run_input",
+      "api_dispatch_pre_create_agent_automation_event_handoff_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
+          op_type: "api_dispatch_pre_create_agent_automation_event_handoff_run",
           automation_event_source: "gmail",
           trigger_source: "automation-event",
           agent_run_origin: "workflow_automation",
@@ -1759,9 +1778,7 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailEnv();
     const recorder = configureGmailWatchLifecycleMock();
     const { actor, agentId, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, actor, {});
     const firstConnectorId = await connectGmail(
       actor,
       uniqueGmailEmail(),

@@ -24,10 +24,6 @@ const SILERO_NEGATIVE_SPEECH_THRESHOLD = 0.35;
 const SILERO_MINIMUM_SPEECH_SAMPLES = 4000;
 const SILERO_MINIMUM_SILENCE_SAMPLES = 1600;
 
-interface WindowWithWebkitAudioContext extends Window {
-  readonly webkitAudioContext?: typeof AudioContext;
-}
-
 interface VoiceDraftSpeechRange {
   readonly startSample: number;
   readonly endSample: number;
@@ -42,16 +38,6 @@ interface VoiceDraftPause {
 interface VoiceDraftChunkRange {
   readonly startSample: number;
   readonly endSample: number;
-}
-
-function audioContextConstructor(): typeof AudioContext | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-  return (
-    window.AudioContext ??
-    (window as WindowWithWebkitAudioContext).webkitAudioContext
-  );
 }
 
 function absoluteAssetUrl(value: string): string {
@@ -267,33 +253,6 @@ export function voiceDraftChunkRanges(
   return ranges;
 }
 
-function resampleToVoiceDraftPcm(audio: AudioBuffer): Float32Array {
-  const inputLength = audio.length;
-  if (inputLength === 0 || audio.numberOfChannels === 0) {
-    return new Float32Array();
-  }
-  const outputLength = Math.round(
-    (inputLength * VOICE_DRAFT_PCM_SAMPLE_RATE) / audio.sampleRate,
-  );
-  const output = new Float32Array(outputLength);
-  const sourceStep = audio.sampleRate / VOICE_DRAFT_PCM_SAMPLE_RATE;
-  for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
-    const sourcePosition = outputIndex * sourceStep;
-    const leftIndex = Math.min(inputLength - 1, Math.floor(sourcePosition));
-    const rightIndex = Math.min(inputLength - 1, leftIndex + 1);
-    const fraction = sourcePosition - leftIndex;
-    let mixed = 0;
-    for (let channel = 0; channel < audio.numberOfChannels; channel += 1) {
-      const data = audio.getChannelData(channel);
-      const left = data[leftIndex] ?? 0;
-      const right = data[rightIndex] ?? left;
-      mixed += left + (right - left) * fraction;
-    }
-    output[outputIndex] = mixed / audio.numberOfChannels;
-  }
-  return output;
-}
-
 async function pausesForSamples(
   samples: Float32Array,
   signal: AbortSignal,
@@ -309,29 +268,11 @@ async function recordingSamples(
 ): Promise<Float32Array> {
   const encoded = await recording.arrayBuffer();
   signal.throwIfAborted();
-  if (recording.type.split(";")[0]?.toLowerCase() === "audio/wav") {
-    const samples = decodeVoiceDraftPcmWav(encoded);
-    if (!samples) {
-      throw new Error("Voice draft PCM recording was invalid");
-    }
-    return samples;
+  const samples = decodeVoiceDraftPcmWav(encoded);
+  if (!samples) {
+    throw new Error("Voice draft PCM recording was invalid");
   }
-
-  const AudioContextConstructor = audioContextConstructor();
-  if (!AudioContextConstructor) {
-    throw new Error("Audio decoding is not available in this browser");
-  }
-  const audioContext = new AudioContextConstructor();
-  return await withCleanup(
-    (async () => {
-      const decoded = await audioContext.decodeAudioData(encoded);
-      signal.throwIfAborted();
-      return resampleToVoiceDraftPcm(decoded);
-    })(),
-    async () => {
-      await bestEffort(audioContext.close());
-    },
-  );
+  return samples;
 }
 
 export async function prepareVoiceDraftAudio(
@@ -340,7 +281,7 @@ export async function prepareVoiceDraftAudio(
 ): Promise<readonly File[]> {
   const samples = await recordingSamples(recording, signal);
   if (samples.length === 0) {
-    throw new Error("Voice recording did not contain audio samples");
+    return [];
   }
   const durationSeconds = samples.length / VOICE_DRAFT_PCM_SAMPLE_RATE;
   const pauses =

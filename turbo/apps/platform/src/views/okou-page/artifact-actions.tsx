@@ -26,7 +26,6 @@ import {
   BrandGoogleDrive,
 } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactGoogleDriveRecovery,
@@ -34,6 +33,7 @@ import type {
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
+import type { PlatformConnectorAccountMutationIntent } from "../../signals/connector-domain.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { apiClient$ } from "../../signals/api-client.ts";
 import {
@@ -65,8 +65,6 @@ import { shouldIgnoreImageArtifactNavigationKey } from "./artifact-image-navigat
 import type { ZoomableImageControls } from "./zoomable-image-canvas.tsx";
 
 const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
-const ARTIFACT_FLOATING_TRANSITION_CLASS =
-  "transition-[opacity,transform] duration-[180ms] ease data-open:!animate-none data-closed:!animate-none data-open:translate-y-0 data-open:opacity-100 data-closed:translate-y-2 data-closed:opacity-0";
 
 function siteSlugFromUrl(value: string): string | null {
   if (!URL.canParse(value)) {
@@ -157,10 +155,7 @@ export function ArtifactActionTooltip({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger render={trigger} />
-        <TooltipContent
-          side={side}
-          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
-        >
+        <TooltipContent side={side}>
           <p className="text-xs">{label}</p>
         </TooltipContent>
       </Tooltip>
@@ -248,10 +243,6 @@ function useGoogleDriveAvailability(
       ? null
       : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
   const accountReady = syncTarget?.accountReady === true;
-  // Remove the default-connector fallback after pre-accountReady APIs are
-  // outside the serving and rollback window.
-  const legacyDefaultAccountReady =
-    googleDriveConnected && syncTarget?.disconnected !== true;
 
   return {
     connectorListLoaded:
@@ -261,7 +252,7 @@ function useGoogleDriveAvailability(
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,
-    googleDriveReady: accountReady || legacyDefaultAccountReady,
+    googleDriveReady: accountReady,
   };
 }
 
@@ -297,7 +288,7 @@ type GoogleDrivePendingAction =
   | { readonly kind: "authorize" }
   | {
       readonly kind: "connect";
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly useDefaultConnectorProjection: boolean;
     }
   | { readonly kind: "unavailable" };
@@ -506,10 +497,7 @@ function GoogleDriveMenuItem({
             </DropdownMenuItem>
           }
         />
-        <TooltipContent
-          side="left"
-          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
-        >
+        <TooltipContent side="left">
           {t(($) => {
             return $.artifacts.googleDrive.connectTooltip;
           })}
@@ -661,7 +649,7 @@ export function ArtifactDownloadMenu({
         onCloseAutoFocus={(event) => {
           event.preventDefault();
         }}
-        className={cn("w-56", ARTIFACT_FLOATING_TRANSITION_CLASS)}
+        className="w-56"
       >
         <DropdownMenuItem
           onClick={() => {

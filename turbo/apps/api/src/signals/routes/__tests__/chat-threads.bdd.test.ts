@@ -20,7 +20,6 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -71,9 +70,8 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
-import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -510,7 +508,7 @@ function goalsClient() {
   return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
-function zeroCapabilityHeaders(
+function okouCapabilityHeaders(
   actor: ApiTestUser,
   runId: string,
   capabilities: readonly Capability[],
@@ -537,7 +535,7 @@ function goalHeaders(
   actor: ApiTestUser,
   runId: string,
 ): { readonly authorization: string } {
-  return zeroCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
+  return okouCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
 }
 
 async function createThreadGoal(
@@ -675,14 +673,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const apiClient = setupApp({ context, routes: chatThreadRoutes })(
       chatThreadsContract,
     );
-    const zeroHeaders = zeroCapabilityHeaders(
+    const okouHeaders = okouCapabilityHeaders(
       actor,
       randomUUID(),
       CHAT_THREAD_READ_CAPABILITIES,
     );
 
     const snapshot = await accept(
-      apiClient.snapshot({ headers: zeroHeaders }),
+      apiClient.snapshot({ headers: okouHeaders }),
       [200],
     );
     expect(snapshot.body).toStrictEqual({
@@ -691,7 +689,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: null,
     });
     const events = await accept(
-      apiClient.events({ headers: zeroHeaders, query: {} }),
+      apiClient.events({ headers: okouHeaders, query: {} }),
       [200],
     );
     expect(events.body).toStrictEqual({
@@ -2484,7 +2482,7 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {
-    const fixture = await seedVm0BuiltInDefaultModelKey(context);
+    const fixture = await seedBuiltInDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     expect(fixture.selectedModel).toBe(selectedModel);
 
@@ -2589,7 +2587,7 @@ describe("CHAT-03 run usage events", () => {
       agentId,
       prompt: "record zero-credit usage",
     });
-    const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
+    const { sandboxHeaders: okouSandboxHeaders } = await claimChatRun(
       runnerGroup,
       agentRun.runId,
     );
@@ -2606,10 +2604,10 @@ describe("CHAT-03 run usage events", () => {
           },
         ],
       },
-      zeroSandboxHeaders,
+      okouSandboxHeaders,
       [200],
     );
-    await completeChatRunOk(agentRun.runId, zeroSandboxHeaders);
+    await completeChatRunOk(agentRun.runId, okouSandboxHeaders);
     await flushWaitUntilForTest();
 
     const [zeroUsageEvent] = await usageEventsForRun(
@@ -3535,6 +3533,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       actor,
       "google-drive",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: connected.id },
     );
     await connectorsApi.completeOauthCallback("google-drive", {
       code: "drive-reconnected",
@@ -3614,6 +3614,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       actor,
       "google-drive",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: connected.id },
     );
     await connectorsApi.completeOauthCallback("google-drive", {
       code: "drive-reconnected-again",
@@ -3643,10 +3645,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     if (!actor.orgId) {
       throw new Error("Expected an entitled chat actor with an organization");
     }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
 

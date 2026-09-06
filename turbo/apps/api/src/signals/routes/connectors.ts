@@ -9,11 +9,6 @@ import {
   connectorsMainContract,
   connectorsSearchContract,
 } from "@okouai/api-contracts/contracts/connectors";
-import {
-  CLIENT_FORCE_UPGRADE_STATUS,
-  CLIENT_TYPE_CLI,
-  CLIENT_TYPE_HEADER,
-} from "@okouai/api-contracts/contracts/client-headers";
 import type { PublicConnectorCatalogDetail } from "@okouai/api-contracts/contracts/connector-catalog";
 import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 
@@ -62,9 +57,7 @@ import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
 } from "./connector-openid-auth-start";
-import { connectorAccountSiblingWritesEnabled } from "../services/connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { insertConnectorOAuthState } from "../services/connector-oauth-state.service";
 
 const connectorReadAuth = {
@@ -123,7 +116,7 @@ function connectorAccountMutationFailureResponse(
   if (kind === "ambiguous" || kind === "accountAmbiguous") {
     return conflict("Multiple connector accounts require an exact choice");
   }
-  return conflict("Additional connector accounts are not enabled yet");
+  return conflict("This connector does not support additional accounts");
 }
 
 type ActionGrantKind =
@@ -264,21 +257,6 @@ const connectManualGrantConnectorInner$ = command(
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
-    }
-    if (
-      get(request$).header(CLIENT_TYPE_HEADER) === CLIENT_TYPE_CLI &&
-      (!bodyResult.data.account ||
-        bodyResult.data.account.intent === "single-account")
-    ) {
-      return {
-        status: CLIENT_FORCE_UPGRADE_STATUS,
-        body: {
-          error: {
-            message: "Update the CLI to connect this connector",
-            code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
-          },
-        },
-      };
     }
     const agentTarget = await set(
       validateConnectorAuthorizationTarget$,
@@ -510,10 +488,6 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
     const writeDb = set(writeDb$);
     const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
@@ -521,8 +495,7 @@ const startConnectorOauthInner$ = command(
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
         mutation: bodyResult.data.account,
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
         return { resolution, connectionId: null };
@@ -641,10 +614,6 @@ const startConnectorOpenIdInner$ = command(
     });
     signal.throwIfAborted();
 
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
     const writeDb = set(writeDb$);
     const mutationStart = await writeDb.transaction(async (tx) => {
       const resolution = await resolveConnectorConnectionMutation(tx, {
@@ -652,8 +621,7 @@ const startConnectorOpenIdInner$ = command(
         userId: auth.userId,
         target: { kind: "builtin", connectorSlug: resolved.connectorSlug },
         mutation: bodyResult.data.account,
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
+        allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
         return { resolution, connectionId: null };

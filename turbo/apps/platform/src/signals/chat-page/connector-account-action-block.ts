@@ -227,9 +227,6 @@ function createConnectorAccountActionSignals(
   const status$ = computed(
     async (get): Promise<ConnectorAccountActionStatus> => {
       get(reload$);
-      if (!get(connector.accounts.enabled$)) {
-        return { kind: "unavailable" };
-      }
       const authorization = await get(connector.connectorAuthorization$);
       if (!targetIsAuthorized(authorization, descriptor.selection.target)) {
         return { kind: "unavailable" };

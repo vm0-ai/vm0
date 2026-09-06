@@ -103,6 +103,8 @@ import * as chatEventSnapshotSchema from "./schema/chat-event-snapshot";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as runOutputMaterializationSchema from "./schema/run-output-materialization";
+import * as runOutputMemoryCitationSchema from "./schema/run-output-memory-citation";
+import * as runOutputLegacyPiEventSchema from "./schema/run-output-legacy-pi-event";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
 import * as orgCustomConnectorDcrRegistrationSchema from "./schema/org-custom-connector-dcr-registration";
@@ -129,6 +131,7 @@ import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
 import * as memorySummaryProjectionSchema from "./schema/memory-summary-projection";
 import * as piMemoryStage1CandidateSchema from "./schema/pi-memory-stage1-candidate";
 import * as piMemoryPhase2JobSchema from "./schema/pi-memory-phase2-job";
+import * as piMemoryPhase2CheckpointSchema from "./schema/pi-memory-phase2-checkpoint";
 import * as piMemoryPublicationProvenanceSchema from "./schema/pi-memory-publication-provenance";
 
 export const schema = {
@@ -237,6 +240,8 @@ export const schema = {
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
   ...runOutputMaterializationSchema,
+  ...runOutputMemoryCitationSchema,
+  ...runOutputLegacyPiEventSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorOauthConfigSchema,
   ...orgCustomConnectorDcrRegistrationSchema,
@@ -263,6 +268,7 @@ export const schema = {
   ...memorySummaryProjectionSchema,
   ...piMemoryStage1CandidateSchema,
   ...piMemoryPhase2JobSchema,
+  ...piMemoryPhase2CheckpointSchema,
   ...piMemoryPublicationProvenanceSchema,
 };
 

@@ -339,16 +339,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
-  [FeatureSwitchKey.VoiceDraft]: {
+  [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Keep raw voice transcription as a durable composer draft and polish it before sending.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ComposerVoiceInputShortcut]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Start or stop composer voice input with Mod+Shift+E.",
+      "Transcribe and polish voice input before inserting it into the composer, with Mod+Shift+E to start or stop recording.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -372,13 +366,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.BatchChatEventCatchUp]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Catch up unread, active, and recent ChatEvent threads through one throttled SharedWorker batch.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatRunWorkFolding]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -397,13 +384,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Replace the three-block chat thinking loader with a rotating Okou mark.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MarkdownHexColorPreview]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -430,10 +410,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.BaseUiSidebarScrollArea]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.StableChatThreadNavigation]: {
+    maintainer: "ethan@okou.ai",
     description:
-      "Use the Base UI Scroll Area for draggable chat sidebar scrollbars.",
+      "Keep pinned chats in a stable, manually adjustable order, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -472,19 +452,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorAccounts]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable multiple credential accounts per built-in or custom connector.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the composer connector popover collision frame stable while filtering so placement does not flip.",
-    enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",

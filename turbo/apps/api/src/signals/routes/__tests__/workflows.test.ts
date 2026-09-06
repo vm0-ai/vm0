@@ -564,17 +564,17 @@ describe("workflows", () => {
     });
     expect(actionTypes).toStrictEqual(
       expect.arrayContaining([
-        "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
-        "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
-        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+        "api_dispatch_pre_create_agent_workflow_slash_prepare_normal_send",
+        "api_dispatch_pre_create_agent_workflow_slash_load_thread_mapping",
+        "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+        "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
       ]),
     );
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "api_dispatch_pre_create_agent_workflow_slash_ensure_thread",
     );
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
     );
     const serializedTimingEvents = JSON.stringify(timingEvents);
     for (const sensitiveValue of [
@@ -1375,9 +1375,7 @@ describe("workflows", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      },
+      {},
     );
     const sourceAgent = await createAgent(actor, {
       displayName: "Gmail Copy Source Agent",
@@ -1529,11 +1527,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Calendar Copy Source Agent",
       visibility: "private",
@@ -1657,7 +1650,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.NotionWorkflowAutomations]: true,
       },
     );
@@ -1878,7 +1870,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
       },
     );
@@ -2019,7 +2010,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
       },
     );

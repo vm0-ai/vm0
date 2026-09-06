@@ -542,6 +542,50 @@ describe("FILE-03 desktop computer-use runtime", () => {
         return host.id === okouHost.hostId;
       }),
     ).toMatchObject({ product: "zero" });
+
+    await api.heartbeatComputerUseHost(legacyHost.hostToken, {
+      clientProduct: "okou",
+    });
+    const okouHeartbeatHosts = await api.listComputerUseHosts(actor);
+    expect(okouHeartbeatHosts.hosts).toContainEqual(
+      expect.objectContaining({ id: legacyHost.hostId, product: "okou" }),
+    );
+
+    const legacyHeartbeat = await api.heartbeatComputerUseHost(
+      legacyHost.hostToken,
+    );
+    expect(legacyHeartbeat).toStrictEqual({
+      ok: true,
+      hostId: legacyHost.hostId,
+    });
+    const legacyHeartbeatHosts = await api.listComputerUseHosts(actor);
+    expect(legacyHeartbeatHosts.hosts).toContainEqual(
+      expect.objectContaining({ id: legacyHost.hostId, product: "zero" }),
+    );
+  });
+
+  it("refreshes product identity when registering the same installation", async () => {
+    const actor = bdd.user();
+    const installationId = randomUUID();
+    const legacyHost = await api.startComputerUseHost(actor, {
+      installationId,
+    });
+    const okouHost = await api.startComputerUseHost(actor, {
+      installationId,
+      clientProduct: "okou",
+    });
+    expect(okouHost.hostId).toBe(legacyHost.hostId);
+    const okouHosts = await api.listComputerUseHosts(actor);
+    expect(okouHosts.hosts).toStrictEqual([
+      expect.objectContaining({ id: legacyHost.hostId, product: "okou" }),
+    ]);
+
+    const restarted = await api.startComputerUseHost(actor, { installationId });
+    expect(restarted.hostId).toBe(legacyHost.hostId);
+    const legacyHosts = await api.listComputerUseHosts(actor);
+    expect(legacyHosts.hosts).toStrictEqual([
+      expect.objectContaining({ id: legacyHost.hostId, product: "zero" }),
+    ]);
   });
 
   it("keeps multiple active hosts and lets stale heartbeats recover", async () => {
@@ -727,7 +771,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
   });
 
   it("rejects host-token routes with missing or invalid host tokens", async () => {
-    const garbageToken = "vm0-bdd-garbage-host-token";
+    const garbageToken = "okou-bdd-garbage-host-token";
     const commandId = randomUUID();
     const completeBody = {
       status: "succeeded" as const,
@@ -862,7 +906,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       "Multiple active computer-use hosts are online",
     );
 
-    // Zero-token auth resolves the organization role through Clerk membership lookup.
+    // Okou-token auth resolves the organization role through Clerk membership lookup.
     mockClerkMembership(context, actor, "org:admin");
 
     const missingCapability = await api.requestCreateComputerUseReadCommand(

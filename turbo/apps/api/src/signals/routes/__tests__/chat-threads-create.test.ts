@@ -193,9 +193,7 @@ async function readCreatedThreadEvent(threadId: string, token: string) {
 describe("POST /api/zero/chat-threads", () => {
   it("resolves only sparse connector selections during account deletion", async () => {
     const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, fixture, {});
     const firstResponse = await connectorApi.requestManualGrant(
       fixture.actor,
       "openai",
@@ -350,9 +348,7 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("creates and reads an exact built-in connector account selection", async () => {
     const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, fixture, {});
     const connection = await connectorApi.connectManualGrant(
       fixture.actor,
       "openai",
@@ -426,11 +422,6 @@ describe("POST /api/zero/chat-threads", () => {
     );
 
     const foreignActor = bdd.user({ orgId: fixture.orgId });
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: foreignActor.userId, orgId: fixture.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     await store.set(
       seedOrgMembership$,
       { orgId: fixture.orgId, userId: foreignActor.userId },
@@ -565,13 +556,14 @@ describe("POST /api/zero/chat-threads", () => {
           target: { kind: "builtin", connectorSlug: "openai" },
         },
       }),
-      connectorAccountsClient().disconnectSingleAccount({
+      connectorAccountsClient().delete({
         headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: connection.id },
         body: { target: { kind: "builtin", connectorSlug: "openai" } },
       }),
     ]);
     expect([200, 400]).toContain(concurrentSelectionWrite.status);
-    expect(concurrentDisconnect.status).toBe(204);
+    expect(concurrentDisconnect.status).toBe(200);
     const afterDisconnect = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
@@ -582,84 +574,9 @@ describe("POST /api/zero/chat-threads", () => {
     expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
-  it("rejects connector selections while connector accounts are disabled", async () => {
-    const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: false,
-    });
-    const connection = await connectorApi.connectManualGrant(
-      fixture.actor,
-      "openai",
-      "api-token",
-      { apiKey: "disabled-openai-key" },
-      fixture.agentId,
-    );
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-    });
-
-    const response = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          model: WORKSPACE_DEFAULT_MODEL,
-          connectorSelections: [
-            {
-              connectionId: connection.id,
-              target: { kind: "builtin", connectorSlug: "openai" },
-            },
-          ],
-        },
-      }),
-      [404],
-    );
-    expect(response.body.error.code).toBe("NOT_FOUND");
-
-    const legacyCreated = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          model: WORKSPACE_DEFAULT_MODEL,
-        },
-      }),
-      [201],
-    );
-    await accept(
-      connectorSelectionsClient().get({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: legacyCreated.body.id },
-      }),
-      [404],
-    );
-    await accept(
-      connectorSelectionsClient().update({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: legacyCreated.body.id },
-        body: {
-          connectionId: connection.id,
-          target: { kind: "builtin", connectorSlug: "openai" },
-        },
-      }),
-      [404],
-    );
-    await accept(
-      connectorSelectionsClient().clear({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: legacyCreated.body.id },
-        body: { kind: "builtin", connectorSlug: "openai" },
-      }),
-      [404],
-    );
-  });
-
   it("creates exact custom HTTP and MCP connector selections", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
     const httpConnector = await connectorApi.createCustomConnector(
@@ -779,15 +696,19 @@ describe("POST /api/zero/chat-threads", () => {
     );
 
     createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
-    for (const customConnectorId of [httpConnector.id, mcpConnector.id]) {
+    for (const [customConnectorId, connectionId] of [
+      [httpConnector.id, httpConnectionId],
+      [mcpConnector.id, mcpConnectionId],
+    ] as const) {
       await accept(
-        connectorAccountsClient().disconnectSingleAccount({
+        connectorAccountsClient().delete({
           headers: { authorization: "Bearer clerk-session" },
+          params: { connectionId },
           body: {
             target: { kind: "custom", customConnectorId },
           },
         }),
-        [204],
+        [200],
       );
     }
     const afterDisconnect = await accept(

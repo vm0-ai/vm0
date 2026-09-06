@@ -1,3 +1,4 @@
+import type { prepareChatForwardComposer$ } from "./chat-forward-composer.ts";
 import {
   command,
   computed,
@@ -22,7 +23,8 @@ import { writeToClipboard } from "../okou-page/clipboard.ts";
 import { setChatListQuery$ } from "../okou-page/sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
-  ChatForwardComposerState,
+  ChatForwardTarget,
+  ChatForwardContext,
   ChatForwardSelection,
 } from "./chat-forward.ts";
 import {
@@ -122,12 +124,12 @@ export interface ChatThreadFeedbackSignals {
   readonly translate$: Command<Promise<void>, [AbortSignal]>;
   readonly copyTranslation$: Command<Promise<void>, [AbortSignal]>;
   readonly forwardSelection$: Computed<ChatForwardSelection | null>;
-  readonly forwardComposerState$: Computed<ChatForwardComposerState | null>;
+  readonly forwardTarget$: Computed<ChatForwardTarget | null>;
+  readonly prepareForwardComposer$: ReturnType<
+    typeof createForwardState
+  >["prepareForwardComposer$"];
+  readonly resetForwardTarget$: Command<void, []>;
   readonly startForward$: Command<boolean, []>;
-  readonly setForwardComposerState$: Command<
-    void,
-    [ChatForwardComposerState | null]
-  >;
   readonly closeForward$: Command<void, []>;
   readonly setListenersRef$: Command<
     (() => void) | undefined,
@@ -571,38 +573,59 @@ function createStartFeedback(
 
 function createForwardState(closeSelection$: Command<void, []>) {
   const internalForwardSelection$ = state<ChatForwardSelection | null>(null);
-  const internalForwardComposerState$ = state<ChatForwardComposerState | null>(
-    null,
-  );
+  const target$ = state<ChatForwardTarget | null>(null);
+  const resetTarget$ = resetSignal();
   const forwardSelection$ = computed((get) => {
     return get(internalForwardSelection$);
   });
-  const forwardComposerState$ = computed((get) => {
-    return get(internalForwardComposerState$);
+  const forwardTarget$ = computed((get) => {
+    return get(target$);
   });
+  const resetForwardTarget$ = command(({ set }) => {
+    set(resetTarget$);
+    set(target$, null);
+  });
+  const prepareForwardComposer$ = command(
+    async (
+      { set },
+      prepare$: typeof prepareChatForwardComposer$,
+      request: {
+        readonly target: ChatForwardTarget;
+        readonly forward: ChatForwardContext;
+        readonly onOptimisticSend: () => void;
+      },
+      parentSignal: AbortSignal,
+    ) => {
+      const signal = set(resetTarget$, parentSignal);
+      set(target$, request.target);
+      return await set(
+        prepare$,
+        request.target,
+        request.forward,
+        request.onOptimisticSend,
+        signal,
+      );
+    },
+  );
   const openForward$ = command(
     ({ set }, selection: ChatForwardSelection): void => {
       set(setChatListQuery$, "");
       set(internalForwardSelection$, selection);
-      set(internalForwardComposerState$, null);
+      set(resetForwardTarget$);
       set(closeSelection$);
-    },
-  );
-  const setForwardComposerState$ = command(
-    ({ set }, composerState: ChatForwardComposerState | null): void => {
-      set(internalForwardComposerState$, composerState);
     },
   );
   const closeForward$ = command(({ set }): void => {
     set(setChatListQuery$, "");
     set(internalForwardSelection$, null);
-    set(internalForwardComposerState$, null);
+    set(resetForwardTarget$);
   });
   return {
     forwardSelection$,
-    forwardComposerState$,
+    forwardTarget$,
+    prepareForwardComposer$,
+    resetForwardTarget$,
     openForward$,
-    setForwardComposerState$,
     closeForward$,
   };
 }
@@ -871,9 +894,10 @@ export function createChatThreadFeedbackSignals(
     translate$: translation.translate$,
     copyTranslation$: translation.copyTranslation$,
     forwardSelection$: forward.forwardSelection$,
-    forwardComposerState$: forward.forwardComposerState$,
+    forwardTarget$: forward.forwardTarget$,
+    prepareForwardComposer$: forward.prepareForwardComposer$,
+    resetForwardTarget$: forward.resetForwardTarget$,
     startForward$,
-    setForwardComposerState$: forward.setForwardComposerState$,
     closeForward$: forward.closeForward$,
     setListenersRef$,
     setToolbarRef$,

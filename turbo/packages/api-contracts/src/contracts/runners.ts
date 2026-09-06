@@ -81,8 +81,12 @@ export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
 export const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION = 1;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const PI_MODEL_CONFIG_LEGACY_GENERATION = 1;
+// Existing versioned writers stay on generation 2 until their activation slice.
 export const PI_MODEL_CONFIG_CURRENT_GENERATION = 2;
+export const PI_MODEL_CONFIG_DIALECT_TIER_GENERATION = 3;
 export const RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX = 8;
+export const PI_MEMORY_PHASE2_MAINTENANCE_MAX_SELECTED_CANDIDATES = 256;
+export const PI_MEMORY_PHASE2_MAINTENANCE_MAX_SELECTED_UTF8_BYTES = 21_036_800;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -1027,12 +1031,15 @@ const piModelCredentialBindingSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * Additive Pi route generation for dialect-aware readers. Current writers keep
- * emitting `piModelConfigLegacySchema` until a later activation slice.
+ * Shared strict route invariants. Generations are separate wire contracts;
+ * adding a reader must not move existing writers to a newer generation.
  */
-export const piModelConfigV2Schema = z
+const piModelConfigVersionedSchema = z
   .object({
-    schemaVersion: z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+    schemaVersion: z.union([
+      z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+      z.literal(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION),
+    ]),
     dialect: z.enum(["openai-responses", "openai-codex-responses"]),
     transport: z.literal("sse"),
     provider: z.enum(["deepseek", "openai", "openrouter", "openai-codex"]),
@@ -1042,7 +1049,7 @@ export const piModelConfigV2Schema = z
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
       .optional(),
-    serviceTier: z.enum(["priority"]).optional(),
+    serviceTier: z.enum(["priority", "fast"]).optional(),
     credentialBindings: z.array(piModelCredentialBindingSchema).min(1).max(2),
   })
   .strict()
@@ -1102,20 +1109,111 @@ export const piModelConfigV2Schema = z
         message: "Codex Responses uses its provider model as the catalog model",
       });
     }
-    if (config.serviceTier !== undefined) {
+    if (
+      config.schemaVersion === PI_MODEL_CONFIG_CURRENT_GENERATION &&
+      config.serviceTier !== undefined
+    ) {
       refinement.addIssue({
         code: "custom",
         path: ["serviceTier"],
         message: "Codex Responses does not accept a public API service tier",
       });
     }
+  });
+
+export const piModelConfigV2Schema = piModelConfigVersionedSchema
+  .safeExtend({
+    schemaVersion: z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+    serviceTier: z.enum(["priority"]).optional(),
   })
+  .readonly();
+
+/** Additive reader capability only; route writers activate separately in #31803. */
+export const piModelConfigV3Schema = z
+  .discriminatedUnion("dialect", [
+    piModelConfigVersionedSchema.safeExtend({
+      schemaVersion: z.literal(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION),
+      dialect: z.literal("openai-responses"),
+      transport: z.enum(["sse"]),
+      provider: z.enum(["deepseek", "openai", "openrouter"]),
+      serviceTier: z.enum(["priority"]).optional(),
+    }),
+    piModelConfigVersionedSchema.safeExtend({
+      schemaVersion: z.literal(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION),
+      dialect: z.literal("openai-codex-responses"),
+      transport: z.enum(["sse"]),
+      provider: z.enum(["openai-codex"]),
+      serviceTier: z.enum(["fast"]).optional(),
+    }),
+  ])
   .readonly();
 
 export const piModelConfigSchema = z.union([
   piModelConfigLegacySchema,
   piModelConfigV2Schema,
+  piModelConfigV3Schema,
 ]);
+
+const lowercaseSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
+
+export const piMemoryPhase2MaintenanceCandidateSchema = z
+  .object({
+    piSessionId: z.string().min(1).max(255),
+    sourceRunId: z.uuid(),
+    sourceHistoryHash: lowercaseSha256Schema,
+    sourceCompletedAt: z.string().datetime({ offset: true }),
+    rawMemory: z.string(),
+    rolloutSummary: z.string(),
+    rolloutSlug: z.string().max(255).nullable(),
+  })
+  .strict()
+  .readonly();
+
+/**
+ * Authenticated private input for one non-interactive Pi memory maintenance
+ * run. The runner forwards this object only through the Pi launch config and
+ * the guest writes it to the existing 0600 launch-payload file.
+ */
+export const piMemoryPhase2MaintenanceSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    memoryStorageId: z.uuid(),
+    claimedRevision: z.number().int().positive(),
+    claimedBaseVersionId: lowercaseSha256Schema,
+    leaseToken: z.uuid(),
+    selectionDigest: lowercaseSha256Schema,
+    selected: z
+      .array(piMemoryPhase2MaintenanceCandidateSchema)
+      .max(PI_MEMORY_PHASE2_MAINTENANCE_MAX_SELECTED_CANDIDATES),
+  })
+  .strict()
+  .superRefine((maintenance, refinement) => {
+    const sessionIds = new Set<string>();
+    let selectedUtf8Bytes = 0;
+    for (const [index, candidate] of maintenance.selected.entries()) {
+      if (sessionIds.has(candidate.piSessionId)) {
+        refinement.addIssue({
+          code: "custom",
+          path: ["selected", index, "piSessionId"],
+          message: "Pi memory maintenance session ids must be unique",
+        });
+      }
+      sessionIds.add(candidate.piSessionId);
+      selectedUtf8Bytes += new TextEncoder().encode(
+        `${candidate.rawMemory}${candidate.rolloutSummary}${candidate.rolloutSlug ?? ""}`,
+      ).length;
+    }
+    if (
+      selectedUtf8Bytes > PI_MEMORY_PHASE2_MAINTENANCE_MAX_SELECTED_UTF8_BYTES
+    ) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["selected"],
+        message: "Pi memory maintenance selection exceeds its byte bound",
+      });
+    }
+  })
+  .readonly();
 
 /**
  * Version marker for the sandbox Pi launch contract. Runtime resources are
@@ -1126,6 +1224,7 @@ export const piLaunchConfigSchema = z
     schemaVersion: z.literal(2),
     apiFirstTurn: piApiFirstTurnConfigSchema,
     memoryRecall: piMemoryRecallSelectionSchema.optional(),
+    maintenance: piMemoryPhase2MaintenanceSchema.optional(),
   })
   .strict()
   .readonly();
@@ -1687,6 +1786,7 @@ export type StoredExecutionContext = z.infer<
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiModelConfigLegacy = z.infer<typeof piModelConfigLegacySchema>;
 export type PiModelConfigV2 = z.infer<typeof piModelConfigV2Schema>;
+export type PiModelConfigV3 = z.infer<typeof piModelConfigV3Schema>;
 export type PiModelCredentialBinding = z.infer<
   typeof piModelCredentialBindingSchema
 >;
@@ -1694,6 +1794,9 @@ export type RunnerClaimCapabilities = z.infer<
   typeof runnerClaimCapabilitiesSchema
 >;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
+export type PiMemoryPhase2Maintenance = z.infer<
+  typeof piMemoryPhase2MaintenanceSchema
+>;
 export type PiMemoryRecallSelection = z.infer<
   typeof piMemoryRecallSelectionSchema
 >;

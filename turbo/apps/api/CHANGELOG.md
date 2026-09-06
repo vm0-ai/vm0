@@ -1,5 +1,350 @@
 # Changelog
 
+## [1.554.0](https://github.com/vm0-ai/vm0/compare/api-v1.553.1...api-v1.554.0) (2026-09-06)
+
+
+### Features
+
+* add voice input model preferences and honor lab overrides ([#31982](https://github.com/vm0-ai/vm0/issues/31982)) ([7b114d5](https://github.com/vm0-ai/vm0/commit/7b114d5b3b2683d2987daf09d651403f2951dc4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.0
+    * @okouai/core bumped to 8.625.11
+    * @okouai/db bumped to 1.243.0
+    * @okouai/pi-agent-runtime bumped to 1.21.3
+
+## [1.553.1](https://github.com/vm0-ai/vm0/compare/api-v1.553.0...api-v1.553.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* make pi memory citations safe across version skew ([#31976](https://github.com/vm0-ai/vm0/issues/31976)) ([63d4035](https://github.com/vm0-ai/vm0/commit/63d40353754fa03271b61b84d42ec3ee8cfe88f5))
+
+
+### Refactoring
+
+* **connectors:** remove single-account compatibility contract ([#31978](https://github.com/vm0-ai/vm0/issues/31978)) ([b0c87cb](https://github.com/vm0-ai/vm0/commit/b0c87cb69b860ef502e5722df642029ae9efd8f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.1
+    * @okouai/core bumped to 8.625.10
+    * @okouai/db bumped to 1.242.2
+    * @okouai/pi-agent-runtime bumped to 1.21.2
+
+## [1.553.0](https://github.com/vm0-ai/vm0/compare/api-v1.552.0...api-v1.553.0) (2026-09-06)
+
+
+### Features
+
+* add cursor context and light polish to voice input ([#31968](https://github.com/vm0-ai/vm0/issues/31968)) ([12d0c92](https://github.com/vm0-ai/vm0/commit/12d0c9232684f9223ade010c40f3fad752b079df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.407.0
+    * @okouai/core bumped to 8.625.9
+    * @okouai/db bumped to 1.242.1
+    * @okouai/pi-agent-runtime bumped to 1.21.1
+
+## [1.552.0](https://github.com/vm0-ai/vm0/compare/api-v1.551.9...api-v1.552.0) (2026-09-06)
+
+
+### Features
+
+* **pi-memory:** hide citation envelopes and preserve provenance ([#31965](https://github.com/vm0-ai/vm0/issues/31965)) ([5cecc7c](https://github.com/vm0-ai/vm0/commit/5cecc7cbcebb48899e4a9b251f209bbfb176f3f9))
+
+
+### Performance Improvements
+
+* avoid duplicate pinned reverse-template guide load ([#31969](https://github.com/vm0-ai/vm0/issues/31969)) ([e8843ea](https://github.com/vm0-ai/vm0/commit/e8843ea6642f706a2214569cbe4726164ae7a766))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+    * @okouai/core bumped to 8.625.8
+    * @okouai/db bumped to 1.242.0
+    * @okouai/pi-agent-runtime bumped to 1.21.0
+
+## [1.551.9](https://github.com/vm0-ai/vm0/compare/api-v1.551.8...api-v1.551.9) (2026-09-06)
+
+
+### Refactoring
+
+* **db:** require explicit computer use host product identity ([#31961](https://github.com/vm0-ai/vm0/issues/31961)) ([af484c6](https://github.com/vm0-ai/vm0/commit/af484c62ebce6435e6382b9925d4a13107be877a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.625.7
+    * @okouai/db bumped to 1.241.13
+
+## [1.551.8](https://github.com/vm0-ai/vm0/compare/api-v1.551.7...api-v1.551.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* settle private pi maintenance at the generic checkpoint boundary ([#31947](https://github.com/vm0-ai/vm0/issues/31947)) ([2db67fc](https://github.com/vm0-ai/vm0/commit/2db67fc8be4f1fa863c4faf8ed4905acfc65cdb5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.7
+    * @okouai/core bumped to 8.625.6
+    * @okouai/db bumped to 1.241.12
+    * @okouai/pi-agent-runtime bumped to 1.20.6
+
+## [1.551.7](https://github.com/vm0-ai/vm0/compare/api-v1.551.6...api-v1.551.7) (2026-09-05)
+
+
+### Bug Fixes
+
+* **api:** fail incomplete pi api-first no-tool output ([#31945](https://github.com/vm0-ai/vm0/issues/31945)) ([ea412a3](https://github.com/vm0-ai/vm0/commit/ea412a323b9c31290af23957387c9fd8b1cfebd4))
+
+## [1.551.6](https://github.com/vm0-ai/vm0/compare/api-v1.551.5...api-v1.551.6) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.241.11
+
+## [1.551.5](https://github.com/vm0-ai/vm0/compare/api-v1.551.4...api-v1.551.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* finish voice input silently when no speech is detected ([#31933](https://github.com/vm0-ai/vm0/issues/31933)) ([b37822c](https://github.com/vm0-ai/vm0/commit/b37822c16ec7479dfc1fa1ecdefc85dd8ee53a6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.6
+    * @okouai/core bumped to 8.625.5
+    * @okouai/db bumped to 1.241.10
+    * @okouai/pi-agent-runtime bumped to 1.20.5
+
+## [1.551.4](https://github.com/vm0-ai/vm0/compare/api-v1.551.3...api-v1.551.4) (2026-09-05)
+
+
+### Bug Fixes
+
+* **billing:** preserve managed allowance under shared debt ([#31851](https://github.com/vm0-ai/vm0/issues/31851)) ([eebda82](https://github.com/vm0-ai/vm0/commit/eebda828b10f54ee455826c3715222f6a3356d43))
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.5
+    * @okouai/core bumped to 8.625.4
+    * @okouai/db bumped to 1.241.9
+    * @okouai/pi-agent-runtime bumped to 1.20.4
+
+## [1.551.3](https://github.com/vm0-ai/vm0/compare/api-v1.551.2...api-v1.551.3) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/pi-agent-runtime bumped to 1.20.3
+
+## [1.551.2](https://github.com/vm0-ai/vm0/compare/api-v1.551.1...api-v1.551.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** validate native session parent graphs before traversal ([#31910](https://github.com/vm0-ai/vm0/issues/31910)) ([9a84dc8](https://github.com/vm0-ai/vm0/commit/9a84dc87ccba2f12c6e8e7e16bbc6eea1d4c8501))
+
+
+### Refactoring
+
+* **platform:** rename browser globals and clerk bootstrap to okou ([#31904](https://github.com/vm0-ai/vm0/issues/31904)) ([d0e609d](https://github.com/vm0-ai/vm0/commit/d0e609d122cc970ebebad59a800836b311d4002b))
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.4
+    * @okouai/connectors bumped to 3.3.6
+    * @okouai/core bumped to 8.625.3
+    * @okouai/db bumped to 1.241.8
+    * @okouai/pi-agent-runtime bumped to 1.20.2
+
+## [1.551.1](https://github.com/vm0-ai/vm0/compare/api-v1.551.0...api-v1.551.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** normalize native fast requests to priority ([#31895](https://github.com/vm0-ai/vm0/issues/31895)) ([0c910e8](https://github.com/vm0-ai/vm0/commit/0c910e8b80be2c91ead2bb04101b68f3b1d8647e)), closes [#31885](https://github.com/vm0-ai/vm0/issues/31885)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.625.2
+    * @okouai/db bumped to 1.241.7
+    * @okouai/pi-agent-runtime bumped to 1.20.1
+
+## [1.551.0](https://github.com/vm0-ai/vm0/compare/api-v1.550.0...api-v1.551.0) (2026-09-05)
+
+
+### Features
+
+* **pi-memory:** add sandbox-local ad hoc notes ([#31878](https://github.com/vm0-ai/vm0/issues/31878)) ([1b70c02](https://github.com/vm0-ai/vm0/commit/1b70c028318063e0d90163eabb80f30868cd7dbb))
+
+
+### Bug Fixes
+
+* **api:** double connector catalog capacity ([#31882](https://github.com/vm0-ai/vm0/issues/31882)) ([647858d](https://github.com/vm0-ai/vm0/commit/647858d28bd4a8049b681305c168093fc3feca91))
+
+
+### Refactoring
+
+* unify voice input feature switches ([#31884](https://github.com/vm0-ai/vm0/issues/31884)) ([4537935](https://github.com/vm0-ai/vm0/commit/453793580a047239a98c91d92568b56898e58c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.3
+    * @okouai/connectors bumped to 3.3.5
+    * @okouai/core bumped to 8.625.1
+    * @okouai/db bumped to 1.241.6
+    * @okouai/pi-agent-runtime bumped to 1.20.0
+
+## [1.550.0](https://github.com/vm0-ai/vm0/compare/api-v1.549.0...api-v1.550.0) (2026-09-05)
+
+
+### Features
+
+* **api:** route api-key Terra Fast through Pi ([#31868](https://github.com/vm0-ai/vm0/issues/31868)) ([32ee834](https://github.com/vm0-ai/vm0/commit/32ee834ce0466969e101ec75c24cda8f8068fb1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/pi-agent-runtime bumped to 1.19.0
+
+## [1.549.0](https://github.com/vm0-ai/vm0/compare/api-v1.548.1...api-v1.549.0) (2026-09-05)
+
+
+### Features
+
+* **api:** route subscription Terra Fast through Pi ([#31857](https://github.com/vm0-ai/vm0/issues/31857)) ([109ef62](https://github.com/vm0-ai/vm0/commit/109ef6256ba3e8c59eeb0f6754d71bd6536d75b7))
+
+
+### Refactoring
+
+* **voice:** remove draft compatibility and encoded audio fallback ([#31792](https://github.com/vm0-ai/vm0/issues/31792)) ([83979d4](https://github.com/vm0-ai/vm0/commit/83979d4a271483500bce0e63f837b5a9db279262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.2
+    * @okouai/core bumped to 8.625.0
+    * @okouai/db bumped to 1.241.5
+    * @okouai/pi-agent-runtime bumped to 1.18.0
+
+## [1.548.1](https://github.com/vm0-ai/vm0/compare/api-v1.548.0...api-v1.548.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **api:** require account-explicit app bundles ([#31843](https://github.com/vm0-ai/vm0/issues/31843)) ([9ce1640](https://github.com/vm0-ai/vm0/commit/9ce1640f9357d8516fd3f4e97b1a3aea60c35f64))
+* **api:** reuse sessions by runtime and model family ([#31796](https://github.com/vm0-ai/vm0/issues/31796)) ([6fd1c6f](https://github.com/vm0-ai/vm0/commit/6fd1c6ff18aa9bbeaf7d55c833bb1336d193be7a))
+
+
+### Refactoring
+
+* **api:** rename the zero dispatch telemetry action names to agent ([#31846](https://github.com/vm0-ai/vm0/issues/31846)) ([488bb99](https://github.com/vm0-ai/vm0/commit/488bb9902b1c4abace6024ad3611778f8fb59179)), closes [#31842](https://github.com/vm0-ai/vm0/issues/31842)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.1
+    * @okouai/core bumped to 8.624.0
+    * @okouai/db bumped to 1.241.4
+    * @okouai/pi-agent-runtime bumped to 1.17.1
+
+## [1.548.0](https://github.com/vm0-ai/vm0/compare/api-v1.547.1...api-v1.548.0) (2026-09-05)
+
+
+### Features
+
+* **pi:** add dialect-aware fast carrier compatibility ([#31839](https://github.com/vm0-ai/vm0/issues/31839)) ([444bfe5](https://github.com/vm0-ai/vm0/commit/444bfe5a6f04edb5ba3ccbc90a0895e7ca4a44d8))
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.405.0
+    * @okouai/core bumped to 8.623.2
+    * @okouai/db bumped to 1.241.3
+    * @okouai/pi-agent-runtime bumped to 1.17.0
+
+## [1.547.1](https://github.com/vm0-ai/vm0/compare/api-v1.547.0...api-v1.547.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **api:** honor active run credit admission in okou gates ([#31777](https://github.com/vm0-ai/vm0/issues/31777)) ([adeb43c](https://github.com/vm0-ai/vm0/commit/adeb43c245bbcdacd79d1619dc34cf6378921951))
+
+
+### Refactoring
+
+* **api:** retire the legacy zero run vocabulary ([#31811](https://github.com/vm0-ai/vm0/issues/31811)) ([45d2e0f](https://github.com/vm0-ai/vm0/commit/45d2e0fad1c557d5c05d16074322b52ddf1c508a)), closes [#26877](https://github.com/vm0-ai/vm0/issues/26877)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.404.1
+    * @okouai/core bumped to 8.623.1
+    * @okouai/db bumped to 1.241.2
+    * @okouai/pi-agent-runtime bumped to 1.16.6
+
 ## [1.547.0](https://github.com/vm0-ai/vm0/compare/api-v1.546.0...api-v1.547.0) (2026-09-05)
 
 

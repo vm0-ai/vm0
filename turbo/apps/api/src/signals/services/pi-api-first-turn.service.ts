@@ -105,6 +105,7 @@ type PiApiFirstTurnErrorCode =
   | "PI_API_FIRST_TURN_DEADLINE_EXCEEDED"
   | "PI_API_FIRST_TURN_NOT_COMMITTABLE"
   | "PI_API_MODEL_FAILED"
+  | "PI_API_MODEL_OUTPUT_INCOMPLETE"
   | "PI_API_MODEL_CREDENTIAL_INVALID"
   | "PI_API_PROMPT_UNSUPPORTED"
   | "PI_API_PREHEAT_FAILED"
@@ -478,7 +479,10 @@ function assistantEvents(
   runId: string,
   assistant: PiApiFirstTurnResult["assistantMessage"],
 ): AgentEvent[] {
-  return projectedAssistantBlocks(assistant).map((block, sequenceNumber) => {
+  const blocks = projectedAssistantBlocks(assistant);
+  const eventBlocks =
+    blocks.length === 0 && assistant.memoryCitation ? [null] : blocks;
+  return eventBlocks.map((block, sequenceNumber) => {
     return {
       type: "assistant",
       sequenceNumber,
@@ -487,7 +491,11 @@ function assistantEvents(
           assistant.responseId ??
           `${runId}:${assistant.timestamp}:${assistant.model}`,
         role: "assistant",
-        content: [block],
+        content: block === null ? [] : [block],
+        ...(sequenceNumber === eventBlocks.length - 1 &&
+        assistant.memoryCitation
+          ? { memoryCitation: assistant.memoryCitation }
+          : {}),
         model: assistant.model,
         usage: {
           input_tokens: assistant.usage.input,
@@ -525,13 +533,17 @@ const publishEvents$ = command(async function publishEvents(
 ): Promise<void> {
   const result = await set(
     receiveAgentEvents$,
-    { auth: args.auth, body: { runId: args.auth.runId, events: args.events } },
+    {
+      auth: args.auth,
+      body: { runId: args.auth.runId, events: args.events },
+      source: "api-first",
+    },
     signal,
   );
   if (result.response.status !== 200) {
     throw new Error("Pi API first-turn event projection was rejected");
   }
-  if (result.acceptedEvents) {
+  if ("acceptedEvents" in result && result.acceptedEvents) {
     waitUntil(
       set(dispatchOptionalAgentEventConsumers$, result.acceptedEvents, signal),
     );
@@ -1127,6 +1139,26 @@ async function observeDiscardedProviderResult(
   }
 }
 
+function validateApiModelTurnOutcome(turn: PiApiFirstTurnResult): void {
+  if (turn.assistantMessage.stopReason === "length" && !turn.handoffRequired) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_OUTPUT_INCOMPLETE",
+      "Pi API first-turn model output is incomplete",
+    );
+  }
+  if (
+    turn.assistantMessage.stopReason === "error" ||
+    turn.assistantMessage.stopReason === "aborted"
+  ) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_FAILED",
+      `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
+      undefined,
+      turn.assistantMessage.failureReason,
+    );
+  }
+}
+
 async function executeApiModelTurn(
   args: {
     readonly activation: PiApiFirstTurnActivation;
@@ -1237,17 +1269,7 @@ async function executeApiModelTurn(
   }
   const turn = executed.value;
   await recordApiFirstTurnUsage(args.context, turn);
-  if (
-    turn.assistantMessage.stopReason === "error" ||
-    turn.assistantMessage.stopReason === "aborted"
-  ) {
-    throw piApiFirstTurnError(
-      "PI_API_MODEL_FAILED",
-      `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
-      undefined,
-      turn.assistantMessage.failureReason,
-    );
-  }
+  validateApiModelTurnOutcome(turn);
   return { startedAt, turn };
 }
 

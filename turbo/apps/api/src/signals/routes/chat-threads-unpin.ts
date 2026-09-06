@@ -24,7 +24,7 @@ const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const updated = await writeDb.transaction(async (tx) => {
     const [thread] = await tx
       .update(chatThreads)
-      .set({ pinnedAt: null })
+      .set({ pinnedAt: null, pinOrder: null })
       .where(
         and(
           eq(chatThreads.id, params.id),

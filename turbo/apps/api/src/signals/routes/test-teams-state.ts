@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
+  getBuiltInVendor,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   testTeamsStateContract,
@@ -40,7 +40,7 @@ const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TENANT_NAME = "E2E Test Tenant";
 const DEFAULT_TEAM_NAME = "E2E Test Team";
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
-const DEFAULT_BOT_ID = "28:e2e-zero-bot";
+const DEFAULT_BOT_ID = "28:e2e-test-bot";
 const DEFAULT_BOT_NAME = "Zero";
 const DEFAULT_AGENT_NAME = "e2e-teams-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
@@ -239,7 +239,7 @@ async function seedDefaultAgent(
       });
   });
 
-  await seedVm0BuiltInModelKeys(db, agent.id);
+  await seedBuiltInModelKeys(db, agent.id);
   signal.throwIfAborted();
   await ensureAgentInstructionsStorageFixture(
     db,
@@ -253,7 +253,7 @@ async function seedDefaultAgent(
   return { agentId: agent.id };
 }
 
-async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
+async function seedBuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await db.delete(builtInModelKeys).where(eq(builtInModelKeys.label, agentId));
   await db
     .insert(builtInModelKeys)
@@ -264,24 +264,24 @@ async function seedVm0BuiltInModelKeys(db: Db, agentId: string): Promise<void> {
 function vm0BuiltInModelKeyRows(agentId: string) {
   return [
     {
-      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      apiKey: `vm0-key-default-${agentId}`,
+      vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+      apiKey: `built-in-key-default-${agentId}`,
       label: agentId,
     },
     {
       vendor: "anthropic",
-      apiKey: `vm0-key-anthropic-${agentId}`,
+      apiKey: `built-in-key-anthropic-${agentId}`,
       label: agentId,
     },
     {
       vendor: "moonshot",
-      apiKey: `vm0-key-moonshot-${agentId}`,
+      apiKey: `built-in-key-moonshot-${agentId}`,
       label: agentId,
     },
   ];
 }
 
-async function deleteVm0BuiltInModelKeysForSeededDefaultAgent(
+async function deleteBuiltInModelKeysForSeededDefaultAgent(
   db: Db,
   orgId: string,
 ): Promise<void> {
@@ -907,7 +907,7 @@ const deleteTeamsState$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const orgIds = orgIdsForTeamsStateDelete(installationRows, query.org_id);
   for (const orgId of orgIds) {
-    await deleteVm0BuiltInModelKeysForSeededDefaultAgent(db, orgId);
+    await deleteBuiltInModelKeysForSeededDefaultAgent(db, orgId);
     signal.throwIfAborted();
   }
 

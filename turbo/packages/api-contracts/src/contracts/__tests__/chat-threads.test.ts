@@ -17,7 +17,7 @@ import {
 } from "../chat-threads";
 
 describe("google drive artifact recovery contract", () => {
-  it("keeps account readiness additive across API and Platform versions", () => {
+  it("requires account readiness on every connected sync status", () => {
     const legacyNotSynced = { status: "not_synced" } as const;
     const accountReadyNotSynced = {
       status: "not_synced",
@@ -28,8 +28,10 @@ describe("google drive artifact recovery contract", () => {
     });
 
     expect(
-      chatThreadArtifactGoogleDriveSyncSchema.parse(legacyNotSynced),
-    ).toStrictEqual(legacyNotSynced);
+      chatThreadArtifactGoogleDriveSyncSchema.safeParse(legacyNotSynced)
+        .success,
+    ).toBe(false);
+    // An App bundle built before the marker keeps its own tolerant parser.
     expect(previousNotSyncedSchema.parse(accountReadyNotSynced)).toStrictEqual(
       legacyNotSynced,
     );
@@ -186,27 +188,10 @@ describe("chat message response contract", () => {
         version: 1 as const,
         parts: [{ type: "text" as const, text: "Resume the draft" }],
       },
-      draftVoice: null,
       draftAttachments: null,
     };
 
     expect(chatThreadDraftSchema.parse(response)).toStrictEqual(response);
-  });
-
-  it("accepts a versioned voice-draft sidecar", () => {
-    const request = {
-      draftUserMessage: null,
-      draftVoice: {
-        version: 1 as const,
-        id: "15874914-6ca6-41eb-ad09-ac64bf0784ea",
-        transcript: "unfinished transcript",
-      },
-      draftAttachments: null,
-    };
-
-    expect(chatThreadByIdContract.patch.body.parse(request)).toStrictEqual(
-      request,
-    );
   });
 
   it("requires userMessage for non-empty thread drafts", () => {

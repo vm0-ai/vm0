@@ -827,6 +827,16 @@ async fn complete_execution(
         .is_some_and(|termination| termination.reason == CliTerminationReason::UserCancellation);
     let mut guest_completion_reported = false;
 
+    if let Err(error) = guest_agent::maintenance_usage::report_for_runtime(runtime).await {
+        // Accounting is part of this private attempt; a failure must not turn
+        // the journal into public output or permit an unreported new result.
+        log_warn!(
+            LOG_TAG,
+            "Private maintenance usage reporting failed: {error}"
+        );
+        exit_code = 1;
+    }
+
     // Checkpoint on success (skip when no API — local/test mode). The
     // pre-checkpoint flush runs in `tokio::join!` with the snapshot work so
     // its ~1s upload overlaps the ~4s checkpoint. The EOF-consuming final

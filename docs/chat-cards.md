@@ -78,7 +78,7 @@ Current link-backed card patterns include:
 - `/agents/:agentId/connector-accounts/:connectionId/select?...`
 - `/computer-use/authorize/:requestToken`
 - `/?settings=billing&billingView=plans`
-- `/mail/drafts/:vm0DraftId`
+- `/mail/drafts/:mailDraftId`
 - `/browsers/:threadId`
 - platform artifact URLs such as legacy `/f/...` and `/artifacts/.../.../...`
   paths, plus hosted site URLs that support an inline preview. Flat V2 artifact
@@ -354,12 +354,12 @@ Markdown link.
 
 ### Provider-backed resource: Gmail draft
 
-A vm0 mail link matches `/mail/drafts/:vm0DraftId`. The vm0 UUID is the stable
-resource key; Gmail draft, thread, and message IDs remain provider metadata and
-are not inferred from Gmail Web URLs. The thread-scoped signals read the Gmail
-draft through one reloadable Okou Mail API computed. Repeated card occurrences
-and the detail sidebar share that computed, while Send and Delete invalidate it
-after their mutations complete.
+A mail link matches `/mail/drafts/:mailDraftId`. The mail-draft UUID is the
+stable resource key; Gmail draft, thread, and message IDs remain provider
+metadata and are not inferred from Gmail Web URLs. The thread-scoped signals
+read the Gmail draft through one reloadable Okou Mail API computed. Repeated
+card occurrences and the detail sidebar share that computed, while Send and
+Delete invalidate it after their mutations complete.
 
 The fixed-height card displays the Gmail identity, subject, sender, and
 `Draft`, `Sent`, or `Deleted` status. Draft and Sent cards open the shared right

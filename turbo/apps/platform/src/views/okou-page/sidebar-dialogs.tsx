@@ -61,10 +61,15 @@ import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-
 import {
   workspaceSearchChatMessages$,
   workspaceSearchChatThreadMap$,
-  workspaceSearchChatThreads$,
+  threeColumnSearchChatThreads$,
   type WorkspaceSearchChatThread,
 } from "../../signals/okou-page/workspace-chat-search.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  threadNumberShortcutsEnabled$,
+  threadNumberShortcutIndex$,
+} from "../../signals/okou-page/thread-number-shortcuts.ts";
+import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import {
@@ -492,9 +497,11 @@ function ChatMessageSnippet({
 function SpotlightRowMeta({
   indicator,
   timestamp,
+  shortcutNumber,
 }: {
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly timestamp: string;
+  readonly shortcutNumber: number | undefined;
 }) {
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2.5">
@@ -504,6 +511,7 @@ function SpotlightRowMeta({
         <ChatThreadCommandIndicator indicator={indicator} />
       </span>
       <span className="text-xs text-[hsl(var(--gray-700))]">{timestamp}</span>
+      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
     </span>
   );
 }
@@ -522,10 +530,12 @@ function SpotlightThreadCommandItem({
   thread,
   indicator,
   onSelect,
+  shortcutNumber,
 }: {
   readonly thread: WorkspaceSearchChatThread;
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   return (
     <CommandItem
@@ -542,6 +552,7 @@ function SpotlightThreadCommandItem({
         {thread.title}
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={indicator}
         timestamp={formatRelativeTimestamp(thread.sortAt)}
       />
@@ -554,11 +565,13 @@ function SpotlightMessageCommandItem({
   thread,
   indicator,
   onSelect,
+  shortcutNumber,
 }: {
   readonly message: ChatSearchResult;
   readonly thread: WorkspaceSearchChatThread | undefined;
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   const title = thread?.title ?? message.agentName;
 
@@ -582,6 +595,7 @@ function SpotlightMessageCommandItem({
         <ChatMessageSnippet message={message} />
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={indicator}
         timestamp={formatRelativeTimestamp(message.matchedMessage.createdAt)}
       />
@@ -596,9 +610,11 @@ const SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX = 64;
 function SpotlightWorkflowCommandItem({
   workflow,
   onSelect,
+  shortcutNumber,
 }: {
   readonly workflow: WorkflowSummary;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   const title = workflow.displayName ?? workflow.name;
   return (
@@ -617,6 +633,7 @@ function SpotlightWorkflowCommandItem({
         </span>
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={null}
         timestamp={formatRelativeTimestamp(workflow.createdAt)}
       />
@@ -722,9 +739,11 @@ function SpotlightArtifactThumbnail({
 function SpotlightArtifactCommandItem({
   artifact,
   onSelect,
+  shortcutNumber,
 }: {
   readonly artifact: ThreeColumnArtifactSearchItem;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   return (
     <CommandItem
@@ -742,6 +761,7 @@ function SpotlightArtifactCommandItem({
         </span>
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={null}
         timestamp={formatRelativeTimestamp(artifact.createdAt)}
       />
@@ -891,10 +911,6 @@ interface SpotlightSearchResultsProps {
   readonly threadMap: ReadonlyMap<string, WorkspaceSearchChatThread>;
   readonly activeThreadIds: ReadonlySet<string> | undefined;
   readonly unreadThreadIds: ReadonlySet<string> | undefined;
-  readonly showThreads: boolean;
-  readonly showMessages: boolean;
-  readonly showWorkflows: boolean;
-  readonly showArtifacts: boolean;
   readonly searching: boolean;
   readonly showNoResults: boolean;
   readonly onSelectChatThread: (threadId: string) => void;
@@ -940,34 +956,9 @@ function spotlightFilterShows(
   return filter === "all" || filter === category;
 }
 
-function spotlightVisibleResultCount({
-  showThreads,
-  showMessages,
-  showWorkflows,
-  showArtifacts,
-  threadCount,
-  messageCount,
-  workflowCount,
-  artifactCount,
-}: {
-  readonly showThreads: boolean;
-  readonly showMessages: boolean;
-  readonly showWorkflows: boolean;
-  readonly showArtifacts: boolean;
-  readonly threadCount: number;
-  readonly messageCount: number;
-  readonly workflowCount: number;
-  readonly artifactCount: number;
-}): number {
-  return (
-    Number(showThreads) * threadCount +
-    Number(showMessages) * messageCount +
-    Number(showWorkflows) * workflowCount +
-    Number(showArtifacts) * artifactCount
-  );
-}
-
 function spotlightVisibleSearchIsPending({
+  showThreads,
+  threadSearching,
   showMessages,
   showWorkflows,
   showArtifacts,
@@ -975,6 +966,8 @@ function spotlightVisibleSearchIsPending({
   workflowSearching,
   artifactSearching,
 }: {
+  readonly showThreads: boolean;
+  readonly threadSearching: boolean;
   readonly showMessages: boolean;
   readonly showWorkflows: boolean;
   readonly showArtifacts: boolean;
@@ -983,6 +976,7 @@ function spotlightVisibleSearchIsPending({
   readonly artifactSearching: boolean;
 }): boolean {
   return (
+    (showThreads && threadSearching) ||
     (showMessages && messageSearching) ||
     (showWorkflows && workflowSearching) ||
     (showArtifacts && artifactSearching)
@@ -997,10 +991,6 @@ function SpotlightSearchResults({
   threadMap,
   activeThreadIds,
   unreadThreadIds,
-  showThreads,
-  showMessages,
-  showWorkflows,
-  showArtifacts,
   searching,
   showNoResults,
   onSelectChatThread,
@@ -1008,6 +998,10 @@ function SpotlightSearchResults({
   onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
+  const numberShortcutsEnabled = useGet(threadNumberShortcutsEnabled$);
+  const shortcutNumber = (index: number) => {
+    return numberShortcutsEnabled && index < 9 ? index + 1 : undefined;
+  };
 
   return (
     // `px-3` pairs with each row's `pl-1` / `pr-2` to put row content on the
@@ -1019,69 +1013,69 @@ function SpotlightSearchResults({
         "Best matches" was labelling the only group there is.
       */}
       <CommandGroup className="[&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col">
-        {showThreads
-          ? threads.map((thread) => {
-              return (
-                <SpotlightThreadCommandItem
-                  key={thread.id}
-                  thread={thread}
-                  indicator={chatThreadCommandIndicator(
-                    thread.id,
-                    activeThreadIds,
-                    unreadThreadIds,
-                  )}
-                  onSelect={() => {
-                    return onSelectChatThread(thread.id);
-                  }}
-                />
-              );
-            })
-          : null}
-        {showMessages
-          ? messages.map((message) => {
-              return (
-                <SpotlightMessageCommandItem
-                  key={`${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
-                  message={message}
-                  thread={threadMap.get(message.chatThreadId)}
-                  indicator={chatThreadCommandIndicator(
-                    message.chatThreadId,
-                    activeThreadIds,
-                    unreadThreadIds,
-                  )}
-                  onSelect={() => {
-                    return onSelectChatThread(message.chatThreadId);
-                  }}
-                />
-              );
-            })
-          : null}
-        {showWorkflows
-          ? workflows.map((workflow) => {
-              return (
-                <SpotlightWorkflowCommandItem
-                  key={workflow.id}
-                  workflow={workflow}
-                  onSelect={() => {
-                    return onSelectWorkflow(workflow.id);
-                  }}
-                />
-              );
-            })
-          : null}
-        {showArtifacts
-          ? artifacts.map((artifact) => {
-              return (
-                <SpotlightArtifactCommandItem
-                  key={artifact.id}
-                  artifact={artifact}
-                  onSelect={() => {
-                    return onSelectArtifact(artifact);
-                  }}
-                />
-              );
-            })
-          : null}
+        {threads.map((thread, index) => {
+          return (
+            <SpotlightThreadCommandItem
+              shortcutNumber={shortcutNumber(index)}
+              key={thread.id}
+              thread={thread}
+              indicator={chatThreadCommandIndicator(
+                thread.id,
+                activeThreadIds,
+                unreadThreadIds,
+              )}
+              onSelect={() => {
+                return onSelectChatThread(thread.id);
+              }}
+            />
+          );
+        })}
+        {messages.map((message, index) => {
+          return (
+            <SpotlightMessageCommandItem
+              shortcutNumber={shortcutNumber(threads.length + index)}
+              key={`${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
+              message={message}
+              thread={threadMap.get(message.chatThreadId)}
+              indicator={chatThreadCommandIndicator(
+                message.chatThreadId,
+                activeThreadIds,
+                unreadThreadIds,
+              )}
+              onSelect={() => {
+                return onSelectChatThread(message.chatThreadId);
+              }}
+            />
+          );
+        })}
+        {workflows.map((workflow, index) => {
+          return (
+            <SpotlightWorkflowCommandItem
+              shortcutNumber={shortcutNumber(
+                threads.length + messages.length + index,
+              )}
+              key={workflow.id}
+              workflow={workflow}
+              onSelect={() => {
+                return onSelectWorkflow(workflow.id);
+              }}
+            />
+          );
+        })}
+        {artifacts.map((artifact, index) => {
+          return (
+            <SpotlightArtifactCommandItem
+              shortcutNumber={shortcutNumber(
+                threads.length + messages.length + workflows.length + index,
+              )}
+              key={artifact.id}
+              artifact={artifact}
+              onSelect={() => {
+                return onSelectArtifact(artifact);
+              }}
+            />
+          );
+        })}
         {searching ? (
           <div
             className="flex items-center gap-2 py-2 pl-1 text-xs text-muted-foreground"
@@ -1135,7 +1129,8 @@ export function ThreeColumnSearchDialog({
   const setQuery = useSet(setChatListQuery$);
   const filter = useGet(threeColumnSearchFilter$);
   const setFilter = useSet(setThreeColumnSearchFilter$);
-  const threadResult = useGet(workspaceSearchChatThreads$);
+  const threadLoadable = useLoadable(threeColumnSearchChatThreads$);
+  const shortcutIndex = useSet(threadNumberShortcutIndex$);
   const threadMap = useGet(workspaceSearchChatThreadMap$);
   const messageLoadable = useLoadable(workspaceSearchChatMessages$);
   const workflowLoadable = useLoadable(threeColumnWorkflowSearchResults$);
@@ -1147,8 +1142,13 @@ export function ThreeColumnSearchDialog({
     equalityFn: equalSets,
   });
   const trimmedQuery = query.trim().toLowerCase();
-  const threadMatches =
-    threadResult.query === trimmedQuery ? threadResult.chatThreads : [];
+  const threadMatches = spotlightRowsFromLoadable(
+    threadLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.chatThreads;
+    },
+  );
   const messageMatches = spotlightRowsFromLoadable(
     messageLoadable,
     trimmedQuery,
@@ -1174,17 +1174,18 @@ export function ThreeColumnSearchDialog({
   const showMessages = spotlightFilterShows(filter, "messages");
   const showWorkflows = spotlightFilterShows(filter, "workflows");
   const showArtifacts = spotlightFilterShows(filter, "artifacts");
-  const resultCount = spotlightVisibleResultCount({
-    showThreads,
-    showMessages,
-    showWorkflows,
-    showArtifacts,
-    threadCount: threadMatches.length,
-    messageCount: messageMatches.length,
-    workflowCount: workflowMatches.length,
-    artifactCount: artifactMatches.length,
-  });
+  const visibleThreads = showThreads ? threadMatches : [];
+  const visibleMessages = showMessages ? messageMatches : [];
+  const visibleWorkflows = showWorkflows ? workflowMatches : [];
+  const visibleArtifacts = showArtifacts ? artifactMatches : [];
+  const resultCount =
+    visibleThreads.length +
+    visibleMessages.length +
+    visibleWorkflows.length +
+    visibleArtifacts.length;
   const visibleSearching = spotlightVisibleSearchIsPending({
+    showThreads,
+    threadSearching: spotlightLoadableIsSearching(threadLoadable, trimmedQuery),
     showMessages,
     showWorkflows,
     showArtifacts,
@@ -1215,6 +1216,29 @@ export function ThreeColumnSearchDialog({
     onSelectArtifact(artifact);
   };
 
+  const resultSelections = [
+    ...visibleThreads.map((thread) => {
+      return () => {
+        selectThread(thread.id);
+      };
+    }),
+    ...visibleMessages.map((message) => {
+      return () => {
+        selectThread(message.chatThreadId);
+      };
+    }),
+    ...visibleWorkflows.map((workflow) => {
+      return () => {
+        selectWorkflow(workflow.id);
+      };
+    }),
+    ...visibleArtifacts.map((artifact) => {
+      return () => {
+        selectArtifact(artifact);
+      };
+    }),
+  ];
+
   return (
     <CommandDialog
       open={open}
@@ -1231,42 +1255,51 @@ export function ThreeColumnSearchDialog({
         onValueChange: setQuery,
       }}
     >
-      <DialogHeader className="sr-only">
-        <DialogTitle>
-          {t(($) => {
-            return $.sidebar.searchWorkspace;
-          })}
-        </DialogTitle>
-        <DialogDescription>
-          {t(($) => {
-            return $.sidebar.searchWorkspace;
-          })}
-        </DialogDescription>
-      </DialogHeader>
-      <SpotlightSearchInput />
-      <SpotlightSearchFilterBar
-        filter={filter}
-        resultCount={resultCount}
-        onSelect={setFilter}
-      />
-      <SpotlightSearchResults
-        threads={threadMatches}
-        messages={messageMatches}
-        workflows={workflowMatches}
-        artifacts={artifactMatches}
-        threadMap={threadMap}
-        activeThreadIds={activeThreadIds}
-        unreadThreadIds={unreadThreadIds}
-        showThreads={showThreads}
-        showMessages={showMessages}
-        showWorkflows={showWorkflows}
-        showArtifacts={showArtifacts}
-        searching={visibleSearching}
-        showNoResults={showNoResults}
-        onSelectChatThread={selectThread}
-        onSelectWorkflow={selectWorkflow}
-        onSelectArtifact={selectArtifact}
-      />
+      <div
+        className="contents"
+        onKeyDownCapture={(event) => {
+          const index = shortcutIndex(event.nativeEvent);
+          if (index === undefined) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          resultSelections[index]?.();
+        }}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>
+            {t(($) => {
+              return $.sidebar.searchWorkspace;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {t(($) => {
+              return $.sidebar.searchWorkspace;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <SpotlightSearchInput />
+        <SpotlightSearchFilterBar
+          filter={filter}
+          resultCount={resultCount}
+          onSelect={setFilter}
+        />
+        <SpotlightSearchResults
+          threads={visibleThreads}
+          messages={visibleMessages}
+          workflows={visibleWorkflows}
+          artifacts={visibleArtifacts}
+          threadMap={threadMap}
+          activeThreadIds={activeThreadIds}
+          unreadThreadIds={unreadThreadIds}
+          searching={visibleSearching}
+          showNoResults={showNoResults}
+          onSelectChatThread={selectThread}
+          onSelectWorkflow={selectWorkflow}
+          onSelectArtifact={selectArtifact}
+        />
+      </div>
     </CommandDialog>
   );
 }

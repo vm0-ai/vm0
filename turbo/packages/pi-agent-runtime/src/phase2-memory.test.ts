@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -14,9 +16,14 @@ import { PI_MEMORY_PHASE2_TOOL_NAMES } from "./phase2-memory-tools";
 import {
   runPiMemoryPhase2Consolidation,
   runPiMemoryPhase2ConsolidationForTest,
+  runPiMemoryPhase2MountedConsolidation,
   type PiMemoryPhase2EngineTestHooks,
   type PiMemoryPhase2SessionSnapshot,
 } from "./phase2-memory";
+import {
+  snapshotMountedPiMemoryPhase2Base,
+  snapshotPiMemoryPhase2Input,
+} from "./phase2-memory-filesystem";
 import {
   PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
   PiMemoryPhase2EngineError,
@@ -28,6 +35,7 @@ import {
 } from "./phase2-memory-types";
 
 const servers: Server[] = [];
+const temporaryDirectories: string[] = [];
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -64,7 +72,28 @@ afterEach(async () => {
       });
     }),
   );
+  await Promise.all(
+    temporaryDirectories.splice(0).map(async (directory) => {
+      await rm(directory, { recursive: true, force: true });
+    }),
+  );
 });
+
+function storageContentIdentity(
+  storageId: string,
+  files: readonly PiMemoryPhase2BaseFile[],
+): string {
+  return createHash("sha256")
+    .update(
+      `storage:${storageId}\n${files
+        .map((file) => {
+          return `${file.path}:${file.hash}`;
+        })
+        .sort()
+        .join("\n")}`,
+    )
+    .digest("hex");
+}
 
 function baseFile(path: string, content: string): PiMemoryPhase2BaseFile {
   const bytes = Buffer.from(content);
@@ -372,6 +401,122 @@ function expectBoundedFailure(
 }
 
 describe("Pi memory Phase 2 consolidation engine", () => {
+  it("runs no-diff directly against the exact mounted tree", async () => {
+    const memoryRoot = await mkdtemp(
+      join(tmpdir(), "pi-memory-mounted-no-diff-"),
+    );
+    temporaryDirectories.push(memoryRoot);
+    await writeFile(join(memoryRoot, "MEMORY.md"), "# Task Group: existing\n");
+    await writeFile(
+      join(memoryRoot, "memory_summary.md"),
+      "v1\n## User Profile\n- existing\n",
+    );
+    const memoryStorageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+    const baseFiles = await snapshotMountedPiMemoryPhase2Base(memoryRoot);
+
+    const result = await runPiMemoryPhase2MountedConsolidation(
+      {
+        memoryRoot,
+        memoryStorageId,
+        claimedRevision: 7,
+        claimedBaseVersionId: storageContentIdentity(
+          memoryStorageId,
+          baseFiles,
+        ),
+        leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+        selectionDigest:
+          "f95c6835f8a93234e88b26bc2162bd3cf8defd709037f6eefb14ee6ae3d56e48",
+        selected: [],
+        model: args("http://127.0.0.1:1/v1").model,
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({
+      status: "no_diff",
+      validatedVersionId: storageContentIdentity(memoryStorageId, baseFiles),
+    });
+    expect(await readFile(join(memoryRoot, "MEMORY.md"), "utf8")).toBe(
+      "# Task Group: existing\n",
+    );
+  });
+
+  it("validates then writes a changed result into the mounted tree", async () => {
+    const provider = await startProvider([
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/MEMORY.md",
+          content: "# Task Group: mounted update\n",
+        },
+      },
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/memory_summary.md",
+          content: "v1\n## User Profile\n- mounted update\n",
+        },
+      },
+      { type: "text", text: "done" },
+    ]);
+    const memoryRoot = await mkdtemp(
+      join(tmpdir(), "pi-memory-mounted-change-"),
+    );
+    temporaryDirectories.push(memoryRoot);
+    await writeFile(join(memoryRoot, "MEMORY.md"), "# Task Group: existing\n");
+    await writeFile(
+      join(memoryRoot, "memory_summary.md"),
+      "v1\n## User Profile\n- existing\n",
+    );
+    const memoryStorageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
+    const baseFiles = await snapshotMountedPiMemoryPhase2Base(memoryRoot);
+    const selectedCandidates = [selected()];
+    const model = args(provider.baseUrl).model;
+    const privateInput = snapshotPiMemoryPhase2Input(
+      {
+        ...args(provider.baseUrl),
+        memoryStorageId,
+        baseFiles,
+        selected: selectedCandidates,
+        model,
+      },
+      new AbortController().signal,
+    );
+
+    const result = await runPiMemoryPhase2MountedConsolidation(
+      {
+        memoryRoot,
+        memoryStorageId,
+        claimedRevision: 7,
+        claimedBaseVersionId: storageContentIdentity(
+          memoryStorageId,
+          baseFiles,
+        ),
+        leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
+        selectionDigest: privateInput.selectionDigest,
+        selected: selectedCandidates,
+        model,
+      },
+      new AbortController().signal,
+    );
+
+    expect(result.status).toBe("prepared");
+    expect(await readFile(join(memoryRoot, "MEMORY.md"), "utf8")).toBe(
+      "# Task Group: mounted update\n",
+    );
+    expect(await readFile(join(memoryRoot, "memory_summary.md"), "utf8")).toBe(
+      "v1\n## User Profile\n- mounted update\n",
+    );
+    expect(result.validatedVersionId).toBe(
+      storageContentIdentity(
+        memoryStorageId,
+        await snapshotMountedPiMemoryPhase2Base(memoryRoot),
+      ),
+    );
+  });
+
   it("returns an exact no-op without a heartbeat or provider call", async () => {
     let heartbeatCount = 0;
     let cleanupRoot: string | undefined;
@@ -544,11 +689,13 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       role: "developer",
       content: `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory`,
     });
-    expect(usages).toHaveLength(1);
-    expect(usages[0]).toMatchObject({
-      responseId: result.responseId,
-      usage: result.usage,
-    });
+    expect(usages).toHaveLength(4);
+    expect(usages.at(-1)).toMatchObject({ responseId: result.responseId });
+    expect(
+      usages.reduce((total, event) => {
+        return total + event.usage.input;
+      }, 0),
+    ).toBe(result.usage.input);
     expect(
       lifecycle.map((event) => {
         return event.stage;
@@ -881,7 +1028,8 @@ describe("Pi memory Phase 2 consolidation engine", () => {
 
       expect(heartbeatCount).toBe(2);
       expect(provider.requests).toHaveLength(1);
-      expect(usages).toStrictEqual([]);
+      expect(usages).toHaveLength(1);
+      expect(usages[0]?.usage.input).toBeGreaterThan(0);
       expect(disposedSessions).toBe(1);
       expect(
         lifecycle.some((event) => {

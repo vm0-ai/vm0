@@ -1,0 +1,219 @@
+name: Publish Presentation Template Archives
+
+run-name: Publish Template-artifact/main presentation archives by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: publish-presentation-template-archives
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  npm_config_audit: "false"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      source_commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Check out dispatched vm0 commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Create read token for Template-artifact
+        id: source-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.VM0_GITHUB_APP_ID }}
+          private-key: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+          owner: vm0-ai
+          repositories: Template-artifact
+          permission-contents: read
+
+      - name: Check out latest Template-artifact main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: vm0-ai/Template-artifact
+          ref: main
+          path: template-artifact
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Record exact source commit
+        id: source
+        run: |
+          set -euo pipefail
+          commit=$(git -C template-artifact rev-parse HEAD)
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Template-artifact checkout did not resolve to a full commit SHA."
+            exit 1
+          fi
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf '### Source\n\n- [vm0-ai/Template-artifact@%s](https://github.com/vm0-ai/Template-artifact/commit/%s)\n' \
+            "$commit" "$commit" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+
+      - name: Install release tooling
+        id: tooling
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/presentation-template-release"
+          mkdir -p "$release_dir"
+          cp .github/scripts/publish-presentation-template-archives.mjs "$release_dir/"
+          cp .github/scripts/presentation-template-release.json "$release_dir/"
+          cp -R .github/scripts/presentation-template-release "$release_dir/"
+          cd "$release_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-fund tar@7.5.22
+          printf 'path=%s\n' "$release_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Test release tooling
+        env:
+          PRESENTATION_TEMPLATE_RELEASE_TOOL: ${{ steps.tooling.outputs.path }}/publish-presentation-template-archives.mjs
+        run: node --test .github/scripts/__tests__/publish-presentation-template-archives.test.mjs
+
+      - name: Build deterministic archives
+        env:
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/presentation-template-output"
+          node "${{ steps.tooling.outputs.path }}/publish-presentation-template-archives.mjs" build \
+            --source-dir "$GITHUB_WORKSPACE/template-artifact/Template-Presentation" \
+            --source-commit "$SOURCE_COMMIT" \
+            --output-dir "$output_dir"
+
+      - name: Verify release bundle
+        run: |
+          set -euo pipefail
+          node "${{ steps.tooling.outputs.path }}/publish-presentation-template-archives.mjs" verify \
+            --output-dir "$RUNNER_TEMP/presentation-template-output"
+
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: presentation-template-archives-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/presentation-template-output
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize bundle
+        run: |
+          set -euo pipefail
+          publication="$RUNNER_TEMP/presentation-template-output/publication.json"
+          package_count=$(jq '.packages | length' "$publication")
+          printf '\n### Verified bundle\n\n- Packages: %s\n' \
+            "$package_count" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+    steps:
+      - name: Check out dispatched vm0 commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+
+      - name: Install release tooling
+        id: tooling
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/presentation-template-release"
+          mkdir -p "$release_dir"
+          cp .github/scripts/publish-presentation-template-archives.mjs "$release_dir/"
+          cp .github/scripts/presentation-template-release.json "$release_dir/"
+          cp -R .github/scripts/presentation-template-release "$release_dir/"
+          cd "$release_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-fund \
+            @aws-sdk/client-s3@3.1116.0 \
+            postgres@3.4.9 \
+            tar@7.5.22
+          printf 'path=%s\n' "$release_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Download verified release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: presentation-template-archives-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/presentation-template-output
+
+      - name: Verify release bundle
+        run: |
+          set -euo pipefail
+          node "${{ steps.tooling.outputs.path }}/publish-presentation-template-archives.mjs" verify \
+            --output-dir "$RUNNER_TEMP/presentation-template-output"
+
+      - name: Publish immutable R2 archives and register versions
+        run: |
+          set -euo pipefail
+          : "${NEON_API_KEY:?NEON_API_KEY is required}"
+          : "${NEON_PROJECT_ID:?NEON_PROJECT_ID is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID is required}"
+          : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
+          : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
+          : "${R2_USER_STORAGES_BUCKET_NAME:?R2_USER_STORAGES_BUCKET_NAME is required}"
+
+          branches=$(curl -fsS \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches" \
+            -H "Authorization: Bearer ${NEON_API_KEY}")
+          branch_id=$(jq -r 'first(.branches[] | select(.name == "production") | .id) // empty' <<< "$branches")
+          if [[ -z "$branch_id" ]]; then
+            echo "::error::The Neon production branch was not found."
+            exit 1
+          fi
+          connection=$(curl -fsS \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri?branch_id=${branch_id}&database_name=neondb&role_name=neondb_owner" \
+            -H "Authorization: Bearer ${NEON_API_KEY}")
+          database_url=$(jq -r '.uri // empty' <<< "$connection")
+          if [[ -z "$database_url" ]]; then
+            echo "::error::Neon did not return a production database URL."
+            exit 1
+          fi
+          mask_value="${database_url//%/%25}"
+          mask_value="${mask_value//$'\r'/%0D}"
+          mask_value="${mask_value//$'\n'/%0A}"
+          printf '::add-mask::%s\n' "$mask_value"
+
+          DATABASE_URL="$database_url" \
+            node "${{ steps.tooling.outputs.path }}/publish-presentation-template-archives.mjs" publish \
+              --output-dir "$RUNNER_TEMP/presentation-template-output"
+
+      - name: Summarize publication
+        env:
+          SOURCE_COMMIT: ${{ needs.build.outputs.source_commit }}
+        run: |
+          printf '### Production publication complete\n\n- Source commit: %s\n- Immutable R2 objects and production storage heads verified.\n' \
+            "$SOURCE_COMMIT" >> "$GITHUB_STEP_SUMMARY"

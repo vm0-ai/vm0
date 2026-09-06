@@ -33,7 +33,7 @@ export type ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
  * the `built-in` provider type; BYOK providers pay the vendor directly and do not
  * carry a platform tier.
  */
-export const VM0_MODEL_PRICE_TIER = Object.freeze<
+export const BUILT_IN_MODEL_PRICE_TIER = Object.freeze<
   Record<SupportedRunModel, ModelPriceTier>
 >({
   "claude-fable-5-1": "$$$$",

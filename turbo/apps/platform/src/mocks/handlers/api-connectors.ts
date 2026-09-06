@@ -89,9 +89,9 @@ function defaultOauthDeviceAuthSessionStartResponse(
     sessionToken: `mock-${connectorSlug}-oauth-device-session-token`,
     connectorSlug,
     status: "pending",
-    userCode: "VM0-DEVICE",
+    userCode: "OKOU-DEVICE",
     verificationUri: `https://oauth.test/${connectorSlug}/device`,
-    verificationUriComplete: `https://oauth.test/${connectorSlug}/device?user_code=VM0-DEVICE`,
+    verificationUriComplete: `https://oauth.test/${connectorSlug}/device?user_code=OKOU-DEVICE`,
     expiresIn: 300,
     interval: 1,
   };
@@ -687,34 +687,6 @@ export const apiConnectorsHandlers = [
       promotedDefaultConnectionId: null,
     });
   }),
-
-  mockApi(
-    connectorAccountsContract.disconnectSingleAccount,
-    ({ body, respond }) => {
-      if (body.target.kind === "custom") {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      }
-
-      const connectorSlug = body.target.connectorSlug;
-      const existing = mockConnectors.find((c) => {
-        return c.slug === connectorSlug;
-      });
-
-      if (!existing) {
-        return respond(404, {
-          error: { message: "Connector not found", code: "NOT_FOUND" },
-        });
-      }
-
-      mockConnectors = mockConnectors.filter((c) => {
-        return c.slug !== connectorSlug;
-      });
-      mockConnectorRequestedScopes.delete(existing.id);
-      return respond(204);
-    },
-  ),
 
   mockApi(connectorManualGrantContract.connect, ({ body, params, respond }) => {
     const connector = createMockLocalGrantConnector(

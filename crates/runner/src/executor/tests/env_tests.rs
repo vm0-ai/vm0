@@ -1237,6 +1237,50 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
 }
 
 #[test]
+fn pi_maintenance_candidates_use_only_the_private_run_payload() {
+    let mut context = pi_context_for_test();
+    let candidate_secret = "PRIVATE_MAINTENANCE_CANDIDATE_31891";
+    context.pi_launch_config.as_mut().unwrap()["maintenance"] = json!({
+        "schemaVersion": 1,
+        "memoryStorageId": "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63",
+        "claimedRevision": 7,
+        "claimedBaseVersionId": "b".repeat(64),
+        "leaseToken": "44754115-d375-4c46-aea7-a55bd1b61ec7",
+        "selectionDigest": "c".repeat(64),
+        "selected": [{
+            "piSessionId": "11111111-1111-4111-8111-111111111111",
+            "sourceRunId": "22222222-2222-4222-8222-222222222222",
+            "sourceHistoryHash": "d".repeat(64),
+            "sourceCompletedAt": "2026-09-05T02:00:00.000Z",
+            "rawMemory": candidate_secret,
+            "rolloutSummary": "private rollout evidence",
+            "rolloutSlug": null
+        }]
+    });
+    let sandbox_id = SandboxId::new_v4().to_string();
+    let payload = validate_execution_context_before_sandbox(
+        &context,
+        "http://localhost",
+        &sandbox_id,
+        SandboxReuseResult::Reused,
+    )
+    .unwrap()
+    .into_run_payload(&context)
+    .unwrap();
+
+    let launch: serde_json::Value = serde_json::from_str(&payload.pi_launch_config).unwrap();
+    assert_eq!(
+        launch["maintenance"]["selected"][0]["rawMemory"],
+        candidate_secret
+    );
+    assert!(
+        !serde_json::to_string(&build_user_env_json(&context))
+            .unwrap()
+            .contains(candidate_secret)
+    );
+}
+
+#[test]
 fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "pi".to_string();
@@ -1507,16 +1551,90 @@ fn pi_execution_context_rejects_invalid_legacy_shared_model_fields_before_sandbo
 }
 
 #[test]
-fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
-    for dialect in ["openai-responses", "openai-codex-responses"] {
-        let mut context = pi_context_for_test();
-        let config = pi_model_config_v2_for_test(dialect);
-        context.pi_model_config = Some(config.clone());
+fn pi_execution_context_restricts_model_base_url_schemes_before_sandbox() {
+    let v2_public = pi_model_config_v2_for_test("openai-responses");
+    let v2_codex = pi_model_config_v2_for_test("openai-codex-responses");
+    let mut v3_public = v2_public.clone();
+    v3_public["schemaVersion"] = json!(3);
+    let mut v3_codex = v2_codex.clone();
+    v3_codex["schemaVersion"] = json!(3);
+    let configs = [
+        pi_model_config_for_test(),
+        v2_public,
+        v2_codex,
+        v3_public,
+        v3_codex,
+    ];
 
-        assert!(validate_context_for_test(&context).is_ok());
-        let payload = build_run_payload_for_run(&context).unwrap();
-        let forwarded: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
-        assert_eq!(forwarded, config);
+    for (base_url, supported) in [
+        ("http://provider.example/v1", true),
+        ("https://provider.example/v1", true),
+        ("ftp://provider.example/v1", false),
+        ("file:///tmp/model", false),
+    ] {
+        for original in &configs {
+            let mut context = pi_context_for_test();
+            let mut config = original.clone();
+            config["baseUrl"] = json!(base_url);
+            context.pi_model_config = Some(config.clone());
+
+            let result = validate_context_for_test(&context);
+
+            if supported {
+                assert!(result.is_ok(), "{config}");
+            } else {
+                assert_eq!(
+                    result.unwrap_err(),
+                    "Pi model config baseUrl is invalid",
+                    "{config}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn pi_execution_context_accepts_and_preserves_versioned_dialect_tiers() {
+    for generation in [2, 3] {
+        for dialect in ["openai-responses", "openai-codex-responses"] {
+            for tier in [None, Some("priority"), Some("fast"), Some("default")] {
+                let mut context = pi_context_for_test();
+                let mut config = pi_model_config_v2_for_test(dialect);
+                config["schemaVersion"] = json!(generation);
+                if let Some(tier) = tier {
+                    config["serviceTier"] = json!(tier);
+                }
+                context.pi_model_config = Some(config.clone());
+                let supported = tier.is_none()
+                    || (dialect == "openai-responses" && tier == Some("priority"))
+                    || (generation == 3
+                        && dialect == "openai-codex-responses"
+                        && tier == Some("fast"));
+                assert_eq!(
+                    validate_context_for_test(&context).is_ok(),
+                    supported,
+                    "{config}"
+                );
+                if supported {
+                    let payload = build_run_payload_for_run(&context).unwrap();
+                    let forwarded: serde_json::Value =
+                        serde_json::from_str(&payload.pi_model_config).unwrap();
+                    assert_eq!(forwarded, config);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn pi_execution_context_rejects_null_v3_optional_fields() {
+    for field in ["thinkingLevel", "serviceTier", "catalogModel"] {
+        let mut context = pi_context_for_test();
+        let mut config = pi_model_config_v2_for_test("openai-responses");
+        config["schemaVersion"] = json!(3);
+        config[field] = json!(null);
+        context.pi_model_config = Some(config);
+        assert!(validate_context_for_test(&context).is_err(), "{field}");
     }
 }
 
@@ -1622,21 +1740,36 @@ fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
         (
             {
                 let mut config = pi_model_config_v2_for_test("openai-responses");
-                config["schemaVersion"] = json!(3);
+                config["schemaVersion"] = json!(4);
                 config
             },
             "Pi model config generation is unsupported",
         ),
     ];
 
-    for (config, expected) in invalid_configs {
-        let mut context = pi_context_for_test();
-        context.pi_model_config = Some(config);
-        let error = validate_context_for_test(&context).unwrap_err();
-        assert!(
-            error.contains(expected),
-            "expected {expected:?}, got unexpected error: {error}"
-        );
+    for generation in [2, 3] {
+        for (original, expected) in &invalid_configs {
+            let mut config = original.clone();
+            if config["schemaVersion"] == json!(2) {
+                config["schemaVersion"] = json!(generation);
+            }
+            let mut context = pi_context_for_test();
+            let expected = if generation == 3
+                && (config["transport"] == json!("auto")
+                    || (config["dialect"] == json!("openai-codex-responses")
+                        && config["provider"] == json!("openai")))
+            {
+                "Pi model config v3 is invalid".to_string()
+            } else {
+                expected.replace("v2", &format!("v{generation}"))
+            };
+            context.pi_model_config = Some(config);
+            let error = validate_context_for_test(&context).unwrap_err();
+            assert!(
+                error.contains(&expected),
+                "expected {expected:?}, got unexpected error: {error}"
+            );
+        }
     }
 }
 

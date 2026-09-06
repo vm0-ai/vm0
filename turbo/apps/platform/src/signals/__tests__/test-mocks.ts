@@ -387,7 +387,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
             : options.apiOriginMarker;
         if (markerContent !== null) {
           ownedApiOriginMarker = document.createElement("meta");
-          ownedApiOriginMarker.name = "vm0-api-origin";
+          ownedApiOriginMarker.name = "okou-api-origin";
           ownedApiOriginMarker.content = markerContent;
           document.head.append(ownedApiOriginMarker);
         }
@@ -580,22 +580,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       canvasRendering: (): CanvasRenderingMock => {
         return mockCanvasRendering(getSignal());
-      },
-      noAnimations: (): void => {
-        const descriptor = defineWindowProperty(
-          HTMLElement.prototype,
-          "getAnimations",
-          () => {
-            return [];
-          },
-        );
-        restoreOnAbort(getSignal(), () => {
-          restoreWindowProperty(
-            HTMLElement.prototype,
-            "getAnimations",
-            descriptor,
-          );
-        });
       },
       indexedDbUnavailable: (): void => {
         const open = vi
@@ -1064,6 +1048,11 @@ function mockAudioContext(signal: AbortSignal): void {
 }
 
 interface VoiceInputMockOptions {
+  readonly onPcmCapture?: (emit: (samples: Float32Array) => void) => void;
+  readonly onPcmPortClose?: () => void;
+  readonly onPcmDisconnect?: () => void;
+  readonly finalPcmSamples?: Float32Array;
+  readonly pcmWorkletReady?: () => Promise<void>;
   readonly audioContextReady?: Promise<void>;
   readonly durationSeconds?: number;
   readonly getUserMediaReady?: Promise<void>;
@@ -1094,9 +1083,17 @@ function mockVoiceInput(
   } as unknown as MediaStream;
 
   class TestMediaStreamAudioSource {
-    connect(_destination: AnalyserNode): void {}
+    connect(destination: AnalyserNode | TestVoiceAudioWorkletNode): void {
+      if (destination instanceof TestVoiceAudioWorkletNode) {
+        destination.port.startCapture();
+      }
+    }
 
-    disconnect(): void {}
+    disconnect(destination?: TestVoiceAudioWorkletNode): void {
+      if (destination instanceof TestVoiceAudioWorkletNode) {
+        options.onPcmDisconnect?.();
+      }
+    }
   }
 
   let sampleIndex = 0;
@@ -1144,6 +1141,12 @@ function mockVoiceInput(
   }
 
   class TestVoiceAudioContext {
+    readonly audioWorklet = {
+      addModule(): Promise<void> {
+        return options.pcmWorkletReady?.() ?? Promise.resolve();
+      },
+    };
+
     resume(): Promise<void> {
       return options.audioContextReady ?? Promise.resolve();
     }
@@ -1160,24 +1163,55 @@ function mockVoiceInput(
     createAnalyser(): AnalyserNode {
       return new TestAnalyser() as unknown as AnalyserNode;
     }
+  }
 
-    decodeAudioData(_audioData: ArrayBuffer): Promise<AudioBuffer> {
-      const length = Math.round(
-        16_000 *
-          (options.durationSeconds === undefined ? 1 : options.durationSeconds),
-      );
-      const samples = new Float32Array(length);
-      samples.fill(0.1);
-      return Promise.resolve({
-        duration: length / 16_000,
-        length,
-        numberOfChannels: 1,
-        sampleRate: 16_000,
-        getChannelData: () => {
-          return samples;
-        },
-      } as unknown as AudioBuffer);
+  class TestVoicePcmPort extends EventTarget {
+    private closed = false;
+
+    start(): void {}
+
+    startCapture(): void {
+      const emit = (samples: Float32Array) => {
+        if (!this.closed) {
+          this.dispatchEvent(
+            new MessageEvent("message", { data: samples.slice().buffer }),
+          );
+        }
+      };
+      if (options.onPcmCapture) {
+        options.onPcmCapture(emit);
+      } else {
+        emit(new Float32Array(4096).fill(0.1));
+      }
     }
+
+    close(): void {
+      this.closed = true;
+      options.onPcmPortClose?.();
+    }
+
+    postMessage(message: unknown): void {
+      if (message !== "stop" || this.closed) {
+        return;
+      }
+      const samples =
+        options.finalPcmSamples ??
+        new Float32Array(
+          Math.max(
+            0,
+            Math.round(16_000 * (options.durationSeconds ?? 1)) - 4096,
+          ),
+        );
+      if (!options.finalPcmSamples) {
+        samples.fill(0.1);
+      }
+      this.dispatchEvent(new MessageEvent("message", { data: samples.buffer }));
+      this.dispatchEvent(new MessageEvent("message", { data: "done" }));
+    }
+  }
+
+  class TestVoiceAudioWorkletNode {
+    readonly port = new TestVoicePcmPort();
   }
 
   type RecorderDataEvent = Event & { data: Blob };
@@ -1247,6 +1281,11 @@ function mockVoiceInput(
     "MediaRecorder",
     TestMediaRecorder as unknown as typeof MediaRecorder,
   );
+  const audioWorkletDescriptor = defineWindowProperty(
+    window,
+    "AudioWorkletNode",
+    TestVoiceAudioWorkletNode as unknown as typeof AudioWorkletNode,
+  );
   const audioContextDescriptor =
     options.rms === undefined
       ? undefined
@@ -1263,6 +1302,7 @@ function mockVoiceInput(
       "MediaRecorder",
       mediaRecorderDescriptor,
     );
+    restoreWindowProperty(window, "AudioWorkletNode", audioWorkletDescriptor);
     if (audioContextDescriptor !== undefined) {
       restoreWindowProperty(window, "AudioContext", audioContextDescriptor);
     }

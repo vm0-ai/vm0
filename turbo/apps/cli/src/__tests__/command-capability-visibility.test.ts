@@ -85,7 +85,7 @@ function registeredCommandNames(prog: Command): string[] {
 }
 
 describe("decodeSandboxTokenPayload", () => {
-  it("should decode payload from a valid zero-scoped token", () => {
+  it("should decode payload from a valid okou-scoped token", () => {
     const token = buildOkouToken({
       userId: "user-1",
       runId: "run-1",
@@ -135,7 +135,7 @@ describe("decodeSandboxTokenPayload", () => {
     ).toBeUndefined();
   });
 
-  it("should return undefined for non-zero scope", () => {
+  it("should return undefined for a non-okou scope", () => {
     const token = buildOkouToken({
       scope: "sandbox",
       capabilities: ["agent:read"],

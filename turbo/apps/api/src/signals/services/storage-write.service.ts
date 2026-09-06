@@ -4,10 +4,12 @@ import {
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
@@ -29,6 +31,15 @@ import {
 } from "./storage-content-hash.service";
 import { enqueueMemorySummaryProjection } from "./memory-summary-projection.service";
 import { notifyPiMemoryPhase2ExternalHeadChange } from "./pi-memory-phase2-job.service";
+import {
+  piMemoryPhase2MaintenanceCallbackPayloadSchema,
+  settlePiMemoryPhase2Checkpoint,
+} from "./pi-memory-phase2-maintenance.service";
+import {
+  findPiMemoryPhase2Checkpoint,
+  piMemoryPhase2CheckpointSchemaReady,
+  recordPiMemoryPhase2Checkpoint,
+} from "./pi-memory-phase2-checkpoint.service";
 
 const ACTIVE_SANDBOX_STORAGE_RUN_STATUSES = ["pending", "running"] as const;
 
@@ -36,12 +47,23 @@ interface StorageChanges {
   readonly deleted?: readonly string[];
 }
 
+interface PiMemoryPhase2CheckpointAttestation {
+  readonly schemaVersion: number;
+  readonly leaseToken: string;
+  readonly claimedRevision: number;
+  readonly claimedBaseVersionId: string;
+  readonly selectionDigest: string;
+  readonly validatedVersionId: string;
+}
+
 interface PrepareStorageUploadInput {
   readonly files: readonly FileEntryWithHash[];
   readonly force?: boolean;
   readonly runId?: string;
+  readonly parentVersionId?: string;
   readonly baseVersion?: string;
   readonly changes?: StorageChanges;
+  readonly maintenanceAttestation?: PiMemoryPhase2CheckpointAttestation;
 }
 
 interface PrepareStorageInput extends PrepareStorageUploadInput {
@@ -59,6 +81,7 @@ interface CommitStorageUploadInput {
   readonly runId?: string;
   readonly parentVersionId?: string;
   readonly message?: string;
+  readonly maintenanceAttestation?: PiMemoryPhase2CheckpointAttestation;
 }
 
 interface CommitStorageInput extends CommitStorageUploadInput {
@@ -292,6 +315,142 @@ function sandboxStorageRunIsActive(
   return ACTIVE_SANDBOX_STORAGE_RUN_STATUSES.some((activeStatus) => {
     return status === activeStatus;
   });
+}
+
+async function guardPiMemoryPhase2MaintenancePublication(args: {
+  readonly db: Db | Tx;
+  readonly auth: SandboxAuth;
+  readonly storageId: string;
+  readonly parentVersionId: string | undefined;
+  readonly versionId: string;
+  readonly attestation: PiMemoryPhase2CheckpointAttestation | undefined;
+  readonly allowCommittedReplay: boolean;
+}): Promise<StorageErrorResponse | undefined> {
+  const [callback] = await args.db
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, args.auth.runId),
+        eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+      ),
+    )
+    .limit(1);
+  if (!callback) {
+    return args.attestation
+      ? badRequestMessage("Unexpected maintenance checkpoint attestation")
+      : undefined;
+  }
+
+  const payload = piMemoryPhase2MaintenanceCallbackPayloadSchema.safeParse(
+    callback.payload,
+  );
+  const attestation = args.attestation;
+  if (
+    !payload.success ||
+    !attestation ||
+    !matchesMaintenancePublication(payload.data, attestation, args)
+  ) {
+    return notFound("Active Pi memory maintenance publication not found");
+  }
+
+  if (!(await piMemoryPhase2CheckpointSchemaReady(args.db))) {
+    return notFound("Pi memory maintenance checkpoint schema is not ready");
+  }
+  const receipt = await findPiMemoryPhase2Checkpoint(args.db, {
+    ...payload.data,
+    runId: args.auth.runId,
+  });
+  if (receipt) {
+    return args.allowCommittedReplay && receipt.versionId === args.versionId
+      ? undefined
+      : notFound("Pi memory maintenance checkpoint already committed");
+  }
+
+  const [active] = await args.db
+    .select({ id: piMemoryPhase2Jobs.memoryStorageId })
+    .from(piMemoryPhase2Jobs)
+    .where(
+      and(
+        eq(piMemoryPhase2Jobs.memoryStorageId, args.storageId),
+        eq(piMemoryPhase2Jobs.orgId, args.auth.orgId),
+        eq(piMemoryPhase2Jobs.userId, args.auth.userId),
+        eq(piMemoryPhase2Jobs.status, "leased"),
+        eq(piMemoryPhase2Jobs.leaseToken, attestation.leaseToken),
+        eq(piMemoryPhase2Jobs.sandboxLeaseToken, attestation.leaseToken),
+        eq(piMemoryPhase2Jobs.claimedRevision, attestation.claimedRevision),
+        eq(
+          piMemoryPhase2Jobs.claimedBaseVersionId,
+          attestation.claimedBaseVersionId,
+        ),
+        eq(
+          piMemoryPhase2Jobs.claimedSelectionDigest,
+          attestation.selectionDigest,
+        ),
+        eq(piMemoryPhase2Jobs.maintenanceRunId, args.auth.runId),
+        gt(piMemoryPhase2Jobs.leaseExpiresAt, nowDate()),
+      ),
+    )
+    .limit(1)
+    .for("update", { of: piMemoryPhase2Jobs });
+  if (active) {
+    return undefined;
+  }
+  // A concurrent commit can settle the claim while this request waits for its
+  // row lock. Read the immutable receipt again in the next statement snapshot.
+  if (args.allowCommittedReplay) {
+    const committed = await findPiMemoryPhase2Checkpoint(args.db, {
+      ...payload.data,
+      runId: args.auth.runId,
+    });
+    if (committed?.versionId === args.versionId) {
+      return undefined;
+    }
+  }
+  return notFound("Active Pi memory maintenance publication not found");
+}
+
+function matchesMaintenancePublication(
+  payload: ReturnType<
+    typeof piMemoryPhase2MaintenanceCallbackPayloadSchema.parse
+  >,
+  attestation: PiMemoryPhase2CheckpointAttestation,
+  args: Parameters<typeof guardPiMemoryPhase2MaintenancePublication>[0],
+): boolean {
+  return (
+    payload.memoryStorageId === args.storageId &&
+    payload.orgId === args.auth.orgId &&
+    payload.userId === args.auth.userId &&
+    payload.leaseToken === attestation.leaseToken &&
+    payload.claimedRevision === attestation.claimedRevision &&
+    payload.claimedBaseVersionId === attestation.claimedBaseVersionId &&
+    payload.selectionDigest === attestation.selectionDigest &&
+    args.parentVersionId === attestation.claimedBaseVersionId &&
+    args.versionId === attestation.validatedVersionId
+  );
+}
+
+function maintenanceCheckpointBinding(input: CommitStorageForStorageInput) {
+  const auth = input.sandboxAuth;
+  const attestation = input.maintenanceAttestation;
+  if (
+    !auth ||
+    !attestation ||
+    input.parentVersionId !== attestation.claimedBaseVersionId ||
+    input.versionId !== attestation.validatedVersionId
+  ) {
+    return undefined;
+  }
+  return {
+    runId: auth.runId,
+    memoryStorageId: input.storageId,
+    orgId: auth.orgId,
+    userId: auth.userId,
+    leaseToken: attestation.leaseToken,
+    claimedRevision: attestation.claimedRevision,
+    claimedBaseVersionId: attestation.claimedBaseVersionId,
+    selectionDigest: attestation.selectionDigest,
+  };
 }
 
 function mergeWithBaseVersion(
@@ -777,18 +936,21 @@ async function recordStorageLineage(args: {
 async function publishStorageHeadIfChanged(args: {
   readonly tx: Tx;
   readonly storage: StorageRow;
-  readonly versionId: string;
+  readonly input: Pick<
+    CommitStorageForStorageInput,
+    "versionId" | "sandboxAuth"
+  >;
   readonly size: number;
   readonly fileCount: number;
 }): Promise<void> {
-  if (args.storage.headVersionId === args.versionId) {
+  if (args.storage.headVersionId === args.input.versionId) {
     return;
   }
   const changedAt = nowDate();
   const [published] = await args.tx
     .update(storages)
     .set({
-      headVersionId: args.versionId,
+      headVersionId: args.input.versionId,
       size: args.size,
       fileCount: args.fileCount,
       updatedAt: changedAt,
@@ -815,8 +977,9 @@ async function publishStorageHeadIfChanged(args: {
     memoryStorageId: args.storage.id,
     orgId: args.storage.orgId,
     userId: args.storage.userId,
-    observedHeadVersionId: args.versionId,
+    observedHeadVersionId: args.input.versionId,
     changedAt,
+    sourceRunId: args.input.sandboxAuth?.runId,
   });
 }
 
@@ -863,7 +1026,7 @@ async function commitActiveStorageVersion(
     await publishStorageHeadIfChanged({
       tx: args.tx,
       storage,
-      versionId: args.input.versionId,
+      input: args.input,
       size: Number(args.version.size),
       fileCount: args.version.fileCount,
     });
@@ -927,7 +1090,7 @@ async function commitActiveStorageVersion(
   await publishStorageHeadIfChanged({
     tx: args.tx,
     storage,
-    versionId: args.input.versionId,
+    input: args.input,
     size,
     fileCount,
   });
@@ -952,6 +1115,37 @@ async function commitActiveStorageVersion(
     fileCount,
     deduplicated: false,
   });
+}
+
+async function committedMaintenanceResponse(
+  tx: Tx,
+  binding: ReturnType<typeof maintenanceCheckpointBinding>,
+  storage: StorageRow,
+  version: StorageVersionRow | undefined,
+): Promise<CommitStorageResponse | undefined> {
+  if (!binding || !version) {
+    return undefined;
+  }
+  const receipt = await findPiMemoryPhase2Checkpoint(tx, binding);
+  if (receipt?.versionId !== version.id) {
+    return undefined;
+  }
+  return storageCommitSuccess({
+    storage,
+    versionId: version.id,
+    size: Number(version.size),
+    fileCount: version.fileCount,
+    deduplicated: true,
+  });
+}
+
+async function recordAndSettleMaintenanceCheckpoint(
+  tx: Tx,
+  binding: NonNullable<ReturnType<typeof maintenanceCheckpointBinding>>,
+  versionId: string,
+): Promise<void> {
+  await recordPiMemoryPhase2Checkpoint(tx, { ...binding, versionId });
+  await settlePiMemoryPhase2Checkpoint(tx, binding.runId, versionId);
 }
 
 async function commitVerifiedStorageVersion(
@@ -990,6 +1184,22 @@ async function commitVerifiedStorageVersion(
       return notFound("Storage not found");
     }
 
+    if (args.input.sandboxAuth) {
+      const maintenanceGuard = await guardPiMemoryPhase2MaintenancePublication({
+        db: tx,
+        auth: args.input.sandboxAuth,
+        storageId: storage.id,
+        parentVersionId: args.input.parentVersionId,
+        versionId: args.input.versionId,
+        attestation: args.input.maintenanceAttestation,
+        allowCommittedReplay: true,
+      });
+      signal.throwIfAborted();
+      if (maintenanceGuard) {
+        return maintenanceGuard;
+      }
+    }
+
     const [version] = await tx
       .select()
       .from(storageVersions)
@@ -1001,6 +1211,17 @@ async function commitVerifiedStorageVersion(
       )
       .limit(1);
     signal.throwIfAborted();
+
+    const binding = maintenanceCheckpointBinding(args.input);
+    const replay = await committedMaintenanceResponse(
+      tx,
+      binding,
+      storage,
+      version,
+    );
+    if (replay) {
+      return replay;
+    }
 
     if (mounted && !sandboxStorageRunIsActive(mounted.runStatus)) {
       const alreadySucceeded = await terminalStorageCommitAlreadySucceeded({
@@ -1022,7 +1243,23 @@ async function commitVerifiedStorageVersion(
         : notFound("Active agent run not found");
     }
 
-    return await commitActiveStorageVersion(
+    // A validated no-diff receipt acknowledges the mounted epoch. It must not
+    // restore that epoch as HEAD if another ordinary writer has since published.
+    if (
+      binding &&
+      args.input.versionId === binding.claimedBaseVersionId &&
+      version
+    ) {
+      await recordAndSettleMaintenanceCheckpoint(tx, binding, version.id);
+      return storageCommitSuccess({
+        storage,
+        versionId: version.id,
+        size: Number(version.size),
+        fileCount: version.fileCount,
+        deduplicated: true,
+      });
+    }
+    const response = await commitActiveStorageVersion(
       {
         tx,
         storage,
@@ -1032,6 +1269,14 @@ async function commitVerifiedStorageVersion(
       },
       signal,
     );
+    if (binding && response.status === 200) {
+      await recordAndSettleMaintenanceCheckpoint(
+        tx,
+        binding,
+        args.input.versionId,
+      );
+    }
+    return response;
   });
 }
 
@@ -1196,6 +1441,20 @@ export const prepareStorageUploadForAuth$ = command(
       return notFound("Active agent run not found");
     }
 
+    const maintenanceGuard = await guardPiMemoryPhase2MaintenancePublication({
+      db: writeDb,
+      auth: args.auth,
+      storageId: args.storageId,
+      parentVersionId: args.parentVersionId,
+      versionId: computeContentHashFromHashes(args.storageId, args.files),
+      attestation: args.maintenanceAttestation,
+      allowCommittedReplay: false,
+    });
+    signal.throwIfAborted();
+    if (maintenanceGuard) {
+      return maintenanceGuard;
+    }
+
     const response = await set(
       prepareStorageUploadForStorage$,
       {
@@ -1203,8 +1462,10 @@ export const prepareStorageUploadForAuth$ = command(
         files: args.files,
         force: args.force,
         runId: args.runId,
+        parentVersionId: args.parentVersionId,
         baseVersion: args.baseVersion,
         changes: args.changes,
+        maintenanceAttestation: args.maintenanceAttestation,
       },
       signal,
     );
@@ -1255,8 +1516,39 @@ export const commitStorageUploadForAuth$ = command(
       runId: args.runId,
       parentVersionId: args.parentVersionId,
       message: args.message,
+      maintenanceAttestation: args.maintenanceAttestation,
       sandboxAuth: args.auth,
     };
+    const binding = maintenanceCheckpointBinding(commitInput);
+    const receipt = binding
+      ? await findPiMemoryPhase2Checkpoint(writeDb, binding)
+      : undefined;
+    signal.throwIfAborted();
+    if (receipt) {
+      if (
+        receipt.versionId !== args.versionId ||
+        computeContentHashFromHashes(args.storageId, args.files) !==
+          receipt.versionId
+      ) {
+        return notFound("Pi memory maintenance checkpoint replay mismatch");
+      }
+      const version = await findStorageVersion({
+        db: writeDb,
+        storageId: args.storageId,
+        versionId: receipt.versionId,
+      });
+      signal.throwIfAborted();
+      if (!version) {
+        return notFound("Pi memory maintenance checkpoint version not found");
+      }
+      return storageCommitSuccess({
+        storage: mounted.storage,
+        versionId: version.id,
+        size: Number(version.size),
+        fileCount: version.fileCount,
+        deduplicated: true,
+      });
+    }
     const terminalRetry = !sandboxStorageRunIsActive(mounted.runStatus);
     if (terminalRetry) {
       const parentVersionId = args.parentVersionId;

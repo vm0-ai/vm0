@@ -17,9 +17,11 @@ import {
   usagePricingResolution$,
 } from "../context/usage-pricing-resolution";
 import { writeDb$ } from "../external/db";
+import { processOrgUsageEvents$ } from "./credit-usage.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
+import { resolveActiveRunCreditAdmission } from "./run-admission.service";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 import { getSpendableUsagePackCredits } from "./usage-pack-credit.service";
-import { processOrgUsageEvents$ } from "./credit-usage.service";
 
 export interface ManagedUsageErrorResponse {
   readonly status: 402 | 503;
@@ -91,6 +93,7 @@ export const checkManagedCredits$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
+      readonly runId?: string;
       readonly resource: ManagedUsageResource;
       readonly label: string;
     },
@@ -160,6 +163,21 @@ export const checkManagedCredits$ = command(
       row.unitSize,
       quantity,
     );
+    const capabilities = await loadOrgPlanCapabilities(writeDb, args.orgId);
+    signal.throwIfAborted();
+    if (!capabilities || capabilities.status !== "active") {
+      return insufficientCredits();
+    }
+    const activeRunAdmission = await resolveActiveRunCreditAdmission({
+      db: writeDb,
+      runId: args.runId,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
+    if (activeRunAdmission) {
+      return null;
+    }
     const spendableCredits = credits - row.unsettledExpired;
     const usagePackCredits = BigInt(
       await getSpendableUsagePackCredits(writeDb, {
@@ -180,13 +198,10 @@ export const checkManagedCredits$ = command(
       args.orgId,
     );
     signal.throwIfAborted();
-    const sharedSpendableUnits =
-      (spendableCredits > 0n ? spendableCredits : 0n) +
-      BigInt(allowance?.remainingUnits ?? 0) -
-      (spendableCredits < 0n ? -spendableCredits : 0n);
     const spendableUnits =
       usagePackCredits +
-      (sharedSpendableUnits > 0n ? sharedSpendableUnits : 0n);
+      (spendableCredits > 0n ? spendableCredits : 0n) +
+      BigInt(allowance?.remainingUnits ?? 0);
     return spendableUnits >= requiredCredits ? null : insufficientCredits();
   },
 );

@@ -136,6 +136,116 @@ describe("Pi API first-turn sandbox resume", () => {
     ).toHaveLength(1);
   });
 
+  it("stages one API-first ad-hoc note exactly once after sandbox ownership", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pi-memory-write-resume-"));
+    temporaryDirectories.push(directory);
+    const memoryRoot = join(directory, "memory");
+    await mkdir(memoryRoot);
+    const sessionFile = join(directory, "handoff.jsonl");
+    const filename = "2026-09-05T16-10-00-api-sandbox-handoff.md";
+    const note = "# API-first handoff\n\nWrite these bytes exactly once.\n";
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    memory.appendMessage({
+      role: "user",
+      content: "remember this after the sandbox takes ownership",
+      timestamp: 1,
+    });
+    memory.appendMessage(
+      fauxAssistantMessage(
+        fauxToolCall(
+          "add_ad_hoc_note",
+          { filename, note },
+          { id: TOOL_CALL_ID },
+        ),
+        { stopReason: "toolUse", timestamp: 2 },
+      ),
+    );
+    await writeFile(sessionFile, memory.toJsonl());
+
+    const faux = createFauxCore({
+      api: "memory-write-resume-test",
+      provider: "memory-write-resume-test",
+    });
+    faux.setResponses([
+      (context) => {
+        expect(context.messages.at(-1)).toMatchObject({
+          role: "toolResult",
+          toolCallId: TOOL_CALL_ID,
+          toolName: "add_ad_hoc_note",
+          isError: false,
+          content: [
+            {
+              type: "text",
+              text: `{"status":"staged","path":"extensions/ad_hoc/notes/${filename}"}`,
+            },
+          ],
+        });
+        return fauxAssistantMessage("sandbox continuation complete", {
+          timestamp: 3,
+        });
+      },
+    ]);
+    const modelRuntime = await ModelRuntime.create({
+      allowModelNetwork: false,
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    modelRuntime.registerProvider(faux.provider, {
+      name: faux.provider,
+      api: faux.api,
+      baseUrl: faux.getModel().baseUrl,
+      apiKey: "test-api-key",
+      streamSimple: faux.streamSimple,
+      models: faux.models,
+    });
+    const { session } = await createAgentSession({
+      cwd: "/home/user/workspace",
+      agentDir: join(directory, "agent"),
+      model: faux.getModel(),
+      modelRuntime,
+      sessionManager: SessionManager.open(sessionFile),
+      tools: ["add_ad_hoc_note"],
+      customTools: createPiMemoryTools({
+        mode: "sandbox",
+        selection: {
+          status: "no-content",
+          memoryStorageId: "memory-storage-a",
+          storageVersionId: "memory-version-a",
+        },
+        memoryRoot,
+      }),
+    });
+
+    await resumePiApiFirstTurn(session);
+    expect(
+      await readFile(
+        join(memoryRoot, "extensions", "ad_hoc", "notes", filename),
+      ),
+    ).toStrictEqual(Buffer.from(note, "utf8"));
+    expect(faux.state.callCount).toBe(1);
+    await expect(resumePiApiFirstTurn(session)).rejects.toThrow(
+      "no pending tool calls",
+    );
+    expect(
+      await readFile(
+        join(memoryRoot, "extensions", "ad_hoc", "notes", filename),
+      ),
+    ).toStrictEqual(Buffer.from(note, "utf8"));
+    session.dispose();
+
+    const reopened = SessionManager.open(sessionFile);
+    expect(
+      reopened.buildSessionContext().messages.filter((message) => {
+        return (
+          message.role === "toolResult" && message.toolCallId === TOOL_CALL_ID
+        );
+      }),
+    ).toHaveLength(1);
+  });
+
   it("executes pending H1 tools and continues through Pi AgentSession", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pi-handoff-resume-"));
     temporaryDirectories.push(directory);
@@ -218,8 +328,8 @@ describe("Pi API first-turn sandbox resume", () => {
     expect(execute).toHaveBeenCalledExactlyOnceWith(
       TOOL_CALL_ID,
       { path: "/home/user/.pi/agent/skills/example/SKILL.md" },
-      undefined,
-      undefined,
+      expect.any(AbortSignal),
+      expect.any(Function),
       expect.anything(),
     );
     expect(session.messages.at(-1)).toMatchObject({
@@ -321,8 +431,8 @@ describe("Pi API first-turn sandbox resume", () => {
     expect(execute).toHaveBeenCalledExactlyOnceWith(
       TOOL_CALL_ID,
       { command },
-      undefined,
-      undefined,
+      expect.any(AbortSignal),
+      expect.any(Function),
       expect.anything(),
     );
     expect(faux.state.callCount).toBe(1);

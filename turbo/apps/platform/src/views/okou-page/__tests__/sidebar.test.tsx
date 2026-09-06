@@ -338,8 +338,7 @@ function sidebar(): HTMLElement {
 }
 
 function queryMobileSidebar(): HTMLElement | null {
-  const drawer = document.querySelector("aside.okou-pwa-fixed-cover");
-  return drawer instanceof HTMLElement ? drawer : null;
+  return screen.queryByRole("complementary", { name: "Sidebar" });
 }
 
 function mobileSidebar(): HTMLElement {
@@ -935,7 +934,9 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
-    indicatorRequestStarted.resolve();
+    if (!indicatorRequestStarted.settled()) {
+      indicatorRequestStarted.resolve();
+    }
     await indicatorResponse.promise;
     return respond(200, { agents: {}, threads: {} });
   });
@@ -1056,6 +1057,7 @@ test("Keep pin management usable with many pinned agents", async () => {
       theme: "system",
       colorTheme: "blue-horizon",
       captureNetworkBodiesRemaining: 0,
+      voiceInputModel: null,
     });
   });
 
@@ -1401,6 +1403,7 @@ test("Mark all of an agent’s chats read", async () => {
   const nav = await waitFor(() => {
     const current = mobileSidebar();
     expect(within(current).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(current).getByText("Support Agent")).toBeInTheDocument();
     return current;
   });
   const researchSidebarRow = agentRowByName(nav, "Research Agent");
@@ -1730,7 +1733,7 @@ test("Show current shortcuts without stacking help over workspace search", async
     context,
     path: `/agents/${AGENT_ID}/chat`,
     featureSwitches: {
-      [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      [FeatureSwitchKey.VoiceInputV2]: true,
     },
   });
 
@@ -2037,6 +2040,19 @@ test("Recognize and pin sidebar conversation states", async () => {
     within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
   ).toHaveAttribute("role", "img");
 
+  // Touch rows never hover, so the state indicator has to be the menu trigger
+  // itself; otherwise running, unread, and draft chats lose every row action.
+  for (const [title, label] of [
+    ["Incident notes", "Unread"],
+    ["Running analysis", "Running"],
+    ["Draft brief", "Draft"],
+  ] as const) {
+    const row = threadRowByTitle(title);
+    expect(
+      within(row).getByTestId("chat-thread-menu-trigger"),
+    ).toContainElement(within(row).getByLabelText(label));
+  }
+
   openThreadMenu("Release plan");
   click(menuItemByText("Pin chat"));
 
@@ -2062,6 +2078,10 @@ test("Recognize and pin sidebar conversation states", async () => {
       ),
     ).not.toBeInTheDocument();
   });
+
+  openThreadMenu("Running analysis");
+  expect(menuItemByText("Rename chat")).toBeInTheDocument();
+  expect(menuItemByText("Delete chat")).toBeInTheDocument();
 });
 
 test("Refresh agent and thread unread indicators", async () => {
@@ -2071,11 +2091,28 @@ test("Refresh agent and thread unread indicators", async () => {
     createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
   ]);
   let hasUnread = false;
+  let unreadIndicatorsLoaded = false;
+  const unreadCatchUpReturned = context.mocks.deferred<void>();
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    unreadIndicatorsLoaded = hasUnread;
     return respond(200, {
       agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
       threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
     });
+  });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    const response = respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
+    });
+    if (unreadIndicatorsLoaded && !unreadCatchUpReturned.settled()) {
+      unreadCatchUpReturned.resolve(undefined);
+    }
+    return response;
   });
   context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
     return respond(200, {
@@ -2113,6 +2150,9 @@ test("Refresh agent and thread unread indicators", async () => {
   hasUnread = true;
   changeChatThreadList();
 
+  // Indicator delivery follows the throttled batch, which may start after a
+  // trailing bootstrap request. Observe that response before checking the UI.
+  await unreadCatchUpReturned.promise;
   await waitFor(() => {
     expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
     expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();

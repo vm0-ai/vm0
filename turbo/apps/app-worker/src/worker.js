@@ -273,7 +273,7 @@ async function fetchAppBootstrap(request, requestUrl, fetcher) {
 
 function appBootstrapScript(entry) {
   const path = encodeURIComponent(entry.path);
-  return `<script type="application/json" data-vm0-api-bootstrap="" data-method="GET" data-path="${path}" data-content-type="application/json">${serializeClerkEdgeSession(entry.body)}</script>`;
+  return `<script type="application/json" data-okou-api-bootstrap="" data-method="GET" data-path="${path}" data-content-type="application/json">${serializeClerkEdgeSession(entry.body)}</script>`;
 }
 
 function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
@@ -444,7 +444,7 @@ function rewriteAppPage(
             });
           }
           element.append(
-            `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
+            `<script type="application/json" id="okou-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
             { html: true },
           );
         },

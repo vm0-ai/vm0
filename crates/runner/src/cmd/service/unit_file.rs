@@ -59,10 +59,12 @@ fn escape_systemd_value(input: &str) -> String {
 ///
 /// User-controllable values (`ExecStart=` paths, `Environment=` values) go
 /// through [`escape_systemd_value`] so that input cannot break out of the
-/// quotes or trigger systemd specifier expansion. `unit` is not escaped
-/// because [`RunnerServiceUnit`] already restricts it to lowercase alphanumeric,
-/// hyphens, and dots — no `%`, `\`, `"`, or other systemd special chars
-/// can reach `Description=` or `SyslogIdentifier=`.
+/// quotes or trigger systemd specifier expansion. The `:` command prefix also
+/// disables environment expansion for `ExecStart=`, preserving literal dollar
+/// signs in paths without changing `Environment=` values. `unit` is not
+/// escaped because [`RunnerServiceUnit`] already restricts it to lowercase
+/// alphanumeric, hyphens, and dots — no `%`, `\`, `"`, or other systemd
+/// special chars can reach `Description=` or `SyslogIdentifier=`.
 pub(super) fn generate_unit_file(
     unit: &RunnerServiceUnit,
     exe_path: &Path,
@@ -88,7 +90,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}
+ExecStart=:\"{exe}\" start --config \"{config}\"{local_flag}
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -457,7 +459,7 @@ mod tests {
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
-            "ExecStart=\"/var/lib/vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
+            "ExecStart=:\"/var/lib/vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
         ));
         assert!(!content.contains("User="));
         assert!(content.contains("SyslogIdentifier=vm0-runner-v0.1.0"));
@@ -509,7 +511,7 @@ mod tests {
             false,
         );
         assert!(content.contains(
-            "ExecStart=\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\""
+            "ExecStart=:\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\""
         ));
         assert!(!content.contains("User="));
     }
@@ -524,7 +526,7 @@ mod tests {
             true,
         );
         assert!(content.contains(
-            "ExecStart=\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local\n"
+            "ExecStart=:\"/usr/bin/runner\" start --config \"/etc/runner.yaml\" --local\n"
         ));
     }
 
@@ -623,8 +625,29 @@ mod tests {
             false,
         );
         assert!(content.contains(
-            r#"ExecStart="/opt/runner-v1%%2.0/bin/runner" start --config "/etc/cache%%20.yaml""#
+            r#"ExecStart=:"/opt/runner-v1%%2.0/bin/runner" start --config "/etc/cache%%20.yaml""#
         ));
+    }
+
+    #[test]
+    fn generated_exec_start_preserves_literal_dollar_paths() {
+        let config_path = Path::new("/srv/vm0-${TENANT}/runner.yaml");
+        let content = generate_unit_file(
+            &service_unit("v0.1.0"),
+            Path::new("/opt/vm0-${BUILD}/vm0-runner"),
+            config_path,
+            &["LITERAL=${VALUE}".to_string()],
+            false,
+        );
+
+        assert!(content.contains(
+            r#"ExecStart=:"/opt/vm0-${BUILD}/vm0-runner" start --config "/srv/vm0-${TENANT}/runner.yaml""#
+        ));
+        assert!(content.contains(r#"Environment="LITERAL=${VALUE}""#));
+        assert_eq!(
+            crate::cmd::service::unit_config::parse_unit_config_path(&content),
+            Some(config_path.to_path_buf())
+        );
     }
 
     #[test]

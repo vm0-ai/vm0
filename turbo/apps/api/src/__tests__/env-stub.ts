@@ -21,7 +21,7 @@ function stubTestDatabaseUrl(): void {
   );
   databaseUrl.searchParams.set(
     "application_name",
-    `vm0-api-test-${process.pid}-${vitestWorkerId}`,
+    `okou-api-test-${process.pid}-${vitestWorkerId}`,
   );
   vi.stubEnv("DATABASE_URL", databaseUrl.toString());
 }
@@ -84,3 +84,12 @@ vi.stubEnv("ABLY_API_KEY", "test-ably-key");
 // The Vercel connector builds its authorization URL from the Integration slug
 // read straight from the process environment, outside the API env contract.
 vi.stubEnv("VERCEL_INTEGRATION_SLUG", "okou-test-integration");
+
+// Preserve the host's existing filesystem/runtime environment when launching a
+// test-owned real Guest. Never inherit the active sandbox's control endpoints.
+export function guestBoundaryEnvironment(): Pick<
+  NodeJS.ProcessEnv,
+  "HOME" | "PATH"
+> {
+  return { HOME: process.env.HOME, PATH: process.env.PATH };
+}

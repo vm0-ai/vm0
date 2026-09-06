@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.74](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.73...guest-session-prune-v0.3.74) (2026-09-05)
+
+## [0.3.73](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.72...guest-session-prune-v0.3.73) (2026-09-05)
+
+
+### Documentation
+
+* **guest-session-prune:** document paginated Codex support ([#31918](https://github.com/vm0-ai/vm0/issues/31918)) ([83a0c4d](https://github.com/vm0-ai/vm0/commit/83a0c4decd16798ebf6e3fba2f4adce3aedad870))
+
+## [0.3.72](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.71...guest-session-prune-v0.3.72) (2026-09-05)
+
 ## [0.3.71](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.70...guest-session-prune-v0.3.71) (2026-09-04)
 
 ## [0.3.70](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.69...guest-session-prune-v0.3.70) (2026-09-04)

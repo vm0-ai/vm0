@@ -1,5 +1,237 @@
 # Changelog
 
+## [9.313.14](https://github.com/vm0-ai/vm0/compare/cli-v9.313.13...cli-v9.313.14) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.408.0
+    * @okouai/core bumped to 8.625.11
+    * @okouai/pi-agent-runtime bumped to 1.21.3
+
+## [9.313.13](https://github.com/vm0-ai/vm0/compare/cli-v9.313.12...cli-v9.313.13) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.407.1
+    * @okouai/core bumped to 8.625.10
+    * @okouai/pi-agent-runtime bumped to 1.21.2
+
+## [9.313.12](https://github.com/vm0-ai/vm0/compare/cli-v9.313.11...cli-v9.313.12) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.407.0
+    * @okouai/core bumped to 8.625.9
+    * @okouai/pi-agent-runtime bumped to 1.21.1
+
+## [9.313.11](https://github.com/vm0-ai/vm0/compare/cli-v9.313.10...cli-v9.313.11) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.406.0
+    * @okouai/core bumped to 8.625.8
+    * @okouai/pi-agent-runtime bumped to 1.21.0
+
+## [9.313.10](https://github.com/vm0-ai/vm0/compare/cli-v9.313.9...cli-v9.313.10) (2026-09-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.625.7
+
+## [9.313.9](https://github.com/vm0-ai/vm0/compare/cli-v9.313.8...cli-v9.313.9) (2026-09-05)
+
+
+### Bug Fixes
+
+* settle private pi maintenance at the generic checkpoint boundary ([#31947](https://github.com/vm0-ai/vm0/issues/31947)) ([2db67fc](https://github.com/vm0-ai/vm0/commit/2db67fc8be4f1fa863c4faf8ed4905acfc65cdb5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.7
+    * @okouai/core bumped to 8.625.6
+    * @okouai/pi-agent-runtime bumped to 1.20.6
+
+## [9.313.8](https://github.com/vm0-ai/vm0/compare/cli-v9.313.7...cli-v9.313.8) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.6
+    * @okouai/core bumped to 8.625.5
+    * @okouai/pi-agent-runtime bumped to 1.20.5
+
+## [9.313.7](https://github.com/vm0-ai/vm0/compare/cli-v9.313.6...cli-v9.313.7) (2026-09-05)
+
+
+### Refactoring
+
+* **pi-memory:** publish phase 2 through sandbox checkpoints ([#31912](https://github.com/vm0-ai/vm0/issues/31912)) ([57ba1c3](https://github.com/vm0-ai/vm0/commit/57ba1c398f21dc34348bf0c6f20d12cd88283b7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.5
+    * @okouai/core bumped to 8.625.4
+    * @okouai/pi-agent-runtime bumped to 1.20.4
+
+## [9.313.6](https://github.com/vm0-ai/vm0/compare/cli-v9.313.5...cli-v9.313.6) (2026-09-05)
+
+
+### Bug Fixes
+
+* **presentation:** make fresh screenshots fast and distinct ([#31921](https://github.com/vm0-ai/vm0/issues/31921)) ([62abfd8](https://github.com/vm0-ai/vm0/commit/62abfd86489bc2c969fcb7d175ca456d69c7764a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.20.3
+
+## [9.313.5](https://github.com/vm0-ai/vm0/compare/cli-v9.313.4...cli-v9.313.5) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** validate native session parent graphs before traversal ([#31910](https://github.com/vm0-ai/vm0/issues/31910)) ([9a84dc8](https://github.com/vm0-ai/vm0/commit/9a84dc87ccba2f12c6e8e7e16bbc6eea1d4c8501))
+
+
+### Refactoring
+
+* rename module-scoped brand identifiers ([#31906](https://github.com/vm0-ai/vm0/issues/31906)) ([003db23](https://github.com/vm0-ai/vm0/commit/003db2336542de3fc504cbbc64e9ea26ec88a109))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.4
+    * @okouai/connectors bumped to 3.3.6
+    * @okouai/core bumped to 8.625.3
+    * @okouai/pi-agent-runtime bumped to 1.20.2
+
+## [9.313.4](https://github.com/vm0-ai/vm0/compare/cli-v9.313.3...cli-v9.313.4) (2026-09-05)
+
+
+### Bug Fixes
+
+* **pi:** normalize native fast requests to priority ([#31895](https://github.com/vm0-ai/vm0/issues/31895)) ([0c910e8](https://github.com/vm0-ai/vm0/commit/0c910e8b80be2c91ead2bb04101b68f3b1d8647e)), closes [#31885](https://github.com/vm0-ai/vm0/issues/31885)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.625.2
+    * @okouai/pi-agent-runtime bumped to 1.20.1
+
+## [9.313.3](https://github.com/vm0-ai/vm0/compare/cli-v9.313.2...cli-v9.313.3) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.3
+    * @okouai/connectors bumped to 3.3.5
+    * @okouai/core bumped to 8.625.1
+    * @okouai/pi-agent-runtime bumped to 1.20.0
+
+## [9.313.2](https://github.com/vm0-ai/vm0/compare/cli-v9.313.1...cli-v9.313.2) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.19.0
+
+## [9.313.1](https://github.com/vm0-ai/vm0/compare/cli-v9.313.0...cli-v9.313.1) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.2
+    * @okouai/core bumped to 8.625.0
+    * @okouai/pi-agent-runtime bumped to 1.18.0
+
+## [9.313.0](https://github.com/vm0-ai/vm0/compare/cli-v9.312.0...cli-v9.313.0) (2026-09-05)
+
+
+### Features
+
+* expose heygen presenters and voices in intro video ([#31668](https://github.com/vm0-ai/vm0/issues/31668)) ([0a10020](https://github.com/vm0-ai/vm0/commit/0a1002047c76815573418d5af8c774d137b948c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.1
+    * @okouai/core bumped to 8.624.0
+    * @okouai/pi-agent-runtime bumped to 1.17.1
+
+## [9.312.0](https://github.com/vm0-ai/vm0/compare/cli-v9.311.1...cli-v9.312.0) (2026-09-05)
+
+
+### Features
+
+* **pi:** add dialect-aware fast carrier compatibility ([#31839](https://github.com/vm0-ai/vm0/issues/31839)) ([444bfe5](https://github.com/vm0-ai/vm0/commit/444bfe5a6f04edb5ba3ccbc90a0895e7ca4a44d8))
+
+
+### Bug Fixes
+
+* **cli:** show a standalone mail link reply example ([#31832](https://github.com/vm0-ai/vm0/issues/31832)) ([d759114](https://github.com/vm0-ai/vm0/commit/d759114eed81674ad0f1b4d0e96d9b7677996d0e))
+
+
+### Refactoring
+
+* **api:** rename the vm0 built-in model vocabulary to built-in ([#31834](https://github.com/vm0-ai/vm0/issues/31834)) ([1cfe7fc](https://github.com/vm0-ai/vm0/commit/1cfe7fccc9c89a46171f6aad08750cb6dab8865b)), closes [#31818](https://github.com/vm0-ai/vm0/issues/31818)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.405.0
+    * @okouai/core bumped to 8.623.2
+    * @okouai/pi-agent-runtime bumped to 1.17.0
+
+## [9.311.1](https://github.com/vm0-ai/vm0/compare/cli-v9.311.0...cli-v9.311.1) (2026-09-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.404.1
+    * @okouai/core bumped to 8.623.1
+    * @okouai/pi-agent-runtime bumped to 1.16.6
+
 ## [9.311.0](https://github.com/vm0-ai/vm0/compare/cli-v9.310.4...cli-v9.311.0) (2026-09-05)
 
 

@@ -221,7 +221,7 @@ async function insertPromotedRunnerJob(
 
   recordSandboxOperation({
     sandboxType: "runner",
-    actionType: "dequeue_zero_run",
+    actionType: "dequeue_agent_run",
     durationMs: Math.max(0, args.promotedAt - args.queuedAt.getTime()),
     success: true,
     runId: args.runId,
@@ -427,7 +427,9 @@ async function promoteAdmittedQueuedRun(
         historyGenerationRunId: payload.historyGenerationRunId,
         createdAt: runnerJob.createdAt,
       },
-      ...(runnerJob.executionContext.piLaunchConfig && args.row.prompt !== null
+      ...(runnerJob.executionContext.piLaunchConfig &&
+      !runnerJob.executionContext.piLaunchConfig.maintenance &&
+      args.row.prompt !== null
         ? {
             piApiFirstTurn: {
               runId: args.row.runId,

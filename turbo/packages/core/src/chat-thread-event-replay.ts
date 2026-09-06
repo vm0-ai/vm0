@@ -53,10 +53,10 @@ function updatedThreadFields(
     return { title: event.title, renamedAt: event.createdAt };
   }
   if (event.kind === "pinned") {
-    return { pinnedAt: event.createdAt };
+    return { pinnedAt: event.createdAt, pinOrder: event.pinOrder ?? null };
   }
   if (event.kind === "unpinned") {
-    return { pinnedAt: null };
+    return { pinnedAt: null, pinOrder: null };
   }
   if (event.kind === "model_selection_updated") {
     return { selectedModel: event.selectedModel };
@@ -121,6 +121,15 @@ function applyEvent(
     if (isDeferrableUpdate(event.kind)) {
       const pendingUpdates = pendingThreadUpdates.get(event.chatThreadId) ?? [];
       pendingThreadUpdates.set(event.chatThreadId, [...pendingUpdates, event]);
+    }
+    return;
+  }
+
+  // Additive payload on the existing ordering event keeps older readers able
+  // to parse the stream. Manual moves do not change pin time or activity time.
+  if (event.kind === "sort_touched" && event.pinOrder != null) {
+    if (thread.pinnedAt !== null) {
+      threads.set(event.chatThreadId, { ...thread, pinOrder: event.pinOrder });
     }
     return;
   }
