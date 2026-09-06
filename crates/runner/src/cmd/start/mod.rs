@@ -2063,6 +2063,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 &shared.idle_pool,
                 &capacity.budget,
                 &exec_config.pre_spawn_admission,
+                &shared.status,
+                &idle_destroy_tracker,
             )
             .await;
 

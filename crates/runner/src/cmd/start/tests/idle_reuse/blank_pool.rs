@@ -1,7 +1,8 @@
 use super::super::super::*;
 use super::super::support::{
-    context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
-    push_job, seed_workspace_cache_state, shutdown, test_profiles, two_profiles, wait_budget_count,
+    TestParkedIdleCandidateSpec, context_with_session, minimal_context, mock_run_config,
+    mock_run_config_with_overrides, push_job, seed_idle_pool_with_timing,
+    seed_workspace_cache_state, shutdown, test_profiles, two_profiles, wait_budget_count,
     wait_idle_pool_len,
 };
 
@@ -52,6 +53,64 @@ async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution
     );
     assert_eq!(completion.sandbox_id, Some(blank_sandbox_id));
     assert_eq!(calls.workspace_drive_mount_calls(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn full_exact_pool_yields_oldest_aged_capacity_to_one_blank() {
+    let (config, env) = mock_run_config(test_profiles(), 12, 24_576, 5);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let now = std::time::Instant::now();
+    for (reuse_key, idle_for) in [
+        ("oldest-aged", Duration::from_secs(45 * 60)),
+        ("newer-aged", Duration::from_secs(31 * 60)),
+        ("young-1", Duration::from_secs(29 * 60)),
+        ("young-2", Duration::from_secs(20 * 60)),
+        ("young-3", Duration::from_secs(10 * 60)),
+    ] {
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestParkedIdleCandidateSpec {
+                reuse_key,
+                profile_name: "vm0/default",
+                vcpu: 2,
+                memory_mb: 4096,
+                history_generation_run_id: None,
+                parked_at: now - idle_for,
+            },
+        )
+        .await;
+    }
+    assert_eq!(budget.allocated().2, 5);
+    let mut pool_changes = idle_pool.lock().await.subscribe_changes();
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if idle_pool.lock().await.blank_len() == 1 {
+                break;
+            }
+            pool_changes
+                .changed()
+                .await
+                .expect("idle pool change channel should remain open");
+        }
+    })
+    .await
+    .expect("aged exact capacity should become a blank sandbox");
+
+    {
+        let pool = idle_pool.lock().await;
+        assert_eq!(pool.len(), 5);
+        assert_eq!(pool.blank_len(), 1);
+        assert!(!pool.has_reusable("oldest-aged", "vm0/default", &None));
+        assert!(pool.has_reusable("newer-aged", "vm0/default", &None));
+        assert!(pool.has_reusable("young-1", "vm0/default", &None));
+    }
+    assert_eq!(budget.allocated().2, 5);
 
     shutdown(&env, run_handle).await;
 }

@@ -70,6 +70,10 @@ impl IdleDestroyTracker {
         }));
     }
 
+    pub(super) fn notify_reuse_state(&self) {
+        self.reuse_state_notify.notify_one();
+    }
+
     pub(super) async fn close_and_wait(&self) {
         let _ = self.tasks.close();
         self.tasks.wait().await;

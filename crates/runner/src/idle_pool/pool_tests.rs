@@ -67,6 +67,80 @@ fn park_and_take() {
     assert_eq!(pool.len(), 0);
 }
 
+#[tokio::test]
+async fn blank_capacity_yield_selects_only_the_oldest_compatible_aged_exact() {
+    let now = Instant::now();
+    let min_idle_age = Duration::from_secs(30 * 60);
+    let mut pool = IdlePool::new(pool_config(0));
+    assert!(matches!(
+        pool.park_at_for_test(
+            make_blank_candidate("vm0/default", 2, 2048),
+            now - Duration::from_secs(60 * 60),
+        ),
+        ParkResult::Parked
+    ));
+    assert!(matches!(
+        park_at(
+            &mut pool,
+            "wrong-profile",
+            ParkedIdleCandidateBuilder::new("wrong-profile", make_budget_lease(2, 2048))
+                .with_profile_name("vm0/other")
+                .build(),
+            now - Duration::from_secs(50 * 60),
+        ),
+        ParkResult::Parked
+    ));
+    assert!(matches!(
+        park_at(
+            &mut pool,
+            "wrong-resource",
+            make_candidate_for("wrong-resource", 4, 4096),
+            now - Duration::from_secs(50 * 60),
+        ),
+        ParkResult::Parked
+    ));
+    for (reuse_key, idle_for) in [
+        ("young", Duration::from_secs(29 * 60 + 59)),
+        ("boundary", min_idle_age),
+        ("oldest", Duration::from_secs(45 * 60)),
+    ] {
+        assert!(matches!(
+            park_at(
+                &mut pool,
+                reuse_key,
+                make_candidate_for(reuse_key, 2, 2048),
+                now - idle_for,
+            ),
+            ParkResult::Parked
+        ));
+    }
+
+    let revision = pool.status_snapshot().revision;
+    let (oldest, idle_age) = pool
+        .evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048)
+        .expect("oldest compatible exact should yield capacity");
+    assert_eq!(oldest.reuse_key(), "oldest");
+    assert_eq!(idle_age, Duration::from_secs(45 * 60));
+    assert_eq!(pool.status_snapshot().revision, revision + 1);
+    oldest.run().await;
+
+    let (boundary, idle_age) = pool
+        .evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048)
+        .expect("the age boundary should be inclusive");
+    assert_eq!(boundary.reuse_key(), "boundary");
+    assert_eq!(idle_age, min_idle_age);
+    boundary.run().await;
+
+    assert!(
+        pool.evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048,)
+            .is_none(),
+        "blank, young, and incompatible entries must remain"
+    );
+    for job in pool.drain() {
+        job.run().await;
+    }
+}
+
 #[test]
 fn reusable_reservation_is_exclusive_and_restorable() {
     let mut pool = IdlePool::new(pool_config(0));

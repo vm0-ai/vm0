@@ -1,5 +1,5 @@
 use std::collections::{HashMap, hash_map::Entry};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use sandbox::{DeviceRateLimits, SandboxId};
 use tokio::sync::watch;
@@ -295,6 +295,42 @@ impl IdlePool {
             .values()
             .filter(|entry| entry.is_blank())
             .count()
+    }
+
+    /// Remove the oldest compatible exact entry that has been idle long enough
+    /// to yield its capacity to a blank sandbox.
+    ///
+    /// Requiring the same profile, device limits, and resource reservation lets
+    /// the replenisher retain the entry's existing budget lease through physical
+    /// cleanup and transfer it to the replacement without changing admission.
+    pub(crate) fn evict_oldest_exact_for_blank(
+        &mut self,
+        now: Instant,
+        min_idle_age: Duration,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+        vcpu: u32,
+        memory_mb: u32,
+    ) -> Option<(IdleDestroyJob, Duration)> {
+        let (reuse_key, parked_at) = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| {
+                !entry.is_blank()
+                    && entry.profile_name() == profile_name
+                    && entry.device_rate_limits() == device_rate_limits
+                    && entry.budget_lease.vcpu() == vcpu
+                    && entry.budget_lease.memory_mb() == memory_mb
+                    && now.saturating_duration_since(entry.parked_at) >= min_idle_age
+            })
+            .min_by_key(|(reuse_key, entry)| (entry.parked_at, reuse_key.as_str()))
+            .map(|(reuse_key, entry)| (reuse_key.clone(), entry.parked_at))?;
+        let entry = self.entries.remove(&reuse_key)?;
+        self.bump_revision();
+        Some((
+            entry.into_destroy_job(),
+            now.saturating_duration_since(parked_at),
+        ))
     }
 
     pub fn restore_reserved(

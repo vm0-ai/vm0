@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxConfig, SandboxId, SandboxParkOutcome};
@@ -16,7 +17,7 @@ use super::idle_lifecycle::{
     IdleDestroyTracker, SharedIdlePool, set_idle_status_snapshot, spawn_idle_destroy_job,
 };
 use crate::config::ProfileConfig;
-use crate::idle_pool::{ParkResult, ParkedIdleCandidate};
+use crate::idle_pool::{DestroyOutcome, IdleDestroyJob, ParkResult, ParkedIdleCandidate};
 use crate::lifecycle::RunnerMode;
 use crate::pre_spawn_admission::{BackgroundPreSpawnAdmissionLease, PreSpawnAdmission};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
@@ -24,6 +25,7 @@ use crate::status::StatusTracker;
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 const TARGET_PERCENT: usize = 10;
+const EXACT_IDLE_CAPACITY_YIELD_AGE: Duration = Duration::from_secs(30 * 60);
 
 struct BlankPoolPlan {
     profile_name: String,
@@ -48,8 +50,14 @@ struct BlankPrepareInput {
     profile: ProfileConfig,
     factory: SharedFactory,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
-    budget_lease: BudgetLease,
+    budget: BlankPrepareBudget,
     pre_spawn_lease: BackgroundPreSpawnAdmissionLease,
+    idle_destroy_tracker: IdleDestroyTracker,
+}
+
+enum BlankPrepareBudget {
+    Available(BudgetLease),
+    RetiringExact(Box<IdleDestroyJob>),
 }
 
 enum BackgroundStageResult<T, E> {
@@ -60,7 +68,10 @@ enum BackgroundStageResult<T, E> {
 }
 
 pub(super) enum BlankPrepareResult {
-    Ready(Box<ParkedIdleCandidate>),
+    Ready {
+        candidate: Box<ParkedIdleCandidate>,
+        retired_exact: bool,
+    },
     Failed(BlankPrepareFailure),
 }
 
@@ -116,6 +127,8 @@ impl BlankPoolReplenisher {
         idle_pool: &SharedIdlePool,
         budget: &Arc<ResourceBudget>,
         admission: &PreSpawnAdmission,
+        status: &StatusTracker,
+        idle_destroy_tracker: &IdleDestroyTracker,
     ) {
         if !self.attempt_requested || self.task.is_some() || mode != RunnerMode::Running {
             return;
@@ -124,80 +137,123 @@ impl BlankPoolReplenisher {
         let Some(plan) = self.plan.as_ref() else {
             return;
         };
-        let (inventory, total_idle) = {
-            let pool = idle_pool.lock().await;
-            (pool.blank_len(), pool.len())
-        };
-        if inventory >= plan.target {
-            return;
-        }
-        if plan.max_idle > 0 && total_idle >= plan.max_idle {
-            info!(
-                target = plan.target,
-                inventory,
-                total_idle,
-                outcome = "idle_pool_full",
-                "blank sandbox refill suppressed"
-            );
-            return;
-        }
+        let (inventory, pre_spawn_lease, prepare_budget, retired_snapshot) = {
+            let mut pool = idle_pool.lock().await;
+            let inventory = pool.blank_len();
+            let total_idle = pool.len();
+            if inventory >= plan.target {
+                return;
+            }
 
-        let pre_spawn_lease = match admission.try_acquire_background(plan.profile.vcpu) {
-            Ok(Some(lease)) => lease,
-            Ok(None) => {
-                info!(
-                    target = plan.target,
+            let pre_spawn_lease = match admission.try_acquire_background(plan.profile.vcpu) {
+                Ok(Some(lease)) => lease,
+                Ok(None) => {
+                    info!(
+                        target = plan.target,
+                        inventory,
+                        outcome = "pre_spawn_unavailable",
+                        "blank sandbox refill suppressed"
+                    );
+                    return;
+                }
+                Err(error) => {
+                    warn!(
+                        target = plan.target,
+                        inventory,
+                        outcome = "pre_spawn_error",
+                        error = %error,
+                        "blank sandbox refill suppressed"
+                    );
+                    return;
+                }
+            };
+
+            let ordinary_budget = if plan.max_idle > 0 && total_idle >= plan.max_idle {
+                Err("idle_pool_full")
+            } else {
+                match ResourceBudget::try_reserve_lease(
+                    budget,
+                    plan.profile.vcpu,
+                    plan.profile.memory_mb,
+                ) {
+                    Some(lease)
+                        if budget.can_afford(plan.headroom_vcpu, plan.headroom_memory_mb) =>
+                    {
+                        Ok(lease)
+                    }
+                    Some(lease) => {
+                        drop(lease);
+                        Err("headroom_reserved")
+                    }
+                    None => Err("resource_unavailable"),
+                }
+            };
+
+            match ordinary_budget {
+                Ok(lease) => (
                     inventory,
-                    outcome = "pre_spawn_unavailable",
-                    "blank sandbox refill suppressed"
-                );
-                return;
-            }
-            Err(error) => {
-                warn!(
-                    target = plan.target,
-                    inventory,
-                    outcome = "pre_spawn_error",
-                    error = %error,
-                    "blank sandbox refill suppressed"
-                );
-                return;
+                    pre_spawn_lease,
+                    BlankPrepareBudget::Available(lease),
+                    None,
+                ),
+                Err(blocked_by) => {
+                    let Some((job, idle_age)) = pool.evict_oldest_exact_for_blank(
+                        Instant::now(),
+                        EXACT_IDLE_CAPACITY_YIELD_AGE,
+                        &plan.profile_name,
+                        &plan.device_rate_limits,
+                        plan.profile.vcpu,
+                        plan.profile.memory_mb,
+                    ) else {
+                        info!(
+                            target = plan.target,
+                            inventory,
+                            total_idle,
+                            outcome = blocked_by,
+                            aged_exact_eligible = false,
+                            "blank sandbox refill suppressed"
+                        );
+                        return;
+                    };
+                    let snapshot = pool.status_snapshot();
+                    idle_destroy_tracker.notify_reuse_state();
+                    info!(
+                        target = plan.target,
+                        inventory,
+                        total_idle,
+                        blocked_by,
+                        idle_age_seconds = idle_age.as_secs(),
+                        "retiring aged exact sandbox for blank capacity"
+                    );
+                    (
+                        inventory,
+                        pre_spawn_lease,
+                        BlankPrepareBudget::RetiringExact(Box::new(job)),
+                        Some(snapshot),
+                    )
+                }
             }
         };
-        let Some(budget_lease) =
-            ResourceBudget::try_reserve_lease(budget, plan.profile.vcpu, plan.profile.memory_mb)
-        else {
-            info!(
-                target = plan.target,
-                inventory,
-                outcome = "resource_unavailable",
-                "blank sandbox refill suppressed"
-            );
-            return;
-        };
-        if !budget.can_afford(plan.headroom_vcpu, plan.headroom_memory_mb) {
-            info!(
-                target = plan.target,
-                inventory,
-                outcome = "headroom_reserved",
-                "blank sandbox refill suppressed"
-            );
-            return;
+        if let Some(snapshot) = retired_snapshot {
+            set_idle_status_snapshot(status, snapshot).await;
         }
 
         let task_cancel = pre_spawn_lease.cancellation_token();
+        let retired_exact = matches!(&prepare_budget, BlankPrepareBudget::RetiringExact(_));
         let input = BlankPrepareInput {
             profile_name: plan.profile_name.clone(),
             profile: plan.profile.clone(),
             factory: Arc::clone(&plan.factory),
             device_rate_limits: plan.device_rate_limits.clone(),
-            budget_lease,
+            budget: prepare_budget,
             pre_spawn_lease,
+            idle_destroy_tracker: idle_destroy_tracker.clone(),
         };
         info!(
             profile = %input.profile_name,
             target = plan.target,
             inventory,
+            retired_exact,
             "preparing blank sandbox"
         );
         self.task_cancel = Some(task_cancel.clone());
@@ -230,13 +286,16 @@ impl BlankPoolReplenisher {
         idle_destroy_tracker: &IdleDestroyTracker,
     ) {
         let Some(plan) = self.plan.as_ref() else {
-            if let BlankPrepareResult::Ready(candidate) = result {
+            if let BlankPrepareResult::Ready { candidate, .. } = result {
                 destroy_candidate(*candidate, "blank_pool_disabled").await;
             }
             return;
         };
         match result {
-            BlankPrepareResult::Ready(candidate) => {
+            BlankPrepareResult::Ready {
+                candidate,
+                retired_exact,
+            } => {
                 let (park_result, snapshot, inventory) = {
                     let mut pool = idle_pool.lock().await;
                     let result = pool.park(*candidate);
@@ -252,6 +311,7 @@ impl BlankPoolReplenisher {
                         info!(
                             target = plan.target,
                             inventory,
+                            retired_exact,
                             outcome = "parked",
                             "blank sandbox refill completed"
                         );
@@ -263,6 +323,7 @@ impl BlankPoolReplenisher {
                         info!(
                             target = plan.target,
                             inventory,
+                            retired_exact,
                             outcome = "replaced",
                             "blank sandbox refill completed"
                         );
@@ -276,6 +337,7 @@ impl BlankPoolReplenisher {
                         info!(
                             target = plan.target,
                             inventory,
+                            retired_exact,
                             outcome = "pool_rejected",
                             "blank sandbox refill suppressed"
                         );
@@ -318,7 +380,7 @@ impl BlankPoolReplenisher {
             cancel.cancel();
         }
         if let Some(result) = self.wait_for_preparation().await
-            && let BlankPrepareResult::Ready(candidate) = result
+            && let BlankPrepareResult::Ready { candidate, .. } = result
         {
             destroy_candidate(*candidate, "blank_pool_shutdown").await;
         }
@@ -393,10 +455,28 @@ async fn prepare_blank_sandbox(
         profile,
         factory,
         device_rate_limits,
-        budget_lease,
+        budget,
         pre_spawn_lease,
+        idle_destroy_tracker,
     } = input;
+    let retired_exact = matches!(&budget, BlankPrepareBudget::RetiringExact(_));
     let mut pre_spawn_lease = Some(pre_spawn_lease);
+    let budget_lease = match budget {
+        BlankPrepareBudget::Available(lease) => lease,
+        BlankPrepareBudget::RetiringExact(job) => {
+            match retire_exact_before_blank(
+                *job,
+                &cancel,
+                &mut pre_spawn_lease,
+                &idle_destroy_tracker,
+            )
+            .await
+            {
+                Ok(lease) => lease,
+                Err(failure) => return BlankPrepareResult::Failed(failure),
+            }
+        }
+    };
     let sandbox_id = SandboxId::new_v4();
     let config = SandboxConfig {
         id: sandbox_id,
@@ -492,14 +572,17 @@ async fn prepare_blank_sandbox(
     match run_background_stage(sandbox.park(), &cancel, &mut pre_spawn_lease).await {
         BackgroundStageResult::Completed(Ok(SandboxParkOutcome::Reusable)) => {
             drop(pre_spawn_lease.take());
-            BlankPrepareResult::Ready(Box::new(ParkedIdleCandidate::blank(
-                sandbox,
-                factory,
-                budget_lease,
-                sandbox_id,
-                profile_name,
-                device_rate_limits,
-            )))
+            BlankPrepareResult::Ready {
+                candidate: Box::new(ParkedIdleCandidate::blank(
+                    sandbox,
+                    factory,
+                    budget_lease,
+                    sandbox_id,
+                    profile_name,
+                    device_rate_limits,
+                )),
+                retired_exact,
+            }
         }
         BackgroundStageResult::Completed(Ok(SandboxParkOutcome::NonReusable(reason))) => {
             drop(pre_spawn_lease.take());
@@ -531,6 +614,44 @@ async fn prepare_blank_sandbox(
             BlankPrepareResult::Failed(BlankPrepareFailure {
                 stage: "park",
                 error: Some("sandbox park panicked".into()),
+            })
+        }
+    }
+}
+
+async fn retire_exact_before_blank(
+    job: IdleDestroyJob,
+    cancel: &CancellationToken,
+    pre_spawn_lease: &mut Option<BackgroundPreSpawnAdmissionLease>,
+    idle_destroy_tracker: &IdleDestroyTracker,
+) -> Result<BudgetLease, BlankPrepareFailure> {
+    let cleanup = job.run_retaining_lease("blank_pool_aged_exact");
+    tokio::pin!(cleanup);
+    let (cancelled, result) = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            drop(pre_spawn_lease.take());
+            (true, cleanup.await)
+        }
+        result = &mut cleanup => (false, result),
+    };
+    if result.workspace_cache_promoted {
+        idle_destroy_tracker.notify_reuse_state();
+    }
+    if cancelled || cancel.is_cancelled() {
+        drop(result.budget_lease);
+        return Err(BlankPrepareFailure {
+            stage: "retire_exact",
+            error: None,
+        });
+    }
+    match result.outcome {
+        DestroyOutcome::Completed => Ok(result.budget_lease),
+        DestroyOutcome::Uncertain => {
+            drop(result.budget_lease);
+            Err(BlankPrepareFailure {
+                stage: "retire_exact",
+                error: Some("aged exact sandbox cleanup was uncertain".into()),
             })
         }
     }
@@ -617,6 +738,7 @@ async fn destroy_candidate(candidate: ParkedIdleCandidate, context: &'static str
 mod tests {
     use super::*;
 
+    use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
     use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
 
     fn profile(vcpu: u32, memory_mb: u32) -> ProfileConfig {
@@ -659,7 +781,14 @@ mod tests {
         let mut replenisher = BlankPoolReplenisher::new(&profiles, &factories, &budget, 0, None);
 
         replenisher
-            .maybe_start(RunnerMode::Running, &idle_pool, &budget, &admission)
+            .maybe_start(
+                RunnerMode::Running,
+                &idle_pool,
+                &budget,
+                &admission,
+                &status,
+                &idle_destroy_tracker,
+            )
             .await;
         assert!(replenisher.is_preparing());
         let result = replenisher
@@ -681,6 +810,260 @@ mod tests {
         }
         assert_eq!(budget.allocated(), (0, 0, 0));
         assert!(admission.try_acquire_background(4).unwrap().is_some());
+        replenisher.shutdown().await;
+        idle_destroy_tracker.close_and_wait().await;
+    }
+
+    #[tokio::test]
+    async fn aged_exact_capacity_is_converted_to_blanks_one_at_a_time() {
+        let mut profiles = BTreeMap::new();
+        profiles.insert("vm0/default".to_owned(), profile(2, 4096));
+        let blank_factory: SharedFactory =
+            Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new()));
+        let mut factories = BTreeMap::new();
+        factories.insert("vm0/default".to_owned(), (blank_factory, true));
+        let budget = Arc::new(ResourceBudget::new(32, 65_536, 1.0, 0));
+        let mut pool = IdlePool::new_with_parking_gate(
+            IdlePoolConfig { max_idle: 2 },
+            ParkingGate::new_open(),
+        );
+        let exact_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+        exact_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let exact_factory: SharedFactory = Arc::new(Box::new(
+            sandbox_mock::MockSandboxFactory::with_overrides(exact_overrides),
+        ));
+        let now = Instant::now();
+        for (reuse_key, idle_for) in [
+            ("older-exact", Duration::from_secs(40 * 60)),
+            ("newer-exact", Duration::from_secs(30 * 60)),
+        ] {
+            let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+            let candidate = ParkedIdleCandidateBuilder::new(reuse_key, lease)
+                .with_factory(Arc::clone(&exact_factory))
+                .build();
+            assert!(matches!(
+                pool.park_at_for_test(candidate, now - idle_for),
+                ParkResult::Parked
+            ));
+        }
+        let idle_pool = Arc::new(tokio::sync::Mutex::new(pool));
+        let temp = tempfile::tempdir().unwrap();
+        let status_path = temp.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 2, None, None);
+        let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
+        let idle_destroy_tracker = IdleDestroyTracker::new(Arc::clone(&reuse_state_notify));
+        let admission = PreSpawnAdmission::new(2).unwrap();
+        let mut replenisher = BlankPoolReplenisher::new(&profiles, &factories, &budget, 2, None);
+
+        replenisher
+            .maybe_start(
+                RunnerMode::Running,
+                &idle_pool,
+                &budget,
+                &admission,
+                &status,
+                &idle_destroy_tracker,
+            )
+            .await;
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(2))
+            .await
+            .expect("first exact destroy should start");
+        tokio::time::timeout(Duration::from_secs(2), reuse_state_notify.notified())
+            .await
+            .expect("exact removal should request an immediate heartbeat");
+        assert_eq!(idle_pool.lock().await.held_reuse_keys(), ["newer-exact"]);
+        let status_json = tokio::fs::read_to_string(status_path).await.unwrap();
+        assert!(!status_json.contains("older-exact"));
+        assert!(status_json.contains("newer-exact"));
+
+        replenisher.request_attempt();
+        replenisher
+            .maybe_start(
+                RunnerMode::Running,
+                &idle_pool,
+                &budget,
+                &admission,
+                &status,
+                &idle_destroy_tracker,
+            )
+            .await;
+        assert_eq!(idle_pool.lock().await.held_reuse_keys(), ["newer-exact"]);
+
+        destroy_gate.release_many(1);
+        let first = replenisher.wait_for_preparation().await.unwrap();
+        replenisher
+            .finish_preparation(first, &idle_pool, &status, &idle_destroy_tracker)
+            .await;
+        assert_eq!(idle_pool.lock().await.blank_len(), 1);
+
+        replenisher
+            .maybe_start(
+                RunnerMode::Running,
+                &idle_pool,
+                &budget,
+                &admission,
+                &status,
+                &idle_destroy_tracker,
+            )
+            .await;
+        destroy_gate
+            .wait_entered(2, Duration::from_secs(2))
+            .await
+            .expect("second exact destroy should start only after the first conversion");
+        assert_eq!(idle_pool.lock().await.blank_len(), 1);
+
+        destroy_gate.release_many(1);
+        let second = replenisher.wait_for_preparation().await.unwrap();
+        replenisher
+            .finish_preparation(second, &idle_pool, &status, &idle_destroy_tracker)
+            .await;
+        let mut pool = idle_pool.lock().await;
+        assert_eq!(pool.len(), 2);
+        assert_eq!(pool.blank_len(), 2);
+        let destroy = pool.drain();
+        drop(pool);
+        for job in destroy {
+            job.run().await;
+        }
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        replenisher.shutdown().await;
+        idle_destroy_tracker.close_and_wait().await;
+    }
+
+    #[tokio::test]
+    async fn uncertain_aged_exact_cleanup_does_not_create_a_blank() {
+        let mut profiles = BTreeMap::new();
+        profiles.insert("vm0/default".to_owned(), profile(2, 4096));
+        let blank_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let blank_factory: SharedFactory = Arc::new(Box::new(
+            sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&blank_overrides)),
+        ));
+        let mut factories = BTreeMap::new();
+        factories.insert("vm0/default".to_owned(), (blank_factory, true));
+        let budget = Arc::new(ResourceBudget::new(12, 24_576, 1.0, 0));
+        let mut pool = IdlePool::new_with_parking_gate(
+            IdlePoolConfig { max_idle: 1 },
+            ParkingGate::new_open(),
+        );
+        let exact_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        exact_overrides.push_destroy_panic("simulated aged exact destroy panic");
+        let exact_factory: SharedFactory = Arc::new(Box::new(
+            sandbox_mock::MockSandboxFactory::with_overrides(exact_overrides),
+        ));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("aged-exact", lease)
+            .with_factory(exact_factory)
+            .build();
+        assert!(matches!(
+            pool.park_at_for_test(candidate, Instant::now() - EXACT_IDLE_CAPACITY_YIELD_AGE,),
+            ParkResult::Parked
+        ));
+        let idle_pool = Arc::new(tokio::sync::Mutex::new(pool));
+        let temp = tempfile::tempdir().unwrap();
+        let status = StatusTracker::new(temp.path().join("status.json"), 1, None, None);
+        let idle_destroy_tracker = IdleDestroyTracker::new(Arc::new(tokio::sync::Notify::new()));
+        let admission = PreSpawnAdmission::new(2).unwrap();
+        let mut replenisher = BlankPoolReplenisher::new(&profiles, &factories, &budget, 1, None);
+
+        replenisher
+            .maybe_start(
+                RunnerMode::Running,
+                &idle_pool,
+                &budget,
+                &admission,
+                &status,
+                &idle_destroy_tracker,
+            )
+            .await;
+        let result = replenisher.wait_for_preparation().await.unwrap();
+        assert!(matches!(
+            result,
+            BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "retire_exact",
+                error: Some(_),
+            })
+        ));
+        assert!(blank_overrides.create_configs().is_empty());
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        assert_eq!(idle_pool.lock().await.len(), 0);
+        replenisher.shutdown().await;
+        idle_destroy_tracker.close_and_wait().await;
+    }
+
+    #[tokio::test]
+    async fn foreground_admission_preempts_blank_conversion_during_exact_destroy() {
+        let mut profiles = BTreeMap::new();
+        profiles.insert("vm0/default".to_owned(), profile(2, 4096));
+        let blank_factory: SharedFactory =
+            Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new()));
+        let mut factories = BTreeMap::new();
+        factories.insert("vm0/default".to_owned(), (blank_factory, true));
+        let budget = Arc::new(ResourceBudget::new(12, 24_576, 1.0, 0));
+        let mut pool = IdlePool::new_with_parking_gate(
+            IdlePoolConfig { max_idle: 1 },
+            ParkingGate::new_open(),
+        );
+        let exact_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+        exact_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let exact_factory: SharedFactory = Arc::new(Box::new(
+            sandbox_mock::MockSandboxFactory::with_overrides(exact_overrides),
+        ));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkedIdleCandidateBuilder::new("aged-exact", lease)
+            .with_factory(exact_factory)
+            .build();
+        assert!(matches!(
+            pool.park_at_for_test(candidate, Instant::now() - EXACT_IDLE_CAPACITY_YIELD_AGE,),
+            ParkResult::Parked
+        ));
+        let idle_pool = Arc::new(tokio::sync::Mutex::new(pool));
+        let temp = tempfile::tempdir().unwrap();
+        let status = StatusTracker::new(temp.path().join("status.json"), 1, None, None);
+        let idle_destroy_tracker = IdleDestroyTracker::new(Arc::new(tokio::sync::Notify::new()));
+        let admission = PreSpawnAdmission::new(2).unwrap();
+        let mut replenisher = BlankPoolReplenisher::new(&profiles, &factories, &budget, 1, None);
+
+        replenisher
+            .maybe_start(
+                RunnerMode::Running,
+                &idle_pool,
+                &budget,
+                &admission,
+                &status,
+                &idle_destroy_tracker,
+            )
+            .await;
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(2))
+            .await
+            .expect("aged exact destroy should start");
+
+        let foreground_cancel = CancellationToken::new();
+        let foreground = tokio::time::timeout(
+            Duration::from_secs(2),
+            admission.acquire(2, &foreground_cancel),
+        )
+        .await
+        .expect("foreground admission should not wait for exact destroy")
+        .unwrap();
+        assert!(replenisher.is_preparing());
+        assert_eq!(budget.allocated().2, 1);
+
+        destroy_gate.release_many(1);
+        let result = replenisher.wait_for_preparation().await.unwrap();
+        assert!(matches!(
+            result,
+            BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "retire_exact",
+                error: None,
+            })
+        ));
+        drop(foreground);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        assert_eq!(idle_pool.lock().await.len(), 0);
         replenisher.shutdown().await;
         idle_destroy_tracker.close_and_wait().await;
     }
