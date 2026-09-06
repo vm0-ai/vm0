@@ -124,8 +124,8 @@ async fn run_forwarder(
                     let delivery_id = local_active_input_delivery_id(run_id, entry.sequence);
                     let disposition = forward_with_retry(
                         run_id,
-                        &delivery_id,
-                        &entry.text,
+                        delivery_id,
+                        entry.text,
                         DeliveryMode::Local,
                         &control,
                         &job_cancel,
@@ -155,8 +155,8 @@ async fn run_forwarder(
                     } else {
                         let disposition = forward_with_retry(
                             run_id,
-                            &delivery_id,
-                            &prompt,
+                            delivery_id.clone(),
+                            prompt,
                             DeliveryMode::Api,
                             &control,
                             &job_cancel,
@@ -227,14 +227,14 @@ async fn run_forwarder(
 
 async fn forward_with_retry(
     run_id: RunId,
-    delivery_id: &str,
-    text: &str,
+    delivery_id: String,
+    text: String,
     mode: DeliveryMode,
     control: &GuestProcessControlHandle,
     job_cancel: &CancellationToken,
     stop: &CancellationToken,
 ) -> ForwardDisposition {
-    let payload = match encode_active_input(delivery_id, text) {
+    let payload = match encode_active_input(&delivery_id, &text) {
         Ok(payload) if payload.len() <= ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES => payload,
         Ok(_) => {
             warn!(
@@ -254,8 +254,9 @@ async fn forward_with_retry(
             return ForwardDisposition::Stop;
         }
     };
+    drop(text);
     let prepared = PreparedActiveInput {
-        delivery_id: delivery_id.to_owned(),
+        delivery_id,
         payload,
     };
     let mut warn_retryable_failure = true;
