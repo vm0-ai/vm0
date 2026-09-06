@@ -610,6 +610,33 @@ app/document/preferences hashes, clipboard and callback handlers were preserved.
 Full parity, both production identities, signed update/rollback validation and
 Ethan's final manual acceptance remain open.
 
+### Static recording duration and paused stop
+
+A real static-area capture with the downloaded `131de6bd` recorder exposed a
+truncated video: five seconds without audio produced one 33-millisecond frame
+and a reported duration of zero. With system audio, the same static crop kept
+20.73 seconds of audio but still only 33 milliseconds of video. ScreenCaptureKit
+does not necessarily send another complete frame when the picture is unchanged.
+
+The recorder now measures elapsed capture time on the host clock, subtracts both
+completed and ongoing pauses, freezes the endpoint on stop or source loss, and
+holds its last complete picture through that endpoint. It retains one frame and
+drains pending sample callbacks before finalizing the writer.
+
+An independently built release helper passed all 124 package tests and
+[real recording acceptance](https://cdn.vm0.io/artifacts/5pbnf0vw1l.json): a static
+area lasted 5.855 seconds; pause/resume excluded the pause; stopping during a pause
+retained 2.642 seconds; discard removed the video and click track. Closing the
+owned captured window froze elapsed time at 5.629 seconds even when finalization
+was delayed. All five retained movies decoded fully with their original timebase,
+and video duration matched the reported time within two milliseconds.
+
+A continuous 880 Hz system-audio take retained the tone in its final decoded
+samples, but audio ended about 213 milliseconds before video. End synchronization
+remains open. These results use a separate acceptance parent and locally built
+release helper; they do not establish a new packaged Desktop/upload acceptance,
+microphone or multi-display support, or production identity/signing acceptance.
+
 ### Configurable preview environment
 
 The native Environment tab accepts the deployed App URL, including its Vercel

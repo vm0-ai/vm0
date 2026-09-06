@@ -425,7 +425,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var microphoneInput: AVAssetWriterInput?
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
-    private var latestSampleAt: CMTime?
+    private var stoppedCaptureSeconds: Double?
+    /// Keep one complete frame to hold a static picture through the stop time.
+    /// ScreenCaptureKit can deliver no further pictures for an unchanged area.
+    private var lastVideoSample: CMSampleBuffer?
     /// Media time of the last sample written to each track, keyed by the
     /// writer input, so a sample that would not advance its track is refused
     /// before the writer refuses it and fails.
@@ -822,6 +825,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         videoInput = nil
         systemAudioInput = nil
         microphoneInput = nil
+        lastVideoSample = nil
         lock.unlock()
 
         if let captureStream {
@@ -858,6 +862,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             _ = semaphore.wait(timeout: .now() + 10)
         }
 
+        // A callback that was already appending must finish before the final
+        // frame and markAsFinished touch the same writer input.
+        sampleQueue.sync {}
         lock.lock()
         let assetWriter = writer
         let video = videoInput
@@ -865,19 +872,26 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let microphone = microphoneInput
         let url = outputURL
         let duration = elapsedSecondsLocked()
+        let lastFrame = lastVideoSample
+        let start = sessionStartedAt
+        let lastFrameSeconds = video.flatMap { lastWrittenSeconds[ObjectIdentifier($0)] }
         let timeline = clickTimeline
         let startedAt = startedAtUnixMs
         writer = nil
         videoInput = nil
         systemAudioInput = nil
         microphoneInput = nil
+        lastVideoSample = nil
         lock.unlock()
 
+        var writerFailure = appendFinalVideoFrame(
+            lastFrame, to: video, writer: assetWriter, start: start,
+            lastFrameSeconds: lastFrameSeconds, duration: duration
+        )
         video?.markAsFinished()
         systemAudio?.markAsFinished()
         microphone?.markAsFinished()
 
-        var writerFailure: String?
         if let assetWriter {
             let semaphore = DispatchSemaphore(value: 0)
             assetWriter.finishWriting {
@@ -933,6 +947,35 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             result["failure"] = ["code": failure.code, "message": failure.message]
         }
         return result
+    }
+
+    private func appendFinalVideoFrame(
+        _ sample: CMSampleBuffer?, to input: AVAssetWriterInput?, writer: AVAssetWriter?,
+        start: CMTime?, lastFrameSeconds: Double?, duration: Double
+    ) -> String? {
+        guard let sample, let input, let writer, let start, let lastFrameSeconds else {
+            return nil
+        }
+        let frameDuration = CMTime(value: 1, timescale: captureFrameRate)
+        let finalFrameSeconds = duration - frameDuration.seconds
+        guard finalFrameSeconds > lastFrameSeconds else { return nil }
+        guard let finalFrame = retimedSampleBuffer(
+            sample,
+            to: CMTimeAdd(
+                start, CMTime(seconds: finalFrameSeconds, preferredTimescale: start.timescale)
+            ),
+            duration: frameDuration
+        ) else {
+            return "The final screen frame could not be timed"
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !input.isReadyForMoreMediaData && writer.status == .writing && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        guard input.isReadyForMoreMediaData, input.append(finalFrame) else {
+            return "The final screen frame could not be written: \(writerFailureMessage(writer))"
+        }
+        return nil
     }
 
     private func writeClickTrack(
@@ -1017,6 +1060,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         defer { lock.unlock() }
         switch RecorderTransitionPolicy.next(from: state, command: command) {
         case .success(let next):
+            if command == .stop, stoppedCaptureSeconds == nil {
+                stoppedCaptureSeconds = captureSecondsNowLocked()
+            }
             state = next
         case .failure(let rejection):
             throw HelperFailure(code: rejection.code, message: rejection.message)
@@ -1059,12 +1105,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     }
 
     private func elapsedSecondsLocked() -> Double {
-        guard let start = sessionStartedAt, let latest = latestSampleAt else {
-            return 0
-        }
-        let captureSeconds = max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
-        // Report how long the recording is, not how long ago it started, so a
-        // paused capture stops advancing its clock.
+        guard let captureSeconds = stoppedCaptureSeconds ?? captureSecondsNowLocked() else { return 0 }
+        // Idle pictures still occupy recording time; an open pause does not.
         return max(0, captureSeconds - pauseTimeline.pausedSecondsBefore(captureSeconds))
     }
 
@@ -1114,6 +1156,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         if externalStop == nil {
             externalStop = (reason, code, message)
+            stoppedCaptureSeconds = stoppedCaptureSeconds ?? captureSecondsNowLocked()
         }
         let captureStream = stream
         stream = nil
@@ -1257,7 +1300,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         if input.append(retimed) {
             let extent = type == .screen || !duration.isValid ? 0 : max(0, duration.seconds)
             lock.lock()
-            latestSampleAt = timestamp
+            if type == .screen {
+                lastVideoSample = sampleBuffer
+            }
             lastWrittenSeconds[ObjectIdentifier(input)] = mediaSeconds
             lastWrittenEndSeconds[ObjectIdentifier(input)] = mediaSeconds + extent
             lastWrittenDurationSeconds[ObjectIdentifier(input)] =

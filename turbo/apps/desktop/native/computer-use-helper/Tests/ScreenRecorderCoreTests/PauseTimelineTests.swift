@@ -58,6 +58,21 @@ struct PauseTimelineTests {
         #expect(timeline.mediaTime(forCaptureTime: 12) == nil)
     }
 
+    @Test
+    func stoppingDuringAPauseKeepsOnlyRecordedTime() {
+        var timeline = PauseTimeline()
+        timeline.pause(at: 2)
+        timeline.resume(at: 5)
+        timeline.pause(at: 10)
+
+        #expect(timeline.pausedSecondsBefore(1) == 0)
+        #expect(10 - timeline.pausedSecondsBefore(10) == 7)
+        #expect(16 - timeline.pausedSecondsBefore(16) == 7)
+        #expect(timeline.mediaTime(forCaptureTime: 16) == nil)
+        timeline.resume(at: 20)
+        #expect(timeline.mediaTime(forCaptureTime: 22) == 9)
+    }
+
     /// A repeated pause must not open a second span, or the same stretch would
     /// be subtracted twice and later frames would land before earlier ones.
     @Test

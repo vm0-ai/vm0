@@ -49,14 +49,9 @@ public struct PauseTimeline: Equatable, Sendable {
     public func pausedSecondsBefore(_ seconds: Double) -> Double {
         var total = 0.0
         for span in spans {
-            guard let end = span.end else {
-                continue
-            }
-            if end <= seconds {
+            let end = min(span.end ?? seconds, seconds)
+            if span.start < end {
                 total += end - span.start
-            } else if span.start < seconds {
-                // Only the part of the span that has already elapsed counts.
-                total += seconds - span.start
             }
         }
         return total
