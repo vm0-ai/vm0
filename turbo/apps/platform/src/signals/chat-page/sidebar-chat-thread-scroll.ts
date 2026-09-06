@@ -16,6 +16,11 @@ import {
   type SidebarChatThreadItemSignals,
 } from "./sidebar-chat-thread-item.ts";
 
+import {
+  createPinnedThreadDragSignals,
+  type PinnedThreadDragSignals,
+} from "./chat-thread-pin-order.ts";
+
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 const CHAT_THREAD_VIRTUAL_FALLBACK_WINDOW_SIZE = 100;
 
@@ -35,6 +40,7 @@ export interface ScrollToThreadRequest {
 }
 
 export interface SidebarChatThreadScrollSignals {
+  readonly pinReorder: PinnedThreadDragSignals;
   readonly isScrolled$: Computed<boolean>;
   readonly window$: Computed<Promise<SidebarChatThreadWindow>>;
   readonly setScrollMetrics$: Command<void, [SidebarChatThreadScrollMetrics]>;
@@ -347,6 +353,7 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
   );
 
   return {
+    pinReorder: createPinnedThreadDragSignals(),
     isScrolled$: dom.isScrolled$,
     window$: createSidebarChatThreadWindowSignal(dom),
     setScrollMetrics$: dom.setScrollMetrics$,

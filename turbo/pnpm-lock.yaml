@@ -972,6 +972,9 @@ importers:
 
   packages/core:
     dependencies:
+      fractional-indexing:
+        specifier: ^3.4.0
+        version: 3.4.0
       '@okouai/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
@@ -10450,7 +10453,13 @@ packages:
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
+  fractional-indexing@3.4.0:
+    resolution: {integrity: sha512-8J3glhz2rrpKG6KmI7wmJo3zH1VjeOpN+vTJSw1fOyO+Viqq3zX6/5NGh6oaZB2qIAYdOYuu5Dz9xp4faOO0Pg==}
+    engines: {node: ^14.13.1 || >=16.0.0}
+
 snapshots:
+
+  fractional-indexing@3.4.0: {}
 
   '@ably/msgpack-js@0.4.1':
     dependencies:
