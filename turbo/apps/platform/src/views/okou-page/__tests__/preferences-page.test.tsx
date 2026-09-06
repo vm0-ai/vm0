@@ -49,21 +49,6 @@ test("Debug preferences restore, change, and reset the voice input model", async
   expect(updates).toContainEqual({ voiceInputModel: null });
 });
 
-test("Debug preferences tolerate an older API without a voice model preference", async () => {
-  mockPreferences();
-  await setupPage({
-    context,
-    path: "/?settings=debug",
-    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-  });
-  const picker = await screen.findByRole("combobox", {
-    name: "Voice input model",
-  });
-  await waitFor(() => {
-    return expect(picker).toHaveTextContent("Default (Gemini 3.6 Flash)");
-  });
-});
-
 test("Voice model selection is hidden while Debug is disabled", async () => {
   mockPreferences({ voiceInputModel: "google/gemini-3.8-flash" });
   await setupPage({
@@ -89,6 +74,7 @@ function defaultPreferences(): UserPreferencesResponse {
     theme: "system",
     colorTheme: "blue-horizon",
     captureNetworkBodiesRemaining: 0,
+    voiceInputModel: null,
   };
 }
 

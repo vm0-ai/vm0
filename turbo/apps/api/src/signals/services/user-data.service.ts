@@ -262,7 +262,7 @@ function mergeUserPreferences(
     colorTheme: preferences.colorTheme ?? existing.colorTheme ?? null,
     voiceInputModel:
       preferences.voiceInputModel === undefined
-        ? (existing.voiceInputModel ?? null)
+        ? existing.voiceInputModel
         : preferences.voiceInputModel,
     captureNetworkBodiesRemaining:
       preferences.captureNetworkBodiesRemaining ??

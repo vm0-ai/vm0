@@ -5,7 +5,7 @@ import { updateUserPreference$, userPreferences$ } from "./user-preferences.ts";
 
 export const voiceInputModelPreference$ = computed(async (get) => {
   const preferences = await get(userPreferences$);
-  return preferences.voiceInputModel ?? null;
+  return preferences.voiceInputModel;
 });
 
 export const updateVoiceInputModelPreference$ = command(

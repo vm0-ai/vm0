@@ -87,8 +87,7 @@ export const userPreferencesResponseSchema = z.object({
   theme: themePreferenceSchema.nullable(),
   colorTheme: colorThemeSchema.nullable(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
-  // Optional while an updated app can still reach the previous API release.
-  voiceInputModel: z.string().nullable().optional(),
+  voiceInputModel: z.string().nullable(),
 });
 
 export type UserPreferencesResponse = z.infer<

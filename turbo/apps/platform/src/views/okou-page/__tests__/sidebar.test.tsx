@@ -1057,6 +1057,7 @@ test("Keep pin management usable with many pinned agents", async () => {
       theme: "system",
       colorTheme: "blue-horizon",
       captureNetworkBodiesRemaining: 0,
+      voiceInputModel: null,
     });
   });
 
