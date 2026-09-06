@@ -30,6 +30,10 @@ import {
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
+import {
+  VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS,
+  type VoiceIoEditorContext,
+} from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
@@ -216,6 +220,7 @@ export interface WorkflowComposerSignals {
     [OpenComposerTemplatePickerIntent]
   >;
   readonly insertText$: Command<void, [string]>;
+  readonly readVoiceContext$: Command<VoiceIoEditorContext, []>;
   readonly appendText$: Command<void, [string]>;
   readonly selectOrAppendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
@@ -2209,6 +2214,31 @@ function createSuggestionInsertionCommands(
 }
 
 function createInsertTextCommands(editor: Editor) {
+  const readVoiceContext$ = command((): VoiceIoEditorContext => {
+    const { doc, selection } = editor.state;
+    const { from, to } = selection;
+    const limit = VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS;
+    const leafText = (node: ProseMirrorNode): string => {
+      if (node.type.name === AGENT_MENTION_NODE_NAME) {
+        const name: unknown = node.attrs.name;
+        if (typeof name !== "string") {
+          throw new Error("Agent mention name is invalid");
+        }
+        return `@${name}`;
+      }
+      if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
+        return `@${chatThreadMentionAttributes(node).title}`;
+      }
+      return node.type.name === "hardBreak" ? "\n" : "";
+    };
+    return {
+      before: doc.textBetween(0, from, "\n", leafText).slice(-limit),
+      selected: doc.textBetween(from, to, "\n", leafText).slice(0, limit),
+      after: doc
+        .textBetween(to, doc.content.size, "\n", leafText)
+        .slice(0, limit),
+    };
+  });
   const insertText$ = command((_context, value: string) => {
     const { from, to } = editor.state.selection;
     const transaction = editor.state.tr.insertText(value, from, to);
@@ -2291,6 +2321,7 @@ function createInsertTextCommands(editor: Editor) {
   });
 
   return {
+    readVoiceContext$,
     insertText$,
     insertPromptMarkdown$,
     appendText$,

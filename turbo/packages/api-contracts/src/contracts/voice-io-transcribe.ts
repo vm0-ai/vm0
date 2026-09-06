@@ -8,10 +8,26 @@ import { voiceIoSttQuotaErrorSchema } from "./voice-io-stt";
 const c = initContract();
 
 export const VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS = 8_000;
+export const VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS = 1_000;
 export const VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS = 90;
 // The 300-second request limit and 45-second minimum safe chunk allow at most
 // six chunks. The server enforces this independently of the browser chunker.
 export const VOICE_IO_TRANSCRIBE_MAX_FILES = 6;
+
+export const voiceIoEditorContextSchema = z
+  .object({
+    before: z.string().max(VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS),
+    selected: z.string().max(VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS),
+    after: z.string().max(VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS),
+  })
+  .strict();
+
+export type VoiceIoEditorContext = z.infer<typeof voiceIoEditorContextSchema>;
+
+export interface VoiceIoTranscribeContext {
+  readonly lastAssistantMessage?: string;
+  readonly editorContext?: VoiceIoEditorContext;
+}
 
 export const voiceIoTranscribeResponseSchema = z
   .object({

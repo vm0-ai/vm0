@@ -3,6 +3,8 @@ import {
   VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
   VOICE_IO_TRANSCRIBE_MAX_FILES,
   voiceIoTranscribeContract,
+  voiceIoEditorContextSchema,
+  type VoiceIoEditorContext,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -25,6 +27,7 @@ import {
   sttDailyPolicy$,
 } from "../services/voice-io-post.service";
 import { transcribeVoiceDraft$ } from "../services/voice-io-transcribe.service";
+import { safeJsonParse } from "../utils";
 
 const ALLOWED_VOICE_DRAFT_MIME_TYPES = [
   "audio/wav",
@@ -79,6 +82,20 @@ function lastAssistantReference(formData: FormData): string | undefined | null {
   return reference;
 }
 
+function editorReference(
+  formData: FormData,
+): VoiceIoEditorContext | undefined | null {
+  const value = formData.get("editorContext");
+  if (value === null) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const parsed = voiceIoEditorContextSchema.safeParse(safeJsonParse(value));
+  return parsed.success ? parsed.data : null;
+}
+
 const postVoiceIoTranscribe$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!(await get(voiceIoTranscribeEnabled$))) {
@@ -125,6 +142,10 @@ const postVoiceIoTranscribe$ = command(
     const reference = lastAssistantReference(formData);
     if (reference === null) {
       return badRequest("Invalid last assistant message");
+    }
+    const editorContext = editorReference(formData);
+    if (editorContext === null) {
+      return badRequest("Invalid editor context");
     }
 
     const totalBytes = files.reduce((total, file) => {
@@ -186,6 +207,7 @@ const postVoiceIoTranscribe$ = command(
         files,
         longRecording,
         ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
+        ...(editorContext === undefined ? {} : { editorContext }),
       },
       signal,
     );
