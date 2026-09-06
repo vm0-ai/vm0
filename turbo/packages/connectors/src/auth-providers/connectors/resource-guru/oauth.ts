@@ -167,7 +167,9 @@ async function fetchResourceGuruUserInfo(
     .parse(await response.json());
 
   const name = [data.first_name, data.last_name]
-    .map((part) => part.trim())
+    .map((part) => {
+      return part.trim();
+    })
     .filter(Boolean)
     .join(" ");
 
