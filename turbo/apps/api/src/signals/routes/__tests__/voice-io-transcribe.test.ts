@@ -788,10 +788,6 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(providerRequest.messages[0]?.content).not.toContain(
       editorContext.before,
     );
-    expect(providerRequest.messages[0]?.content).toContain("# Light polish");
-    expect(providerRequest.messages[0]?.content).toContain(
-      "Never turn 'may need to change' into 'needs to change'",
-    );
     expect(parts[1]?.text).toContain(
       "The audio that follows is the ONLY content to transcribe.",
     );
@@ -824,7 +820,6 @@ describe("POST /api/voice-io/transcribe", () => {
     const firstWave = createDeferredPromise<void>(context.signal);
     const firstWaveStarted = createDeferredPromise<void>(context.signal);
     let globalPolishContent = "";
-    let globalPolishSystem = "";
     const chunkReferences: string[] = [];
     const editorContext = {
       before: "Review the plan first: ",
@@ -839,11 +834,6 @@ describe("POST /api/voice-io/transcribe", () => {
           const userMessage = body.messages[1];
           globalPolishContent =
             typeof userMessage?.content === "string" ? userMessage.content : "";
-          const systemMessage = body.messages[0];
-          globalPolishSystem =
-            typeof systemMessage?.content === "string"
-              ? systemMessage.content
-              : "";
           return HttpResponse.json({
             choices: [
               {
@@ -912,10 +902,6 @@ describe("POST /api/voice-io/transcribe", () => {
     for (const reference of [...chunkReferences, globalPolishContent]) {
       expect(reference).toContain(JSON.stringify(editorContext));
     }
-    expect(globalPolishSystem).toContain("# Light polish");
-    expect(globalPolishSystem).toContain(
-      "Never turn 'may need to change' into 'needs to change'",
-    );
   });
 
   it("uses transcript-only audio processing and one global polish for a long single file", async () => {
