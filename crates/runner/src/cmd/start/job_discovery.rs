@@ -2553,7 +2553,9 @@ async fn try_reuse_from_pool(
         Some(exact) => Some(exact),
         None if !claimed_workspace_cache_reuse_key => {
             let mut pool = ctx.idle_pool.lock().await;
-            pool.reserve_blank(profile_name, device_rate_limits)
+            reuse_key
+                .and_then(|reuse_key| pool.take_reserved(reuse_key))
+                .or_else(|| pool.reserve_blank(profile_name, device_rate_limits))
                 .map(|entry| (entry, pool.status_snapshot()))
         }
         None => None,
