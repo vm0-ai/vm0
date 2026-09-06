@@ -57,8 +57,10 @@ struct DesktopView: View {
         .font(.system(size: 64, weight: .light)).foregroundStyle(.orange).padding(.top, 28)
         VStack(spacing: 8) {
           Text(model.auth.signingIn ? "Signing in…" : statusLabel).font(.title.weight(.semibold))
-          Text(ProcessInfo.processInfo.hostName.replacingOccurrences(of: ".local", with: ""))
-            .foregroundStyle(.secondary)
+          Text(
+            DesktopHostName.read(fallback: model.configuration.name).replacingOccurrences(
+              of: #"\.local$"#, with: "", options: [.regularExpression, .caseInsensitive])
+          ).foregroundStyle(.secondary)
           if let error = model.host.lastError {
             Text(error).foregroundStyle(.orange).textSelection(.enabled)
           }

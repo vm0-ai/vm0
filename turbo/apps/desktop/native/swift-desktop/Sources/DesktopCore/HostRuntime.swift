@@ -158,7 +158,7 @@ public final class HostRuntime {
   private func runtimeBody() async throws -> JSON {
     .object([
       "installationId": .string(installationID),
-      "hostName": .string(ProcessInfo.processInfo.hostName),
+      "hostName": .string(DesktopHostName.read(fallback: api.configuration.name)),
       "appVersion": .string(api.configuration.version),
       "osVersion": .string(ProcessInfo.processInfo.operatingSystemVersionString),
       "supportedCapabilities": .strings(capabilities()), "permissions": try await permissions(),

@@ -8,7 +8,7 @@ import Testing
     // The fake boundary is a real HTTP server and a real JSON-lines process.
     // DesktopAPI, HostRuntime and ComputerCommands all use their production paths.
     let script = """
-      import json, sys, threading
+      import json, socket, sys, threading
       from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
       from socketserver import TCPServer
       done = threading.Event()
@@ -16,6 +16,7 @@ import Testing
       issued = False
       permission_calls = 0
       registrations = 0
+      registered_host_name = None
       fail_permissions = sys.argv[1] == 'true'
       class Handler(BaseHTTPRequestHandler):
           def log_message(self, *args): pass
@@ -34,10 +35,11 @@ import Testing
                   else: self.respond(completed)
               else: self.respond({'userId':'user-test','email':'test@example.invalid'})
           def do_POST(self):
-              global issued,completed,registrations
+              global issued,completed,registrations,registered_host_name
               body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))) or b'{}')
               if self.path == '/api/computer-use/hosts/start':
                   registrations+=1
+                  registered_host_name=body.get('hostName')
                   if registrations==1: self.respond({},503);return
                   if self.headers.get('Authorization') != 'Bearer user-token':
                       self.respond({},401); return
@@ -50,7 +52,7 @@ import Testing
                       issued=True
                       self.respond({'status':'command','command':{'id':'command-test','kind':'apps.list','payload':{}}})
               elif self.path.endswith('/complete'):
-                  completed={'body':body,'clientType':self.headers.get('X-Client-Type'),'product':self.headers.get('X-Client-Product'),'version':self.headers.get('X-Client-Version')}
+                  completed={'body':body,'clientType':self.headers.get('X-Client-Type'),'product':self.headers.get('X-Client-Product'),'version':self.headers.get('X-Client-Version'),'registeredHostName':registered_host_name,'systemHostName':' '.join(socket.gethostname().split())}
                   self.respond({})
                   done.set()
               else: self.respond({})
@@ -122,6 +124,9 @@ import Testing
     #expect(completion["clientType"].string == "Desktop")
     #expect(completion["product"].string == "okou")
     #expect(completion["version"].string == "0.46.12")
+    #expect(
+      try completion.requireString("registeredHostName")
+        == completion.requireString("systemHostName"))
     #expect(host.status == "offline")
     #expect(host.hostID == nil)
   }

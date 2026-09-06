@@ -12,6 +12,40 @@ and their tests can be reused without changing their protocol. The remaining
 desktop ownership maps to SwiftUI/AppKit, WebKit authentication, Foundation
 networking/processes, IOKit power assertions, and the official Swift MCP SDK.
 
+## Latest follow-up acceptance
+
+The evidence below is cumulative; results from different commits and modified
+test identities do not establish a complete current production-app acceptance.
+The PR body and native check identify the latest build and its remaining work.
+
+Before the hostname repair, the downloaded `62800194` app and independent Swift
+project were verified at version 0.46.21. Its unchanged helper passed
+[15 release cases](https://cdn.vm0.io/artifacts/4j10holz91.json). A separate
+[actual Desktop/server round trip](https://cdn.vm0.io/artifacts/nnca4k2rt9.json)
+completed 13 commands across three command kinds, including one expected
+unsupported result, and nine behavior checks. This is not a new acceptance of
+all nine command kinds or a production-identity installation.
+
+A separate sandboxed copy with its own persistent macOS container passed
+[signed-in Quit/restart restoration](https://cdn.vm0.io/artifacts/zrvbpq5fi1.json)
+and [two workspace-cancellation cycles plus sign-out persistence across
+restart](https://cdn.vm0.io/artifacts/7ht2sz46nc.json). Cancellation retained the
+original process, settings window and workspace; both account buttons recovered
+after identity refresh. The account was prepared independently, so normal hosted
+Safari login, automatic callback, renewal and account changes during capture or
+delivery remain open. Legacy login subpaths still redirect to the start page;
+the deployed frontend redirect mechanism has not been established.
+
+The sign-out walkthrough exposed slow cold-start accessibility. Two independent,
+trusted observers reproduced errors for approximately 37 seconds. A main-process
+sample placed 1721 of 1732 main-thread samples in `ProcessInfo.hostName` through
+`NSHost.blockingResolveUntil`, called while constructing `DesktopView`. The
+hostname lookup now reads the kernel's node name for both the view and host
+registration/heartbeats, matching the existing Electron system-hostname behavior.
+The HTTP registration test also checks the name against Python's system lookup.
+Candidate and subsequent packaged cold-start acceptance must be attributed to
+their own builds; the older download does not contain this repair.
+
 ## Verified automated evidence
 
 - [macOS run 33970705573](https://github.com/vm0-ai/vm0/actions/runs/33970705573)
