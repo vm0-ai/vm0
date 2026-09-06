@@ -1953,6 +1953,8 @@
       "placeholder": "इसमें क्या बदलाव होना चाहिए?",
       "quote": "उद्धृत करें",
       "remove": "प्रतिक्रिया हटाएँ",
+      "selectionEnd": "चयन का अंत समायोजित करें",
+      "selectionStart": "चयन की शुरुआत समायोजित करें",
       "sentEmailDescription": "भेजा गया ईमेल (मेल ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", भेजा गया ID: {{sentId}}",
       "sourcePartHeading": "{{description}} के इस भाग पर प्रतिक्रिया:",

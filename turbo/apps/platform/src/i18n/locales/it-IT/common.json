@@ -1984,6 +1984,8 @@
       "placeholder": "Cosa dovrebbe cambiare in questo senso?",
       "quote": "Cita",
       "remove": "Rimuovi feedback",
+      "selectionEnd": "Regola fine selezione",
+      "selectionStart": "Regola inizio selezione",
       "sentEmailDescription": "un'e-mail inviata (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", inviato ID: {{sentId}}",
       "sourcePartHeading": "Feedback su questa parte di {{description}}:",

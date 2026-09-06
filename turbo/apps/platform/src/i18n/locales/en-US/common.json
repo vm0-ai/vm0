@@ -1953,6 +1953,8 @@
       "placeholder": "What should change about this?",
       "quote": "Quote",
       "remove": "Remove feedback",
+      "selectionEnd": "Adjust selection end",
+      "selectionStart": "Adjust selection start",
       "sentEmailDescription": "a sent email (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", sent ID: {{sentId}}",
       "sourcePartHeading": "Feedback on this part of {{description}}:",

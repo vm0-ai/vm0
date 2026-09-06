@@ -1950,6 +1950,8 @@
       "placeholder": "무엇을 변경해야 하나요?",
       "quote": "인용",
       "remove": "피드백 제거",
+      "selectionEnd": "선택 끝 위치 조정",
+      "selectionStart": "선택 시작 위치 조정",
       "sentEmailDescription": "발송된 이메일 (메일 ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", 발송 ID: {{sentId}}",
       "sourcePartHeading": "{{description}} 이 부분에 대한 피드백:",

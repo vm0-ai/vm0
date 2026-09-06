@@ -1984,6 +1984,8 @@
       "placeholder": "¿Qué debería cambiar en esto?",
       "quote": "Citar",
       "remove": "Eliminar comentarios",
+      "selectionEnd": "Ajustar final de la selección",
+      "selectionStart": "Ajustar inicio de la selección",
       "sentEmailDescription": "un correo enviado (ID de correo: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID enviado: {{sentId}}",
       "sourcePartHeading": "Comentarios sobre esta parte de {{description}}:",

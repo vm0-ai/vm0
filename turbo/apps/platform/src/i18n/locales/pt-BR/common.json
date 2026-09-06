@@ -1984,6 +1984,8 @@
       "placeholder": "O que deveria mudar aqui?",
       "quote": "Citar",
       "remove": "Remover feedback",
+      "selectionEnd": "Ajustar fim da seleção",
+      "selectionStart": "Ajustar início da seleção",
       "sentEmailDescription": "um e-mail enviado (ID do e-mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID de envio: {{sentId}}",
       "sourcePartHeading": "Feedback sobre esta parte de {{description}}:",
