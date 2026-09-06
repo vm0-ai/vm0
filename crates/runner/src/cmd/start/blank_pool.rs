@@ -55,6 +55,7 @@ enum BackgroundStageResult<T> {
     Completed(sandbox::Result<T>),
     CancelledBeforeStart,
     CancelledAfterStart(sandbox::Result<T>),
+    Panicked,
 }
 
 pub(super) enum BlankPrepareResult {
@@ -443,6 +444,14 @@ async fn prepare_blank_sandbox(
                 error: None,
             });
         }
+        BackgroundStageResult::Panicked => {
+            drop(pre_spawn_lease.take());
+            destroy_sandbox(&factory, sandbox).await;
+            return BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "start",
+                error: Some("sandbox start panicked".into()),
+            });
+        }
     }
 
     match run_background_stage(sandbox.park(), &cancel, &mut pre_spawn_lease).await {
@@ -481,6 +490,14 @@ async fn prepare_blank_sandbox(
                 error: None,
             })
         }
+        BackgroundStageResult::Panicked => {
+            drop(pre_spawn_lease.take());
+            destroy_sandbox(&factory, sandbox).await;
+            BlankPrepareResult::Failed(BlankPrepareFailure {
+                stage: "park",
+                error: Some("sandbox park panicked".into()),
+            })
+        }
     }
 }
 
@@ -516,27 +533,35 @@ async fn run_background_stage<T>(
         drop(pre_spawn_lease.take());
         return BackgroundStageResult::CancelledBeforeStart;
     }
+    let stage = AssertUnwindSafe(stage).catch_unwind();
     tokio::pin!(stage);
     tokio::select! {
         biased;
         result = &mut stage => {
-            if cancel.is_cancelled() {
-                drop(pre_spawn_lease.take());
-                BackgroundStageResult::CancelledAfterStart(result)
-            } else {
-                BackgroundStageResult::Completed(result)
+            match result {
+                Ok(result) if cancel.is_cancelled() => {
+                    drop(pre_spawn_lease.take());
+                    BackgroundStageResult::CancelledAfterStart(result)
+                }
+                Ok(result) => BackgroundStageResult::Completed(result),
+                Err(_) => BackgroundStageResult::Panicked,
             }
         }
         _ = cancel.cancelled() => {
             drop(pre_spawn_lease.take());
-            BackgroundStageResult::CancelledAfterStart(stage.await)
+            match stage.await {
+                Ok(result) => BackgroundStageResult::CancelledAfterStart(result),
+                Err(_) => BackgroundStageResult::Panicked,
+            }
         }
     }
 }
 
 async fn destroy_sandbox(factory: &SharedFactory, mut sandbox: Box<dyn Sandbox>) {
-    if let Err(error) = sandbox.stop().await {
-        warn!(error = %error, "failed to stop blank sandbox");
+    match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => warn!(error = %error, "failed to stop blank sandbox"),
+        Err(_) => warn!("blank sandbox stop panicked"),
     }
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()

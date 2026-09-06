@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
-    push_job, seed_workspace_cache_state, shutdown, test_profiles, two_profiles,
+    push_job, seed_workspace_cache_state, shutdown, test_profiles, two_profiles, wait_budget_count,
     wait_idle_pool_len,
 };
 
@@ -277,6 +277,34 @@ async fn foreground_admission_drains_cancelled_blank_park_before_destroy() {
     assert_eq!(calls.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn blank_park_and_stop_panics_keep_budget_owned_through_destroy() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let calls = Arc::clone(&overrides);
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.push_park_panic("simulated blank park panic");
+    overrides.push_stop_panic("simulated blank stop panic");
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 16, 32_768, 8, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("panicked blank lifecycle should still reach factory destroy");
+    assert_eq!(calls.destroy_call_count(), 1);
+    assert_eq!(
+        budget.allocated().2,
+        1,
+        "blank budget must remain owned until physical destroy completes"
+    );
+
+    destroy_gate.release_many(1);
+    shutdown(&env, run_handle).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 }
 
 #[tokio::test(start_paused = true)]
