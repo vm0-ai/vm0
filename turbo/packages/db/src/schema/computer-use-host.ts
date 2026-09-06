@@ -30,10 +30,7 @@ export const computerUseHosts = pgTable(
     installationId: uuid("installation_id"),
     displayName: text("display_name").notNull(),
     tokenHash: text("token_hash").notNull(),
-    clientProduct: text("client_product")
-      .$type<DesktopProduct>()
-      .default("zero")
-      .notNull(),
+    clientProduct: text("client_product").$type<DesktopProduct>().notNull(),
     appVersion: text("app_version").notNull(),
     osVersion: text("os_version").notNull(),
     supportedCapabilities: jsonb("supported_capabilities")

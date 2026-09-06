@@ -137,11 +137,6 @@ const nonWorkflowPhysicalEntries = [
   ...physicalEntries(
     [
       {
-        key: "default:public.computer_use_hosts.client_product",
-        kind: "default",
-        sources: SNAPSHOT_AND_CATALOG,
-      },
-      {
         key: "constraint:public.computer_use_hosts.computer_use_hosts_client_product_check",
         kind: "constraint",
         sources: SNAPSHOT_AND_CATALOG,
