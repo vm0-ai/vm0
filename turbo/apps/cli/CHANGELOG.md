@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.314.0](https://github.com/vm0-ai/vm0/compare/cli-v9.313.15...cli-v9.314.0) (2026-09-06)
+
+
+### Features
+
+* simplify intro video creation flow ([#31830](https://github.com/vm0-ai/vm0/issues/31830)) ([646a907](https://github.com/vm0-ai/vm0/commit/646a907e90dd9ffa0b7983a2d7d4dea77886893f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.409.0
+    * @okouai/core bumped to 8.626.0
+    * @okouai/pi-agent-runtime bumped to 1.21.5
+
 ## [9.313.15](https://github.com/vm0-ai/vm0/compare/cli-v9.313.14...cli-v9.313.15) (2026-09-06)
 
 

@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.555.0](https://github.com/vm0-ai/vm0/compare/api-v1.554.1...api-v1.555.0) (2026-09-06)
+
+
+### Features
+
+* simplify intro video creation flow ([#31830](https://github.com/vm0-ai/vm0/issues/31830)) ([646a907](https://github.com/vm0-ai/vm0/commit/646a907e90dd9ffa0b7983a2d7d4dea77886893f))
+* **ssh:** add standalone connection configuration api ([#32023](https://github.com/vm0-ai/vm0/issues/32023)) ([3e50b38](https://github.com/vm0-ai/vm0/commit/3e50b384d85a17b18b67a22a5af3dc59202b7f7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.0
+    * @okouai/core bumped to 8.626.0
+    * @okouai/db bumped to 1.244.0
+    * @okouai/pi-agent-runtime bumped to 1.21.5
+
 ## [1.554.1](https://github.com/vm0-ai/vm0/compare/api-v1.554.0...api-v1.554.1) (2026-09-06)
 
 

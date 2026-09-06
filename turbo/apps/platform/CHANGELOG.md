@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.851.0](https://github.com/vm0-ai/vm0/compare/app-v0.850.0...app-v0.851.0) (2026-09-06)
+
+
+### Features
+
+* simplify intro video creation flow ([#31830](https://github.com/vm0-ai/vm0/issues/31830)) ([646a907](https://github.com/vm0-ai/vm0/commit/646a907e90dd9ffa0b7983a2d7d4dea77886893f))
+
+
+### Bug Fixes
+
+* **platform:** open legacy avatars in the new composer ([#32020](https://github.com/vm0-ai/vm0/issues/32020)) ([8144a93](https://github.com/vm0-ai/vm0/commit/8144a9396f40ca600bec2fef162277cd3bb429a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.0
+    * @okouai/core bumped to 8.626.0
+
 ## [0.850.0](https://github.com/vm0-ai/vm0/compare/app-v0.849.1...app-v0.850.0) (2026-09-06)
 
 
