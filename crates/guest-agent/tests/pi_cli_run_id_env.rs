@@ -17,6 +17,7 @@ async fn guest_projects_pi_blocks_with_canonical_sequences_and_run_id()
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir_all(&bin_dir)?;
     let capture_path = tmp.path().join("canonical-run-id.txt");
+    let npm_cache_capture_path = tmp.path().join("npm-cache.txt");
     let payload_capture_path = tmp.path().join("pi-launch-payload-path.txt");
     let final_assistant_event_path = tmp.path().join("pi-final-assistant-event.jsonl");
     let large_tool_payload = "x".repeat(1024 * 1024);
@@ -70,8 +71,10 @@ test -n "${OKOU_RUN_ID:-}"
 test -z "${OKOU_PI_LAUNCH_CONFIG:-}"
 test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
 test -n "${PI_FINAL_ASSISTANT_EVENT_PATH:-}"
+test -n "${npm_config_cache:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
+printf '%s' "$npm_config_cache" > "$NPM_CACHE_CAPTURE_PATH"
 printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'
 IFS= read -r state_command
 case "$state_command" in
@@ -157,6 +160,10 @@ fi
                 (
                     "PI_PAYLOAD_CAPTURE_PATH".to_string(),
                     payload_capture_path.to_string_lossy().into_owned(),
+                ),
+                (
+                    "NPM_CACHE_CAPTURE_PATH".to_string(),
+                    npm_cache_capture_path.to_string_lossy().into_owned(),
                 ),
                 (
                     "PI_FINAL_ASSISTANT_EVENT_PATH".to_string(),
@@ -413,6 +420,10 @@ fi
     assert_eq!(delivered_events[11]["subtype"], "success");
     assert_eq!(delivered_events[11]["result"], "official rpc projection");
     assert_eq!(std::fs::read_to_string(capture_path)?, run_id);
+    assert_eq!(
+        std::fs::read_to_string(npm_cache_capture_path)?,
+        "/home/user/workspace/.vm0/cache/npm"
+    );
 
     let payload_path = std::fs::read_to_string(payload_capture_path)?;
     assert_eq!(
