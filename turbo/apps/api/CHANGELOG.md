@@ -8,6 +8,29 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.554.1](https://github.com/vm0-ai/vm0/compare/api-v1.554.0...api-v1.554.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* default voice input to gemini 3.1 flash-lite ([#32009](https://github.com/vm0-ai/vm0/issues/32009)) ([1ae6387](https://github.com/vm0-ai/vm0/commit/1ae638773aadb37a38f49ba0c825a22a13c06894))
+* restore voice input cleanup prompt ([#32007](https://github.com/vm0-ai/vm0/issues/32007)) ([4e8bc21](https://github.com/vm0-ai/vm0/commit/4e8bc21b0b2c6ecd71c0e86189578fbec7230d4b))
+
+
+### Documentation
+
+* archive api and app changelogs by month ([#32006](https://github.com/vm0-ai/vm0/issues/32006)) ([1f11937](https://github.com/vm0-ai/vm0/commit/1f119373b286c53be5fedbe40a2c67b321f4e0dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.1
+    * @okouai/core bumped to 8.625.12
+    * @okouai/db bumped to 1.243.1
+    * @okouai/pi-agent-runtime bumped to 1.21.4
+
 ## [1.554.0](https://github.com/vm0-ai/vm0/compare/api-v1.553.1...api-v1.554.0) (2026-09-06)
 
 

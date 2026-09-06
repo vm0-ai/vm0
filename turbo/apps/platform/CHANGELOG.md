@@ -11,6 +11,33 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.849.1](https://github.com/vm0-ai/vm0/compare/app-v0.849.0...app-v0.849.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* default voice input to gemini 3.1 flash-lite ([#32009](https://github.com/vm0-ai/vm0/issues/32009)) ([1ae6387](https://github.com/vm0-ai/vm0/commit/1ae638773aadb37a38f49ba0c825a22a13c06894))
+* derive voice draft progress and wait for captured audio ([#31983](https://github.com/vm0-ai/vm0/issues/31983)) ([98628ec](https://github.com/vm0-ai/vm0/commit/98628ecad55c2356eb3e474d334c53699b1bdcb6))
+
+
+### Documentation
+
+* archive api and app changelogs by month ([#32006](https://github.com/vm0-ai/vm0/issues/32006)) ([1f11937](https://github.com/vm0-ai/vm0/commit/1f119373b286c53be5fedbe40a2c67b321f4e0dd))
+
+
+### Refactoring
+
+* **platform:** use shadcn primitives in the selection toolbar ([#32008](https://github.com/vm0-ai/vm0/issues/32008)) ([00ff9a3](https://github.com/vm0-ai/vm0/commit/00ff9a324dec8b381843f673378f47ff0e586c26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.408.1
+    * @okouai/core bumped to 8.625.12
+    * @okouai/ui bumped to 1.5.5
+
 ## [0.849.0](https://github.com/vm0-ai/vm0/compare/app-v0.848.1...app-v0.849.0) (2026-09-06)
 
 
