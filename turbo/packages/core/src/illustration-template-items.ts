@@ -10,13 +10,15 @@ export const ILLUSTRATION_ASSET_BASE =
  */
 const ILLUSTRATION_ASSET_PATHS: Record<string, string> = {
   "images/emboss-deboss.jpg":
-    "9c05fa82-161d-4414-acdf-f3a26c93008f/ref-make-room-ivory.jpg",
-  "refs/emboss-deboss/ref-make-room-ivory.jpg":
-    "9c05fa82-161d-4414-acdf-f3a26c93008f/ref-make-room-ivory.jpg",
-  "refs/emboss-deboss/ref-slow-mornings-cobalt.jpg":
-    "0e777493-80cc-4736-a94b-8670d530dcf1/ref-slow-mornings-cobalt.jpg",
-  "refs/emboss-deboss/ref-growth-sage.jpg":
-    "4d229a60-40a2-4c4a-a794-6630fc71e30c/ref-growth-sage.jpg",
+    "7d58d19d-7af8-40bb-8fc6-d0e19854ae77/ref-beyond-ivory.jpg",
+  "refs/emboss-deboss/ref-beyond-ivory.jpg":
+    "7d58d19d-7af8-40bb-8fc6-d0e19854ae77/ref-beyond-ivory.jpg",
+  "refs/emboss-deboss/ref-wind-space-blush.jpg":
+    "8e2f9926-14bd-459d-b2b1-5b06569b4f9e/ref-wind-space-blush.jpg",
+  "refs/emboss-deboss/ref-moon-mooring-indigo.jpg":
+    "cb2abe9f-def7-41a8-9834-e5a206bcbe1d/ref-moon-mooring-indigo.jpg",
+  "refs/emboss-deboss/ref-moon-boat-no-text.jpg":
+    "6a302b5f-f3e7-4dc2-bc91-0c1e506a4d62/ref-moon-boat-no-text.jpg",
   "images/cozy-parlor.jpg":
     "d6892556-c737-4b2d-96e2-8011cb89e73b/cozy-parlor.jpg",
   "images/crowd-ink.png": "61a6e547-8dcd-4a70-9c08-436721562ce9/crowd-ink.png",
@@ -424,13 +426,15 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     slug: "emboss-deboss",
     title: "Emboss & Deboss",
     image: "emboss-deboss.jpg",
-    sample: "ref-make-room-ivory.jpg",
+    cover: "refs/emboss-deboss/ref-beyond-ivory.jpg",
+    sample: "ref-beyond-ivory.jpg",
     width: 1024,
     height: 1536,
     refs: [
-      "ref-make-room-ivory.jpg",
-      "ref-slow-mornings-cobalt.jpg",
-      "ref-growth-sage.jpg",
+      "ref-beyond-ivory.jpg",
+      "ref-wind-space-blush.jpg",
+      "ref-moon-mooring-indigo.jpg",
+      "ref-moon-boat-no-text.jpg",
     ],
   },
   {
@@ -895,7 +899,7 @@ const ILLUSTRATION_TEMPLATE_CARD_PREVIEW_IMAGES: Readonly<
   Record<string, string>
 > = {
   "emboss-deboss":
-    "https://static.vm0.io/vm0/artifact-templates/illustration/card-previews/f1a20fc9-b102-4218-b8b9-5f9475fd28bf/template-card-illustration-emboss-deboss-512.jpg",
+    "https://static.vm0.io/vm0/artifact-templates/illustration/card-previews/0c44d26a-7793-487a-9e65-c1a795532ff0/template-card-illustration-emboss-deboss-512.jpg",
   "ink-storefront":
     "https://static.vm0.io/vm0/artifact-templates/illustration/card-previews/d3633cfc-bb66-4cf1-9a9b-0c2ac53f12e4/template-card-illustration-ink-storefront-512.jpg",
   "tiny-wanderer":
