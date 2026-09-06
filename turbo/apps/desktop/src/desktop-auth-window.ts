@@ -132,6 +132,8 @@ export class DesktopAuthWindow {
     window: BrowserWindow,
     request: DesktopAuthWindowRequest,
   ): Promise<string | null> {
+    // The native BrowserWindow getter is unavailable during the closed event.
+    const contents = window.webContents;
     return new Promise((resolve, reject) => {
       let settled = false;
       let token: string | null = null;
@@ -141,8 +143,8 @@ export class DesktopAuthWindow {
         this.active = null;
         clearTimeout(timeout);
         request.signal.removeEventListener("abort", cancel);
-        window.webContents.off("did-navigate", navigate);
-        window.webContents.off("did-fail-load", failed);
+        contents.off("did-navigate", navigate);
+        contents.off("did-fail-load", failed);
         window.off("closed", closed);
         if (!window.isDestroyed()) window.close();
         if (error) reject(error);
@@ -197,8 +199,8 @@ export class DesktopAuthWindow {
         },
       };
       request.signal.addEventListener("abort", cancel, { once: true });
-      window.webContents.on("did-navigate", navigate);
-      window.webContents.on("did-fail-load", failed);
+      contents.on("did-navigate", navigate);
+      contents.on("did-fail-load", failed);
       window.on("closed", closed);
       void window.loadURL(request.url).catch((error: unknown) => {
         if (!isElectronNavigationAborted(error)) {

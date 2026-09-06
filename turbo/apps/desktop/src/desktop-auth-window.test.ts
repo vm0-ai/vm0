@@ -306,6 +306,20 @@ describe("Desktop authentication IPC and document lifecycle", () => {
     },
   );
 
+  it("settles closure without accessing a destroyed BrowserWindow native getter", async () => {
+    const { driver } = setup();
+    const { pending, window } = run(driver);
+    const rejected = expect(pending).rejects.toThrow("window closed");
+    // Electron marks the native window destroyed before emitting closed.
+    Object.defineProperty(window, "webContents", {
+      get: () => {
+        throw new Error("Object has been destroyed");
+      },
+    });
+    expect(() => window.close()).not.toThrow();
+    await rejected;
+  });
+
   it("supersedes an old window and rejects its completion against the new operation", async () => {
     const { driver } = setup();
     const old = run(driver);
