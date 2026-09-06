@@ -2450,6 +2450,7 @@ jobs:
           echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
 
       - name: Promote runner on production hosts with Ansible
+        id: promote-runner
         env:
           RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
@@ -2457,7 +2458,10 @@ jobs:
           AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
+        shell: bash
         run: |
+          promotion_warning_dir="${RUNNER_TEMP}/runner-promotion-warnings"
+          mkdir -p "$promotion_warning_dir"
           cd ansible
           ansible-playbook \
             -i "${RUNNER_HOSTS}," \
@@ -2468,7 +2472,24 @@ jobs:
             -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "runner_target=${RUNNER_TARGET}" \
+            -e "promotion_warning_dir=${promotion_warning_dir}" \
             -v
+
+          mapfile -d '' warning_files < <(
+            find "$promotion_warning_dir" -type f -name '*.json' -print0 | sort -z
+          )
+          if (( ${#warning_files[@]} > 0 )); then
+            echo "has_warnings=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Runner promotion warnings"
+              echo
+              for warning_file in "${warning_files[@]}"; do
+                sed 's/^/    /' "$warning_file"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_warnings=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Global health check (non-blocking)
         id: global-doctor
@@ -2502,7 +2523,7 @@ jobs:
           echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings != 'true' }}
+        if: ${{ success() && steps.slack-start.outputs.ts && steps.promote-runner.outputs.has_warnings != 'true' && steps.global-doctor.outputs.has_warnings != 'true' }}
         uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
@@ -2518,7 +2539,7 @@ jobs:
                   text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Success with warnings
-        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
+        if: ${{ success() && steps.slack-start.outputs.ts && (steps.promote-runner.outputs.has_warnings == 'true' || steps.global-doctor.outputs.has_warnings == 'true') }}
         uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update

@@ -21,6 +21,9 @@
 //! verified, [`wait_for_drain_signal_convergence`] keeps the transition
 //! fail-closed while it either signals the active replacement or observes a
 //! state that no longer needs a signal.
+//! After signal delivery, [`wait_for_drain_acknowledgement`] requires the
+//! captured live process and status generation to report Draining/Stopping,
+//! or observes service/process exit. It does not wait for active runs.
 //!
 //! ## Drain rollback boundary
 //!
@@ -77,7 +80,9 @@ use tokio::time::Instant;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::live_runner_instances::{self, LiveRunnerInstance};
 use crate::paths::HomePaths;
+use crate::status_file;
 
 use super::drain_override::{
     DrainRestartOverrideWrite, remove_drain_restart_override, write_drain_restart_override,
@@ -92,11 +97,13 @@ use super::systemctl::{
 };
 use super::{
     RunnerServiceUnit, ServiceFuture, acquire_service_lock, read_unit_config_path,
-    selected_config_base_dir,
+    selected_config_base_dir, selected_config_live_instance,
 };
 
 const DRAIN_SIGNAL_CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(10);
 const DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const DRAIN_ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_secs(10);
+const DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const RESUME_ACKNOWLEDGEMENT_TIMEOUT: Duration = Duration::from_secs(10);
 const RESUME_ACKNOWLEDGEMENT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -163,6 +170,10 @@ trait ServiceDrainOps {
         unit: &'a RunnerServiceUnit,
         enablement: SystemdUnitEnablement,
     ) -> ServiceFuture<'a, ()>;
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<std::path::PathBuf>>;
 }
 
 trait ServiceResumeOps {
@@ -273,6 +284,13 @@ impl ServiceDrainOps for RealServiceDrainOps {
         enablement: SystemdUnitEnablement,
     ) -> ServiceFuture<'a, ()> {
         Box::pin(async move { restore_unit_enablement(unit, enablement).await })
+    }
+
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<std::path::PathBuf>> {
+        Box::pin(async move { read_unit_config_path(unit).await })
     }
 }
 
@@ -571,10 +589,60 @@ fn drain_signal_convergence_timeout_error(
     )
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DrainSignalConvergence {
+    SignalDelivered,
+    ServiceStopped,
+}
+
+#[derive(serde::Deserialize)]
+struct DrainStatusFile {
+    mode: String,
+    started_at: String,
+    updated_at: String,
+}
+
+struct DrainStatusSnapshot {
+    mode: String,
+    started_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn read_drain_status(base_dir: &Path) -> RunnerResult<DrainStatusSnapshot> {
+    let path = status_file::path(base_dir);
+    let file = status_file::read_as::<DrainStatusFile>(base_dir)
+        .await
+        .map_err(|error| RunnerError::Internal(error.to_string()))?
+        .ok_or_else(|| RunnerError::Internal(format!("{} not found", path.display())))?;
+    let started_at = chrono::DateTime::parse_from_rfc3339(&file.started_at)
+        .map(|value| value.with_timezone(&chrono::Utc))
+        .map_err(|error| {
+            RunnerError::Internal(format!(
+                "parse started_at {:?} in {}: {error}",
+                file.started_at,
+                path.display()
+            ))
+        })?;
+    let updated_at = chrono::DateTime::parse_from_rfc3339(&file.updated_at)
+        .map(|value| value.with_timezone(&chrono::Utc))
+        .map_err(|error| {
+            RunnerError::Internal(format!(
+                "parse updated_at {:?} in {}: {error}",
+                file.updated_at,
+                path.display()
+            ))
+        })?;
+    Ok(DrainStatusSnapshot {
+        mode: file.mode,
+        started_at,
+        updated_at,
+    })
+}
+
 async fn wait_for_drain_signal_convergence(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
-) -> RunnerResult<()> {
+) -> RunnerResult<DrainSignalConvergence> {
     let deadline = Instant::now() + DRAIN_SIGNAL_CONVERGENCE_TIMEOUT;
     let mut last_active_state = "unknown".to_string();
 
@@ -604,7 +672,7 @@ async fn wait_for_drain_signal_convergence(
                 active_state = %state.active_state(),
                 "runner exited before drain signal convergence"
             );
-            return Ok(());
+            return Ok(DrainSignalConvergence::ServiceStopped);
         }
         if state.active_state() == "deactivating" {
             // Restart=no was verified before signal delivery. While systemd is
@@ -614,7 +682,7 @@ async fn wait_for_drain_signal_convergence(
                 unit = %unit.unit_name(),
                 "runner is deactivating with Restart=no applied; drain signal not needed"
             );
-            return Ok(());
+            return Ok(DrainSignalConvergence::ServiceStopped);
         }
 
         let now = Instant::now();
@@ -634,7 +702,7 @@ async fn wait_for_drain_signal_convergence(
         match signal_result {
             ServiceSignalOutcome::Sent => {
                 info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain) during signal convergence");
-                return Ok(());
+                return Ok(DrainSignalConvergence::SignalDelivered);
             }
             ServiceSignalOutcome::AlreadyGone => {}
         }
@@ -654,7 +722,7 @@ async fn wait_for_drain_signal_convergence(
 async fn drain_with_ops(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
-) -> RunnerResult<()> {
+) -> RunnerResult<DrainSignalConvergence> {
     let initial_state = ops
         .lifecycle_state(unit, DRAIN_SIGNAL_CONVERGENCE_TIMEOUT)
         .await?;
@@ -751,7 +819,7 @@ async fn drain_with_ops(
         }
     }
 
-    if should_signal {
+    let convergence = if should_signal {
         // The lifecycle query above can race against the runner exiting or an
         // already-committed auto-restart timer. Once the main process is gone,
         // retain fail-closed state and converge instead of rolling protections
@@ -763,18 +831,227 @@ async fn drain_with_ops(
                     error = %error,
                     "initial drain signal failed; retaining Restart=no while converging"
                 );
-                wait_for_drain_signal_convergence(unit, ops).await?;
+                wait_for_drain_signal_convergence(unit, ops).await?
             }
             Ok(ServiceSignalOutcome::Sent) => {
                 info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain)");
+                DrainSignalConvergence::SignalDelivered
             }
             Ok(ServiceSignalOutcome::AlreadyGone) => {
-                wait_for_drain_signal_convergence(unit, ops).await?;
+                wait_for_drain_signal_convergence(unit, ops).await?
             }
         }
-    }
+    } else {
+        DrainSignalConvergence::ServiceStopped
+    };
 
-    Ok(())
+    Ok(convergence)
+}
+
+struct DrainAcknowledgementTarget {
+    instance: LiveRunnerInstance,
+    started_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn capture_drain_acknowledgement_target(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    ops: &mut impl ServiceDrainOps,
+) -> RunnerResult<DrainAcknowledgementTarget> {
+    let config_path = ops.read_unit_config_path(unit).await?.ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "{} does not select a runner --config path — cannot observe drain acknowledgement",
+            unit.unit_name()
+        ))
+    })?;
+    let instance = selected_config_live_instance(unit, &config_path, home)
+        .await?
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "cannot resolve a live runner instance for {} from selected config {} — cannot observe drain acknowledgement",
+                unit.unit_name(),
+                config_path.display()
+            ))
+        })?;
+    let status = read_drain_status(&instance.base_dir)
+        .await
+        .map_err(|error| {
+            RunnerError::Internal(format!(
+                "cannot read status.json for {} before drain: {error}",
+                unit.unit_name()
+            ))
+        })?;
+    let instance_published_at = chrono::DateTime::parse_from_rfc3339(&instance.started_at)
+        .map(|value| value.with_timezone(&chrono::Utc))
+        .map_err(|error| {
+            RunnerError::Internal(format!(
+                "cannot parse live runner instance started_at {:?} for {} before drain: {error}",
+                instance.started_at,
+                unit.unit_name()
+            ))
+        })?;
+    // Startup publishes the live-process record before its initial status.
+    // Reject a leftover status file that the selected process has not updated.
+    if status.updated_at < instance_published_at {
+        return Err(RunnerError::Internal(format!(
+            "status.json for {} predates the selected live process (status updated_at={}, live instance started_at={}) — cannot observe drain acknowledgement",
+            unit.unit_name(),
+            status.updated_at,
+            instance_published_at
+        )));
+    }
+    Ok(DrainAcknowledgementTarget {
+        instance,
+        started_at: status.started_at,
+    })
+}
+
+fn drain_acknowledgement_timeout_error(
+    unit: &RunnerServiceUnit,
+    last_observation: &str,
+) -> RunnerError {
+    RunnerError::Internal(format!(
+        "timed out after {}s waiting for {} to acknowledge drain (last observation: {last_observation}); Restart=no remains applied",
+        DRAIN_ACKNOWLEDGEMENT_TIMEOUT.as_secs(),
+        unit.unit_name()
+    ))
+}
+
+async fn wait_for_next_drain_observation(deadline: Instant) {
+    let now = Instant::now();
+    if now < deadline {
+        tokio::time::sleep(std::cmp::min(
+            DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL,
+            deadline - now,
+        ))
+        .await;
+    }
+}
+
+async fn wait_for_drain_acknowledgement(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    target: Result<DrainAcknowledgementTarget, RunnerError>,
+    ops: &mut impl ServiceDrainOps,
+) -> RunnerResult<()> {
+    let deadline = Instant::now() + DRAIN_ACKNOWLEDGEMENT_TIMEOUT;
+    let mut last_observation = "not observed".to_string();
+
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(drain_acknowledgement_timeout_error(unit, &last_observation));
+        }
+
+        let state = ops
+            .lifecycle_state(unit, deadline - now)
+            .await
+            .map_err(|error| {
+                RunnerError::Internal(format!(
+                    "cannot read systemd lifecycle state for {} while waiting for drain acknowledgement: {error}; Restart=no remains applied",
+                    unit.unit_name()
+                ))
+            })?;
+        if !state.is_active_like() || state.active_state() == "deactivating" {
+            info!(
+                unit = %unit.unit_name(),
+                active_state = %state.active_state(),
+                "runner acknowledged drain by stopping"
+            );
+            return Ok(());
+        }
+
+        let target = match &target {
+            Ok(target) => target,
+            Err(error) => {
+                last_observation = format!(
+                    "ActiveState={:?}, acknowledgement target unavailable: {error}",
+                    state.active_state()
+                );
+                wait_for_next_drain_observation(deadline).await;
+                continue;
+            }
+        };
+
+        match live_runner_instances::is_current(home, &target.instance).await {
+            Ok(true) => {}
+            Ok(false) => {
+                last_observation = format!(
+                    "ActiveState={:?}, captured runner process identity is no longer current",
+                    state.active_state()
+                );
+                wait_for_next_drain_observation(deadline).await;
+                continue;
+            }
+            Err(error) => {
+                last_observation = format!(
+                    "ActiveState={:?}, cannot verify runner process identity: {error}",
+                    state.active_state()
+                );
+                wait_for_next_drain_observation(deadline).await;
+                continue;
+            }
+        }
+
+        match read_drain_status(&target.instance.base_dir).await {
+            Ok(status) => {
+                if status.started_at != target.started_at {
+                    return Err(RunnerError::Internal(format!(
+                        "{} status generation changed before drain acknowledgement (started_at changed from {} to {}); Restart=no remains applied",
+                        unit.unit_name(),
+                        target.started_at,
+                        status.started_at
+                    )));
+                }
+                match status.mode.as_str() {
+                    "draining" | "stopping" | "stopped" => {
+                        info!(
+                            unit = %unit.unit_name(),
+                            mode = %status.mode,
+                            "runner acknowledged drain"
+                        );
+                        return Ok(());
+                    }
+                    "starting" | "running" => {
+                        last_observation = format!(
+                            "ActiveState={:?}, mode={:?}, started_at={}",
+                            state.active_state(),
+                            status.mode,
+                            status.started_at
+                        );
+                    }
+                    mode => {
+                        return Err(RunnerError::Internal(format!(
+                            "{} reported invalid mode {mode:?} while acknowledging drain; Restart=no remains applied",
+                            unit.unit_name()
+                        )));
+                    }
+                }
+            }
+            Err(error) => {
+                last_observation = format!(
+                    "ActiveState={:?}, cannot read status.json: {error}",
+                    state.active_state()
+                );
+            }
+        }
+
+        wait_for_next_drain_observation(deadline).await;
+    }
+}
+
+async fn drain_and_wait_with_ops(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+    ops: &mut impl ServiceDrainOps,
+) -> RunnerResult<()> {
+    let target = capture_drain_acknowledgement_target(unit, home, ops).await;
+    match drain_with_ops(unit, ops).await? {
+        DrainSignalConvergence::SignalDelivered => {
+            wait_for_drain_acknowledgement(unit, home, target, ops).await
+        }
+        DrainSignalConvergence::ServiceStopped => Ok(()),
+    }
 }
 
 fn resume_acknowledgement_timeout_error(unit: &RunnerServiceUnit) -> RunnerError {
@@ -982,15 +1259,16 @@ async fn resume_with_ops(
     resume_after_preflight_with_ops(unit, &base_dir, status.started_at, ops).await
 }
 
-/// `service drain` — send SIGUSR1 and disable the unit without waiting for active jobs.
+/// `service drain` — send SIGUSR1, observe acknowledgement, and disable the unit
+/// without waiting for active jobs to finish.
 ///
 /// The command may wait for systemd operations and bounded drain-signal
-/// convergence before returning.
+/// convergence, followed by bounded same-process lifecycle acknowledgement.
 pub(super) async fn run_drain(args: DrainArgs) -> RunnerResult<()> {
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
     let home = HomePaths::new()?;
     let _service_lock = acquire_service_lock(&unit, &home).await?;
-    drain_with_ops(&unit, &mut RealServiceDrainOps).await
+    drain_and_wait_with_ops(&unit, &home, &mut RealServiceDrainOps).await
 }
 
 /// `service resume` — send SIGUSR2, re-enable unit.
@@ -1026,6 +1304,13 @@ mod tests {
 
     fn test_status_content(mode: &str, started_at: &str) -> String {
         format!(r#"{{"mode":"{mode}","active_runs":[],"started_at":"{started_at}"}}"#)
+    }
+
+    fn drain_status_content(mode: &str, started_at: &str) -> String {
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        format!(
+            r#"{{"mode":"{mode}","active_runs":[],"started_at":"{started_at}","updated_at":"{updated_at}"}}"#
+        )
     }
 
     fn active_results(count: usize) -> VecDeque<RunnerResult<bool>> {
@@ -1064,6 +1349,16 @@ mod tests {
         .unwrap();
     }
 
+    async fn write_drain_status(base_dir: &Path, mode: &str, started_at: &str) {
+        tokio::fs::create_dir_all(base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            drain_status_content(mode, started_at),
+        )
+        .await
+        .unwrap();
+    }
+
     async fn publish_test_live_runner(
         home: &HomePaths,
         config_path: &Path,
@@ -1080,6 +1375,24 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    async fn setup_drain_target(
+        mode: &str,
+    ) -> (
+        tempfile::TempDir,
+        HomePaths,
+        PathBuf,
+        PathBuf,
+        crate::live_runner_instances::LiveRunnerInstanceHandle,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let config_path = dir.path().join("runner.yaml");
+        let base_dir = home.runners_dir().join("runner-test");
+        let handle = publish_test_live_runner(&home, &config_path, &base_dir).await;
+        write_drain_status(&base_dir, mode, TEST_RUNNER_STARTED_AT).await;
+        (dir, home, config_path, base_dir, handle)
     }
 
     async fn resume_after_preflight_for_test(ops: &mut FakeResumeOps) -> RunnerResult<()> {
@@ -1105,6 +1418,8 @@ mod tests {
         restart_policy_results: VecDeque<RunnerResult<String>>,
         signal_results: VecDeque<RunnerResult<ServiceSignalOutcome>>,
         signal_timeouts: Vec<Duration>,
+        config_path: Option<PathBuf>,
+        status_update_on_signal: Option<(PathBuf, String)>,
         disable_error: bool,
         restore_enablement_error: bool,
     }
@@ -1141,6 +1456,8 @@ mod tests {
                 restart_policy_results: VecDeque::from([Ok("no".to_string())]),
                 signal_results: signal_results(ServiceSignalOutcome::Sent, 1),
                 signal_timeouts: Vec::new(),
+                config_path: Some(PathBuf::from("/tmp/runner-config.yaml")),
+                status_update_on_signal: None,
                 disable_error: false,
                 restore_enablement_error: false,
             }
@@ -1252,11 +1569,22 @@ mod tests {
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ServiceSignalOutcome> {
             self.events.push("signal_drain");
-            Box::pin(std::future::ready(
-                self.signal_results
-                    .pop_front()
-                    .expect("missing fake drain signal result"),
-            ))
+            let result = self
+                .signal_results
+                .pop_front()
+                .expect("missing fake drain signal result");
+            let sent = matches!(&result, Ok(ServiceSignalOutcome::Sent));
+            let status_update = if sent {
+                self.status_update_on_signal.take()
+            } else {
+                None
+            };
+            Box::pin(async move {
+                if let Some((path, content)) = status_update {
+                    tokio::fs::write(path, content).await.unwrap();
+                }
+                result
+            })
         }
 
         fn signal_drain_bounded<'a>(
@@ -1297,6 +1625,14 @@ mod tests {
             } else {
                 Ok(())
             }))
+        }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.events.push("read_config_path");
+            Box::pin(std::future::ready(Ok(self.config_path.clone())))
         }
     }
 
@@ -2102,6 +2438,227 @@ mod tests {
             ops.reload_requirements,
             [SystemdReloadRequirement::dirty().with_drain_override(true)]
         );
+    }
+
+    #[tokio::test]
+    async fn drain_waits_for_same_process_draining_acknowledgement() {
+        let (_dir, home, config_path, base_dir, _handle) = setup_drain_target("running").await;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", 2),
+            config_path: Some(config_path),
+            status_update_on_signal: Some((
+                base_dir.join("status.json"),
+                drain_status_content("draining", TEST_RUNNER_STARTED_AT),
+            )),
+            ..FakeDrainOps::default()
+        };
+
+        drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap();
+
+        assert_eq!(ops.events.first(), Some(&"read_config_path"));
+        assert!(ops.events.contains(&"signal_drain"));
+        assert_eq!(ops.events.last(), Some(&"lifecycle_state"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_waits_for_delayed_acknowledgement() {
+        let (_dir, home, config_path, base_dir, _handle) = setup_drain_target("running").await;
+        let status_path = base_dir.join("status.json");
+        let update = tokio::spawn(async move {
+            tokio::time::sleep(DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL * 2).await;
+            tokio::fs::write(
+                status_path,
+                drain_status_content("draining", TEST_RUNNER_STARTED_AT),
+            )
+            .await
+            .unwrap();
+        });
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", 10),
+            config_path: Some(config_path),
+            ..FakeDrainOps::default()
+        };
+
+        drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap();
+        update.await.unwrap();
+
+        assert!(
+            ops.events
+                .iter()
+                .filter(|event| **event == "lifecycle_state")
+                .count()
+                >= 3
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_accepts_stopping_with_active_runs() {
+        let (_dir, home, config_path, base_dir, _handle) = setup_drain_target("running").await;
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        let stopping = format!(
+            r#"{{"mode":"stopping","active_runs":[{{"run_id":"00000000-0000-0000-0000-000000000001"}}],"started_at":"{TEST_RUNNER_STARTED_AT}","updated_at":"{updated_at}"}}"#
+        );
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", 2),
+            config_path: Some(config_path),
+            status_update_on_signal: Some((base_dir.join("status.json"), stopping)),
+            ..FakeDrainOps::default()
+        };
+
+        drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn drain_accepts_service_exit_after_signal() {
+        let (_dir, home, config_path, _base_dir, _handle) = setup_drain_target("running").await;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: VecDeque::from([
+                lifecycle_state("active"),
+                lifecycle_state("inactive"),
+            ]),
+            config_path: Some(config_path),
+            ..FakeDrainOps::default()
+        };
+
+        drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_stale_running_status_times_out_with_observation() {
+        let (_dir, home, config_path, _base_dir, _handle) = setup_drain_target("running").await;
+        let attempts = (DRAIN_ACKNOWLEDGEMENT_TIMEOUT.as_millis()
+            / DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL.as_millis()) as usize
+            + 2;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", attempts),
+            config_path: Some(config_path),
+            ..FakeDrainOps::default()
+        };
+        let started_at = Instant::now();
+
+        let error = drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert_eq!(Instant::now() - started_at, DRAIN_ACKNOWLEDGEMENT_TIMEOUT);
+        assert!(message.contains("waiting for vm0-runner-test to acknowledge drain"));
+        assert!(message.contains("mode=\"running\""));
+        assert!(message.contains("Restart=no remains applied"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_unreadable_status_times_out_with_read_error() {
+        let (_dir, home, config_path, base_dir, _handle) = setup_drain_target("running").await;
+        let attempts = (DRAIN_ACKNOWLEDGEMENT_TIMEOUT.as_millis()
+            / DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL.as_millis()) as usize
+            + 2;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", attempts),
+            config_path: Some(config_path),
+            status_update_on_signal: Some((base_dir.join("status.json"), "not json".to_string())),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("cannot read status.json"));
+        assert!(error.to_string().contains("Restart=no remains applied"));
+    }
+
+    #[tokio::test]
+    async fn drain_rejects_replaced_status_generation() {
+        let (_dir, home, config_path, base_dir, _handle) = setup_drain_target("running").await;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", 2),
+            config_path: Some(config_path),
+            status_update_on_signal: Some((
+                base_dir.join("status.json"),
+                drain_status_content("draining", "2026-08-05T00:00:00Z"),
+            )),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("status generation changed"));
+        assert!(error.to_string().contains("Restart=no remains applied"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_rejects_status_from_noncurrent_process_identity() {
+        let (_dir, home, config_path, _base_dir, handle) = setup_drain_target("running").await;
+        let mut ops = FakeDrainOps {
+            config_path: Some(config_path),
+            lifecycle_state_results: lifecycle_states("active", 100),
+            ..FakeDrainOps::default()
+        };
+        let target = capture_drain_acknowledgement_target(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap();
+        assert!(handle.remove_if_current().await.unwrap());
+
+        let error = wait_for_drain_acknowledgement(&service_unit(), &home, Ok(target), &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("process identity is no longer current")
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drain_stale_preflight_status_does_not_skip_signal_safeguards() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let config_path = dir.path().join("runner.yaml");
+        let base_dir = home.runners_dir().join("runner-test");
+        let _handle = publish_test_live_runner(&home, &config_path, &base_dir).await;
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            format!(
+                r#"{{"mode":"running","active_runs":[],"started_at":"{TEST_RUNNER_STARTED_AT}","updated_at":"2026-01-01T00:00:00Z"}}"#
+            ),
+        )
+        .await
+        .unwrap();
+        let attempts = (DRAIN_ACKNOWLEDGEMENT_TIMEOUT.as_millis()
+            / DRAIN_ACKNOWLEDGEMENT_POLL_INTERVAL.as_millis()) as usize
+            + 2;
+        let mut ops = FakeDrainOps {
+            lifecycle_state_results: lifecycle_states("active", attempts),
+            config_path: Some(config_path),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_and_wait_with_ops(&service_unit(), &home, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("predates the selected live process")
+        );
+        assert!(ops.events.contains(&"write_restart_override"));
+        assert!(ops.events.contains(&"restart_policy"));
+        assert!(ops.events.contains(&"signal_drain"));
+        assert!(!ops.events.contains(&"remove_restart_override"));
     }
 
     #[tokio::test]

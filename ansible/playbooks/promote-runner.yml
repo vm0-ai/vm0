@@ -83,21 +83,105 @@
     # ========================================
     # Phase 5: Drain old runners + Cleanup
     # ========================================
+    - name: Initialize runner promotion warnings
+      set_fact:
+        runner_promotion_warnings: []
+
     - name: Find runner services to drain
       shell: |
-        (
-          systemctl list-units 'vm0-runner-*.service' --state=running --plain --no-legend | awk '{print $1}'
-          systemctl list-unit-files 'vm0-runner-*.service' --state=enabled --plain --no-legend | awk '{print $1}'
-        ) | sed 's/^vm0-runner-//;s/\.service$//' | sort -u
+        set -euo pipefail
+        loaded_units="$(
+          systemctl list-units 'vm0-runner-*.service' --all --plain --no-legend |
+            awk '{print $1}'
+        )"
+        enabled_units="$(
+          systemctl list-unit-files 'vm0-runner-*.service' --state=enabled,enabled-runtime --plain --no-legend |
+            awk '{print $1}'
+        )"
+        printf '%s\n%s\n' "$loaded_units" "$enabled_units" |
+          sed 's/^vm0-runner-//;s/\.service$//' |
+          sed '/^$/d' |
+          sort -u
+      args:
+        executable: /bin/bash
       register: runner_service_candidates
       changed_when: false
-      ignore_errors: true
+      failed_when: false
+
+    - name: Record runner service discovery warning
+      set_fact:
+        runner_promotion_warnings: >-
+          {{
+            runner_promotion_warnings + [{
+              'host': inventory_hostname,
+              'service': 'vm0-runner-*.service',
+              'version': 'unknown',
+              'targetVersion': runner_release,
+              'stage': 'discovery',
+              'state': 'enumeration_failed',
+              'returnCode': runner_service_candidates.rc,
+              'error': (
+                runner_service_candidates.stderr
+                | default(runner_service_candidates.stdout, true)
+                | default(runner_service_candidates.msg, true)
+                | default('runner service discovery failed', true)
+                | trim
+              )
+            }]
+          }}
+      when: runner_service_candidates.rc != 0
 
     - name: Drain old runner services
       command: "{{ bin_dir }}/runner service drain --name {{ item }}"
       loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
-      when: item != runner_release
-      ignore_errors: true
+      when:
+        - runner_service_candidates.rc == 0
+        - item != runner_release
+      register: runner_drain_results
+      failed_when: false
+
+    - name: Record old runner drain warnings
+      set_fact:
+        runner_promotion_warnings: >-
+          {{
+            runner_promotion_warnings + [{
+              'host': inventory_hostname,
+              'service': 'vm0-runner-' ~ item.item ~ '.service',
+              'version': item.item,
+              'targetVersion': runner_release,
+              'stage': 'drain',
+              'state': 'drain_failed',
+              'returnCode': item.rc,
+              'error': (
+                item.stderr
+                | default(item.stdout, true)
+                | default(item.msg, true)
+                | default('runner service drain failed', true)
+                | trim
+              )
+            }]
+          }}
+      loop: "{{ runner_drain_results.results | default([]) }}"
+      when:
+        - not (item.skipped | default(false))
+        - (item.rc | default(0) | int) != 0
+
+    - name: Report runner promotion warnings
+      debug:
+        msg: "{{ item | to_json }}"
+      loop: "{{ runner_promotion_warnings }}"
+
+    - name: Write runner promotion warnings for the controller
+      copy:
+        content: "{{ runner_promotion_warnings | to_nice_json }}\n"
+        dest: >-
+          {{ promotion_warning_dir | default('') }}/{{ inventory_hostname | hash('sha256') }}.json
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      when:
+        - (promotion_warning_dir | default('') | length) > 0
+        - (runner_promotion_warnings | length) > 0
 
     - name: Garbage collect old artifacts
       include_tasks: ../tasks/garbage-collect-runner.yml
