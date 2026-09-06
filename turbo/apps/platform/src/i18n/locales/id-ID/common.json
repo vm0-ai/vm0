@@ -2384,7 +2384,6 @@
       "targetLanguage": "Bahasa terjemahan"
     },
     "voice": {
-      "busyInAnotherTab": "Percakapan ini sedang direkam di tab lain. Coba lagi setelah rekaman berhenti.",
       "checkingLimit": "Memeriksa batas input suara",
       "cleanupFailed": "Teks ditambahkan, tetapi rekaman yang tersimpan tidak dapat dihapus.",
       "confirmRecording": "OK",
@@ -2399,7 +2398,6 @@
       "openingMicrophone": "Membuka mikrofon...",
       "removeDraft": "Hapus draf suara",
       "restoreFailed": "Draf suara Anda tidak dapat dimuat. Coba lagi.",
-      "restoring": "Memulihkan draf suara...",
       "retry": "Coba lagi",
       "retryReady": "Rekaman Anda tetap tersimpan. Coba transkripsi lagi.",
       "starting": "Memulai input suara",

@@ -1,7 +1,7 @@
+import { stopAndTranscribe$ } from "../voice-io/voice-io-stt.ts";
 import {
   createComposerVoiceInputSignals,
   type ComposerVoiceInputSignals,
-  type ComposerVoiceInputStatus,
 } from "./composer-voice-input.ts";
 import type {
   ChatRunVideoOptionsRequest,
@@ -14,11 +14,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { onRef, withCleanup } from "../utils.ts";
-import {
-  featureSwitch$,
-  voiceInputV2Enabled$,
-} from "../external/feature-switch.ts";
+import { onRef } from "../utils.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ChatAttachment } from "./chat-draft.ts";
 import { createComposerFeedbackModel } from "./chat-feedback.ts";
@@ -216,6 +213,7 @@ interface ComposerComputerSignals {
 interface ComposerSubmissionSignals {
   readonly sending$: Computed<Promise<boolean>>;
   readonly primaryAction$: Computed<Promise<ComposerPrimaryAction>>;
+  readonly hasCurrentInvocation$: Computed<boolean>;
   readonly submitCurrentInput$: Command<
     Promise<boolean>,
     [ComposerPrimaryAction, AbortSignal]
@@ -252,10 +250,6 @@ interface ComposerTemplateSignals
 }
 
 export interface ComposerSignals {
-  readonly setLifecycleRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
@@ -505,47 +499,25 @@ function composerDraftSignals(
   };
 }
 
-function createComposerInputLifecycle(
+function createComposerVoiceInput(
   options: Pick<CreateComposerSignalsOptions, "draft" | "voiceDraftTarget">,
   workflowComposer: WorkflowComposerSignals,
   lastAssistantMessage$: Computed<string | undefined>,
 ) {
-  const ready$ = state<Promise<void> | null>(null);
   const deliverText$ = command(
-    async ({ get, set }, text: string, signal: AbortSignal) => {
-      const ready = get(ready$);
-      if (!ready) {
-        throw new Error("Composer has not initialized");
-      }
-      await ready;
+    async ({ set }, text: string, signal: AbortSignal) => {
+      await set(options.draft.load$, signal);
       signal.throwIfAborted();
       set(workflowComposer.insertText$, text);
     },
   );
-  const voice = createComposerVoiceInputSignals(
+  return createComposerVoiceInputSignals(
     workflowComposer.appendText$,
     deliverText$,
     workflowComposer.readVoiceContext$,
     lastAssistantMessage$,
     options.voiceDraftTarget,
   );
-  const setLifecycleRef$ = onRef(
-    command(
-      async ({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
-        // Composer initialization owns text hydration. Voice only receives a ready
-        // editor delivery command and never loads or saves a text draft itself.
-        const ready = set(options.draft.load$, signal);
-        set(ready$, ready);
-        await Promise.all([
-          ready,
-          get(voiceInputV2Enabled$)
-            ? set(voice.initialize$, signal)
-            : Promise.resolve(),
-        ]);
-      },
-    ),
-  );
-  return { voice, setLifecycleRef$ };
 }
 
 export function createComposerSignals(
@@ -570,7 +542,7 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const { voice, setLifecycleRef$ } = createComposerInputLifecycle(
+  const voice = createComposerVoiceInput(
     options,
     workflowComposer,
     eventSignals.lastAssistantMessage$,
@@ -580,7 +552,7 @@ export function createComposerSignals(
     eventSignals,
     workflowComposer,
     ui.videoOptions,
-    voice.status$,
+    voice,
   );
   const fileInput = createComposerFileInputSignals();
   const workflowPrompt = createComposerWorkflowPromptSignals(
@@ -618,7 +590,6 @@ export function createComposerSignals(
 
   return {
     agentId: options.agentId,
-    setLifecycleRef$,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,
@@ -809,8 +780,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly options: CreateComposerSignalsOptions;
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
-  readonly submissionPending$: Computed<boolean>;
-  readonly voiceStatus$: Computed<ComposerVoiceInputStatus>;
+  readonly voiceState$: ComposerVoiceInputSignals["state$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
   const { options, eventSignals, workflowComposer } = args;
   const draft = options.draft.signals;
@@ -818,7 +788,7 @@ function createComposerPrimaryActionSignal(args: {
     if (await get(eventSignals.actionsLoading$)) {
       return "disabled";
     }
-    if (get(args.voiceStatus$) !== "idle") {
+    if ((await get(args.voiceState$)).status !== "idle") {
       return "disabled";
     }
 
@@ -830,9 +800,6 @@ function createComposerPrimaryActionSignal(args: {
     const sending = await get(eventSignals.sending$);
     if (sending && !canSend) {
       return "stop";
-    }
-    if (get(args.submissionPending$)) {
-      return "disabled";
     }
     if (!canSend) {
       return "disabled";
@@ -849,23 +816,27 @@ function createComposerSubmissionSignals(
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
-  voiceStatus$: Computed<ComposerVoiceInputStatus>,
+  voice: ComposerVoiceInputSignals,
 ) {
+  const { state$: voiceState$, owner$ } = voice;
   const draft = options.draft.signals;
   const readVideoRunOptions$ = createVideoRunOptionsSignal(
     options.videoModel,
     videoOptions,
   );
-  const internalSubmissionPending$ = state(false);
-  const submissionPending$ = computed((get): boolean => {
-    return get(internalSubmissionPending$);
+  const invocation$ = state<{
+    readonly owner: AbortController;
+    readonly action: ComposerPrimaryAction;
+  } | null>(null);
+  const hasCurrentInvocation$ = computed((get) => {
+    const invocation = get(invocation$);
+    return invocation !== null && invocation.owner === get(owner$);
   });
   const primaryAction$ = createComposerPrimaryActionSignal({
     options,
     eventSignals,
     workflowComposer,
-    submissionPending$,
-    voiceStatus$,
+    voiceState$,
   });
   const submitCurrentInput$ = command(
     async (
@@ -877,60 +848,53 @@ function createComposerSubmissionSignals(
       if (action !== "send" && action !== "queue") {
         return false;
       }
+      await set(stopAndTranscribe$, signal);
+      signal.throwIfAborted();
       if (!get(draft.attachmentUploadsReady$)) {
         return false;
       }
-      if (get(voiceStatus$) !== "idle") {
+      const voiceState = await get(voiceState$);
+      signal.throwIfAborted();
+      if (voiceState.status !== "idle") {
         return false;
       }
-      if (get(internalSubmissionPending$)) {
+      const submission = await set(
+        workflowComposer.readInputForSubmission$,
+        signal,
+      );
+      signal.throwIfAborted();
+      const visiblePrompt = submission.prompt.trim();
+      if (visiblePrompt.length === 0 && get(draft.attachments$).length === 0) {
         return false;
       }
-
-      set(internalSubmissionPending$, true);
-      return await withCleanup(
-        (async () => {
-          const submission = await set(
-            workflowComposer.readInputForSubmission$,
-            signal,
-          );
-          signal.throwIfAborted();
-          const visiblePrompt = submission.prompt.trim();
-          if (
-            visiblePrompt.length === 0 &&
-            get(draft.attachments$).length === 0
-          ) {
-            return false;
-          }
-          if (!get(draft.attachmentUploadsReady$)) {
-            return false;
-          }
-          const videoRunOptions = await set(readVideoRunOptions$, signal);
-          return await set(
-            options.submitMessage$,
-            action,
-            {
-              prompt: visiblePrompt,
-              generationTemplate: get(draft.generationTemplate$),
-              editorDocument: submission.editorDocument,
-              videoRunOptions,
-            },
-            signal,
-          );
-        })(),
-        () => {
-          set(internalSubmissionPending$, false);
+      if (!get(draft.attachmentUploadsReady$)) {
+        return false;
+      }
+      const videoRunOptions = await set(readVideoRunOptions$, signal);
+      return await set(
+        options.submitMessage$,
+        action,
+        {
+          prompt: visiblePrompt,
+          generationTemplate: get(draft.generationTemplate$),
+          editorDocument: submission.editorDocument,
+          videoRunOptions,
         },
+        signal,
       );
     },
   );
   const activatePrimaryAction$ = command(
     async (
-      { set },
+      { get, set },
       action: ComposerPrimaryAction,
       signal: AbortSignal,
     ): Promise<boolean> => {
       signal.throwIfAborted();
+      const owner = get(owner$);
+      if (owner) {
+        set(invocation$, { owner, action });
+      }
       if (action === "stop") {
         await set(options.cancelRun$, signal);
         return true;
@@ -940,6 +904,7 @@ function createComposerSubmissionSignals(
   );
 
   return {
+    hasCurrentInvocation$,
     primaryAction$,
     submitCurrentInput$,
     activatePrimaryAction$,

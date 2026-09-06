@@ -109,22 +109,6 @@ test.each([false, true])(
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: 60 });
     });
-    const errorSpy = vi.spyOn(console, "error");
-    const originalError = errorSpy.getMockImplementation();
-    if (!originalError) {
-      throw new Error("Expected unexpected-console-error guard");
-    }
-    const consoleErrors: unknown[][] = [];
-    errorSpy.mockImplementation((...args: unknown[]) => {
-      if (
-        args[0] === "[E][Composer:VoiceDraft]" &&
-        args[1] === "Voice draft transcription failed"
-      ) {
-        consoleErrors.push(args);
-        return;
-      }
-      originalError(...args);
-    });
     let transcriptionRequests = 0;
     context.mocks.http.post("*/api/voice-io/transcribe", () => {
       transcriptionRequests += 1;
@@ -220,12 +204,5 @@ test.each([false, true])(
         return button.textContent?.trim() === "Retry";
       }),
     ).toBeUndefined();
-    expect(consoleErrors).toStrictEqual([
-      [
-        "[E][Composer:VoiceDraft]",
-        "Voice draft transcription failed",
-        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-      ],
-    ]);
   },
 );

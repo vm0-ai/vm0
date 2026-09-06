@@ -388,7 +388,6 @@ export function ChatFeedbackSelection({
   const translationEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ChatTranslation];
   const forwardSelection = useGet(feedback.forwardSelection$);
-  const forwardComposerState = useGet(feedback.forwardComposerState$);
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
   const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
@@ -396,7 +395,6 @@ export function ChatFeedbackSelection({
   const closeSelectionToolbar = useSet(feedback.close$);
   const copy = useSet(feedback.copy$);
   const startForward = useSet(feedback.startForward$);
-  const setForwardComposerState = useSet(feedback.setForwardComposerState$);
   const closeForward = useSet(feedback.closeForward$);
 
   return (
@@ -470,10 +468,9 @@ export function ChatFeedbackSelection({
       {forwardSelection ? (
         <ChatForwardDialog
           selection={forwardSelection}
-          composerState={forwardComposerState}
+          feedback={feedback}
           sourceAgentId={sourceAgentId}
           sourceThreadTitle={sourceThreadTitle}
-          onComposerStateChange={setForwardComposerState}
           onDismiss={() => {
             closeForward();
           }}

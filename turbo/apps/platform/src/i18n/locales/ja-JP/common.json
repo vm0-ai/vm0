@@ -2384,7 +2384,6 @@
       "targetLanguage": "翻訳先の言語"
     },
     "voice": {
-      "busyInAnotherTab": "この会話は別のタブで録音中です。録音が停止した後に再試行してください。",
       "checkingLimit": "音声入力制限を確認する",
       "cleanupFailed": "テキストは追加されましたが、保存済みの録音を削除できませんでした。",
       "confirmRecording": "OK",
@@ -2399,7 +2398,6 @@
       "openingMicrophone": "マイクを開いて...",
       "removeDraft": "音声の下書きを削除",
       "restoreFailed": "音声の下書きを読み込めませんでした。再試行してください。",
-      "restoring": "音声の下書きを復元中...",
       "retry": "再試行",
       "retryReady": "録音は保持されています。文字起こしを再試行してください。",
       "starting": "音声入力を開始する",

@@ -14,11 +14,11 @@ export const setupAgentChatKeyboardShortcuts$ = command(
       {
         [COMPOSER_VOICE_INPUT_SHORTCUT]: {
           allowInEditableTarget: true,
-          run: async () => {
+          run: () => {
             if (!get(voiceInputV2Enabled$)) {
               return;
             }
-            await set(get(agentChatComposerSignals$).voice.toggle$, signal);
+            set(get(agentChatComposerSignals$).voice.toggle$);
           },
         },
       },

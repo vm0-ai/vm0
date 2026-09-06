@@ -1,4 +1,4 @@
-import { command, state, type Command } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { delay } from "signal-timers";
 import {
   agentDraftContract,
@@ -174,10 +174,21 @@ function createAgentDraftLoad(
   draft: DraftSignals,
   queueDraftSync$: AgentDraftEntry["queueDraftSync$"],
 ): AgentDraftEntry["load$"] {
+  const revision$ = state(0);
+  const serverDraft$ = computed(async (get) => {
+    get(revision$);
+    const result = await accept(
+      get(apiClient$)(agentDraftContract).get({ params: { id: agentId } }),
+      [200],
+    );
+    return userMessageAgentDraftState(
+      agentDraftResponseSchema.parse(result.body),
+    );
+  });
   const load$ = command(async ({ get, set }, signal: AbortSignal) => {
     const hasLocalDraft = (): boolean => {
       return (
-        get(draft.input$).trim() !== "" ||
+        get(draft.hasLocalInput$) ||
         get(draft.generationTemplate$) !== undefined ||
         get(draft.attachments$).length > 0
       );
@@ -186,14 +197,16 @@ function createAgentDraftLoad(
       return;
     }
 
-    const client = get(apiClient$)(agentDraftContract);
-    const result = await accept(
-      client.get({
-        params: { id: agentId },
-        fetchOptions: { signal },
-      }),
-      [200],
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(revision$, (revision) => {
+          return revision + 1;
+        });
+      },
+      { once: true },
     );
+    const restoredDraft = await get(serverDraft$);
     signal.throwIfAborted();
 
     // The composer is interactive while the remote draft loads. Preserve any
@@ -203,8 +216,6 @@ function createAgentDraftLoad(
       return;
     }
 
-    const response = agentDraftResponseSchema.parse(result.body);
-    const restoredDraft = userMessageAgentDraftState(response);
     if (!restoredDraft) {
       return;
     }
@@ -230,9 +241,7 @@ function createAgentDraftLoad(
       await set(queueDraftSync$, signal);
     }
   });
-  return command(async ({ set }, signal: AbortSignal) => {
-    await set(draft.hydrate$, load$, signal);
-  });
+  return load$;
 }
 
 export const clearAgentDraftById$ = command(

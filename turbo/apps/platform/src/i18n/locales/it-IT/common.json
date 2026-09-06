@@ -2431,7 +2431,6 @@
       "targetLanguage": "Lingua di traduzione"
     },
     "voice": {
-      "busyInAnotherTab": "Questa conversazione ha una registrazione attiva in un’altra scheda. Riprova quando termina.",
       "checkingLimit": "Controllo del limite di input vocale",
       "cleanupFailed": "Il testo è stato aggiunto, ma non è stato possibile rimuovere la registrazione salvata.",
       "confirmRecording": "OK",
@@ -2446,7 +2445,6 @@
       "openingMicrophone": "Apertura del microfono...",
       "removeDraft": "Rimuovi bozza vocale",
       "restoreFailed": "Impossibile caricare la bozza vocale. Riprova.",
-      "restoring": "Ripristino della bozza vocale...",
       "retry": "Riprova",
       "retryReady": "La registrazione è conservata. Riprova la trascrizione.",
       "starting": "Avvio dell'input vocale",

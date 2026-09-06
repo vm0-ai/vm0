@@ -281,22 +281,28 @@ export async function startVoiceDraftPcmCapture(
         },
       );
       const finished = createDeferredPromise<void>(signal);
+      const firstBatch = createDeferredPromise<void>(signal);
       const samples = createVoiceDraftSampleWriter(persistence, signal);
       let stopped = false;
       worklet.port.addEventListener(
         "message",
         (event: MessageEvent<unknown>) => {
           if (event.data instanceof ArrayBuffer) {
-            samples.append(new Float32Array(event.data));
+            const batch = new Float32Array(event.data);
+            if (batch.length > 0 && !signal.aborted) {
+              samples.append(batch);
+              if (!firstBatch.settled()) {
+                firstBatch.resolve();
+              }
+            }
           } else if (event.data === "done" && !finished.settled()) {
             finished.resolve();
           }
         },
       );
       worklet.port.start();
-      source.connect(worklet);
 
-      return {
+      const capture: VoiceDraftPcmCapture = {
         cancel(): void {
           if (stopped) {
             return;
@@ -327,6 +333,18 @@ export async function startVoiceDraftPcmCapture(
           );
         },
       };
+      signal.addEventListener("abort", capture.cancel, { once: true });
+      return await onRejection(
+        (async () => {
+          source.connect(worklet);
+          // Connected nodes do not prove the microphone is supplying samples.
+          // Silence counts, and the first batch stays in the normal write queue.
+          await firstBatch.promise;
+          signal.throwIfAborted();
+          return capture;
+        })(),
+        capture.cancel,
+      );
     })(),
     async () => {
       await closeAudioContext();

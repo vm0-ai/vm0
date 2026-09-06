@@ -39,9 +39,7 @@ function installAvailableVoiceQuota(limit: number | null = 60): void {
 
 async function readyVoiceInput(): Promise<HTMLElement> {
   await readyChat();
-  const voiceInput = await findButton("Voice input");
-  expect(voiceInput).toBeEnabled();
-  return voiceInput;
+  return await findEnabledButton("Voice input");
 }
 
 function currentComposer(): HTMLElement {
@@ -168,10 +166,10 @@ test("Add voice transcription to the current message draft", async () => {
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Record the agenda");
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Record the agenda");
 
-  click(await findButton("Voice input"));
+  click(await findEnabledButton("Voice input"));
   click(await activeVoiceStopButton());
   await expect(findButton("Transcribing")).resolves.toBeDisabled();
 
@@ -186,13 +184,17 @@ test("Add voice transcription to the current message draft", async () => {
       "Record the agenda and typed notes Add action owners",
     );
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Toggle voice input v2 from the focused composer shortcut", async () => {
+  const requested = context.mocks.deferred<void>();
+  const response = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe", async () => {
+    requested.resolve();
+    await response.promise;
     return HttpResponse.json({
       transcript: "um shortcut voice note",
       polishedText: "Shortcut voice note",
@@ -241,10 +243,21 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
     shiftKey: true,
   });
 
+  await requested.promise;
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(queryButton("Stop recording")).toBeNull();
+  fireEvent.keyDown(currentComposer(), {
+    key: "e",
+    code: "KeyE",
+    ctrlKey: true,
+    shiftKey: true,
+  });
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  response.resolve();
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Shortcut voice note");
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Transcribe a voice draft using the latest assistant reference", async () => {
@@ -557,12 +570,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   click(voiceInput);
   await voiceActivityObserved.promise;
 
-  const stop = queryButton("Stop recording");
-  if (!stop) {
-    throw new Error(
-      "Expected the voice draft to keep recording through silence",
-    );
-  }
+  const stop = await findEnabledButton("Stop recording");
   expect(stop).toBeEnabled();
   expect(recorderStops).toBe(0);
   expect(multimodalCalls).toBe(0);
@@ -578,7 +586,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   expect(multimodalCalls).toBe(1);
   expect(legacySttCalls).toBe(0);
   expectNoVoiceDraftNode();
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Show recent voice levels at the end of the waveform", async () => {
@@ -621,7 +629,8 @@ test.each([
   },
 ])("Retry the original recording after $code", async (failure) => {
   const transcriptionFailed = context.mocks.deferred<void>();
-  const consoleErrors = captureVoiceTranscriptionErrors();
+  const retryRequest = context.mocks.deferred<void>();
+  const retryResponse = context.mocks.deferred<void>();
   let transcriptionAttempts = 0;
   const recordings: ArrayBuffer[] = [];
   context.mocks.browser.voiceInput({ rms: 0.12 });
@@ -637,6 +646,9 @@ test.each([
     if (transcriptionAttempts <= 2) {
       if (transcriptionAttempts === 1) {
         transcriptionFailed.resolve(undefined);
+      } else {
+        retryRequest.resolve();
+        await retryResponse.promise;
       }
       return HttpResponse.json(
         {
@@ -668,9 +680,7 @@ test.each([
   click(await activeVoiceDraftStopButton());
   await transcriptionFailed.promise;
 
-  await expect(
-    screen.findByText("Voice transcription failed. Try again."),
-  ).resolves.toBeVisible();
+  await expect(screen.findByText(failure.message)).resolves.toBeVisible();
   await expect(findButton("Retry")).resolves.toBeEnabled();
   expect(queryButton("Voice input")).toBeNull();
   expect(transcriptionAttempts).toBe(1);
@@ -680,8 +690,11 @@ test.each([
   expect(normalizedComposerText()).toBe("Keep these notes.");
   expect(queryButton("Send")).toBeNull();
 
-  click(await findButton("Retry"));
-  await expect(findButton("Retry")).resolves.toBeEnabled();
+  click(await findEnabledButton("Retry"));
+  await retryRequest.promise;
+  await screen.findByText("Transcribing...");
+  retryResponse.resolve();
+  await findEnabledButton("Retry");
   expect(normalizedComposerText()).toBe("Keep these notes.");
   click(await findButton("Retry"));
 
@@ -695,18 +708,6 @@ test.each([
   expect(recordings[2]).toStrictEqual(recordings[0]);
   expectNoVoiceDraftNode();
   await findEnabledButton("Send");
-  expect(consoleErrors).toHaveLength(2);
-  for (const error of consoleErrors) {
-    expect(error).toStrictEqual([
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({
-        message: failure.message,
-        code: failure.code,
-        status: failure.status,
-      }),
-    ]);
-  }
   click(await findLink("Agents"));
   await screen.findByRole("heading", { name: "Agents" });
   cleanup();
@@ -715,7 +716,7 @@ test.each([
     path: RUN_PATH,
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
 });
 
@@ -728,7 +729,6 @@ test.each([
   async ({ path, failed }) => {
     const firstRequest = context.mocks.deferred<void>();
     const firstResponse = context.mocks.deferred<void>();
-    const consoleErrors = captureVoiceTranscriptionErrors();
     const recordings: ArrayBuffer[] = [];
     context.mocks.browser.voiceInput({ rms: 0.12 });
     installAvailableVoiceQuota();
@@ -769,7 +769,7 @@ test.each([
       path,
       featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
-    click(await findButton("Voice input"));
+    click(await findEnabledButton("Voice input"));
     click(await activeVoiceDraftStopButton());
     await firstRequest.promise;
     const pendingRecording = failed
@@ -796,12 +796,10 @@ test.each([
     });
     await findEnabledButton("Send");
     expect(recordings[1]).toStrictEqual(recordings[0]);
-    expect(consoleErrors).toHaveLength(failed ? 1 : 0);
   },
 );
 
 test("Keep a saved voice recording isolated from another signed-in user", async () => {
-  const consoleErrors = captureVoiceTranscriptionErrors();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
@@ -834,14 +832,12 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
     auth: { user: { id: "other-voice-user", fullName: "Other User" } },
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
   expect(normalizedComposerText()).toBe("");
-  expect(consoleErrors).toHaveLength(1);
 });
 
 test("Discard a failed recording without removing typed notes", async () => {
-  const consoleErrors = captureVoiceTranscriptionErrors();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
@@ -866,7 +862,7 @@ test("Discard a failed recording without removing typed notes", async () => {
   click(voiceInput);
   click(await activeVoiceDraftStopButton());
   click(await findButton("Remove voice draft"));
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Keep typed notes");
 
   click(await findLink("Agents"));
@@ -877,9 +873,8 @@ test("Discard a failed recording without removing typed notes", async () => {
     path: RUN_PATH,
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
-  expect(consoleErrors).toHaveLength(1);
 });
 
 test("Release a late microphone stream after navigating away during voice startup", async () => {
@@ -969,17 +964,16 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   await expect(
     screen.findByText("Voice transcription failed. Try again."),
   ).resolves.toBeVisible();
-  const restoredVoiceInput = await findButton("Voice input");
-  expect(restoredVoiceInput).toBeEnabled();
+  const restoredVoiceInput = await findEnabledButton("Voice input");
   expect(restoredVoiceInput).toHaveAttribute("aria-busy", "false");
   expect(queryButton("Attach")).toBeVisible();
   expect(document.querySelector("[data-voice-level-waveform]")).toBeNull();
   expect(normalizedComposerText()).toBe("Keep these typed notes.");
   expect(microphoneStops).toBe(1);
   expect(audioContextCloses).toBe(1);
-  await expect(findButton("Send")).resolves.toBeEnabled();
+  await findEnabledButton("Send");
 
-  click(await findButton("Voice input"));
+  click(restoredVoiceInput);
   click(await activeVoiceDraftStopButton());
   await waitFor(() => {
     expect(normalizedComposerText()).toBe(
@@ -990,55 +984,11 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   expectNoVoiceDraftNode();
   expect(consoleErrors).toStrictEqual([
     [
-      "[E][VoiceIO:STT]",
-      "Voice recording failed to start",
-      expect.objectContaining({ message: "PCM worklet could not load" }),
-    ],
-    [
       "[E][Composer:VoiceDraft]",
       "Voice draft transcription failed",
-      expect.objectContaining({ message: "Voice draft recording failed" }),
+      expect.objectContaining({ message: "PCM worklet could not load" }),
     ],
   ]);
-});
-
-test("Silently finish an empty recording without changing the composer", async () => {
-  const consoleErrors = captureVoiceTranscriptionErrors();
-  let microphoneStops = 0;
-  let audioContextCloses = 0;
-  context.mocks.browser.voiceInput({
-    durationSeconds: 0,
-    onTrackStop() {
-      microphoneStops += 1;
-    },
-    onAudioContextClose() {
-      audioContextCloses += 1;
-    },
-    rms: 0.12,
-  });
-  installAvailableVoiceQuota();
-  installRunChat();
-
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
-  });
-
-  const voiceInput = await readyVoiceInput();
-  await fill(currentComposer(), "Keep the existing draft");
-  click(voiceInput);
-  click(await activeVoiceDraftStopButton());
-
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
-  expect(normalizedComposerText()).toBe("Keep the existing draft");
-  expect(microphoneStops).toBe(1);
-  expect(audioContextCloses).toBe(2);
-  await expect(findButton("Send")).resolves.toBeEnabled();
-  expect(consoleErrors).toStrictEqual([]);
-  expect(
-    screen.queryByText("Voice transcription failed. Try again."),
-  ).toBeNull();
 });
 
 test.each(["", "Keep the existing draft"])(
@@ -1065,7 +1015,7 @@ test.each(["", "Keep the existing draft"])(
     const stop = await activeVoiceDraftStopButton();
     click(stop);
 
-    await expect(findButton("Voice input")).resolves.toBeEnabled();
+    await findEnabledButton("Voice input");
     expect(normalizedComposerText()).toBe(initialText);
     expect(queryButton("Attach")).toBeVisible();
     expect(queryButton("Send")).toHaveProperty("disabled", !initialText);
@@ -1120,7 +1070,7 @@ test("Make voice-input startup and silent cancellation clear", async () => {
   await voiceActivityObserved.promise;
   click(stopRecording);
 
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   await waitFor(() => {
     expect(audioContextCloseCount).toBe(1);
   });
@@ -1282,55 +1232,68 @@ test("Transcribe long voice dictation in ordered segments", async () => {
       "First dictated segment Second dictated segment",
     );
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
-test("Wait for voice transcription before sending a message", async () => {
-  const microphoneReady = context.mocks.deferred<void>();
-  const transcriptReady = context.mocks.deferred<void>();
-  const transcriptionStarted = context.mocks.deferred<void>();
-  const recorderStarted = context.mocks.deferred<void>();
-  const sends: CapturedVoiceSend[] = [];
-  context.mocks.browser.voiceInput({
-    getUserMediaReady: microphoneReady.promise,
-    onRecorderStart() {
-      recorderStarted.resolve(undefined);
-    },
-  });
-  installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/stt", async () => {
-    transcriptionStarted.resolve(undefined);
-    await transcriptReady.promise;
-    return HttpResponse.json({ text: "spoken conclusion" });
-  });
-  installRunChat({
-    onSendRequest(body) {
-      sends.push({ prompt: body.prompt });
-    },
-  });
+test.each(["button", "enter"])(
+  "Wait for voice transcription before sending via %s",
+  async (trigger) => {
+    const microphoneReady = context.mocks.deferred<void>();
+    const transcriptReady = context.mocks.deferred<void>();
+    const transcriptionStarted = context.mocks.deferred<void>();
+    const recorderStarted = context.mocks.deferred<void>();
+    const sends: CapturedVoiceSend[] = [];
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      onRecorderStart() {
+        recorderStarted.resolve(undefined);
+      },
+    });
+    installAvailableVoiceQuota();
+    context.mocks.http.post("*/api/voice-io/stt", async () => {
+      transcriptionStarted.resolve(undefined);
+      await transcriptReady.promise;
+      return HttpResponse.json({ text: "spoken conclusion" });
+    });
+    installRunChat({
+      onSendRequest(body) {
+        sends.push({ prompt: body.prompt });
+      },
+    });
 
-  await setupPage({ context, path: RUN_PATH });
+    await setupPage({ context, path: RUN_PATH });
 
-  await readyChat();
-  await fill(currentComposer(), "Typed introduction");
-  click(await findButton("Voice input"));
-  await expect(findButton("Starting voice input")).resolves.toBeDisabled();
+    await readyChat();
+    await fill(currentComposer(), "Typed introduction");
+    click(await findEnabledButton("Voice input"));
+    await expect(findButton("Starting voice input")).resolves.toBeDisabled();
 
-  click(await findButton("Send"));
+    if (trigger === "button") {
+      click(await findEnabledButton("Send"));
+    } else {
+      await findEnabledButton("Send");
+      fireEvent.keyDown(currentComposer(), { key: "Enter", code: "Enter" });
+    }
 
-  expect(sends).toHaveLength(0);
-  microphoneReady.resolve(undefined);
-  await recorderStarted.promise;
-  await transcriptionStarted.promise;
-  expect(sends).toHaveLength(0);
-  await expect(findButton("Transcribing")).resolves.toBeDisabled();
+    expect(sends).toHaveLength(0);
+    microphoneReady.resolve(undefined);
+    await recorderStarted.promise;
+    await transcriptionStarted.promise;
+    expect(sends).toHaveLength(0);
+    await expect(findButton("Transcribing")).resolves.toBeDisabled();
 
-  transcriptReady.resolve(undefined);
+    const send = await findButton("Send");
+    expect(send).toBeDisabled();
+    fireEvent.keyDown(currentComposer(), { key: "Enter", code: "Enter" });
+    click(send);
 
-  await waitFor(() => {
-    expect(sends).toHaveLength(1);
-  });
-  expect(sends[0]?.prompt.replace(/\s+/gu, " ").trim()).toBe(
-    "Typed introduction spoken conclusion",
-  );
-});
+    transcriptReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(sends).toHaveLength(1);
+    });
+    expect(sends[0]?.prompt.replace(/\s+/gu, " ").trim()).toBe(
+      "Typed introduction spoken conclusion",
+    );
+  },
+);

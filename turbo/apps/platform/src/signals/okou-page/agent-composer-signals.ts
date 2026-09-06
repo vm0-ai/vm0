@@ -5,7 +5,6 @@ import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
-import { currentAgentId$ } from "../agent.ts";
 import {
   sendNewThread$,
   sendNewThreadWithoutNavigation$,
@@ -331,18 +330,6 @@ function createAgentComposerSignalsWithDraft(
   });
 }
 
-/**
- * Creates the public composer signals for an agent chat.
- *
- * @public
- */
-export function createAgentComposerSignals(agentId: string) {
-  return createAgentComposerSignalsWithDraft(
-    agentId,
-    createAgentDraftSignals(agentId),
-  );
-}
-
 export function createForwardAgentComposerSignals(
   agentId: string,
   forward: ChatForwardContext,
@@ -369,12 +356,12 @@ export const setAgentComposerContext$ = command(
 );
 
 export const agentChatComposerSignals$ = computed((get) => {
-  const agentId = get(currentAgentId$);
-  if (!agentId) {
-    throw new Error("Chat composer requires an active agent");
-  }
   const context = get(internalAgentComposerContext$);
-  return context?.agentId === agentId
-    ? createAgentComposerSignalsWithDraft(agentId, context.agentDraft)
-    : createAgentComposerSignals(agentId);
+  if (!context) {
+    throw new Error("Chat composer requires an initialized agent context");
+  }
+  return createAgentComposerSignalsWithDraft(
+    context.agentId,
+    context.agentDraft,
+  );
 });

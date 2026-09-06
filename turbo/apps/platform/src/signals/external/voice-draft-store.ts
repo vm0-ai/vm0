@@ -1,6 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 import { observeClientOperation } from "../../lib/client-telemetry.ts";
-import { createDeferredPromise, onRejection, withCleanup } from "../utils.ts";
+import { withCleanup } from "../utils.ts";
 import { encodeVoiceDraftPcmWav } from "../voice-io/voice-draft-pcm.ts";
 import { runIndexedDbTransaction } from "./indexeddb-client.ts";
 
@@ -35,51 +35,6 @@ async function openVoiceDraftRecordingDatabase() {
   );
 }
 
-/** The browser releases ownership when the page disappears, including crashes. */
-export async function acquireVoiceDraftLock(
-  key: string,
-  signal: AbortSignal,
-): Promise<(() => Promise<void>) | null> {
-  signal.throwIfAborted();
-  const acquired = createDeferredPromise<(() => Promise<void>) | null>(signal);
-  const released = createDeferredPromise<void>(signal);
-  const completed = Promise.allSettled([
-    onRejection(
-      navigator.locks.request(
-        `okou-voice-draft:${key}`,
-        { ifAvailable: true },
-        async (lock) => {
-          signal.throwIfAborted();
-          if (!lock) {
-            acquired.resolve(null);
-            released.resolve();
-            return;
-          }
-          acquired.resolve(async () => {
-            if (!released.settled()) {
-              released.resolve();
-            }
-            const [result] = await completed;
-            if (result?.status === "rejected") {
-              throw result.reason;
-            }
-          });
-          await released.promise;
-        },
-      ),
-      (error) => {
-        if (!acquired.settled()) {
-          acquired.reject(error);
-        }
-        if (!released.settled()) {
-          released.resolve();
-        }
-      },
-    ),
-  ]);
-  return await acquired.promise;
-}
-
 function chunkRange(key: string, id: string): IDBKeyRange {
   return IDBKeyRange.bound([key, id, 0], [key, id, Number.MAX_SAFE_INTEGER]);
 }
@@ -108,7 +63,7 @@ export async function readVoiceDraftRecording(
   );
 }
 
-/** Creating a recording never replaces an unfinished recording from another tab. */
+/** Preserve an unfinished recording when a composer resumes. */
 export async function createVoiceDraftRecording(
   key: string,
   id: string,

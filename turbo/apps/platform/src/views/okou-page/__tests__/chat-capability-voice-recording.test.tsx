@@ -1,7 +1,7 @@
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { openDB, type DBSchema } from "idb";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -62,8 +62,7 @@ function installVoiceBoundaries() {
   errorSpy.mockImplementation((...args: unknown[]) => {
     if (
       (args[0] === "[E][Composer:VoiceDraft]" &&
-        (args[1] === "Voice draft transcription failed" ||
-          args[1] === "Voice recording could not be saved")) ||
+        args[1] === "Voice recording could not be saved") ||
       (args[0] === "[E][VoiceIO:STT]" &&
         args[1] === "Voice recording failed to finish")
     ) {
@@ -96,13 +95,22 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       rms: 0.12,
       onPcmCapture: capture.resolve,
     });
-    const consoleErrors = installVoiceBoundaries();
+    installVoiceBoundaries();
     const uploads: ArrayBuffer[] = [];
+    const retries = Array.from({ length: 2 }, () => {
+      return {
+        requested: context.mocks.deferred<void>(),
+        response: context.mocks.deferred<void>(),
+      };
+    });
     context.mocks.http.post(
       "*/api/voice-io/transcribe",
       async ({ request }) => {
         uploads.push(await uploadedAudio(request));
-        if (uploads.length < 3) {
+        const retry = retries[uploads.length - 1];
+        if (retry) {
+          retry.requested.resolve();
+          await retry.response.promise;
           return HttpResponse.json(
             { error: "Temporary outage" },
             { status: 503 },
@@ -121,9 +129,9 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       featureSwitches: flags,
     });
     click(await findEnabledButton("Voice input"));
-    await findEnabledButton("Stop recording");
     const emit = await capture.promise;
     emit(new Float32Array(4096).fill(0.25));
+    await findEnabledButton("Stop recording");
     await waitFor(async () => {
       await expect(savedRecording()).resolves.toMatchObject({
         sampleCount: 4096,
@@ -136,10 +144,13 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
       path,
       featureSwitches: flags,
     });
-    click(await findEnabledButton("Retry"));
-    await findEnabledButton("Retry");
-    click(await findEnabledButton("Retry"));
-    await findEnabledButton("Retry");
+    for (const retry of retries) {
+      click(await findEnabledButton("Retry"));
+      await retry.requested.promise;
+      await screen.findByText("Transcribing...");
+      retry.response.resolve();
+      await findEnabledButton("Retry");
+    }
     expect(queryButton("Stop recording")).toBeNull();
     unload(secondPage);
     await setupPage({ context: thirdContext, path, featureSwitches: flags });
@@ -157,14 +168,6 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     await waitFor(async () => {
       return await expect(savedRecording()).resolves.toBeNull();
     });
-    expect(consoleErrors).toHaveLength(2);
-    for (const error of consoleErrors) {
-      expect(error).toStrictEqual([
-        "[E][Composer:VoiceDraft]",
-        "Voice draft transcription failed",
-        expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-      ]);
-    }
   },
 );
 
@@ -220,7 +223,9 @@ test.each([
     const firstPage = createChildAbortController(context.signal);
     context.mocks.browser.voiceInput({
       rms: 0,
-      onPcmCapture: () => {},
+      onPcmCapture: (emit) => {
+        emit(new Float32Array(4096));
+      },
       finalPcmSamples: new Float32Array(empty ? 0 : 4096),
     });
     const consoleErrors = installVoiceBoundaries();
@@ -241,7 +246,7 @@ test.each([
     click(await findEnabledButton("Stop recording"));
     await findEnabledButton("Voice input");
     expect(queryButton("Retry")).toBeNull();
-    expect(uploads).toHaveLength(empty ? 0 : 1);
+    expect(uploads).toHaveLength(1);
     unload(firstPage);
     await setupPage({ context: secondContext, path, featureSwitches: flags });
     await findEnabledButton("Voice input");
@@ -250,74 +255,6 @@ test.each([
     expect(consoleErrors).toStrictEqual([]);
   },
 );
-
-test("Keep the active tab's recording until its owner closes", async () => {
-  const firstPage = createChildAbortController(context.signal);
-  const capture = context.mocks.deferred<(samples: Float32Array) => void>();
-  context.mocks.browser.voiceInput({
-    rms: 0.12,
-    onPcmCapture: capture.resolve,
-  });
-  const consoleErrors = installVoiceBoundaries();
-  await setupPage({
-    context: { ...context, signal: firstPage.signal },
-    path: RUN_PATH,
-    featureSwitches: flags,
-  });
-  click(await findEnabledButton("Voice input"));
-  await findEnabledButton("Stop recording");
-  const emit = await capture.promise;
-  emit(new Float32Array(4096).fill(0.25));
-  await waitFor(async () => {
-    return await expect(savedRecording()).resolves.toMatchObject({
-      sampleCount: 4096,
-    });
-  });
-  const original = await savedRecording();
-  const firstComposer = screen.getByRole("textbox", { name: "Message" });
-  const firstRoot = Array.from(document.body.children).find((element) => {
-    return element.contains(firstComposer);
-  })!;
-  // Keep the first committed composer mounted, as a separate live tab would.
-  vi.mocked(window.history.pushState).mockRestore();
-  vi.mocked(window.history.replaceState).mockRestore();
-  vi.mocked(window.history.back).mockRestore();
-  await setupPage({
-    context: secondContext,
-    path: RUN_PATH,
-    featureSwitches: flags,
-  });
-  const secondRoot = await waitFor(() => {
-    const root = Array.from(document.body.children).find((element) => {
-      return (
-        element !== firstRoot &&
-        within(element as HTMLElement).queryByRole("textbox", {
-          name: "Message",
-        })
-      );
-    });
-    expect(root).toBeDefined();
-    return root!;
-  });
-  await within(secondRoot as HTMLElement).findByText(
-    "This conversation has an active recording in another tab. Retry after it stops.",
-  );
-  click(await findEnabledButton("Retry", secondRoot));
-  await within(secondRoot as HTMLElement).findByText(
-    "This conversation has an active recording in another tab. Retry after it stops.",
-  );
-  await expect(savedRecording()).resolves.toStrictEqual(original);
-  expect(queryButton("Voice input", secondRoot)).toBeNull();
-  const error = new Error("First tab closed");
-  error.name = "AbortError";
-  firstPage.abort(error);
-  click(await findEnabledButton("Retry", secondRoot));
-  await findEnabledButton("Remove voice draft", secondRoot);
-  click(await findEnabledButton("Remove voice draft", secondRoot));
-  await findEnabledButton("Voice input", secondRoot);
-  await expect(savedRecording()).resolves.toBeNull();
-  expect(consoleErrors).toStrictEqual([]);
-});
 
 test("Stop capture and expose a failed chunk write without discarding the saved prefix", async () => {
   const capture = context.mocks.deferred<(samples: Float32Array) => void>();
@@ -328,9 +265,9 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
   const consoleErrors = installVoiceBoundaries();
   await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
   click(await findEnabledButton("Voice input"));
-  await findEnabledButton("Stop recording");
   const emit = await capture.promise;
   emit(new Float32Array(4096).fill(0.25));
+  await findEnabledButton("Stop recording");
   await waitFor(async () => {
     return await expect(savedRecording()).resolves.toMatchObject({
       sampleCount: 4096,
@@ -352,11 +289,9 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
   });
   emit(new Float32Array(4096).fill(0.5));
   await findEnabledButton("Retry");
-  expect(
-    screen.getAllByText(
-      "Audio could not be saved. Retry can recover only audio already saved on this device.",
-    ).length,
-  ).toBeGreaterThan(0);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Audio could not be saved. Retry can recover only audio already saved on this device.",
+  );
   expect(queryButton("Stop recording")).toBeNull();
   await expect(savedRecording()).resolves.toMatchObject({
     sampleCount: 4096,
@@ -368,14 +303,13 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
       "Voice recording could not be saved",
       storageError,
     ],
-    ["[E][VoiceIO:STT]", "Voice recording failed to finish", storageError],
   ]);
 });
 
 test("Restore audio when voice input v2 enables after the composer mounts", async () => {
   const firstPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
-  const consoleErrors = installVoiceBoundaries();
+  installVoiceBoundaries();
   context.mocks.http.post("*/api/voice-io/transcribe", () => {
     return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
   });
@@ -410,11 +344,4 @@ test("Restore audio when voice input v2 enables after the composer mounts", asyn
     "aria-keyshortcuts",
   );
   await expect(savedRecording()).resolves.toBeNull();
-  expect(consoleErrors).toStrictEqual([
-    [
-      "[E][Composer:VoiceDraft]",
-      "Voice draft transcription failed",
-      expect.objectContaining({ status: 503, code: "UNKNOWN" }),
-    ],
-  ]);
 });
