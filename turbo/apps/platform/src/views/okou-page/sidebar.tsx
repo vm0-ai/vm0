@@ -62,6 +62,8 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
+import { KeyboardShortcutTooltip } from "../components/keyboard-shortcut-tooltip.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -568,30 +570,31 @@ function ThreeColumnChatListToggle({
       });
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          onClick={onToggle}
-          aria-label={label}
-          aria-keyshortcuts="Meta+B Control+B"
-          variant="quiet"
-          size="icon-sm"
-          iconSize="md"
-        >
-          <PanelLeftClose
-            size={18}
-            className={cn(
-              "transition-transform duration-200",
-              hidden && "rotate-180",
-            )}
-          />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side={tooltipSide}>
-        <p className="text-xs">{label}</p>
-      </TooltipContent>
-    </Tooltip>
+    <KeyboardShortcutTooltip
+      shortcut={GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding}
+      side={tooltipSide}
+      hintSide="right"
+    >
+      <Button
+        type="button"
+        onClick={onToggle}
+        aria-label={label}
+        aria-keyshortcuts={
+          GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.ariaKeyShortcuts
+        }
+        variant="quiet"
+        size="icon-sm"
+        iconSize="md"
+      >
+        <PanelLeftClose
+          size={18}
+          className={cn(
+            "transition-transform duration-200",
+            hidden && "rotate-180",
+          )}
+        />
+      </Button>
+    </KeyboardShortcutTooltip>
   );
 }
 
@@ -776,44 +779,44 @@ function ChatListColumn() {
           })}
         </span>
         <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={() => {
-                  openThreeColumnSearch();
-                }}
-                aria-label={searchLabel}
-                aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Search size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{searchLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={onNewChat}
-                disabled={!currentChatAgentId}
-                aria-label={newChatLabel}
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Edit size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{newChatLabel}</p>
-            </TooltipContent>
-          </Tooltip>
+          <KeyboardShortcutTooltip
+            shortcut={GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.binding}
+            hintSide="left"
+          >
+            <Button
+              type="button"
+              onClick={() => {
+                openThreeColumnSearch();
+              }}
+              aria-label={searchLabel}
+              aria-keyshortcuts={
+                GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.ariaKeyShortcuts
+              }
+              variant="quiet"
+              size="icon-sm"
+              iconSize="md"
+            >
+              <Search size={18} />
+            </Button>
+          </KeyboardShortcutTooltip>
+          <KeyboardShortcutTooltip
+            shortcut={GLOBAL_KEYBOARD_SHORTCUTS.newChat.binding}
+          >
+            <Button
+              type="button"
+              onClick={onNewChat}
+              disabled={!currentChatAgentId}
+              aria-label={newChatLabel}
+              aria-keyshortcuts={
+                GLOBAL_KEYBOARD_SHORTCUTS.newChat.ariaKeyShortcuts
+              }
+              variant="quiet"
+              size="icon-sm"
+              iconSize="md"
+            >
+              <Edit size={18} />
+            </Button>
+          </KeyboardShortcutTooltip>
           <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />
         </TooltipProvider>
       </div>
