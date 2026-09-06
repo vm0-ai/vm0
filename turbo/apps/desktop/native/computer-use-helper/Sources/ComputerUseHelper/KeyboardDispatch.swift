@@ -43,6 +43,7 @@ func keyboardAXWindow(_ target: WindowTarget) throws -> AXUIElement {
 
 func ensureBackgroundKeyboardWindow(_ target: WindowTarget, deadline: TimeInterval) throws {
     try ensureKeyboardDeliveryDeadline(deadline)
+    try ensureSnapshotKeyboardTab(target, deadline: deadline)
     let app = applicationElement(forProcessIdentifier: target.pid)
     let window = try keyboardAXWindow(target)
     // CGEvent's window fields do not pin keyboard delivery in an inactive app:
@@ -183,6 +184,7 @@ func prepareForegroundKeyboardWindow(_ target: WindowTarget, deadline: TimeInter
         try ensureKeyboardDeliveryDeadline(focusDeadline)
         if currentFrontmostApplication()?.processIdentifier == target.pid,
            axElementsEqual(axElementValue(attribute(app, kAXFocusedWindowAttribute as CFString)), window) {
+            try prepareSnapshotKeyboardTab(target, deadline: deadline)
             return
         }
         usleep(50_000)

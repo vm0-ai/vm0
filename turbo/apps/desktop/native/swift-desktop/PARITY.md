@@ -563,6 +563,39 @@ avoid overwriting unrelated concurrent changes. Only owned Safari tabs are close
 The PR's latest build/progress record identifies the subsequent downloaded release
 and configured Desktop/server validation. Full PARITY remains open.
 
+### Clipboard and selection ownership across Safari tabs
+
+The downloaded `683660d` helper has a distinct ownership defect: after an
+`app.state` snapshot of tab A, selecting tab B in the same Safari window sends
+Copy, Cut, Paste, and text input to B under all three recovery policies. The
+window ID remains valid, so checking the window alone cannot detect the change.
+The same baseline passes nine native separate-window clipboard cases and eight
+Undo/Redo checks. [Release baseline evidence](https://cdn.vm0.io/artifacts/2v9r9dfuf6.json)
+keeps these outcomes separate.
+
+Safari snapshots now retain the native AX window and tab identity privately in
+the existing bounded runtime session. Keyboard shortcuts and typing validate
+that identity before dispatch. `never` rejects a different selected tab;
+authorized foreground recovery selects the original tab. A closed original tab
+is rejected before activation, even if another tab has the same URL. Tab titles,
+URLs, and positional AX paths are not used as the ownership key. No public API
+fields or clipboard representations are changed.
+
+The candidate is checked on the actual Mac against stale snapshots, duplicate
+URLs, and closed/reopened tabs. The PR progress record identifies the exact
+candidate and subsequent packaged acceptance; compilation is not a parity gate.
+Clipboard backups and ownership leases remain private, preserve every type, and
+refuse to overwrite observed concurrent content.
+
+Two separately reproduced baseline gaps remain open: standard same-tab Safari
+Command-A can report success without changing the selection in the background;
+Undo after an additional A/B/A tab cycle can report success without restoring
+the edit. Immediate Undo without that tab cycle succeeds in the same release.
+An inactive tab switch can also omit the page's AX subtree in both old and new
+helpers; test preparation therefore confirms the owned page after foreground
+tab selection. Broader browser focus, history, and window styles still require
+acceptance. Full Swift Desktop parity remains open.
+
 ## Completion gate
 
 The PR is kept in draft while these acceptance items are open. A compiling app

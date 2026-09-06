@@ -193,7 +193,7 @@ final class ComputerUseRuntimeSession: @unchecked Sendable {
     private var latestByApp: [String: String] = [:]
     private let maxSnapshots = 50
 
-    func recordSnapshot(_ response: [String: Any]) {
+    func recordSnapshot(_ response: [String: Any], safariTab: SafariSnapshotTab? = nil) {
         guard let appName = response["app"] as? String,
               let snapshotId = response["snapshotId"] as? String
         else {
@@ -205,6 +205,7 @@ final class ComputerUseRuntimeSession: @unchecked Sendable {
             "app": appName,
             "snapshotId": snapshotId,
         ]
+        if let safariTab { metadata["safariKeyboardTab"] = safariTab }
         for field in [
             "elementIdsByIndex",
             "focusedElementIndex",
@@ -524,6 +525,7 @@ struct WindowTarget {
     let isOnScreen: Bool
     let currentSpaceId: UInt64?
     let spaceIds: [UInt64]?
+    var safariSnapshotTab: SafariSnapshotTab? = nil
 
     var onCurrentSpace: Bool? {
         guard let currentSpaceId, let spaceIds else {
@@ -2673,13 +2675,18 @@ func resolveKeyboardWindowTarget(
     let preferredScreenPoint = windowFrame.map { frame in
         CGPoint(x: frame.midX, y: frame.midY)
     } ?? .zero
-    return try snapshotWindowTarget(
+    var target = try snapshotWindowTarget(
         appName: appName,
         snapshotId: snapshotId,
         preferredScreenPoint: preferredScreenPoint,
         windowId: windowId,
         windowFrame: nil
     )
+    if let tab = metadata["safariKeyboardTab"] as? SafariSnapshotTab {
+        try validateSafariSnapshotTab(tab, target: target, deadline: ProcessInfo.processInfo.systemUptime + 2, selected: false)
+        target.safariSnapshotTab = tab
+    }
+    return target
 }
 
 func showVisualPointerIfTargetPointVisible(app: NSRunningApplication, point: CGPoint) -> Bool {
@@ -3981,6 +3988,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
 
     let root = applicationElement(forProcessIdentifier: runningApp.processIdentifier)
     enableBestEffortAccessibilityModes(root)
+    let safariTab = try captureSafariSnapshotTab(app: runningApp)
 
     let captured = optionalBool(request, "settle")
         ? settledAccessibilityElements(root)
@@ -4052,7 +4060,10 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     response["screenshotWidth"] = screenshot.width
     response["screenshotHeight"] = screenshot.height
     response["screenshotSourceBounds"] = sourceBounds
-    session?.recordSnapshot(response)
+    if let safariTab {
+        try validateSafariSnapshotTab(safariTab, target: target, deadline: ProcessInfo.processInfo.systemUptime + 2, selected: true)
+    }
+    session?.recordSnapshot(response, safariTab: safariTab)
     return response
 }
 
@@ -4532,6 +4543,7 @@ func performBackgroundKeyPress(
     let deadline = ProcessInfo.processInfo.systemUptime + commandTimeoutPolicy.timeoutSeconds - 1.5
     func currentSpaceKeyPress() throws -> [String: Any] {
         let target = try resolveTarget()
+        try ensureSnapshotKeyboardTab(target, deadline: deadline)
         let shortcut = try nativeKeyboardShortcut(parsed, target: target, deadline: deadline)
         return try withFrontmostPreservation(
             dispatchMode: shortcut?.dispatchMode ?? "background_keyboard_event",
@@ -4571,12 +4583,12 @@ func performBackgroundKeyPress(
         inputRisk: "foreground_app_shortcut",
         resolveTarget: resolveTarget
     ) { target in
+        try prepareForegroundKeyboardWindow(target, deadline: deadline)
         if let close = try safariCloseTabTarget(parsed, target: target, deadline: deadline) {
             var result = try performSafariCloseTab(close, target: target, deadline: deadline)
             result["normalizedKey"] = parsed.normalizedKey
             return result
         }
-        try prepareForegroundKeyboardWindow(target, deadline: deadline)
         try ensureKeyboardDeliveryDeadline(deadline)
         try postForegroundParsedKeyPress(parsed)
         return ["normalizedKey": parsed.normalizedKey, "targetWindowId": target.windowNumber]
@@ -4603,6 +4615,7 @@ func performBackgroundTextInput(
             inputRisk: "background_app_text"
         ) {
             let target = try resolveTarget()
+            try ensureSnapshotKeyboardTab(target, deadline: deadline)
             try ensureFocusedElementEditable(target: target, deadline: deadline)
             let dispatcher = AddressedEventDispatcher(target: target)
             try dispatcher.postText(inputText, deadline: deadline)
@@ -4985,7 +4998,10 @@ func handleTypeText(_ request: [String: Any], session: ComputerUseRuntimeSession
         guard let session else {
             throw HelperFailure(code: "unsupported_command", message: "Snapshot targeting requires a runtime session snapshot: \(snapshotId)")
         }
-        _ = try session.snapshot(appName: appName, snapshotId: snapshotId)
+        let metadata = try session.snapshot(appName: appName, snapshotId: snapshotId)
+        if metadata["safariKeyboardTab"] is SafariSnapshotTab {
+            _ = try resolveKeyboardWindowTarget(appName: appName, snapshotId: snapshotId, session: session)
+        }
     }
     return try performBackgroundTextInput(
         appName: appName,
@@ -5007,7 +5023,10 @@ func handlePressKey(_ request: [String: Any], session: ComputerUseRuntimeSession
         guard let session else {
             throw HelperFailure(code: "unsupported_command", message: "Snapshot targeting requires a runtime session snapshot: \(snapshotId)")
         }
-        _ = try session.snapshot(appName: appName, snapshotId: snapshotId)
+        let metadata = try session.snapshot(appName: appName, snapshotId: snapshotId)
+        if metadata["safariKeyboardTab"] is SafariSnapshotTab {
+            _ = try resolveKeyboardWindowTarget(appName: appName, snapshotId: snapshotId, session: session)
+        }
     }
 
     return try performBackgroundKeyPress(

@@ -149,6 +149,7 @@ func performBackgroundMenuShortcut(
     // Keep the original key event and responder chain, including custom menu
     // bindings and AppKit's menu validation. AXEnabled can retain the inactive
     // menu's disabled value until key-equivalent processing updates the menu.
+    try ensureSnapshotKeyboardTab(target, deadline: deadline)
     try postParsedKeyPress(parsed, to: target)
     usleep(50_000)
     return ["normalizedKey": parsed.normalizedKey, "targetWindowId": target.windowNumber,
