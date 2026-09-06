@@ -11,6 +11,23 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.853.0](https://github.com/vm0-ai/vm0/compare/app-v0.852.0...app-v0.853.0) (2026-09-06)
+
+
+### Features
+
+* **app:** add a chat thread pin shortcut ([#32046](https://github.com/vm0-ai/vm0/issues/32046)) ([31977ef](https://github.com/vm0-ai/vm0/commit/31977ef5d4475edfd8bfb6dcc0de87f856ed22aa))
+* **platform:** add dedicated chat preferences ([#32041](https://github.com/vm0-ai/vm0/issues/32041)) ([e4c4768](https://github.com/vm0-ai/vm0/commit/e4c4768a8e24bac790a0a09333ddae80bee8f3d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.2
+    * @okouai/connectors bumped to 3.5.0
+    * @okouai/core bumped to 8.628.0
+
 ## [0.852.0](https://github.com/vm0-ai/vm0/compare/app-v0.851.0...app-v0.852.0) (2026-09-06)
 
 

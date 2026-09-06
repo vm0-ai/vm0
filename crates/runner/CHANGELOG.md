@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.186.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.10...runner-rs-v0.186.11) (2026-09-06)
+
+
+### Performance Improvements
+
+* **runner:** prewarm capacity-scaled blank sandboxes ([#31970](https://github.com/vm0-ai/vm0/issues/31970)) ([681ea1d](https://github.com/vm0-ai/vm0/commit/681ea1d05a48494ea838304365219fd428169e55))
+
 ## [0.186.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.9...runner-rs-v0.186.10) (2026-09-06)
 
 
