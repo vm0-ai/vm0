@@ -8,7 +8,7 @@ import {
   type ChatEvent,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
@@ -56,7 +56,7 @@ import {
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
 import { seedBuiltInModelKey } from "./helpers/runtime-state";
-import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { goalsRoutes } from "../goals";
 
 /**
@@ -572,9 +572,9 @@ async function expectCancellationRecoveryPending(
     .toBe(expected);
 }
 
-function cancellationRecoveryReconcileClient() {
-  return setupApp({ context, routes: testBrowserReconcileRoutes })(
-    testBrowserReconcileContract,
+function cancellationRecoveryCleanupClient() {
+  return setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+    testCronCleanupSandboxesStateContract,
   );
 }
 
@@ -583,9 +583,12 @@ async function reconcileCancellationRecoveryFixtures(
   ...additionalChatThreadIds: string[]
 ): Promise<void> {
   await accept(
-    cancellationRecoveryReconcileClient().reconcile({
+    cancellationRecoveryCleanupClient().cleanup({
       body: {
-        chat_thread_ids: [chatThreadId, ...additionalChatThreadIds],
+        chatThreadIds: [chatThreadId, ...additionalChatThreadIds],
+        runIds: [],
+        orgIds: [],
+        exportJobIds: [],
       },
     }),
     [200],
