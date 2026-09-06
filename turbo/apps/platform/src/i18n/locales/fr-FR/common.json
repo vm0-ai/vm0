@@ -1994,7 +1994,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Choisir un avatar",
-        "help": "Choisissez un présentateur ou continuez sans avatar",
         "label": "Avatar",
         "none": "Aucun avatar",
         "noneDescription": "Create the video without a presenter",
@@ -2019,14 +2018,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "Tous",
         "auto": "Automatique",
         "filter": "Filtrer les références de style par format",
         "landscape": "Paysage · 16:9",
-        "other": "Autres formats",
         "output": "Format de sortie",
-        "portrait": "Portrait · 9:16",
-        "square": "Carré · 1:1"
+        "portrait": "Portrait · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2043,7 +2039,6 @@
         "autoDescription": "Adapter la direction visuelle à vos consignes et contenus",
         "emptyFormat": "Aucune référence de style ne correspond à ce format.",
         "heading": "Choisir une référence de style",
-        "help": "Adapter un style public HeyGen à votre vidéo, sans reproduire exactement un modèle.",
         "label": "Référence de style",
         "preview": "Aperçu de {{title}}",
         "previewUnavailable": "Aucun aperçu vidéo n’est disponible pour ce style."
@@ -2057,8 +2052,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Choisir une voix",
-        "help": "Écoutez un extrait avant de continuer",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Sans voix off",
         "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine.",

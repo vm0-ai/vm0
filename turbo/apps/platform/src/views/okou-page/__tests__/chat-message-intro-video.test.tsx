@@ -349,7 +349,14 @@ test("Styles automatically load near the end and keep existing choices", async (
         });
       }
       return respond(200, {
-        styles: [{ id: "landscape-style", name: "Landscape", tags: [] }],
+        styles: [
+          {
+            id: "landscape-style",
+            name: "Landscape",
+            aspectRatio: "16:9",
+            tags: [],
+          },
+        ],
         hasMore: true,
         nextToken: "next-styles",
       });
@@ -370,7 +377,9 @@ test("Styles automatically load near the end and keep existing choices", async (
     picker.querySelector("[data-intro-video-catalog-sentinel]"),
   ).toBeNull();
   nextPage.resolve();
+  await user.click(within(picker).getByLabelText("Portrait · 9:16"));
   await within(picker).findByText("Portrait");
+  await user.click(within(picker).getByLabelText("Landscape · 16:9"));
   expect(within(picker).getByText("Landscape")).toBeVisible();
   expect(
     picker.querySelector("[data-intro-video-catalog-sentinel]"),
@@ -396,13 +405,27 @@ test("A failed automatic page load keeps existing options and waits for a retry"
           });
         }
         return respond(200, {
-          styles: [{ id: "second-style", name: "Second style", tags: [] }],
+          styles: [
+            {
+              id: "second-style",
+              name: "Second style",
+              aspectRatio: "16:9",
+              tags: [],
+            },
+          ],
           hasMore: false,
           nextToken: null,
         });
       }
       return respond(200, {
-        styles: [{ id: "first-style", name: "First style", tags: [] }],
+        styles: [
+          {
+            id: "first-style",
+            name: "First style",
+            aspectRatio: "16:9",
+            tags: [],
+          },
+        ],
         hasMore: true,
         nextToken: "next-styles",
       });
@@ -458,7 +481,12 @@ test.each(["avatars", "styles"] as const)(
         ? respond(502, error)
         : respond(200, {
             styles: [
-              { id: "recovered-style", name: "Recovered style", tags: [] },
+              {
+                id: "recovered-style",
+                name: "Recovered style",
+                aspectRatio: "16:9",
+                tags: [],
+              },
             ],
             hasMore: false,
             nextToken: null,
@@ -498,7 +526,7 @@ test.each(["avatars", "styles"] as const)(
   },
 );
 
-test("A style opens a full video preview without selecting it", async () => {
+test("A style previews inline without a third dialog or selecting it", async () => {
   const user = userEvent.setup({ delay: null });
   installIntroVideoFixture();
   await setupIntroVideoPage();
@@ -509,8 +537,8 @@ test("A style opens a full video preview without selecting it", async () => {
   });
   const preview = await within(picker).findByLabelText("Preview Thriller");
   await user.click(preview);
-  const previewDialog = await screen.findByRole("dialog", { name: "Thriller" });
-  const video = previewDialog.querySelector("video");
+  expect(screen.queryByRole("dialog", { name: "Thriller" })).toBeNull();
+  const video = picker.querySelector("video");
   if (!video) {
     throw new Error("Expected the HeyGen style preview video");
   }
@@ -522,16 +550,67 @@ test("A style opens a full video preview without selecting it", async () => {
   expect(video).toHaveAttribute("playsinline");
   expect(video.closest("button")).toBeNull();
 
-  await user.click(requiredButtonNamed("Close", previewDialog));
-  expect(video).not.toBeInTheDocument();
-  expect(picker).toBeVisible();
+  expect(video.closest('[role="dialog"]')).toBe(picker);
   expect(
     within(picker).getByLabelText("Select style Thriller"),
   ).toHaveAttribute("aria-pressed", "false");
-  await user.click(within(picker).getByLabelText("Select style Thriller"));
+  await user.click(requiredButtonNamed("Close", picker));
+  expect(video).not.toBeInTheDocument();
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  const reopened = await screen.findByRole("dialog", {
+    name: "Choose a style reference",
+  });
+  expect(reopened.querySelector("video")).toBeNull();
+  await user.click(within(reopened).getByLabelText("Select style Thriller"));
   await waitFor(() => {
     expect(requiredButtonNamed("Style reference: Thriller")).toBeVisible();
   });
+});
+
+test("Only one inline style preview is mounted and changing format stops it", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+  context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
+    return respond(200, {
+      styles: [
+        {
+          id: "one",
+          name: "First video",
+          aspectRatio: "16:9",
+          tags: [],
+          previewVideoUrl: "https://files.heygen.test/first.mp4",
+        },
+        {
+          id: "two",
+          name: "Second video",
+          aspectRatio: "16:9",
+          tags: [],
+          previewVideoUrl: "https://files.heygen.test/second.mp4",
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+  await setupIntroVideoPage();
+  await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a style reference",
+  });
+  await user.click(await within(picker).findByLabelText("Preview First video"));
+  const first = within(picker).getByLabelText("First video");
+  await user.click(within(picker).getByLabelText("Preview Second video"));
+  expect(first).not.toBeInTheDocument();
+  expect(picker.querySelectorAll("video")).toHaveLength(1);
+  expect(within(picker).getByLabelText("Second video")).toHaveAttribute(
+    "src",
+    "https://files.heygen.test/second.mp4",
+  );
+  await user.click(within(picker).getByLabelText("Portrait · 9:16"));
+  expect(picker.querySelector("video")).toBeNull();
+  await user.click(within(picker).getByLabelText("Landscape · 16:9"));
+  expect(picker.querySelector("video")).toBeNull();
 });
 
 test("A failed preview keeps style selection available", async () => {
@@ -546,19 +625,18 @@ test("A failed preview keeps style selection available", async () => {
     name: "Choose a style reference",
   });
   await user.click(await within(picker).findByLabelText("Preview Thriller"));
-  const preview = await screen.findByRole("dialog", { name: "Thriller" });
-  const video = preview.querySelector("video");
+  const video = picker.querySelector("video");
   if (!video) {
     throw new Error("Expected the style preview video");
   }
   fireEvent.error(video);
   expect(video).toHaveAttribute("data-failed", "true");
   expect(
-    within(preview).getByText(
+    within(picker).getByText(
       "A video preview is not available for this style.",
     ),
   ).toBeInTheDocument();
-  await user.click(requiredButtonNamed("Select style Thriller", preview));
+  await user.click(requiredButtonNamed("Select style Thriller", picker));
   expect(
     requiredButtonNamed("Style reference: Thriller", dialog),
   ).toBeVisible();
@@ -638,15 +716,27 @@ test("Style format filtering does not change the explicit output ratio", async (
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  await within(picker).findByText("Tall story");
+  await within(picker).findByText("Wide story");
   const formats = within(picker).getByLabelText(
     "Filter style references by format",
   );
-  await user.click(within(formats).getByLabelText("Landscape · 16:9"));
+  expect(within(formats).getAllByRole("radio")).toHaveLength(2);
+  expect(within(formats).queryByLabelText("All")).toBeNull();
+  expect(within(formats).queryByText("1:1")).toBeNull();
+  expect(within(picker).getAllByText("16:9")).toHaveLength(1);
+  expect(
+    within(picker).queryByRole("heading", { name: "Landscape · 16:9" }),
+  ).toBeNull();
+  expect(
+    within(picker).queryByText(
+      "Adapt a public HeyGen style to your video; this is not an exact template render.",
+    ),
+  ).toBeNull();
   expect(within(picker).queryByText("Tall story")).toBeNull();
   expect(within(picker).getByText("Wide story")).toBeVisible();
-  await user.click(within(formats).getByLabelText("All"));
+  await user.click(within(formats).getByLabelText("Portrait · 9:16"));
   expect(within(picker).getByText("Tall story")).toBeVisible();
+  await user.click(within(formats).getByLabelText("Landscape · 16:9"));
   await user.click(within(picker).getByLabelText("Select style Wide story"));
   await user.click(requiredButtonNamed("Create video", dialog));
   await waitFor(() => {
@@ -677,6 +767,7 @@ test("An expired catalog cursor reloads the catalog instead of retrying that cur
           {
             id: expired ? "fresh" : "old",
             name: expired ? "Fresh style" : "Old style",
+            aspectRatio: "16:9",
             tags: [],
           },
         ],

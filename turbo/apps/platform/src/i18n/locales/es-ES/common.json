@@ -1994,7 +1994,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Elige un avatar",
-        "help": "Elige un presentador o continúa sin avatar",
         "label": "Avatar",
         "none": "Sin avatar",
         "noneDescription": "Create the video without a presenter",
@@ -2019,14 +2018,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "Todos",
         "auto": "Automático",
         "filter": "Filtrar referencias de estilo por formato",
         "landscape": "Horizontal · 16:9",
-        "other": "Otros formatos",
         "output": "Formato de salida",
-        "portrait": "Vertical · 9:16",
-        "square": "Cuadrado · 1:1"
+        "portrait": "Vertical · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2043,7 +2039,6 @@
         "autoDescription": "Adapta la dirección visual a tus indicaciones y materiales",
         "emptyFormat": "No hay referencias de estilo para este formato.",
         "heading": "Elige una referencia de estilo",
-        "help": "Adapta un estilo público de HeyGen a tu vídeo; no es una reproducción exacta de una plantilla.",
         "label": "Referencia de estilo",
         "preview": "Vista previa de {{title}}",
         "previewUnavailable": "Este estilo no tiene una vista previa de vídeo disponible."
@@ -2057,8 +2052,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Elige una voz",
-        "help": "Escucha una muestra antes de continuar",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Sin narración",
         "noneDescription": "No añadir narración; conservar el audio original salvo que pidas silenciarlo.",

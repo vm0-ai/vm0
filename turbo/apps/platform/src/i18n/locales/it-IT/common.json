@@ -1994,7 +1994,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Scegli un avatar",
-        "help": "Scegli un presentatore o continua senza avatar",
         "label": "Avatar",
         "none": "Nessun avatar",
         "noneDescription": "Create the video without a presenter",
@@ -2019,14 +2018,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "Tutti",
         "auto": "Automatico",
         "filter": "Filtra i riferimenti di stile per formato",
         "landscape": "Orizzontale · 16:9",
-        "other": "Altri formati",
         "output": "Formato di uscita",
-        "portrait": "Verticale · 9:16",
-        "square": "Quadrato · 1:1"
+        "portrait": "Verticale · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2043,7 +2039,6 @@
         "autoDescription": "Adatta la direzione visiva alle tue istruzioni e ai tuoi materiali",
         "emptyFormat": "Nessun riferimento di stile corrisponde a questo formato.",
         "heading": "Scegli un riferimento di stile",
-        "help": "Adatta uno stile pubblico HeyGen al tuo video; non è una riproduzione esatta di un modello.",
         "label": "Riferimento di stile",
         "preview": "Anteprima di {{title}}",
         "previewUnavailable": "Non è disponibile un’anteprima video per questo stile."
@@ -2057,8 +2052,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Scegli una voce",
-        "help": "Ascolta un campione prima di continuare",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Nessuna voce fuori campo",
         "noneDescription": "Non aggiungere narrazione; mantieni l’audio originale salvo richiesta di disattivarlo.",

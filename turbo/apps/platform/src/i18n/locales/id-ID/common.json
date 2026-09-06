@@ -1959,7 +1959,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Pilih avatar",
-        "help": "Pilih presenter atau lanjutkan tanpa avatar",
         "label": "Avatar",
         "none": "Tanpa avatar",
         "noneDescription": "Create the video without a presenter",
@@ -1984,14 +1983,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "Semua",
         "auto": "Otomatis",
         "filter": "Filter referensi gaya berdasarkan format",
         "landscape": "Lanskap · 16:9",
-        "other": "Format lainnya",
         "output": "Format keluaran",
-        "portrait": "Potret · 9:16",
-        "square": "Persegi · 1:1"
+        "portrait": "Potret · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2008,7 +2004,6 @@
         "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
         "emptyFormat": "Tidak ada referensi gaya yang sesuai dengan format ini.",
         "heading": "Pilih referensi gaya",
-        "help": "Adaptasi gaya publik HeyGen untuk video Anda; bukan salinan persis dari templat.",
         "label": "Referensi gaya",
         "preview": "Pratinjau {{title}}",
         "previewUnavailable": "Pratinjau video tidak tersedia untuk gaya ini."
@@ -2022,8 +2017,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Pilih suara",
-        "help": "Dengarkan sampel sebelum melanjutkan",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Tanpa narasi",
         "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",

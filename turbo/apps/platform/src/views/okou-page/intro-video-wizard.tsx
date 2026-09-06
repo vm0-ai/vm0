@@ -665,43 +665,22 @@ function VoicePicker({
   );
 }
 
-function pickerCopy(
-  t: TFunction<"common">,
-  picker: IntroVideoPicker,
-  avatar: IntroVideoAvatarSelection,
-) {
+function pickerTitle(t: TFunction<"common">, picker: IntroVideoPicker) {
   switch (picker) {
     case "style": {
-      return {
-        title: t(($) => {
-          return $.chat.introVideo.style.heading;
-        }),
-        description: t(($) => {
-          return $.chat.introVideo.style.help;
-        }),
-      };
+      return t(($) => {
+        return $.chat.introVideo.style.heading;
+      });
     }
     case "avatar": {
-      return {
-        title: t(($) => {
-          return $.chat.introVideo.avatar.heading;
-        }),
-        description: t(($) => {
-          return $.chat.introVideo.avatar.help;
-        }),
-      };
+      return t(($) => {
+        return $.chat.introVideo.avatar.heading;
+      });
     }
     case "voice": {
-      return {
-        title: t(($) => {
-          return $.chat.introVideo.voice.heading;
-        }),
-        description: t(($) => {
-          return avatar.kind === "none"
-            ? $.chat.introVideo.voice.helpWithoutAvatar
-            : $.chat.introVideo.voice.help;
-        }),
-      };
+      return t(($) => {
+        return $.chat.introVideo.voice.heading;
+      });
     }
   }
 }
@@ -720,7 +699,6 @@ function PickerDialog({
   if (!picker) {
     return null;
   }
-  const copy = pickerCopy(t, picker, avatar);
   return (
     <Dialog
       open
@@ -730,14 +708,14 @@ function PickerDialog({
         }
       }}
     >
-      <DialogContent className="okou-app flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:h-[min(82vh,720px)] sm:w-[calc(100vw-2rem)]">
+      <DialogContent
+        aria-describedby={undefined}
+        className="okou-app flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:h-[min(82vh,720px)] sm:w-[calc(100vw-2rem)]"
+      >
         <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 text-left sm:px-6 sm:py-4 sm:pr-14">
           <DialogTitle className="text-base font-semibold">
-            {copy.title}
+            {pickerTitle(t, picker)}
           </DialogTitle>
-          <DialogDescription className="text-xs leading-5 sm:text-sm">
-            {copy.description}
-          </DialogDescription>
         </DialogHeader>
         <div
           data-intro-video-catalog-scroll=""

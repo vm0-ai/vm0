@@ -1962,7 +1962,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Avatar auswählen",
-        "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
         "label": "Avatar",
         "none": "Kein Avatar",
         "noneDescription": "Create the video without a presenter",
@@ -1987,14 +1986,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "Alle",
         "auto": "Automatisch",
         "filter": "Stilreferenzen nach Format filtern",
         "landscape": "Querformat · 16:9",
-        "other": "Andere Formate",
         "output": "Ausgabeformat",
-        "portrait": "Hochformat · 9:16",
-        "square": "Quadratisch · 1:1"
+        "portrait": "Hochformat · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2011,7 +2007,6 @@
         "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
         "emptyFormat": "Keine Stilreferenzen für dieses Format.",
         "heading": "Stilreferenz wählen",
-        "help": "Einen öffentlichen HeyGen-Stil an dein Video anpassen; keine exakte Vorlagenwiedergabe.",
         "label": "Stilreferenz",
         "preview": "Vorschau von {{title}}",
         "previewUnavailable": "Für diesen Stil ist keine Videovorschau verfügbar."
@@ -2025,8 +2020,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Stimme auswählen",
-        "help": "Höre dir vor dem Fortfahren eine Probe an",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Kein Voiceover",
         "noneDescription": "Keine Erzählstimme hinzufügen; Originalton behalten, sofern du ihn nicht stummschalten möchtest.",

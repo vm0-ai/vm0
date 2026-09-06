@@ -1959,7 +1959,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "アバターを選択",
-        "help": "プレゼンターを選ぶか、アバターなしで続行します",
         "label": "Avatar",
         "none": "アバターなし",
         "noneDescription": "Create the video without a presenter",
@@ -1984,14 +1983,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "すべて",
         "auto": "自動",
         "filter": "画面比率でスタイル参考を絞り込む",
         "landscape": "横向き · 16:9",
-        "other": "その他の形式",
         "output": "出力の画面比率",
-        "portrait": "縦向き · 9:16",
-        "square": "正方形 · 1:1"
+        "portrait": "縦向き · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2008,7 +2004,6 @@
         "autoDescription": "指示と資料に合うビジュアルの方向性を選択",
         "emptyFormat": "この画面比率に一致するスタイル参考はありません。",
         "heading": "参考にするスタイルを選択",
-        "help": "HeyGen の公開スタイルを参考に動画を制作します。テンプレートの完全な再現ではありません。",
         "label": "スタイル参考",
         "preview": "{{title}} のプレビュー",
         "previewUnavailable": "このスタイルの動画プレビューはありません。"
@@ -2022,8 +2017,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "音声を選択",
-        "help": "続行する前にサンプルを再生できます",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "ナレーションなし",
         "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。",

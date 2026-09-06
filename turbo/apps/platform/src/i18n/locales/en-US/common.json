@@ -1962,7 +1962,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Choose an avatar",
-        "help": "Choose a public HeyGen presenter, hide the presenter, or let Okou decide.",
         "label": "Avatar",
         "none": "No avatar",
         "noneDescription": "Create the video without a presenter",
@@ -1987,14 +1986,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "All",
         "auto": "Auto",
         "filter": "Filter style references by format",
         "landscape": "Landscape · 16:9",
-        "other": "Other formats",
         "output": "Output format",
-        "portrait": "Portrait · 9:16",
-        "square": "Square · 1:1"
+        "portrait": "Portrait · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2011,7 +2007,6 @@
         "autoDescription": "Match a visual direction to your prompt and material",
         "emptyFormat": "No style references match this format.",
         "heading": "Choose a style reference",
-        "help": "Adapt a public HeyGen style to your video; this is not an exact template render.",
         "label": "Style reference",
         "preview": "Preview {{title}}",
         "previewUnavailable": "A video preview is not available for this style."
@@ -2025,8 +2020,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Choose a voice",
-        "help": "Follow the avatar's default voice or choose another public HeyGen voice.",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "No voiceover",
         "noneDescription": "Do not add narration; keep source audio unless you ask to mute it.",

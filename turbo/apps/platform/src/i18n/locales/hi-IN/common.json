@@ -1962,7 +1962,6 @@
         "auto": "Auto · Okou decides",
         "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "अवतार चुनें",
-        "help": "प्रस्तुतकर्ता चुनें या बिना अवतार के आगे बढ़ें",
         "label": "Avatar",
         "none": "कोई अवतार नहीं",
         "noneDescription": "Create the video without a presenter",
@@ -1987,14 +1986,11 @@
         "hint": "Add a prompt, files, or both"
       },
       "format": {
-        "all": "सभी",
         "auto": "स्वचालित",
         "filter": "फ़ॉर्मैट के अनुसार शैली संदर्भ फ़िल्टर करें",
         "landscape": "लैंडस्केप · 16:9",
-        "other": "अन्य फ़ॉर्मैट",
         "output": "आउटपुट फ़ॉर्मैट",
-        "portrait": "पोर्ट्रेट · 9:16",
-        "square": "वर्गाकार · 1:1"
+        "portrait": "पोर्ट्रेट · 9:16"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2011,7 +2007,6 @@
         "autoDescription": "अपने निर्देशों और सामग्री के अनुसार दृश्य शैली चुनें",
         "emptyFormat": "इस फ़ॉर्मैट से मेल खाने वाले शैली संदर्भ नहीं हैं।",
         "heading": "शैली संदर्भ चुनें",
-        "help": "अपने वीडियो के लिए सार्वजनिक HeyGen शैली को अनुकूलित करें; यह टेम्पलेट की हूबहू प्रतिलिपि नहीं है।",
         "label": "शैली संदर्भ",
         "preview": "{{title}} का पूर्वावलोकन",
         "previewUnavailable": "इस शैली का वीडियो पूर्वावलोकन उपलब्ध नहीं है।"
@@ -2025,8 +2020,6 @@
         "defaultForAvatar": "Default · {{avatar}}",
         "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "आवाज़ चुनें",
-        "help": "आगे बढ़ने से पहले नमूना सुनें",
-        "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "बिना वॉइसओवर",
         "noneDescription": "नरेशन न जोड़ें; म्यूट करने को न कहने पर मूल ऑडियो बनाए रखें।",
