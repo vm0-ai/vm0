@@ -58,6 +58,121 @@ async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution
 }
 
 #[tokio::test(start_paused = true)]
+async fn full_capacity_claims_compatible_blank_before_pressure_eviction() {
+    let (config, env) = mock_run_config(test_profiles(), 16, 32_768, 8);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let parked_at = std::time::Instant::now();
+    for reuse_key in [
+        "capacity-1",
+        "capacity-2",
+        "capacity-3",
+        "capacity-4",
+        "capacity-5",
+        "capacity-6",
+    ] {
+        seed_idle_pool_with_timing(
+            &idle_pool,
+            &budget,
+            TestParkedIdleCandidateSpec {
+                reuse_key,
+                profile_name: "vm0/default",
+                vcpu: 2,
+                memory_mb: 4096,
+                history_generation_run_id: None,
+                parked_at,
+            },
+        )
+        .await;
+    }
+    assert_eq!(budget.allocated().2, 7);
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("full-capacity job should claim the compatible blank");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::NoReuseKey)
+    );
+    assert_eq!(completion.sandbox_id, Some(blank_sandbox_id));
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn exact_idle_that_parks_during_claim_takes_priority_over_reserved_blank() {
+    let (config, env) = mock_run_config(test_profiles(), 16, 32_768, 8);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    env.handle.block_claims();
+
+    let run_id = RunId::new_v4();
+    let reuse_key = "claim-time-exact-priority";
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, reuse_key)),
+    );
+    assert!(
+        env.handle
+            .wait_claim_in_flight(1, Duration::from_secs(5))
+            .await,
+        "provider claim did not reach its boundary"
+    );
+    seed_idle_pool_with_timing(
+        &idle_pool,
+        &budget,
+        TestParkedIdleCandidateSpec {
+            reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: None,
+            parked_at: std::time::Instant::now(),
+        },
+    )
+    .await;
+    let exact_sandbox_id = idle_pool
+        .lock()
+        .await
+        .status_snapshot()
+        .idle_sandboxes
+        .into_iter()
+        .find(|sandbox| sandbox.sandbox_id != blank_sandbox_id)
+        .expect("exact sandbox should be parked during claim")
+        .sandbox_id;
+
+    env.handle.unblock_claims();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should use the exact sandbox that parked during claim");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(completion.sandbox_id, Some(exact_sandbox_id));
+    assert_eq!(idle_pool.lock().await.blank_len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn full_exact_pool_yields_oldest_aged_capacity_to_one_blank() {
     let (config, env) = mock_run_config(test_profiles(), 12, 24_576, 5);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
@@ -542,6 +657,60 @@ async fn workspace_cache_hit_takes_priority_over_compatible_blank_inventory() {
     );
     assert_ne!(completion.sandbox_id, Some(blank_sandbox_id));
     assert_eq!(idle_pool.lock().await.blank_len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn claimed_workspace_cache_metadata_takes_priority_over_reserved_blank() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 16, 32_768, 8);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = WorkspaceImageCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    let reuse_key = "thread:blank-pool-claimed-workspace-priority";
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        reuse_key,
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+
+    let run_id = RunId::new_v4();
+    let mut context = context_with_session(run_id, "claimed-workspace-priority-session");
+    context.reuse_key = Some(reuse_key.into());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(JobCandidate::new(run_id, "vm0/default".into()))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("claimed workspace metadata should override the reserved blank");
+
+    assert_eq!(completion.exit_code, 0);
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_eq!(
+        completion.workspace_reuse_result,
+        Some(WorkspaceReuseResult::Reused)
+    );
+    assert_ne!(completion.sandbox_id, Some(blank_sandbox_id));
 
     shutdown(&env, run_handle).await;
 }
