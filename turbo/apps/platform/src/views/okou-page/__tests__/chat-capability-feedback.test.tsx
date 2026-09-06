@@ -246,6 +246,9 @@ test("Manage multiple quoted passages in one feedback message", async () => {
     },
   ]);
 
+  await expect(findEnabledButton("Stop")).resolves.toBeVisible();
+  expect(feedbackItems()).toHaveLength(0);
+
   await selectPassage("launch plan has three careful stages");
   await quoteSelectedPassage();
   await selectPassage("unrelated answer covers a separate decision");
