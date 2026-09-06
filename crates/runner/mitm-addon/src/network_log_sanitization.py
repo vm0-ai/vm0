@@ -39,9 +39,9 @@ def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
 def _sanitize_malformed_authority_for_network_log(
     value: str, parts: urllib.parse.SplitResult
 ) -> str | None:
-    # A mixed separator run can leave only backslashes in netloc while the
-    # actual authority-like segment lands in path.
-    if parts.netloc.strip(_SPECIAL_URL_SEPARATORS):
+    # A mixed separator run can leave separators or retained whitespace in
+    # netloc while the actual authority-like segment lands in path.
+    if parts.netloc.strip(_MALFORMED_AUTHORITY_PREFIX_CHARACTERS):
         return None
 
     has_special_scheme = parts.scheme in _SPECIAL_URL_SCHEMES

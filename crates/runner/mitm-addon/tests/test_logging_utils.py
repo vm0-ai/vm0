@@ -203,6 +203,11 @@ class TestLogProxyEntry:
                 id="form-feed-before-separators",
             ),
             pytest.param(
+                "https:// /user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="space-inside-separator-prefix",
+            ),
+            pytest.param(
                 "https:////first@user:pass@example.com/path?token=secret#fragment",
                 "https://example.com/path",
                 id="multiple-at-signs",
