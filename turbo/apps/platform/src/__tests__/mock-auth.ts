@@ -139,6 +139,10 @@ interface MockedUser {
   createOrganizationEnabled: boolean;
   createOrganizationsLimit: number | null;
   organizationMemberships: MockedMembership[];
+  getOrganizationMemberships: (params: {
+    initialPage: number;
+    pageSize: number;
+  }) => Promise<{ data: MockedMembership[]; total_count: number }>;
   getOrganizationInvitations: (params?: {
     status?: string;
   }) => Promise<{ data: MockedInvitation[]; total_count: number }>;
@@ -396,6 +400,15 @@ export function mockUser(
       createOrganizationsLimit: user.createOrganizationsLimit ?? null,
       get organizationMemberships() {
         return internalMockedMemberships;
+      },
+      getOrganizationMemberships: ({ initialPage, pageSize }) => {
+        return Promise.resolve({
+          data: internalMockedMemberships.slice(
+            (initialPage - 1) * pageSize,
+            initialPage * pageSize,
+          ),
+          total_count: internalMockedMemberships.length,
+        });
       },
       getOrganizationInvitations: () => {
         return Promise.resolve({
