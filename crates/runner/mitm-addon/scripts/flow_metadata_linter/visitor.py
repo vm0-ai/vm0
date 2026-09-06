@@ -796,7 +796,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return
         self.visit(node.value)
 
-    def _visit_sequence_expression(self, node: ast.List | ast.Tuple | ast.Set) -> None:
+    def _visit_sequence_expression(self, node: ast.List | ast.Tuple) -> None:
         for element in node.elts:
             self._record_metadata_merge_key_violations(element)
         self.generic_visit(node)
@@ -808,7 +808,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._visit_sequence_expression(node)
 
     def visit_Set(self, node: ast.Set) -> None:
-        self._visit_sequence_expression(node)
+        for element in node.elts:
+            self._record_metadata_merge_key_violations(element)
+        for element in node.elts:
+            self.visit(element)
+            if not isinstance(element, ast.Starred):
+                self._record_implicit_exception_aliases()
 
     def visit_Dict(self, node: ast.Dict) -> None:
         node_is_metadata_merge = self._is_metadata_merge_value(node)
@@ -816,7 +821,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             self._record_metadata_merge_key_violations(key)
             if key is not None or not node_is_metadata_merge:
                 self._record_metadata_merge_key_violations(value)
-        self.generic_visit(node)
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is not None:
+                self.visit(key)
+            self.visit(value)
+            if key is not None:
+                self._record_implicit_exception_aliases()
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if not self._is_metadata_merge_value(node):

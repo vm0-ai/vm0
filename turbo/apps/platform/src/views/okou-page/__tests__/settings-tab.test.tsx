@@ -202,19 +202,17 @@ test("Keep rendering a legacy custom SVG avatar", async () => {
   ]);
 });
 
-test("Load the existing avatar into the maker instead of randomizing it", async () => {
+test("Keep the saved legacy avatar editable when the composer is disabled", async () => {
   prepareAgentProfile("svg:r3s2h4c1f5h");
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: false },
   });
 
   click(await findCustomizeAvatarButton());
 
   const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
-  // The stored avatar is legacy, so it keeps its own steps even with the
-  // composer switch on — otherwise it could not be fine-tuned at all.
   expect(within(dialog).getByText("Angle")).toBeVisible();
   expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 3)).toStrictEqual([
     expect.stringContaining("/head-r3-s2.svg"),
@@ -222,6 +220,74 @@ test("Load the existing avatar into the maker instead of randomizing it", async 
     expect.stringContaining("/hair-r3-h4-c1.svg"),
   ]);
 });
+
+test.each(["preset:0", "svg:r3s2h4c1f5h"])(
+  "Replace legacy avatar %s with a composer avatar only after confirmation",
+  async (avatarUrl) => {
+    const profile = prepareAgentProfile(avatarUrl);
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=profile`,
+      featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    });
+
+    const legacyLayerSrcs = renderedAvatarSvgLayerSrcs(await findAvatarRow());
+    expect(legacyLayerSrcs).toHaveLength(3);
+    click(await findCustomizeAvatarButton());
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+    expect(within(dialog).getByText("Face")).toBeVisible();
+    expect(within(dialog).queryByText("Angle")).not.toBeInTheDocument();
+    expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 4)).toStrictEqual([
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+    ]);
+    expect(profile.lastSavedProfile()).toBeNull();
+
+    click(within(dialog).getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(dialog).not.toBeInTheDocument();
+    });
+    expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toStrictEqual(
+      legacyLayerSrcs,
+    );
+    expect(profile.lastSavedProfile()).toBeNull();
+    await fill(await findAgentNameInput(), "Research Lead");
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Profile saved")).toBeInTheDocument();
+      expect(profile.lastSavedProfile()).toMatchObject({
+        displayName: "Research Lead",
+        avatarUrl,
+      });
+    });
+    click(await findCustomizeAvatarButton());
+
+    const reopened = await screen.findByRole("dialog", { name: "Edit avatar" });
+    click(within(reopened).getByLabelText("Randomize avatar"));
+    await waitForAvatarFeedback(reopened);
+    const composerLayerSrcs = renderedAvatarSvgLayerSrcs(reopened).slice(0, 4);
+    expect(composerLayerSrcs).toStrictEqual([
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+    ]);
+    click(within(reopened).getByText("Use this avatar"));
+
+    await waitFor(() => {
+      expect(reopened).not.toBeInTheDocument();
+    });
+    expect(profile.lastSavedProfile()?.avatarUrl).toContain("/avatar-svg-v2/");
+    expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toStrictEqual(
+      composerLayerSrcs,
+    );
+  },
+);
 
 test("Cancel a pending avatar save and reopen an editable dialog", async () => {
   prepareAgentProfile();
@@ -238,10 +304,14 @@ test("Cancel a pending avatar save and reopen an editable dialog", async () => {
     saveStarted.resolve(undefined);
     return never();
   });
-  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
   click(await findCustomizeAvatarButton());
   const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
-  click(within(dialog).getByLabelText("Angle 2"));
+  click(within(dialog).getByLabelText("Round"));
   click(within(dialog).getByText("Use this avatar"));
   await saveStarted.promise;
 
@@ -253,7 +323,7 @@ test("Cancel a pending avatar save and reopen an editable dialog", async () => {
   click(await findCustomizeAvatarButton());
   const reopened = await screen.findByRole("dialog", { name: "Edit avatar" });
   expect(within(reopened).getByText("Use this avatar")).toBeEnabled();
-  expect(within(reopened).getByLabelText("Angle 2")).toBeEnabled();
+  expect(within(reopened).getByLabelText("Round")).toBeEnabled();
 });
 
 test("Offer avatar creation instead of editing when the agent has no avatar", async () => {

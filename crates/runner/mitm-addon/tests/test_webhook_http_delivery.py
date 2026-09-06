@@ -86,9 +86,23 @@ def test_rejects_invalid_url_before_open(tmp_path, sync_usage_executor):
     )
 
 
-def test_rejects_malformed_sensitive_url_without_logging_credentials(tmp_path, sync_usage_executor):
+@pytest.mark.parametrize(
+    "raw_url",
+    [
+        pytest.param(
+            "https:////user:pass@api.vm0.ai/path?token=secret#frag",
+            id="extra-slashes",
+        ),
+        pytest.param(
+            "https: //user:pass@api.vm0.ai/path?token=secret#frag",
+            id="space-before-separators",
+        ),
+    ],
+)
+def test_rejects_malformed_sensitive_url_without_logging_credentials(
+    tmp_path, sync_usage_executor, raw_url
+):
     proxy_log = tmp_path / "proxy.jsonl"
-    raw_url = "https:////user:pass@api.vm0.ai/path?token=secret#frag"
     sanitized_url = "https://api.vm0.ai/path"
     payload = {"runId": "run-1", "events": []}
     payload_bytes = len(json.dumps(payload).encode())

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -63,6 +63,8 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
+import { KeyboardShortcutTooltipGroup } from "../components/keyboard-shortcut-tooltip-group.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -556,46 +558,32 @@ function LabeledRailLink({
 
 function ThreeColumnChatListToggle({
   hidden,
-  tooltipSide,
-}: {
+  ...props
+}: ComponentProps<typeof Button> & {
   hidden: boolean;
-  tooltipSide: "bottom" | "right";
 }) {
   const onToggle = useSidebarCollapseToggle();
-  const { t } = useTranslation();
-  const label = hidden
-    ? t(($) => {
-        return $.appShell.sidebar.showChatList;
-      })
-    : t(($) => {
-        return $.appShell.sidebar.hideChatList;
-      });
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          onClick={onToggle}
-          aria-label={label}
-          aria-keyshortcuts="Meta+B Control+B"
-          variant="quiet"
-          size="icon-sm"
-          iconSize="md"
-        >
-          <PanelLeftClose
-            size={18}
-            className={cn(
-              "transition-transform duration-200",
-              hidden && "rotate-180",
-            )}
-          />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side={tooltipSide}>
-        <p className="text-xs">{label}</p>
-      </TooltipContent>
-    </Tooltip>
+    <Button
+      {...props}
+      type="button"
+      onClick={onToggle}
+      aria-keyshortcuts={
+        GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.ariaKeyShortcuts
+      }
+      variant="quiet"
+      size="icon-sm"
+      iconSize="md"
+    >
+      <PanelLeftClose
+        size={18}
+        className={cn(
+          "transition-transform duration-200",
+          hidden && "rotate-180",
+        )}
+      />
+    </Button>
   );
 }
 
@@ -655,9 +643,21 @@ function LabeledNavRail() {
       </div>
       {chatListHidden && (
         <div className="mb-3 shrink-0">
-          <TooltipProvider delayDuration={200}>
-            <ThreeColumnChatListToggle hidden tooltipSide="right" />
-          </TooltipProvider>
+          <KeyboardShortcutTooltipGroup
+            items={[
+              {
+                shortcut: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding,
+                trigger: (
+                  <ThreeColumnChatListToggle
+                    hidden
+                    aria-label={t(($) => {
+                      return $.appShell.sidebar.showChatList;
+                    })}
+                  />
+                ),
+              },
+            ]}
+          />
         </div>
       )}
       <nav
@@ -779,47 +779,60 @@ function ChatListColumn() {
             return $.appShell.sidebar.chat;
           })}
         </span>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={() => {
-                  openThreeColumnSearch();
-                }}
-                aria-label={searchLabel}
-                aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Search size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{searchLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={onNewChat}
-                disabled={!currentChatAgentId}
-                aria-label={newChatLabel}
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Edit size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{newChatLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />
-        </TooltipProvider>
+        <KeyboardShortcutTooltipGroup
+          items={[
+            {
+              shortcut: GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.binding,
+              trigger: (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    openThreeColumnSearch();
+                  }}
+                  aria-label={searchLabel}
+                  aria-keyshortcuts={
+                    GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.ariaKeyShortcuts
+                  }
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                >
+                  <Search size={18} />
+                </Button>
+              ),
+            },
+            {
+              shortcut: GLOBAL_KEYBOARD_SHORTCUTS.newChat.binding,
+              trigger: (
+                <Button
+                  type="button"
+                  onClick={onNewChat}
+                  disabled={!currentChatAgentId}
+                  aria-label={newChatLabel}
+                  aria-keyshortcuts={
+                    GLOBAL_KEYBOARD_SHORTCUTS.newChat.ariaKeyShortcuts
+                  }
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                >
+                  <Edit size={18} />
+                </Button>
+              ),
+            },
+            {
+              shortcut: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding,
+              trigger: (
+                <ThreeColumnChatListToggle
+                  hidden={false}
+                  aria-label={t(($) => {
+                    return $.appShell.sidebar.hideChatList;
+                  })}
+                />
+              ),
+            },
+          ]}
+        />
       </div>
       <PinnedThreadDropZone
         signals={threeColumnSidebarChatThreadScrollSignals.pinReorder}

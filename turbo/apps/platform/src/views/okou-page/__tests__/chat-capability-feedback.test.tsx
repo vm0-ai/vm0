@@ -24,6 +24,7 @@ import {
   waitForSend,
   type CapturedChatSend,
 } from "./chat-capability-test-helpers.ts";
+import { findEnabledButton } from "./chat-run-test-fixtures.ts";
 
 const FIRST_PASSAGE = "The launch plan has three careful stages.";
 const SECOND_PASSAGE = "The unrelated answer covers a separate decision.";
@@ -231,7 +232,7 @@ test("Manage multiple quoted passages in one feedback message", async () => {
   await user.type(notes[1]!, "Acknowledge the separate decision.");
   expect(notes[0]).toHaveTextContent("Add an owner to this stage.");
 
-  click(await findButton("Send"));
+  click(await findEnabledButton("Send"));
 
   const commented = await waitForSend(sends, 1);
   expect(feedbackParts(commented.userMessage)).toMatchObject([
@@ -245,6 +246,9 @@ test("Manage multiple quoted passages in one feedback message", async () => {
     },
   ]);
 
+  await expect(findEnabledButton("Stop")).resolves.toBeVisible();
+  expect(feedbackItems()).toHaveLength(0);
+
   await selectPassage("launch plan has three careful stages");
   await quoteSelectedPassage();
   await selectPassage("unrelated answer covers a separate decision");
@@ -254,7 +258,7 @@ test("Manage multiple quoted passages in one feedback message", async () => {
   expect(notes[0]).not.toHaveTextContent("Add an owner to this stage.");
   expect(notes[1]).not.toHaveTextContent("Acknowledge the separate decision.");
 
-  click(await findButton("Send"));
+  click(await findEnabledButton("Send"));
 
   const uncommented = await waitForSend(sends, 2);
   expect(feedbackParts(uncommented.userMessage)).toMatchObject([

@@ -39,13 +39,11 @@ set -euo pipefail
 printf 'ZENDESK_API_TOKEN=%s\n' "$ZENDESK_API_TOKEN"
 printf 'ZENDESK_EMAIL=%s\n' "$ZENDESK_EMAIL"
 printf 'ZENDESK_SUBDOMAIN=%s\n' "$ZENDESK_SUBDOMAIN"
-# Raw DNS has dedicated runner coverage. Pin the public sink so this test owns
-# only firewall classification and authentication resolution, never whether a
-# live Zendesk tenant answers. The request host still carries the resolved
-# variable base, which is what the firewall matches on.
+# A Zendesk response is outside this test's contract. Use the real templated
+# authority so credential injection follows the normal upstream binding path,
+# while keeping the request on IPv4 and bounding the third-party wait.
 curl_status=0
-curl --silent --show-error --max-time 5 \
-    --resolve '__SUBDOMAIN__.zendesk.com:443:8.8.8.8' \
+curl --ipv4 --silent --show-error --max-time 5 \
     --output /dev/null \
     "https://__SUBDOMAIN__.zendesk.com/api/v2/users/me.json" || curl_status=$?
 printf 'ZENDESK_REQUEST_SENT=%s\n' "$curl_status"

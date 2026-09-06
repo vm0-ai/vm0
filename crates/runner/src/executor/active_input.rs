@@ -22,6 +22,8 @@ use crate::ids::RunId;
 
 const ACTIVE_INPUT_READ_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
+pub(super) const ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL: Duration = Duration::from_millis(250);
+pub(super) const ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL: Duration = Duration::from_secs(4);
 const ACTIVE_INPUT_JOURNAL_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const ACTIVE_INPUT_RECEIPT_RECOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
@@ -87,6 +89,11 @@ enum ForwardDisposition {
     Stop,
 }
 
+struct PreparedActiveInput {
+    delivery_id: String,
+    payload: Vec<u8>,
+}
+
 async fn run_forwarder(
     run_id: RunId,
     mut source: ActiveInputSource,
@@ -117,8 +124,8 @@ async fn run_forwarder(
                     let delivery_id = local_active_input_delivery_id(run_id, entry.sequence);
                     let disposition = forward_with_retry(
                         run_id,
-                        &delivery_id,
-                        &entry.text,
+                        delivery_id,
+                        entry.text,
                         DeliveryMode::Local,
                         &control,
                         &job_cancel,
@@ -148,8 +155,8 @@ async fn run_forwarder(
                     } else {
                         let disposition = forward_with_retry(
                             run_id,
-                            &delivery_id,
-                            &prompt,
+                            delivery_id.clone(),
+                            prompt,
                             DeliveryMode::Api,
                             &control,
                             &job_cancel,
@@ -220,47 +227,15 @@ async fn run_forwarder(
 
 async fn forward_with_retry(
     run_id: RunId,
-    delivery_id: &str,
-    text: &str,
+    delivery_id: String,
+    text: String,
     mode: DeliveryMode,
     control: &GuestProcessControlHandle,
     job_cancel: &CancellationToken,
     stop: &CancellationToken,
 ) -> ForwardDisposition {
-    let mut warn_retryable_failure = true;
-    loop {
-        let disposition = forward_once(
-            run_id,
-            delivery_id,
-            text,
-            mode,
-            control,
-            warn_retryable_failure,
-        )
-        .await;
-        if !matches!(disposition, ForwardDisposition::Retry) {
-            return disposition;
-        }
-        warn_retryable_failure = false;
-        tokio::select! {
-            biased;
-            () = stop.cancelled() => return ForwardDisposition::Stop,
-            () = job_cancel.cancelled() => return ForwardDisposition::Stop,
-            () = tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL) => {}
-        }
-    }
-}
-
-async fn forward_once(
-    run_id: RunId,
-    delivery_id: &str,
-    text: &str,
-    mode: DeliveryMode,
-    control: &GuestProcessControlHandle,
-    warn_retryable_failure: bool,
-) -> ForwardDisposition {
-    let bytes = match encode_active_input(delivery_id, text) {
-        Ok(bytes) if bytes.len() <= ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES => bytes,
+    let payload = match encode_active_input(&delivery_id, &text) {
+        Ok(payload) if payload.len() <= ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES => payload,
         Ok(_) => {
             warn!(
                 run_id = %run_id,
@@ -279,8 +254,43 @@ async fn forward_once(
             return ForwardDisposition::Stop;
         }
     };
+    drop(text);
+    let prepared = PreparedActiveInput {
+        delivery_id,
+        payload,
+    };
+    let mut warn_retryable_failure = true;
+    let mut retry_interval = ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL;
+    loop {
+        let disposition =
+            forward_once(run_id, &prepared, mode, control, warn_retryable_failure).await;
+        if !matches!(disposition, ForwardDisposition::Retry) {
+            return disposition;
+        }
+        warn_retryable_failure = false;
+        tokio::select! {
+            biased;
+            () = stop.cancelled() => return ForwardDisposition::Stop,
+            () = job_cancel.cancelled() => return ForwardDisposition::Stop,
+            () = tokio::time::sleep(retry_interval) => {}
+        }
+        retry_interval = (retry_interval * 2).min(ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL);
+    }
+}
+
+async fn forward_once(
+    run_id: RunId,
+    prepared: &PreparedActiveInput,
+    mode: DeliveryMode,
+    control: &GuestProcessControlHandle,
+    warn_retryable_failure: bool,
+) -> ForwardDisposition {
     let outcome = control
-        .control_owned_outcome(delivery_id.to_owned(), bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
+        .control_owned_outcome(
+            prepared.delivery_id.clone(),
+            prepared.payload.clone(),
+            ACTIVE_INPUT_CONTROL_TIMEOUT,
+        )
         .await;
     classify_control_outcome(run_id, mode, outcome, warn_retryable_failure)
 }

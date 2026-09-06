@@ -174,12 +174,12 @@ export function PinnedThreadRow({
           : undefined
       }
     >
-      {children}
       {reorderable && (
         <div className="pointer-events-none absolute left-0 top-0 h-8 w-8 overflow-hidden">
           <ThreadDragHandle signals={signals} dragSignals={dragSignals} />
         </div>
       )}
+      {children}
     </div>
   );
 }

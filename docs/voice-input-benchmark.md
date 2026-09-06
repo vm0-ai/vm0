@@ -3,9 +3,10 @@
 Use one deployed PR App/API commit, one ordinary test organization, and a fixed
 audio corpus. Enable `voiceInputV2` and `_debug` at `/_/lab`, then choose **Voice
 input model** in **Settings → Debug**. The selection is a per-member preference
-scoped to the current organization. **Default** clears it and uses Gemini 3.6
-Flash. Changing the Debug switch only controls access to the settings and timing
-diagnostics; a saved model preference remains effective.
+scoped to the current organization. An unset preference or **Default** uses
+Gemini 3.1 Flash-Lite (`google/gemini-3.1-flash-lite`); choosing **Default** clears
+the saved preference. Changing the Debug switch only controls access to the
+settings and timing diagnostics; a saved model preference remains effective.
 
 Lab overrides already apply to every registered switch. The voice transcription
 and polish endpoints now honor those overrides without an additional staff-org
@@ -20,13 +21,13 @@ Gemini 3.8 Flash was the latest Gemini 3.x Flash in that catalog. Names in the
 picker refer to explicit model IDs; record the date and upstream response IDs
 as well, since providers can update an endpoint behind an existing ID.
 
-| Models                                                           | Provider path                           | Processing                                                                                                                                                                              |
-| ---------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 3.6 Flash, 3.8 Flash      | OpenRouter chat completions             | Short audio: combined transcription and polish; long audio: parallel chunk transcription, then polish with the selected model                                                           |
-| OpenAI GPT Audio, GPT Audio Mini                                 | OpenRouter chat completions             | Short audio: combined transcription and polish; long audio: selected model transcribes chunks, then Gemini 3.6 Flash polishes the text. JSON is prompt-constrained and server-validated |
-| Qwen3 ASR Flash, ASR 1.7B, ASR 0.6B                              | OpenRouter audio transcriptions         | Transcription, then Gemini 3.6 Flash polish                                                                                                                                             |
-| OpenAI GPT Transcribe, GPT-4o Transcribe, GPT-4o Mini Transcribe | OpenRouter audio transcriptions         | Transcription, then Gemini 3.6 Flash polish                                                                                                                                             |
-| ElevenLabs Scribe v2                                             | fal synchronous speech-to-text endpoint | Transcription, then Gemini 3.6 Flash polish                                                                                                                                             |
+| Models                                                           | Provider path                           | Processing                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 3.6 Flash, 3.8 Flash      | OpenRouter chat completions             | Short audio: combined transcription and polish; long audio: parallel chunk transcription, then polish with the selected model                                                                |
+| OpenAI GPT Audio, GPT Audio Mini                                 | OpenRouter chat completions             | Short audio: combined transcription and polish; long audio: selected model transcribes chunks, then Gemini 3.1 Flash-Lite polishes the text. JSON is prompt-constrained and server-validated |
+| Qwen3 ASR Flash, ASR 1.7B, ASR 0.6B                              | OpenRouter audio transcriptions         | Transcription, then Gemini 3.1 Flash-Lite polish                                                                                                                                             |
+| OpenAI GPT Transcribe, GPT-4o Transcribe, GPT-4o Mini Transcribe | OpenRouter audio transcriptions         | Transcription, then Gemini 3.1 Flash-Lite polish                                                                                                                                             |
+| ElevenLabs Scribe v2                                             | fal synchronous speech-to-text endpoint | Transcription, then Gemini 3.1 Flash-Lite polish                                                                                                                                             |
 
 The API uses its existing `OPENROUTER_API_KEY` and, for Scribe, `FAL_KEY`.
 Unavailable credentials or provider errors produce an explicit failure; a
@@ -34,10 +35,16 @@ comparison never silently changes to another transcription model. The existing
 audio-input quota, duration limits, and successful-use accounting still apply.
 
 GPT Audio's pure-text polish requests returned upstream HTTP 400 during the
-YouTube pilot. Its long-recording path therefore selects Gemini 3.6 Flash for
-polish before making requests; this is an explicit pipeline choice, not an
-error-triggered retry with another transcription model. Debug headers report both
-models. Short GPT Audio requests keep their combined audio-based path.
+YouTube pilot. Its long-recording path therefore selects the shared default
+Gemini text model for polish before making requests; this is an explicit
+pipeline choice, not an error-triggered retry with another transcription model.
+Debug headers report both models. Short GPT Audio requests keep their combined
+audio-based path.
+
+The historical YouTube pilot in [PR #31982](https://github.com/vm0-ai/vm0/pull/31982)
+used Gemini 3.6 Flash as its default and shared text-polish model. Its recorded
+commits, model IDs, and results describe that configuration; the current default
+change does not revise those measurements or rerun that benchmark.
 
 ## Corpus
 
