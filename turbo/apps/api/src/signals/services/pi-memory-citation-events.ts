@@ -247,13 +247,29 @@ function normalizeResultEvent(
 export function normalizeRunOutputEvents(
   payload: EventConsumerPayload,
   parseHiddenText: boolean,
+  suppliedCitations: readonly EventCitation[] = [],
 ): NormalizedRunOutputEvents {
+  const suppliedBySequence = new Map(
+    suppliedCitations.map((item) => {
+      return [item.sequenceNumber, item.citation] as const;
+    }),
+  );
   const normalizedEvents: NormalizedEvent[] = payload.events.map((event) => {
-    return event.type === "assistant"
-      ? normalizeAssistantEvent(event)
-      : event.type === "result"
-        ? normalizeResultEvent(event, parseHiddenText)
-        : { event };
+    const normalized =
+      event.type === "assistant"
+        ? normalizeAssistantEvent(event)
+        : event.type === "result"
+          ? normalizeResultEvent(event, parseHiddenText)
+          : { event };
+    const supplied = suppliedBySequence.get(event.sequenceNumber);
+    return {
+      ...normalized,
+      ...(supplied
+        ? {
+            citation: mergePiMemoryCitations(normalized.citation, supplied),
+          }
+        : {}),
+    };
   });
   if (parseHiddenText) {
     projectAssistantGroups(normalizedEvents);

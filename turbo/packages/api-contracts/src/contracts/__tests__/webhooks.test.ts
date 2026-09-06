@@ -15,6 +15,7 @@ import {
   ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS,
   webhookCheckpointsContract,
   webhookCompleteContract,
+  webhookEventsContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -22,6 +23,71 @@ import {
 
 const storageId = "00000000-0000-4000-8000-000000000000";
 const manifestHash = "a".repeat(64);
+
+describe("Pi memory citation event transport", () => {
+  const citation = {
+    entries: [
+      {
+        path: "memory.md",
+        lineStart: 1,
+        lineEnd: 2,
+        note: "used",
+      },
+    ],
+    rolloutIds: ["019c6e27-e55b-73d1-87d8-4e01f1f75043"],
+  };
+  const event = { type: "assistant", sequenceNumber: 7 };
+
+  it("accepts an empty marker or sequence-bound private citations", () => {
+    for (const citations of [
+      [],
+      [{ sequenceNumber: event.sequenceNumber, citation }],
+    ]) {
+      expect(
+        webhookEventsContract.send.body.safeParse({
+          runId: "run",
+          events: [event],
+          piMemoryCitationTransport: { schemaVersion: 1, citations },
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("rejects unbound, duplicate, oversized, or structurally loose sidecars", () => {
+    const invalidTransports = [
+      {
+        schemaVersion: 1,
+        citations: [{ sequenceNumber: 8, citation }],
+      },
+      {
+        schemaVersion: 1,
+        citations: [
+          { sequenceNumber: 7, citation },
+          { sequenceNumber: 7, citation },
+        ],
+      },
+      {
+        schemaVersion: 1,
+        citations: Array.from({ length: 33 }, () => {
+          return { sequenceNumber: 7, citation };
+        }),
+      },
+      {
+        schemaVersion: 1,
+        citations: [{ sequenceNumber: 7, citation, public: true }],
+      },
+    ];
+    for (const piMemoryCitationTransport of invalidTransports) {
+      expect(
+        webhookEventsContract.send.body.safeParse({
+          runId: "run",
+          events: [event],
+          piMemoryCitationTransport,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
 
 describe("agent checkpoint session history", () => {
   const runId = "00000000-0000-4000-8000-000000000000";

@@ -533,13 +533,17 @@ const publishEvents$ = command(async function publishEvents(
 ): Promise<void> {
   const result = await set(
     receiveAgentEvents$,
-    { auth: args.auth, body: { runId: args.auth.runId, events: args.events } },
+    {
+      auth: args.auth,
+      body: { runId: args.auth.runId, events: args.events },
+      source: "api-first",
+    },
     signal,
   );
   if (result.response.status !== 200) {
     throw new Error("Pi API first-turn event projection was rejected");
   }
-  if (result.acceptedEvents) {
+  if ("acceptedEvents" in result && result.acceptedEvents) {
     waitUntil(
       set(dispatchOptionalAgentEventConsumers$, result.acceptedEvents, signal),
     );

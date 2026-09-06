@@ -48,6 +48,13 @@ assert.ok(
   citationMigration,
   "Pi citation migration is missing from the journal",
 );
+const legacyBufferMigration = sourceJournal.entries.find((entry) => {
+  return entry.tag === "1083_fuzzy_dragon_lord";
+});
+assert.ok(
+  legacyBufferMigration,
+  "Legacy Pi request buffer migration is missing from the journal",
+);
 const oldEntry = {
   idx: 0,
   version: "7",
@@ -55,8 +62,13 @@ const oldEntry = {
   tag: "0000_pi_citation_old_reader",
   breakpoints: true,
 };
-const newEntry = {
+const citationEntry = {
   ...citationMigration,
+  version: "7",
+  breakpoints: true,
+};
+const legacyBufferEntry = {
+  ...legacyBufferMigration,
   version: "7",
   breakpoints: true,
 };
@@ -85,6 +97,10 @@ CREATE TABLE chat_output_materializations (
     join(sourceDirectory, `${citationMigration.tag}.sql`),
     join(migrationDirectory, `${citationMigration.tag}.sql`),
   );
+  await copyFile(
+    join(sourceDirectory, `${legacyBufferMigration.tag}.sql`),
+    join(migrationDirectory, `${legacyBufferMigration.tag}.sql`),
+  );
   await writeJournal([oldEntry]);
   process.chdir(fixtureDirectory);
   await applyPendingMigrations(migrationSql);
@@ -96,7 +112,7 @@ CREATE TABLE chat_output_materializations (
     [runId],
   );
 
-  await writeJournal([oldEntry, newEntry]);
+  await writeJournal([oldEntry, citationEntry]);
   await applyPendingMigrations(migrationSql);
   await client.query(
     "UPDATE chat_output_materializations SET latest_output_text = 'old writer after migration' WHERE run_id = $1",
@@ -116,16 +132,42 @@ CREATE TABLE chat_output_materializations (
       }),
     ],
   );
+  await writeJournal([oldEntry, citationEntry, legacyBufferEntry]);
+  await applyPendingMigrations(migrationSql);
+  await client.query(
+    "UPDATE chat_output_materializations SET latest_output_text = 'old writer after buffer migration' WHERE run_id = $1",
+    [runId],
+  );
+  const stagedEvent = JSON.stringify({
+    type: "assistant",
+    sequenceNumber: 8,
+    message: { content: [{ type: "text", text: "private pending" }] },
+  });
+  await client.query(
+    `INSERT INTO run_output_legacy_pi_events (run_id, sequence_number, serialized_event)
+     VALUES ($1, 8, $2)
+     ON CONFLICT DO NOTHING`,
+    [runId, stagedEvent],
+  );
+  await client.query(
+    `INSERT INTO run_output_legacy_pi_events (run_id, sequence_number, serialized_event)
+     VALUES ($1, 8, $2)
+     ON CONFLICT DO NOTHING`,
+    [runId, stagedEvent],
+  );
   const result = await client.query(
-    `SELECT m.latest_output_text, c.sequence_number, c.citation
+    `SELECT m.latest_output_text, c.sequence_number, c.citation,
+            p.sequence_number AS pending_sequence_number,
+            p.serialized_event
      FROM chat_output_materializations m
      JOIN run_output_memory_citations c ON c.run_id = m.run_id
+     JOIN run_output_legacy_pi_events p ON p.run_id = m.run_id
      WHERE m.run_id = $1`,
     [runId],
   );
   assert.deepEqual(result.rows, [
     {
-      latest_output_text: "old writer after migration",
+      latest_output_text: "old writer after buffer migration",
       sequence_number: 7,
       citation: {
         entries: [
@@ -133,10 +175,25 @@ CREATE TABLE chat_output_materializations (
         ],
         rolloutIds: [],
       },
+      pending_sequence_number: 8,
+      serialized_event: stagedEvent,
     },
   ]);
+  await client.query(
+    "DELETE FROM run_output_legacy_pi_events WHERE run_id = $1 AND sequence_number = 8",
+    [runId],
+  );
+  assert.equal(
+    (
+      await client.query(
+        "SELECT count(*)::int AS count FROM run_output_legacy_pi_events WHERE run_id = $1",
+        [runId],
+      )
+    ).rows[0]?.count,
+    0,
+  );
   console.log(
-    "Pi citation migration preserves old output readers and enables additive provenance writes.",
+    "Pi citation migrations preserve old writers and add replay-safe transient buffering.",
   );
 } finally {
   process.chdir(originalDirectory);
