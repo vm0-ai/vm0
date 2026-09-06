@@ -60,6 +60,8 @@ const config = resolveDesktopConfig(
 if (
   config.identity.product !== process.env.TEST_EXPECTED_PRODUCT ||
   config.platformUrl.toString() !== process.env.TEST_EXPECTED_PLATFORM_URL ||
+  config.authUrl.origin !== (config.identity.product === "okou" ? (config.environment === "production" ? "https://app.okou.ai" : config.platformUrl.origin) : config.webUrl.origin) ||
+  (config.identity.product === "okou" ? config.authPartition === config.sessionPartition : config.authPartition !== config.sessionPartition) ||
   config.environment !== process.env.TEST_EXPECTED_ENVIRONMENT ||
   config.identity.displayName !== process.env.TEST_EXPECTED_DISPLAY_NAME ||
   config.sessionPartition !== process.env.TEST_EXPECTED_SESSION_PARTITION

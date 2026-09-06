@@ -76,6 +76,7 @@ const originalArch = process.arch;
 const productionConfig: DesktopConfig = {
   platformUrl: new URL("https://app.vm0.ai"),
   webUrl: new URL("https://www.vm0.ai"),
+  authUrl: new URL("https://app.okou.ai"),
   environment: "production",
   identity: {
     product: "zero",
@@ -88,6 +89,7 @@ const productionConfig: DesktopConfig = {
     authScheme: "vm0",
   },
   sessionPartition: "persist:vm0-desktop-production",
+  authPartition: "persist:okou-desktop-auth-test",
   allowedAppOrigins: new Set(["https://app.vm0.ai"]),
 };
 

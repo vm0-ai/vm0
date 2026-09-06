@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
@@ -30,9 +31,11 @@ interface DesktopRuntimeConfig {
 export interface DesktopConfig {
   readonly platformUrl: URL;
   readonly webUrl: URL;
+  readonly authUrl: URL;
   readonly environment: DesktopEnvironment;
   readonly identity: DesktopIdentity;
   readonly sessionPartition: string;
+  readonly authPartition: string;
   readonly allowedAppOrigins: ReadonlySet<string>;
 }
 
@@ -231,12 +234,28 @@ export function resolveDesktopConfig(
   const platformUrl = parsePlatformUrl(platformUrlSource, product);
   const environment = environmentForPlatformUrl(platformUrl, hasExplicitUrl);
 
+  const sessionPartition = `persist:vm0-desktop-${environment}`;
+  const authUrl =
+    product === "okou"
+      ? new URL(
+          environment === "production"
+            ? desktopIdentities.okou.defaultPlatformUrl
+            : platformUrl.origin,
+        )
+      : deriveCompanionUrl(platformUrl, "www");
   return {
     platformUrl,
     webUrl: deriveCompanionUrl(platformUrl, "www"),
+    authUrl,
     environment,
     identity: identityForEnvironment(product, environment),
-    sessionPartition: `persist:vm0-desktop-${environment}`,
+    sessionPartition,
+    // Keep Clerk and App credentials in their own store. Signing out can clear
+    // it completely without touching native preferences, recordings or plugins.
+    authPartition:
+      product === "okou"
+        ? `persist:okou-desktop-auth-${createHash("sha256").update(authUrl.origin).digest("hex")}`
+        : sessionPartition,
     allowedAppOrigins: allowedOriginsForPlatformUrl(platformUrl),
   };
 }

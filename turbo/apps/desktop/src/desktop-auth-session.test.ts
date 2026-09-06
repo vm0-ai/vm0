@@ -1,549 +1,441 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  CLIENT_REQUEST_ID_HEADER,
-  CLIENT_SESSION_ID_HEADER,
-  CLIENT_TYPE_DESKTOP,
-  CLIENT_TYPE_HEADER,
-  CLIENT_VERSION_HEADER,
-} from "@okouai/api-contracts/contracts/client-headers";
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
 import { DesktopAuthSession } from "./desktop-auth-session";
+import { resolveDesktopConfig } from "./config";
 import {
-  createDesktopClientHeaderInjector,
-  type DesktopClientHeaderInjector,
-} from "./desktop-client-headers";
-import type { DesktopSessionCookieSource } from "./desktop-session-cookies";
+  buildDesktopAuthConsumeUrl,
+  buildDesktopAuthSelectOrgUrl,
+  buildDesktopAuthTokenUrl,
+} from "./desktop-auth";
+import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
+import type { DesktopAuthWindowRequest } from "./desktop-auth-window";
 
-const TOKEN_URL = "https://www.vm0.ai/desktop-auth/token";
-const SELECT_ORG_URL = "https://www.vm0.ai/desktop-auth/select-org";
+const api = "https://api.vm0.ai";
+const signedOut = { status: "signed_out", user: null, organization: null };
+const server = setupServer();
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+afterEach(() => {
+  server.resetHandlers();
+  vi.clearAllMocks();
+});
+afterAll(() => server.close());
 
-function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
-  return new Response(JSON.stringify(body), {
-    headers: { "content-type": "application/json" },
-    ...init,
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
   });
+  return { promise, resolve };
 }
 
-function uuidSequence(...values: readonly string[]): () => string {
-  let index = 0;
-  return () => {
-    const value = values[index];
-    index += 1;
-    if (!value) {
-      throw new Error("UUID sequence exhausted");
-    }
-    return value;
-  };
-}
-
-function createSession(
-  options: { readonly addClientHeaders?: DesktopClientHeaderInjector } = {},
-) {
-  const onChange = vi.fn();
-  const onAuthCompleted = vi.fn(async () => {});
-  const cookieSource: DesktopSessionCookieSource = {
-    cookies: {
-      async get() {
-        return [];
+function createSession(product: "okou" | "zero" = "okou") {
+  const config = resolveDesktopConfig(undefined, product);
+  const windows: DesktopAuthWindowRequest[] = [];
+  const replies: Promise<string | null>[] = [];
+  const completed: string[] = [];
+  const cookiesRead: string[] = [];
+  const session = new DesktopAuthSession({
+    product,
+    apiBaseUrl: api,
+    cookieUrls: [config.webUrl, config.platformUrl],
+    cookieSource: {
+      cookies: {
+        get: async ({ url }) => {
+          cookiesRead.push(url);
+          return [
+            { name: "__session", value: "legacy-user" },
+            { name: "preview", value: "access" },
+          ];
+        },
       },
     },
-  };
-  const runAuthWindow = vi.fn(
-    async (_request: {
-      readonly url: string;
-      readonly visible: boolean;
-      readonly allowInteractiveFallbacks: boolean;
-    }) => {},
-  );
-  const session = new DesktopAuthSession({
-    apiBaseUrl: "https://api.vm0.ai",
-    cookieUrls: [new URL("https://www.vm0.ai"), new URL("https://app.vm0.ai")],
-    cookieSource,
-    addClientHeaders: options.addClientHeaders ?? (() => {}),
-    tokenUrl: TOKEN_URL,
-    consumeUrl: (code, handoffId) => {
-      const url = new URL("https://www.vm0.ai/desktop-auth/consume");
-      url.searchParams.set("code", code);
-      if (handoffId) {
-        url.searchParams.set("handoffId", handoffId);
-      }
-      return url.toString();
+    addClientHeaders: createDesktopClientHeaderInjector({
+      clientVersion: "0.46.28",
+      product,
+    }),
+    tokenUrl: buildDesktopAuthTokenUrl(config.authUrl),
+    selectOrgUrl: buildDesktopAuthSelectOrgUrl(config.authUrl, true),
+    consumeUrl: (code, id) =>
+      buildDesktopAuthConsumeUrl(config.authUrl, code, id),
+    runAuthWindow: async (request) => {
+      windows.push(request);
+      return await (replies.shift() ?? Promise.resolve(null));
     },
-    selectOrgUrl: SELECT_ORG_URL,
-    runAuthWindow,
-    onChange,
-    onAuthCompleted,
+    onAuthCompleted: () => {
+      completed.push("completed");
+    },
   });
-  return { session, runAuthWindow, onChange, onAuthCompleted };
+  return { session, windows, replies, completed, cookiesRead };
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+function identityHandlers(
+  options: { orgId?: string; observed?: string[] } = {},
+) {
+  server.use(
+    http.get(`${api}/api/auth/me`, ({ request }) => {
+      const token = request.headers.get("authorization");
+      options.observed?.push(`me:${token}`);
+      expect(request.headers.get("cookie")).toBeNull();
+      return HttpResponse.json({
+        userId: token,
+        email: "app@example.test",
+        orgId: "app-org",
+      });
+    }),
+    http.get(`${api}/api/org`, ({ request }) => {
+      const token = request.headers.get("authorization");
+      options.observed?.push(`org:${token}`);
+      expect(request.headers.get("cookie")).toBeNull();
+      return HttpResponse.json({
+        id: options.orgId ?? "app-org",
+        name: "App workspace",
+      });
+    }),
+  );
+}
+
+describe("Okou App session authority", () => {
+  it("requires a fresh App token before any native request despite legacy cookie-only API success", async () => {
+    const { session, windows, cookiesRead } = createSession();
+    const requests: string[] = [];
+    server.use(
+      http.get(`${api}/*`, ({ request }) => {
+        requests.push(request.url);
+        return HttpResponse.json({
+          userId: "legacy-user",
+          orgId: "legacy-org",
+        });
+      }),
+    );
+    expect(await session.getAuthState()).toEqual(signedOut);
+    expect(
+      (
+        await session.fetchWithSessionAuth(new URL(`${api}/api/protected`), {
+          headers: {
+            cookie: "__session=legacy",
+            authorization: "Bearer injected",
+          },
+        })
+      ).status,
+    ).toBe(401);
+    expect(requests).toEqual([]);
+    expect(cookiesRead).toEqual([]);
+    expect(windows.map((w) => w.url)).toEqual([
+      "https://app.okou.ai/desktop-auth/token",
+      "https://app.okou.ai/desktop-auth/token",
+    ]);
+  });
+
+  it("restores matching user/org under one bearer and preserves native client headers", async () => {
+    const { session, replies, cookiesRead } = createSession();
+    const observed: string[] = [];
+    identityHandlers({ observed });
+    replies.push(Promise.resolve("fresh"));
+    expect(await session.getAuthState()).toEqual({
+      status: "signed_in",
+      user: { userId: "Bearer fresh", email: "app@example.test" },
+      organization: { id: "app-org", name: "App workspace" },
+    });
+    server.use(
+      http.post(`${api}/api/protected`, async ({ request }) => {
+        expect(request.headers.get("authorization")).toBe("Bearer fresh");
+        expect(request.headers.get("cookie")).toBeNull();
+        expect(request.headers.get("x-client-type")).toBe("Desktop");
+        expect(request.headers.get("x-client-version")).toBe("0.46.28");
+        return HttpResponse.json(await request.json());
+      }),
+    );
+    const response = await session.fetchWithSessionAuth(
+      new URL(`${api}/api/protected`),
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "test" }),
+        headers: { cookie: "legacy", authorization: "Bearer wrong" },
+      },
+    );
+    expect(await response.json()).toEqual({ action: "test" });
+    expect(observed).toEqual(["me:Bearer fresh", "org:Bearer fresh"]);
+    expect(cookiesRead).toEqual([]);
+  });
+
+  it("rejects mismatching bearer user/org responses before exposing a cached token", async () => {
+    const { session, replies } = createSession();
+    identityHandlers({ orgId: "other-org" });
+    replies.push(Promise.resolve("fresh"));
+    expect(await session.getAuthState()).toEqual(signedOut);
+    expect(session.getCachedToken()).toBeNull();
+  });
+
+  it("does one bounded App refresh after 401 without a cookie-only retry", async () => {
+    const { session, replies, windows } = createSession();
+    identityHandlers();
+    replies.push(Promise.resolve("expired"), Promise.resolve("fresh"));
+    await session.getToken();
+    const tokens: (string | null)[] = [];
+    server.use(
+      http.get(`${api}/api/protected`, ({ request }) => {
+        const token = request.headers.get("authorization");
+        tokens.push(token);
+        return new HttpResponse(null, {
+          status: token === "Bearer fresh" ? 200 : 401,
+        });
+      }),
+    );
+    expect(
+      (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
+        .status,
+    ).toBe(200);
+    expect(tokens).toEqual(["Bearer expired", "Bearer fresh"]);
+    expect(windows).toHaveLength(2);
+  });
+
+  it.each([null, "rejected"])(
+    "clears rejected credentials when refresh delivers %s",
+    async (refreshed) => {
+      const { session, replies, windows } = createSession();
+      identityHandlers();
+      replies.push(Promise.resolve("expired"), Promise.resolve(refreshed));
+      await session.getToken();
+      let count = 0;
+      server.use(
+        http.get(`${api}/api/protected`, () => {
+          count++;
+          return new HttpResponse(null, { status: 401 });
+        }),
+      );
+      expect(
+        (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
+          .status,
+      ).toBe(401);
+      expect(session.getCachedToken()).toBeNull();
+      expect(count).toBe(refreshed ? 2 : 1);
+      expect(windows).toHaveLength(2);
+    },
+  );
+
+  it("refreshes the entire identity pair when the organization read rejects the old token", async () => {
+    const { session, replies } = createSession();
+    identityHandlers();
+    replies.push(Promise.resolve("old"));
+    await session.getToken();
+    const observed: string[] = [];
+    identityHandlers({ observed });
+    server.use(
+      http.get(`${api}/api/org`, ({ request }) => {
+        const token = request.headers.get("authorization");
+        observed.push(`org:${token}`);
+        return token === "Bearer old"
+          ? new HttpResponse(null, { status: 401 })
+          : HttpResponse.json({ id: "app-org", name: "new workspace" });
+      }),
+    );
+    replies.push(Promise.resolve("new"));
+    expect(await session.getAuthState()).toMatchObject({
+      status: "signed_in",
+      user: { userId: "Bearer new" },
+      organization: { name: "new workspace" },
+    });
+    expect(observed).toEqual([
+      "me:Bearer old",
+      "org:Bearer old",
+      "me:Bearer new",
+      "org:Bearer new",
+    ]);
+  });
+
+  it("coalesces refreshes and recognizes a new delivery even if the token bytes are identical", async () => {
+    const { session, replies, windows, completed } = createSession();
+    identityHandlers();
+    const reply = deferred<string | null>();
+    replies.push(reply.promise);
+    const first = session.getToken();
+    const second = session.getToken();
+    reply.resolve("same");
+    expect(await Promise.all([first, second])).toEqual(["same", "same"]);
+    replies.push(Promise.resolve("same"));
+    expect(await session.getToken({ forceRefresh: true })).toBe("same");
+    expect(windows).toHaveLength(2);
+    expect(completed).toEqual([]);
+    replies.push(Promise.resolve(null));
+    expect(await session.getToken({ forceRefresh: true })).toBeNull();
+    expect(session.getCachedToken()).toBeNull();
+  });
+
+  it("invalidates a late refresh on sign-out and accepts only a subsequent explicit flow", async () => {
+    const { session, replies, windows, completed } = createSession();
+    identityHandlers();
+    const reply = deferred<string | null>();
+    replies.push(reply.promise);
+    const refresh = session.getToken();
+    session.signOut();
+    reply.resolve("late");
+    expect(await refresh).toBeNull();
+    expect(windows[0]?.signal.aborted).toBe(true);
+    expect(await session.getAuthState()).toEqual(signedOut);
+    expect(await session.getToken({ forceRefresh: true })).toBeNull();
+    replies.push(Promise.resolve("explicit"));
+    await session.consumeCode("new-code", "handoff-id");
+    expect(session.getCachedToken()).toBe("explicit");
+    expect(completed).toEqual(["completed"]);
+    expect(windows[1]?.url).toBe(
+      "https://app.okou.ai/desktop-auth/consume?code=new-code&handoffId=handoff-id",
+    );
+  });
+
+  it("discards a superseded consume and keeps the latest organization operation", async () => {
+    const { session, replies, windows, completed } = createSession();
+    identityHandlers();
+    const reply = deferred<string | null>();
+    replies.push(reply.promise);
+    const old = session.consumeCode("old");
+    const rejected = expect(old).rejects.toThrow();
+    expect(await session.getAuthState()).toMatchObject({
+      status: "signing_in",
+    });
+    replies.push(Promise.resolve("latest"));
+    await session.selectOrganization();
+    reply.resolve("late");
+    await rejected;
+    expect(session.getCachedToken()).toBe("latest");
+    expect(completed).toEqual(["completed"]);
+    expect(windows[0]?.signal.aborted).toBe(true);
+    expect(windows[1]?.url).toBe(
+      "https://app.okou.ai/desktop-auth/select-org?force=true",
+    );
+  });
+
+  it("cannot publish an identity whose delayed API validation outlives sign-out", async () => {
+    const { session, replies, completed } = createSession();
+    identityHandlers();
+    const entered = deferred<void>();
+    const reply = deferred<void>();
+    server.use(
+      http.get(`${api}/api/org`, async () => {
+        entered.resolve();
+        await reply.promise;
+        return HttpResponse.json({ id: "app-org", name: "late" });
+      }),
+    );
+    replies.push(Promise.resolve("late"));
+    const consume = session.consumeCode("code");
+    const rejected = expect(consume).rejects.toThrow();
+    await entered.promise;
+    session.signOut();
+    reply.resolve();
+    await rejected;
+    expect(await session.getAuthState()).toEqual(signedOut);
+    expect(session.getCachedToken()).toBeNull();
+    expect(completed).toEqual([]);
+  });
+
+  it("keeps a new callback identity when it supersedes cold-start restoration", async () => {
+    const { session, replies, windows } = createSession();
+    identityHandlers();
+    const old = deferred<string | null>();
+    replies.push(old.promise);
+    const restore = session.getToken();
+    replies.push(Promise.resolve("callback-user"));
+    await session.consumeCode("callback-code");
+    old.resolve("old-user");
+    expect(await restore).toBeNull();
+    expect(session.getCachedToken()).toBe("callback-user");
+    expect(windows[0]?.signal.aborted).toBe(true);
+  });
+
+  it("rejects a newly delivered bearer that the identity API no longer accepts", async () => {
+    const { session, replies, completed } = createSession();
+    server.use(
+      http.get(
+        `${api}/api/auth/me`,
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+    replies.push(Promise.resolve("revoked"));
+    expect(await session.getAuthState()).toEqual(signedOut);
+    expect(session.getCachedToken()).toBeNull();
+    expect(completed).toEqual([]);
+  });
+
+  it("does not leak a bearer to a non-API request origin", async () => {
+    const { session, replies } = createSession();
+    identityHandlers();
+    replies.push(Promise.resolve("fresh"));
+    await expect(
+      session.fetchWithSessionAuth(new URL("https://untrusted.test/api")),
+    ).rejects.toThrow("Invalid Desktop API origin");
+  });
 });
 
-describe("DesktopAuthSession", () => {
-  it("returns the cached token without opening a window", async () => {
-    const { session, runAuthWindow } = createSession();
-    session.completeSignIn("cached");
-
-    expect(await session.getToken()).toBe("cached");
-    expect(runAuthWindow).not.toHaveBeenCalled();
-  });
-
-  it("exposes the cached token without refreshing", () => {
-    const { session, runAuthWindow } = createSession();
-
-    expect(session.getCachedToken()).toBeNull();
-    session.completeSignIn("cached");
-
-    expect(session.getCachedToken()).toBe("cached");
-    expect(runAuthWindow).not.toHaveBeenCalled();
-  });
-
-  it("stores the token and fires onChange on completeSignIn", async () => {
-    const { session, onChange } = createSession();
-
-    session.completeSignIn("tok");
-
-    expect(onChange).toHaveBeenCalledOnce();
-    expect(await session.getToken()).toBe("tok");
-  });
-
-  it("clears cached auth and suppresses hidden refresh after sign out", async () => {
-    const { session, runAuthWindow, onChange } = createSession();
-    session.completeSignIn("cached");
-    session.signOut();
-    session.completeSignIn("late");
-    const fetch = vi.fn(async () => new Response(null, { status: 401 }));
-    vi.stubGlobal("fetch", fetch);
-
-    expect(session.getCachedToken()).toBeNull();
-    expect(await session.getToken({ forceRefresh: true })).toBeNull();
-    expect(await session.getAuthState()).toEqual({
-      status: "signed_out",
-      user: null,
-      organization: null,
-    });
-    expect(fetch).not.toHaveBeenCalled();
-    expect(runAuthWindow).not.toHaveBeenCalled();
-    expect(onChange).toHaveBeenCalledTimes(2);
-  });
-
-  it("accepts sign-in completions after a new consume flow starts", async () => {
-    const { session, runAuthWindow } = createSession();
-    session.signOut();
-    runAuthWindow.mockImplementation(async () => {
-      session.completeSignIn("fresh");
-    });
-
-    await session.consumeCode("code-123");
-
-    expect(session.getCachedToken()).toBe("fresh");
-  });
-
-  it("returns the freshly delivered token on a forced refresh", async () => {
-    const { session, runAuthWindow } = createSession();
-    runAuthWindow.mockImplementation(async () => {
-      session.completeSignIn("fresh");
-    });
-
-    const token = await session.getToken({ forceRefresh: true });
-
-    expect(token).toBe("fresh");
-    expect(runAuthWindow).toHaveBeenCalledWith({
-      url: TOKEN_URL,
-      visible: false,
-      allowInteractiveFallbacks: false,
-    });
-  });
-
-  it("returns null when the refresh window delivers no token (R3)", async () => {
-    const { session, runAuthWindow } = createSession();
-    // Window navigates to completion but never calls completeSignIn.
-    runAuthWindow.mockImplementation(async () => {});
-
-    const token = await session.getToken({ forceRefresh: true });
-
-    expect(token).toBeNull();
-    expect(runAuthWindow).toHaveBeenCalledOnce();
-  });
-
-  it("coalesces concurrent refreshes and re-runs after settling", async () => {
-    const { session, runAuthWindow } = createSession();
-    let releaseWindow: () => void = () => {};
-    runAuthWindow.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          releaseWindow = resolve;
-        }),
-    );
-
-    const first = session.getToken({ forceRefresh: true });
-    const second = session.getToken({ forceRefresh: true });
-    session.completeSignIn("fresh");
-    releaseWindow();
-    const [firstToken, secondToken] = await Promise.all([first, second]);
-
-    expect(firstToken).toBe("fresh");
-    expect(secondToken).toBe("fresh");
-    expect(runAuthWindow).toHaveBeenCalledOnce();
-
-    // The single-flight guard is cleared in `finally`, so a later refresh
-    // opens a new window instead of reusing the settled promise.
-    runAuthWindow.mockImplementation(async () => {
-      session.completeSignIn("fresh-2");
-    });
-    expect(await session.getToken({ forceRefresh: true })).toBe("fresh-2");
-    expect(runAuthWindow).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not restart dependent runtimes after a background refresh", async () => {
-    const { session, runAuthWindow, onAuthCompleted } = createSession();
-    runAuthWindow.mockImplementation(async () => {
-      session.completeSignIn("fresh");
-    });
-
-    await session.getToken({ forceRefresh: true });
-
-    expect(onAuthCompleted).not.toHaveBeenCalled();
-  });
-
-  it("runs onAuthCompleted after a consume flow", async () => {
-    const { session, runAuthWindow, onAuthCompleted } = createSession();
-
-    await session.consumeCode("code-123");
-
-    expect(runAuthWindow).toHaveBeenCalledWith({
-      url: "https://www.vm0.ai/desktop-auth/consume?code=code-123",
-      visible: false,
-      allowInteractiveFallbacks: true,
-    });
-    expect(onAuthCompleted).toHaveBeenCalledOnce();
-    expect(runAuthWindow.mock.invocationCallOrder[0]).toBeLessThan(
-      onAuthCompleted.mock.invocationCallOrder[0] ?? Infinity,
-    );
-  });
-
-  it("carries handoff id into the consume flow", async () => {
-    const { session, runAuthWindow } = createSession();
-    const handoffId = "550e8400-e29b-41d4-a716-446655440000";
-
-    await session.consumeCode("code-123", handoffId);
-
-    expect(runAuthWindow).toHaveBeenCalledWith({
-      url: `https://www.vm0.ai/desktop-auth/consume?code=code-123&handoffId=${handoffId}`,
-      visible: false,
-      allowInteractiveFallbacks: true,
-    });
-  });
-
-  it("reports signing-in state while a consume flow is pending", async () => {
-    const { session, runAuthWindow, onAuthCompleted } = createSession();
-    let finishAuthWindow: () => void = () => {};
-    runAuthWindow.mockImplementationOnce(() => {
-      return new Promise<void>((resolve) => {
-        finishAuthWindow = resolve;
-      });
-    });
-
-    const consumePromise = session.consumeCode("code-123");
-
-    expect(await session.getAuthState()).toEqual({
-      status: "signing_in",
-      user: null,
-      organization: null,
-    });
-
-    session.completeSignIn("fresh");
-    finishAuthWindow();
-    await consumePromise;
-
-    expect(onAuthCompleted).toHaveBeenCalledOnce();
-  });
-
-  it("clears signing-in state when a consume flow fails", async () => {
-    const { session, runAuthWindow } = createSession();
-    runAuthWindow
-      .mockRejectedValueOnce(new Error("consume failed"))
-      .mockResolvedValueOnce(undefined);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 401 })),
-    );
-
-    await expect(session.consumeCode("code-123")).rejects.toThrow(
-      "consume failed",
-    );
-
-    expect(await session.getAuthState()).toEqual({
-      status: "signed_out",
-      user: null,
-      organization: null,
-    });
-  });
-
-  it("runs onAuthCompleted after a visible org-selection flow", async () => {
-    const { session, runAuthWindow, onAuthCompleted } = createSession();
-
-    await session.selectOrganization();
-
-    expect(runAuthWindow).toHaveBeenCalledWith({
-      url: SELECT_ORG_URL,
-      visible: true,
-      allowInteractiveFallbacks: true,
-    });
-    expect(onAuthCompleted).toHaveBeenCalledOnce();
-  });
-
-  it("derives signed-in state with an organization", async () => {
-    const { session } = createSession();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request) => {
-        const url = String(input);
-        if (url.endsWith("/api/auth/me")) {
-          return jsonResponse({ userId: "u1", email: "u@example.com" });
-        }
-        return jsonResponse({ id: "o1", name: "Org One", slug: "org-one" });
-      }),
-    );
-
-    expect(await session.getAuthState()).toEqual({
-      status: "signed_in",
-      user: { userId: "u1", email: "u@example.com" },
-      organization: { id: "o1", name: "Org One" },
-    });
-  });
-
-  it("retries auth state with cookies when the cached token is rejected", async () => {
-    const { session } = createSession({
-      addClientHeaders: createDesktopClientHeaderInjector({
-        clientVersion: "1.2.3",
-        createUuid: uuidSequence(
-          "session-id",
-          "request-id-1",
-          "request-id-2",
-          "request-id-3",
-        ),
-      }),
-    });
-    const observedAuthorization: (string | null)[] = [];
-    const observedClientHeaders: Array<{
-      readonly requestId: string | null;
-      readonly sessionId: string | null;
-      readonly type: string | null;
-      readonly version: string | null;
-    }> = [];
-    session.completeSignIn("stale");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        const headers = new Headers(init?.headers);
-        observedAuthorization.push(headers.get("authorization"));
-        observedClientHeaders.push({
-          requestId: headers.get(CLIENT_REQUEST_ID_HEADER),
-          sessionId: headers.get(CLIENT_SESSION_ID_HEADER),
-          type: headers.get(CLIENT_TYPE_HEADER),
-          version: headers.get(CLIENT_VERSION_HEADER),
+describe("Zero compatibility", () => {
+  it("retains cookie-only restoration and WWW auth routes", async () => {
+    const { session, windows, cookiesRead, replies } = createSession("zero");
+    server.use(
+      http.get(`${api}/api/auth/me`, ({ request }) => {
+        expect(request.headers.get("cookie")).toContain(
+          "__session=legacy-user",
+        );
+        return HttpResponse.json({
+          userId: "zero-user",
+          email: "zero@example.test",
         });
-        const url = String(input);
-        if (url.endsWith("/api/auth/me") && headers.has("authorization")) {
-          return new Response(null, { status: 401 });
-        }
-        if (url.endsWith("/api/auth/me")) {
-          return jsonResponse({ userId: "u1", email: "u@example.com" });
-        }
-        return jsonResponse({ id: "o1", name: "Org One", slug: "org-one" });
       }),
+      http.get(`${api}/api/org`, () =>
+        HttpResponse.json({ id: "zero-org", name: "Zero" }),
+      ),
     );
-
-    expect(await session.getAuthState()).toEqual({
+    expect(await session.getAuthState()).toMatchObject({
       status: "signed_in",
-      user: { userId: "u1", email: "u@example.com" },
-      organization: { id: "o1", name: "Org One" },
+      user: { userId: "zero-user" },
     });
-    expect(observedAuthorization).toStrictEqual(["Bearer stale", null, null]);
-    expect(observedClientHeaders).toStrictEqual([
-      {
-        requestId: "request-id-1",
-        sessionId: "session-id",
-        type: CLIENT_TYPE_DESKTOP,
-        version: "1.2.3",
-      },
-      {
-        requestId: "request-id-2",
-        sessionId: "session-id",
-        type: CLIENT_TYPE_DESKTOP,
-        version: "1.2.3",
-      },
-      {
-        requestId: "request-id-3",
-        sessionId: "session-id",
-        type: CLIENT_TYPE_DESKTOP,
-        version: "1.2.3",
-      },
-    ]);
-    expect(session.getCachedToken()).toBeNull();
+    expect(windows).toHaveLength(0);
+    expect(cookiesRead).toContain("https://www.vm0.ai/");
+    replies.push(Promise.resolve("zero-token"));
+    await session.selectOrganization();
+    expect(windows[0]?.url).toBe(
+      "https://www.vm0.ai/desktop-auth/select-org?force=true",
+    );
+    expect(session.getCachedToken()).toBe("zero-token");
   });
 
-  it("refreshes the desktop token and retries auth state after a 401", async () => {
-    const { session, runAuthWindow } = createSession();
-    const observedAuthorization: (string | null)[] = [];
-    runAuthWindow.mockImplementation(async () => {
-      session.completeSignIn("fresh");
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        const headers = new Headers(init?.headers);
-        observedAuthorization.push(headers.get("authorization"));
-        const url = String(input);
-        if (
-          url.endsWith("/api/auth/me") &&
-          headers.get("authorization") === "Bearer fresh"
-        ) {
-          return jsonResponse({ userId: "u1", email: "u@example.com" });
-        }
-        if (url.endsWith("/api/auth/me")) {
-          return new Response(null, { status: 401 });
-        }
-        return jsonResponse({ id: "o1", name: "Org One", slug: "org-one" });
+  it("retains Zero cookie retry after bearer rejection", async () => {
+    const { session, replies } = createSession("zero");
+    replies.push(Promise.resolve("zero-token"));
+    await session.getToken();
+    const tokens: (string | null)[] = [];
+    server.use(
+      http.get(`${api}/api/protected`, ({ request }) => {
+        tokens.push(request.headers.get("authorization"));
+        return new HttpResponse(null, {
+          status: request.headers.has("authorization") ? 401 : 200,
+        });
       }),
     );
-
-    expect(await session.getAuthState()).toEqual({
-      status: "signed_in",
-      user: { userId: "u1", email: "u@example.com" },
-      organization: { id: "o1", name: "Org One" },
-    });
-    expect(runAuthWindow).toHaveBeenCalledWith({
-      url: TOKEN_URL,
-      visible: false,
-      allowInteractiveFallbacks: false,
-    });
-    expect(observedAuthorization).toStrictEqual([
-      null,
-      "Bearer fresh",
-      "Bearer fresh",
-    ]);
+    expect(
+      (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
+        .status,
+    ).toBe(200);
+    expect(tokens).toEqual(["Bearer zero-token", null]);
   });
 
-  it("mints a fresh token and retries a request when the bearer and the cookies are both rejected", async () => {
-    // The recorder uploads the video, then its click track. The token is
-    // short-lived, so after a long upload the second request can arrive with
-    // an expired bearer; its cookies do not answer for the API either. The
-    // request has to recover on its own rather than fail the delivery.
-    const { session, runAuthWindow } = createSession();
-    const observedAuthorization: (string | null)[] = [];
-    session.completeSignIn("expired");
-    runAuthWindow.mockImplementation(async () => {
-      session.completeSignIn("fresh");
+  it("clears pending callbacks on sign-out", () => {
+    const { session } = createSession("zero");
+    session.queuePendingCallback({ code: "code", handoffId: null });
+    expect(session.takePendingCallback()).toEqual({
+      code: "code",
+      handoffId: null,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-        const headers = new Headers(init?.headers);
-        observedAuthorization.push(headers.get("authorization"));
-        return headers.get("authorization") === "Bearer fresh"
-          ? jsonResponse({ id: "upload-1" })
-          : new Response(null, { status: 401 });
-      }),
-    );
-
-    const response = await session.fetchWithSessionAuth(
-      new URL("https://api.vm0.ai/api/uploads/prepare"),
-      { method: "POST", body: "{}" },
-    );
-
-    expect(response.status).toBe(200);
-    expect(observedAuthorization).toStrictEqual([
-      "Bearer expired",
-      null,
-      "Bearer fresh",
-    ]);
-    expect(runAuthWindow).toHaveBeenCalledOnce();
-    expect(session.getCachedToken()).toBe("fresh");
-  });
-
-  it("hands back the 401 when a refresh yields no token", async () => {
-    const { session, runAuthWindow } = createSession();
-    session.completeSignIn("expired");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 401 })),
-    );
-
-    const response = await session.fetchWithSessionAuth(
-      new URL("https://api.vm0.ai/api/uploads/prepare"),
-    );
-
-    expect(response.status).toBe(401);
-    expect(runAuthWindow).toHaveBeenCalledOnce();
-    expect(session.getCachedToken()).toBeNull();
-  });
-
-  it("derives signed-in state with a null organization on 404", async () => {
-    const { session } = createSession();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request) => {
-        const url = String(input);
-        if (url.endsWith("/api/auth/me")) {
-          return jsonResponse({ userId: "u1", email: "u@example.com" });
-        }
-        return new Response(null, { status: 404 });
-      }),
-    );
-
-    expect(await session.getAuthState()).toEqual({
-      status: "signed_in",
-      user: { userId: "u1", email: "u@example.com" },
-      organization: null,
-    });
-  });
-
-  it("clears the cached token when auth state returns 401", async () => {
-    const { session, runAuthWindow } = createSession();
-    session.completeSignIn("stale");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 401 })),
-    );
-
-    const state = await session.getAuthState();
-
-    expect(state).toEqual({
-      status: "signed_out",
-      user: null,
-      organization: null,
-    });
-    // Auth-state checks now make one hidden refresh attempt before settling on
-    // signed out.
-    expect(runAuthWindow).toHaveBeenCalledOnce();
-  });
-
-  it("consumes a handed callback fire-and-forget", async () => {
-    const { session, runAuthWindow, onAuthCompleted } = createSession();
-    const onError = vi.fn();
-
-    session.consumeCallback({ code: "code-abc", handoffId: "h-1" }, onError);
-
-    await vi.waitFor(() => {
-      expect(onAuthCompleted).toHaveBeenCalledOnce();
-    });
-    expect(runAuthWindow).toHaveBeenCalledOnce();
-    expect(runAuthWindow.mock.calls[0]?.[0].url).toContain("code-abc");
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  it("routes consume failures for a handed callback to onError", async () => {
-    const { session, runAuthWindow } = createSession();
-    runAuthWindow.mockRejectedValue(new Error("consume failed"));
-    const onError = vi.fn();
-
-    session.consumeCallback({ code: "code-abc", handoffId: null }, onError);
-
-    await vi.waitFor(() => {
-      expect(onError).toHaveBeenCalledOnce();
-    });
+    expect(session.takePendingCallback()).toBeNull();
+    session.queuePendingCallback({ code: "late", handoffId: null });
+    session.signOut();
+    expect(session.takePendingCallback()).toBeNull();
   });
 });

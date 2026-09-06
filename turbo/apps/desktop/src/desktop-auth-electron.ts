@@ -2,11 +2,12 @@ import type { IpcMainInvokeEvent } from "electron";
 import { BrowserWindow, ipcMain } from "electron";
 import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
+import type { DesktopAuthWindow } from "./desktop-auth-window";
 import { isDesktopRendererUrl } from "./desktop-renderer-url";
 
 interface DesktopAuthIpcOptions {
   readonly rendererUrl: string;
-  readonly allowedAppOrigins: ReadonlySet<string>;
+  readonly authWindow: DesktopAuthWindow;
 }
 
 interface DesktopAuthNativeApi {
@@ -14,7 +15,6 @@ interface DesktopAuthNativeApi {
   readonly openSignIn: () => void;
   readonly openOrgSelection: () => Promise<void>;
   readonly signOut: () => Promise<void>;
-  readonly completeSignIn: (token: string) => Promise<void> | void;
 }
 
 interface DesktopAuthCompleteSignInPayload {
@@ -41,19 +41,6 @@ export function installDesktopAuthIpc(
     }
   };
 
-  const assertDesktopAuthPage = (event: IpcMainInvokeEvent): void => {
-    const rawUrl = event.senderFrame?.url ?? "";
-    try {
-      const url = new URL(rawUrl);
-      if (options.allowedAppOrigins.has(url.origin)) {
-        return;
-      }
-    } catch {
-      // Fall through to the error below.
-    }
-    throw new Error("Desktop auth completion is unavailable on this page");
-  };
-
   const parseCompleteSignInPayload = (
     value: unknown,
   ): DesktopAuthCompleteSignInPayload => {
@@ -62,7 +49,8 @@ export function installDesktopAuthIpc(
       value === null ||
       !("token" in value) ||
       typeof value.token !== "string" ||
-      value.token.length === 0
+      value.token.length === 0 ||
+      /[\s\p{Cc}]/u.test(value.token)
     ) {
       throw new Error("Desktop auth completion requires a token");
     }
@@ -88,9 +76,8 @@ export function installDesktopAuthIpc(
   ipcMain.handle(
     DESKTOP_AUTH_CHANNELS.completeSignIn,
     async (event, payload: unknown) => {
-      assertDesktopAuthPage(event);
       const parsed = parseCompleteSignInPayload(payload);
-      await api.completeSignIn(parsed.token);
+      options.authWindow.completeSignIn(event, parsed.token);
     },
   );
 }

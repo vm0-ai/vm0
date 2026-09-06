@@ -2576,3 +2576,67 @@ describe("computer use desktop runtime", () => {
     });
   });
 });
+
+describe("explicit Desktop auth origin", () => {
+  it.each([
+    ["okou", undefined, "https://app.okou.ai"],
+    ["okou", "https://app.vm0.ai", "https://app.okou.ai"],
+    ["okou", "https://staging-app.omby.ai", "https://staging-app.omby.ai"],
+    ["okou", "https://pr-123-app.omby.ai", "https://pr-123-app.omby.ai"],
+    [
+      "okou",
+      "https://app.vm7.ai:8443/path?query=1#hash",
+      "https://app.vm7.ai:8443",
+    ],
+    ["okou", "https://custom.example/path", "https://custom.example"],
+    ["okou", "http://localhost:3002", "http://localhost:3002"],
+    ["okou", "http://127.0.0.1:3002", "http://127.0.0.1:3002"],
+    ["zero", undefined, "https://www.vm0.ai"],
+    ["zero", "https://staging-app.omby.ai", "https://staging-www.omby.ai"],
+    ["zero", "https://pr-123-app.omby.ai", "https://pr-123-www.omby.ai"],
+    ["zero", "https://app.vm7.ai:8443", "https://www.vm7.ai:8443"],
+    ["zero", "http://localhost:3002", "http://localhost:3000"],
+  ])(
+    "routes every %s auth entry for %s to %s",
+    (product, platformUrl, origin) => {
+      const config = resolveDesktopConfig(platformUrl, product);
+      expect(config.authUrl.origin).toBe(origin);
+      expect(
+        buildDesktopAuthStartUrl(config.authUrl, config.identity.authScheme),
+      ).toBe(
+        `${origin}/desktop-auth/start?callbackScheme=${config.identity.authScheme}`,
+      );
+      expect(
+        buildDesktopAuthConsumeUrl(config.authUrl, "code", "handoff"),
+      ).toBe(`${origin}/desktop-auth/consume?code=code&handoffId=handoff`);
+      expect(buildDesktopAuthTokenUrl(config.authUrl)).toBe(
+        `${origin}/desktop-auth/token`,
+      );
+      expect(buildDesktopAuthSelectOrgUrl(config.authUrl, true)).toBe(
+        `${origin}/desktop-auth/select-org?force=true`,
+      );
+      if (product === "okou")
+        expect(config.authPartition).not.toBe(config.sessionPartition);
+      else expect(config.authPartition).toBe(config.sessionPartition);
+    },
+  );
+
+  it("keeps production API, Marketing and update identity independent from App auth", () => {
+    const config = resolveDesktopConfig(undefined, "okou");
+    expect(resolveComputerUseApiBaseUrl(config.platformUrl)).toBe(
+      "https://api.vm0.ai",
+    );
+    expect(config.webUrl.origin).toBe("https://www.vm0.ai");
+    expect(config.identity.authScheme).toBe("ai.okou.desktop");
+    expect(config.identity.updateLine).toBe("ai-okou-desktop");
+    expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
+    expect(
+      resolveDesktopConfig("https://app.okou.ai", "okou").authPartition,
+    ).toBe(config.authPartition);
+    expect(
+      resolveDesktopConfig("https://pr-123-app.omby.ai", "okou").authPartition,
+    ).not.toBe(
+      resolveDesktopConfig("https://pr-124-app.omby.ai", "okou").authPartition,
+    );
+  });
+});

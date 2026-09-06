@@ -56,6 +56,7 @@ vi.mock("@sentry/electron/main", () => ({
 }));
 
 const originalPlatform = process.platform;
+const originalArch = process.arch;
 
 function setPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, "platform", { value: platform });
@@ -65,6 +66,7 @@ function productionConfig(): DesktopConfig {
   return {
     platformUrl: new URL("https://app.vm0.ai"),
     webUrl: new URL("https://app.vm0.ai"),
+    authUrl: new URL("https://www.vm0.ai"),
     environment: "production",
     identity: {
       product: "zero",
@@ -77,6 +79,7 @@ function productionConfig(): DesktopConfig {
       authScheme: "vm0-desktop",
     },
     sessionPartition: "persist:desktop",
+    authPartition: "persist:desktop",
     allowedAppOrigins: new Set(["https://app.vm0.ai"]),
   };
 }
@@ -96,12 +99,14 @@ async function enterDegradedMode(error: unknown): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   setPlatform("darwin");
+  Object.defineProperty(process, "arch", { value: "arm64" });
   mocks.app.isPackaged = true;
   mocks.app.requestSingleInstanceLock.mockReturnValue(true);
   mocks.app.getPath.mockReturnValue(mkdtempSync(join(tmpdir(), "bootstrap-")));
   delete process.env.SENTRY_DSN_DESKTOP;
   return () => {
     setPlatform(originalPlatform);
+    Object.defineProperty(process, "arch", { value: originalArch });
   };
 });
 
