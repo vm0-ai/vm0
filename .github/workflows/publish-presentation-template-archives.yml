@@ -21,7 +21,9 @@ defaults:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/diagnose/presentation-template-key-format'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -40,8 +42,8 @@ jobs:
         run: |
           set -euo pipefail
           private_key="$(
-            printf '%s' "$SOURCE_PRIVATE_KEY_BASE64" |
-              bash .github/scripts/decode-github-app-private-key.sh
+            SOURCE_PRIVATE_KEY_INPUT="$SOURCE_PRIVATE_KEY_BASE64" \
+              node .github/scripts/diagnose-github-app-private-key.mjs
           )"
           printf '::add-mask::%s\n' "$private_key"
           printf 'private-key=%s\n' "$private_key" >> "$GITHUB_OUTPUT"
