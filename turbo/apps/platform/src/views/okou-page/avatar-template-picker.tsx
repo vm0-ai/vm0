@@ -1338,7 +1338,7 @@ function IntroVideoVoiceCatalog({
   );
   const generation = useGet(introVideoVoicePickerSignals.generation$);
   const loadMore = useSet(introVideoVoicePickerSignals.loadMore$);
-  const paging = useGet(introVideoVoicePickerSignals.paging$);
+  const paging = useLoadable(introVideoVoicePickerSignals.paging$);
   const setSentinelRef = useSet(introVideoVoicePickerSignals.setSentinelRef$);
   const reload = useSet(introVideoVoicePickerSignals.reload$);
   const pageSignal = useGet(pageSignal$);
@@ -1390,8 +1390,8 @@ function IntroVideoVoiceCatalog({
         )}
         <IntroVideoCatalogPagination
           hasNext={visibleCatalog?.hasNext ?? false}
-          loading={paging.status === "loading"}
-          error={paging.status === "error" ? paging.error : null}
+          loading={paging.state === "loading"}
+          error={paging.state === "hasError" ? paging.error : null}
           onLoadMore={handleLoadMore}
           onReload={reload}
           onSentinelRef={setSentinelRef}

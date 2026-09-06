@@ -12,7 +12,6 @@ import {
   createDeferredPromise,
   onRef,
   onRejection,
-  settle,
   withCleanup,
 } from "../utils.ts";
 
@@ -76,10 +75,7 @@ export function createPagedCatalogSignals<T>(
   const internalPages$ = state<readonly CatalogPage<T>[]>([]);
   const internalRequestedTokens$ = state<readonly string[]>([]);
   const internalGeneration$ = state(0);
-  const internalPaging$ = state<
-    | { readonly status: "idle" | "loading" }
-    | { readonly status: "error"; readonly error: unknown }
-  >({ status: "idle" });
+  const internalPaging$ = state<Promise<void> | null>(null);
 
   const firstPage$ = computed((get) => {
     get(internalGeneration$);
@@ -89,7 +85,7 @@ export function createPagedCatalogSignals<T>(
   const reload$ = command(({ set }) => {
     set(internalPages$, []);
     set(internalRequestedTokens$, []);
-    set(internalPaging$, { status: "idle" });
+    set(internalPaging$, null);
     set(internalGeneration$, (generation) => {
       return generation + 1;
     });
@@ -115,6 +111,26 @@ export function createPagedCatalogSignals<T>(
     },
   );
 
+  const appendPage$ = command(
+    async (
+      { get, set },
+      request: { readonly token: string; readonly generation: number },
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const { token, generation } = request;
+      const next = await get(loadPage$)(token, signal);
+      signal.throwIfAborted();
+      if (get(internalGeneration$) !== generation) {
+        return;
+      }
+      set(internalPages$, (pages) => {
+        return [...pages, next];
+      });
+      await get(catalogPage$);
+      signal.throwIfAborted();
+    },
+  );
+
   const loadMore$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const generation = get(internalGeneration$);
@@ -132,35 +148,20 @@ export function createPagedCatalogSignals<T>(
       set(internalRequestedTokens$, (tokens) => {
         return [...tokens, token];
       });
-      set(internalPaging$, { status: "loading" });
-      const loadPage = get(loadPage$);
-      const next = await settle(
-        onRejection(loadPage(token, signal), () => {
-          if (get(internalGeneration$) !== generation) {
-            return;
-          }
-          set(internalRequestedTokens$, (tokens) => {
-            return tokens.filter((candidate) => {
-              return candidate !== token;
+      const request = onRejection(
+        set(appendPage$, { token, generation }, signal),
+        () => {
+          if (get(internalGeneration$) === generation) {
+            set(internalRequestedTokens$, (tokens) => {
+              return tokens.filter((candidate) => {
+                return candidate !== token;
+              });
             });
-          });
-          set(internalPaging$, { status: "idle" });
-        }),
-        signal,
+          }
+        },
       );
-      if (get(internalGeneration$) !== generation) {
-        return;
-      }
-      if (!next.ok) {
-        set(internalPaging$, { status: "error", error: next.error });
-        return;
-      }
-      set(internalPages$, (pages) => {
-        return [...pages, next.value];
-      });
-      await get(catalogPage$);
-      signal.throwIfAborted();
-      set(internalPaging$, { status: "idle" });
+      set(internalPaging$, request);
+      await request;
     },
   );
 

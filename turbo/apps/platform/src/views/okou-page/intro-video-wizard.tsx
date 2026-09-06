@@ -398,7 +398,7 @@ function StylePicker() {
     introVideoStylePickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoStylePickerSignals.generation$);
-  const loadMoreState = useGet(introVideoStylePickerSignals.paging$);
+  const loadMoreState = useLoadable(introVideoStylePickerSignals.paging$);
   const loadMore = useSet(introVideoStylePickerSignals.loadMore$);
   const setSentinelRef = useSet(introVideoStylePickerSignals.setSentinelRef$);
   const reload = useSet(introVideoStylePickerSignals.reload$);
@@ -457,8 +457,8 @@ function StylePicker() {
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}
-        loading={loadMoreState.status === "loading"}
-        error={loadMoreState.status === "error" ? loadMoreState.error : null}
+        loading={loadMoreState.state === "loading"}
+        error={loadMoreState.state === "hasError" ? loadMoreState.error : null}
         onLoadMore={handleLoadMore}
         onReload={reload}
         onSentinelRef={setSentinelRef}
@@ -477,7 +477,7 @@ function AvatarPicker() {
     introVideoAvatarPickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoAvatarPickerSignals.generation$);
-  const loadMoreState = useGet(introVideoAvatarPickerSignals.paging$);
+  const loadMoreState = useLoadable(introVideoAvatarPickerSignals.paging$);
   const loadMore = useSet(introVideoAvatarPickerSignals.loadMore$);
   const setSentinelRef = useSet(introVideoAvatarPickerSignals.setSentinelRef$);
   const reload = useSet(introVideoAvatarPickerSignals.reload$);
@@ -559,8 +559,8 @@ function AvatarPicker() {
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}
-        loading={loadMoreState.status === "loading"}
-        error={loadMoreState.status === "error" ? loadMoreState.error : null}
+        loading={loadMoreState.state === "loading"}
+        error={loadMoreState.state === "hasError" ? loadMoreState.error : null}
         onLoadMore={handleLoadMore}
         onReload={reload}
         onSentinelRef={setSentinelRef}

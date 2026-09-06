@@ -614,7 +614,6 @@ test("A style previews inline without a third dialog or selecting it", async () 
 });
 
 test("Only one inline style preview is mounted and changing format stops it", async () => {
-  const user = userEvent.setup({ delay: null });
   installIntroVideoFixture();
   context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
     return respond(200, {
@@ -640,22 +639,22 @@ test("Only one inline style preview is mounted and changing format stops it", as
   });
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  await user.click(await within(picker).findByLabelText("Preview First video"));
+  click(await within(picker).findByLabelText("Preview First video"));
   const first = within(picker).getByLabelText("First video");
-  await user.click(within(picker).getByLabelText("Preview Second video"));
+  click(within(picker).getByLabelText("Preview Second video"));
   expect(first).not.toBeInTheDocument();
   expect(picker.querySelectorAll("video")).toHaveLength(1);
   expect(within(picker).getByLabelText("Second video")).toHaveAttribute(
     "src",
     "https://files.heygen.test/second.mp4",
   );
-  await user.click(within(picker).getByLabelText("Portrait · 9:16"));
+  click(within(picker).getByLabelText("Portrait · 9:16"));
   expect(picker.querySelector("video")).toBeNull();
-  await user.click(within(picker).getByLabelText("Landscape · 16:9"));
+  click(within(picker).getByLabelText("Landscape · 16:9"));
   expect(picker.querySelector("video")).toBeNull();
 });
 
@@ -1433,8 +1432,15 @@ test("A public HeyGen voice overrides the avatar default", async () => {
   );
 });
 
-test("An existing desktop recording handoff still opens in the simple form", async () => {
-  installIntroVideoFixture();
+test("A desktop recording handoff submits the original recording and clicks once with the selected audio intent", async () => {
+  let submitted:
+    | Parameters<NonNullable<MessageExperienceOptions["onSendRequest"]>>[0]
+    | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submitted = body;
+    },
+  });
   context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
     return respond(200, {
       url: `https://resolved.example/${query.file_id}`,
@@ -1449,4 +1455,30 @@ test("An existing desktop recording handoff still opens in the simple form", asy
     name: "Create an intro video",
   });
   expect(within(dialog).getByText("demo.mp4")).toBeVisible();
+  click(requiredButtonNamed("Voice: Default · Follows avatar", dialog));
+  const voicePicker = await screen.findByRole("dialog", {
+    name: "Choose a voice",
+  });
+  click(within(voicePicker).getByText("Original audio"));
+  expect(requiredButtonNamed("Voice: Original audio", dialog)).toBeVisible();
+  click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submitted).toBeDefined();
+  });
+  const files = submitted?.userMessage?.parts.filter((part) => {
+    return part.type === "file";
+  });
+  expect(files).toHaveLength(2);
+  expect(
+    files?.map((file) => {
+      return file.fileId;
+    }),
+  ).toStrictEqual(
+    expect.arrayContaining([
+      DESKTOP_HANDOFF_PARAMS["intro-video-recording"],
+      DESKTOP_HANDOFF_PARAMS["intro-video-clicks"],
+    ]),
+  );
+  expect(submitted?.prompt).toContain("- Source: demo.mp4 (video)");
+  expect(submitted?.prompt).toContain("- Voice: Use original source audio");
 });
