@@ -196,7 +196,12 @@ function ComposerStepOptions({
         selection.value,
         config.expression,
       );
-    const preview = updateAvatarComposerConfig(config, selection);
+    // Incompatible hair options stay disabled, but their previews still need to
+    // show their own artwork instead of the current selected hairstyle.
+    const preview =
+      selection.field === "hair"
+        ? { ...config, hair: selection.value }
+        : updateAvatarComposerConfig(config, selection);
     return (
       <button
         key={selection.value}
