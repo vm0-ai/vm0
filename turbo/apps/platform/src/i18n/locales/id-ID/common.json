@@ -1970,6 +1970,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "Muat ulang katalog",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -1981,6 +1982,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "Semua",
+        "auto": "Otomatis",
+        "filter": "Filter referensi gaya berdasarkan format",
+        "landscape": "Lanskap · 16:9",
+        "other": "Format lainnya",
+        "output": "Format keluaran",
+        "portrait": "Potret · 9:16",
+        "square": "Persegi · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -1994,11 +2005,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
+        "emptyFormat": "Tidak ada referensi gaya yang sesuai dengan format ini.",
+        "heading": "Pilih referensi gaya",
+        "help": "Adaptasi gaya publik HeyGen untuk video Anda; bukan salinan persis dari templat.",
+        "label": "Referensi gaya",
+        "preview": "Pratinjau {{title}}",
+        "previewUnavailable": "Pratinjau video tidak tersedia untuk gaya ini."
       },
       "title": "Buat video intro",
       "voice": {
@@ -2013,9 +2026,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Tanpa narasi",
-        "noneDescription": "Buat video berbasis teks tanpa narasi",
+        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",
         "original": "Audio asli",
-        "originalDescription": "Pertahankan audio dari video atau rekaman yang diunggah"
+        "originalDescription": "Pertahankan audio sumber yang dipilih tanpa menambahkan ucapan buatan"
       }
     },
     "mail": {

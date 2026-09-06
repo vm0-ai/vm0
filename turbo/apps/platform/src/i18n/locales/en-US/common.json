@@ -1973,6 +1973,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "Reload catalog",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -1984,6 +1985,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "All",
+        "auto": "Auto",
+        "filter": "Filter style references by format",
+        "landscape": "Landscape · 16:9",
+        "other": "Other formats",
+        "output": "Output format",
+        "portrait": "Portrait · 9:16",
+        "square": "Square · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -1997,11 +2008,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "Match a visual direction to your prompt and material",
+        "emptyFormat": "No style references match this format.",
+        "heading": "Choose a style reference",
+        "help": "Adapt a public HeyGen style to your video; this is not an exact template render.",
+        "label": "Style reference",
+        "preview": "Preview {{title}}",
+        "previewUnavailable": "A video preview is not available for this style."
       },
       "title": "Create an intro video",
       "voice": {
@@ -2016,9 +2029,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "No voiceover",
-        "noneDescription": "Create a caption-led video without narration",
+        "noneDescription": "Do not add narration; keep source audio unless you ask to mute it.",
         "original": "Original audio",
-        "originalDescription": "Keep the audio from the uploaded video or recording"
+        "originalDescription": "Keep the selected source audio without adding generated speech"
       }
     },
     "mail": {

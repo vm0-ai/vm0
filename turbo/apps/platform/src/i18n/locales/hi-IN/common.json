@@ -1973,6 +1973,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "कैटलॉग फिर लोड करें",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -1984,6 +1985,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "सभी",
+        "auto": "स्वचालित",
+        "filter": "फ़ॉर्मैट के अनुसार शैली संदर्भ फ़िल्टर करें",
+        "landscape": "लैंडस्केप · 16:9",
+        "other": "अन्य फ़ॉर्मैट",
+        "output": "आउटपुट फ़ॉर्मैट",
+        "portrait": "पोर्ट्रेट · 9:16",
+        "square": "वर्गाकार · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -1997,11 +2008,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "अपने निर्देशों और सामग्री के अनुसार दृश्य शैली चुनें",
+        "emptyFormat": "इस फ़ॉर्मैट से मेल खाने वाले शैली संदर्भ नहीं हैं।",
+        "heading": "शैली संदर्भ चुनें",
+        "help": "अपने वीडियो के लिए सार्वजनिक HeyGen शैली को अनुकूलित करें; यह टेम्पलेट की हूबहू प्रतिलिपि नहीं है।",
+        "label": "शैली संदर्भ",
+        "preview": "{{title}} का पूर्वावलोकन",
+        "previewUnavailable": "इस शैली का वीडियो पूर्वावलोकन उपलब्ध नहीं है।"
       },
       "title": "इंट्रो वीडियो बनाएँ",
       "voice": {
@@ -2016,9 +2029,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "बिना वॉइसओवर",
-        "noneDescription": "बिना वर्णन के कैप्शन-केंद्रित वीडियो बनाएँ",
+        "noneDescription": "नरेशन न जोड़ें; म्यूट करने को न कहने पर मूल ऑडियो बनाए रखें।",
         "original": "मूल ऑडियो",
-        "originalDescription": "अपलोड किए गए वीडियो या रिकॉर्डिंग का ऑडियो बनाए रखें"
+        "originalDescription": "चुना गया मूल ऑडियो बनाए रखें और जनरेट की गई आवाज़ न जोड़ें"
       }
     },
     "mail": {

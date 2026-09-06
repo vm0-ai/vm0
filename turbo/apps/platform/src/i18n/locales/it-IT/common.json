@@ -2005,6 +2005,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "Ricarica catalogo",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -2016,6 +2017,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "Tutti",
+        "auto": "Automatico",
+        "filter": "Filtra i riferimenti di stile per formato",
+        "landscape": "Orizzontale · 16:9",
+        "other": "Altri formati",
+        "output": "Formato di uscita",
+        "portrait": "Verticale · 9:16",
+        "square": "Quadrato · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2029,11 +2040,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "Adatta la direzione visiva alle tue istruzioni e ai tuoi materiali",
+        "emptyFormat": "Nessun riferimento di stile corrisponde a questo formato.",
+        "heading": "Scegli un riferimento di stile",
+        "help": "Adatta uno stile pubblico HeyGen al tuo video; non è una riproduzione esatta di un modello.",
+        "label": "Riferimento di stile",
+        "preview": "Anteprima di {{title}}",
+        "previewUnavailable": "Non è disponibile un’anteprima video per questo stile."
       },
       "title": "Crea un video introduttivo",
       "voice": {
@@ -2048,9 +2061,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Nessuna voce fuori campo",
-        "noneDescription": "Crea un video guidato dai sottotitoli senza narrazione",
+        "noneDescription": "Non aggiungere narrazione; mantieni l’audio originale salvo richiesta di disattivarlo.",
         "original": "Audio originale",
-        "originalDescription": "Mantieni l'audio del video o della registrazione caricati"
+        "originalDescription": "Mantieni l’audio originale selezionato senza aggiungere voce generata"
       }
     },
     "mail": {

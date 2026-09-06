@@ -3,11 +3,18 @@ import {
   type IntroVideoAvatar,
   type IntroVideoStyle,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { onRejection } from "../utils.ts";
+import { pageSignal$ } from "../page-signal.ts";
+import {
+  createDeferredPromise,
+  onRef,
+  onRejection,
+  settle,
+  withCleanup,
+} from "../utils.ts";
 
 const INTRO_VIDEO_CATALOG_PAGE_SIZE = 24;
 
@@ -26,10 +33,53 @@ type CatalogLoader<T> = (
   signal?: AbortSignal,
 ) => Promise<CatalogPage<T>>;
 
-function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
+function createCatalogSentinelRef(
+  loadMore$: Command<Promise<void>, [AbortSignal]>,
+) {
+  return onRef<HTMLDivElement>(
+    command(async ({ get, set }, node: HTMLDivElement, signal: AbortSignal) => {
+      const pageSignal = get(pageSignal$);
+      const visible = createDeferredPromise<void>(signal);
+      const root = node.closest("[data-intro-video-catalog-scroll]");
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (
+            !visible.settled() &&
+            entries.some((entry) => {
+              return entry.isIntersecting;
+            })
+          ) {
+            observer.disconnect();
+            visible.resolve();
+          }
+        },
+        {
+          root,
+          // Prefetch one viewport ahead, rather than a fixed desktop pixel threshold.
+          rootMargin: `0px 0px ${root?.clientHeight ?? 0}px 0px`,
+        },
+      );
+      observer.observe(node);
+      await withCleanup(visible.promise, () => {
+        observer.disconnect();
+      });
+      signal.throwIfAborted();
+      // Loading replaces the sentinel with a spinner; the request belongs to the page.
+      await set(loadMore$, pageSignal);
+    }),
+  );
+}
+
+export function createPagedCatalogSignals<T>(
+  loadPage$: Computed<CatalogLoader<T>>,
+) {
   const internalPages$ = state<readonly CatalogPage<T>[]>([]);
   const internalRequestedTokens$ = state<readonly string[]>([]);
   const internalGeneration$ = state(0);
+  const internalPaging$ = state<
+    | { readonly status: "idle" | "loading" }
+    | { readonly status: "error"; readonly error: unknown }
+  >({ status: "idle" });
 
   const firstPage$ = computed((get) => {
     get(internalGeneration$);
@@ -39,6 +89,7 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
   const reload$ = command(({ set }) => {
     set(internalPages$, []);
     set(internalRequestedTokens$, []);
+    set(internalPaging$, { status: "idle" });
     set(internalGeneration$, (generation) => {
       return generation + 1;
     });
@@ -81,35 +132,48 @@ function createPagedCatalogSignals<T>(loadPage$: Computed<CatalogLoader<T>>) {
       set(internalRequestedTokens$, (tokens) => {
         return [...tokens, token];
       });
+      set(internalPaging$, { status: "loading" });
       const loadPage = get(loadPage$);
-      const next = await onRejection(loadPage(token, signal), () => {
-        if (get(internalGeneration$) !== generation) {
-          return;
-        }
-        set(internalRequestedTokens$, (tokens) => {
-          return tokens.filter((candidate) => {
-            return candidate !== token;
+      const next = await settle(
+        onRejection(loadPage(token, signal), () => {
+          if (get(internalGeneration$) !== generation) {
+            return;
+          }
+          set(internalRequestedTokens$, (tokens) => {
+            return tokens.filter((candidate) => {
+              return candidate !== token;
+            });
           });
-        });
-      });
-      signal.throwIfAborted();
+          set(internalPaging$, { status: "idle" });
+        }),
+        signal,
+      );
       if (get(internalGeneration$) !== generation) {
         return;
       }
+      if (!next.ok) {
+        set(internalPaging$, { status: "error", error: next.error });
+        return;
+      }
       set(internalPages$, (pages) => {
-        return [...pages, next];
+        return [...pages, next.value];
       });
       await get(catalogPage$);
       signal.throwIfAborted();
+      set(internalPaging$, { status: "idle" });
     },
   );
 
   return {
     catalogPage$,
+    paging$: computed((get) => {
+      return get(internalPaging$);
+    }),
     generation$: computed((get) => {
       return get(internalGeneration$);
     }),
     loadMore$,
+    setSentinelRef$: createCatalogSentinelRef(loadMore$),
     reload$,
   };
 }

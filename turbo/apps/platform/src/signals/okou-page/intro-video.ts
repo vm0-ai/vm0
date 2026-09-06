@@ -6,11 +6,18 @@ import type {
 import { command, computed, state, type Command, type State } from "ccstate";
 
 import type { ComposerSignals } from "./composer-signals.ts";
+import { createStandaloneAgentSubmission } from "./agent-composer-signals.ts";
+import {
+  createDraftSignals,
+  inferUploadContentType,
+  type DraftSignals,
+} from "./chat-draft.ts";
 import { onRef, settle } from "../utils.ts";
 
 export type IntroVideoWizardError = "send-failed" | "upload-failed";
 export type IntroVideoPicker = "avatar" | "style" | "voice";
-type IntroVideoSourceKind = "file" | "presentation" | "video";
+type IntroVideoAspectRatio = "auto" | "16:9" | "9:16";
+type IntroVideoSourceKind = "file" | "presentation" | "video" | "audio";
 
 interface IntroVideoSourceFacts {
   readonly contentType: string;
@@ -57,7 +64,6 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "original" };
 
 const PRESENTATION_EXTENSIONS = ["html", "pdf", "ppt", "pptx"] as const;
-const INTRO_VIDEO_ASPECT_RATIO_LABEL = "16:9";
 
 function extensionForFilename(filename: string): string {
   return filename.split(".").pop()?.toLocaleLowerCase() ?? "";
@@ -71,15 +77,19 @@ function isIntroVideoPresentation(file: Pick<File, "name">): boolean {
 }
 
 function sourceKind(file: File): IntroVideoSourceKind {
-  if (file.type.startsWith("video/")) {
+  const contentType = inferUploadContentType(file);
+  if (contentType.startsWith("video/")) {
     return "video";
+  }
+  if (contentType.startsWith("audio/")) {
+    return "audio";
   }
   return isIntroVideoPresentation(file) ? "presentation" : "file";
 }
 
 function localSource(file: File): LocalIntroVideoSource {
   return {
-    contentType: file.type || "application/octet-stream",
+    contentType: inferUploadContentType(file),
     file,
     key: crypto.randomUUID(),
     kind: sourceKind(file),
@@ -142,6 +152,7 @@ function serializeVoiceSelection(
 }
 
 function buildIntroVideoPrompt(args: {
+  readonly aspectRatio: IntroVideoAspectRatio;
   readonly avatar: IntroVideoAvatarSelection;
   readonly instructions: string;
   readonly sources: readonly IntroVideoSource[];
@@ -158,6 +169,11 @@ function buildIntroVideoPrompt(args: {
   const styleReference =
     args.style.kind === "catalog"
       ? [
+          ...(args.style.style.aspectRatio
+            ? [
+                `- HeyGen style reference aspect ratio: ${args.style.style.aspectRatio}`,
+              ]
+            : []),
           ...(args.style.style.thumbnailUrl
             ? [`- HeyGen style thumbnail: ${args.style.style.thumbnailUrl}`]
             : []),
@@ -190,12 +206,14 @@ function buildIntroVideoPrompt(args: {
     "Use the $intro-video skill to create one polished intro video.",
     "",
     "Configuration:",
-    `- Aspect ratio: ${INTRO_VIDEO_ASPECT_RATIO_LABEL}`,
+    `- Aspect ratio: ${args.aspectRatio === "auto" ? "Auto — infer from the user request, source material, and destination" : args.aspectRatio}`,
     `- HeyGen style: ${serializeStyleSelection(args.style)}`,
     `- Avatar: ${serializeAvatarSelection(args.avatar)}`,
     `- Voice: ${serializeVoiceSelection(args.voice, args.avatar)}`,
     ...styleReference,
     ...avatarReference,
+    "- Treat the selected style as a visual reference for the managed composition route, not a native HeyGen template or an executed style_id.",
+    "- An explicit output aspect ratio is independent of the style reference. If it conflicts with an explicit user request, clarify before rendering.",
     "",
     "Source attachments:",
     ...sourceLines,
@@ -204,6 +222,8 @@ function buildIntroVideoPrompt(args: {
 }
 
 interface IntroVideoInternalState {
+  readonly aspectRatio$: State<IntroVideoAspectRatio>;
+  readonly draft: DraftSignals;
   readonly avatar$: State<IntroVideoAvatarSelection>;
   readonly busy$: State<boolean>;
   readonly error$: State<IntroVideoWizardError | null>;
@@ -218,6 +238,8 @@ interface IntroVideoInternalState {
 
 function createIntroVideoInternalState(): IntroVideoInternalState {
   return {
+    aspectRatio$: state<IntroVideoAspectRatio>("auto"),
+    draft: createDraftSignals(),
     avatar$: state<IntroVideoAvatarSelection>({ kind: "auto" }),
     busy$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
@@ -261,6 +283,8 @@ const fileInputTarget = createInputTargetSignals();
 
 function createResetDraftCommand(internal: IntroVideoInternalState) {
   return command(({ set }): void => {
+    set(internal.aspectRatio$, "auto");
+    set(internal.draft.clear$);
     set(internal.avatar$, { kind: "auto" });
     set(internal.busy$, false);
     set(internal.error$, null);
@@ -293,7 +317,7 @@ function createCommands(
     signal.addEventListener(
       "abort",
       () => {
-        set(internal.open$, false);
+        set(resetDraft$);
       },
       { once: true },
     );
@@ -320,7 +344,6 @@ function createCommands(
     async (
       { get, set },
       sourceKey: string,
-      composer: ComposerSignals,
       signal: AbortSignal,
     ): Promise<void> => {
       const source = get(internal.sources$).find((candidate) => {
@@ -334,7 +357,7 @@ function createCommands(
         source.origin === "uploaded" ? source.attachmentIds : [];
       if (uploadedKey || uploadedIds.length > 0) {
         const resolved = await Promise.all(
-          get(composer.draft.attachments$).map(async (attachment) => {
+          get(internal.draft.attachments$).map(async (attachment) => {
             return { attachment, info: await get(attachment.fileInfo$) };
           }),
         );
@@ -344,7 +367,7 @@ function createCommands(
             attachment.key === uploadedKey ||
             (info && uploadedIds.includes(info.id))
           ) {
-            set(composer.draft.removeAttachment$, attachment);
+            set(internal.draft.removeAttachment$, attachment);
           }
         }
       }
@@ -363,7 +386,7 @@ function createCommands(
       if (
         get(internal.voice$).kind === "original" &&
         !get(internal.sources$).some((candidate) => {
-          return candidate.kind === "video";
+          return candidate.kind === "video" || candidate.kind === "audio";
         })
       ) {
         set(internal.voice$, { kind: "default" });
@@ -401,6 +424,11 @@ function createCommands(
       set(internal.instructions$, instructions);
     }),
     setPicker$,
+    setAspectRatio$: command(
+      ({ set }, aspectRatio: IntroVideoAspectRatio): void => {
+        set(internal.aspectRatio$, aspectRatio);
+      },
+    ),
     setStyle$: command(({ set }, style: IntroVideoStyleSelection): void => {
       set(internal.style$, style);
     }),
@@ -412,21 +440,20 @@ function createCommands(
 
 function createUploadSourcesCommand(internal: IntroVideoInternalState) {
   return command(
-    async (
-      { get, set },
-      composer: ComposerSignals,
-      signal: AbortSignal,
-    ): Promise<boolean> => {
+    async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       for (const source of get(internal.sources$)) {
+        const uploadedKey = get(internal.uploadedAttachmentKeys$)[source.key];
         if (
           source.origin === "uploaded" ||
-          get(internal.uploadedAttachmentKeys$)[source.key]
+          get(internal.draft.attachments$).some((attachment) => {
+            return attachment.key === uploadedKey;
+          })
         ) {
           continue;
         }
-        const before = new Set(get(composer.draft.attachments$));
+        const before = new Set(get(internal.draft.attachments$));
         const upload = await settle(
-          set(composer.draft.uploadAttachment$, source.file, signal),
+          set(internal.draft.uploadAttachment$, source.file, signal),
           signal,
         );
         if (!upload.ok) {
@@ -434,7 +461,7 @@ function createUploadSourcesCommand(internal: IntroVideoInternalState) {
           set(internal.busy$, false);
           return false;
         }
-        const attachment = get(composer.draft.attachments$).find(
+        const attachment = get(internal.draft.attachments$).find(
           (candidate) => {
             return !before.has(candidate);
           },
@@ -458,15 +485,49 @@ function createSubmissionCommand(
   resetDraft$: Command<void, []>,
 ) {
   const uploadSources$ = createUploadSourcesCommand(internal);
-  const submitComposer$ = command(
+  const restoreSources$ = command(
     async (
       { get, set },
       composer: ComposerSignals,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const action = await get(composer.submission.primaryAction$);
+      const sourceIds = get(internal.sources$).flatMap((source) => {
+        return source.origin === "uploaded" ? source.attachmentIds : [];
+      });
+      if (sourceIds.length === 0) {
+        return true;
+      }
+      const existing = await Promise.all(
+        get(internal.draft.attachments$).map((attachment) => {
+          return get(attachment.fileInfo$);
+        }),
+      );
       signal.throwIfAborted();
-      return await set(composer.submission.submitCurrentInput$, action, signal);
+      const missingIds = sourceIds.filter((id) => {
+        return !existing.some((info) => {
+          return info?.id === id;
+        });
+      });
+      const originals = await Promise.all(
+        get(composer.draft.attachments$).map(async (attachment) => {
+          const info = await get(attachment.fileInfo$);
+          return info
+            ? { ...info, filename: attachment.filename, size: attachment.size }
+            : null;
+        }),
+      );
+      signal.throwIfAborted();
+      const attachments = originals.flatMap((info) => {
+        return info !== null && missingIds.includes(info.id) ? [info] : [];
+      });
+      if (attachments.length !== missingIds.length) {
+        return false;
+      }
+      return !(await set(
+        internal.draft.restoreAttachments$,
+        attachments,
+        signal,
+      ));
     },
   );
   return command(
@@ -485,21 +546,43 @@ function createSubmissionCommand(
       }
       set(internal.busy$, true);
       set(internal.error$, null);
-      if (!(await set(uploadSources$, composer, signal))) {
+      const restored = await settle(
+        set(restoreSources$, composer, signal),
+        signal,
+      );
+      if (!restored.ok || !restored.value) {
+        set(internal.busy$, false);
+        set(internal.error$, "upload-failed");
         return false;
       }
-      set(
-        composer.draft.setDraftInput$,
-        buildIntroVideoPrompt({
-          avatar: get(internal.avatar$),
-          instructions,
-          sources,
-          style: get(internal.style$),
-          voice: get(internal.voice$),
-        }),
+      if (!(await set(uploadSources$, signal))) {
+        return false;
+      }
+      const prompt = buildIntroVideoPrompt({
+        aspectRatio: get(internal.aspectRatio$),
+        avatar: get(internal.avatar$),
+        instructions,
+        sources,
+        style: get(internal.style$),
+        voice: get(internal.voice$),
+      });
+      const submitDraft$ = createStandaloneAgentSubmission(
+        composer.agentId,
+        internal.draft,
+        composer.connector,
       );
       const submission = await settle(
-        set(submitComposer$, composer, signal),
+        set(
+          submitDraft$,
+          "send",
+          {
+            prompt,
+            generationTemplate: undefined,
+            editorDocument: undefined,
+            videoRunOptions: undefined,
+          },
+          signal,
+        ),
         signal,
       );
       if (!submission.ok || !submission.value) {
@@ -517,6 +600,7 @@ function createIntroVideoWizardSignals() {
   const internal = createIntroVideoInternalState();
   const resetDraft$ = createResetDraftCommand(internal);
   return {
+    aspectRatio$: exposeState(internal.aspectRatio$),
     avatar$: exposeState(internal.avatar$),
     busy$: exposeState(internal.busy$),
     error$: exposeState(internal.error$),

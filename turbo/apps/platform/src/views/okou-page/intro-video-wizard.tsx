@@ -3,7 +3,6 @@ import type {
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
-import type { IntroVideoStyle } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import {
   Ban,
   Check,
@@ -12,8 +11,6 @@ import {
   File,
   LayoutTemplate,
   Loader2,
-  Pause,
-  Play,
   Sparkles,
   Upload,
   UserRound,
@@ -28,15 +25,17 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  SegmentControl,
+  SegmentControlItem,
   Skeleton,
   Textarea,
   cn,
 } from "@okouai/ui";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { toast } from "@okouai/ui/components/ui/sonner";
+import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -55,15 +54,14 @@ import {
   type IntroVideoVoiceSelection,
   type IntroVideoWizardError,
 } from "../../signals/okou-page/intro-video.ts";
-import { detach, Reason, tapError } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   VoiceLibraryContent,
   VoiceLibraryToolbar,
 } from "./avatar-template-picker.tsx";
 import { IntroVideoAvatarGroupCard } from "./intro-video-avatar-group-card.tsx";
 import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
-
-const MAX_FILE_SIZE = 1024 * 1024 * 1024;
+import { IntroVideoStyleGallery } from "./intro-video-style-gallery.tsx";
 
 function formatBytes(size: number): string {
   if (size < 1024) {
@@ -80,7 +78,7 @@ function formatBytes(size: number): string {
 
 function addableFiles(files: readonly File[], t: TFunction<"common">) {
   return files.filter((file) => {
-    if (file.size <= MAX_FILE_SIZE) {
+    if (file.size <= CHAT_UPLOAD_MAX_FILE_SIZE) {
       return true;
     }
     toast.error(
@@ -96,10 +94,8 @@ function addableFiles(files: readonly File[], t: TFunction<"common">) {
 }
 
 function FileDropzone({
-  composer,
   sources,
 }: {
-  readonly composer: ComposerSignals;
   readonly sources: readonly IntroVideoSource[];
 }) {
   const { t } = useTranslation();
@@ -185,7 +181,7 @@ function FileDropzone({
                   className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => {
                     detach(
-                      removeSource(source.key, composer, rootSignal),
+                      removeSource(source.key, rootSignal),
                       Reason.DomCallback,
                       "remove intro video source",
                     );
@@ -294,24 +290,19 @@ function SettingTrigger({
       type="button"
       aria-label={`${label}: ${value}`}
       title={`${label}: ${value}`}
-      className="flex min-w-0 flex-col items-start gap-2 rounded-xl border border-border bg-card p-2.5 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:gap-2.5"
+      className="flex min-w-0 items-center gap-2.5 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onClick}
     >
       <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground sm:size-9">
         {icon}
       </span>
       <span className="w-full min-w-0 flex-1">
-        <small className="block text-[11px] text-muted-foreground">
-          {label}
-        </small>
-        <strong className="mt-0.5 line-clamp-2 min-h-8 text-xs font-medium leading-4 text-foreground sm:text-sm sm:leading-5">
+        <small className="block text-xs text-muted-foreground">{label}</small>
+        <strong className="mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-foreground">
           {value}
         </strong>
       </span>
-      <ChevronDown
-        size={14}
-        className="hidden shrink-0 text-muted-foreground sm:block"
-      />
+      <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
     </button>
   );
 }
@@ -397,200 +388,6 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
   );
 }
 
-function stylePreviewElement(video: HTMLVideoElement): HTMLElement | null {
-  return video.closest<HTMLElement>("[data-intro-video-style-preview]");
-}
-
-function setStylePreviewLoading(
-  video: HTMLVideoElement,
-  loading: boolean,
-): void {
-  const preview = stylePreviewElement(video);
-  if (preview) {
-    preview.dataset.loading = String(loading);
-  }
-}
-
-function setStylePreviewPlaying(
-  video: HTMLVideoElement,
-  playing: boolean,
-): void {
-  const preview = stylePreviewElement(video);
-  if (preview) {
-    preview.dataset.loading = "false";
-    preview.dataset.previewPlaying = String(playing);
-  }
-}
-
-function StyleCardMedia({ style }: { readonly style: IntroVideoStyle }) {
-  return (
-    <div className="aspect-video overflow-hidden bg-muted">
-      {style.previewVideoUrl ? (
-        <video
-          src={style.previewVideoUrl}
-          poster={style.thumbnailUrl}
-          muted
-          loop
-          playsInline
-          preload="none"
-          className="h-full w-full object-contain"
-          onWaiting={(event) => {
-            setStylePreviewLoading(event.currentTarget, true);
-          }}
-          onPlaying={(event) => {
-            const video = event.currentTarget;
-            for (const other of video
-              .closest('[role="dialog"]')
-              ?.querySelectorAll<HTMLVideoElement>(
-                "[data-intro-video-style-preview] video",
-              ) ?? []) {
-              if (other !== video && !other.paused) {
-                other.pause();
-              }
-            }
-            setStylePreviewPlaying(event.currentTarget, true);
-          }}
-          onPause={(event) => {
-            setStylePreviewPlaying(event.currentTarget, false);
-          }}
-          onError={(event) => {
-            setStylePreviewPlaying(event.currentTarget, false);
-          }}
-        />
-      ) : style.thumbnailUrl ? (
-        <img
-          src={style.thumbnailUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="h-full w-full object-contain"
-        />
-      ) : (
-        <span className="grid h-full place-items-center text-muted-foreground">
-          <LayoutTemplate size={28} />
-        </span>
-      )}
-    </div>
-  );
-}
-
-function StylePreviewControl({ style }: { readonly style: IntroVideoStyle }) {
-  const { t } = useTranslation();
-  if (!style.previewVideoUrl) {
-    return null;
-  }
-  return (
-    <>
-      <button
-        type="button"
-        aria-label={t(
-          ($) => {
-            return $.artifacts.templates.playVideo;
-          },
-          { title: style.name },
-        )}
-        className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition-colors hover:bg-black/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:hidden"
-        onClick={(event) => {
-          const preview = event.currentTarget.closest<HTMLElement>(
-            "[data-intro-video-style-preview]",
-          );
-          const video = preview?.querySelector("video");
-          if (!video) {
-            return;
-          }
-          video.defaultMuted = true;
-          video.muted = true;
-          video.playsInline = true;
-          video.preload = "metadata";
-          setStylePreviewLoading(video, true);
-          detach(
-            tapError(video.play(), () => {
-              setStylePreviewPlaying(video, false);
-            }),
-            Reason.DomCallback,
-          );
-        }}
-      >
-        <span className="grid size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:hidden">
-          <Play size={20} fill="currentColor" />
-        </span>
-        <span className="hidden size-11 place-items-center rounded-full bg-black/55 shadow-lg group-data-[loading=true]/style-preview:grid">
-          <Loader2 size={20} className="animate-spin" />
-        </span>
-      </button>
-      <button
-        type="button"
-        aria-label={t(
-          ($) => {
-            return $.chat.introVideo.style.pausePreview;
-          },
-          { title: style.name },
-        )}
-        className="absolute inset-0 hidden items-end justify-end p-2 text-white transition-colors hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white group-data-[preview-playing=true]/style-preview:flex"
-        onClick={(event) => {
-          event.currentTarget
-            .closest("[data-intro-video-style-preview]")
-            ?.querySelector("video")
-            ?.pause();
-        }}
-      >
-        <span className="grid size-8 place-items-center rounded-full bg-black/55">
-          <Pause size={16} fill="currentColor" />
-        </span>
-      </button>
-    </>
-  );
-}
-
-function StyleCard({
-  selected,
-  style,
-  onSelect,
-}: {
-  readonly selected: boolean;
-  readonly style: IntroVideoStyle;
-  readonly onSelect: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-intro-video-style-preview=""
-      data-preview-playing="false"
-      data-loading="false"
-      className={cn(
-        "group/style-preview min-w-0 overflow-hidden rounded-xl border bg-card transition-colors hover:border-foreground/20",
-        selected ? "border-primary" : "border-border",
-      )}
-    >
-      <div className="relative">
-        <StyleCardMedia style={style} />
-        <StylePreviewControl style={style} />
-      </div>
-      <button
-        type="button"
-        aria-pressed={selected}
-        aria-label={t(
-          ($) => {
-            return $.artifacts.templates.selectStyle;
-          },
-          { style: style.name },
-        )}
-        className="flex min-h-11 w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-12 sm:px-3 sm:py-2.5"
-        onClick={onSelect}
-      >
-        <strong className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {style.name}
-        </strong>
-        {selected ? (
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-            <Check size={12} />
-          </span>
-        ) : null}
-      </button>
-    </div>
-  );
-}
-
 function StylePicker() {
   const { t } = useTranslation();
   const selection = useGet(introVideoWizardSignals.style$);
@@ -601,11 +398,14 @@ function StylePicker() {
     introVideoStylePickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoStylePickerSignals.generation$);
-  const [loadMoreState, loadMore] = useLoadableSet(
-    introVideoStylePickerSignals.loadMore$,
-  );
+  const loadMoreState = useGet(introVideoStylePickerSignals.paging$);
+  const loadMore = useSet(introVideoStylePickerSignals.loadMore$);
+  const setSentinelRef = useSet(introVideoStylePickerSignals.setSentinelRef$);
   const reload = useSet(introVideoStylePickerSignals.reload$);
   const pageSignal = useGet(pageSignal$);
+  const handleLoadMore = () => {
+    detach(loadMore(pageSignal), Reason.DomCallback, "load more HeyGen styles");
+  };
   const visible =
     catalog.state === "hasData"
       ? catalog.data
@@ -644,35 +444,24 @@ function StylePicker() {
           })}
         </CatalogMessage>
       ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-          {visible.items.map((style) => {
-            return (
-              <StyleCard
-                key={style.id}
-                style={style}
-                selected={
-                  selection.kind === "catalog" &&
-                  selection.style.id === style.id
-                }
-                onSelect={() => {
-                  choose({ kind: "catalog", style });
-                }}
-              />
-            );
-          })}
-        </div>
+        <IntroVideoStyleGallery
+          styles={visible.items}
+          hasNext={visible.hasNext}
+          selectedStyleId={
+            selection.kind === "catalog" ? selection.style.id : undefined
+          }
+          onSelect={(style) => {
+            choose({ kind: "catalog", style });
+          }}
+        />
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}
-        loading={loadMoreState.state === "loading"}
-        error={loadMoreState.state === "hasError"}
-        onLoadMore={() => {
-          detach(
-            loadMore(pageSignal),
-            Reason.DomCallback,
-            "load more HeyGen styles",
-          );
-        }}
+        loading={loadMoreState.status === "loading"}
+        error={loadMoreState.status === "error" ? loadMoreState.error : null}
+        onLoadMore={handleLoadMore}
+        onReload={reload}
+        onSentinelRef={setSentinelRef}
       />
     </div>
   );
@@ -688,11 +477,18 @@ function AvatarPicker() {
     introVideoAvatarPickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoAvatarPickerSignals.generation$);
-  const [loadMoreState, loadMore] = useLoadableSet(
-    introVideoAvatarPickerSignals.loadMore$,
-  );
+  const loadMoreState = useGet(introVideoAvatarPickerSignals.paging$);
+  const loadMore = useSet(introVideoAvatarPickerSignals.loadMore$);
+  const setSentinelRef = useSet(introVideoAvatarPickerSignals.setSentinelRef$);
   const reload = useSet(introVideoAvatarPickerSignals.reload$);
   const pageSignal = useGet(pageSignal$);
+  const handleLoadMore = () => {
+    detach(
+      loadMore(pageSignal),
+      Reason.DomCallback,
+      "load more HeyGen avatars",
+    );
+  };
   const visible =
     catalog.state === "hasData"
       ? catalog.data
@@ -763,15 +559,11 @@ function AvatarPicker() {
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}
-        loading={loadMoreState.state === "loading"}
-        error={loadMoreState.state === "hasError"}
-        onLoadMore={() => {
-          detach(
-            loadMore(pageSignal),
-            Reason.DomCallback,
-            "load more HeyGen avatars",
-          );
-        }}
+        loading={loadMoreState.status === "loading"}
+        error={loadMoreState.status === "error" ? loadMoreState.error : null}
+        onLoadMore={handleLoadMore}
+        onReload={reload}
+        onSentinelRef={setSentinelRef}
       />
     </div>
   );
@@ -793,7 +585,7 @@ function VoicePicker({
     close(null);
   };
   const originalAudioAvailable = sources.some((source) => {
-    return source.kind === "video";
+    return source.kind === "video" || source.kind === "audio";
   });
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -862,7 +654,6 @@ function VoicePicker({
         </div>
       </div>
       <VoiceLibraryContent
-        selectionActive={selection.kind === "catalog"}
         selectedVoiceId={
           selection.kind === "catalog" ? selection.voice.id : undefined
         }
@@ -976,11 +767,7 @@ function errorCopy(
       });
 }
 
-function IntroVideoFormFields({
-  composer,
-}: {
-  readonly composer: ComposerSignals;
-}) {
+function IntroVideoFormFields() {
   const { t } = useTranslation();
   const busy = useGet(introVideoWizardSignals.busy$);
   const sources = useGet(introVideoWizardSignals.sources$);
@@ -988,6 +775,8 @@ function IntroVideoFormFields({
   const style = useGet(introVideoWizardSignals.style$);
   const avatar = useGet(introVideoWizardSignals.avatar$);
   const voice = useGet(introVideoWizardSignals.voice$);
+  const aspectRatio = useGet(introVideoWizardSignals.aspectRatio$);
+  const setAspectRatio = useSet(introVideoWizardSignals.setAspectRatio$);
   const setInstructions = useSet(introVideoWizardSignals.setInstructions$);
   const setPicker = useSet(introVideoWizardSignals.setPicker$);
   return (
@@ -1007,7 +796,7 @@ function IntroVideoFormFields({
           })}
         </p>
         <div className="mt-4 sm:mt-5">
-          <FileDropzone composer={composer} sources={sources} />
+          <FileDropzone sources={sources} />
         </div>
         <label className="mt-4 block sm:mt-5">
           <span className="mb-2 block text-sm font-medium text-foreground">
@@ -1027,7 +816,7 @@ function IntroVideoFormFields({
             }}
           />
         </label>
-        <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-2.5">
+        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <SettingTrigger
             label={t(($) => {
               return $.chat.introVideo.style.label;
@@ -1058,6 +847,31 @@ function IntroVideoFormFields({
               setPicker("voice");
             }}
           />
+        </div>
+        <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <span id="intro-video-output-format" className="text-sm font-medium">
+            {t(($) => {
+              return $.chat.introVideo.format.output;
+            })}
+          </span>
+          <SegmentControl
+            value={aspectRatio}
+            onValueChange={setAspectRatio}
+            aria-labelledby="intro-video-output-format"
+            className="w-full sm:w-auto"
+          >
+            <SegmentControlItem value="auto" className="flex-1">
+              {t(($) => {
+                return $.chat.introVideo.format.auto;
+              })}
+            </SegmentControlItem>
+            <SegmentControlItem value="16:9" className="flex-1">
+              16:9
+            </SegmentControlItem>
+            <SegmentControlItem value="9:16" className="flex-1">
+              9:16
+            </SegmentControlItem>
+          </SegmentControl>
         </div>
       </div>
     </fieldset>
@@ -1169,7 +983,7 @@ export function IntroVideoWizard({
               })}
             </DialogDescription>
           </DialogHeader>
-          <IntroVideoFormFields composer={composer} />
+          <IntroVideoFormFields />
           <IntroVideoFooter composer={composer} />
         </DialogContent>
       </Dialog>

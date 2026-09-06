@@ -1970,6 +1970,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "一覧を再読み込み",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -1981,6 +1982,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "すべて",
+        "auto": "自動",
+        "filter": "画面比率でスタイル参考を絞り込む",
+        "landscape": "横向き · 16:9",
+        "other": "その他の形式",
+        "output": "出力の画面比率",
+        "portrait": "縦向き · 9:16",
+        "square": "正方形 · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -1994,11 +2005,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "指示と資料に合うビジュアルの方向性を選択",
+        "emptyFormat": "この画面比率に一致するスタイル参考はありません。",
+        "heading": "参考にするスタイルを選択",
+        "help": "HeyGen の公開スタイルを参考に動画を制作します。テンプレートの完全な再現ではありません。",
+        "label": "スタイル参考",
+        "preview": "{{title}} のプレビュー",
+        "previewUnavailable": "このスタイルの動画プレビューはありません。"
       },
       "title": "イントロビデオを作成",
       "voice": {
@@ -2013,9 +2026,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "ナレーションなし",
-        "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
+        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。",
         "original": "元の音声",
-        "originalDescription": "アップロードした動画または録画の音声を維持"
+        "originalDescription": "選択した元の音声を保持し、生成音声は追加しません"
       }
     },
     "mail": {

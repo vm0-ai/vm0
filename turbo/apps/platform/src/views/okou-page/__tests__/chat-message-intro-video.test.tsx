@@ -1,4 +1,5 @@
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   introVideoPresenterContract,
   type IntroVideoAvatar,
@@ -25,9 +26,11 @@ import {
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   context,
+  findComposer,
   installMessageExperienceChat,
   MESSAGE_EXPERIENCE_AGENT_ID,
 } from "./chat-message-experience-test-helpers.ts";
+import { fillComposer } from "./chat-test-helpers.ts";
 
 const INTRO_VIDEO_SWITCHES = {
   [FeatureSwitchKey.IntroVideo]: true,
@@ -176,7 +179,7 @@ function mockCatalogIntersection() {
     readonly rootMargin: string;
     readonly scrollMargin = "0px";
     readonly thresholds = [0];
-    private readonly observed = new Set<Element>();
+    private readonly observed = new Map<Element, (visible: boolean) => void>();
 
     constructor(
       private readonly callback: IntersectionObserverCallback,
@@ -187,8 +190,7 @@ function mockCatalogIntersection() {
     }
 
     observe(target: Element) {
-      this.observed.add(target);
-      targets.set(target, (isIntersecting) => {
+      const notify = (isIntersecting: boolean) => {
         const rect = target.getBoundingClientRect();
         this.callback(
           [
@@ -204,16 +206,21 @@ function mockCatalogIntersection() {
           ],
           this,
         );
-      });
+      };
+      this.observed.set(target, notify);
+      targets.set(target, notify);
     }
 
     unobserve(target: Element) {
+      // A previous ref's async cleanup must not remove a newer observer.
+      if (targets.get(target) === this.observed.get(target)) {
+        targets.delete(target);
+      }
       this.observed.delete(target);
-      targets.delete(target);
     }
 
     disconnect() {
-      for (const target of this.observed) {
+      for (const target of this.observed.keys()) {
         this.unobserve(target);
       }
     }
@@ -224,9 +231,9 @@ function mockCatalogIntersection() {
   }
   vi.stubGlobal("IntersectionObserver", CatalogObserver);
   return (container: HTMLElement, visible = true) => {
-    const sentinel = container.querySelector(
-      "[data-intro-video-catalog-sentinel]",
-    );
+    const sentinel = container.matches("[data-intro-video-avatar-thumbnail]")
+      ? container
+      : container.querySelector("[data-intro-video-catalog-sentinel]");
     const notify = sentinel ? targets.get(sentinel) : undefined;
     if (!notify) {
       throw new Error("Expected an observed catalog sentinel");
@@ -238,25 +245,14 @@ function mockCatalogIntersection() {
 }
 
 async function chooseStyle(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
-    name: "Choose a video style",
+    name: "Choose a style reference",
   });
   expect(within(picker).getByText("Let Okou choose")).toBeVisible();
-  const preview = within(picker).getByLabelText(
-    "Play video template preview Thriller",
-  );
+  const preview = within(picker).getByLabelText("Preview Thriller");
   expect(preview).toBeVisible();
-  const video = picker.querySelector<HTMLVideoElement>(
-    'video[src="https://files.heygen.test/thriller.mp4"]',
-  );
-  expect(video).not.toBeNull();
-  expect(video).toHaveAttribute(
-    "poster",
-    "https://files.heygen.test/thriller.jpg",
-  );
-  expect(video).toHaveAttribute("preload", "none");
-  expect(video).toHaveAttribute("playsinline");
+  expect(picker.querySelector("video")).toBeNull();
   await user.click(within(picker).getByLabelText("Select style Thriller"));
 }
 
@@ -361,9 +357,9 @@ test("Styles automatically load near the end and keep existing choices", async (
   );
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
-    name: "Choose a video style",
+    name: "Choose a style reference",
   });
   await within(picker).findByText("Landscape");
   approachEnd(picker, false);
@@ -414,9 +410,9 @@ test("A failed automatic page load keeps existing options and waits for a retry"
   );
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
-    name: "Choose a video style",
+    name: "Choose a style reference",
   });
   await within(picker).findByText("First style");
   approachEnd(picker);
@@ -474,12 +470,13 @@ test.each(["avatars", "styles"] as const)(
       requiredButtonNamed(
         catalog === "avatars"
           ? "Avatar: Auto · Okou decides"
-          : "Video style: Let Okou choose",
+          : "Style reference: Let Okou choose",
         dialog,
       ),
     );
     const picker = await screen.findByRole("dialog", {
-      name: catalog === "avatars" ? "Choose an avatar" : "Choose a video style",
+      name:
+        catalog === "avatars" ? "Choose an avatar" : "Choose a style reference",
     });
     const retry = await within(picker).findByText("Try again");
     unavailable = false;
@@ -494,53 +491,77 @@ test.each(["avatars", "styles"] as const)(
       requiredButtonNamed(
         catalog === "avatars"
           ? "Avatar: Recovered avatar"
-          : "Video style: Recovered style",
+          : "Style reference: Recovered style",
         dialog,
       ),
     ).toBeVisible();
   },
 );
 
-test("Style previews can play and pause without selecting a style", async () => {
+test("A style opens a full video preview without selecting it", async () => {
   const user = userEvent.setup({ delay: null });
   installIntroVideoFixture();
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Video style: Let Okou choose"));
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
-    name: "Choose a video style",
+    name: "Choose a style reference",
   });
-  const preview = await within(picker).findByLabelText(
-    "Play video template preview Thriller",
-  );
-  const video = picker.querySelector("video");
+  const preview = await within(picker).findByLabelText("Preview Thriller");
+  await user.click(preview);
+  const previewDialog = await screen.findByRole("dialog", { name: "Thriller" });
+  const video = previewDialog.querySelector("video");
   if (!video) {
     throw new Error("Expected the HeyGen style preview video");
   }
-  const play = vi.spyOn(video, "play").mockResolvedValue();
-  const pause = vi.spyOn(video, "pause").mockImplementation(() => {
-    fireEvent.pause(video);
-  });
-  await user.click(preview);
-  expect(play).toHaveBeenCalledOnce();
-  fireEvent.playing(video);
-  const card = video.closest("[data-intro-video-style-preview]");
-  expect(card).toHaveAttribute("data-preview-playing", "true");
+  expect(video).toHaveAttribute(
+    "src",
+    "https://files.heygen.test/thriller.mp4",
+  );
+  expect(video).toHaveAttribute("controls");
+  expect(video).toHaveAttribute("playsinline");
   expect(video.closest("button")).toBeNull();
 
-  await user.click(
-    within(picker).getByLabelText("Pause video style preview Thriller"),
-  );
-  expect(pause).toHaveBeenCalledOnce();
-  expect(card).toHaveAttribute("data-preview-playing", "false");
+  await user.click(requiredButtonNamed("Close", previewDialog));
+  expect(video).not.toBeInTheDocument();
   expect(picker).toBeVisible();
   expect(
     within(picker).getByLabelText("Select style Thriller"),
   ).toHaveAttribute("aria-pressed", "false");
   await user.click(within(picker).getByLabelText("Select style Thriller"));
   await waitFor(() => {
-    expect(requiredButtonNamed("Video style: Thriller")).toBeVisible();
+    expect(requiredButtonNamed("Style reference: Thriller")).toBeVisible();
   });
+});
+
+test("A failed preview keeps style selection available", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  await user.click(
+    requiredButtonNamed("Style reference: Let Okou choose", dialog),
+  );
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a style reference",
+  });
+  await user.click(await within(picker).findByLabelText("Preview Thriller"));
+  const preview = await screen.findByRole("dialog", { name: "Thriller" });
+  const video = preview.querySelector("video");
+  if (!video) {
+    throw new Error("Expected the style preview video");
+  }
+  fireEvent.error(video);
+  expect(video).toHaveAttribute("data-failed", "true");
+  expect(
+    within(preview).getByText(
+      "A video preview is not available for this style.",
+    ),
+  ).toBeInTheDocument();
+  await user.click(requiredButtonNamed("Select style Thriller", preview));
+  expect(
+    requiredButtonNamed("Style reference: Thriller", dialog),
+  ).toBeVisible();
 });
 
 test("A prompt alone creates an Intro Video chat", async () => {
@@ -577,10 +598,249 @@ test("A prompt alone creates an Intro Video chat", async () => {
   expect(submittedPrompt).toContain(
     "- Voice: Default — follow the chosen avatar",
   );
+  expect(submittedPrompt).toContain(
+    "- Aspect ratio: Auto — infer from the user request, source material, and destination",
+  );
   await waitFor(() => {
     expect(dialog).not.toBeInTheDocument();
   });
 });
+
+test("Style format filtering does not change the explicit output ratio", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
+    return respond(200, {
+      styles: [
+        { id: "wide", name: "Wide story", aspectRatio: "16:9", tags: [] },
+        { id: "tall", name: "Tall story", aspectRatio: "9:16", tags: [] },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Create a vertical product launch.",
+  );
+  const output = within(dialog).getByLabelText("Output format");
+  await user.click(within(output).getByText("9:16"));
+  await user.click(
+    requiredButtonNamed("Style reference: Let Okou choose", dialog),
+  );
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a style reference",
+  });
+  await within(picker).findByText("Tall story");
+  const formats = within(picker).getByLabelText(
+    "Filter style references by format",
+  );
+  await user.click(within(formats).getByLabelText("Landscape · 16:9"));
+  expect(within(picker).queryByText("Tall story")).toBeNull();
+  expect(within(picker).getByText("Wide story")).toBeVisible();
+  await user.click(within(formats).getByLabelText("All"));
+  expect(within(picker).getByText("Tall story")).toBeVisible();
+  await user.click(within(picker).getByLabelText("Select style Wide story"));
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("- Aspect ratio: 9:16");
+  });
+  expect(submittedPrompt).toContain(
+    "- HeyGen style reference aspect ratio: 16:9",
+  );
+  expect(submittedPrompt).toContain("not a native HeyGen template");
+});
+
+test("An expired catalog cursor reloads the catalog instead of retrying that cursor", async () => {
+  const user = userEvent.setup({ delay: null });
+  const intersect = mockCatalogIntersection();
+  installIntroVideoFixture();
+  let expired = false;
+  context.mocks.api(
+    introVideoPresenterContract.styles,
+    ({ query, respond }) => {
+      if (query.token) {
+        expired = true;
+        return respond(400, {
+          error: { code: "BAD_REQUEST", message: "Invalid pagination token" },
+        });
+      }
+      return respond(200, {
+        styles: [
+          {
+            id: expired ? "fresh" : "old",
+            name: expired ? "Fresh style" : "Old style",
+            tags: [],
+          },
+        ],
+        hasMore: !expired,
+        nextToken: expired ? null : "expired",
+      });
+    },
+  );
+  await setupIntroVideoPage();
+  await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose a style reference",
+  });
+  await within(picker).findByText("Old style");
+  intersect(picker);
+  await user.click(await within(picker).findByText("Reload catalog"));
+  await within(picker).findByText("Fresh style");
+  expect(within(picker).queryByText("Old style")).toBeNull();
+  expect(within(picker).queryByText("Reload catalog")).toBeNull();
+});
+
+test("Cancelling a partially uploaded video draft leaves the chat draft intact and does not leak files on reopen", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  let submittedMessage: unknown;
+  let clearedChatDraft = false;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+      submittedMessage = body.userMessage;
+    },
+  });
+  context.mocks.api(agentDraftContract.patch, ({ body, respond }) => {
+    if (body.draftUserMessage === null) {
+      clearedChatDraft = true;
+    }
+    return respond(204);
+  });
+  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
+    if (body.filename === "broken.txt") {
+      return respond(500, {
+        error: { code: "INTERNAL_SERVER_ERROR", message: "Upload failed" },
+      });
+    }
+    return respond(200, {
+      id: "f0000000-0000-4000-a000-000000000054",
+      filename: body.filename,
+      contentType: body.contentType,
+      size: body.size,
+      url: "https://files.example.test/retained.txt",
+      uploadUrl: "https://mock-upload.r2.test/retained",
+      uploadHeaders: {},
+    });
+  });
+  context.mocks.http.put("https://mock-upload.r2.test/retained", () => {
+    return new HttpResponse(null, { status: 200 });
+  });
+  await setupIntroVideoPage();
+  await fillComposer(await findComposer(), "My unrelated chat draft");
+  const dialog = await openIntroVideoDialog();
+  const input = dialog.querySelector<HTMLInputElement>("input[type=file]");
+  if (!input) {
+    throw new Error("Expected source input");
+  }
+  await user.upload(input, [
+    new File(["first"], "retained.txt"),
+    new File(["second"], "broken.txt"),
+  ]);
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await within(dialog).findByText(
+    "One or more files could not be uploaded. Remove them or try again.",
+  );
+  await user.click(requiredButtonNamed("Cancel", dialog));
+  await expect(findComposer()).resolves.toHaveTextContent(
+    "My unrelated chat draft",
+  );
+  const reopened = await openIntroVideoDialog();
+  expect(within(reopened).queryByText("retained.txt")).toBeNull();
+  await user.type(
+    within(reopened).getByLabelText("What should the video do?"),
+    "Make a new video without files.",
+  );
+  await user.click(requiredButtonNamed("Create video", reopened));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Make a new video without files.");
+  });
+  expect(submittedPrompt).not.toContain("My unrelated chat draft");
+  expect(clearedChatDraft).toBeFalsy();
+  expect(JSON.stringify(submittedMessage)).not.toContain(
+    "f0000000-0000-4000-a000-000000000054",
+  );
+});
+
+test("Voices automatically page, retry failures, and do not label the first voice as recommended", async () => {
+  const user = userEvent.setup({ delay: null });
+  const intersect = mockCatalogIntersection();
+  installIntroVideoFixture();
+  let failedOnce = false;
+  context.mocks.api(
+    introVideoPresenterContract.voices,
+    ({ query, respond }) => {
+      if (query.token && !failedOnce) {
+        failedOnce = true;
+        return respond(502, {
+          error: { code: "HEYGEN_UNAVAILABLE", message: "Unavailable" },
+        });
+      }
+      return respond(200, {
+        voices: [
+          {
+            id: query.token ? "second" : "first",
+            name: query.token ? "Second voice" : "First voice",
+            language: "English",
+          },
+        ],
+        hasMore: !query.token,
+        nextToken: query.token ? null : "next-voices",
+      });
+    },
+  );
+  await setupIntroVideoPage();
+  await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Voice: Default · Follows avatar"));
+  const picker = await screen.findByRole("dialog", { name: "Choose a voice" });
+  await within(picker).findByLabelText("Select voice First voice");
+  expect(within(picker).queryByText("Recommended")).toBeNull();
+  intersect(picker);
+  await user.click(await within(picker).findByText("Try again"));
+  await within(picker).findByLabelText("Select voice Second voice");
+  expect(
+    within(picker).getByLabelText("Select voice First voice"),
+  ).toBeVisible();
+  expect(
+    picker.querySelector("[data-intro-video-catalog-sentinel]"),
+  ).toBeNull();
+});
+
+test.each(["source.mp4", "source.wav"])(
+  "Original audio is available for %s even without a browser MIME type",
+  async (filename) => {
+    const user = userEvent.setup({ delay: null });
+    installIntroVideoFixture();
+    await setupIntroVideoPage();
+    const dialog = await openIntroVideoDialog();
+    const input = dialog.querySelector<HTMLInputElement>("input[type=file]");
+    if (!input) {
+      throw new Error("Expected source input");
+    }
+    await user.upload(input, new File(["media"], filename));
+    await user.click(
+      requiredButtonNamed("Voice: Default · Follows avatar", dialog),
+    );
+    const picker = await screen.findByRole("dialog", {
+      name: "Choose a voice",
+    });
+    await user.click(within(picker).getByText("Original audio"));
+    expect(requiredButtonNamed("Voice: Original audio", dialog)).toBeVisible();
+    await user.click(within(dialog).getByLabelText(`Remove ${filename}`));
+    expect(
+      requiredButtonNamed("Voice: Default · Follows avatar", dialog),
+    ).toBeVisible();
+  },
+);
 
 test("The form accepts multiple unrelated source types", async () => {
   const user = userEvent.setup({ delay: null });
@@ -712,9 +972,76 @@ test("A failed upload keeps the request editable and can be retried", async () =
   });
 });
 
+test("Retrying a partial upload reuses completed files and submits each source once", async () => {
+  const user = userEvent.setup({ delay: null });
+  let firstUploads = 0;
+  let secondUploads = 0;
+  let submittedMessage: unknown;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedMessage = body.userMessage;
+    },
+  });
+  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
+    const first = body.filename === "first.txt";
+    if (first) {
+      firstUploads += 1;
+    } else {
+      secondUploads += 1;
+    }
+    if (!first && secondUploads === 1) {
+      return respond(500, {
+        error: { code: "INTERNAL_SERVER_ERROR", message: "Upload failed" },
+      });
+    }
+    return respond(200, {
+      id: first
+        ? "f0000000-0000-4000-a000-000000000055"
+        : "f0000000-0000-4000-a000-000000000056",
+      filename: body.filename,
+      contentType: body.contentType,
+      size: body.size,
+      url: `https://files.example.test/${body.filename}`,
+      uploadUrl: "https://mock-upload.r2.test/partial",
+      uploadHeaders: {},
+    });
+  });
+  context.mocks.http.put("https://mock-upload.r2.test/partial", () => {
+    return new HttpResponse(null, { status: 200 });
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  const input = dialog.querySelector<HTMLInputElement>("input[type=file]");
+  if (!input) {
+    throw new Error("Expected source input");
+  }
+  await user.upload(input, [
+    new File(["first"], "first.txt"),
+    new File(["second"], "second.txt"),
+  ]);
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await within(dialog).findByText(
+    "One or more files could not be uploaded. Remove them or try again.",
+  );
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submittedMessage).toBeDefined();
+  });
+  expect(firstUploads).toBe(1);
+  expect(secondUploads).toBe(2);
+  const message = JSON.stringify(submittedMessage);
+  expect(message.match(/f0000000-0000-4000-a000-000000000055/gu)).toHaveLength(
+    1,
+  );
+  expect(message.match(/f0000000-0000-4000-a000-000000000056/gu)).toHaveLength(
+    1,
+  );
+});
+
 test.each(["load", "error"] as const)(
   "Avatar thumbnails wait for their main preview to settle (%s)",
   async (event) => {
+    const intersect = mockCatalogIntersection();
     installIntroVideoFixture();
     await setupIntroVideoPage();
     const dialog = await openIntroVideoDialog();
@@ -731,7 +1058,13 @@ test.each(["load", "error"] as const)(
       "https://files.heygen.test/daphne.webp",
     );
     expect(thumbnail).not.toHaveAttribute("src");
+    if (!thumbnail) {
+      throw new Error("Expected the look thumbnail");
+    }
+    intersect(thumbnail, false);
     fireEvent[event](preview);
+    expect(thumbnail).not.toHaveAttribute("src");
+    intersect(thumbnail);
     expect(thumbnail).toHaveAttribute(
       "src",
       "https://files.heygen.test/daphne.webp",
@@ -859,11 +1192,15 @@ test("Avatar looks share a person card across pages and only Use commits a look"
   expect(group.querySelectorAll('[aria-label^="Preview look"]')).toHaveLength(
     2,
   );
-  expect(
-    within(group)
-      .getByLabelText("Preview look Daphne in White shirt")
-      .querySelector("img"),
-  ).toHaveAttribute("src", secondLook.previewImageUrl);
+  const nextThumbnail = within(group)
+    .getByLabelText("Preview look Daphne in White shirt")
+    .querySelector("img");
+  if (!nextThumbnail) {
+    throw new Error("Expected the new look thumbnail");
+  }
+  expect(nextThumbnail).not.toHaveAttribute("src");
+  approachEnd(nextThumbnail);
+  expect(nextThumbnail).toHaveAttribute("src", secondLook.previewImageUrl);
   await user.click(
     within(group).getByLabelText("Preview look Daphne in White shirt"),
   );

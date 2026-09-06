@@ -50,6 +50,7 @@ import { isSelectedAvatarTemplate } from "../../signals/okou-page/avatar-templat
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import { introVideoVoicePickerSignals } from "../../signals/okou-page/intro-video-voice-picker.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
 
 const AVATAR_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
@@ -1324,21 +1325,22 @@ function IntroVideoVoiceFilters() {
 }
 
 function IntroVideoVoiceCatalog({
-  selectionActive,
   selectedVoiceId,
   onSelect,
 }: {
-  readonly selectionActive: boolean;
   readonly selectedVoiceId: string | undefined;
   readonly onSelect: (voice: IntroVideoVoice) => void;
 }) {
+  const { t } = useTranslation();
   const catalog = useLoadable(introVideoVoicePickerSignals.catalogPage$);
   const lastCatalog = useLastResolved(
     introVideoVoicePickerSignals.catalogPage$,
   );
   const generation = useGet(introVideoVoicePickerSignals.generation$);
   const loadMore = useSet(introVideoVoicePickerSignals.loadMore$);
-  const loadingMore = useGet(introVideoVoicePickerSignals.loadingMore$);
+  const paging = useGet(introVideoVoicePickerSignals.paging$);
+  const setSentinelRef = useSet(introVideoVoicePickerSignals.setSentinelRef$);
+  const reload = useSet(introVideoVoicePickerSignals.reload$);
   const pageSignal = useGet(pageSignal$);
   const visibleCatalog =
     catalog.state === "hasData"
@@ -1346,17 +1348,7 @@ function IntroVideoVoiceCatalog({
       : lastCatalog?.generation === generation
         ? lastCatalog
         : undefined;
-  const recommendedVoice = visibleCatalog?.voices[0] ?? null;
-  const handleVoiceScroll = (event: ReactUIEvent<HTMLElement>) => {
-    if (catalog.state !== "hasData" || !catalog.data.hasNext) {
-      return;
-    }
-    const viewport = event.currentTarget;
-    const distanceFromBottom =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    if (distanceFromBottom > CATALOG_AUTO_LOAD_THRESHOLD_PX) {
-      return;
-    }
+  const handleLoadMore = () => {
     detach(loadMore(pageSignal), Reason.DomCallback, "HeyGen voice paging");
   };
 
@@ -1364,24 +1356,30 @@ function IntroVideoVoiceCatalog({
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         data-avatar-voice-list-scroll=""
+        data-intro-video-catalog-scroll=""
         className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        onScroll={handleVoiceScroll}
       >
         {catalog.state === "hasError" ? (
-          <AvatarTemplateEmpty error />
+          <div className="grid justify-items-center gap-3">
+            <AvatarTemplateEmpty error />
+            <Button type="button" variant="outline" size="sm" onClick={reload}>
+              {t(($) => {
+                return $.chat.introVideo.catalog.retry;
+              })}
+            </Button>
+          </div>
         ) : visibleCatalog === undefined ? (
           <AvatarVoiceSkeletonGrid />
-        ) : visibleCatalog.voices.length > 0 ? (
+        ) : visibleCatalog.items.length > 0 ? (
           <div className="grid grid-cols-1 gap-2.5">
-            {visibleCatalog.voices.map((voice) => {
-              const recommended = voice.id === recommendedVoice?.id;
+            {visibleCatalog.items.map((voice) => {
               return (
                 <AvatarVoiceCard
                   key={voice.id}
                   voice={voice}
                   selected={voice.id === selectedVoiceId}
-                  recommended={recommended}
-                  highlightRecommendation={recommended && !selectionActive}
+                  recommended={false}
+                  highlightRecommendation={false}
                   onSelect={onSelect}
                 />
               );
@@ -1390,7 +1388,14 @@ function IntroVideoVoiceCatalog({
         ) : (
           <AvatarTemplateEmpty error={false} />
         )}
-        {loadingMore ? <CatalogLoadingSpinner /> : null}
+        <IntroVideoCatalogPagination
+          hasNext={visibleCatalog?.hasNext ?? false}
+          loading={paging.status === "loading"}
+          error={paging.status === "error" ? paging.error : null}
+          onLoadMore={handleLoadMore}
+          onReload={reload}
+          onSentinelRef={setSentinelRef}
+        />
       </div>
     </section>
   );
@@ -1401,11 +1406,9 @@ export function VoiceLibraryToolbar() {
 }
 
 export function VoiceLibraryContent({
-  selectionActive,
   selectedVoiceId,
   onSelect,
 }: {
-  readonly selectionActive: boolean;
   readonly selectedVoiceId: string | undefined;
   readonly onSelect: (voice: IntroVideoVoice) => void;
 }) {
@@ -1416,7 +1419,6 @@ export function VoiceLibraryContent({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <IntroVideoVoiceCatalog
-        selectionActive={selectionActive}
         selectedVoiceId={selectedVoiceId}
         onSelect={onSelect}
       />

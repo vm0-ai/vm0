@@ -1973,6 +1973,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "Katalog neu laden",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -1984,6 +1985,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "Alle",
+        "auto": "Automatisch",
+        "filter": "Stilreferenzen nach Format filtern",
+        "landscape": "Querformat · 16:9",
+        "other": "Andere Formate",
+        "output": "Ausgabeformat",
+        "portrait": "Hochformat · 9:16",
+        "square": "Quadratisch · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -1997,11 +2008,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
+        "emptyFormat": "Keine Stilreferenzen für dieses Format.",
+        "heading": "Stilreferenz wählen",
+        "help": "Einen öffentlichen HeyGen-Stil an dein Video anpassen; keine exakte Vorlagenwiedergabe.",
+        "label": "Stilreferenz",
+        "preview": "Vorschau von {{title}}",
+        "previewUnavailable": "Für diesen Stil ist keine Videovorschau verfügbar."
       },
       "title": "Intro-Video erstellen",
       "voice": {
@@ -2016,9 +2029,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "Kein Voiceover",
-        "noneDescription": "Erstelle ein untertitelgeführtes Video ohne Vertonung",
+        "noneDescription": "Keine Erzählstimme hinzufügen; Originalton behalten, sofern du ihn nicht stummschalten möchtest.",
         "original": "Originalaudio",
-        "originalDescription": "Audio des hochgeladenen Videos oder der Aufnahme beibehalten"
+        "originalDescription": "Den ausgewählten Originalton ohne zusätzliche generierte Sprache behalten"
       }
     },
     "mail": {

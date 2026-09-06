@@ -1970,6 +1970,7 @@
         "empty": "No public HeyGen options are available.",
         "error": "The HeyGen catalog could not be loaded.",
         "loading": "Loading more options",
+        "reload": "목록 새로고침",
         "retry": "Try again"
       },
       "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
@@ -1981,6 +1982,16 @@
         "cancel": "Cancel",
         "create": "Create video",
         "hint": "Add a prompt, files, or both"
+      },
+      "format": {
+        "all": "전체",
+        "auto": "자동",
+        "filter": "화면 비율로 스타일 참고 필터링",
+        "landscape": "가로 · 16:9",
+        "other": "기타 형식",
+        "output": "출력 화면 비율",
+        "portrait": "세로 · 9:16",
+        "square": "정사각형 · 1:1"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -1994,11 +2005,13 @@
       },
       "style": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks the best HeyGen style for your prompt and materials",
-        "heading": "Choose a video style",
-        "help": "Preview and choose a public HeyGen video style, or let Okou choose.",
-        "label": "Video style",
-        "pausePreview": "Pause video style preview {{title}}"
+        "autoDescription": "요청과 자료에 맞는 시각적 방향 선택",
+        "emptyFormat": "이 화면 비율에 맞는 스타일 참고가 없습니다.",
+        "heading": "참고할 스타일 선택",
+        "help": "HeyGen 공개 스타일을 참고해 영상을 제작하며, 템플릿을 그대로 재현하지는 않습니다.",
+        "label": "스타일 참고",
+        "preview": "{{title}} 미리보기",
+        "previewUnavailable": "이 스타일의 동영상 미리보기가 없습니다."
       },
       "title": "인트로 영상 만들기",
       "voice": {
@@ -2013,9 +2026,9 @@
         "helpWithoutAvatar": "Let Okou choose a public HeyGen voice, select one yourself, or create without narration.",
         "label": "Voice",
         "none": "내레이션 없음",
-        "noneDescription": "내레이션 없이 자막 중심의 영상 만들기",
+        "noneDescription": "내레이션을 추가하지 않으며, 음소거 요청이 없으면 원본 오디오를 유지합니다.",
         "original": "원본 오디오",
-        "originalDescription": "업로드한 영상이나 녹화의 오디오 유지"
+        "originalDescription": "선택한 원본 오디오를 유지하고 생성 음성을 추가하지 않습니다"
       }
     },
     "mail": {
