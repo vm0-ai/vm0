@@ -2384,7 +2384,6 @@
       "targetLanguage": "번역 언어"
     },
     "voice": {
-      "busyInAnotherTab": "다른 탭에서 이 대화를 녹음 중입니다. 녹음이 끝나면 다시 시도하세요.",
       "checkingLimit": "음성 입력 제한 확인 중",
       "cleanupFailed": "텍스트가 추가되었지만 저장된 녹음을 삭제하지 못했습니다.",
       "confirmRecording": "OK",
@@ -2399,7 +2398,6 @@
       "openingMicrophone": "마이크 열기 중...",
       "removeDraft": "음성 초안 삭제",
       "restoreFailed": "음성 초안을 불러올 수 없습니다. 다시 시도하세요.",
-      "restoring": "음성 초안 복원 중...",
       "retry": "다시 시도",
       "retryReady": "녹음이 보관되어 있습니다. 텍스트 변환을 다시 시도하세요.",
       "starting": "음성 입력 시작",

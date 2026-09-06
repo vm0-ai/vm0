@@ -2388,7 +2388,6 @@
       "targetLanguage": "Übersetzungssprache"
     },
     "voice": {
-      "busyInAnotherTab": "In einem anderen Tab wird für diesen Chat aufgenommen. Versuche es nach dem Ende erneut.",
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "cleanupFailed": "Der Text wurde eingefügt, aber die gespeicherte Aufnahme konnte nicht entfernt werden.",
       "confirmRecording": "OK",
@@ -2403,7 +2402,6 @@
       "openingMicrophone": "Mikrofon öffnen...",
       "removeDraft": "Sprachentwurf entfernen",
       "restoreFailed": "Ihr Sprachentwurf konnte nicht geladen werden. Versuchen Sie es erneut.",
-      "restoring": "Sprachentwurf wird wiederhergestellt...",
       "retry": "Erneut versuchen",
       "retryReady": "Ihre Aufnahme bleibt erhalten. Versuchen Sie die Transkription erneut.",
       "starting": "Spracheingabe starten",

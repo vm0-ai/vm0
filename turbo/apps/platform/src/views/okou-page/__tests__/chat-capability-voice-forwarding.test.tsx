@@ -128,6 +128,8 @@ test.each(
     const capture = context.mocks.deferred<(samples: Float32Array) => void>();
     const firstRequest = context.mocks.deferred<void>();
     const firstResponse = context.mocks.deferred<void>();
+    const retryRequest = context.mocks.deferred<void>();
+    const retryResponse = context.mocks.deferred<void>();
     const errors = installVoiceBoundaries();
     context.mocks.browser.voiceInput({
       rms: 0.12,
@@ -145,6 +147,10 @@ test.each(
           if (interruption === "transcribing") {
             await firstResponse.promise;
           }
+        }
+        if (uploads.length === (interruption === "recording" ? 1 : 2)) {
+          retryRequest.resolve();
+          await retryResponse.promise;
         }
         return successful
           ? HttpResponse.json({
@@ -189,6 +195,9 @@ test.each(
     await expect(recordings()).resolves.toStrictEqual(saved);
     expect(queryButton("Stop recording")).toBeNull();
     click(await findEnabledButton("Retry"));
+    await retryRequest.promise;
+    await screen.findByText("Transcribing...");
+    retryResponse.resolve();
     await findEnabledButton("Retry");
     await expect(recordings()).resolves.toStrictEqual(saved);
     successful = true;

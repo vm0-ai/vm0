@@ -1,7 +1,6 @@
 import {
   createComposerVoiceInputSignals,
   type ComposerVoiceInputSignals,
-  type ComposerVoiceInputStatus,
 } from "./composer-voice-input.ts";
 import type {
   ChatRunVideoOptionsRequest,
@@ -580,7 +579,7 @@ export function createComposerSignals(
     eventSignals,
     workflowComposer,
     ui.videoOptions,
-    voice.status$,
+    voice.state$,
   );
   const fileInput = createComposerFileInputSignals();
   const workflowPrompt = createComposerWorkflowPromptSignals(
@@ -810,7 +809,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
   readonly submissionPending$: Computed<boolean>;
-  readonly voiceStatus$: Computed<ComposerVoiceInputStatus>;
+  readonly voiceState$: ComposerVoiceInputSignals["state$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
   const { options, eventSignals, workflowComposer } = args;
   const draft = options.draft.signals;
@@ -818,7 +817,7 @@ function createComposerPrimaryActionSignal(args: {
     if (await get(eventSignals.actionsLoading$)) {
       return "disabled";
     }
-    if (get(args.voiceStatus$) !== "idle") {
+    if ((await get(args.voiceState$)).status !== "idle") {
       return "disabled";
     }
 
@@ -849,7 +848,7 @@ function createComposerSubmissionSignals(
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
-  voiceStatus$: Computed<ComposerVoiceInputStatus>,
+  voiceState$: ComposerVoiceInputSignals["state$"],
 ) {
   const draft = options.draft.signals;
   const readVideoRunOptions$ = createVideoRunOptionsSignal(
@@ -865,7 +864,7 @@ function createComposerSubmissionSignals(
     eventSignals,
     workflowComposer,
     submissionPending$,
-    voiceStatus$,
+    voiceState$,
   });
   const submitCurrentInput$ = command(
     async (
@@ -880,7 +879,9 @@ function createComposerSubmissionSignals(
       if (!get(draft.attachmentUploadsReady$)) {
         return false;
       }
-      if (get(voiceStatus$) !== "idle") {
+      const voiceState = await get(voiceState$);
+      signal.throwIfAborted();
+      if (voiceState.status !== "idle") {
         return false;
       }
       if (get(internalSubmissionPending$)) {

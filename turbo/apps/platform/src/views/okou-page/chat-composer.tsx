@@ -15,6 +15,7 @@ import {
   useLoadableState,
   useLastLoadable,
   useLastResolved,
+  useResolved,
   type Loadable,
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -8491,27 +8492,43 @@ function micButtonTooltip(status: MicButtonStatus): string {
   });
 }
 
+function voiceDraftMicButtonStatus(
+  status: ComposerVoiceInputStatus | undefined,
+  recording: boolean,
+  starting: boolean,
+): Pick<MicButtonStatus, "recording" | "starting" | "transcribing"> {
+  return {
+    recording: status === "recording" && recording,
+    starting: starting || (status === "recording" && !recording),
+    transcribing: status === "transcribing",
+  };
+}
+
 function MicButton({ signals }: { signals: ComposerSignals }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
   const quotaState = useLoadableState(audioInputQuota$);
-  const quota = useLastResolved(audioInputQuota$) ?? null;
-  const quotaResolved = quota !== null;
+  const quotaResolved = useLastResolved(audioInputQuota$) !== undefined;
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const voiceDraftStatus = useGet(signals.voice.status$);
+  const voiceDraftStatus = useResolved(signals.voice.state$)?.status;
   const sttRecording = useGet(sttRecording$);
-  const starting = useGet(sttStarting$);
+  const sttStarting = useGet(sttStarting$);
   const sttTranscribing = useGet(sttTranscribing$);
-  const recording = voiceInputV2Enabled
-    ? voiceDraftStatus === "recording" && sttRecording
-    : sttRecording;
-  const transcribing = voiceInputV2Enabled
-    ? voiceDraftStatus === "transcribing"
-    : sttTranscribing;
+  const { recording, starting, transcribing } = voiceInputV2Enabled
+    ? voiceDraftMicButtonStatus(voiceDraftStatus, sttRecording, sttStarting)
+    : {
+        recording: sttRecording,
+        starting: sttStarting,
+        transcribing: sttTranscribing,
+      };
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const toggleVoiceInput = useSet(signals.voice.toggle$);
   const signal = useGet(pageSignal$);
-  const disabled = starting || transcribing || (!recording && !quotaResolved);
+  const disabled =
+    starting ||
+    transcribing ||
+    (voiceInputV2Enabled && voiceDraftStatus === undefined) ||
+    (!recording && !quotaResolved);
   const status = {
     recording,
     starting,
@@ -8594,9 +8611,13 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 function VoiceDraftFooter({
   signals,
   status,
+  recordingAvailable,
+  voiceMessage,
 }: {
   signals: ComposerSignals;
   status: Exclude<ComposerVoiceInputStatus, "idle">;
+  recordingAvailable: boolean;
+  voiceMessage: string | undefined;
 }) {
   const { t } = useTranslation();
   const recording = useGet(sttRecording$);
@@ -8607,8 +8628,6 @@ function VoiceDraftFooter({
   const signal = useGet(pageSignal$);
   const retry = useSet(signals.voice.retry$);
   const discard = useSet(signals.voice.discard$);
-  const recordingAvailable = useGet(signals.voice.recordingAvailable$);
-  const voiceMessage = useGet(signals.voice.message$);
 
   if (status === "failed") {
     return (
@@ -8666,17 +8685,13 @@ function VoiceDraftFooter({
       >
         <Loader2 size={16} className="animate-spin text-[#2E9E9F]" />
         <span>
-          {status === "restoring"
+          {status === "discarding"
             ? t(($) => {
-                return $.chat.voice.restoring;
+                return $.chat.voice.discarding;
               })
-            : status === "discarding"
-              ? t(($) => {
-                  return $.chat.voice.discarding;
-                })
-              : t(($) => {
-                  return $.chat.voice.transcribingProgress;
-                })}
+            : t(($) => {
+                return $.chat.voice.transcribingProgress;
+              })}
         </span>
       </div>
     );
@@ -10549,7 +10564,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
 
 function ComposerFooter({ signals }: { signals: ComposerSignals }) {
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const voiceDraftStatus = useGet(signals.voice.status$);
+  const voiceDraft = useResolved(signals.voice.state$);
   const recording = useGet(sttRecording$);
   const setVoiceLifecycleRef = useSet(signals.setLifecycleRef$);
   return (
@@ -10558,9 +10573,15 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
       className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2"
     >
       {voiceInputV2Enabled &&
-      voiceDraftStatus !== "idle" &&
-      (voiceDraftStatus !== "recording" || recording) ? (
-        <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
+      voiceDraft &&
+      voiceDraft.status !== "idle" &&
+      (voiceDraft.status !== "recording" || recording) ? (
+        <VoiceDraftFooter
+          signals={signals}
+          status={voiceDraft.status}
+          recordingAvailable={voiceDraft.recording !== null}
+          voiceMessage={voiceDraft.message}
+        />
       ) : (
         <>
           <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">

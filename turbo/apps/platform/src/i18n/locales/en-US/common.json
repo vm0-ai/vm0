@@ -2388,7 +2388,6 @@
       "targetLanguage": "Translation language"
     },
     "voice": {
-      "busyInAnotherTab": "This conversation has an active recording in another tab. Retry after it stops.",
       "checkingLimit": "Checking voice input limit",
       "cleanupFailed": "Text was added, but the saved recording could not be removed.",
       "confirmRecording": "OK",
@@ -2403,7 +2402,6 @@
       "openingMicrophone": "Opening microphone...",
       "removeDraft": "Remove voice draft",
       "restoreFailed": "Couldn’t load your voice draft. Try again.",
-      "restoring": "Restoring voice draft...",
       "retry": "Retry",
       "retryReady": "Your recording is kept. Retry transcription.",
       "starting": "Starting voice input",

@@ -16,7 +16,6 @@ import {
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { clearAllDetached } from "../signals/utils.ts";
-import { createTestWebLocks } from "./mocks/web-locks.ts";
 
 for (const [name, content] of [
   ["okou-app-git-commit-sha", "0123456789abcdef0123456789abcdef01234567"],
@@ -287,10 +286,6 @@ beforeAll(() => {
 
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
-  Object.defineProperty(navigator, "locks", {
-    configurable: true,
-    value: createTestWebLocks(),
-  });
   ensureTestLocalStorage();
   document.documentElement.dataset.appBrandName = "VM0";
 

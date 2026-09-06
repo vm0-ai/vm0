@@ -39,9 +39,7 @@ function installAvailableVoiceQuota(limit: number | null = 60): void {
 
 async function readyVoiceInput(): Promise<HTMLElement> {
   await readyChat();
-  const voiceInput = await findButton("Voice input");
-  expect(voiceInput).toBeEnabled();
-  return voiceInput;
+  return await findEnabledButton("Voice input");
 }
 
 function currentComposer(): HTMLElement {
@@ -168,10 +166,10 @@ test("Add voice transcription to the current message draft", async () => {
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Record the agenda");
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Record the agenda");
 
-  click(await findButton("Voice input"));
+  click(await findEnabledButton("Voice input"));
   click(await activeVoiceStopButton());
   await expect(findButton("Transcribing")).resolves.toBeDisabled();
 
@@ -186,7 +184,7 @@ test("Add voice transcription to the current message draft", async () => {
       "Record the agenda and typed notes Add action owners",
     );
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Toggle voice input v2 from the focused composer shortcut", async () => {
@@ -244,7 +242,7 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
   await waitFor(() => {
     expect(normalizedComposerText()).toBe("Shortcut voice note");
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Transcribe a voice draft using the latest assistant reference", async () => {
@@ -578,7 +576,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
   expect(multimodalCalls).toBe(1);
   expect(legacySttCalls).toBe(0);
   expectNoVoiceDraftNode();
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Show recent voice levels at the end of the waveform", async () => {
@@ -621,6 +619,8 @@ test.each([
   },
 ])("Retry the original recording after $code", async (failure) => {
   const transcriptionFailed = context.mocks.deferred<void>();
+  const retryRequest = context.mocks.deferred<void>();
+  const retryResponse = context.mocks.deferred<void>();
   const consoleErrors = captureVoiceTranscriptionErrors();
   let transcriptionAttempts = 0;
   const recordings: ArrayBuffer[] = [];
@@ -637,6 +637,9 @@ test.each([
     if (transcriptionAttempts <= 2) {
       if (transcriptionAttempts === 1) {
         transcriptionFailed.resolve(undefined);
+      } else {
+        retryRequest.resolve();
+        await retryResponse.promise;
       }
       return HttpResponse.json(
         {
@@ -680,8 +683,11 @@ test.each([
   expect(normalizedComposerText()).toBe("Keep these notes.");
   expect(queryButton("Send")).toBeNull();
 
-  click(await findButton("Retry"));
-  await expect(findButton("Retry")).resolves.toBeEnabled();
+  click(await findEnabledButton("Retry"));
+  await retryRequest.promise;
+  await screen.findByText("Transcribing...");
+  retryResponse.resolve();
+  await findEnabledButton("Retry");
   expect(normalizedComposerText()).toBe("Keep these notes.");
   click(await findButton("Retry"));
 
@@ -715,7 +721,7 @@ test.each([
     path: RUN_PATH,
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
 });
 
@@ -769,7 +775,7 @@ test.each([
       path,
       featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
-    click(await findButton("Voice input"));
+    click(await findEnabledButton("Voice input"));
     click(await activeVoiceDraftStopButton());
     await firstRequest.promise;
     const pendingRecording = failed
@@ -834,7 +840,7 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
     auth: { user: { id: "other-voice-user", fullName: "Other User" } },
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
   expect(normalizedComposerText()).toBe("");
   expect(consoleErrors).toHaveLength(1);
@@ -866,7 +872,7 @@ test("Discard a failed recording without removing typed notes", async () => {
   click(voiceInput);
   click(await activeVoiceDraftStopButton());
   click(await findButton("Remove voice draft"));
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Keep typed notes");
 
   click(await findLink("Agents"));
@@ -877,7 +883,7 @@ test("Discard a failed recording without removing typed notes", async () => {
     path: RUN_PATH,
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(queryButton("Retry")).toBeNull();
   expect(consoleErrors).toHaveLength(1);
 });
@@ -979,7 +985,7 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
   expect(audioContextCloses).toBe(1);
   await expect(findButton("Send")).resolves.toBeEnabled();
 
-  click(await findButton("Voice input"));
+  click(await findEnabledButton("Voice input"));
   click(await activeVoiceDraftStopButton());
   await waitFor(() => {
     expect(normalizedComposerText()).toBe(
@@ -1030,7 +1036,7 @@ test("Silently finish an empty recording without changing the composer", async (
   click(voiceInput);
   click(await activeVoiceDraftStopButton());
 
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Keep the existing draft");
   expect(microphoneStops).toBe(1);
   expect(audioContextCloses).toBe(2);
@@ -1065,7 +1071,7 @@ test.each(["", "Keep the existing draft"])(
     const stop = await activeVoiceDraftStopButton();
     click(stop);
 
-    await expect(findButton("Voice input")).resolves.toBeEnabled();
+    await findEnabledButton("Voice input");
     expect(normalizedComposerText()).toBe(initialText);
     expect(queryButton("Attach")).toBeVisible();
     expect(queryButton("Send")).toHaveProperty("disabled", !initialText);
@@ -1120,7 +1126,7 @@ test("Make voice-input startup and silent cancellation clear", async () => {
   await voiceActivityObserved.promise;
   click(stopRecording);
 
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
   await waitFor(() => {
     expect(audioContextCloseCount).toBe(1);
   });
@@ -1282,7 +1288,7 @@ test("Transcribe long voice dictation in ordered segments", async () => {
       "First dictated segment Second dictated segment",
     );
   });
-  await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await findEnabledButton("Voice input");
 });
 
 test("Wait for voice transcription before sending a message", async () => {
@@ -1313,7 +1319,7 @@ test("Wait for voice transcription before sending a message", async () => {
 
   await readyChat();
   await fill(currentComposer(), "Typed introduction");
-  click(await findButton("Voice input"));
+  click(await findEnabledButton("Voice input"));
   await expect(findButton("Starting voice input")).resolves.toBeDisabled();
 
   click(await findButton("Send"));
