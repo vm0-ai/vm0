@@ -74,7 +74,7 @@ export interface MaterializedChatProjection {
   } | null;
 }
 
-export type RunOutputMaterializationResult =
+type RunOutputMaterializationResult =
   | {
       readonly outcome: "accepted";
       readonly chatProjection: MaterializedChatProjection | null;
@@ -478,7 +478,7 @@ async function legacyPiSequenceStart(
   return sequenceStart;
 }
 
-export class LegacyPiEventSequenceGapError extends Error {
+class LegacyPiEventSequenceGapError extends Error {
   constructor(runId: string, expectedSequence: number) {
     super(
       `Run ${runId} is missing legacy Pi event sequence ${expectedSequence}`,
