@@ -54,6 +54,17 @@ if (
   );
 }
 
+const flattenedPem = input.trim().match(
+  /^(-----BEGIN [^-]+-----)[\s]+([\s\S]+?)[\s]+(-----END [^-]+-----)$/u,
+);
+if (flattenedPem) {
+  const [, header, body, footer] = flattenedPem;
+  addCandidate(
+    "flattened-pem",
+    `${header}\n${body.replaceAll(/\s+/gu, "\n")}\n${footer}\n`,
+  );
+}
+
 for (const [name, candidate] of candidates) {
   try {
     const key = createPrivateKey(candidate);
