@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.847.0](https://github.com/vm0-ai/vm0/compare/app-v0.846.0...app-v0.847.0) (2026-09-06)
+
+
+### Features
+
+* **platform:** add pwa thread navigation hints ([#31938](https://github.com/vm0-ai/vm0/issues/31938)) ([e5cbf8b](https://github.com/vm0-ai/vm0/commit/e5cbf8b3fff605d41581d511fc890a6d87a9bdbe))
+
+
+### Bug Fixes
+
+* **platform:** keep incompatible hairstyle previews stable ([#31966](https://github.com/vm0-ai/vm0/issues/31966)) ([854b91e](https://github.com/vm0-ai/vm0/commit/854b91e89bbf20a41458b6c8f7f0dcb025d6f2f9)), closes [#31935](https://github.com/vm0-ai/vm0/issues/31935)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+    * @okouai/core bumped to 8.625.8
+
 ## [0.846.0](https://github.com/vm0-ai/vm0/compare/app-v0.845.8...app-v0.846.0) (2026-09-06)
 
 

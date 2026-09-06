@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.625.8](https://github.com/vm0-ai/vm0/compare/core-v8.625.7...core-v8.625.8) (2026-09-06)
+
+
+### Performance Improvements
+
+* avoid duplicate pinned reverse-template guide load ([#31969](https://github.com/vm0-ai/vm0/issues/31969)) ([e8843ea](https://github.com/vm0-ai/vm0/commit/e8843ea6642f706a2214569cbe4726164ae7a766))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.406.0
+
 ## [8.625.7](https://github.com/vm0-ai/vm0/compare/core-v8.625.6...core-v8.625.7) (2026-09-06)
 
 
