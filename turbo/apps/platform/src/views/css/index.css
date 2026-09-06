@@ -824,6 +824,35 @@ body {
   border: none;
 }
 
+/* Touch passages use an app-owned Range and overlay, never a DOM Selection:
+   iOS/PWA text-edit menus cannot reliably be cancelled with touch-callout alone.
+   The mode is set synchronously from pointerdown, including on hybrid devices. */
+[data-chat-selection-mode="touch"]
+  :is(.okou-chat-bubble-assistant, [data-feedback-source]) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+[data-chat-selection-mode="touch"]
+  :is(.okou-chat-bubble-assistant, [data-feedback-source])
+  :is(
+    a,
+    button,
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"])
+  ) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.okou-chat-touch-highlight {
+  fill: hsl(var(--primary-200) / 0.5);
+}
+
 /* Composer / input card (white, light border — “Just ask” / chat input) */
 .okou-app .okou-composer {
   --okou-composer-ring: var(--gray-500);
@@ -2188,6 +2217,9 @@ html:has(.okou-dialog-overlay)
    mirror. */
 [data-new-ui] ::selection {
   background-color: hsl(var(--brand-subtle));
+}
+[data-new-ui] .okou-chat-touch-highlight {
+  fill: hsl(var(--brand-subtle) / 0.5);
 }
 [data-new-ui] .wmde-markdown[data-color-mode*="light"],
 [data-new-ui] .wmde-markdown[data-color-mode*="dark"] {

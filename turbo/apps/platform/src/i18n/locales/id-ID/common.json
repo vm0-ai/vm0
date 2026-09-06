@@ -1950,6 +1950,8 @@
       "placeholder": "Apa yang harus diubah dari ini?",
       "quote": "Kutip",
       "remove": "Hapus masukan",
+      "selectionEnd": "Sesuaikan akhir pilihan",
+      "selectionStart": "Sesuaikan awal pilihan",
       "sentEmailDescription": "email yang telah dikirim (ID mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID terkirim: {{sentId}}",
       "sourcePartHeading": "Masukan untuk bagian {{description}} ini:",

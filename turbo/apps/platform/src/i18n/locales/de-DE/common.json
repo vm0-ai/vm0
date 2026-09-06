@@ -1953,6 +1953,8 @@
       "placeholder": "Was soll sich daran ändern?",
       "quote": "Zitieren",
       "remove": "Feedback entfernen",
+      "selectionEnd": "Auswahlende anpassen",
+      "selectionStart": "Auswahlbeginn anpassen",
       "sentEmailDescription": "eine gesendete E-Mail (Mail-ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", gesendete ID: {{sentId}}",
       "sourcePartHeading": "Feedback zu diesem Teil von {{description}}:",

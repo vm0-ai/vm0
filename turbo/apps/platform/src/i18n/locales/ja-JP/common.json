@@ -1950,6 +1950,8 @@
       "placeholder": "これについて何を変える必要がありますか?",
       "quote": "引用",
       "remove": "フィードバックを削除する",
+      "selectionEnd": "選択範囲の終了位置を調整",
+      "selectionStart": "選択範囲の開始位置を調整",
       "sentEmailDescription": "送信されたメール (メール ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": "、送信された ID: {{sentId}}",
       "sourcePartHeading": "{{description}} のこの部分に関するフィードバック:",
