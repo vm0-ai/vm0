@@ -111,14 +111,15 @@ export async function createVoiceDraftRecording(
   );
 }
 
+/** Append one PCM chunk and return the recording as stored afterwards. */
 export async function appendVoiceDraftSamples(
   key: string,
   id: string,
   sequence: number,
   samples: Float32Array,
-): Promise<void> {
+): Promise<VoiceDraftRecordingRecord> {
   const database = await openVoiceDraftRecordingDatabase();
-  await withCleanup(
+  return await withCleanup(
     runIndexedDbTransaction(
       {
         database: "voice_drafts",
@@ -141,16 +142,13 @@ export async function appendVoiceDraftSamples(
             .objectStore("chunks")
             .add(samples.slice().buffer, [key, id, sequence]),
         );
-        await track(
-          drafts.put(
-            {
-              ...recording,
-              chunkCount: sequence + 1,
-              sampleCount: recording.sampleCount + samples.length,
-            },
-            key,
-          ),
-        );
+        const appended = {
+          ...recording,
+          chunkCount: sequence + 1,
+          sampleCount: recording.sampleCount + samples.length,
+        };
+        await track(drafts.put(appended, key));
+        return appended;
       },
     ),
     () => {

@@ -8512,11 +8512,13 @@ function MicButton({
   signals: ComposerSignals;
   actions: ComposerActions;
 }) {
-  const available = useLastResolved(audioInputAvailable$) ?? false;
+  const available = useGet(audioInputAvailable$);
   const quotaState = useLoadableState(audioInputQuota$);
   const quotaResolved = useLastResolved(audioInputQuota$) !== undefined;
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const voiceDraftStatus = useResolved(signals.voice.state$)?.status;
+  // The last resolved status keeps this control stable while a composer
+  // target reads its stored draft; run$ awaits that read before acting.
+  const voiceDraftStatus = useLastResolved(signals.voice.state$)?.status;
   const sttRecording = useGet(sttRecording$);
   const sttStarting = useGet(sttStarting$);
   const sttTranscribing = useGet(sttTranscribing$);

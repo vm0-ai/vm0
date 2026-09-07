@@ -1,4 +1,5 @@
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
+import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, screen, waitFor } from "@testing-library/react";
@@ -18,10 +19,12 @@ import {
   NEW_CHAT_PATH,
   queryButton,
   RUN_PATH,
+  RUN_THREAD_ID,
 } from "./chat-run-test-fixtures.ts";
 
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 const OTHER_AGENT_ID = "c0000000-0000-4000-a000-000000000802";
+const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000803";
 
 vi.mock("idb", async () => {
   return { ...(await vi.importActual<typeof import("idb")>("idb")) };
@@ -378,4 +381,89 @@ test("Preserve an explicit draft clear while the server baseline is pending", as
   await findEnabledButton("Send");
   expect(editor).toHaveTextContent("Voice note.");
   expect(editor).not.toHaveTextContent("Old saved notes.");
+});
+
+test("Keep voice input enabled while switching conversations", async () => {
+  const lifecycle = installRunChat({ threadTitle: "First conversation" });
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+    return respond(200, { allowed: true, count: 0, limit: 60 });
+  });
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
+    return HttpResponse.json({
+      transcript: "voice note",
+      polishedText: "Voice note.",
+      language: "en-US",
+    });
+  });
+  lifecycle.setThreadList([
+    {
+      id: RUN_THREAD_ID,
+      title: "First conversation",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-08-01T10:00:00.000Z",
+      updatedAt: "2026-08-01T10:02:00.000Z",
+      pinnedAt: null,
+    },
+    {
+      id: OTHER_THREAD_ID,
+      title: "Second conversation",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-08-01T10:01:00.000Z",
+      updatedAt: "2026-08-01T10:01:00.000Z",
+      pinnedAt: null,
+    },
+  ]);
+  context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
+    return respond(
+      200,
+      textContinuityDraft(
+        params.id === RUN_THREAD_ID
+          ? "First conversation."
+          : "Second conversation.",
+      ),
+    );
+  });
+
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  await findEnabledButton("Voice input");
+
+  const requested = context.mocks.deferred<void>();
+  const ready = context.mocks.deferred<void>();
+  const openDatabase = idb.openDB;
+  vi.spyOn(idb, "openDB").mockImplementation(
+    async (name, version, callbacks) => {
+      if (name === "okou-voice-drafts") {
+        if (!requested.settled()) {
+          requested.resolve();
+        }
+        await ready.promise;
+      }
+      return await openDatabase(name, version, callbacks);
+    },
+  );
+
+  click(await findLink("Second conversation"));
+  await requested.promise;
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "Second conversation.",
+    );
+  });
+  // The stored draft of the new conversation is still being read.
+  expect(queryButton("Voice input")).toBeEnabled();
+  expect(queryButton("Retry")).toBeNull();
+
+  ready.resolve();
+  click(await findEnabledButton("Voice input"));
+  click(await findEnabledButton("Stop recording"));
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "Voice note.",
+    );
+  });
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+    "Second conversation.",
+  );
+  await findEnabledButton("Voice input");
 });
