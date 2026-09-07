@@ -124,24 +124,32 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   expect(elementClasses(appearance, "footerAction__usePasskey")).toContain(
     "flex",
   );
-  expect(elementClasses(appearance, "formFieldCheckboxInput")).toContain(
-    "focus-visible:ring-2",
+  const checkboxInputClasses = elementClasses(
+    appearance,
+    "formFieldCheckboxInput",
   );
+  expect(checkboxInputClasses).toContain("checked:border-primary");
+  expect(checkboxInputClasses).toContain("checked:bg-primary");
+  expect(checkboxInputClasses).toContain("checked:before:bg-on-filled");
+  expect(checkboxInputClasses).toContain("focus-visible:ring-2");
   expect(elementClasses(appearance, "formFieldCheckboxLabel")).toContain(
     "leading-5",
   );
-  expect(
-    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
-  ).toContain("max-w-4");
-  expect(
-    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
-  ).toContain("[--okou-input-padding-inline:0]");
-  expect(
-    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
-  ).toContain("[--okou-input-padding-block:0]");
-  expect(
-    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
-  ).toContain("focus-visible:ring-2");
+  const signOutCheckboxInputClasses = elementClasses(
+    appearance,
+    "formFieldInput__signOutOfOtherSessions",
+  );
+  expect(signOutCheckboxInputClasses).toContain("max-w-4");
+  expect(signOutCheckboxInputClasses).toContain(
+    "[--okou-input-padding-inline:0]",
+  );
+  expect(signOutCheckboxInputClasses).toContain(
+    "[--okou-input-padding-block:0]",
+  );
+  expect(signOutCheckboxInputClasses).toContain("checked:border-primary");
+  expect(signOutCheckboxInputClasses).toContain("checked:bg-primary");
+  expect(signOutCheckboxInputClasses).toContain("checked:before:bg-on-filled");
+  expect(signOutCheckboxInputClasses).toContain("focus-visible:ring-2");
   expect(elementClasses(appearance, "formFieldRadioLabel")).toContain("flex-1");
   expect(appearance.elements).not.toHaveProperty(
     "formFieldRadioLabel__signOutOfOtherSessions",
