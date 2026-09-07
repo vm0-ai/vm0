@@ -25,6 +25,12 @@ a rendered page can cover the behavior.
 the requested locale, renders the complete Router, and resolves after the first
 page content is observable. Always await it before the first page assertion.
 
+Startup belongs to the test context's original abort signal. Cancelling that
+lifetime rejects `setupPage()` and a pending `startPage().ready`; cancellation
+is not page readiness. Tests that inspect blocked startup may leave
+`startPage().ready` unawaited: the shared helper owns its cancellation rejection
+and observer cleanup.
+
 Every page test follows this order:
 
 1. Configure fixtures and external mocks.

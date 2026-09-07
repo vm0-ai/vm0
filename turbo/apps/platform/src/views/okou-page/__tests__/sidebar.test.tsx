@@ -665,13 +665,12 @@ function mockLongSidebarHistory(): void {
       `Refresh overflow ${index + 1}`,
     );
   });
-  mockSidebarThreadStory(
-    [
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ],
-    [...overflowThreads, createThread(ARCHIVED_THREAD_ID, "Archived context")],
-  );
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ...overflowThreads,
+    createThread(ARCHIVED_THREAD_ID, "Archived context"),
+  ]);
 }
 
 async function scrollToArchivedContext(): Promise<HTMLElement> {
@@ -679,6 +678,9 @@ async function scrollToArchivedContext(): Promise<HTMLElement> {
     expect(
       within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
     ).toBeInTheDocument();
+    expect(
+      within(sidebar()).getAllByTestId("sidebar-chat-thread-virtual-row"),
+    ).toHaveLength(14);
   });
 
   const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
@@ -1660,15 +1662,6 @@ test("Mark conversations read and unread from the sidebar", async () => {
       );
     },
   );
-  context.mocks.api(browserContract.get, ({ respond }) => {
-    return respond(404, {
-      error: {
-        code: "BROWSER_NOT_FOUND",
-        message: "Managed browser not found",
-      },
-    });
-  });
-
   await setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
   await waitFor(() => {
