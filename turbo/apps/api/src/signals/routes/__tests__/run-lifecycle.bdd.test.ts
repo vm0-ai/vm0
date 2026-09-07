@@ -19145,11 +19145,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
-  it("suppresses reviewed expected failures from generic completion logs", async () => {
-    const api = createRunsApi(context);
-    const webhooks = createWebhookCallbackApi(context);
-    await seedBuiltInDefaultModelKey();
-    const { actor, agentId } = await entitledRunActor();
+  describe("completion failure logs", () => {
     const suppressedReasons = [
       "insufficient_credits",
       "invalid_api_key",
@@ -19166,15 +19162,9 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       "reconnect_required",
       "usage_limit",
     ] as const satisfies readonly KnownRunFailureReason[];
-    const axiomLevels = [
-      context.mocks.axiomLogging.debug,
-      context.mocks.axiomLogging.info,
-      context.mocks.axiomLogging.warn,
-      context.mocks.axiomLogging.error,
-    ];
 
     function matchingLogCalls(
-      log: (typeof axiomLevels)[number],
+      log: typeof context.mocks.axiomLogging.warn,
       message: string,
       runId: string,
     ) {
@@ -19189,12 +19179,31 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       });
     }
 
-    async function completeFailure(args: {
+    function genericFailureLogCalls(runId: string) {
+      return [
+        context.mocks.axiomLogging.debug,
+        context.mocks.axiomLogging.info,
+        context.mocks.axiomLogging.warn,
+        context.mocks.axiomLogging.error,
+      ].flatMap((level) => {
+        return matchingLogCalls(level, "Run failed", runId);
+      });
+    }
+
+    interface FailureCase {
       readonly failureReason?: RunFailureReasonToken;
       readonly modelProvider?: ModelProviderType;
       readonly persistedModelProvider?: string | null;
-    }): Promise<{ readonly runId: string; readonly error: string }> {
+    }
+
+    async function completeFailure(args: FailureCase) {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
       const modelProvider = args.modelProvider ?? "anthropic-api-key";
+      if (modelProvider === "built-in") {
+        await seedBuiltInDefaultModelKey();
+      }
+      const { actor, agentId } = await entitledRunActor();
       const run = await api.createRun(actor, {
         agentId,
         prompt: `fail ${modelProvider} with ${args.failureReason ?? "no reason"}`,
@@ -19229,161 +19238,174 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       await expect(
         readRunFailureReasonFixture(context, run.runId),
       ).resolves.toBe(args.failureReason ?? null);
-      return { runId: run.runId, error };
+      return { actor, runId: run.runId, error };
     }
 
-    for (const failureReason of suppressedReasons) {
-      const { runId } = await completeFailure({ failureReason });
-      for (const level of axiomLevels) {
-        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
-      }
-    }
+    it.each(suppressedReasons)(
+      "suppresses %s for a BYOK provider",
+      async (failureReason) => {
+        const { runId } = await completeFailure({ failureReason });
+        expect(genericFailureLogCalls(runId)).toHaveLength(0);
+      },
+    );
 
-    const globallySuppressedFailures = [
-      await completeFailure({ failureReason: "input_too_large" }),
-      await completeFailure({
-        modelProvider: "built-in",
-        failureReason: "input_too_large",
-      }),
-      await completeFailure({
-        failureReason: "input_too_large",
-        persistedModelProvider: "legacy-unknown-provider",
-      }),
-      await completeFailure({ failureReason: "execution_timeout" }),
-      await completeFailure({
-        modelProvider: "built-in",
-        failureReason: "execution_timeout",
-      }),
-      await completeFailure({
-        failureReason: "execution_timeout",
-        persistedModelProvider: "legacy-unknown-provider",
-      }),
-    ];
-    for (const { runId } of globallySuppressedFailures) {
-      for (const level of axiomLevels) {
-        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
-      }
-    }
+    describe.each(["input_too_large", "execution_timeout"] as const)(
+      "globally suppresses %s",
+      (failureReason) => {
+        it.each([
+          { name: "BYOK", modelProvider: "anthropic-api-key" },
+          { name: "built-in", modelProvider: "built-in" },
+          {
+            name: "legacy provider",
+            persistedModelProvider: "legacy-unknown-provider",
+          },
+        ] satisfies readonly (FailureCase & { readonly name: string })[])(
+          "suppresses the generic log for $name",
+          async (provider) => {
+            const { runId } = await completeFailure({
+              ...provider,
+              failureReason,
+            });
+            expect(genericFailureLogCalls(runId)).toHaveLength(0);
+          },
+        );
+      },
+    );
 
-    const visibleControls = [
-      await completeFailure({
+    it.each([
+      {
+        name: "built-in rate limiting",
         modelProvider: "built-in",
         failureReason: "provider_rate_limited",
-      }),
-      await completeFailure({
+      },
+      {
+        name: "rate limiting with a null provider",
         failureReason: "provider_rate_limited",
         persistedModelProvider: null,
-      }),
-      await completeFailure({
+      },
+      {
+        name: "rate limiting with a legacy provider",
         failureReason: "provider_rate_limited",
         persistedModelProvider: "legacy-unknown-provider",
-      }),
-      await completeFailure({}),
-      await completeFailure({ failureReason: "session_history_limit" }),
-      await completeFailure({ failureReason: "unsupported_model" }),
-    ];
-    for (const control of visibleControls) {
-      const warnings = matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        control.runId,
-      );
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0]?.[1]).toStrictEqual(
-        expect.objectContaining({
-          runId: control.runId,
-          exitCode: 1,
-          error: control.error,
-          context: "webhook:complete",
-        }),
-      );
-    }
-
-    const missingCheckpoint = await api.createRun(actor, {
-      agentId,
-      prompt: "keep the missing-checkpoint warning visible",
-      modelProvider: "anthropic-api-key",
-    });
-    await webhooks.requestAgentComplete(
-      {
-        runId: missingCheckpoint.runId,
-        exitCode: 0,
-        failureReason: "provider_overloaded",
       },
+      { name: "an absent failure reason" },
       {
-        authorization: `Bearer ${api.sandboxTokenForRun(
-          actor,
+        name: "session history limits",
+        failureReason: "session_history_limit",
+      },
+      { name: "unsupported models", failureReason: "unsupported_model" },
+    ] satisfies readonly (FailureCase & { readonly name: string })[])(
+      "keeps $name visible",
+      async (failure) => {
+        const control = await completeFailure(failure);
+        const warnings = matchingLogCalls(
+          context.mocks.axiomLogging.warn,
+          "Run failed",
+          control.runId,
+        );
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]?.[1]).toStrictEqual(
+          expect.objectContaining({
+            runId: control.runId,
+            exitCode: 1,
+            error: control.error,
+            context: "webhook:complete",
+          }),
+        );
+      },
+    );
+
+    it("keeps the missing-checkpoint warning visible for a suppressible reason", async () => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      const missingCheckpoint = await api.createRun(actor, {
+        agentId,
+        prompt: "keep the missing-checkpoint warning visible",
+        modelProvider: "anthropic-api-key",
+      });
+      await webhooks.requestAgentComplete(
+        {
+          runId: missingCheckpoint.runId,
+          exitCode: 0,
+          failureReason: "provider_overloaded",
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(
+            actor,
+            missingCheckpoint.runId,
+          )}`,
+        },
+        [200],
+      );
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.warn,
+          "Run failed because checkpoint was not found",
           missingCheckpoint.runId,
-        )}`,
-      },
-      [200],
-    );
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed because checkpoint was not found",
-        missingCheckpoint.runId,
-      ),
-    ).toHaveLength(1);
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        missingCheckpoint.runId,
-      ),
-    ).toHaveLength(0);
-
-    const suppressibleFirst = await completeFailure({
-      failureReason: "provider_overloaded",
+        ),
+      ).toHaveLength(1);
+      expect(genericFailureLogCalls(missingCheckpoint.runId)).toHaveLength(0);
     });
-    await webhooks.requestAgentComplete(
-      {
-        runId: suppressibleFirst.runId,
-        exitCode: 1,
-        error: "late unsupported-model report",
-        failureReason: "unsupported_model",
-      },
-      {
-        authorization: `Bearer ${api.sandboxTokenForRun(
-          actor,
-          suppressibleFirst.runId,
-        )}`,
-      },
-      [200],
-    );
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        suppressibleFirst.runId,
-      ),
-    ).toHaveLength(0);
 
-    const visibleFirst = await completeFailure({
-      failureReason: "unsupported_model",
-    });
-    await webhooks.requestAgentComplete(
+    it.each([
       {
-        runId: visibleFirst.runId,
-        exitCode: 1,
-        error: "late overload report",
-        failureReason: "provider_overloaded",
+        firstReason: "provider_overloaded",
+        lateReason: "unsupported_model",
+        warningCount: 0,
       },
       {
-        authorization: `Bearer ${api.sandboxTokenForRun(
-          actor,
-          visibleFirst.runId,
-        )}`,
+        firstReason: "unsupported_model",
+        lateReason: "provider_overloaded",
+        warningCount: 1,
       },
-      [200],
+    ] as const)(
+      "does not relog $firstReason when a duplicate reports $lateReason",
+      async ({ firstReason, lateReason, warningCount }) => {
+        const api = createRunsApi(context);
+        const webhooks = createWebhookCallbackApi(context);
+        const first = await completeFailure({ failureReason: firstReason });
+        expect(
+          matchingLogCalls(
+            context.mocks.axiomLogging.warn,
+            "Run failed",
+            first.runId,
+          ),
+        ).toHaveLength(warningCount);
+
+        await webhooks.requestAgentComplete(
+          {
+            runId: first.runId,
+            exitCode: 1,
+            error: `late ${lateReason} report`,
+            failureReason: lateReason,
+          },
+          {
+            authorization: `Bearer ${api.sandboxTokenForRun(
+              first.actor,
+              first.runId,
+            )}`,
+          },
+          [200],
+        );
+        expect(
+          matchingLogCalls(
+            context.mocks.axiomLogging.warn,
+            "Run failed",
+            first.runId,
+          ),
+        ).toHaveLength(warningCount);
+        await expect(
+          api.readRun(first.actor, first.runId),
+        ).resolves.toMatchObject({
+          status: "failed",
+          error: first.error,
+        });
+        await expect(
+          readRunFailureReasonFixture(context, first.runId),
+        ).resolves.toBe(firstReason);
+      },
     );
-    expect(
-      matchingLogCalls(
-        context.mocks.axiomLogging.warn,
-        "Run failed",
-        visibleFirst.runId,
-      ),
-    ).toHaveLength(1);
   });
 
   it.each(["claude-code", "codex"] as const)(
