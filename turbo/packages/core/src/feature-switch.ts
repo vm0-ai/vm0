@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ComposerCreateCommands]: {
+    maintainer: "bingjie@okou.ai",
+    description: "Create commands and mode-specific composer controls",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
     description: "Test-only feature switch for flag system validation",

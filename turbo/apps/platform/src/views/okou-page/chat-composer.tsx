@@ -2,6 +2,12 @@ import {
   useComposerActions,
   type ComposerActions,
 } from "./composer-actions.ts";
+import { useEditorState } from "@tiptap/react";
+import {
+  ComposerCreateHeader,
+  ComposerCreateImageModelPicker,
+  ComposerCreateVideoModelPicker,
+} from "./composer-create.tsx";
 import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
@@ -51,6 +57,7 @@ import {
   ArrowUp,
   Bolt,
   Check,
+  ChevronDown,
   Download,
   Globe,
   Image as ImageIcon,
@@ -268,7 +275,11 @@ import {
   sttVoiceLevel$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";
-import { shouldUseUserMessage } from "../../signals/okou-page/user-message-document-codec.ts";
+import {
+  INLINE_TEMPLATE_NODE_NAME,
+  TEMPLATE_ATTACHMENT_NODE_NAME,
+  shouldUseUserMessage,
+} from "../../signals/okou-page/user-message-document-codec.ts";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import {
@@ -6709,13 +6720,69 @@ function TemplatePickerButton({
   );
   const category = useGet(signals.template.templatePickerCategory$);
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
+  const createMode = useGet(signals.create.mode$);
+  const templates = useEditorState({
+    editor: signals.editor.editor,
+    selector: ({ editor }) => {
+      const result: {
+        title: string;
+        category: string;
+        position: number;
+        legacy: boolean;
+      }[] = [];
+      editor.state.doc.descendants((node, position) => {
+        if (
+          node.type.name === INLINE_TEMPLATE_NODE_NAME ||
+          node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME
+        ) {
+          const title: unknown = node.attrs.title;
+          const category: unknown = node.attrs.category;
+          if (typeof title === "string" && typeof category === "string") {
+            result.push({
+              title,
+              category,
+              position,
+              legacy: node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME,
+            });
+          }
+          return false;
+        }
+        return true;
+      });
+      return result;
+    },
+  });
+  const templateMode =
+    createMode === "presentation" || createMode === "illustration"
+      ? createMode
+      : null;
+  const singleTemplate =
+    templateMode &&
+    templates.length === 1 &&
+    templates[0]?.category === templateMode
+      ? templates[0]
+      : undefined;
+  const templateLabel =
+    singleTemplate?.title ??
+    (templateMode === "illustration"
+      ? t(($) => {
+          return $.chat.composer.create.chooseStyle;
+        })
+      : templateMode === "presentation"
+        ? t(($) => {
+            return $.chat.composer.create.chooseTemplate;
+          })
+        : t(($) => {
+            return $.artifacts.templates.template;
+          }));
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
   );
   const openTemplatePicker = useSet(signals.template.openTemplatePicker$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const selectedCategory = resolveTemplatePickerCategory(category);
+  const selectedCategory =
+    templateMode ?? resolveTemplatePickerCategory(category);
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -6735,31 +6802,51 @@ function TemplatePickerButton({
             <Button
               type="button"
               variant="quiet"
-              size="icon-sm"
+              size={templateMode ? "sm" : "icon-sm"}
               iconSize="md"
-              className="shrink-0"
-              aria-label={t(($) => {
-                return $.artifacts.templates.template;
-              })}
+              className={
+                templateMode
+                  ? "min-w-0 max-w-[13rem] gap-1 font-normal"
+                  : "shrink-0"
+              }
+              aria-label={templateLabel}
               aria-pressed={false}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
               onClick={() => {
                 prewarmPicker();
+                if (singleTemplate && !singleTemplate.legacy) {
+                  signals.editor.editor.commands.setNodeSelection(
+                    singleTemplate.position,
+                  );
+                }
                 openTemplatePicker({
-                  kind: "insert",
+                  kind: singleTemplate
+                    ? singleTemplate.legacy
+                      ? "edit-legacy"
+                      : "edit-selected"
+                    : "insert",
                   category: selectedCategory,
                 });
               }}
             >
-              <SwatchBook size={18} aria-hidden="true" />
+              {templateMode ? (
+                <>
+                  <span className="min-w-0 truncate">{templateLabel}</span>
+                  <ChevronDown
+                    size={12}
+                    className="shrink-0 opacity-50"
+                    aria-hidden
+                  />
+                </>
+              ) : (
+                <SwatchBook size={18} aria-hidden="true" />
+              )}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {t(($) => {
-              return $.artifacts.templates.template;
-            })}
+            {templateLabel}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -9633,6 +9720,18 @@ function ComposerExistingMediaModelPickerSlot({
 }
 
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
+  const createMode = useGet(signals.create.mode$);
+  if (createMode === "image" && signals.imageModel) {
+    return <ComposerCreateImageModelPicker model={signals.imageModel} />;
+  }
+  if (createMode === "video" && signals.videoModel) {
+    return (
+      <ComposerCreateVideoModelPicker
+        model={signals.videoModel}
+        signals={signals}
+      />
+    );
+  }
   const imageModelSignals = signals.imageModel;
   const videoModelSignals = signals.videoModel;
   if (imageModelSignals && videoModelSignals) {
@@ -10647,7 +10746,7 @@ function ComposerFooter({
         />
       ) : (
         <>
-          <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+          <div className="flex min-w-0 items-center gap-1 text-muted-foreground sm:gap-1.5">
             <ComposerAttachButton signals={signals} />
             <ComposerTemplatePickerSlot signals={signals} />
             <ComposerWorkflowPromptSlot signals={signals} />
@@ -10657,7 +10756,7 @@ function ComposerFooter({
                 not which model the composer points at. */}
             <ComposerVideoOptionsChip signals={signals} />
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <ComposerModelPickerSlot signals={signals} />
             <MicButton signals={signals} actions={actions} />
             <ComposerSendControl signals={signals} actions={actions} />
@@ -10678,7 +10777,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
   return (
     <Card
       className={cn(
-        "okou-composer relative z-10 overflow-visible",
+        "okou-composer @container/composer relative z-10 overflow-visible",
         dragOver && "outline outline-2 outline-blue-400/60",
       )}
       onDrop={(event) => {
@@ -10705,6 +10804,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       <CardContent className="p-0">
         <div ref={actions.bind} className="flex flex-col">
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
+          <ComposerCreateHeader signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
