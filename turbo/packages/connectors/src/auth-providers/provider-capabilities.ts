@@ -7,6 +7,11 @@ import type {
 export type ConnectorAuthProviderClientContract =
   | { readonly kind: "none" }
   | {
+      readonly kind: "static-confidential-input";
+      readonly clientIdInput: string;
+      readonly clientSecretInput: string;
+    }
+  | {
       readonly kind: "static-confidential-env";
       readonly clientIdEnv: string;
       readonly clientSecretEnv: string;
@@ -1338,6 +1343,38 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "optimizely-cmp",
+    authMethodId: "oauth-client",
+    contract: {
+      client: {
+        kind: "static-confidential-input",
+        clientIdInput: "clientId",
+        clientSecretInput: "clientSecret",
+      },
+      grant: {
+        kind: "auth-code",
+        callbackOrigin: "web",
+        outputNames: [
+          "accessToken",
+          "clientId",
+          "clientSecret",
+          "refreshToken",
+        ],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["clientId", "clientSecret", "refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "token-revoke",
+        inputNames: ["clientId", "clientSecret", "refreshToken"],
+      },
+    },
+  },
+  {
     connectorSlug: "oto",
     authMethodId: "api-token",
     contract: {
@@ -2401,38 +2438,45 @@ export type ConnectorAuthProviderAuthMethodIdByRevokeKind<
 
 type ConnectorAuthProviderClientConfigForContract<
   Contract extends ConnectorAuthProviderClientContract,
-> = Contract["kind"] extends "static-confidential-env"
+> = Contract["kind"] extends "static-confidential-input"
   ? {
       readonly clientRegistration: "static";
       readonly clientType: "confidential";
-      readonly clientIdEnv: string;
-      readonly clientSecretEnv: string;
+      readonly clientIdInput: string;
+      readonly clientSecretInput: string;
     }
-  : Contract["kind"] extends "static-confidential-literal"
+  : Contract["kind"] extends "static-confidential-env"
     ? {
         readonly clientRegistration: "static";
         readonly clientType: "confidential";
-        readonly clientId: string;
-        readonly clientSecret: string;
+        readonly clientIdEnv: string;
+        readonly clientSecretEnv: string;
       }
-    : Contract["kind"] extends "static-public-env"
+    : Contract["kind"] extends "static-confidential-literal"
       ? {
           readonly clientRegistration: "static";
-          readonly clientType: "public";
-          readonly clientIdEnv: string;
+          readonly clientType: "confidential";
+          readonly clientId: string;
+          readonly clientSecret: string;
         }
-      : Contract["kind"] extends "static-public-literal"
+      : Contract["kind"] extends "static-public-env"
         ? {
             readonly clientRegistration: "static";
             readonly clientType: "public";
-            readonly clientId: string;
+            readonly clientIdEnv: string;
           }
-        : Contract["kind"] extends "dynamic-public"
+        : Contract["kind"] extends "static-public-literal"
           ? {
-              readonly clientRegistration: "dynamic";
+              readonly clientRegistration: "static";
               readonly clientType: "public";
+              readonly clientId: string;
             }
-          : never;
+          : Contract["kind"] extends "dynamic-public"
+            ? {
+                readonly clientRegistration: "dynamic";
+                readonly clientType: "public";
+              }
+            : never;
 
 type ConnectorAuthProviderClientConfigFor<
   ConnectorSlug extends ConnectorAuthProviderConnectorSlug,

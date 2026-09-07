@@ -70,7 +70,7 @@ function connectorCatalogSensitiveValues(
         if ("clientIdEnv" in authMethod.client) {
           addSensitiveValue(authMethod.client.clientIdEnv, values);
           addSensitiveValue(authMethod.client.clientSecretEnv, values);
-        } else {
+        } else if ("clientId" in authMethod.client) {
           addSensitiveValue(authMethod.client.clientId, values);
           addSensitiveValue(authMethod.client.clientSecret, values);
         }

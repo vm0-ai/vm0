@@ -86,6 +86,13 @@ export const connectorOauthStartContract = c.router({
     pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     body: z.object({
       authMethod: connectorAuthMethodIdSchema,
+      oauthClient: z
+        .object({
+          clientId: z.string().min(1).max(4096),
+          clientSecret: z.string().min(1).max(4096),
+        })
+        .strict()
+        .optional(),
       agentId: z.uuid().optional(),
       authorizeAgent: z.literal(true).optional(),
       callbackTarget: z.literal("app").optional(),

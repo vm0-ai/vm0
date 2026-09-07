@@ -131,6 +131,14 @@ function providerClient(
           literalClient.clientSecret ?? "fixture-confidential-secret",
       };
     }
+    case "static-confidential-input": {
+      return {
+        clientRegistration: "static",
+        clientType: "confidential",
+        clientIdInput: capability.contract.client.clientIdInput,
+        clientSecretInput: capability.contract.client.clientSecretInput,
+      };
+    }
     case "static-public-literal": {
       return {
         clientRegistration: "static",
@@ -574,6 +582,40 @@ const slackPermissions = [
 ] satisfies NonNullable<FirewallApi["permissions"]>;
 
 const connectors = [
+  connector({
+    connectorSlug: "optimizely-cmp",
+    label: "Optimizely CMP",
+    authMethods: [
+      {
+        ...standardOauthMethod({
+          connectorSlug: "optimizely-cmp",
+          prefix: "OPTIMIZELY_CMP",
+          tokenEnvironmentNames: ["OPTIMIZELY_CMP_TOKEN"],
+          scopes: ["openid", "profile", "offline_access"],
+        }),
+        visible: true,
+      },
+      providerMethod({
+        connectorSlug: "optimizely-cmp",
+        authMethodId: "oauth-client",
+        label: "User OAuth",
+        scopes: ["openid", "profile", "offline_access"],
+        values: {
+          accessToken: secret("OPTIMIZELY_CMP_ACCESS_TOKEN"),
+          refreshToken: secret("OPTIMIZELY_CMP_REFRESH_TOKEN"),
+          clientId: secret("OPTIMIZELY_CMP_CLIENT_ID"),
+          clientSecret: secret("OPTIMIZELY_CMP_CLIENT_SECRET"),
+        },
+        envBindings: {
+          OPTIMIZELY_CMP_TOKEN: secret("OPTIMIZELY_CMP_ACCESS_TOKEN"),
+        },
+        refreshableSecrets: ["OPTIMIZELY_CMP_ACCESS_TOKEN"],
+      }),
+    ],
+    firewall: generatedFirewall([
+      bearerApi("https://api.cmp.optimizely.com/v3", "OPTIMIZELY_CMP_TOKEN"),
+    ]),
+  }),
   connector({
     connectorSlug: "ahrefs",
     label: "Ahrefs",

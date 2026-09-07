@@ -1,5 +1,6 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
@@ -38,6 +39,68 @@ function oauthMethod() {
     startOptions: [],
   };
 }
+
+test("Collect a connection's OAuth client before opening authorization and clear the form", async () => {
+  mockConnectors(context, []);
+  const item = publicStatusItem({
+    connectorSlug: "optimizely-cmp",
+    label: "Optimizely CMP",
+    authMethods: [
+      { ...oauthMethod(), id: "oauth-client", requiresOAuthClient: true },
+    ],
+  });
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [
+        {
+          target: { kind: "builtin", connectorSlug: "optimizely-cmp" },
+          accountCount: 0,
+          attentionCount: 0,
+          defaultConnection: null,
+        },
+      ],
+    });
+  });
+  context.mocks.api(connectorCatalogContract.get, ({ respond }) => {
+    return respond(200, { connector: item });
+  });
+  mockPublicConnectorStatus(context, [item]);
+  const oauthStarted = context.mocks.deferred<void>();
+  const requestReceived = context.mocks.deferred<void>();
+  context.mocks.browser.open(context.mocks.browser.authWindow());
+  context.mocks.api(
+    connectorOauthStartContract.start,
+    async ({ body, respond }) => {
+      expect(body).toMatchObject({
+        authMethod: "oauth-client",
+        oauthClient: { clientId: "my-client", clientSecret: "my-secret" },
+      });
+      requestReceived.resolve();
+      await oauthStarted.promise;
+      return respond(200, {
+        authorizationUrl: "https://oauth.test/cmp/authorize",
+      });
+    },
+  );
+  await setupPage({ context, path: "/connectors" });
+  const connect = await waitFor(() => {
+    return getConnectorAction("button", "Connect Optimizely CMP");
+  });
+  click(connect);
+  const clientId = await screen.findByLabelText("Client ID");
+  const clientSecret = screen.getByLabelText("Client secret");
+  expect(clientId).toBeRequired();
+  expect(clientSecret).toHaveAttribute("type", "password");
+  await fill(clientId, "my-client");
+  await fill(clientSecret, "my-secret");
+  click(
+    getConnectorAction("button", "Connect", await screen.findByRole("dialog")),
+  );
+  await requestReceived.promise;
+  expect(clientId).toHaveValue("");
+  expect(clientSecret).toHaveValue("");
+  oauthStarted.resolve();
+});
 
 async function expectCards(expected: {
   readonly github: boolean;

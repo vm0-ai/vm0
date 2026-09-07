@@ -35,6 +35,7 @@ export const connectorOauthStates = pgTable(
     oauthRequestedScopes: text("oauth_requested_scopes"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
+    encryptedAuthClient: text("encrypted_auth_client"),
     accountMutation: jsonb("account_mutation")
       .$type<StoredConnectorAccountMutation>()
       .notNull(),

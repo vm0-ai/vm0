@@ -90,6 +90,14 @@ const dynamicPublicClientSourceSchema = z
   .strict();
 
 export const connectorAuthClientSourceSchema = z.union([
+  z
+    .object({
+      clientRegistration: z.literal("static"),
+      clientType: z.literal("confidential"),
+      clientIdInput: internalOptionNameSchema,
+      clientSecretInput: internalOptionNameSchema,
+    })
+    .strict(),
   staticConfidentialClientSourceSchema,
   staticConfidentialLiteralClientSourceSchema,
   staticPublicClientSourceSchema,
@@ -477,6 +485,71 @@ function validateValueReferences(
   }
 }
 
+function validateInputBackedClient(
+  methodRef: string,
+  authMethod: ConnectorAuthMethodSource,
+): void {
+  const client = authMethod.client;
+  if (!client || !("clientIdInput" in client)) {
+    return;
+  }
+  if (
+    authMethod.grant.kind !== "auth-code" ||
+    authMethod.access.kind !== "refresh-token" ||
+    authMethod.revoke.kind !== "token-revoke" ||
+    client.clientIdInput === client.clientSecretInput
+  ) {
+    throw new Error(
+      `${methodRef} input-backed client requires distinct credentials and a refreshable, revocable auth-code grant`,
+    );
+  }
+  if (
+    authMethod.grant.outputs[client.clientIdInput] ===
+    authMethod.grant.outputs[client.clientSecretInput]
+  ) {
+    throw new Error(
+      `${methodRef} client credentials require separate encrypted storage`,
+    );
+  }
+  for (const input of [client.clientIdInput, client.clientSecretInput]) {
+    const valueRef = authMethod.grant.outputs[input];
+    if (
+      !valueRef?.startsWith("$secrets.") ||
+      !authMethod.storage.secrets.includes(
+        valueRef.slice("$secrets.".length),
+      ) ||
+      authMethod.access.inputs[input] !== valueRef ||
+      authMethod.revoke.inputs[input] !== valueRef
+    ) {
+      throw new Error(
+        `${methodRef} client input ${input} must use the same encrypted grant, refresh and revoke storage`,
+      );
+    }
+    if (
+      Object.values(authMethod.access.envBindings).some((binding) => {
+        return (
+          (typeof binding === "string" ? binding : binding.valueRef) ===
+          valueRef
+        );
+      })
+    ) {
+      throw new Error(
+        `${methodRef} client credentials cannot be runtime environment bindings`,
+      );
+    }
+    if (
+      Object.entries(authMethod.grant.outputs).some(([name, target]) => {
+        return name !== input && target === valueRef;
+      }) ||
+      Object.values(authMethod.access.outputs).includes(valueRef)
+    ) {
+      throw new Error(
+        `${methodRef} client credentials cannot share token output storage`,
+      );
+    }
+  }
+}
+
 function validateRefreshableSecrets(
   methodRef: string,
   authMethod: ConnectorAuthMethodSource,
@@ -503,6 +576,7 @@ function validateAuthMethodSemantics(args: {
   validateDeviceGrant(methodRef, args.authMethod);
   validateClientGrantAlignment(methodRef, args.authMethod);
   validateValueReferences(methodRef, args.authMethod, storage);
+  validateInputBackedClient(methodRef, args.authMethod);
   validateRefreshableSecrets(methodRef, args.authMethod, storage);
 }
 

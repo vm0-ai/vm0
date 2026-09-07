@@ -866,13 +866,28 @@ export function resolveConnectorAuthClient<
 >(
   client: Client,
   readEnv: ConnectorEnvReader,
+  inputs?: Readonly<Record<string, string>>,
 ): ConnectorAuthClientForConfig<Client> | undefined;
 export function resolveConnectorAuthClient(
   client: ConnectorAuthClientConfig,
   readEnv: ConnectorEnvReader,
+  inputs?: Readonly<Record<string, string>>,
 ): ConnectorAuthClient | undefined {
   if (client.clientRegistration === "dynamic") {
     return { clientRegistration: "dynamic", clientType: "public" };
+  }
+
+  if ("clientIdInput" in client) {
+    const clientId = inputs?.[client.clientIdInput];
+    const clientSecret = inputs?.[client.clientSecretInput];
+    return clientId && clientSecret
+      ? {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientId,
+          clientSecret,
+        }
+      : undefined;
   }
 
   if ("clientId" in client) {

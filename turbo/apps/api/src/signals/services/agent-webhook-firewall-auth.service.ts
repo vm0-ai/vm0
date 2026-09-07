@@ -1804,7 +1804,7 @@ function prepareRefreshTokenContext(
   const authClient = clientConfig
     ? resolveConnectorAuthClient(clientConfig, optionalEnv)
     : undefined;
-  if (clientConfig && !authClient) {
+  if (clientConfig && !("clientIdInput" in clientConfig) && !authClient) {
     L.debug(
       `${connectorSlug} connector client not configured, skipping token refresh`,
     );

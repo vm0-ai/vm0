@@ -97,6 +97,7 @@ const publicConnectorCatalogAuthMethodDetailSchema =
   publicConnectorCatalogAuthMethodSummarySchema.extend({
     manualFields: z.array(publicConnectorCatalogManualFieldSchema),
     startOptions: z.array(publicConnectorCatalogStartOptionSchema),
+    requiresOAuthClient: z.literal(true).optional(),
   });
 
 const publicConnectorCatalogDetailSchema =

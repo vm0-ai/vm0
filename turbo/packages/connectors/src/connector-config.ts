@@ -30,6 +30,12 @@ export type ConnectorAuthClientConfig =
   | {
       readonly clientRegistration: "static";
       readonly clientType: "confidential";
+      readonly clientIdInput: string;
+      readonly clientSecretInput: string;
+    }
+  | {
+      readonly clientRegistration: "static";
+      readonly clientType: "confidential";
       readonly clientIdEnv: string;
       readonly clientSecretEnv: string;
     }

@@ -751,6 +751,9 @@ function authMethodDetailForCatalog(
 ): PublicConnectorCatalogAuthMethodDetail {
   return {
     ...authMethodSummaryForCatalog(method),
+    ...(method.client && "clientIdInput" in method.client
+      ? { requiresOAuthClient: true as const }
+      : {}),
     manualFields:
       method.grant.kind === "manual"
         ? method.grant.fields.map((field) => {
@@ -912,6 +915,17 @@ function hasCatalogScopeMismatch(args: {
   );
 }
 
+function singleAuthCodeMethodId(
+  methods: readonly ConnectorCatalogAuthMethod[],
+): string | null {
+  const [method] = methods;
+  return methods.length === 1 &&
+    method?.grant.kind === "auth-code" &&
+    !(method.client && "clientIdInput" in method.client)
+    ? method.id
+    : null;
+}
+
 function connectorCatalogStatusItem(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: EffectiveConnector;
@@ -949,7 +963,6 @@ function connectorCatalogStatusItem(args: {
           ? "scope-mismatch"
           : "connected";
   }
-  const [singleMethod] = args.effective.authMethods;
 
   return {
     ...detail,
@@ -960,11 +973,9 @@ function connectorCatalogStatusItem(args: {
     authMethodSupportsRefresh:
       connector !== null && facts?.supportsRefresh === true,
     tokenExpiresAt: connector?.tokenExpiresAt ?? null,
-    singleAuthCodeAuthMethodId:
-      args.effective.authMethods.length === 1 &&
-      singleMethod?.grant.kind === "auth-code"
-        ? singleMethod.id
-        : null,
+    singleAuthCodeAuthMethodId: singleAuthCodeMethodId(
+      args.effective.authMethods,
+    ),
     connectNotice: null,
   };
 }

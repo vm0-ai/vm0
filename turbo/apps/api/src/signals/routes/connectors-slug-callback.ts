@@ -64,6 +64,7 @@ import {
   connectorOAuthRedirectResponse,
 } from "../../lib/connector-oauth-state";
 import { openIdRealmForOrigin } from "./connector-openid-auth-start";
+import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -79,6 +80,7 @@ type CompleteOAuthCallbackInput = {
   readonly state: string;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
+  readonly encryptedAuthClient: string | null;
   readonly identity: CallbackIdentity;
   readonly agentId: string | null;
   readonly authorizeAgent: boolean;
@@ -125,6 +127,7 @@ type ResolvedCallbackState =
       readonly authorizeAgent: boolean;
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
+      readonly encryptedAuthClient: string | null;
       readonly authorizationUrl: string | null;
       readonly oauthRequestedScopes: readonly string[];
       readonly redirectUri: string;
@@ -262,6 +265,7 @@ async function exchangeTokenForConnector(args: {
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
+  readonly encryptedAuthClient: string | null;
 }): Promise<ConnectorAuthProviderGrantResult> {
   if (
     args.resolvedMethod.method.grant.kind !== "auth-code" ||
@@ -272,6 +276,8 @@ async function exchangeTokenForConnector(args: {
   const authClient = resolveConnectorAuthClient(
     args.resolvedMethod.method.client,
     optionalEnv,
+    (await decryptPersistentSecretsMap(args.encryptedAuthClient, {})) ??
+      undefined,
   );
   if (!authClient) {
     throw new Error(
@@ -591,6 +597,7 @@ const completeOAuthCallback$ = command(
       state: args.state,
       codeVerifier: args.codeVerifier,
       oauthContext: args.oauthContext,
+      encryptedAuthClient: args.encryptedAuthClient,
     });
     signal.throwIfAborted();
 
@@ -768,6 +775,7 @@ async function resolveCallbackState(
     resolvedMethod: authMethodResult.resolvedMethod,
     codeVerifier: args.storedState.codeVerifier ?? undefined,
     oauthContext: args.storedState.oauthContext ?? undefined,
+    encryptedAuthClient: args.storedState.encryptedAuthClient,
     authorizationUrl: args.storedState.authorizationUrl,
     oauthRequestedScopes: callbackRequestedOauthScopes(
       args.storedState.oauthRequestedScopes,
@@ -1177,6 +1185,7 @@ const handleAuthCodeConnectorCallback$ = command(
           resolvedMethod: resolvedState.resolvedMethod,
           oauthRequestedScopes: resolvedState.oauthRequestedScopes,
           authorizationUrl: resolvedState.authorizationUrl,
+          encryptedAuthClient: resolvedState.encryptedAuthClient,
           code,
           redirectUri: resolvedState.redirectUri,
           state,

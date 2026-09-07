@@ -89,6 +89,10 @@ type PostConnectOptions = {
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
   readonly connectorIcon: PublicConnectorCatalogIcon;
+  readonly oauthClient?: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+  };
 };
 
 export interface ConnectorConnectionResult {
@@ -2214,6 +2218,10 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       readonly account: PlatformConnectorAccountMutationIntent;
       readonly authorizeAgent: boolean;
       readonly beforeStart: (signal: AbortSignal) => Promise<void>;
+      readonly oauthClient?: {
+        readonly clientId: string;
+        readonly clientSecret: string;
+      };
     },
     signal: AbortSignal,
   ): Promise<{
@@ -2292,6 +2300,9 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                   body: {
                     account: args.account,
                     authMethod: args.method.id,
+                    ...(args.oauthClient
+                      ? { oauthClient: args.oauthClient }
+                      : {}),
                     ...(args.authorizeAgent
                       ? { authorizeAgent: true as const }
                       : {}),
@@ -2509,6 +2520,7 @@ export const connectConnectorOAuthAuthCode$ = command(
             agentId: options.agentId,
             account,
             authorizeAgent: shouldAuthorizeAgent(options),
+            oauthClient: options.oauthClient,
             beforeStart: async (sig) => {
               await set(onConnectorChanged$, sig);
             },

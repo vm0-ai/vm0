@@ -24,6 +24,7 @@ const storedOAuthStateSelection = Object.freeze({
   oauthRequestedScopes: connectorOauthStates.oauthRequestedScopes,
   codeVerifier: connectorOauthStates.codeVerifier,
   oauthContext: connectorOauthStates.oauthContext,
+  encryptedAuthClient: connectorOauthStates.encryptedAuthClient,
   accountMutation: storedConnectorAccountMutationSelection(
     connectorOauthStates.accountMutation,
   ),

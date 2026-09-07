@@ -114,6 +114,13 @@ function methodClientContract(
   if (client.clientRegistration === "dynamic") {
     return { kind: "dynamic-public" };
   }
+  if ("clientIdInput" in client) {
+    return {
+      kind: "static-confidential-input",
+      clientIdInput: client.clientIdInput,
+      clientSecretInput: client.clientSecretInput,
+    };
+  }
   if (client.clientType === "confidential") {
     return "clientIdEnv" in client
       ? {

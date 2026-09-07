@@ -121,6 +121,10 @@ type PostConnectOptions = {
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
   readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
+  readonly oauthClient?: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+  };
 };
 
 type SubmitManualGrantFn = (
@@ -433,9 +437,23 @@ function OAuthAuthCodeConnectButton({
   const { t } = useTranslation();
   const signal = useGet(pageSignal$);
   return (
-    <Button
-      variant="outline"
-      onClick={() => {
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const clientId = form.get("clientId");
+        const clientSecret = form.get("clientSecret");
+        if (
+          method.requiresOAuthClient &&
+          (typeof clientId !== "string" ||
+            !clientId ||
+            typeof clientSecret !== "string" ||
+            !clientSecret)
+        ) {
+          return;
+        }
+        event.currentTarget.reset();
         return detach(
           connectOAuthAuthCodeAndSettle(
             item.slug,
@@ -445,6 +463,11 @@ function OAuthAuthCodeConnectButton({
               authorizeVisibleAgents: authorizeVisibleAgentsOnConnect,
               connectorLabel: item.label,
               connectorIcon: item.icon,
+              ...(method.requiresOAuthClient &&
+              typeof clientId === "string" &&
+              typeof clientSecret === "string"
+                ? { oauthClient: { clientId, clientSecret } }
+                : {}),
               ...(agentId ? { agentId } : {}),
               ...accountOptions,
             },
@@ -453,26 +476,58 @@ function OAuthAuthCodeConnectButton({
           Reason.DomCallback,
         );
       }}
-      className="w-full"
     >
-      {accountMode?.kind === "reconnect" || reconnectAuthMethod !== undefined
-        ? t(($) => {
-            return $.connectors.actions.reconnect;
-          })
-        : accountMode || !item.connected
-          ? t(($) => {
-              return $.connectors.actions.connect;
-            })
-          : t(($) => {
-              return $.connectors.actions.authorize;
+      {method.requiresOAuthClient && (
+        <>
+          {method.description && (
+            <ConnectorHelpText text={method.description} />
+          )}
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.connectors.custom.create.clientId;
             })}
-    </Button>
+            <Input
+              name="clientId"
+              required
+              maxLength={4096}
+              autoComplete="off"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.connectors.custom.create.clientSecret;
+            })}
+            <Input
+              name="clientSecret"
+              type="password"
+              required
+              maxLength={4096}
+              autoComplete="new-password"
+            />
+          </label>
+        </>
+      )}
+      <Button type="submit" variant="outline" className="w-full">
+        {accountMode?.kind === "reconnect" || reconnectAuthMethod !== undefined
+          ? t(($) => {
+              return $.connectors.actions.reconnect;
+            })
+          : accountMode || !item.connected
+            ? t(($) => {
+                return $.connectors.actions.connect;
+              })
+            : t(($) => {
+                return $.connectors.actions.authorize;
+              })}
+      </Button>
+    </form>
   );
 }
 
 function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthAuthCodeConnectButton
+      key={`${props.item.slug}:${props.method.id}`}
       item={props.item}
       method={props.method}
       onSuccess={props.onSuccess}

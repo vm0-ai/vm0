@@ -354,7 +354,10 @@ async function readOAuthStateAccountMutation(
   signal: AbortSignal,
 ) {
   const [state] = await db
-    .select({ accountMutation: connectorOauthStates.accountMutation })
+    .select({
+      accountMutation: connectorOauthStates.accountMutation,
+      encryptedAuthClient: connectorOauthStates.encryptedAuthClient,
+    })
     .from(connectorOauthStates)
     .where(eq(connectorOauthStates.state, body.state))
     .limit(1);
@@ -362,7 +365,10 @@ async function readOAuthStateAccountMutation(
   if (!state) {
     throw new Error("Expected connector OAuth state");
   }
-  return actionOk({ account_mutation: state.accountMutation });
+  return actionOk({
+    account_mutation: state.accountMutation,
+    encrypted_auth_client: state.encryptedAuthClient,
+  });
 }
 
 async function deleteCustomCredentialValues(

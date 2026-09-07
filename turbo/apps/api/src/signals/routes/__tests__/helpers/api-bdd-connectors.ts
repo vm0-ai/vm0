@@ -2002,6 +2002,10 @@ export function createConnectorBddApi(context: TestContext) {
         readonly authorizeAgent?: true;
         readonly callbackTarget?: "app";
         readonly account?: ConnectorAccountMutationIntent;
+        readonly oauthClient?: {
+          readonly clientId: string;
+          readonly clientSecret: string;
+        };
       },
     ) {
       const client = setupApp({ context, routes: connectorsRoutes })(
@@ -2019,6 +2023,9 @@ export function createConnectorBddApi(context: TestContext) {
               ? { callbackTarget: options.callbackTarget }
               : {}),
             account: options.account ?? { intent: "add" },
+            ...(options.oauthClient
+              ? { oauthClient: options.oauthClient }
+              : {}),
           },
         }),
         options.statuses,

@@ -49,10 +49,7 @@ import {
   getConnectorOpenIdCallbackOriginForMethod,
 } from "./connector-oauth-origin";
 import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
-import {
-  buildConnectorAuthCodeAuthUrlWithMethod,
-  prepareConnectorAuthCodeStartWithMethod,
-} from "./connector-auth-code-start";
+import { prepareConnectorAuthCodeStartWithMethod } from "./connector-auth-code-start";
 import {
   buildConnectorOpenIdAuthUrlWithMethod,
   prepareConnectorOpenIdAuthStartWithMethod,
@@ -469,24 +466,25 @@ const startConnectorOauthInner$ = command(
       callbackTarget: bodyResult.data.callbackTarget,
       publicBrand,
     });
-    const prepared = prepareConnectorAuthCodeStartWithMethod({
-      method,
-      redirectUri,
-      readEnv: optionalEnv,
-      publicBrand,
-    });
-    if (!prepared.ok) {
-      return internalServerError(`${connectorSlug} auth client not configured`);
-    }
-    const authResult = await buildConnectorAuthCodeAuthUrlWithMethod({
-      connectorSlug: resolved.connectorSlug,
-      authMethodId: resolved.authMethodId,
-      method,
-      authClient: prepared.authClient,
-      redirectUri: prepared.redirectUri,
-      state: prepared.state,
-    });
+    const prepared = await prepareConnectorAuthCodeStartWithMethod(
+      {
+        connectorSlug: resolved.connectorSlug,
+        authMethodId: resolved.authMethodId,
+        method,
+        redirectUri,
+        readEnv: optionalEnv,
+        oauthClient: bodyResult.data.oauthClient,
+        publicBrand,
+      },
+      signal,
+    );
     signal.throwIfAborted();
+    if (!prepared.ok) {
+      return prepared.reason === "invalid_client_inputs"
+        ? badRequestMessage(prepared.message)
+        : internalServerError(prepared.message);
+    }
+    const { authResult } = prepared;
 
     const writeDb = set(writeDb$);
     const mutationStart = await writeDb.transaction(async (tx) => {
@@ -513,6 +511,7 @@ const startConnectorOauthInner$ = command(
         oauthRequestedScopes: requestedScopeSnapshot(resolved.method.grant),
         codeVerifier: authResult.codeVerifier,
         oauthContext: authResult.oauthContext,
+        encryptedAuthClient: prepared.encryptedAuthClient,
         accountMutation: bodyResult.data.account,
         expiresAt: connectorOAuthStateExpiresAt(),
       });

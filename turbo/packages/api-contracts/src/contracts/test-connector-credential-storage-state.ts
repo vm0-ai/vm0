@@ -263,6 +263,7 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     account_mutation: connectorAccountMutationIntentSchema
       .nullable()
       .optional(),
+    encrypted_auth_client: z.string().nullable().optional(),
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
     automatic_oauth_binding: automaticOauthBindingStateSchema.optional(),
     feishu_member_connection: feishuMemberConnectionStateSchema

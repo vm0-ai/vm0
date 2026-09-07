@@ -841,6 +841,111 @@ describe("FW-3: billable firewall lease", () => {
 });
 
 describe("FW-4: connector refresh and replacement snapshots", () => {
+  it("refreshes CMP with the connection's client and rotated token even when global credentials differ", async () => {
+    const fw = createFirewallApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, headers } = await firewallRun();
+    mockOptionalEnv(
+      "OPTIMIZELY_CMP_OAUTH_CLIENT_ID",
+      "unrelated-global-client",
+    );
+    mockOptionalEnv(
+      "OPTIMIZELY_CMP_OAUTH_CLIENT_SECRET",
+      "unrelated-global-secret",
+    );
+    const tokenUrl = "https://accounts.cmp.optimizely.com/o/oauth2/v1/token";
+    server.use(
+      http.post(tokenUrl, async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          grant_type: "authorization_code",
+          client_id: "connection-client",
+          client_secret: "connection-secret",
+        });
+        return HttpResponse.json({
+          access_token: "cmp-access-0",
+          refresh_token: "cmp-refresh-0",
+          expires_in: 3600,
+        });
+      }),
+      http.get(
+        "https://accounts.cmp.optimizely.com/o/oauth2/v1/userinfo",
+        () => {
+          return HttpResponse.json({ sub: "cmp-user" });
+        },
+      ),
+    );
+    const started = await connectors.requestOauthStart(
+      actor,
+      "optimizely-cmp",
+      "oauth-client",
+      {
+        statuses: [200],
+        authorizeAgent: true,
+        oauthClient: {
+          clientId: "connection-client",
+          clientSecret: "connection-secret",
+        },
+      },
+    );
+    if (started.status !== 200) {
+      throw new Error("Expected CMP OAuth start");
+    }
+    const state = new URL(started.body.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!state) {
+      throw new Error("Expected CMP OAuth state");
+    }
+    await connectors.completeOauthCallback("optimizely-cmp", {
+      code: "cmp-code",
+      state,
+    });
+    const sources = await exactSecretConnectorSources(actor, {
+      OPTIMIZELY_CMP_TOKEN: "optimizely-cmp",
+    });
+    let rotation = 0;
+    server.use(
+      http.post(tokenUrl, async ({ request }) => {
+        await expect(request.json()).resolves.toStrictEqual({
+          grant_type: "refresh_token",
+          client_id: "connection-client",
+          client_secret: "connection-secret",
+          refresh_token: `cmp-refresh-${rotation}`,
+        });
+        rotation += 1;
+        return HttpResponse.json({
+          access_token: `cmp-access-${rotation}`,
+          refresh_token: `cmp-refresh-${rotation}`,
+          expires_in: 3600,
+        });
+      }),
+    );
+    for (const version of [0, 1]) {
+      const refreshed = await fw.requestFirewallAuth(
+        headers,
+        {
+          ...sources,
+          encryptedSecrets: fw.encryptedSecretsBody({
+            OPTIMIZELY_CMP_TOKEN: `cmp-access-${version}`,
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("OPTIMIZELY_CMP_TOKEN")}`,
+          },
+          forceRefresh: true,
+        },
+        [200],
+      );
+      if (refreshed.status !== 200) {
+        throw new Error("Expected CMP token refresh");
+      }
+      expect(refreshed.body.headers).toStrictEqual({
+        Authorization: `Bearer cmp-access-${version + 1}`,
+      });
+      expect(JSON.stringify(refreshed.body)).not.toContain("connection-secret");
+    }
+    expect(rotation).toBe(2);
+  });
+
   it("does not call the provider for a known storage version mismatch", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();

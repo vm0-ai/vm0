@@ -94,7 +94,10 @@ import { nintendoSwitchParentalControlsProvider } from "./connectors/nintendo-sw
 import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
 import { netsuiteProvider } from "./connectors/netsuite/provider";
-import { optimizelyCmpProvider } from "./connectors/optimizely-cmp/provider";
+import {
+  optimizelyCmpProvider,
+  optimizelyCmpClientProvider,
+} from "./connectors/optimizely-cmp/provider";
 import { otoProvider } from "./connectors/oto/provider";
 import { noyoProvider } from "./connectors/noyo/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
@@ -273,6 +276,13 @@ function connectorAuthProviderClientContract(
   if (client.clientRegistration === "dynamic") {
     return { kind: "dynamic-public" };
   }
+  if ("clientIdInput" in client) {
+    return {
+      kind: "static-confidential-input",
+      clientIdInput: client.clientIdInput,
+      clientSecretInput: client.clientSecretInput,
+    };
+  }
   if (client.clientType === "confidential") {
     return "clientIdEnv" in client
       ? {
@@ -361,6 +371,7 @@ function connectorAuthProviderRequiredConfigurationNames(
       names.add(contract.client.clientIdEnv);
       break;
     case "none":
+    case "static-confidential-input":
     case "static-confidential-literal":
     case "static-public-literal":
     case "dynamic-public":
@@ -1056,6 +1067,11 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     optimizelyCmpProvider,
   ),
   refreshProviderEntry("oto", "api-token", otoProvider),
+  authCodeRefreshTokenRevokeProviderEntry(
+    "optimizely-cmp",
+    "oauth-client",
+    optimizelyCmpClientProvider,
+  ),
   refreshProviderEntry("noyo", "api-token", noyoProvider),
   authCodeRefreshProviderEntry("resource-guru", "oauth", resourceGuruProvider),
   authCodeRefreshProviderEntry(
@@ -1521,9 +1537,19 @@ export async function refreshConnectorAuthProviderAccessTokenWithMethod(
       `Refresh-token access required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
+  const authClient =
+    args.method.client && "clientIdInput" in args.method.client
+      ? resolveConnectorAuthClient(
+          args.method.client,
+          () => {
+            return undefined;
+          },
+          args.inputs,
+        )
+      : args.authClient;
   assertOptionalConnectorAuthClientMatchesMethod({
     selection: args,
-    authClient: args.authClient,
+    authClient,
   });
   assertDeclaredProviderInputs({
     selection: args,
@@ -1537,7 +1563,7 @@ export async function refreshConnectorAuthProviderAccessTokenWithMethod(
   >(
     access.refresh,
     {
-      ...(args.authClient === undefined ? {} : { authClient: args.authClient }),
+      ...(authClient === undefined ? {} : { authClient }),
       inputs: args.inputs,
     },
     signal,
@@ -1568,11 +1594,21 @@ export async function revokeConnectorAuthMethodAccessTokenWithMethod(
   if (clientConfig === undefined) {
     return { status: "unsupported" };
   }
-  const authClient = resolveConnectorAuthClient(clientConfig, args.readEnv);
-  if (!authClient || !isStaticConnectorAuthClient(authClient)) {
+  const configuredClient = resolveConnectorAuthClient(
+    clientConfig,
+    args.readEnv,
+  );
+  if (!("clientIdInput" in clientConfig) && !configuredClient) {
     return { status: "unsupported" };
   }
   const inputs = await args.loadInputs();
+  const authClient =
+    "clientIdInput" in clientConfig
+      ? resolveConnectorAuthClient(clientConfig, args.readEnv, inputs)
+      : configuredClient;
+  if (!authClient || !isStaticConnectorAuthClient(authClient)) {
+    return { status: "unsupported" };
+  }
   assertDeclaredProviderInputs({
     selection: args,
     operation: "revoke",

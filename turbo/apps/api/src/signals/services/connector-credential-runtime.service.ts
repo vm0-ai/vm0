@@ -629,13 +629,11 @@ export async function refreshConnectorCredentialAccess(
   if (access.kind !== "refresh-token") {
     return { kind: "not-refreshable" };
   }
-  const authClient = args.connection.runtimeMethod.method.client
-    ? resolveConnectorAuthClient(
-        args.connection.runtimeMethod.method.client,
-        optionalEnv,
-      )
+  const clientConfig = args.connection.runtimeMethod.method.client;
+  const authClient = clientConfig
+    ? resolveConnectorAuthClient(clientConfig, optionalEnv)
     : undefined;
-  if (args.connection.runtimeMethod.method.client && !authClient) {
+  if (clientConfig && !("clientIdInput" in clientConfig) && !authClient) {
     return { kind: "configuration-unavailable" };
   }
   const loadedInputs = await loadConnectorRefreshInputs(args, access);
