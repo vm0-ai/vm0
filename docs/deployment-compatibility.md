@@ -237,11 +237,21 @@ status writer, and the independently deployed host monitoring collector scans
 every versioned runner directory. Status schema changes must cover those
 old/new combinations rather than treating the file as process-private state.
 
-Current status writers publish `idle_sandboxes` and omit the field when the
-collection is empty. Blank-enabled writers currently encode ready blanks there
-using `reuse_key: "__vm0_blank__:<sandbox_id>"`. A ready blank has no run ID or
-tenant reuse identity. The migration tracked by [#32071](https://github.com/vm0-ai/vm0/issues/32071)
-separates exact and blank identity without changing shared pool lifecycle rules.
+Current status writers publish exact inventory in `idle_sandboxes` and ready
+blanks in `blank_sandboxes`, omitting each collection when empty. Exact entries
+contain `reuse_key` and `sandbox_id`; blank entries contain only `sandbox_id`,
+never a run ID or tenant reuse identity. Both collections are captured from one
+pool revision and applied together, including preparing/running ownership
+transitions. Older blank-enabled writers encode blanks in `idle_sandboxes`
+using `reuse_key: "__vm0_blank__:<sandbox_id>"`. The migration tracked by
+[#32071](https://github.com/vm0-ai/vm0/issues/32071) separates these identities
+without changing shared pool lifecycle rules.
+
+Internally, the same `IdlePool` owns exact reuse-key and blank sandbox-ID
+indexes. They share capacity limits, budget ownership, parking gates and a
+mutation revision; they are not independent pools. Exact lookup, exact-first
+restoration, blank-first pressure eviction and conditional exact aging retain
+their existing policies. Heartbeat reuse inventories contain exact entries only.
 
 The reader bridge ([#32082](https://github.com/vm0-ai/vm0/issues/32082)) lets doctor
 and the host collector also read `blank_sandboxes: [{"sandbox_id": "..."}]`.
@@ -252,7 +262,7 @@ prefix-like reuse keys remain exact. Explicit blank IDs suppress same-file idle
 mirrors, and duplicate blank IDs count once. Doctor lists exact reuse keys under
 Idle and sandbox-ID-only entries under Blank, recognizes both as owned processes,
 and never treats an unclaimed blank as an active job. Active mappings take
-priority over duplicate blanks. The writer is unchanged in the bridge release.
+priority over duplicate blanks. The bridge release itself did not change the writer.
 
 The collector exports `vm0_runner_sandboxes{state="blank"}` (including zero).
 `state="idle"` now counts exact inventory only; total parked inventory is the
@@ -268,15 +278,24 @@ only `idle` will now show exact inventory; this change does not edit dashboards.
 
 The collector is installed by host provisioning, independently of Runner
 releases. Both its systemd timer and Alloy textfile scrape run every 15 seconds.
-Before enabling the explicit-only writer in
-[#32083](https://github.com/vm0-ai/vm0/issues/32083), verify bridge-capable doctor
-and collector deployment on every supported host and establish a compatible
-rollback floor using the actual reader commit/release ancestry. The target
-Runner's doctor runs during rollback, so an old-reader/new-writer combination
-must be excluded by these gates. Old writers remain readable by bridge readers
-during draining; neither merging this bridge nor releasing Runner proves the
-independent collector is installed. No writer rollout or rollback floor is
-changed by the bridge PR.
+Before merging/releasing the explicit-only writer in
+[#32083](https://github.com/vm0-ai/vm0/issues/32083), record the following evidence
+on its PR:
+
+- Every supported host has the bridge-capable doctor and collector installed;
+  record the Runner release/commit and installed collector revision or checksum.
+- A successfully deployed reader release contains commit
+  `febec8a3399be74b0f14a89cb9f42e39dd5ce69f` (PR #32092).
+- Supported rollback targets include that reader. The production rollback
+  resolver checks ancestry for both the target commit and the resolved Runner
+  artifact tag, because a newer API release can reuse an older Runner artifact.
+
+These are deployment gates, not claims established by repository tests. The
+target Runner's doctor runs during rollback, so old-reader/new-writer is not a
+supported combination. Bridge readers support old, new and mixed writers
+during draining. Neither merging the bridge nor releasing Runner proves the
+independent collector is installed. Keep the writer PR unmerged until the fleet
+evidence is recorded; no production rollout is authorized by the implementation.
 
 Remove legacy prefix recognition only under
 [#32084](https://github.com/vm0-ai/vm0/issues/32084), after all supported live and

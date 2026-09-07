@@ -69,12 +69,7 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     )
     .await;
     let snapshot = idle_pool.lock().await.status_snapshot();
-    assert!(
-        status
-            .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
-            .await
-            .unwrap()
-    );
+    assert!(status.set_idle_snapshot(snapshot.clone()).await.unwrap());
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
         vec!["sess-reuse-status".to_string()],

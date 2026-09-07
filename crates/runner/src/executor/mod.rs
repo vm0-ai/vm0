@@ -745,8 +745,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {
         sandbox,
-        kind,
-        reuse_key: idle_reuse_key,
+        identity,
         source_ip,
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,
@@ -754,12 +753,14 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         guest_state_prepared,
     } = idle_sandbox.into_parts();
 
+    let kind = identity.kind();
+    let idle_reuse_key = identity.reuse_key();
     let resume_session_error = validate_resume_session_id(&context).err();
     let claimed_reuse_key = context.reuse_key();
     let expected_promotion_reuse_key = if resume_session_error.is_some() {
-        idle_reuse_key.as_str()
+        idle_reuse_key
     } else {
-        claimed_reuse_key.unwrap_or(idle_reuse_key.as_str())
+        idle_reuse_key.map(|exact_key| claimed_reuse_key.unwrap_or(exact_key))
     };
     let workspace_image = match resolve_reused_workspace_promotion(
         config.workspace_cache.as_ref(),
@@ -882,10 +883,24 @@ async fn resolve_reused_workspace_promotion(
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    reuse_key: &str,
+    reuse_key: Option<&str>,
 ) -> Result<Option<WorkspaceImageLease>, Box<ExecutionFailure>> {
     let Some(promotion) = promotion else {
         return Ok(None);
+    };
+    let Some(reuse_key) = reuse_key else {
+        abandon_unpublished_workspace_promotion(
+            Some(promotion),
+            "reuse_workspace_promotion_mismatch",
+        )
+        .await;
+        return Err(workspace_promotion_identity_failure(
+            run_id,
+            sandbox_id,
+            &params.profile_name,
+            WorkspaceImagePromotionIdentityMismatch::ReuseKey,
+        )
+        .into());
     };
     let Some(cache) = cache else {
         promotion

@@ -32,7 +32,7 @@ async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution
     );
     assert_eq!(calls.start_run_control_ids(), vec![None]);
     assert!(calls.run_control_bind_calls().is_empty());
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
@@ -55,6 +55,15 @@ async fn blank_pool_prepares_and_serves_a_job_without_changing_reuse_attribution
     assert_eq!(calls.workspace_drive_mount_calls(), 1);
 
     shutdown(&env, run_handle).await;
+    let status: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(env._temp_dir.path().join("status.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(status["mode"], "stopped");
+    assert!(status.get("idle_sandboxes").is_none());
+    assert!(status.get("blank_sandboxes").is_none());
 }
 
 #[tokio::test(start_paused = true)]
@@ -65,7 +74,7 @@ async fn full_capacity_claims_compatible_blank_before_pressure_eviction() {
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
     let parked_at = std::time::Instant::now();
     for reuse_key in [
         "capacity-1",
@@ -117,7 +126,7 @@ async fn exact_idle_that_parks_during_claim_takes_priority_over_reserved_blank()
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
     env.handle.block_claims();
 
     let run_id = RunId::new_v4();
@@ -270,7 +279,7 @@ async fn blank_backed_run_becomes_exact_reuse_and_wins_over_refilled_blank() {
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
     let reuse_key = "session-blank-to-exact";
 
     let first_run_id = RunId::new_v4();
@@ -328,7 +337,7 @@ async fn blank_unpark_failure_falls_back_without_changing_cold_attribution() {
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
     push_job(
@@ -589,7 +598,7 @@ async fn incompatible_profile_fresh_creates_without_consuming_blank_inventory() 
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/large", Some(minimal_context(run_id)));
@@ -637,7 +646,7 @@ async fn workspace_cache_hit_takes_priority_over_compatible_blank_inventory() {
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
     let mut context = context_with_session(run_id, "workspace-priority-session");
@@ -688,7 +697,7 @@ async fn claimed_workspace_cache_metadata_takes_priority_over_reserved_blank() {
     let run_handle = tokio::spawn(run(config));
 
     wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
-    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().idle_sandboxes[0].sandbox_id;
+    let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
     let mut context = context_with_session(run_id, "claimed-workspace-priority-session");

@@ -44,7 +44,7 @@ fn park_at(
     candidate: ParkedIdleCandidate,
     parked_at: Instant,
 ) -> ParkResult {
-    assert_eq!(candidate.reuse_key(), reuse_key);
+    assert_eq!(candidate.reuse_key(), Some(reuse_key));
     pool.park_at_for_test(candidate, parked_at)
 }
 
@@ -119,7 +119,7 @@ async fn blank_capacity_yield_selects_only_the_oldest_compatible_aged_exact() {
     let (oldest, idle_age) = pool
         .evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048)
         .expect("oldest compatible exact should yield capacity");
-    assert_eq!(oldest.reuse_key(), "oldest");
+    assert_eq!(oldest.reuse_key(), Some("oldest"));
     assert_eq!(idle_age, Duration::from_secs(45 * 60));
     assert_eq!(pool.status_snapshot().revision, revision + 1);
     oldest.run().await;
@@ -127,7 +127,7 @@ async fn blank_capacity_yield_selects_only_the_oldest_compatible_aged_exact() {
     let (boundary, idle_age) = pool
         .evict_oldest_exact_for_blank(now, min_idle_age, "vm0/default", &None, 2, 2048)
         .expect("the age boundary should be inclusive");
-    assert_eq!(boundary.reuse_key(), "boundary");
+    assert_eq!(boundary.reuse_key(), Some("boundary"));
     assert_eq!(idle_age, min_idle_age);
     boundary.run().await;
 
@@ -381,21 +381,41 @@ fn park_respects_max_idle() {
 fn blank_entries_are_reserved_only_by_compatible_blank_lookup() {
     let mut pool = IdlePool::new(pool_config(0));
     let blank = make_blank_candidate("vm0/default", 2, 2048);
-    let blank_key = blank.reuse_key().to_owned();
+    let blank_id = blank.sandbox_id();
+    assert!(blank.reuse_key().is_none());
     assert!(matches!(pool.park(blank), ParkResult::Parked));
 
     assert_eq!(pool.blank_len(), 1);
-    assert!(pool.take_reserved(&blank_key).is_none());
+    assert!(pool.take_reserved(&blank_id.to_string()).is_none());
     assert!(
-        pool.reserve_reusable(&blank_key, "vm0/default", &None)
+        pool.reserve_reusable(&blank_id.to_string(), "vm0/default", &None)
             .is_none()
     );
     assert!(pool.reserve_blank("vm0/large", &None).is_none());
+
+    // A real exact key that equals a blank's sandbox ID is a different identity.
+    let exact_key = blank_id.to_string();
+    assert!(matches!(
+        pool.park(make_candidate_for(&exact_key, 2, 2048)),
+        ParkResult::Parked
+    ));
+    let exact = pool
+        .reserve_reusable(&exact_key, "vm0/default", &None)
+        .unwrap();
+    assert_eq!(exact.kind(), IdleSandboxKind::Exact);
+    assert_eq!(exact.reuse_key(), Some(exact_key.as_str()));
+    assert_eq!(pool.blank_len(), 1);
+    assert!(matches!(
+        pool.restore_reserved(exact),
+        RestoreReservedIdleResult::Restored
+    ));
 
     let reserved = pool
         .reserve_blank("vm0/default", &None)
         .expect("compatible blank should reserve");
     assert_eq!(reserved.kind(), IdleSandboxKind::Blank);
+    assert_eq!(reserved.sandbox_id(), blank_id);
+    assert!(reserved.reuse_key().is_none());
     assert_eq!(pool.blank_len(), 0);
 }
 
@@ -407,7 +427,8 @@ fn blank_entries_remain_in_status_but_not_heartbeat_state() {
         ParkResult::Parked
     ));
 
-    assert_eq!(pool.status_snapshot().idle_sandboxes.len(), 1);
+    assert!(pool.status_snapshot().idle_sandboxes.is_empty());
+    assert_eq!(pool.status_snapshot().blank_sandboxes.len(), 1);
     assert!(pool.held_sandbox_states().is_empty());
 }
 
@@ -483,7 +504,10 @@ fn pressure_ordering_evicts_oldest_first() {
     let _ = park_at(&mut pool, "new", make_candidate_for("new", 4, 4096), now);
 
     let reuse_keys = pool.oldest_first_pressure_keys();
-    assert_eq!(reuse_keys, vec!["old", "new"]);
+    assert_eq!(
+        reuse_keys,
+        ["old", "new"].map(|key| IdleSandboxIdentity::Exact(key.to_owned()))
+    );
     let evicted = pool.evict_for_pressure(&reuse_keys[0]).unwrap();
     assert_eq!(evicted.budget_vcpu(), 2); // the old one
     assert_eq!(pool.len(), 1);
@@ -505,15 +529,19 @@ fn pressure_ordering_evicts_blank_before_older_exact_entry() {
         ParkResult::Parked
     ));
     let blank = make_blank_candidate("vm0/default", 2, 2048);
-    let blank_key = blank.reuse_key().to_owned();
+    let blank_id = blank.sandbox_id();
+    assert!(blank.reuse_key().is_none());
     assert!(matches!(
-        park_at(&mut pool, &blank_key, blank, now),
+        pool.park_at_for_test(blank, now),
         ParkResult::Parked
     ));
 
     assert_eq!(
         pool.oldest_first_pressure_keys(),
-        vec![blank_key, "session-exact".to_owned()]
+        vec![
+            IdleSandboxIdentity::Blank(blank_id),
+            IdleSandboxIdentity::Exact("session-exact".to_owned())
+        ]
     );
 }
 
@@ -531,7 +559,11 @@ fn pressure_ordering_breaks_equal_park_time_by_reuse_key() {
     }
 
     let reuse_keys = pool.oldest_first_pressure_keys();
-    assert_eq!(reuse_keys, vec!["session-a", "session-m", "session-z"]);
+    assert_eq!(
+        reuse_keys,
+        ["session-a", "session-m", "session-z"]
+            .map(|key| IdleSandboxIdentity::Exact(key.to_owned()))
+    );
 }
 
 #[test]
