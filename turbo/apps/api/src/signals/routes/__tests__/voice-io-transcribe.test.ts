@@ -17,8 +17,6 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { seedUserBehaviorCount } from "../../../test-fixtures/user-behavior-count";
-import { nowDate } from "../../../lib/time";
 import { createBddApi } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
@@ -812,12 +810,6 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       tier: "free",
       credits: 10_000,
     });
-    await seedUserBehaviorCount({
-      orgId: actor.orgId,
-      userId: actor.userId,
-      behaviorKey: `audio_input_dur_${nowDate().toISOString().slice(0, 10)}`,
-      count: 600 - 118,
-    });
     server.use(
       http.post(OPENROUTER_URL, () => {
         return HttpResponse.json({
@@ -836,6 +828,22 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       }),
     );
     const headers = { authorization: "Bearer clerk-session" };
+    // Accumulate 482 seconds through the API while leaving room under the
+    // free daily request limit for the two overlapping segments below.
+    for (const durationSeconds of [75, 75, 75, 75, 75, 75, 32]) {
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm(
+            [audioFile(1, durationSeconds)],
+            "",
+            false,
+            durationSeconds,
+          ),
+        }),
+        [200],
+      );
+    }
     await accept(
       client().segment({
         headers,
