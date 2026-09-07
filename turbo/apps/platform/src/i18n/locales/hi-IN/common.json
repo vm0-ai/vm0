@@ -2162,8 +2162,10 @@
       "title": "कंपोज़र ड्राफ्ट बदलें?"
     },
     "run": {
+      "all": "सभी",
       "automatedRun": "स्वचालित रन",
       "collapseGroupedHistory": "समूहीकृत रन इतिहास को संक्षिप्त करें",
+      "collapseHistoryMessage": "इतिहास संदेश संक्षिप्त करें: {{message}}",
       "collapseWorkHistory": "कार्य इतिहास संक्षिप्त करें",
       "creditUsage": "क्रेडिट उपयोग",
       "done": {
@@ -2205,6 +2207,7 @@
       "keepGoingAt": "चलते रहें · {{timestamp}}",
       "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
       "queueEllipsis": "कतार...",
+      "recent": "हाल के",
       "selectedModelAppliesAfterCurrentRun": "आपका चुना हुआ {{model}} मॉडल इस रन के बाद लागू होगा",
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",
@@ -2223,6 +2226,7 @@
       "waitingIn": "प्रतीक्षा कर रहा है",
       "worked": "काम किया",
       "workedFor": "{{duration}} के लिए काम किया",
+      "workHistoryRange": "कार्य इतिहास सीमा",
       "workingFor": "{{duration}} से काम जारी"
     },
     "sharing": {

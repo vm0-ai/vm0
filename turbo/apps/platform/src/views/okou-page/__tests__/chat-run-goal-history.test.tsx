@@ -15,7 +15,6 @@ import {
   context,
   creditUsage,
   expectTextOrder,
-  findButton,
   installRunChat,
   promptEvent,
   readyChat,
@@ -65,12 +64,6 @@ function inRunGroup(
   runGroupId: string,
 ): MockChatEventInput {
   return { ...event, runGroupId };
-}
-
-function buttonsNamed(name: string): HTMLElement[] {
-  return queryAllByRoleFast("button").filter((button) => {
-    return button.getAttribute("aria-label") === name;
-  });
 }
 
 test("Review goal continuations as one work history", async () => {
@@ -198,7 +191,7 @@ test("Review goal continuations as one work history", async () => {
   expect(screen.queryByText("Keep checking launch readiness")).toBeNull();
   expect(screen.queryByText("Finish checking launch readiness")).toBeNull();
 
-  click(await findButton("Expand work history"));
+  click(await screen.findByRole("radio", { name: "All" }));
 
   await expect(
     screen.findByText("Checked the initial launch evidence"),
@@ -459,7 +452,7 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
     screen.queryByText("Continue the deployment investigation with Sol"),
   ).toBeNull();
 
-  click(await findButton("Expand work history"));
+  click(await screen.findByRole("radio", { name: "All" }));
 
   await expect(
     screen.findByText("Model changed to GPT 5.6 Luna"),
@@ -567,7 +560,7 @@ test("Start a fresh work history after interrupting a goal continuation", async 
   });
 
   await readyChat();
-  const workHistories = buttonsNamed("Expand work history");
+  const workHistories = screen.getAllByRole("radio", { name: "All" });
   expect(workHistories).toHaveLength(2);
   expect(queryMessageBody("Checked the first rollout logs")).toBeNull();
   expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();

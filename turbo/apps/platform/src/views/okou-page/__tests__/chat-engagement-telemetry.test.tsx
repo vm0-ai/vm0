@@ -95,10 +95,8 @@ describe("chat engagement telemetry", () => {
       },
     });
 
-    const expandWork = await waitFor(() => {
-      return buttonByLabel("Expand work history");
-    });
-    expect(expandWork).toHaveTextContent(/^Working for /);
+    const expandWork = await screen.findByRole("radio", { name: "All" });
+    expect(screen.getByText(/^Working for /)).toBeVisible();
     expect(queryMessageBody("Checking the launch brief.")).toBeNull();
 
     click(expandWork);
@@ -110,7 +108,7 @@ describe("chat engagement telemetry", () => {
       ["chat_work_history_expanded", { work_status: "active" }],
     ]);
 
-    click(buttonByLabel("Collapse work history"));
+    click(screen.getByRole("radio", { name: "Recent" }));
 
     await waitFor(() => {
       expect(queryMessageBody("Checking the launch brief.")).toBeNull();
@@ -118,7 +116,7 @@ describe("chat engagement telemetry", () => {
     expect(capturedEvents("chat_work_history_expanded")).toHaveLength(1);
   });
 
-  it("reports expanding completed work history through the legacy fold", async () => {
+  it("reports expanding completed work history through the range control", async () => {
     const threadId = "e7000000-0000-4000-a000-000000000102";
     mockChatLifecycle(context, {
       threadId,
@@ -153,7 +151,7 @@ describe("chat engagement telemetry", () => {
     const expandWork = await waitFor(() => {
       return buttonByLabel("Expand work history");
     });
-    expect(expandWork).toHaveTextContent("Worked for 20s");
+    expect(screen.getByText("Worked for 20s")).toBeVisible();
 
     click(expandWork);
 

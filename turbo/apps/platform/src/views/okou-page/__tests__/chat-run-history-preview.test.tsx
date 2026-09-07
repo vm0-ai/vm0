@@ -27,7 +27,7 @@ test.each([
   { count: 4, expected: ["•Step 1", "•Step 2", "•Step 3"] },
   { count: 6, expected: ["•Step 3", "•Step 4", "•Step 5"] },
 ])(
-  "Preview up to three messages immediately before the main result with $count outputs",
+  "Show up to three recent messages and every history message with $count outputs",
   async ({ count, expected }) => {
     installRunChat({
       activeRunIds: [RUN_ID],
@@ -76,9 +76,17 @@ test.each([
     if (count < 2) {
       return;
     }
-    click(await findButton("Expand work history"));
-    await findButton("Collapse work history");
-    expect(document.querySelector("[data-chat-run-work-preview]")).toBeNull();
+    const showAll = await screen.findByRole("radio", { name: "All" });
+    expect(showAll).not.toBeChecked();
+    click(showAll);
+    const showRecent = await screen.findByRole("radio", { name: "Recent" });
+    expect(showAll).toBeChecked();
+    expect(
+      document.querySelectorAll("[data-chat-run-work-message]"),
+    ).toHaveLength(count - 1);
+    expect(
+      document.querySelectorAll("[data-chat-run-work-preview]"),
+    ).toHaveLength(count - 1);
     expect(screen.getByText("Step 1")).toBeVisible();
     expect(screen.getByText(`Step ${count}`)).toBeVisible();
     expect(queryButton("Copy message", main)).toBeVisible();
@@ -88,7 +96,7 @@ test.each([
       ),
     ).toBeVisible();
 
-    click(await findButton("Collapse work history"));
+    click(showRecent);
     await waitFor(() => {
       expect(
         document.querySelectorAll("[data-chat-run-work-preview]"),
@@ -103,6 +111,70 @@ test.each([
     ).toBeVisible();
   },
 );
+
+test("Expand history messages independently and preserve them across range changes", async () => {
+  installRunChat({
+    activeRunIds: [RUN_ID],
+    chatEvents: [
+      promptEvent({
+        id: "message-expansion-input",
+        runId: RUN_ID,
+        seqId: 1,
+        text: "Check every step",
+      }),
+      ...Array.from({ length: 5 }, (_, index) => {
+        return assistantEvent({
+          id: `message-expansion-${index}`,
+          runId: RUN_ID,
+          seqId: index + 2,
+          text: `Step ${index + 1}`,
+        });
+      }),
+    ],
+  });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await readyChat();
+
+  const stepTwo = await findButton("Step 2");
+  stepTwo.focus();
+  click(stepTwo);
+  await waitFor(() => {
+    expect(stepTwo).toHaveAccessibleName("Collapse history message: Step 2");
+    expect(stepTwo).toHaveFocus();
+  });
+  click(await findButton("Step 3"));
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(2);
+
+  click(await screen.findByRole("radio", { name: "All" }));
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message]"),
+  ).toHaveLength(4);
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(2);
+
+  click(await findButton("Step 1"));
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(3);
+  click(await screen.findByRole("radio", { name: "Recent" }));
+  expect(screen.queryByText("Step 1")).toBeNull();
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(2);
+
+  click(await screen.findByRole("radio", { name: "All" }));
+  expect(screen.getByText("Step 1")).toBeVisible();
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(3);
+});
 
 test("Keep work history open and keyboard focus in place when another output arrives", async () => {
   const events = [
@@ -132,9 +204,9 @@ test("Keep work history open and keyboard focus in place when another output arr
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
-  click(await findButton("Expand work history"));
-  const collapse = await findButton("Collapse work history");
-  collapse.focus();
+  const showAll = await screen.findByRole("radio", { name: "All" });
+  click(showAll);
+  showAll.focus();
 
   events.push(
     assistantEvent({
@@ -151,7 +223,9 @@ test("Keep work history open and keyboard focus in place when another output arr
   ).resolves.toBeVisible();
   expect(screen.getByText("Checked the dependencies")).toBeVisible();
   expect(screen.getByText("Checked the boundaries")).toBeVisible();
-  await expect(findButton("Collapse work history")).resolves.toHaveFocus();
+  await expect(
+    screen.findByRole("radio", { name: "All" }),
+  ).resolves.toHaveFocus();
 });
 
 test("Keep a card-only output in the collapsed history preview", async () => {
@@ -194,7 +268,7 @@ test("Keep a card-only output in the collapsed history preview", async () => {
   ).toHaveTextContent("Message");
   expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
 
-  click(await findButton("Expand work history"));
+  click(await findButton("Message"));
 
   await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
 });
@@ -261,11 +335,16 @@ test.each(["completed", "failed", "cancelled"] as const)(
     expect(screen.queryByAltText("Dependency chart")).toBeNull();
     expect(screen.getByText("The review is ready")).toBeVisible();
 
-    click(await findButton("Expand work history"));
+    click(await findButton("Dependency chart"));
 
     await expect(
       screen.findByAltText("Dependency chart"),
     ).resolves.toBeVisible();
-    expect(document.querySelector("[data-chat-run-work-preview]")).toBeNull();
+    expect(
+      document.querySelectorAll("[data-chat-run-work-preview]"),
+    ).toHaveLength(2);
+    expect(
+      document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+    ).toHaveLength(1);
   },
 );

@@ -1,4 +1,4 @@
-import { RunWorkMessagePreview } from "./run-work-message-preview.tsx";
+import { RunWorkMessage } from "./run-work-message.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -90,6 +90,8 @@ import {
   TooltipTrigger,
   BrandSlack,
   ElapsedTime,
+  SegmentControl,
+  SegmentControlItem,
 } from "@okouai/ui";
 import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
 import type {
@@ -3863,16 +3865,6 @@ function RunWorkSectionRow({
               );
         }}
       </ElapsedTime>
-      {collapsible ? (
-        <ChevronRight
-          aria-hidden
-          size={14}
-          className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform",
-            expanded && "rotate-90",
-          )}
-        />
-      ) : null}
     </>
   );
   const className = cn(
@@ -3880,28 +3872,41 @@ function RunWorkSectionRow({
     CHAT_THREAD_RESPONSE_LINE_CLASS,
   );
   return (
-    <div data-chat-run-work className="-mx-2">
+    <div
+      data-chat-run-work
+      className="-mx-2 flex min-h-9 items-center justify-between gap-2"
+    >
+      <div className={className}>{content}</div>
       {collapsible ? (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-label={
-            expanded
-              ? t(($) => {
-                  return $.chat.run.collapseWorkHistory;
-                })
-              : t(($) => {
-                  return $.chat.run.expandWorkHistory;
-                })
-          }
-          onClick={onToggle}
-          className={cn(className, "transition-colors hover:bg-state-hover")}
+        <SegmentControl
+          value={expanded ? "all" : "recent"}
+          onValueChange={(value) => {
+            if ((value === "all") !== expanded) {
+              onToggle();
+            }
+          }}
+          aria-label={t(($) => {
+            return $.chat.run.workHistoryRange;
+          })}
+          data-chat-run-work-range
+          size="xs"
+          className="mr-2 shrink-0"
         >
-          {content}
-        </button>
-      ) : (
-        <div className={className}>{content}</div>
-      )}
+          <SegmentControlItem
+            value="recent"
+            data-chat-run-work-range-option="recent"
+          >
+            {t(($) => {
+              return $.chat.run.recent;
+            })}
+          </SegmentControlItem>
+          <SegmentControlItem value="all" data-chat-run-work-range-option="all">
+            {t(($) => {
+              return $.chat.run.all;
+            })}
+          </SegmentControlItem>
+        </SegmentControl>
+      ) : null}
     </div>
   );
 }
@@ -7485,7 +7490,7 @@ type PagedAssistantHistoryItem =
       readonly change: RunModelChange;
     }
   | {
-      readonly kind: "run-work-preview";
+      readonly kind: "run-work-message";
       readonly event: EnrichedChatEvent;
     };
 
@@ -7525,7 +7530,7 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "assistant", event }]
+        ? [{ kind: "run-work-message", event }]
         : [];
     });
   });
@@ -7573,7 +7578,7 @@ function buildPagedAssistantTimeline({
     historyItems.push(
       ...runWorkSection.previewMessages.map(
         (event): PagedAssistantHistoryItem => {
-          return { kind: "run-work-preview", event };
+          return { kind: "run-work-message", event };
         },
       ),
     );
@@ -7644,8 +7649,14 @@ function PagedAssistantTimeline({
         </div>
       );
     }
-    if (item.kind === "run-work-preview") {
-      return <RunWorkMessagePreview key={item.event.id} event={item.event} />;
+    if (item.kind === "run-work-message") {
+      return (
+        <PagedRunWorkMessage
+          key={item.event.id}
+          event={item.event}
+          thread={thread}
+        />
+      );
     }
     if (item.kind === "run-work-main") {
       return (
@@ -7681,6 +7692,29 @@ function PagedAssistantTimeline({
       />
     );
   });
+}
+
+function PagedRunWorkMessage({
+  event,
+  thread,
+}: {
+  event: EnrichedChatEvent;
+  thread: ChatPanelSignals;
+}) {
+  const expandedIds = useGet(thread.timelineExpandedIds$);
+  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
+  const expanded = expandedIds.has(event.id);
+  return (
+    <RunWorkMessage
+      event={event}
+      expanded={expanded}
+      onToggle={() => {
+        toggleExpanded(event.id);
+      }}
+    >
+      <PagedAssistantEventItem event={event} thread={thread} />
+    </RunWorkMessage>
+  );
 }
 
 function PagedRunWorkAssistantContent({

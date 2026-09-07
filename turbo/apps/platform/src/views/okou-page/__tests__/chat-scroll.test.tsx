@@ -469,7 +469,7 @@ test("Keep passage actions until the selection moves beyond the scroll buffer", 
   });
 });
 
-test("Keep expanded work in place when its run completes", async () => {
+test("Keep an expanded work message in place when its run completes", async () => {
   const activeRunId = "scroll-expanded-work-run";
   const conversation = mockMutableConversation(
     THREAD_IDS.expandedWork,
@@ -515,15 +515,16 @@ test("Keep expanded work in place when its run completes", async () => {
     ).not.toBeInTheDocument();
   });
 
-  click(buttonByLabel("Expand work history"));
+  click(screen.getByRole("radio", { name: "All" }));
   await screen.findByText("Checked the first rollout stage");
+  click(buttonByLabel("Checked the first rollout stage"));
   const container = chatScrollContainer();
   const geometry = installChatScrollGeometry(container);
   scrollFromUser(container, geometry.bottomScrollTop() - 150);
   await expectHistoryPositionHeld();
-  const readingTop = anchorById(
+  const expandedMessageTop = anchorById(
     container,
-    "scroll-expanded-work-reading",
+    "scroll-expanded-work-earlier",
   ).getBoundingClientRect().top;
 
   act(() => {
@@ -551,14 +552,14 @@ test("Keep expanded work in place when its run completes", async () => {
   await screen.findByText("The rollout is healthy");
   await waitFor(() => {
     expect(screen.getByText("Checked the first rollout stage")).toBeVisible();
-    expect(buttonByLabel("Collapse work history")).toBeVisible();
+    expect(screen.getByRole("radio", { name: "All" })).toBeChecked();
     expect(screen.getByText("Worked for 1m")).toBeVisible();
     expect(
       anchorById(
         container,
-        "scroll-expanded-work-reading",
+        "scroll-expanded-work-earlier",
       ).getBoundingClientRect().top,
-    ).toBe(readingTop);
+    ).toBe(expandedMessageTop);
   });
 });
 

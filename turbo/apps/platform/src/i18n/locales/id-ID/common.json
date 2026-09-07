@@ -2159,8 +2159,10 @@
       "title": "Ganti draf composer?"
     },
     "run": {
+      "all": "Semua",
       "automatedRun": "Eksekusi otomatis",
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
+      "collapseHistoryMessage": "Ciutkan pesan riwayat: {{message}}",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {
@@ -2202,6 +2204,7 @@
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
       "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "recent": "Terbaru",
       "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
@@ -2220,6 +2223,7 @@
       "waitingIn": "Menunggu di",
       "worked": "Dikerjakan",
       "workedFor": "Dikerjakan selama {{duration}}",
+      "workHistoryRange": "Rentang riwayat kerja",
       "workingFor": "Bekerja selama {{duration}}"
     },
     "sharing": {
