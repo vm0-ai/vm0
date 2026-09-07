@@ -95,9 +95,18 @@ async function submitClerkEmailCode(page: Page): Promise<void> {
     .first();
   const useAnotherMethod = root.getByText(/use another method/i).first();
 
-  await expect(codeInput.or(emailCodeButton).or(useAnotherMethod)).toBeVisible({
-    timeout: CLERK_UI_READY_TIMEOUT_MS,
-  });
+  await expect
+    .poll(
+      async () => {
+        return (
+          (await codeInput.isVisible()) ||
+          (await emailCodeButton.isVisible()) ||
+          (await useAnotherMethod.isVisible())
+        );
+      },
+      { timeout: CLERK_UI_READY_TIMEOUT_MS },
+    )
+    .toBe(true);
   if (!(await codeInput.isVisible())) {
     if (await useAnotherMethod.isVisible()) {
       await useAnotherMethod.click();
