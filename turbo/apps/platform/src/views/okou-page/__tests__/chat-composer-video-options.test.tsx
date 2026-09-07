@@ -342,6 +342,56 @@ test("Configure and submit a video directly from task entries on mobile", async 
   });
 });
 
+test("Keep an uploaded file when switching tasks and sending workflow intent", async () => {
+  const submissions = installVideoSubmissionCapture();
+  context.mocks.upload.success({
+    id: "task-brief-upload",
+    filename: "brief.txt",
+    contentType: "text/plain",
+    size: 12,
+    url: "https://files.example.test/brief.txt",
+  });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Use this brief each morning.");
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) {
+    throw new Error("Expected the composer file input");
+  }
+  await userEvent
+    .setup({ delay: null })
+    .upload(
+      input,
+      new File(["daily brief"], "brief.txt", { type: "text/plain" }),
+    );
+  await waitFor(() => {
+    expect(fastControl("button", "Remove brief.txt")).toBeVisible();
+  });
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Video", tasks));
+  click(fastControl("button", "Workflow", tasks));
+  expect(editor).toHaveTextContent("Use this brief each morning.");
+  expect(fastControl("button", "Remove brief.txt")).toBeVisible();
+  await sendCurrent(editor, "Use this brief each morning.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "file",
+      fileId: "task-brief-upload",
+      filenameSnapshot: "brief.txt",
+      contentType: "text/plain",
+    });
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "text",
+      text: "Create a reusable workflow for the following request. Use the workflow-setup skill and save a draft before setting up automation.\nUse this brief each morning.",
+    });
+    expect(submissions[0]?.runOptions).toBeUndefined();
+  });
+});
+
 test("Clear the task and its video settings while preserving the user's message", async () => {
   const submissions = installVideoSubmissionCapture();
   await setupPage({
