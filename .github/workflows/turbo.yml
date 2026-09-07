@@ -443,6 +443,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    env:
+      TSC_CHECKERS: "2"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
@@ -500,6 +502,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    env:
+      TSC_CHECKERS: "2"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
