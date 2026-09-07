@@ -703,7 +703,10 @@ jobs:
           ssh "$REMOTE" sh -s -- "$REMOTE_BIN" <<'REMOTE_TEST'
           set -eu
           trap 'rm -f -- "$1"' EXIT
-          sudo "$1" --ignored --exact \
+          # An outer PID namespace also contains the test's deliberately stopped
+          # workers if its controller is killed before the RAII guard can resume them.
+          sudo unshare --mount --pid --fork --kill-child --mount-proc \
+            --propagation private -- "$1" --ignored --exact \
             cmd::build::scripts::process_tests::rootfs_process_ownership --nocapture
           REMOTE_TEST
 

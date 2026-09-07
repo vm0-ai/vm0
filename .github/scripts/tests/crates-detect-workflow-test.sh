@@ -116,6 +116,7 @@ jq -e '
   ($rootfs_process.if | contains("needs.detect.outputs.ci-changed")) and
   any($rootfs_process.steps[]?;
     .name == "Run rootfs process ownership tests on metal" and
+    (.run | contains("sudo unshare --mount --pid --fork --kill-child --mount-proc")) and
     (.run | contains("--ignored --exact")) and
     (.run | contains("cmd::build::scripts::process_tests::rootfs_process_ownership")) and
     (.run | contains("GITHUB_RUN_ATTEMPT")) and
