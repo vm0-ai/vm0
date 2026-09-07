@@ -512,7 +512,10 @@ impl ActiveInputController {
     /// disabled, or closed inputs are rejected. A bounded backlog returns
     /// [`ActiveInputControlOutcome::QueueFull`] so callers can distinguish
     /// backpressure from validation rejection. Callers should branch on the
-    /// outcome variant rather than treating diagnostic text as a stable protocol.
+    /// outcome variant rather than treating diagnostic text as a stable
+    /// protocol. The one exception is
+    /// [`ACTIVE_INPUT_CLOSED_DIAGNOSTIC`], which Runner uses to classify the
+    /// expected closed-lifecycle race for logging.
     pub fn handle_control_payload(&self, payload: &[u8]) -> ActiveInputControlOutcome {
         let ActiveInputMode::Enabled(_) = &self.inner.mode else {
             return ActiveInputControlOutcome::Rejected {
