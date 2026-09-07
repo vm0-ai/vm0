@@ -47,6 +47,18 @@ Keep each layer focused:
 
 ## Adding deployed E2E coverage
 
+Playwright product specs import `test` from `e2e/playwright/fixtures.ts`.
+Its fixture-managed page drains already-running page route handlers before
+Playwright closes the page/context, including after a failed test. Route errors
+remain test failures; do not suppress them with `ignoreErrors`. A test that gates
+a route must release its gate in `finally` before fixture teardown can drain it.
+Callers still own cleanup of manually created pages and context-level routes.
+
+The local fixture integration suite (`cd e2e && pnpm test`) exercises this
+lifecycle through the real Playwright runner, Chromium and a loopback HTTP server.
+It requires the Chromium headless shell (`pnpm exec playwright install --only-shell
+chromium` from `e2e`), but not a deployed preview or Clerk credentials.
+
 Before adding a case, verify that it:
 
 - begins at a supported product entry point;
