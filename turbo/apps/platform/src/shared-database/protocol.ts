@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ApiError } from "../lib/api-error.ts";
+import { SharedDatabaseHttpError } from "./http-error.ts";
 import { computedKeySchema } from "./computed-key.ts";
 import {
   sharedDatabaseDataKeySchema,
@@ -6,6 +8,17 @@ import {
 } from "./data-key.ts";
 
 const requestIdSchema = z.string().min(1);
+
+const sharedDatabaseErrorSchema = z
+  .object({
+    name: z.string(),
+    message: z.string(),
+    status: z.number().int().optional(),
+    code: z.string().optional(),
+  })
+  .strict();
+
+type SerializedSharedDatabaseError = z.infer<typeof sharedDatabaseErrorSchema>;
 
 const registerTabMessageSchema = z
   .object({ type: z.literal("register-tab") })
@@ -39,12 +52,7 @@ const tokenErrorMessageSchema = z
   .object({
     type: z.literal("token-error"),
     requestId: requestIdSchema,
-    error: z
-      .object({
-        name: z.string(),
-        message: z.string(),
-      })
-      .strict(),
+    error: sharedDatabaseErrorSchema,
   })
   .strict();
 
@@ -81,20 +89,39 @@ export function redactSharedDatabaseClientMessageForLog(
   return { ...message, token: "[redacted]" };
 }
 
-export function serializeSharedDatabaseError(error: unknown): {
-  readonly name: string;
-  readonly message: string;
-} {
+export function serializeSharedDatabaseError(
+  error: unknown,
+): SerializedSharedDatabaseError {
+  if (error instanceof ApiError) {
+    return {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+      code: error.code,
+    };
+  }
+  if (error instanceof SharedDatabaseHttpError) {
+    return { name: error.name, message: error.message, status: error.status };
+  }
   if (error instanceof Error || error instanceof DOMException) {
     return { name: error.name, message: error.message };
   }
   return { name: Error.name, message: String(error) };
 }
 
-export function deserializeSharedDatabaseError(error: {
-  readonly name: string;
-  readonly message: string;
-}): Error {
+export function deserializeSharedDatabaseError(
+  error: SerializedSharedDatabaseError,
+): Error {
+  if (error.name === "SharedDatabaseHttpError" && error.status !== undefined) {
+    return new SharedDatabaseHttpError(error.status);
+  }
+  if (
+    error.name === "ApiError" &&
+    error.status !== undefined &&
+    error.code !== undefined
+  ) {
+    return new ApiError(error.message, error.code, error.status);
+  }
   const result = new Error(error.message);
   result.name = error.name;
   return result;
@@ -112,12 +139,7 @@ const errorMessageSchema = z
   .object({
     type: z.literal("error"),
     requestId: requestIdSchema,
-    error: z
-      .object({
-        name: z.string(),
-        message: z.string(),
-      })
-      .strict(),
+    error: sharedDatabaseErrorSchema,
   })
   .strict();
 
