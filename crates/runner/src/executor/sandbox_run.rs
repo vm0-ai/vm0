@@ -1222,6 +1222,7 @@ async fn create_started_sandbox(
                 dns_drain_status = network_log_observation.drain_status("dns"),
                 kmsg_drain_status = network_log_observation.drain_status("kmsg"),
                 writer_backpressure_observed = network_log_observation.writer_backpressure_observed(),
+                writer_failed = network_log_observation.writer_failed(),
                 "guest DNS readiness network log observation"
             );
         }

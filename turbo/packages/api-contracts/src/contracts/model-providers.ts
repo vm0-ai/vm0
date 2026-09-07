@@ -179,6 +179,8 @@ const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
   SUPPORTED_RUN_MODELS,
 );
 
+type ActiveRunModel = Exclude<SupportedRunModel, "claude-fable-5">;
+
 // Historical IDs remain in the wire schemas and billing catalog. Availability
 // is a separate product decision, including for provider-prefixed aliases.
 export const RETIRED_RUN_MODEL_MESSAGE =
@@ -199,7 +201,7 @@ export function getRunModelAccess(
 
 export function isActiveRunModel(
   model: string | null | undefined,
-): model is SupportedRunModel {
+): model is ActiveRunModel {
   return isSupportedRunModel(model) && getRunModelAccess(model) === "allowed";
 }
 
@@ -261,9 +263,6 @@ export function getDefaultOrgModelPolicySeed(
 /**
  * Mapping from VM0 built-in model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
- *
- * NOTE: Defined before MODEL_PROVIDER_TYPES so the built-in entry can derive
- * its models list from this mapping via Object.keys().
  */
 export const BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "anthropic-api-key": { vendor: "anthropic" },
@@ -291,9 +290,8 @@ interface ModelConfig {
   ];
 }
 
-// Key order is load-bearing: `Object.keys()` preserves insertion order and
-// `MODEL_PROVIDER_TYPES["built-in"].models` is derived from it, which in turn drives
-// the order models appear in the Built-in model dropdown.
+// Execution routes contain only active models. Historical recognition and
+// retirement validation must not depend on a model retaining an executable route.
 export const BUILT_IN_MODEL_TO_PROVIDER = {
   "claude-fable-5-1": {
     candidates: [
@@ -301,15 +299,6 @@ export const BUILT_IN_MODEL_TO_PROVIDER = {
       {
         concreteType: "openrouter-api-key",
         apiModel: "anthropic/claude-fable-5.1",
-      },
-    ],
-  },
-  "claude-fable-5": {
-    candidates: [
-      { concreteType: "anthropic-api-key" },
-      {
-        concreteType: "openrouter-api-key",
-        apiModel: "anthropic/claude-fable-5",
       },
     ],
   },
@@ -415,7 +404,7 @@ export const BUILT_IN_MODEL_TO_PROVIDER = {
       },
     ],
   },
-} as const satisfies Record<SupportedRunModel, ModelConfig>;
+} as const satisfies Record<ActiveRunModel, ModelConfig>;
 
 export interface BuiltInModelRouteTarget {
   readonly selectedModel: SupportedRunModel;
@@ -425,7 +414,7 @@ export interface BuiltInModelRouteTarget {
 }
 
 function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
-  if (!isSupportedRunModel(model)) {
+  if (!isActiveRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
@@ -436,7 +425,7 @@ function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
 export function getBuiltInModelRouteCandidates(
   model: string,
 ): readonly BuiltInModelRouteTarget[] {
-  if (!isSupportedRunModel(model)) {
+  if (!isActiveRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
@@ -470,7 +459,7 @@ export const BUILT_IN_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
   "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-} as const satisfies Record<string, keyof typeof BUILT_IN_MODEL_TO_PROVIDER>;
+} as const satisfies Record<string, SupportedRunModel>;
 
 const BUILT_IN_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   BUILT_IN_MODEL_ALIAS_TO_MODEL;
@@ -503,9 +492,7 @@ export function isLimitedFree1RestrictedRunModel(
 }
 
 export const ACTIVE_RUN_MODELS: readonly SupportedRunModel[] =
-  SUPPORTED_RUN_MODELS.filter((model) => {
-    return getRunModelAccess(model) === "allowed";
-  });
+  SUPPORTED_RUN_MODELS.filter(isActiveRunModel);
 
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
@@ -513,13 +500,11 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "gpt-6-astra",
   "openai/gpt-6-astra",
   "claude-fable-5-1",
-  "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "anthropic/claude-fable-5.1",
-  "anthropic/claude-fable-5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
   "anthropic/claude-sonnet-5",
@@ -977,13 +962,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "claude-fable-5": [
-    "built-in",
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
   "claude-opus-5": [
     "built-in",
     "claude-code-oauth-token",
@@ -1048,14 +1026,13 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   ],
   "deepseek-v4-flash": ["built-in", "deepseek"],
   "deepseek-v4-pro": ["built-in", "deepseek"],
-} as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
+} as const satisfies Record<ActiveRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
-  Record<ModelProviderType, Partial<Record<SupportedRunModel, string>>>
+  Record<ModelProviderType, Partial<Record<ActiveRunModel, string>>>
 > = {
   "openrouter-api-key": {
     "claude-fable-5-1": "anthropic/claude-fable-5.1",
-    "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
@@ -1063,7 +1040,6 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
   },
   "vercel-ai-gateway": {
     "claude-fable-5-1": "anthropic/claude-fable-5.1",
-    "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
@@ -1120,7 +1096,7 @@ export function getProviderRuntimeModel(
   model: string,
 ): string {
   const canonical = normalizeRunModelId(model);
-  if (!isSupportedRunModel(canonical)) {
+  if (!isActiveRunModel(canonical)) {
     return model;
   }
   if (isBuiltInModelProviderType(type)) {

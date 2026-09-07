@@ -16,6 +16,11 @@ fn event_with_message<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Cap
 }
 
 fn register_teardown_timer_callsites() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap();
+    let _guard = runtime.enter();
     let timer = TeardownTimer::start();
     let phase = timer.phase_start("warmup_phase");
     timer.phase_complete("warmup_phase", phase);
@@ -23,8 +28,8 @@ fn register_teardown_timer_callsites() {
     info!(total_teardown_ms = timer.elapsed_ms(), "runner stopped");
 }
 
-#[test]
-fn teardown_timer_emits_structured_timing_fields() {
+#[tokio::test]
+async fn teardown_timer_emits_structured_timing_fields() {
     let captured = CapturedEvents::default();
     let subscriber = tracing_subscriber::registry().with(captured.clone());
     let _guard = tracing::subscriber::set_default(subscriber);

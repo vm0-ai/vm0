@@ -42,6 +42,7 @@ function buildCommands(): Command[] {
     new Command("people-search"),
     new Command("web-search"),
     new Command("social"),
+    new Command("image-recognition"),
     new Command("recognize"),
     new Command("finance"),
     new Command("seo"),
@@ -167,7 +168,11 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "image-recognition",
+      "recognize",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -246,6 +251,7 @@ describe("registerCommands", () => {
       "people-search",
       "web-search",
       "social",
+      "image-recognition",
       "recognize",
       "finance",
       "seo",
@@ -259,7 +265,11 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "image-recognition",
+      "recognize",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -273,7 +283,11 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "image-recognition",
+      "recognize",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -789,11 +803,16 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(buildProgram())).toContain("browser");
   });
 
-  it("should expose recognition only to eligible Zero runs", () => {
+  it("should expose canonical image recognition only to eligible Okou runs", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
     const noTokenProgram = buildProgram();
+    expect(registeredCommandNames(noTokenProgram)).toContain(
+      "image-recognition",
+    );
     expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
+    expect(hiddenCommandNames(noTokenProgram)).toContain("image-recognition");
     expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
+    expect(buildHelpText()).not.toContain("Recognize an image?");
 
     const missingCapabilityToken = buildOkouToken({
       scope: "okou",
@@ -802,7 +821,14 @@ describe("registerCommands", () => {
       capabilities: [],
     });
     vi.stubEnv("OKOU_TOKEN", missingCapabilityToken);
-    expect(hiddenCommandNames(buildProgram())).toContain("recognize");
+    const missingCapabilityProgram = buildProgram();
+    expect(hiddenCommandNames(missingCapabilityProgram)).toContain(
+      "image-recognition",
+    );
+    expect(hiddenCommandNames(missingCapabilityProgram)).toContain("recognize");
+    expect(
+      buildHelpText(decodeSandboxTokenPayload(missingCapabilityToken)),
+    ).not.toContain("Recognize an image?");
 
     const eligibleToken = buildOkouToken({
       scope: "okou",
@@ -811,10 +837,19 @@ describe("registerCommands", () => {
       capabilities: ["image-recognition:write"],
     });
     vi.stubEnv("OKOU_TOKEN", eligibleToken);
-    expect(visibleCommandNames(buildProgram())).toContain("recognize");
+    const eligibleProgram = buildProgram();
+    expect(visibleCommandNames(eligibleProgram)).toContain("image-recognition");
+    expect(visibleCommandNames(eligibleProgram)).not.toContain("recognize");
+    expect(hiddenCommandNames(eligibleProgram)).toContain("recognize");
     expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
     );
+    expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
+      "okou recognize --file",
+    );
+    expect(
+      buildHelpText(decodeSandboxTokenPayload(eligibleToken)),
+    ).not.toContain("okou image-recognition --file");
   });
 
   it("should show billing help examples only for billing capabilities", () => {

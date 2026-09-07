@@ -1,10 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { matchShortcut } from "@okouai/ui";
 import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.ts";
-import {
-  hideKeyboardShortcutHints$,
-  keyboardShortcutHintsVisible$,
-} from "../keyboard-shortcut-hints.ts";
 import { onDomEventFn } from "../utils.ts";
 
 const standaloneDisplayMode$ = state(false);
@@ -22,12 +18,6 @@ export const threadNumberShortcutsEnabled$ = computed((get) => {
   return get(stableChatThreadNavigationEnabled$) && get(standaloneDisplayMode$);
 });
 
-export const threadNumberShortcutHintsVisible$ = computed((get) => {
-  return (
-    get(threadNumberShortcutsEnabled$) && get(keyboardShortcutHintsVisible$)
-  );
-});
-
 export const setupThreadNumberShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
     const displayModes = [
@@ -41,7 +31,6 @@ export const setupThreadNumberShortcuts$ = command(
           return mode.matches;
         }),
       );
-      set(hideKeyboardShortcutHints$);
     });
     updateDisplayMode(undefined);
     for (const mode of displayModes) {

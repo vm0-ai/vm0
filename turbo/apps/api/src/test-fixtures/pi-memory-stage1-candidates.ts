@@ -127,6 +127,8 @@ export async function readPiMemoryStage1CandidateFixture(args: {
       memoryStorageId: piMemoryStage1Candidates.memoryStorageId,
       memoryStorageName: storages.name,
       memoryStorageS3Prefix: storages.s3Prefix,
+      orgId: piMemoryStage1Candidates.orgId,
+      userId: piMemoryStage1Candidates.userId,
       piSessionId: piMemoryStage1Candidates.piSessionId,
       sourceRunId: piMemoryStage1Candidates.sourceRunId,
       sourceHistoryHash: piMemoryStage1Candidates.sourceHistoryHash,

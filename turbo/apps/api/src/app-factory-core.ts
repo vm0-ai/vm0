@@ -609,14 +609,10 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // A route is registered at the path its contract declares, and nowhere else.
-  // Two stages used to sit here: one registered the branded paths migrated
-  // routes owed their released callers, which #31088 emptied and #31090
-  // removed, and one derived the canonical form of a branded declaration,
-  // which #31094 removed once nothing declared one. Uniqueness is asserted
-  // against the production route table in
-  // `__tests__/api-namespace-compatibility.test.ts`, not here — test apps
-  // deliberately compose overlapping route slices.
+  // A route is registered at the path its contract declares. Registration
+  // uniqueness is asserted against the production route table in
+  // `__tests__/route-registration.test.ts`, not here — test apps deliberately
+  // compose overlapping route slices.
   for (const entry of routes) {
     const { route } = entry;
     const routeHandler = honoSignalHandler(

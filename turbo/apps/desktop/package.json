@@ -1,6 +1,6 @@
 {
   "name": "@okouai/desktop",
-  "version": "0.46.29",
+  "version": "0.46.34",
   "private": true,
   "description": "Computer Use desktop shell",
   "main": "dist/bootstrap.js",
@@ -32,8 +32,7 @@
     "ccstate-react": "^5.5.0",
     "lucide-react": "1.30.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "update-electron-app": "3.2.0"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",

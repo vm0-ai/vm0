@@ -47,17 +47,16 @@ async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
   });
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
   const search = within(dialog).getByPlaceholderText(SEARCH_LABEL);
-  fireEvent.keyUp(search, { key: "Shift", ...modifiers, shiftKey: false });
   return { dialog, search };
 }
 
 function numberedHints(dialog: HTMLElement): string[] {
   return [...dialog.querySelectorAll("kbd")]
     .map((keycap) => {
-      return keycap.textContent;
+      return keycap.textContent?.match(/[1-9]$/)?.[0];
     })
     .filter((text): text is string => {
-      return text !== null && /^[1-9]$/.test(text);
+      return text !== undefined;
     });
 }
 
@@ -135,7 +134,7 @@ test.each([
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
     modifiers: { metaKey: true, ctrlKey: false },
     numberModifiers: { metaKey: true, ctrlKey: false },
-    firstHint: ["⌘", "1"],
+    firstHint: ["⌘1"],
   },
   {
     platform: "Mac Safari",
@@ -143,14 +142,14 @@ test.each([
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
     modifiers: { metaKey: true, ctrlKey: false },
     numberModifiers: { metaKey: true, ctrlKey: true },
-    firstHint: ["⌃", "⌘", "1"],
+    firstHint: ["⌘⌃1"],
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifiers: { metaKey: false, ctrlKey: true },
     numberModifiers: { metaKey: false, ctrlKey: true },
-    firstHint: ["Ctrl", "1"],
+    firstHint: ["Ctrl+1"],
   },
 ])(
   "Limit empty search to 25 current chats and open the ninth result on $platform",
@@ -211,17 +210,6 @@ test.each([
         },
       ),
     ).toStrictEqual(firstHint);
-    fireEvent.keyUp(search, { key: modifiers.metaKey ? "Meta" : "Control" });
-    await waitFor(() => {
-      expect(numberedHints(dialog)).toStrictEqual([]);
-    });
-    fireEvent.keyDown(search, {
-      key: modifiers.metaKey ? "Meta" : "Control",
-      ...modifiers,
-    });
-    await waitFor(() => {
-      expect(numberedHints(dialog)).toHaveLength(9);
-    });
     fireEvent.keyDown(search, {
       key: "9",
       code: "Digit9",
@@ -349,7 +337,6 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
   const { dialog, search } = await openSearch();
   await fill(search, "budget");
-  fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
   await waitFor(() => {
     expect(searchResultTitles(dialog)).toStrictEqual([
       "Budget planning",
@@ -379,7 +366,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
 });
 
-test("Search shortcuts preserve typing and reset hints when focus is lost or the dialog closes", async () => {
+test("Search shortcuts preserve typing and ignore invalid combinations", async () => {
   context.mocks.browser.matchMedia((query) => {
     return (
       query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
@@ -429,15 +416,10 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
   });
   expect(dialog).toBeInTheDocument();
   expect(search).toHaveValue("");
-  fireEvent.blur(window);
-  await waitFor(() => {
-    expect(numberedHints(dialog)).toStrictEqual([]);
-  });
   search.focus();
   await userEvent.keyboard("19");
   expect(search).toHaveValue("19");
   await fill(search, "");
-  fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
   await waitFor(() => {
     expect(numberedHints(dialog)).toStrictEqual(["1"]);
   });
@@ -450,7 +432,7 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
   await waitFor(() => {
     expect(searchResultTitles(reopened)).toStrictEqual(["First chat"]);
   });
-  expect(numberedHints(reopened)).toStrictEqual([]);
+  expect(numberedHints(reopened)).toStrictEqual(["1"]);
 });
 
 test.each([
@@ -483,7 +465,6 @@ test.each([
     });
     const { dialog, search } = await openSearch();
     await fill(search, "budget");
-    fireEvent.keyDown(search, { key: "Control", ctrlKey: true });
     await waitFor(() => {
       expect(searchResultTitles(dialog)).toStrictEqual([
         "Budget planning",

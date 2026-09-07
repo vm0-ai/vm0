@@ -23,7 +23,7 @@ const TERRA_MODEL = {
   model: "gpt-5.6-terra",
   api: "openai-responses" as const,
   dialect: "openai-responses" as const,
-  thinkingLevel: "low" as const,
+  thinkingLevel: "max" as const,
 };
 
 const EMPTY_RESOURCE_SNAPSHOT = {
@@ -31,6 +31,14 @@ const EMPTY_RESOURCE_SNAPSHOT = {
   agentsFiles: [],
   skills: [],
 };
+
+const INTERMEDIATE_COMMENTARY_PROMPT = `## Intermediate commentary
+
+As you work, provide brief intermediate text messages to the user. These messages are how you collaborate with the user while working - stating assumptions and sharing updates. Keep them concise and easy to scan. Their purpose is to make your work easy for the user to understand and verify.
+
+If the user's request requires calling tools, start with a brief intermediate message before the first tool call. During longer work, provide additional updates at meaningful points.
+
+Do not put a final response, such as a blocking or clarifying question, in an intermediate message. Intermediate messages are only for partial updates, partial results, or non-blocking context that can provide value while you continue working. An intermediate update does not end the task; continue working when more work remains. The final answer must always be fully self-contained.`;
 
 const MEMORY_TOOL_SCHEMAS = [
   {
@@ -433,6 +441,49 @@ async function startResponsesProvider(
 }
 
 describe("official Pi AgentSession runtime", () => {
+  it.each(["api-first", "sandbox"] as const)(
+    "appends intermediate commentary guidance in %s sessions",
+    async (mode) => {
+      const root = await mkdtemp(join(tmpdir(), "pi-commentary-prompt-"));
+      onTestFinished(async () => {
+        await rm(root, { recursive: true });
+      });
+      const callerPrompt = "Caller instructions stay authoritative.";
+      const discoveredPrompt = "Discovered Sandbox instructions remain loaded.";
+      if (mode === "sandbox") {
+        await writeFile(join(root, "APPEND_SYSTEM.md"), discoveredPrompt);
+      }
+      const appendedPrompt =
+        mode === "api-first" ? callerPrompt : discoveredPrompt;
+      const created = await createPiAgentSessionForRuntime({
+        cwd: join(root, "workspace"),
+        agentDir: root,
+        sessionManager: SessionManager.inMemory(join(root, "workspace"), {
+          id: randomUUID(),
+        }),
+        model: TERRA_MODEL,
+        appendSystemPrompt: mode === "api-first" ? callerPrompt : null,
+        resourceSnapshot:
+          mode === "api-first" ? EMPTY_RESOURCE_SNAPSHOT : undefined,
+      });
+
+      try {
+        expect(created.session.systemPrompt).toContain(
+          INTERMEDIATE_COMMENTARY_PROMPT,
+        );
+        expect(
+          created.session.systemPrompt.match(/## Intermediate commentary/gu),
+        ).toHaveLength(1);
+        expect(
+          created.session.systemPrompt.indexOf(INTERMEDIATE_COMMENTARY_PROMPT),
+        ).toBeLessThan(created.session.systemPrompt.indexOf(appendedPrompt));
+        expect(created.session.systemPrompt).toContain(appendedPrompt);
+      } finally {
+        created.session.dispose();
+      }
+    },
+  );
+
   it.each([
     {
       name: "standard subscription",
@@ -520,7 +571,7 @@ describe("official Pi AgentSession runtime", () => {
         config: {
           transport: "sse",
           baseUrl: provider.baseUrl.replace(/\/v1$/, route.basePath),
-          thinkingLevel: "low",
+          thinkingLevel: "max",
           ...(route.dialect === "openai-codex-responses"
             ? {
                 ...(route.tier === undefined
@@ -589,7 +640,7 @@ describe("official Pi AgentSession runtime", () => {
               model: route.model,
               stream: true,
               store: false,
-              reasoning: { effort: "low" },
+              reasoning: { effort: "max" },
             },
           });
           if (route.tier === undefined) {
@@ -869,7 +920,7 @@ describe("official Pi AgentSession runtime", () => {
           url: "/v1/responses",
           body: {
             model: "gpt-5.6-terra",
-            reasoning: { effort: "low" },
+            reasoning: { effort: "max" },
           },
         });
         if (serviceTier === undefined) {
@@ -1037,7 +1088,7 @@ describe("official Pi AgentSession runtime", () => {
     }
   });
 
-  it("uses Terra low thinking for a fresh session", async () => {
+  it("uses Terra max thinking for a fresh session", async () => {
     const sessionManager = SessionManager.inMemory("/home/user/workspace", {
       id: "00000000-0000-4000-8000-000000000124",
     });
@@ -1051,12 +1102,12 @@ describe("official Pi AgentSession runtime", () => {
     });
 
     try {
-      expect(created.session.agent.state.thinkingLevel).toBe("low");
+      expect(created.session.agent.state.thinkingLevel).toBe("max");
       expect(
         sessionManager.getBranch().filter((entry) => {
           return entry.type === "thinking_level_change";
         }),
-      ).toEqual([expect.objectContaining({ thinkingLevel: "low" })]);
+      ).toEqual([expect.objectContaining({ thinkingLevel: "max" })]);
     } finally {
       created.session.dispose();
     }

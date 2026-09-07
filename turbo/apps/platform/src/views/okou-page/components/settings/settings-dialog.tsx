@@ -47,12 +47,20 @@ import { BillingSection } from "./sections/billing-section.tsx";
 import { CreditBalanceSection } from "./sections/credit-balance-section.tsx";
 import { UsageRecordsSection } from "./sections/usage-records-section.tsx";
 import { InvoicesSection } from "./sections/invoices-section.tsx";
+import {
+  useChatPreferenceActions,
+  type ChatPreferenceActions,
+} from "./chat-preference-actions.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+interface SettingsActionsProps {
+  actions: ChatPreferenceActions;
 }
 
 interface SidebarItem {
@@ -67,11 +75,11 @@ interface SidebarGroup {
 }
 
 const SECTION_COMPONENTS = {
-  preference: () => {
-    return <PreferenceSection />;
+  preference: ({ actions }: SettingsActionsProps) => {
+    return <PreferenceSection sendModeAction={actions.sendMode} />;
   },
-  chat: () => {
-    return <ChatSection />;
+  chat: ({ actions }: SettingsActionsProps) => {
+    return <ChatSection actions={actions} />;
   },
   model: () => {
     return <ModelSection />;
@@ -97,22 +105,33 @@ const SECTION_COMPONENTS = {
   invoices: () => {
     return <InvoicesSection />;
   },
-} as const satisfies Record<SettingsSection, () => ReactNode>;
+} as const satisfies Record<
+  SettingsSection,
+  (props: SettingsActionsProps) => ReactNode
+>;
 
-function SectionContent({ section }: { section: SettingsSection }) {
+function SectionContent({
+  section,
+  actions,
+}: SettingsActionsProps & { section: SettingsSection }) {
   const Component = SECTION_COMPONENTS[section];
-  return <Component />;
+  return <Component actions={actions} />;
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
+  const actions = useChatPreferenceActions();
   const standalonePlans = useGet(billingPlansStandalone$);
   if (props.open && standalonePlans) {
     return <BillingSection standalonePlans />;
   }
-  return <SettingsDialogSurface {...props} />;
+  return <SettingsDialogSurface {...props} actions={actions} />;
 }
 
-function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
+function SettingsDialogSurface({
+  open,
+  onOpenChange,
+  actions,
+}: SettingsDialogProps & SettingsActionsProps) {
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
@@ -408,7 +427,7 @@ function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
               </p>
             </header>
             <div className="flex-1 overflow-y-auto px-4 sm:px-10 pb-10 pt-4 sm:pt-6 [scrollbar-gutter:stable]">
-              <SectionContent section={resolvedSection} />
+              <SectionContent section={resolvedSection} actions={actions} />
             </div>
           </div>
         </div>

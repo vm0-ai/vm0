@@ -42,6 +42,10 @@ let package = Package(
             dependencies: ["ScreenRecorderCore"]
         ),
         .testTarget(
+            name: "ComputerUseHelperIntegrationTests",
+            dependencies: ["ComputerUseHelper"]
+        ),
+        .testTarget(
             name: "ComputerUseHelperCoreTests",
             dependencies: ["ComputerUseHelperCore"]
         ),

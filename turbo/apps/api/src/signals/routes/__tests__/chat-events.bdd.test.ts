@@ -1502,8 +1502,14 @@ function modelProviderConnectionsClient() {
   );
 }
 
-function chatEventsClient() {
-  return setupApp({ context, routes: chatEventsRoutes })(chatEventsContract);
+function chatEventsClient(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
+  return setupApp({
+    context,
+    routes: chatEventsRoutes,
+    usagePricingResolution,
+  })(chatEventsContract);
 }
 
 function chatThreadsClient() {
@@ -2395,10 +2401,11 @@ async function requestSendEventWithBearer(
     readonly runOptions?: ChatRunOptionsRequest;
     readonly userMessage?: UserMessageInputDocument;
   },
-  statuses: readonly (201 | 400 | 401 | 403 | 409)[],
+  statuses: readonly (201 | 400 | 401 | 403 | 404 | 409)[],
+  usagePricingResolution?: UsagePricingFixture["resolution"],
 ) {
   return await accept(
-    chatEventsClient().send({
+    chatEventsClient(usagePricingResolution).send({
       headers: { authorization: `Bearer ${token}` },
       body: {
         ...body,
@@ -2413,6 +2420,141 @@ async function requestSendEventWithBearer(
     }),
     statuses,
   );
+}
+
+async function expectAgentTokenThreadOwnershipBoundaries(args: {
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly sourceToken: string;
+}): Promise<void> {
+  const crossUser = bdd.user({ orgId: args.orgId });
+  const crossUserThread = await chat.createThread(crossUser, {
+    agentId: args.agentId,
+  });
+  const crossUserSend = await requestSendEventWithBearer(
+    args.sourceToken,
+    {
+      agentId: args.agentId,
+      threadId: crossUserThread.id,
+      prompt: "reject cross-user delegated memory admission",
+    },
+    [404],
+  );
+  expect(crossUserSend.status).toBe(404);
+
+  const crossOrg = await entitledChatActor();
+  const crossOrgThread = await chat.createThread(crossOrg.actor, {
+    agentId: crossOrg.agentId,
+  });
+  const crossOrgSend = await requestSendEventWithBearer(
+    args.sourceToken,
+    {
+      agentId: crossOrg.agentId,
+      threadId: crossOrgThread.id,
+      prompt: "reject cross-org delegated memory admission",
+    },
+    [404],
+  );
+  expect(crossOrgSend.status).toBe(404);
+
+  const unownedThreadSend = await requestSendEventWithBearer(
+    args.sourceToken,
+    {
+      agentId: args.agentId,
+      threadId: randomUUID(),
+      prompt: "reject unowned-thread delegated memory admission",
+    },
+    [404],
+  );
+  expect(unownedThreadSend.status).toBe(404);
+}
+
+async function expectAgentChatProvenance(args: {
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly delegatedEventId: string;
+  readonly delegatedRunId: string;
+  readonly orgId: string;
+  readonly source: { readonly runId: string; readonly threadId: string };
+  readonly targetThreadId: string;
+}): Promise<void> {
+  const delegatedState = await runStateStore.set(
+    readAgentRunState$,
+    {
+      orgId: args.orgId,
+      userId: args.actor.userId,
+      runId: args.delegatedRunId,
+    },
+    context.signal,
+  );
+  expect(delegatedState.agent_run).toMatchObject({ triggerSource: "agent" });
+  const delegatedMessages = await waitForThreadMessages(
+    args.actor,
+    args.targetThreadId,
+    (events) => {
+      return userMessages(events).some((event) => {
+        return event.id === args.delegatedEventId;
+      });
+    },
+  );
+  const delegatedInput = userMessages(delegatedMessages.events).find(
+    (event): event is PromptMessage => {
+      return (
+        event.eventType === "input.prompt" && event.id === args.delegatedEventId
+      );
+    },
+  );
+  expect(delegatedInput?.userMessage.parts).toContainEqual({
+    type: "source",
+    kind: "agent",
+    runId: args.source.runId,
+    threadId: args.source.threadId,
+    agentId: args.agentId,
+    titleSnapshot: "New thread",
+    href: `/chats/${args.source.threadId}#run-${args.source.runId}`,
+  });
+}
+
+async function expectExactPrivatePiMemoryAdmission(args: {
+  readonly orgId: string;
+  readonly runId: string;
+  readonly userId: string;
+}): Promise<void> {
+  // Stage 1 candidates intentionally have no production read API. After the
+  // real send and completion paths run, this focused fixture proves the exact
+  // private admission identity without controlling the behavior under test.
+  const conversation = await readPiConversationIdentityFixture(args.runId);
+  const candidate = await readPiMemoryStage1CandidateFixture({
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  if (!candidate) {
+    throw new Error("Expected delegated Pi history to create a candidate");
+  }
+  expect(candidate).toMatchObject({
+    orgId: args.orgId,
+    userId: args.userId,
+    memoryStorageName: "memory",
+    piSessionId: conversation.piSessionId,
+    sourceRunId: args.runId,
+    sourceHistoryHash: conversation.sourceHistoryHash,
+    status: "pending",
+  });
+  expect(
+    candidate.eligibleAt.getTime() - candidate.sourceCompletedAt.getTime(),
+  ).toBe(60_000);
+  expect(sandboxOperationEventsForRun(args.runId)).toContainEqual(
+    expect.objectContaining({
+      op_type: "pi_memory_stage1_candidate_admission",
+      candidate_outcome: "created",
+      memory_storage_id: candidate.memoryStorageId,
+      pi_session_id: conversation.piSessionId,
+      source_history_hash: conversation.sourceHistoryHash,
+    }),
+  );
+  await expect(
+    readmitPiMemoryStage1CandidateFixture(args.runId),
+  ).resolves.toMatchObject({ outcome: "exact_retry" });
 }
 
 describe("CHAT-02: web chat send and client ids", () => {
@@ -5222,7 +5364,7 @@ function expectApiKeyTerraRequest(
       model: route.runtimeModel,
       stream: true,
       store: false,
-      reasoning: { effort: "low" },
+      reasoning: { effort: "max" },
     },
   });
   const { body } = z
@@ -5274,7 +5416,7 @@ function expectApiKeyTerraSandboxCarrier(
     ...(route.type === "vercel-ai-gateway-codex"
       ? { catalogModel: route.catalogModel }
       : {}),
-    thinkingLevel: "low",
+    thinkingLevel: "max",
     credentialBindings: [
       {
         kind: "api-key",
@@ -5311,7 +5453,7 @@ function expectNativeSubscriptionRequest(
       model: "gpt-5.6-terra",
       stream: true,
       store: false,
-      reasoning: { effort: "low" },
+      reasoning: { effort: "max" },
     },
   });
   const { body } = z
@@ -6923,11 +7065,16 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
-  it("keeps webhook completion admission prerequisites and recursion exclusions", async () => {
+  it("keeps webhook completion failure and non-interactive source exclusions", async () => {
     const cases = [
       ["failed status", {}, true],
-      ["agent Stage 1 recursion", { triggerSource: "agent" as const }, false],
-      ["agent Phase 2 recursion", { triggerSource: "agent" as const }, false],
+      ["goal controller", { triggerSource: "goal" as const }, false],
+      [
+        "scheduled automation",
+        { triggerSource: "automation-schedule" as const },
+        false,
+      ],
+      ["webhook", { triggerSource: "webhook" as const }, false],
     ] as const;
     for (const [name, inputs, fails] of cases) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -6935,6 +7082,7 @@ describe("CHAT-02: model-first provider policies", () => {
       const run = await sendChatRun(actor, {
         agentId,
         prompt: `preserve ${name} completion exclusion`,
+        model: "claude-sonnet-5",
       });
       const claimed = await claimChatRun(runnerGroup, run.runId);
       await setRunLaunchSnapshotFixture(run.runId, {
@@ -6963,6 +7111,89 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
+  it("admits an exact Pi history from an agent-authenticated same-owner chat send", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    await bdd.updateAgentMetadata(actor, agentId, { visibility: "public" });
+    const source = await sendChatRun(actor, {
+      agentId,
+      prompt: "delegate an eligible Pi memory turn",
+      model: "claude-sonnet-5",
+    });
+    const sourceClaim = await claimChatRun(runnerGroup, source.runId);
+    const sourceToken = okouTokenFromClaim(sourceClaim.claim);
+    const targetThread = await chat.createThread(actor, { agentId });
+
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        return new HttpResponse(
+          piResponsesTextSse("delegated memory admission answer", 0, {
+            input_tokens: 10,
+            output_tokens: 3,
+            total_tokens: 13,
+            input_tokens_details: {
+              cached_tokens: 3,
+              cache_write_tokens: 2,
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const delegatedEventId = randomUUID();
+    const delegated = await requestSendEventWithBearer(
+      sourceToken,
+      {
+        agentId,
+        clientEventId: delegatedEventId,
+        threadId: targetThread.id,
+        prompt: "learn this stable preference from delegated work",
+        model: "gpt-5.6-terra",
+      },
+      [201],
+      usagePricingResolution,
+    );
+    expect(delegated.status).toBe(201);
+    if (delegated.status !== 201 || delegated.body.runId === null) {
+      throw new Error("Expected the delegated Pi prompt to launch a run");
+    }
+    const delegatedRunId = delegated.body.runId;
+    await waitForRunStatus(actor, delegatedRunId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    await expectAgentChatProvenance({
+      actor,
+      agentId,
+      delegatedEventId,
+      delegatedRunId,
+      orgId,
+      source,
+      targetThreadId: targetThread.id,
+    });
+    await expectExactPrivatePiMemoryAdmission({
+      orgId,
+      userId: actor.userId,
+      runId: delegatedRunId,
+    });
+    await expectAgentTokenThreadOwnershipBoundaries({
+      agentId,
+      orgId,
+      sourceToken,
+    });
+
+    await cancelChatRun(actor, source.runId, sourceClaim.sandboxHeaders);
+  }, 90_000);
+
   it("admits exact Pi web histories with immutable launch policy and stale-lease fencing", async () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
@@ -6982,20 +7213,36 @@ describe("CHAT-02: model-first provider policies", () => {
         generationEnabled: false,
       }),
     ).toBe("generation_disabled");
-    // Valid Pi H2 completion requires a Chat Thread, so this defensive
-    // admission-only prerequisite is covered directly at its service boundary.
+    // A classified Web Chat source must still own a Chat Thread. The actual
+    // threadless Phase 2 maintenance route is covered by the boundary test.
     expect(
       piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
         chatThreadId: null,
       }),
     ).toBe("missing_chat_thread");
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        triggerSource: "agent",
+      }),
+    ).toBeNull();
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        triggerSource: "agent",
+        chatThreadId: null,
+      }),
+    ).toBe("missing_chat_thread");
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        triggerSource: null,
+      }),
+    ).toBe("source_not_web_chat");
     for (const triggerSource of triggerSourceSchema.options) {
-      if (triggerSource === "web") {
+      if (triggerSource === "web" || triggerSource === "agent") {
         continue;
       }
       expect(
         piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({ triggerSource }),
-      ).toBe("source_not_web");
+      ).toBe("source_not_web_chat");
     }
     const usagePricingResolution = await createTerraUsagePricingResolution();
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
@@ -11868,7 +12115,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
     const h1 = h1Bytes.toString("utf8");
     expect(h1).toContain('"type":"thinking_level_change"');
-    expect(h1).toContain('"thinkingLevel":"low"');
+    expect(h1).toContain('"thinkingLevel":"max"');
     expect(h1).not.toContain("serviceTier");
     const h2Session = MemoryPiSession.fromJsonl(h1);
     const h1Assistant = [...h2Session.buildSessionContext().messages]
@@ -14691,7 +14938,7 @@ describe("CHAT-02: run-level model overrides", () => {
           provider: "openai-codex",
           baseUrl: "https://chatgpt.com/backend-api",
           model: "gpt-5.6-terra",
-          thinkingLevel: "low",
+          thinkingLevel: "max",
           credentialBindings: [
             {
               kind: "access-token",
@@ -15198,7 +15445,7 @@ describe("CHAT-02: run-level model overrides", () => {
             model: route.runtimeModel,
             stream: true,
             store: false,
-            reasoning: { effort: "low" },
+            reasoning: { effort: "max" },
           },
         });
         expect(request.body).not.toHaveProperty("previous_response_id");
@@ -18151,6 +18398,12 @@ describe("CHAT-02: generation templates and attachments", () => {
       type: "presentation",
       selection: { templateId },
     };
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PresentationTemplates]: false },
+    );
 
     const switchedOff = await chat.requestSendEvent(
       actor,

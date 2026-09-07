@@ -193,6 +193,45 @@ def test_bulk_skips_large_unselected_string_after_escape_without_storing_value()
     assert bytewise_accept_calls < 64
 
 
+@pytest.mark.parametrize(
+    "unit",
+    [
+        pytest.param(b"\xc3\xa9", id="two-byte"),
+        pytest.param(b"\xe2\x98\x83", id="three-byte"),
+        pytest.param(b"\xf0\x9f\x98\x80", id="four-byte"),
+        pytest.param(b"ascii-\xc3\xa9-\xe2\x98\x83-\xf0\x9f\x98\x80", id="mixed"),
+    ],
+)
+def test_bulk_validates_large_unselected_utf8_without_storing_value(unit: bytes) -> None:
+    bytewise_accept_calls = 0
+    accept_string_byte_code = JsonSelectiveExtractor._accept_string_byte.__code__
+
+    def count_bytewise_accept_calls(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal bytewise_accept_calls
+        if event == "call" and frame.f_code is accept_string_byte_code:
+            bytewise_accept_calls += 1
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+    large_text = unit * ((2 * 1024 * 1024) // len(unit))
+    payload = b'{"content":[{"text":"' + large_text + b'"}],"usage":{"input_tokens":7}}'
+
+    chunk_size = 64 * 1024
+    previous_profile = sys.getprofile()
+    sys.setprofile(count_bytewise_accept_calls)
+    try:
+        for offset in range(0, len(payload), chunk_size):
+            extractor.feed(payload[offset : offset + chunk_size])
+    finally:
+        sys.setprofile(previous_profile)
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+    assert bytewise_accept_calls < 256
+
+
 def test_bulk_skip_accepts_empty_unselected_key_and_value():
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")}
@@ -252,6 +291,7 @@ def test_bulk_skip_preserves_pending_escape_state_across_chunks(first_suffix, se
     [
         pytest.param(b"\xc3\xa9", 1, id="two-byte-split-1"),
         pytest.param(b"\xe2\x98\x83", 1, id="three-byte-split-1"),
+        pytest.param(b"\xe2\x98\x83", 2, id="three-byte-split-2"),
         pytest.param(b"\xf0\x9f\x98\x80", 1, id="four-byte-split-1"),
         pytest.param(b"\xf0\x9f\x98\x80", 2, id="four-byte-split-2"),
         pytest.param(b"\xf0\x9f\x98\x80", 3, id="four-byte-split-3"),
@@ -284,10 +324,42 @@ def test_rejects_invalid_utf8_in_unselected_string():
 
 
 @pytest.mark.parametrize(
+    "encoded",
+    [
+        pytest.param(b"\xc2\x80", id="minimum-two-byte"),
+        pytest.param(b"\xdf\xbf", id="maximum-two-byte"),
+        pytest.param(b"\xe0\xa0\x80", id="minimum-three-byte"),
+        pytest.param(b"\xed\x9f\xbf", id="before-surrogates"),
+        pytest.param(b"\xee\x80\x80", id="after-surrogates"),
+        pytest.param(b"\xef\xbf\xbf", id="maximum-three-byte"),
+        pytest.param(b"\xf0\x90\x80\x80", id="minimum-four-byte"),
+        pytest.param(b"\xf4\x8f\xbf\xbf", id="maximum-four-byte"),
+    ],
+)
+def test_accepts_canonical_utf8_range_boundaries_in_unselected_string(encoded: bytes) -> None:
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(b'{"content":"' + encoded + b'","usage":{"input_tokens":9}}')
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 9}
+
+
+@pytest.mark.parametrize(
     ("payload", "error"),
     [
+        (b'{"content":"\x80"}', "invalid string"),
+        (b'{"content":"\xc0\x80"}', "invalid string"),
+        (b'{"content":"\xe0\x80\x80"}', "invalid string"),
         (b'{"content":"\xe2\x98"}', "invalid string"),
         (b'{"content":"\xed\xa0\x80"}', "invalid string"),
+        (b'{"content":"\xf0\x80\x80\x80"}', "invalid string"),
+        (b'{"content":"\xf4\x90\x80\x80"}', "invalid string"),
+        (b'{"content":"\xf5\x80\x80\x80"}', "invalid string"),
+        (b'{"content":"\xe2x"}', "invalid string"),
         (b'{"content":"abc\x01"}', "control character in string"),
         (b'{"content":"\\x"}', "invalid string escape"),
         (b'{"content":"\\u12xz"}', "invalid unicode escape"),

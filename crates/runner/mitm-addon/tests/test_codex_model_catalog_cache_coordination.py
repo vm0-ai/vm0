@@ -4,12 +4,14 @@ import asyncio
 from unittest.mock import patch
 
 import pytest
+from mitmproxy import http
 from mitmproxy.flow import Error
 
 import codex_model_catalog_cache as catalog_cache
 import mitm_addon
 from tests.codex_model_catalog_cache_helpers import (
     CATALOG_BODY,
+    CATALOG_ETAG,
     catalog_flow,
     catalog_response,
     finish_response,
@@ -141,6 +143,92 @@ async def test_non_cacheable_identity_headers_release_singleflight_follower(real
         "model_catalog_cache_upstream_encoding": "identity",
     }
     catalog_cache.handle_error(follower)
+
+
+@pytest.mark.parametrize(
+    ("content_type", "etag", "reason"),
+    [
+        pytest.param(
+            b"application/json",
+            b'"\xff"',
+            "response_etag",
+            id="etag",
+        ),
+        pytest.param(
+            b"application/\xffjson",
+            CATALOG_ETAG.encode(),
+            "response_content_type",
+            id="content-type",
+        ),
+    ],
+)
+async def test_non_utf8_identity_headers_release_singleflight_follower(
+    real_flow,
+    content_type: bytes,
+    etag: bytes,
+    reason: str,
+):
+    version = f"non-utf8-{reason}"
+    owner = catalog_flow(real_flow, version=version)
+    await prepare_miss(owner)
+    follower = catalog_flow(real_flow, version=version)
+    follower_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+
+    owner.response = catalog_response()
+    upstream_body = owner.response.raw_content
+    owner.response.headers = http.Headers(
+        [
+            (b"Content-Type", content_type),
+            (b"Content-Length", str(len(CATALOG_BODY)).encode()),
+            (b"ETag", etag),
+        ]
+    )
+
+    mitm_addon.responseheaders(owner)
+
+    assert owner.response.status_code == 200
+    assert owner.response.raw_content == upstream_body
+    await asyncio.wait_for(follower_prepare, timeout=0.1)
+    assert follower.response is None
+    assert follower.request.headers["Accept-Encoding"] == "identity"
+
+    capacity_owners = [
+        catalog_flow(real_flow, version=f"{version}-capacity-{index}")
+        for index in range(catalog_cache.MAX_IN_FLIGHT_REQUESTS - 1)
+    ]
+    for capacity_owner in capacity_owners:
+        await prepare_miss(capacity_owner)
+        capacity_telemetry: dict[str, object] = {}
+        catalog_cache.add_network_log_fields(capacity_owner, capacity_telemetry)
+        assert capacity_telemetry == {}
+    for capacity_owner in capacity_owners:
+        catalog_cache.handle_error(capacity_owner)
+
+    owner_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(owner, owner_telemetry)
+    validation_latency = owner_telemetry.pop("model_catalog_cache_validation_latency_ms")
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
+    assert owner_telemetry == {
+        "model_catalog_cache_status": "model_catalog_cold_not_stored",
+        "model_catalog_cache_bypass_reason": reason,
+        "model_catalog_cache_upstream_encoding": "identity",
+    }
+
+    follower_body = b'{"models":[{"slug":"replacement"}]}'
+    follower.response = catalog_response(body=follower_body)
+    assert (await finish_response(follower))["model_catalog_cache_status"] == (
+        "model_catalog_cold_stored"
+    )
+
+    hit = catalog_flow(real_flow, version=version)
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
+    assert hit.response is not None
+    assert hit.response.content == follower_body
 
 
 async def test_unsolicited_encoded_response_releases_follower_as_identity_owner(real_flow):

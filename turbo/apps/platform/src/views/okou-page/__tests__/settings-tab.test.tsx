@@ -238,7 +238,9 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
     const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
     expect(within(dialog).getByText("Face")).toBeVisible();
     expect(within(dialog).queryByText("Angle")).not.toBeInTheDocument();
-    expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 4)).toStrictEqual([
+    expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 6)).toStrictEqual([
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
@@ -270,8 +272,10 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
     const reopened = await screen.findByRole("dialog", { name: "Edit avatar" });
     click(within(reopened).getByLabelText("Randomize avatar"));
     await waitForAvatarFeedback(reopened);
-    const composerLayerSrcs = renderedAvatarSvgLayerSrcs(reopened).slice(0, 4);
+    const composerLayerSrcs = renderedAvatarSvgLayerSrcs(reopened).slice(0, 6);
     expect(composerLayerSrcs).toStrictEqual([
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
@@ -346,12 +350,15 @@ test("Offer avatar creation instead of editing when the agent has no avatar", as
   ).resolves.toBeVisible();
 });
 
-test("Load only the visible avatar SVG layers", async () => {
+test("Load only the four head layers when neck and sweater are disabled", async () => {
   prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+      [FeatureSwitchKey.AvatarNeckSweater]: false,
+    },
   });
 
   click(await findCreateCustomAvatarButton());
@@ -367,15 +374,12 @@ test("Load only the visible avatar SVG layers", async () => {
   expect(layerSrcs.filter(isNeckOrSweaterLayer)).toStrictEqual([]);
 });
 
-test("Add the neck and sweater layers once the switch is on", async () => {
+test("Load the released neck and sweater layers by default", async () => {
   prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: {
-      [FeatureSwitchKey.AvatarComposerV2]: true,
-      [FeatureSwitchKey.AvatarNeckSweater]: true,
-    },
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   click(await findCreateCustomAvatarButton());

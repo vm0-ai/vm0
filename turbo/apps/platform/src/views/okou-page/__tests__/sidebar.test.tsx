@@ -1030,7 +1030,7 @@ test("Mount only the sidebar for the current viewport", async () => {
   expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
 });
 
-test("Keep pin management usable with many pinned agents", async () => {
+test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents();
   const preferencesGate = context.mocks.deferred<void>();
   context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
@@ -1064,6 +1064,7 @@ test("Keep pin management usable with many pinned agents", async () => {
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: large },
   });
 
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
@@ -1099,17 +1100,22 @@ test("Keep pin management usable with many pinned agents", async () => {
   if (!pinAgent) {
     throw new Error("Pin agent button not found");
   }
-  // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
-  // Billing, so Pin closes the first row and the rest wrap after it.
-  const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
-  const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
+  // Pin closes the first row at either avatar size; remaining agents wrap.
+  const beforePin = pinnedAgentLink(
+    grid,
+    large ? "Research Agent" : "Operations Agent",
+  );
+  const afterPin = pinnedAgentLink(
+    grid,
+    large ? "Support Agent" : "Analytics Agent",
+  );
 
   expect(
-    fourthAgent.compareDocumentPosition(pinAgent) &
+    beforePin.compareDocumentPosition(pinAgent) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(
-    pinAgent.compareDocumentPosition(fifthAgent) &
+    pinAgent.compareDocumentPosition(afterPin) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
@@ -1175,11 +1181,6 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
     expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
   });
 });
-
-// The new shell parks the workspace card's eight-pixel gutter, painted in the
-// sidebar colour, immediately right of this column. Keeping the full inset here
-// as well stacks the two, so the rows sit twice as far from the card's border
-// as from the rail.
 
 test("Route New chat to the current agent and Chat to the default agent", async () => {
   prepareAgents();
@@ -2310,7 +2311,11 @@ test("Search, pin, and open an agent from the pin manager", async () => {
     return [researchThread];
   });
 
-  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: true },
+  });
 
   const grid = await screen.findByTestId("pinned-agents-grid");
   click(screen.getByLabelText("Pin an agent"));

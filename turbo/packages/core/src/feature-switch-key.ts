@@ -60,6 +60,7 @@ export enum FeatureSwitchKey {
   StableChatThreadNavigation = "stableChatThreadNavigation",
   ChatThreadPinShortcut = "chatThreadPinShortcut",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
+  PinnedAgentAvatar64 = "pinnedAgentAvatar64",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
@@ -73,8 +74,6 @@ export enum FeatureSwitchKey {
   VoiceInputV2 = "voiceInputV2",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
-  GeistTypeface = "geistTypeface",
   AvatarComposerV2 = "avatarComposerV2",
   AvatarNeckSweater = "avatarNeckSweater",
-  NewUi = "newUi",
 }

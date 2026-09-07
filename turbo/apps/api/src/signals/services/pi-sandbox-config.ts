@@ -121,7 +121,7 @@ function piRuntimeContract(args: {
   if (args.selectedModel === "gpt-5.6-terra") {
     return {
       api: "openai-responses",
-      thinkingLevel: "low",
+      thinkingLevel: "max",
       ...(isBuiltInModelProviderType(args.providerType) &&
       args.codexServiceTier === "fast"
         ? { serviceTier: "priority" as const }
@@ -252,7 +252,7 @@ function resolveCodexSubscriptionPiModelConfig(
     provider: "openai-codex",
     baseUrl: endpoint.baseUrl,
     model: "gpt-5.6-terra",
-    thinkingLevel: "low",
+    thinkingLevel: "max",
     credentialBindings: [
       {
         kind: "access-token",
@@ -371,7 +371,7 @@ function resolveStandardTerraApiKeyPiModelConfig(
     ...(route.productProviderType === "vercel-ai-gateway-codex"
       ? { catalogModel: route.catalogModel }
       : {}),
-    thinkingLevel: "low",
+    thinkingLevel: "max",
     credentialBindings: [
       {
         kind: "api-key",
