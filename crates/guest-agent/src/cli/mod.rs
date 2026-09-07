@@ -13,10 +13,11 @@
 //! - `jsonl_result`: shared terminal result parsing for JSONL CLI backends.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` owns the shared Claude Code/Pi JSONL subprocess orchestration,
-//! while `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
-//! retains ownership of its process, event delivery, heartbeat races, and child
-//! reaping until completion.
+//! [`execute_cli_with_controls_for_config_started_at`] enters the shared Claude
+//! Code/Pi JSONL subprocess orchestration implemented by the private
+//! `execute_cli_inner`, while `codex_app_server_backend` owns the Codex JSON-RPC
+//! lifecycle. Each path retains ownership of its process, event delivery,
+//! heartbeat races, and child reaping until completion.
 
 mod child_env;
 mod child_exit_notifier;
@@ -303,9 +304,10 @@ pub enum HeartbeatStatus {
 
     /// The heartbeat task itself failed, such as a task panic or join error.
     ///
-    /// `execute_cli` surfaces this as a guest-agent execution error and may
-    /// terminate the CLI process group if no earlier control-path termination
-    /// is already in progress.
+    /// The shared [`execute_cli_with_controls_for_config_started_at`] execution
+    /// path surfaces this as a guest-agent execution error and may terminate
+    /// the CLI process group if no earlier control-path termination is already
+    /// in progress.
     TaskFailed(String),
 }
 
