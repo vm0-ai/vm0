@@ -413,6 +413,20 @@ async fn mitm_recovery_keeps_lifecycle_live_and_shutdown_joins_old_child_cleanup
     tokio::time::timeout(Duration::from_secs(3), gate.entered.notified())
         .await
         .unwrap();
+    crash_tx.send(()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while crash_tx.capacity() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("reactor should consume the late crash notification");
+    // An expired retry timer must not busy-loop while old-child cleanup is
+    // still owned. Only the timer is advanced; the real child gate stays held.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(2)).await;
+    tokio::task::yield_now().await;
+    tokio::time::resume();
     env.trigger_stopping().await;
     wait_status_mode(&status_path, "stopping", Duration::from_secs(2)).await;
     assert!(

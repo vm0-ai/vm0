@@ -65,6 +65,9 @@ replacement, and then uses the existing usage-flush/proxy-stop sequence. Ordinar
 startup failures retain backoff; unknown old-child cleanup failures or recovery
 task panics stop the runner and disable further retries. Managed-child Drop
 remains the abnormal process/launch reconciliation fallback.
+Late crash notifications may retain a follow-up retry, but its timer is not
+polled while recovery is in flight: an already expired timer must not spin the
+reactor while it cannot yet spawn another attempt.
 
 DNS/kmsg monitor completion starts independently scheduled child cleanup, then
 the reactor cancels admission and active runs and publishes Stopping. Each

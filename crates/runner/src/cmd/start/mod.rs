@@ -2421,8 +2421,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                 }
             }
-            // Mitmproxy restart timer
-            () = sleep_until_retry(&mitm_retry.restart_at) => {}
+            // A late crash can arm a timer during recovery. Keep that request,
+            // but do not spin on an expired timer while its owner is in flight.
+            () = sleep_until_retry(&mitm_retry.restart_at), if mitm_retry.handle.is_none() => {}
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
@@ -2651,7 +2652,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         }
                     }
                 }
-                () = sleep_until_retry(&mitm_retry.restart_at) => {}
+                () = sleep_until_retry(&mitm_retry.restart_at), if mitm_retry.handle.is_none() => {}
             }
         }
     }
