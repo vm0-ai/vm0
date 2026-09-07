@@ -179,9 +179,6 @@ function createVoiceDraftTranscription(
   const { recording$, storageKey$, deliveredRecordingId$, reload$ } = data;
   const incremental = createVoiceDraftTranscriptionSignals({
     storageKey$,
-    recordingActive$: computed((get) => {
-      return get(data.capture.capture$) !== null;
-    }),
     readContext$: command(({ get, set }) => {
       const reference = get(lastAssistantMessage$)
         ?.trim()
@@ -200,7 +197,7 @@ function createVoiceDraftTranscription(
     }
     const key = await get(storageKey$);
     signal.throwIfAborted();
-    const text = await set(incremental.transcribe$, true, signal);
+    const text = await set(incremental.transcribe$, signal);
     if (text === undefined) {
       return;
     }
@@ -227,7 +224,8 @@ function createVoiceDraftTranscription(
   });
   return {
     transcribe$,
-    notify$: incremental.notify$,
+    initialize$: incremental.initialize$,
+    append$: incremental.append$,
     watch$: incremental.watch$,
     cancel$: incremental.cancel$,
   };
@@ -236,7 +234,8 @@ function createVoiceDraftTranscription(
 function createVoiceDraftMutations(
   data: VoiceDraftData,
   transcribe$: VoiceDraftCommand,
-  notify$: Command<void, []>,
+  initializeTranscription$: VoiceDraftCommand,
+  appendTranscription$: Command<Promise<void>, [boolean, AbortSignal]>,
   cancelTranscription$: VoiceDraftCommand,
 ) {
   const { recording$, storageKey$, reload$, capture, captureError$ } = data;
@@ -277,6 +276,7 @@ function createVoiceDraftMutations(
     if (recording.id !== id) {
       return;
     }
+    await set(initializeTranscription$, signal);
     const removeEmptyRecording = async () => {
       const current = await readVoiceDraftRecording(key);
       if (current?.id === id && current.sampleCount === 0) {
@@ -292,7 +292,8 @@ function createVoiceDraftMutations(
           {
             append: async (samples, sequence) => {
               await appendVoiceDraftSamples(key, id, sequence, samples);
-              set(notify$);
+              signal.throwIfAborted();
+              await set(appendTranscription$, false, signal);
             },
             fail: (error) => {
               L.error("Voice recording could not be saved", error);
@@ -309,9 +310,6 @@ function createVoiceDraftMutations(
       signal,
     );
     signal.throwIfAborted();
-    if (started) {
-      set(notify$);
-    }
     if (!started) {
       await withVoiceDraftFailureToast(removeEmptyRecording(), signal);
       signal.throwIfAborted();
@@ -441,7 +439,8 @@ export function createComposerVoiceInputSignals(
     createVoiceDraftMutations(
       data,
       transcription.transcribe$,
-      transcription.notify$,
+      transcription.initialize$,
+      transcription.append$,
       transcription.cancel$,
     ),
     createLegacyVoiceToggle(appendText$),

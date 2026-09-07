@@ -1,4 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { SileroV5 } from "@ricky0123/vad-web/dist/models/v5";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -33,6 +34,140 @@ vi.mock("@ricky0123/vad-web/dist/models/v5", () => {
 const refreshedContext = testContext();
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 const endpoint = "*/api/voice-io/transcribe/segment";
+
+test("Keep saving audio after speech detection fails and prepare it again on Stop", async () => {
+  const capture = context.mocks.deferred<(samples: Float32Array) => void>();
+  const detectionFailed = context.mocks.deferred<void>();
+  const finalRequested = context.mocks.deferred<void>();
+  vi.spyOn(SileroV5, "new").mockImplementationOnce(() => {
+    detectionFailed.resolve();
+    return Promise.reject(new Error("Speech detection unavailable"));
+  });
+  context.mocks.browser.voiceInput({
+    rms: 0.1,
+    onPcmCapture: capture.resolve,
+    finalPcmSamples: new Float32Array(0),
+  });
+  installRunChat();
+  const audio: { duration: number; final: boolean }[] = [];
+  context.mocks.http.post(endpoint, async ({ request }) => {
+    const form = await request.formData();
+    const options = JSON.parse(String(form.get("options"))) as {
+      previousTranscript: string;
+      final: boolean;
+    };
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw new Error("Expected retained audio");
+    }
+    audio.push({ duration: (file.size - 44) / 32_000, final: options.final });
+    if (options.final) {
+      finalRequested.resolve();
+    }
+    return HttpResponse.json(
+      options.final
+        ? {
+            transcript: "More speech.",
+            polishedText: "Retained speech. More speech.",
+            language: "en",
+          }
+        : { transcript: "Retained speech.", language: "en" },
+    );
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  const emit = await capture.promise;
+  emit(new Float32Array(75 * 16_000).fill(0.1));
+  await detectionFailed.promise;
+  emit(new Float32Array(5 * 16_000).fill(0.2));
+  click(await findEnabledButton("Stop recording"));
+  await finalRequested.promise;
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "Retained speech. More speech.",
+    );
+  });
+  expect(audio).toStrictEqual([
+    { duration: 75, final: false },
+    { duration: 5, final: true },
+  ]);
+});
+
+test("Save later audio while an earlier segment is pending and finalize in order", async () => {
+  const capture = context.mocks.deferred<(samples: Float32Array) => void>();
+  const stopped = context.mocks.deferred<void>();
+  const firstStarted = context.mocks.deferred<void>();
+  const firstReady = context.mocks.deferred<void>();
+  const secondStarted = context.mocks.deferred<void>();
+  const secondReady = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({
+    rms: 0.1,
+    onPcmCapture: capture.resolve,
+    onPcmPortClose: stopped.resolve,
+    finalPcmSamples: new Float32Array(0),
+  });
+  installRunChat();
+  const inputs: { prefix: string; final: boolean; duration: number }[] = [];
+  context.mocks.http.post(endpoint, async ({ request }) => {
+    const form = await request.formData();
+    const options = JSON.parse(String(form.get("options"))) as {
+      previousTranscript: string;
+      final: boolean;
+    };
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw new Error("Expected segment audio");
+    }
+    inputs.push({
+      prefix: options.previousTranscript,
+      final: options.final,
+      duration: (file.size - 44) / 32_000,
+    });
+    if (!options.previousTranscript) {
+      firstStarted.resolve();
+      await firstReady.promise;
+      return HttpResponse.json({ transcript: "First part.", language: "en" });
+    }
+    if (options.previousTranscript === "First part.") {
+      secondStarted.resolve();
+      await secondReady.promise;
+      return HttpResponse.json({ transcript: "Second part.", language: "en" });
+    }
+    return HttpResponse.json({
+      transcript: "Third part.",
+      polishedText: "First part. Second part. Third part.",
+      language: "en",
+    });
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  const emit = await capture.promise;
+  emit(new Float32Array(75 * 16_000).fill(0.1));
+  await firstStarted.promise;
+  emit(new Float32Array(75 * 16_000).fill(0.2));
+  emit(new Float32Array(5 * 16_000).fill(0.3));
+  click(await findEnabledButton("Stop recording"));
+  // Closing the PCM port proves all later samples were saved while HTTP waited.
+  await stopped.promise;
+  expect(inputs).toStrictEqual([{ prefix: "", final: false, duration: 75 }]);
+  firstReady.resolve();
+  await secondStarted.promise;
+  expect(inputs).toStrictEqual([
+    { prefix: "", final: false, duration: 75 },
+    { prefix: "First part.", final: false, duration: 75 },
+  ]);
+  secondReady.resolve();
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "First part. Second part. Third part.",
+    );
+  });
+  expect(inputs).toStrictEqual([
+    { prefix: "", final: false, duration: 75 },
+    { prefix: "First part.", final: false, duration: 75 },
+    { prefix: "First part. Second part.", final: true, duration: 5 },
+  ]);
+});
 
 test("Keep recording through segment failures and retry only unfinished segments", async () => {
   const capture = context.mocks.deferred<(samples: Float32Array) => void>();

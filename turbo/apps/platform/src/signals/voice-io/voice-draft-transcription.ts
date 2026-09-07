@@ -1,36 +1,21 @@
-import {
-  command,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
   VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS,
-  voiceIoTranscribeContract,
   type VoiceIoTranscribeContext,
-  type VoiceIoTranscribeSegmentResponse,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
-import { accept } from "../../lib/accept.ts";
-import { apiClient$ } from "../api-client.ts";
 import {
   readVoiceDraftRecording,
   readVoiceDraftAudio,
-  saveVoiceDraftProgress,
-  type VoiceDraftProgress,
-  type VoiceDraftRecordingRecord,
   type VoiceDraftSegment,
 } from "../external/voice-draft-store.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
-  withCleanup,
+  settle,
 } from "../utils.ts";
-import {
-  nextVoiceDraftSegment,
-  voiceDraftSegmentFile,
-} from "./voice-draft-audio.ts";
+import { nextVoiceDraftSegment } from "./voice-draft-audio.ts";
 import { VOICE_DRAFT_PCM_SAMPLE_RATE } from "./voice-draft-pcm.ts";
+import { createVoiceDraftSegmentResult } from "./voice-draft-transcription-segment.ts";
 import {
   openAudioInputQuotaRecovery$,
   refreshAudioInputQuota$,
@@ -38,200 +23,65 @@ import {
 
 interface VoiceDraftTranscriptionOptions {
   readonly storageKey$: Computed<Promise<string>>;
-  readonly recordingActive$: Computed<boolean>;
   readonly readContext$: Command<VoiceIoTranscribeContext, []>;
 }
 
-interface VoiceDraftWork {
-  readonly progress: VoiceDraftProgress;
+interface VoiceDraftTranscriptionSession {
+  readonly key: string;
+  readonly recordingId: string;
+  readonly context?: VoiceIoTranscribeContext;
+  readonly controller: AbortController;
+}
+
+interface VoiceDraftTranscriptionSegment {
   readonly segment?: VoiceDraftSegment;
-  readonly final: boolean;
-  readonly body: FormData;
+  readonly totalDurationSeconds: number;
+  readonly result$: ReturnType<typeof createVoiceDraftSegmentResult>;
 }
 
-/** Persist the exact audio boundary before sending a recoverable request. */
-async function prepareVoiceDraftWork(
-  key: string,
-  recording: VoiceDraftRecordingRecord,
-  saved: VoiceDraftProgress,
-  finished: boolean,
-  signal: AbortSignal,
-): Promise<VoiceDraftWork | "" | undefined> {
-  let progress = saved;
-  let segment = progress.segments.find((item) => {
-    return item.transcript === undefined;
+function createSegment(
+  session: VoiceDraftTranscriptionSession,
+  segment: VoiceDraftSegment | undefined,
+  previous: VoiceDraftTranscriptionSegment | undefined,
+  totalDurationSeconds: number,
+): VoiceDraftTranscriptionSegment {
+  if (!session.context) {
+    throw new Error("Voice transcription context has not been captured");
+  }
+  return {
+    segment,
+    totalDurationSeconds,
+    result$: createVoiceDraftSegmentResult(
+      {
+        key: session.key,
+        recordingId: session.recordingId,
+        context: session.context,
+        segment,
+        previous$: previous?.result$,
+        totalDurationSeconds,
+      },
+      session.controller.signal,
+    ),
+  };
+}
+
+function isFinalSegment(
+  entry: VoiceDraftTranscriptionSegment | undefined,
+): boolean {
+  return entry !== undefined && (entry.segment?.final ?? true);
+}
+
+function createTranscriptionState() {
+  const session$ = state<VoiceDraftTranscriptionSession | null>(null);
+  const segments$ = state<readonly VoiceDraftTranscriptionSegment[]>([]);
+  const preparationError$ = state<unknown>(null);
+  const result$ = computed(async (get) => {
+    const last = get(segments$).at(-1);
+    return last ? await get(last.result$) : undefined;
   });
-  const startSample = progress.segments.at(-1)?.endSample ?? 0;
-  const remaining = recording.sampleCount - startSample;
-  if (
-    !segment &&
-    !finished &&
-    remaining <
-      VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS * VOICE_DRAFT_PCM_SAMPLE_RATE
-  ) {
-    return;
-  }
-  const previousTranscript = progress.segments
-    .map((item) => {
-      return item.transcript ?? "";
-    })
-    .filter(Boolean)
-    .join(" ");
-  if (!segment && remaining === 0 && !previousTranscript) {
-    return finished ? "" : undefined;
-  }
-  const blob = await readVoiceDraftAudio(key, recording.id);
-  signal.throwIfAborted();
-  if (!segment && remaining > 0) {
-    segment =
-      (await nextVoiceDraftSegment(blob, startSample, finished, signal)) ??
-      undefined;
-    if (!segment) {
-      return;
-    }
-    progress = {
-      ...progress,
-      revision: progress.revision + 1,
-      segments: [...progress.segments, segment],
-    };
-    await saveVoiceDraftProgress(key, recording.id, progress);
-    signal.throwIfAborted();
-  }
-  const final = segment?.final ?? finished;
-  const body = new FormData();
-  if (segment) {
-    body.append("file", await voiceDraftSegmentFile(blob, segment, signal));
-  }
-  body.append(
-    "options",
-    JSON.stringify({
-      previousTranscript,
-      final,
-      totalDurationSeconds: recording.sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE,
-    }),
-  );
-  if (progress.context.lastAssistantMessage) {
-    body.append("lastAssistantMessage", progress.context.lastAssistantMessage);
-  }
-  if (progress.context.editorContext) {
-    body.append(
-      "editorContext",
-      JSON.stringify(progress.context.editorContext),
-    );
-  }
-  return { progress, segment, final, body };
-}
-
-function completedVoiceDraftText(
-  final: boolean,
-  response: VoiceIoTranscribeSegmentResponse | undefined,
-): string | undefined {
-  if (!final) {
-    return;
-  }
-  if (!response) {
-    return "";
-  }
-  if (!response.polishedText?.trim()) {
-    throw new Error("Final voice transcription returned no polished text");
-  }
-  return response.polishedText;
-}
-
-function createVoiceDraftProcessor(
-  options: VoiceDraftTranscriptionOptions,
-  pausedRecording$: State<string | null>,
-) {
-  return command(
-    async (
-      { get, set },
-      finished: boolean,
-      signal: AbortSignal,
-    ): Promise<string | undefined> => {
-      const key = await get(options.storageKey$);
-      signal.throwIfAborted();
-      const initial = await readVoiceDraftRecording(key);
-      signal.throwIfAborted();
-      if (!initial) {
-        return;
-      }
-      while (true) {
-        const recording = await readVoiceDraftRecording(key);
-        signal.throwIfAborted();
-        if (recording?.id !== initial.id) {
-          throw new Error("Voice recording changed during transcription");
-        }
-        const progress: VoiceDraftProgress = recording.progress ?? {
-          revision: 0,
-          context: set(options.readContext$),
-          segments: [],
-        };
-        if (progress.text !== undefined) {
-          return progress.text;
-        }
-        const work = await prepareVoiceDraftWork(
-          key,
-          recording,
-          progress,
-          finished,
-          signal,
-        );
-        signal.throwIfAborted();
-        if (work === undefined || typeof work === "string") {
-          return work;
-        }
-        const result = await accept(
-          get(apiClient$)(voiceIoTranscribeContract).segment({
-            body: work.body,
-            fetchOptions: { signal },
-          }),
-          [200, 204, 402, 429],
-          signal,
-        );
-        signal.throwIfAborted();
-        if (result.status === 402 || result.status === 429) {
-          set(pausedRecording$, recording.id);
-          await set(openAudioInputQuotaRecovery$, signal);
-          return;
-        }
-        const transcript = result.status === 200 ? result.body.transcript : "";
-        const text = completedVoiceDraftText(
-          work.final,
-          result.status === 200 ? result.body : undefined,
-        );
-        const segmentEnd = work.segment?.endSample;
-        await saveVoiceDraftProgress(key, recording.id, {
-          ...work.progress,
-          revision: work.progress.revision + 1,
-          segments: work.progress.segments.map((item) => {
-            return item.endSample === segmentEnd
-              ? { ...item, transcript }
-              : item;
-          }),
-          ...(text === undefined ? {} : { text }),
-        });
-        signal.throwIfAborted();
-        set(refreshAudioInputQuota$);
-        if (work.final) {
-          return text;
-        }
-      }
-    },
-  );
-}
-
-/** One serial consumer, independent of the recorder's ordered PCM writes. */
-export function createVoiceDraftTranscriptionSignals(
-  options: VoiceDraftTranscriptionOptions,
-) {
   const wake$ = state<ReturnType<typeof createDeferredPromise<void>> | null>(
     null,
   );
-  const pending$ = state<Promise<
-    PromiseSettledResult<string | undefined>[]
-  > | null>(null);
-  const backgroundController$ = state<AbortController | null>(null);
-  const pausedRecording$ = state<string | null>(null);
   const notify$ = command(({ get }) => {
     const wake = get(wake$);
     if (wake && !wake.settled()) {
@@ -239,76 +89,270 @@ export function createVoiceDraftTranscriptionSignals(
     }
   });
 
-  const process$ = createVoiceDraftProcessor(options, pausedRecording$);
+  return { session$, segments$, preparationError$, result$, wake$, notify$ };
+}
 
-  const transcribe$ = command(
+type TranscriptionState = ReturnType<typeof createTranscriptionState>;
+
+function createInitialization(
+  options: VoiceDraftTranscriptionOptions,
+  state: TranscriptionState,
+) {
+  const { session$, segments$, preparationError$, result$ } = state;
+  const initialize$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const key = await get(options.storageKey$);
+    signal.throwIfAborted();
+    const recording = await readVoiceDraftRecording(key);
+    signal.throwIfAborted();
+    if (!recording) {
+      return;
+    }
+    const current = get(session$);
+    if (
+      current?.recordingId === recording.id &&
+      !current.controller.signal.aborted
+    ) {
+      return;
+    }
+    current?.controller.abort();
+    await Promise.allSettled([get(result$)]);
+    signal.throwIfAborted();
+    if (get(session$) !== current) {
+      return;
+    }
+    const session = {
+      key,
+      recordingId: recording.id,
+      context: recording.progress?.context,
+      controller: createChildAbortController(signal),
+    };
+    const restored: VoiceDraftTranscriptionSegment[] = [];
+    for (const segment of recording.progress?.segments ?? []) {
+      restored.push(
+        createSegment(
+          session,
+          segment,
+          restored.at(-1),
+          recording.sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE,
+        ),
+      );
+    }
+    set(session$, session);
+    set(segments$, restored);
+    set(preparationError$, null);
+  });
+
+  return initialize$;
+}
+
+function createSegmentPreparation(
+  options: VoiceDraftTranscriptionOptions,
+  state: TranscriptionState,
+) {
+  const { session$, segments$, preparationError$, notify$ } = state;
+  // The recorder's ordered PCM writes call this after saving audio. Preparing a
+  // new segment never waits for HTTP; Stop flushes those writes before sealing
+  // the tail through the same command.
+  const prepare$ = command(
     async ({ get, set }, finished: boolean, signal: AbortSignal) => {
-      // Register ownership before any processing can make synchronous progress.
-      while (get(pending$)) {
-        await get(pending$);
-        signal.throwIfAborted();
+      let session = get(session$);
+      if (!session) {
+        return;
       }
+      const existing = get(segments$);
+      const entries = [...existing];
+      const last = entries.at(-1);
+      if (isFinalSegment(last)) {
+        return;
+      }
+      const recording = await readVoiceDraftRecording(session.key);
       signal.throwIfAborted();
-      const start = createDeferredPromise<void>(signal);
-      const processing = (async () => {
-        await start.promise;
-        signal.throwIfAborted();
-        return await set(process$, finished, signal);
-      })();
-      set(pending$, Promise.allSettled([processing]));
-      if (!start.settled()) {
-        start.resolve();
+      if (recording?.id !== session.recordingId) {
+        throw new Error("Voice recording changed during transcription");
       }
-      return await withCleanup(processing, () => {
-        set(pending$, null);
-      });
+      let startSample = last?.segment?.endSample ?? 0;
+      const remaining = recording.sampleCount - startSample;
+      if (
+        !finished &&
+        remaining <
+          VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS * VOICE_DRAFT_PCM_SAMPLE_RATE
+      ) {
+        return;
+      }
+      if (!session.context) {
+        session = { ...session, context: set(options.readContext$) };
+        set(session$, session);
+      }
+      const audio = await readVoiceDraftAudio(session.key, session.recordingId);
+      signal.throwIfAborted();
+      const totalDurationSeconds =
+        recording.sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE;
+      while (startSample < recording.sampleCount) {
+        const segment = await nextVoiceDraftSegment(
+          audio,
+          startSample,
+          finished,
+          signal,
+        );
+        if (!segment) {
+          break;
+        }
+        entries.push(
+          createSegment(session, segment, entries.at(-1), totalDurationSeconds),
+        );
+        startSample = segment.endSample;
+      }
+      if (finished && !isFinalSegment(entries.at(-1))) {
+        entries.push(
+          createSegment(
+            session,
+            undefined,
+            entries.at(-1),
+            totalDurationSeconds,
+          ),
+        );
+      }
+      if (get(segments$) !== existing) {
+        return;
+      }
+      set(segments$, entries);
+      set(notify$);
     },
   );
 
-  const cancel$ = command(async ({ get }, signal: AbortSignal) => {
-    get(backgroundController$)?.abort();
-    await get(pending$);
+  const append$ = command(
+    async ({ get, set }, finished: boolean, signal: AbortSignal) => {
+      if (finished) {
+        await set(prepare$, true, signal);
+      } else if (!get(preparationError$)) {
+        const prepared = await settle(set(prepare$, false, signal), signal);
+        if (!prepared.ok) {
+          // A failed speech detector must not stop the recorder's PCM writes.
+          // Stop/Retry prepares the retained audio again.
+          set(preparationError$, prepared.error);
+        }
+      }
+    },
+  );
+
+  return append$;
+}
+
+function createCheckpointRetry(state: TranscriptionState) {
+  const { session$, segments$ } = state;
+  const retry$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const session = get(session$);
+    if (!session) {
+      return;
+    }
+    const entries = get(segments$);
+    const recording = await readVoiceDraftRecording(session.key);
     signal.throwIfAborted();
+    if (recording?.id !== session.recordingId) {
+      throw new Error("Voice recording changed during transcription");
+    }
+    if (get(segments$) !== entries || recording.progress?.text !== undefined) {
+      return;
+    }
+    const firstUnfinished = entries.findIndex(({ segment }) => {
+      return (
+        !segment ||
+        recording.progress?.segments.find((saved) => {
+          return saved.endSample === segment.endSample;
+        })?.transcript === undefined
+      );
+    });
+    if (firstUnfinished === -1) {
+      return;
+    }
+    const retried = entries.slice(0, firstUnfinished);
+    for (const entry of entries.slice(firstUnfinished)) {
+      retried.push(
+        createSegment(
+          session,
+          entry.segment,
+          retried.at(-1),
+          entry.totalDurationSeconds,
+        ),
+      );
+    }
+    set(segments$, retried);
   });
 
+  return retry$;
+}
+
+/** Stable segment computeds form a chain; only the last result needs awaiting. */
+export function createVoiceDraftTranscriptionSignals(
+  options: VoiceDraftTranscriptionOptions,
+) {
+  const state = createTranscriptionState();
+  const { session$, segments$, result$, wake$ } = state;
+  const initialize$ = createInitialization(options, state);
+  const append$ = createSegmentPreparation(options, state);
+  const retry$ = createCheckpointRetry(state);
+  const transcribe$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const current = get(session$);
+    const previous =
+      current && !current.controller.signal.aborted && get(segments$).length > 0
+        ? Promise.allSettled([get(result$)])
+        : undefined;
+    await set(initialize$, signal);
+    await set(append$, true, signal);
+    // Seal the tail immediately, even while its predecessor is requesting.
+    // Only an already-started failed chain needs its unfinished suffix rebuilt.
+    if (previous) {
+      const [outcome] = await previous;
+      signal.throwIfAborted();
+      if (outcome?.status === "rejected" || !outcome?.value) {
+        await set(retry$, signal);
+      }
+    }
+    const result = await get(result$);
+    signal.throwIfAborted();
+    if (!result) {
+      if (get(segments$).length > 0) {
+        await set(openAudioInputQuotaRecovery$, signal);
+      }
+      return;
+    }
+    set(refreshAudioInputQuota$);
+    return result.text;
+  });
+
+  const cancel$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const session = get(session$);
+    session?.controller.abort();
+    await Promise.allSettled([get(result$)]);
+    signal.throwIfAborted();
+    if (get(session$) === session) {
+      set(session$, null);
+      set(segments$, []);
+    }
+  });
+
+  // This observer starts newly appended computeds and owns their background
+  // lifetime. Request ordering is entirely expressed by predecessor dependencies.
   const watch$ = command(async ({ get, set }, signal: AbortSignal) => {
     while (!signal.aborted) {
-      // Subscribe before inspecting the queue so a PCM commit cannot be missed.
       const wake = createDeferredPromise<void>(signal);
       set(wake$, wake);
       const notified = Promise.allSettled([wake.promise]);
-      if (get(options.recordingActive$)) {
-        const key = await get(options.storageKey$);
+      const last = get(segments$).at(-1);
+      if (last) {
+        const [outcome] = await Promise.allSettled([get(last.result$)]);
         signal.throwIfAborted();
-        const recording = await readVoiceDraftRecording(key);
-        signal.throwIfAborted();
-        if (recording && recording.id !== get(pausedRecording$)) {
-          const controller = createChildAbortController(signal);
-          set(backgroundController$, controller);
-          await withCleanup(
-            (async () => {
-              const [outcome] = await Promise.allSettled([
-                set(transcribe$, false, controller.signal),
-              ]);
-              signal.throwIfAborted();
-              if (
-                outcome?.status === "rejected" &&
-                !controller.signal.aborted
-              ) {
-                // Keep recording; Stop/Retry resumes this segment explicitly.
-                set(pausedRecording$, recording.id);
-              }
-            })(),
-            () => {
-              controller.abort();
-              set(backgroundController$, null);
-            },
-          );
+        if (outcome?.status === "fulfilled") {
+          if (outcome.value) {
+            set(refreshAudioInputQuota$);
+          } else {
+            await set(openAudioInputQuotaRecovery$, signal);
+          }
         }
       }
       await notified;
       signal.throwIfAborted();
     }
   });
-  return { notify$, transcribe$, watch$, cancel$ };
+  return { initialize$, append$, transcribe$, watch$, cancel$ };
 }
