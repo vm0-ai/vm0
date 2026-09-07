@@ -1,3 +1,9 @@
+import { COMPUTER_USE_PLUGIN_CALL_KIND } from "@okouai/api-contracts/contracts/computer-use-plugins";
+import type {
+  ComputerUseCommand,
+  ComputerUseCommandExecutionResult,
+} from "./computer-use-accessibility";
+import type { ComputerUseDriverController } from "./computer-use-driver";
 import {
   ComputerUseHostRuntime,
   type ComputerUseHostFetch,
@@ -13,8 +19,13 @@ import {
 export function createDesktopComputerUseHostRuntime(
   options: Omit<
     ConstructorParameters<typeof ComputerUseHostRuntime>[0],
-    "sessionFetch"
-  >,
+    "sessionFetch" | "acquireCommand"
+  > & {
+    readonly driver: ComputerUseDriverController;
+    readonly executePluginCommand: (
+      command: ComputerUseCommand,
+    ) => Promise<ComputerUseCommandExecutionResult>;
+  },
   auth: {
     readonly product: DesktopProduct;
     readonly session: DesktopSessionCookieSource;
@@ -23,6 +34,16 @@ export function createDesktopComputerUseHostRuntime(
 ): ComputerUseHostRuntime {
   return new ComputerUseHostRuntime({
     ...options,
+    acquireCommand: () => {
+      const native = options.driver.acquireCommand();
+      return {
+        ...native,
+        executeCommand: (command, permissions) =>
+          command.kind === COMPUTER_USE_PLUGIN_CALL_KIND
+            ? options.executePluginCommand(command)
+            : native.executeCommand(command, permissions),
+      };
+    },
     // Okou shares the App session's bearer, refresh and sign-out lifetime.
     // Zero keeps its existing Computer Use cookie and token retry policy.
     sessionFetch:

@@ -17,15 +17,8 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
-import {
-  ComputerUseSnapshotStore,
-  SUPPORTED_COMPUTER_USE_CAPABILITIES,
-  executeComputerUseCommand,
-} from "./computer-use-accessibility";
-import {
-  COMPUTER_USE_PLUGIN_CALL_KIND,
-  isComputerUseMcpPluginCallPayload,
-} from "@okouai/api-contracts/contracts/computer-use-plugins";
+import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
+import { isComputerUseMcpPluginCallPayload } from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,
@@ -61,19 +54,9 @@ import type {
 } from "./desktop-recorder-types";
 import { buildWindowOptions } from "./desktop-recorder-window-options";
 import { areaToGlobal } from "./desktop-recorder-overlay-geometry";
-import {
-  getComputerUsePermissionState,
-  probeComputerUseAutomationPermission,
-  refreshComputerUsePermissionState,
-  recordComputerUseAutomationPermissionDenied,
-  requestComputerUseAccessibilityPermission,
-  requestComputerUseScreenRecordingPermission,
-  setComputerUsePermissionNativeBackend,
-} from "./computer-use-permissions";
-import {
-  createComputerUseNativeBackend,
-  type ComputerUseNativeShutdownReason,
-} from "./computer-use-native";
+import { createComputerUsePermissions } from "./computer-use-permissions";
+import { ComputerUseDriverController } from "./computer-use-driver";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import desktopBrandAssets from "./desktop-brand-assets.json";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
@@ -164,8 +147,6 @@ const MAC_SCREEN_RECORDING_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
-let computerUseNativeBackendDisposed = false;
-let computerUseNativeBackendDisposePromise: Promise<void> | null = null;
 let computerUseQuitPreparationPromise: Promise<void> | null = null;
 let computerUseQuitPreparationComplete = false;
 let desktopTray: DesktopTrayController | null = null;
@@ -184,11 +165,23 @@ let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let mcpPluginManager: DesktopMcpPluginManager | null = null;
 let desktopAutoUpdates: DesktopAutoUpdatesController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
-const computerUseSnapshotStore = new ComputerUseSnapshotStore();
-const computerUseNativeBackend = createComputerUseNativeBackend({
-  onRuntimeError: captureDesktopNativeHelperError,
+const computerUseDriver = new ComputerUseDriverController({
+  id: "okou",
+  createBackend: () =>
+    createComputerUseNativeBackend({
+      onRuntimeError: captureDesktopNativeHelperError,
+    }),
 });
-setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+const {
+  getComputerUsePermissionState,
+  refreshComputerUsePermissionState,
+  requestComputerUseAccessibilityPermission,
+  requestComputerUseScreenRecordingPermission,
+  probeComputerUseAutomationPermission,
+  recordComputerUseAutomationPermissionDenied,
+} = createComputerUsePermissions((read) =>
+  computerUseDriver.withPermissionProvider(read),
+);
 const automationPermissionPrompt = createAutomationPermissionDeniedPrompt({
   sourceLabel: config.identity.displayName,
   showDialog: async (options) => {
@@ -312,6 +305,7 @@ const developerTools = new DeveloperToolsController({
   },
 });
 const computerUseController = new ComputerUseRuntimeController({
+  driver: computerUseDriver,
   createRuntime: createComputerUseHostRuntime,
   refreshPermissions: refreshComputerUsePermissionState,
   getAuthState: () => getAuthSession().getAuthState(),
@@ -673,17 +667,12 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
       addClientHeaders: addDesktopClientHeaders,
       getPermissions: refreshComputerUsePermissionState,
       getSupportedCapabilities: supportedComputerUseCapabilities,
-      executeCommand: (command, permissions) => {
-        if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
-          if (isComputerUseMcpPluginCallPayload(command.payload)) {
-            return ensureMcpPluginManager().execute(command);
-          }
-          return ensureFilesystemPluginManager().execute(command);
+      driver: computerUseDriver,
+      executePluginCommand: (command) => {
+        if (isComputerUseMcpPluginCallPayload(command.payload)) {
+          return ensureMcpPluginManager().execute(command);
         }
-        return executeComputerUseCommand(command, permissions, {
-          nativeBackend: computerUseNativeBackend,
-          snapshotStore: computerUseSnapshotStore,
-        });
+        return ensureFilesystemPluginManager().execute(command);
       },
       onCommandFailure: automationPermissionPrompt,
       onChange: notifyComputerUseChanged,
@@ -961,28 +950,11 @@ function refreshComputerUsePermissionsForState(): void {
     });
 }
 
-function disposeComputerUseNativeBackend(
-  reason: ComputerUseNativeShutdownReason,
-): Promise<void> {
-  if (computerUseNativeBackendDisposed) {
-    return Promise.resolve();
-  }
-  if (!computerUseNativeBackendDisposePromise) {
-    computerUseNativeBackendDisposePromise = computerUseNativeBackend
-      .dispose(reason)
-      .finally(() => {
-        computerUseNativeBackendDisposed = true;
-      });
-  }
-  return computerUseNativeBackendDisposePromise;
-}
-
 async function prepareForQuitAndInstall(): Promise<void> {
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
   releaseKeepAwake();
-  await computerUseController.stopForQuit();
-  await disposeComputerUseNativeBackend("update_relaunch");
+  await computerUseController.stopForQuit("update_relaunch");
 }
 
 // Bootstrap contract: the auto-updater is owned by bootstrap.ts so it keeps
@@ -1415,15 +1387,10 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
 async function maybeStartComputerUseAfterAuth(
   signal: AbortSignal,
 ): Promise<void> {
-  await computerUseController.stopForAuthChange();
+  await computerUseController.startForAuthChange(signal);
   signal.throwIfAborted();
   notifyAuthChanged();
-  const permissions = await refreshComputerUsePermissionState();
-  signal.throwIfAborted();
   notifyComputerUseChanged();
-  if (hasRequiredComputerUsePermissions(permissions)) {
-    await computerUseController.start({ userInitiated: true });
-  }
 }
 
 async function shouldOpenComputerUseSetupWindowOnLaunch(): Promise<boolean> {
@@ -1523,21 +1490,14 @@ if (!hasSingleInstanceLock) {
     appIsQuitting = true;
     releaseKeepAwake();
     globalShortcut.unregisterAll();
-    if (
-      computerUseQuitPreparationComplete ||
-      (computerUseNativeBackendDisposed &&
-        !computerUseController.quitStopRequired())
-    ) {
+    if (computerUseQuitPreparationComplete) {
       return;
     }
     event.preventDefault();
     if (!computerUseQuitPreparationPromise) {
       computerUseQuitPreparationPromise = (async () => {
         try {
-          if (computerUseController.quitStopRequired()) {
-            await computerUseController.stopForQuit();
-          }
-          await disposeComputerUseNativeBackend("app_quit");
+          await computerUseController.stopForQuit();
         } catch (error) {
           console.error("Unable to prepare Computer Use for app quit", error);
         } finally {

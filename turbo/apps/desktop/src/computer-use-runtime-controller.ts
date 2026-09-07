@@ -1,3 +1,12 @@
+import type {
+  ComputerUseDriver,
+  ComputerUseDriverController,
+} from "./computer-use-driver";
+import type { ComputerUseNativeShutdownReason } from "./computer-use-native";
+import {
+  withComputerUseDeadline,
+  type ComputerUseLifecycleTimers,
+} from "./computer-use-lifecycle-deadline";
 import type { DesktopAuthState } from "./desktop-bridge";
 import { resolveComputerUseStartupGate } from "./computer-use-startup-gate";
 import {
@@ -14,6 +23,7 @@ interface ComputerUseRuntimeLike {
   start(): Promise<void>;
   stop(): Promise<void>;
   drainAndStop(): Promise<void>;
+  pauseAndDrainCommands(): Promise<() => void>;
   getState(): ComputerUseHostRuntimeState;
 }
 
@@ -31,6 +41,9 @@ interface ComputerUseRuntimeControllerOptions {
   /** Zero-arg "something changed" signal; defaults to a no-op. */
   readonly onChange?: () => void;
   readonly quitStopTimeoutMs?: number;
+  readonly driver?: ComputerUseDriverController;
+  readonly transitionTimeoutMs?: number;
+  readonly lifecycleTimers?: ComputerUseLifecycleTimers;
 }
 
 /**
@@ -52,8 +65,20 @@ export class ComputerUseRuntimeController {
   private blockedHostState: ComputerUseHostRuntimeState | null = null;
   private manualStopRequested = false;
   private quitStopStarted = false;
+  private intent = 0;
+  private stopping: Promise<void> = Promise.resolve();
+  private starting: Promise<void> | null = null;
+  private readonly transitions = new Map<ComputerUseDriver, Promise<void>>();
+  private transitionTail: Promise<void> = Promise.resolve();
+  private readonly driver: ComputerUseDriverController | undefined;
+  private readonly transitionTimeoutMs: number;
+  private readonly lifecycleTimers: ComputerUseLifecycleTimers | undefined;
+  private quitPromise: Promise<void> | null = null;
 
   constructor(options: ComputerUseRuntimeControllerOptions) {
+    this.lifecycleTimers = options.lifecycleTimers;
+    this.driver = options.driver;
+    this.transitionTimeoutMs = options.transitionTimeoutMs ?? 30_000;
     this.createRuntime = options.createRuntime;
     this.refreshPermissions = options.refreshPermissions;
     this.getAuthState = options.getAuthState;
@@ -64,11 +89,13 @@ export class ComputerUseRuntimeController {
   }
 
   getHostState(): ComputerUseHostRuntimeState {
-    return (
+    const state =
       this.runtime?.getState() ??
       this.blockedHostState ??
-      OFFLINE_COMPUTER_USE_HOST_STATE
-    );
+      OFFLINE_COMPUTER_USE_HOST_STATE;
+    return this.isTransitioning()
+      ? { ...state, driverTransitioning: true }
+      : state;
   }
 
   isRuntimeOnline(): boolean {
@@ -81,52 +108,172 @@ export class ComputerUseRuntimeController {
    * Non-user-initiated starts are suppressed after a manual stop.
    */
   async start(
-    options: { readonly userInitiated?: boolean } = {},
+    options: {
+      readonly userInitiated?: boolean;
+      readonly signal?: AbortSignal;
+    } = {},
   ): Promise<void> {
-    if (this.manualStopRequested && options.userInitiated !== true) {
+    if (
+      this.quitStopStarted ||
+      (this.manualStopRequested && options.userInitiated !== true)
+    )
       return;
-    }
+    options.signal?.throwIfAborted();
     this.manualStopRequested = false;
+    if (this.starting) return this.starting;
+    const intent = this.intent;
+    const abort = () => {
+      if (intent !== this.intent) return;
+      this.supersede();
+      this.detachRuntime();
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    const start = this.startRuntime(intent, this.transitionTail);
+    this.starting = start;
+    try {
+      await start;
+    } finally {
+      options.signal?.removeEventListener("abort", abort);
+      if (this.starting === start) this.starting = null;
+    }
+  }
 
+  private async startRuntime(
+    intent: number,
+    transitions: Promise<void>,
+  ): Promise<void> {
+    await withComputerUseDeadline(
+      this.stopping,
+      this.transitionTimeoutMs,
+      this.lifecycleTimers,
+    );
+    await transitions;
+    if (intent !== this.intent) return;
+    this.driver?.resumePermissions();
     const permissions = await this.refreshPermissions();
+    if (intent !== this.intent) return;
     if (!hasRequiredComputerUsePermissions(permissions)) {
       await this.detachRuntime();
       return;
     }
     const authState = await this.getAuthState();
+    if (intent !== this.intent) return;
     const startupGate = resolveComputerUseStartupGate({
       authState,
       permissions,
     });
     if (startupGate.status !== "ready") {
       await this.detachRuntime();
+      if (intent !== this.intent) return;
       if (startupGate.status === "blocked") {
         this.blockedHostState = startupGate.host;
         this.onChange();
       }
       return;
     }
-
     this.blockedHostState = null;
-    this.runtime ??= this.createRuntime();
-    await this.runtime.start();
-    this.setHostRuntimeOnline(this.runtime.getState().status === "online");
+    this.driver?.activate();
+    const runtime = (this.runtime ??= this.createRuntime());
+    await runtime.start();
+    if (intent !== this.intent) return;
+    this.setHostRuntimeOnline(runtime.getState().status === "online");
+  }
+
+  /** Serialized native replacement; it never changes host/plugin online state on success. */
+  transitionDriver(driver: ComputerUseDriver): Promise<void> {
+    const existing = this.transitions.get(driver);
+    if (existing) return existing;
+    if (!this.driver || this.quitStopStarted) {
+      return Promise.reject(
+        new Error("Computer Use driver transitions are unavailable"),
+      );
+    }
+    const intent = this.intent;
+    const pendingStart = this.starting;
+    const initialRuntime = this.runtime;
+    // Close admission before awaiting any preceding transition.
+    const initialDrain = initialRuntime?.pauseAndDrainCommands();
+    this.driver.pausePermissions();
+    let expired = false;
+    const checkIntent = () => {
+      if (expired || intent !== this.intent)
+        throw new Error("Computer Use driver transition was superseded");
+    };
+    const work = (async () => {
+      await this.transitionTail;
+      await pendingStart;
+      checkIntent();
+      const runtime = this.runtime;
+      this.driver?.pausePermissions();
+      const resume = await (runtime === initialRuntime
+        ? initialDrain
+        : runtime?.pauseAndDrainCommands());
+      checkIntent();
+      await this.driver?.retire();
+      checkIntent();
+      this.driver?.select(driver);
+      if (runtime && !this.manualStopRequested) {
+        const permissions = await this.refreshPermissions();
+        checkIntent();
+        if (!hasRequiredComputerUsePermissions(permissions))
+          throw new Error("Computer Use permissions are unavailable");
+        this.driver?.activate();
+        resume?.();
+      }
+    })();
+    const transition = withComputerUseDeadline(
+      work,
+      this.transitionTimeoutMs,
+      this.lifecycleTimers,
+    ).catch((error: unknown) => {
+      expired = true;
+      // A failure withdraws the host rather than advertising empty legacy capabilities.
+      if (intent === this.intent) {
+        this.manualStopRequested = true;
+        this.supersede();
+        this.detachRuntime();
+        this.blockedHostState = {
+          ...OFFLINE_COMPUTER_USE_HOST_STATE,
+          status: "error",
+          lastError: error instanceof Error ? error.message : String(error),
+        };
+      }
+      throw error;
+    });
+    this.transitions.set(driver, transition);
+    this.transitionTail = transition.then(
+      () => {},
+      () => {},
+    );
+    void this.transitionTail.then(() => {
+      this.transitions.delete(driver);
+      this.onChange();
+    });
+    this.onChange();
+    return transition;
+  }
+
+  isTransitioning(): boolean {
+    return this.transitions.size > 0;
   }
 
   /** User-initiated stop; suppresses auto-restarts until the next manual start. */
   async stop(): Promise<void> {
     this.manualStopRequested = true;
-    this.setHostRuntimeOnline(false);
-    await this.runtime?.stop();
-    this.onChange();
+    this.supersede();
+    await withComputerUseDeadline(
+      this.detachRuntime(),
+      this.transitionTimeoutMs,
+      this.lifecycleTimers,
+    );
   }
 
   /** Stops admitting work, lets the active command finish, then stops. */
   async drainAndStop(): Promise<void> {
     this.manualStopRequested = true;
+    this.supersede();
     await this.runtime?.drainAndStop();
-    this.setHostRuntimeOnline(false);
-    this.onChange();
+    await this.detachRuntime();
   }
 
   /**
@@ -134,7 +281,25 @@ export class ComputerUseRuntimeController {
    * a completed sign-in), so a subsequent start builds a fresh runtime.
    */
   async stopForAuthChange(): Promise<void> {
-    await this.detachRuntime();
+    this.supersede();
+    await withComputerUseDeadline(
+      this.detachRuntime(),
+      this.transitionTimeoutMs,
+      this.lifecycleTimers,
+    );
+  }
+
+  /** Auth completion preserves manual Stop intent and cannot revive superseded work. */
+  async startForAuthChange(signal: AbortSignal): Promise<void> {
+    this.supersede();
+    const intent = this.intent;
+    await withComputerUseDeadline(
+      this.detachRuntime(),
+      this.transitionTimeoutMs,
+      this.lifecycleTimers,
+    );
+    signal.throwIfAborted();
+    if (intent === this.intent) await this.start({ signal });
   }
 
   /** Clears a stale blocked host state once required permissions are missing. */
@@ -152,33 +317,49 @@ export class ComputerUseRuntimeController {
    * Idempotent: concurrent quit paths (before-quit, quit-and-install) share
    * one stop attempt.
    */
-  async stopForQuit(): Promise<void> {
-    if (this.quitStopStarted) {
-      return;
-    }
+  stopForQuit(
+    reason: ComputerUseNativeShutdownReason = "app_quit",
+  ): Promise<void> {
+    if (this.quitPromise) return this.quitPromise;
     this.quitStopStarted = true;
+    this.supersede();
     const runtime = this.runtime;
-    if (!runtime) {
-      return;
-    }
-    this.setHostRuntimeOnline(false);
-    await Promise.race([
-      runtime.stop(),
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, this.quitStopTimeoutMs);
-      }),
-    ]);
+    this.runtime = null;
+    if (runtime) this.setHostRuntimeOnline(false);
+    const stop = runtime?.stop() ?? Promise.resolve();
+    // Native disposal has its own process shutdown bound. Do not gate it on HTTP stop.
+    const retirement = this.driver?.retire(reason) ?? Promise.resolve();
+    this.quitPromise = Promise.all([
+      withComputerUseDeadline(
+        stop,
+        this.quitStopTimeoutMs,
+        this.lifecycleTimers,
+      ).catch(() => {}),
+      retirement,
+    ]).then(() => {});
+    return this.quitPromise;
   }
 
-  private async detachRuntime(): Promise<void> {
+  private supersede(): void {
+    this.intent++;
+    this.starting = null;
+    this.driver?.pausePermissions();
+  }
+
+  private detachRuntime(): Promise<void> {
+    const intent = this.intent;
     const runtime = this.runtime;
     this.runtime = null;
     this.blockedHostState = null;
     this.setHostRuntimeOnline(false);
-    try {
-      await runtime?.stop();
-    } finally {
-      this.onChange();
-    }
+    const stop = runtime?.stop() ?? Promise.resolve();
+    const retirement = this.driver?.retire() ?? Promise.resolve();
+    const cleanup = Promise.all([this.stopping, stop, retirement]).then(() => {
+      if (intent === this.intent && !this.quitStopStarted)
+        this.driver?.resumePermissions();
+    });
+    this.stopping = cleanup;
+    void cleanup.then(this.onChange, this.onChange);
+    return cleanup;
   }
 }

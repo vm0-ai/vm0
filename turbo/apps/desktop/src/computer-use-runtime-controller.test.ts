@@ -42,6 +42,7 @@ function createFakeRuntime(options: { readonly hangOnStop?: boolean } = {}) {
       }
       state = hostState("offline");
     }),
+    pauseAndDrainCommands: async () => () => {},
     getState: () => state,
   };
 }
@@ -146,7 +147,7 @@ describe("ComputerUseRuntimeController", () => {
 
     await controller.start({ userInitiated: true });
     expect(runtime.start).toHaveBeenCalledTimes(2);
-    expect(createRuntime).toHaveBeenCalledOnce();
+    expect(createRuntime).toHaveBeenCalledTimes(2);
   });
 
   it("drains active work before marking the host offline", async () => {

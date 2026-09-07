@@ -113,12 +113,18 @@ function createRuntime(
     getPermissions() {
       return { accessibility: true, screenRecording: false };
     },
-    async executeCommand(command, permissions) {
-      if (options.executeCommand) {
-        return options.executeCommand(command, permissions);
-      }
-      return { status: "succeeded", result: {} };
-    },
+    acquireCommand: () => ({
+      getPermissions: async () => ({
+        accessibility: true,
+        screenRecording: false,
+      }),
+      async executeCommand(command, permissions) {
+        if (options.executeCommand)
+          return options.executeCommand(command, permissions);
+        return { status: "succeeded", result: {} };
+      },
+      release() {},
+    }),
     ...(options.onCommandFailure
       ? { onCommandFailure: options.onCommandFailure }
       : {}),

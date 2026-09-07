@@ -1,3 +1,5 @@
+import { ComputerUseDriverController } from "./computer-use-driver";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -104,7 +106,11 @@ function createDesktop(product: "okou" | "zero" = "okou") {
         addClientHeaders,
         hostFetch: (input, init) => fetch(input, init),
         getPermissions: options.getPermissions ?? (() => permissions),
-        executeCommand: async () => ({ status: "succeeded", result: {} }),
+        driver: new ComputerUseDriverController({
+          id: "okou",
+          createBackend: () => createComputerUseNativeBackend(),
+        }),
+        executePluginCommand: async () => ({ status: "succeeded", result: {} }),
       },
       {
         product: config.identity.product,

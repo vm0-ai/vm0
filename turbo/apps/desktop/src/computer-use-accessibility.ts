@@ -226,6 +226,11 @@ export class ComputerUseSnapshotStore {
 
   constructor(private readonly maxEntries = DEFAULT_SNAPSHOT_STORE_LIMIT) {}
 
+  clear(): void {
+    this.snapshots.clear();
+    this.latestByApp.clear();
+  }
+
   set(metadata: ComputerUseSnapshotMetadata): void {
     const key = this.key(metadata.app, metadata.snapshotId);
     if (this.snapshots.has(key)) {

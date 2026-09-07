@@ -101,6 +101,7 @@ export interface ComputerUseRuntimeErrorLogEntry {
 }
 
 export interface ComputerUseHostRuntimeState {
+  readonly driverTransitioning?: boolean;
   readonly status: ComputerUseHostRuntimeStatus;
   readonly hostId: string | null;
   readonly lastHeartbeatAt: string | null;
