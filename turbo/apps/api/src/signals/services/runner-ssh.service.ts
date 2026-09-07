@@ -12,10 +12,9 @@ import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
-import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
-import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -64,14 +63,6 @@ async function currentConnection(
       ),
     )
     .innerJoin(
-      chatThreads,
-      and(
-        eq(chatThreads.id, agentRuns.chatThreadId),
-        eq(chatThreads.userId, agentRuns.userId),
-        eq(chatThreads.agentId, agents.id),
-      ),
-    )
-    .innerJoin(
       agentSshAccess,
       and(
         eq(agentSshAccess.agentId, agents.id),
@@ -100,17 +91,6 @@ async function currentConnection(
           agentRuns.runnerHeartbeatGeneration,
           input.runnerIdentity.heartbeatGeneration,
         ),
-        isNull(agentRuns.workflowAutomationId),
-        isNull(agentRuns.goalId),
-        // Chat channels are equal; only the separate non-interactive producers are excluded.
-        notInArray(agentRuns.triggerSource, [
-          "automation-schedule",
-          "automation-event",
-          "goal",
-          "agent",
-          "webhook",
-          "test",
-        ]),
       ),
     );
   const [row] = lockAuthority
@@ -119,7 +99,6 @@ async function currentConnection(
           agentRuns,
           agentSessions,
           agents,
-          chatThreads,
           agentSshAccess,
           sshConnectionCredentials,
         ],

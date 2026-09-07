@@ -11,6 +11,8 @@ import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -141,7 +143,8 @@ async function createRuntime(
   const agentId = randomUUID();
   const sessionId = randomUUID();
   const runId = randomUUID();
-  const threadId = body.chat ? randomUUID() : null;
+  const threadId =
+    body.chat || body.triggerSource === "goal" ? randomUUID() : null;
   await db.transaction(async (tx) => {
     await tx.insert(agents).values({
       id: agentId,
@@ -160,6 +163,57 @@ async function createRuntime(
         .insert(chatThreads)
         .values({ id: threadId, agentId, userId: body.userId });
     }
+    let workflowAutomationId: string | null = null;
+    if (
+      body.triggerSource === "automation-schedule" ||
+      body.triggerSource === "automation-event"
+    ) {
+      const workflowId = randomUUID();
+      workflowAutomationId = randomUUID();
+      await tx.insert(workflows).values({
+        id: workflowId,
+        orgId: body.orgId,
+        agentId,
+        name: `ssh-${workflowId}`,
+        ownerUserId: body.userId,
+        createdBy: body.userId,
+        updatedBy: body.userId,
+      });
+      const trigger =
+        body.triggerSource === "automation-schedule"
+          ? {
+              kind: "schedule" as const,
+              scheduleType: "loop" as const,
+              intervalSeconds: 3600,
+            }
+          : {
+              kind: "event" as const,
+              eventType: "webhook-received" as const,
+              eventConfig: {},
+            };
+      await tx.insert(workflowAutomations).values({
+        id: workflowAutomationId,
+        workflowId,
+        orgId: body.orgId,
+        ownerUserId: body.userId,
+        ...trigger,
+        enabled: false,
+      });
+    }
+    let goalId: string | null = null;
+    if (body.triggerSource === "goal" && threadId) {
+      goalId = randomUUID();
+      await tx.insert(threadGoals).values({
+        id: goalId,
+        orgId: body.orgId,
+        ownerUserId: body.userId,
+        agentId,
+        chatThreadId: threadId,
+        status: "paused",
+        objective: "SSH runtime fixture",
+        objectiveBrief: "SSH runtime fixture",
+      });
+    }
     await tx.insert(agentRuns).values({
       id: runId,
       sessionId,
@@ -168,8 +222,10 @@ async function createRuntime(
       status: body.status,
       prompt: "SSH runtime fixture",
       triggerSource: body.triggerSource,
-      autonomyBudget: 3,
-      chatThreadId: threadId,
+      autonomyBudget: body.triggerSource === null ? null : 3,
+      chatThreadId: body.chat ? threadId : null,
+      workflowAutomationId,
+      goalId,
       runnerId: body.runnerId,
       runnerHeartbeatGeneration: body.heartbeatGeneration,
     });

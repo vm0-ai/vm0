@@ -15,12 +15,17 @@ credentials or command. The shared fleet secret authenticates the fleet, not an
 individual machine: the process identity is checked against the Run's immutable
 winning claim. Protecting the fleet secret remains a trust assumption.
 
-Each call joins the current running Run, session, chat thread, Agent owner,
+Each call joins the current running Run, session, Agent owner,
 Agent SSH grant, exact owner connection and its credential. Ownership and org
 must agree. The hard staff-org gate and current `SshAccess` override both apply.
-All chat channels are treated equally. Automation schedule/event, goal,
-delegated Agent, webhook/test and non-chat Runs are excluded; a Run must have no
-workflow automation or goal association.
+SSH access depends on the user's current configuration and the Agent's current
+grant, not how the Run started. All chat channels, workflow schedule/event
+automations, goals, delegated Agents, webhooks, SDK/non-chat and test Runs use
+the same authority path. A chat thread or trigger metadata is not required;
+workflow automation and goal associations do not restrict access. The session
+identifies the Agent without using chat-thread state as an authorization gate.
+The existing staff/feature rollout and official-Runner credential boundary are
+unchanged; this does not activate SSH or expose credentials to local Runners.
 
 `POST /api/runners/runs/:runId/ssh/resolve` takes:
 

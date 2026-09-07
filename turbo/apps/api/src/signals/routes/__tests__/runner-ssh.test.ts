@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import {
   runnerSshContract,
   type RunnerSshResolveRequest,
@@ -104,7 +105,7 @@ async function createRuntime(
   };
 }
 
-async function fixture() {
+async function fixture(runtimeOverrides: Partial<RuntimeBody> = {}) {
   const owner = { orgId: staffOrg, userId: `user_ssh_jit_${randomUUID()}` };
   await updateFeatureSwitchesForUser(context, owner, {
     [FeatureSwitchKey.SshAccess]: true,
@@ -123,7 +124,7 @@ async function fixture() {
     }),
     [201],
   );
-  const runtime = await createRuntime(owner);
+  const runtime = await createRuntime(owner, runtimeOverrides);
   return { ...owner, ...runtime, connectionId: connection.body.id };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -223,7 +224,10 @@ describe("official Runner SSH authority", () => {
 
   it("rechecks authority after waiting for an owner connection lock", async () => {
     for (const change of ["revoke", "disable", "delete-credential"] as const) {
-      const f = await fixture();
+      const f = await fixture({
+        triggerSource: "automation-schedule",
+        chat: false,
+      });
       const scope = {
         orgId: f.orgId,
         userId: f.userId,
@@ -373,7 +377,7 @@ describe("official Runner SSH authority", () => {
   });
 
   it("returns indistinguishable unavailable for wrong claims and hidden or missing connections", async () => {
-    const f = await fixture();
+    const f = await fixture({ triggerSource: "webhook", chat: false });
     const foreign = await fixture();
     const kms = useSecretKmsProbe();
     for (const override of [
@@ -415,7 +419,7 @@ describe("official Runner SSH authority", () => {
     expect(kms.decryptCalls).toBe(0);
   });
 
-  it("treats every chat channel equally while denying non-chat or inactive Runs", async () => {
+  it("treats every chat channel equally", async () => {
     const f = await fixture();
     for (const triggerSource of [
       "web",
@@ -433,30 +437,46 @@ describe("official Runner SSH authority", () => {
         privateKey,
       });
     }
+  });
+
+  it.each([...triggerSourceSchema.options, null])(
+    "resolves and pins an authorized %s Run without a chat thread",
+    async (triggerSource) => {
+      const f = await fixture({ triggerSource, chat: false });
+      await expect(resolve(f)).resolves.toMatchObject({
+        outcome: "resolved",
+        privateKey,
+        learnedHostKey: null,
+      });
+      await expect(pin(f)).resolves.toStrictEqual({
+        outcome: "pinned",
+        generation: 2,
+      });
+      await expect(resolve(f)).resolves.toMatchObject({
+        outcome: "resolved",
+        learnedHostKey: hostKey,
+        generation: 2,
+      });
+    },
+  );
+
+  it("denies inactive, unclaimed or ungranted Runs without a chat thread", async () => {
+    const f = await fixture({ triggerSource: "automation-event", chat: false });
     const kms = useSecretKmsProbe();
     const denied: Partial<RuntimeBody>[] = [
-      { chat: false },
       { access: false },
       { runnerId: null, heartbeatGeneration: null },
       { status: "pending" },
       { status: "completed" },
       { status: "cancelled" },
       { status: "failed" },
-      ...(
-        [
-          "automation-schedule",
-          "automation-event",
-          "goal",
-          "agent",
-          "webhook",
-          "test",
-        ] as const
-      ).map((triggerSource) => {
-        return { triggerSource };
-      }),
     ];
     for (const override of denied) {
-      const runtime = await createRuntime(f, override);
+      const runtime = await createRuntime(f, {
+        triggerSource: "automation-event",
+        chat: false,
+        ...override,
+      });
       await expect(resolve({ ...f, ...runtime })).resolves.toStrictEqual({
         outcome: "unavailable",
       });
@@ -468,7 +488,7 @@ describe("official Runner SSH authority", () => {
   });
 
   it("checks current access, feature state and credential existence on every call", async () => {
-    const f = await fixture();
+    const f = await fixture({ triggerSource: "automation-event", chat: false });
     const kms = useSecretKmsProbe();
     await access(f, false);
     await expect(resolve(f)).resolves.toStrictEqual({ outcome: "unavailable" });
