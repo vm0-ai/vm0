@@ -7,7 +7,12 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 const BIN: &str = env!("CARGO_BIN_EXE_guest-write-file");
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch [--private]";
+const USAGE: &str = concat!(
+    "usage: guest-write-file [--append] [--] <path>\n",
+    "       guest-write-file --create-parents [--] <path>\n",
+    "       guest-write-file --private [--append] [--] <path>\n",
+    "       guest-write-file --batch [--private]",
+);
 const HELPER_KILL_TIMEOUT: Duration = Duration::from_secs(1);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 

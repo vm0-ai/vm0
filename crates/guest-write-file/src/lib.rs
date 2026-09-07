@@ -16,7 +16,12 @@ struct Args {
     path: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch [--private]";
+const USAGE: &str = concat!(
+    "usage: guest-write-file [--append] [--] <path>\n",
+    "       guest-write-file --create-parents [--] <path>\n",
+    "       guest-write-file --private [--append] [--] <path>\n",
+    "       guest-write-file --batch [--private]",
+);
 
 fn parse_args<I>(args: I) -> Result<Args, String>
 where
@@ -237,7 +242,9 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// matching `std::env::args().skip(1)`. The accepted syntax is:
 ///
 /// ```text
-/// guest-write-file [--private] [--append | --create-parents] [--] <path>
+/// guest-write-file [--append] [--] <path>
+/// guest-write-file --create-parents [--] <path>
+/// guest-write-file --private [--append] [--] <path>
 /// guest-write-file --batch [--private]
 /// ```
 ///
@@ -251,6 +258,10 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// private file helpers, ensuring parent directories are private, creating
 /// missing parent directories even with `--append`, and rejecting symlinked
 /// parent components.
+/// `--append` and `--create-parents` cannot be used together. `--private` and
+/// `--create-parents` cannot be used together because private mode already
+/// creates missing parent directories, including when combined with
+/// `--append`.
 ///
 /// `--batch` reads a `vsock-proto` `write_files` payload from stdin and writes
 /// every entry with create-parent and truncate semantics. Combined with
