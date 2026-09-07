@@ -2289,6 +2289,38 @@
       "startWithPrompt": "만들기",
       "templates": "템플릿"
     },
+    "taskEntries": {
+      "avatar": "말하는 아바타",
+      "browseWorkflows": "워크플로 둘러보기",
+      "chooseTask": "작업 선택",
+      "chooseTemplate": "템플릿 선택",
+      "clearTask": "작업 해제",
+      "hints": {
+        "image": "원하는 이미지를 설명하고 참고 자료를 추가하세요.",
+        "slides": "주제, 대상, 전달할 이야기를 설명하세요.",
+        "video": "장면을 설명하고 이 동영상의 세부 사항을 설정하세요.",
+        "website": "필요한 페이지와 대상을 설명하세요.",
+        "workflow": "원하는 결과와 실행 시점을 설명하세요. 초안부터 시작합니다."
+      },
+      "instructions": {
+        "image": "다음 요청에 맞는 이미지를 생성하세요.",
+        "slides": "다음 요청에 맞는 프레젠테이션을 만드세요.",
+        "video": "다음 요청에 맞는 동영상을 생성하세요.",
+        "website": "다음 요청에 맞는 웹사이트를 만드세요.",
+        "workflow": "다음 요청에 맞는 재사용 가능한 워크플로를 만드세요. workflow-setup 스킬을 사용하고 자동화 설정 전에 초안을 저장하세요."
+      },
+      "introVideo": "소개 동영상",
+      "labels": {
+        "image": "이미지",
+        "slides": "슬라이드",
+        "video": "동영상",
+        "website": "웹사이트",
+        "workflow": "워크플로"
+      },
+      "more": "더 보기",
+      "workflowDescription": "반복하는 작업을 워크플로로 만드세요.",
+      "workflowHeading": "반복되는 일을 맡겨 보세요"
+    },
     "templates": {
       "categories": {
         "illustration": "일러스트",

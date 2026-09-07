@@ -2289,6 +2289,38 @@
       "startWithPrompt": "Buat",
       "templates": "Templat"
     },
+    "taskEntries": {
+      "avatar": "Avatar berbicara",
+      "browseWorkflows": "Jelajahi workflow",
+      "chooseTask": "Pilih tugas",
+      "chooseTemplate": "Pilih templat",
+      "clearTask": "Hapus tugas",
+      "hints": {
+        "image": "Jelaskan gambar yang diinginkan. Tambahkan referensi jika ada.",
+        "slides": "Jelaskan topik, audiens, dan cerita yang ingin disampaikan.",
+        "video": "Jelaskan adegan, lalu atur detail video ini.",
+        "website": "Jelaskan halaman yang dibutuhkan dan penggunanya.",
+        "workflow": "Jelaskan hasil dan waktu pelaksanaannya. Mulai dengan draf."
+      },
+      "instructions": {
+        "image": "Buat gambar untuk permintaan berikut.",
+        "slides": "Buat presentasi untuk permintaan berikut.",
+        "video": "Buat video untuk permintaan berikut.",
+        "website": "Buat situs web untuk permintaan berikut.",
+        "workflow": "Buat workflow yang dapat digunakan kembali untuk permintaan berikut. Gunakan skill workflow-setup dan simpan draf sebelum mengatur otomatisasi."
+      },
+      "introVideo": "Video perkenalan",
+      "labels": {
+        "image": "Gambar",
+        "slides": "Slide",
+        "video": "Video",
+        "website": "Situs web",
+        "workflow": "Workflow"
+      },
+      "more": "Lainnya",
+      "workflowDescription": "Ubah pekerjaan berulang menjadi workflow.",
+      "workflowHeading": "Biarkan pekerjaan terus berjalan"
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustrasi",

@@ -2336,6 +2336,38 @@
       "startWithPrompt": "Crear",
       "templates": "Plantillas"
     },
+    "taskEntries": {
+      "avatar": "Avatar parlante",
+      "browseWorkflows": "Explorar workflows",
+      "chooseTask": "Elige una tarea",
+      "chooseTemplate": "Elegir plantilla",
+      "clearTask": "Quitar tarea",
+      "hints": {
+        "image": "Describe la imagen que quieres. Añade una referencia si tienes.",
+        "slides": "Describe el tema, el público y la historia que quieres contar.",
+        "video": "Describe la escena y ajusta los detalles de este vídeo.",
+        "website": "Describe la página que necesitas y para quién es.",
+        "workflow": "Describe el resultado y cuándo debe ejecutarse. Empieza con un borrador."
+      },
+      "instructions": {
+        "image": "Genera una imagen para la siguiente solicitud.",
+        "slides": "Crea una presentación para la siguiente solicitud.",
+        "video": "Genera un vídeo para la siguiente solicitud.",
+        "website": "Crea un sitio web para la siguiente solicitud.",
+        "workflow": "Crea un workflow reutilizable para la siguiente solicitud. Usa la skill workflow-setup y guarda un borrador antes de configurar la automatización."
+      },
+      "introVideo": "Vídeo de introducción",
+      "labels": {
+        "image": "Imagen",
+        "slides": "Diapositivas",
+        "video": "Vídeo",
+        "website": "Sitio web",
+        "workflow": "Workflow"
+      },
+      "more": "Más",
+      "workflowDescription": "Convierte las tareas repetitivas en workflows.",
+      "workflowHeading": "Deja que tu trabajo siga avanzando"
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustración",

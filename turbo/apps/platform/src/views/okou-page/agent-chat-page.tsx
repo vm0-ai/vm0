@@ -23,6 +23,8 @@ import {
 
 import { detach, Reason } from "../../signals/utils.ts";
 import { ChatComposer } from "./chat-composer.tsx";
+import { composerTaskEntriesEnabled$ } from "../../signals/external/feature-switch.ts";
+import { ComposerTaskEntries } from "./composer-task-entries.tsx";
 import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
 import {
@@ -335,6 +337,7 @@ export function AgentChatPage() {
   const pageSignal = useGet(pageSignal$);
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
+  const taskEntriesEnabled = useGet(composerTaskEntriesEnabled$);
   const composerSignals = useGet(agentChatComposerSignals$);
   const setInput = useSet(composerSignals.draft.setDraftInput$);
   const saveDraft = useSet(composerSignals.draft.save$);
@@ -374,7 +377,11 @@ export function AgentChatPage() {
 
           <ChatComposer signals={composerSignals} />
 
-          <StartCards onSelectPrompt={handleInputChange} />
+          {taskEntriesEnabled ? (
+            <ComposerTaskEntries signals={composerSignals} />
+          ) : (
+            <StartCards onSelectPrompt={handleInputChange} />
+          )}
         </div>
       </main>
       <PersonalClaudeCodeDeviceAuthDialog />

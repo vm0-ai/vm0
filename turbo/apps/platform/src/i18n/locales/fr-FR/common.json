@@ -2336,6 +2336,38 @@
       "startWithPrompt": "Créer",
       "templates": "Modèles"
     },
+    "taskEntries": {
+      "avatar": "Avatar parlant",
+      "browseWorkflows": "Explorer les workflows",
+      "chooseTask": "Choisir une tâche",
+      "chooseTemplate": "Choisir un modèle",
+      "clearTask": "Retirer la tâche",
+      "hints": {
+        "image": "Décrivez l’image souhaitée. Ajoutez une référence si vous en avez une.",
+        "slides": "Décrivez le sujet, le public et l’histoire à raconter.",
+        "video": "Décrivez la scène, puis réglez les détails de cette vidéo.",
+        "website": "Décrivez la page souhaitée et son public.",
+        "workflow": "Décrivez le résultat et le moment d’exécution. Commencez par un brouillon."
+      },
+      "instructions": {
+        "image": "Générez une image pour la demande suivante.",
+        "slides": "Créez une présentation pour la demande suivante.",
+        "video": "Générez une vidéo pour la demande suivante.",
+        "website": "Créez un site web pour la demande suivante.",
+        "workflow": "Créez un workflow réutilisable pour la demande suivante. Utilisez la skill workflow-setup et enregistrez un brouillon avant de configurer l’automatisation."
+      },
+      "introVideo": "Vidéo de présentation",
+      "labels": {
+        "image": "Image",
+        "slides": "Diapositives",
+        "video": "Vidéo",
+        "website": "Site web",
+        "workflow": "Workflow"
+      },
+      "more": "Plus",
+      "workflowDescription": "Transformez vos tâches récurrentes en workflows.",
+      "workflowHeading": "Laissez votre travail se poursuivre"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustration",

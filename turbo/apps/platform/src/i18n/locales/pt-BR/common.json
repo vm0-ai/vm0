@@ -2336,6 +2336,38 @@
       "startWithPrompt": "Criar",
       "templates": "Modelos"
     },
+    "taskEntries": {
+      "avatar": "Avatar falante",
+      "browseWorkflows": "Explorar workflows",
+      "chooseTask": "Escolha uma tarefa",
+      "chooseTemplate": "Escolher um modelo",
+      "clearTask": "Limpar tarefa",
+      "hints": {
+        "image": "Descreva a imagem desejada. Adicione uma referência, se tiver.",
+        "slides": "Descreva o tema, o público e a história que deseja contar.",
+        "video": "Descreva a cena e ajuste os detalhes deste vídeo.",
+        "website": "Descreva a página e para quem ela é.",
+        "workflow": "Descreva o resultado e quando executar. Comece com um rascunho."
+      },
+      "instructions": {
+        "image": "Gere uma imagem para o pedido a seguir.",
+        "slides": "Crie uma apresentação para o pedido a seguir.",
+        "video": "Gere um vídeo para o pedido a seguir.",
+        "website": "Crie um site para o pedido a seguir.",
+        "workflow": "Crie um workflow reutilizável para o pedido a seguir. Use a skill workflow-setup e salve um rascunho antes de configurar a automação."
+      },
+      "introVideo": "Vídeo de introdução",
+      "labels": {
+        "image": "Imagem",
+        "slides": "Slides",
+        "video": "Vídeo",
+        "website": "Site",
+        "workflow": "Workflow"
+      },
+      "more": "Mais",
+      "workflowDescription": "Transforme tarefas recorrentes em workflows.",
+      "workflowHeading": "Seu trabalho continua por você"
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustração",

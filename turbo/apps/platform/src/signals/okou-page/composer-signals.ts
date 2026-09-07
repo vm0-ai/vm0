@@ -44,6 +44,7 @@ import {
   createComposerUiSignals,
   type ComposerUiSignalGroups,
 } from "./chat-composer.ts";
+import { createComposerTaskSignals } from "./composer-task.ts";
 import { videoRunOptionsForSend } from "./video-run-options.ts";
 import {
   createImageAnnotationSignals,
@@ -251,6 +252,7 @@ interface ComposerTemplateSignals
 
 export interface ComposerSignals {
   readonly agentId: string;
+  readonly task: ReturnType<typeof createComposerTaskSignals>;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
@@ -547,11 +549,12 @@ export function createComposerSignals(
     workflowComposer,
     eventSignals.lastAssistantMessage$,
   );
+  const task = createComposerTaskSignals(ui, workflowComposer, draft);
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,
     workflowComposer,
-    ui.videoOptions,
+    { videoOptions: ui.videoOptions, task },
     voice,
   );
   const fileInput = createComposerFileInputSignals();
@@ -590,6 +593,7 @@ export function createComposerSignals(
 
   return {
     agentId: options.agentId,
+    task,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,
@@ -641,6 +645,7 @@ export function createComposerSignals(
     },
     template: {
       ...composerTemplateSignals(workflowComposer),
+      insertTemplate$: task.insertTemplate$,
       ...ui.template,
       generationTemplate$: draft.generationTemplate$,
       setGenerationTemplate$: draft.setGenerationTemplate$,
@@ -815,9 +820,13 @@ function createComposerSubmissionSignals(
   options: CreateComposerSignalsOptions,
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
-  videoOptions: ComposerVideoOptionsSignals,
+  composerUi: {
+    readonly videoOptions: ComposerVideoOptionsSignals;
+    readonly task: ReturnType<typeof createComposerTaskSignals>;
+  },
   voice: ComposerVoiceInputSignals,
 ) {
+  const { videoOptions, task } = composerUi;
   const { state$: voiceState$, owner$ } = voice;
   const draft = options.draft.signals;
   const readVideoRunOptions$ = createVideoRunOptionsSignal(
@@ -870,18 +879,29 @@ function createComposerSubmissionSignals(
       if (!get(draft.attachmentUploadsReady$)) {
         return false;
       }
-      const videoRunOptions = await set(readVideoRunOptions$, signal);
-      return await set(
+      const prepared = set(task.prepareSubmission$, submission);
+      const selectedTask = get(task.task$);
+      const videoRunOptions =
+        selectedTask === null || selectedTask === "video"
+          ? await set(readVideoRunOptions$, signal)
+          : undefined;
+      signal.throwIfAborted();
+      const sent = await set(
         options.submitMessage$,
         action,
         {
-          prompt: visiblePrompt,
+          prompt: prepared.prompt.trim(),
           generationTemplate: get(draft.generationTemplate$),
-          editorDocument: submission.editorDocument,
+          editorDocument: prepared.editorDocument,
           videoRunOptions,
         },
         signal,
       );
+      signal.throwIfAborted();
+      if (sent && selectedTask !== null) {
+        set(task.resetTask$);
+      }
+      return sent;
     },
   );
   const activatePrimaryAction$ = command(

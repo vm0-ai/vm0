@@ -114,6 +114,10 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
+export const composerTaskEntriesEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerTaskEntries] ?? false;
+});
+
 export const modelPickerMenuEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ModelPickerMenu] ?? false;
 });

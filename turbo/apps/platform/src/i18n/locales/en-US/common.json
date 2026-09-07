@@ -2293,6 +2293,38 @@
       "startWithPrompt": "Create",
       "templates": "Templates"
     },
+    "taskEntries": {
+      "avatar": "Talking avatar",
+      "browseWorkflows": "Explore workflows",
+      "chooseTask": "Choose a task",
+      "chooseTemplate": "Choose a template",
+      "clearTask": "Clear task",
+      "hints": {
+        "image": "Describe the image you have in mind. Add a reference if you have one.",
+        "slides": "Describe your topic, audience, and the story you want to tell.",
+        "video": "Describe your scene, then set the details for this video.",
+        "website": "Describe the page you need and who it is for.",
+        "workflow": "Describe the outcome and when it should run. Start with a draft."
+      },
+      "instructions": {
+        "image": "Generate an image for the following request.",
+        "slides": "Create a presentation for the following request.",
+        "video": "Generate a video for the following request.",
+        "website": "Build a website for the following request.",
+        "workflow": "Create a reusable workflow for the following request. Use the workflow-setup skill and save a draft before setting up automation."
+      },
+      "introVideo": "Intro video",
+      "labels": {
+        "image": "Image",
+        "slides": "Slides",
+        "video": "Video",
+        "website": "Website",
+        "workflow": "Workflow"
+      },
+      "more": "More",
+      "workflowDescription": "Turn the things you do again and again into workflows.",
+      "workflowHeading": "Let your work keep working"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustration",

@@ -275,6 +275,10 @@ import {
   AvatarTemplatePickerContent,
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
+import {
+  ComposerTaskHeader,
+  ComposerTaskOptions,
+} from "./composer-task-entries.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
 import {
   localizedWorkflowTemplate,
@@ -10671,8 +10675,10 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       <CardContent className="p-0">
         <div ref={actions.bind} className="flex flex-col">
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
+          <ComposerTaskHeader signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
+          <ComposerTaskOptions signals={signals} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}

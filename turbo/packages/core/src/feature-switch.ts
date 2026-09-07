@@ -270,6 +270,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerTaskEntries]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Show workflow-first composer task entries with inline generation settings.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ModelPickerMenu]: {
     maintainer: "bingjie@okou.ai",
     description:

@@ -8,6 +8,13 @@ import {
 } from "@okouai/ui/components/ui/popover";
 import { Slider } from "@okouai/ui/components/ui/slider";
 import { Switch } from "@okouai/ui/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@okouai/ui/components/ui/select";
 import { Button, cn } from "@okouai/ui";
 import {
   VIDEO_MODEL_CONFIGS,
@@ -436,10 +443,16 @@ export function ComposerVideoOptionsChip({
 }: {
   readonly signals: ComposerSignals;
 }) {
+  const task = useGet(signals.task.task$);
   const desktopLayout = useGet(signals.model.desktopModelPickerLayout$);
   const mediaModelCategory = useGet(signals.model.mediaModelCategory$);
   const videoModelSignals = signals.videoModel;
-  if (!desktopLayout || mediaModelCategory !== "video" || !videoModelSignals) {
+  if (
+    task === "video" ||
+    !desktopLayout ||
+    mediaModelCategory !== "video" ||
+    !videoModelSignals
+  ) {
     return null;
   }
   return (
@@ -447,5 +460,128 @@ export function ComposerVideoOptionsChip({
       signals={signals}
       videoModelSignals={videoModelSignals}
     />
+  );
+}
+
+function InlineVideoOption<Value extends string>({
+  label,
+  value,
+  values,
+  onChange,
+}: {
+  readonly label: string;
+  readonly value: Value;
+  readonly values: readonly Value[];
+  readonly onChange: (next: Value) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        aria-label={label}
+        className="h-8 w-auto min-w-20 gap-2 text-xs"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {values.map((option) => {
+          return (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
+}
+
+export function ComposerInlineVideoOptions({
+  signals,
+  videoModelSignals,
+}: {
+  readonly signals: ComposerSignals;
+  readonly videoModelSignals: ComposerVideoModelSignals;
+}) {
+  const patch = useGet(signals.videoOptions.videoRunOptions$);
+  const setPatch = useSet(signals.videoOptions.setVideoRunOptions$);
+  const model = useLastResolved(videoModelSignals.effectiveVideoModel$);
+  const setCategory = useSet(signals.model.setMediaModelCategory$);
+  const setOpen = useSet(signals.model.setModelPickerOpen$);
+  const { t } = useTranslation();
+  if (model === undefined) {
+    return null;
+  }
+  const resolved = resolveVideoRunOptions(patch, model);
+  const config = VIDEO_MODEL_CONFIGS[model];
+  const update = (next: ResolvedVideoGenerationOptions) => {
+    setPatch(videoRunOptionsPatch(next, model));
+  };
+  return (
+    <div
+      role="group"
+      aria-label={t(($) => {
+        return $.chat.templates.videoOptions;
+      })}
+      className="mb-2 flex flex-wrap items-center gap-2"
+    >
+      <Button
+        variant="quiet"
+        size="sm"
+        onClick={() => {
+          setCategory("video");
+          setOpen(true);
+        }}
+      >
+        {config.label}
+        <ChevronDown />
+      </Button>
+      <InlineVideoOption
+        label={t(($) => {
+          return $.chat.templates.videoOptionsRatio;
+        })}
+        value={resolved.aspectRatio}
+        values={config.aspectRatios}
+        onChange={(aspectRatio) => {
+          update({ ...resolved, aspectRatio });
+        }}
+      />
+      <InlineVideoOption
+        label={t(($) => {
+          return $.chat.templates.videoOptionsDuration;
+        })}
+        value={resolved.duration}
+        values={config.durations}
+        onChange={(duration) => {
+          update({ ...resolved, duration });
+        }}
+      />
+      <InlineVideoOption
+        label={t(($) => {
+          return $.chat.templates.videoOptionsResolution;
+        })}
+        value={resolved.resolution}
+        values={config.resolutions}
+        onChange={(resolution) => {
+          update({ ...resolved, resolution });
+        }}
+      />
+      {config.supportsGenerateAudio && (
+        <label className="flex h-8 items-center gap-2 px-1 text-xs text-muted-foreground">
+          <Switch
+            size="compact"
+            checked={resolved.generateAudio}
+            aria-label={t(($) => {
+              return $.chat.templates.videoOptionsAudio;
+            })}
+            onCheckedChange={(generateAudio) => {
+              update({ ...resolved, generateAudio });
+            }}
+          />
+          {t(($) => {
+            return $.chat.templates.videoOptionsAudio;
+          })}
+        </label>
+      )}
+    </div>
   );
 }

@@ -6,7 +6,7 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
-import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey, VIDEO_TEMPLATE_ITEMS } from "@okouai/core";
 import { expect, test } from "vitest";
 
 import {
@@ -255,6 +255,179 @@ test("Submit the video ratio selected by the user", async () => {
     });
     expect(submissions[0]?.runOptions).toStrictEqual({
       video: { aspectRatio: "9:16" },
+    });
+  });
+});
+
+test("Keep the existing start cards when task entries are disabled", async () => {
+  installVideoEnvironment();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: false },
+  });
+  await screen.findByRole("textbox", { name: "Message" });
+  await expect(screen.findByTestId("start-cards")).resolves.toBeVisible();
+  expect(screen.queryByTestId("composer-task-entries")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("group", { name: "Choose a task" }),
+  ).not.toBeInTheDocument();
+});
+
+test("Start a workflow without overwriting the draft or sending on selection", async () => {
+  const submissions = installVideoSubmissionCapture();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Summarize my inbox every morning.");
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Workflow", tasks));
+  await screen.findByText(
+    "Describe the outcome and when it should run. Start with a draft.",
+  );
+  expect(editor).toHaveTextContent("Summarize my inbox every morning.");
+  expect(submissions).toHaveLength(0);
+  await sendCurrent(editor, "Summarize my inbox every morning.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "text",
+      text: "Create a reusable workflow for the following request. Use the workflow-setup skill and save a draft before setting up automation.\nSummarize my inbox every morning.",
+    });
+    expect(submissions[0]?.runOptions).toBeUndefined();
+  });
+});
+
+test("Configure and submit a video directly from task entries on mobile", async () => {
+  const submissions = installVideoSubmissionCapture();
+  context.mocks.browser.matchMedia(() => {
+    return false;
+  });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("A ceramic cup in the morning light.");
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Video", tasks));
+  const options = await screen.findByRole("group", { name: "Video options" });
+  expect(options).toContainElement(
+    screen.getByRole("combobox", { name: "Ratio" }),
+  );
+  click(screen.getByRole("combobox", { name: "Ratio" }));
+  click(await screen.findByRole("option", { name: "9:16" }));
+  await waitFor(() => {
+    expect(screen.getByRole("combobox", { name: "Ratio" })).toHaveTextContent(
+      "9:16",
+    );
+  });
+  await sendCurrent(editor, "A ceramic cup in the morning light.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.runOptions?.video?.aspectRatio).toBe("9:16");
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "text",
+      text: "Generate a video for the following request.\nA ceramic cup in the morning light.",
+    });
+  });
+});
+
+test("Clear the task and its video settings while preserving the user's message", async () => {
+  const submissions = installVideoSubmissionCapture();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Keep this exact message.");
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Video", tasks));
+  await screen.findByRole("group", { name: "Video options" });
+  click(screen.getByRole("combobox", { name: "Ratio" }));
+  click(await screen.findByRole("option", { name: "9:16" }));
+  click(fastControl("button", "Clear task"));
+  await waitFor(() => {
+    expect(fastControl("button", "Video", tasks)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+  expect(editor).toHaveTextContent("Keep this exact message.");
+  expect(
+    screen.queryByRole("group", { name: "Video options" }),
+  ).not.toBeInTheDocument();
+  await sendCurrent(editor, "Keep this exact message.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "text",
+      text: "Keep this exact message.",
+    });
+    expect(submissions[0]?.runOptions).toBeUndefined();
+  });
+});
+
+test("Select a workflow starter with the existing structured template and preserve the draft", async () => {
+  const submissions = installVideoSubmissionCapture();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Only include important messages.");
+  await screen.findByRole("region", { name: "Let your work keep working" });
+  click(fastControl("button", "Morning brief"));
+  await waitFor(() => {
+    expect(editor).toHaveTextContent("Morning brief");
+  });
+  expect(editor).toHaveTextContent("Only include important messages.");
+  expect(submissions).toHaveLength(0);
+  await sendCurrent(editor, "Only include important messages.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "template",
+      titleSnapshot: "Morning brief",
+      template: {
+        type: "workflow",
+        selection: { workflowTemplateId: "workflow-template:morning-brief" },
+      },
+    });
+  });
+});
+
+test("Changing from a workflow starter to video removes conflicting templates but keeps the draft", async () => {
+  const submissions = installVideoSubmissionCapture();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Use my morning notes.");
+  await screen.findByRole("region", { name: "Let your work keep working" });
+  click(fastControl("button", "Morning brief"));
+  await waitFor(() => {
+    expect(editor).toHaveTextContent("Morning brief");
+  });
+  const tasks = screen.getByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Video", tasks));
+  await screen.findByRole("group", { name: "Video options" });
+  expect(editor).toHaveTextContent("Use my morning notes.");
+  expect(editor).not.toHaveTextContent("Morning brief");
+  await sendCurrent(editor, "Use my morning notes.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(
+      submissions[0]?.userMessage?.parts.some((part) => {
+        return part.type === "template";
+      }),
+    ).toBeFalsy();
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "text",
+      text: "Generate a video for the following request.\nUse my morning notes.",
     });
   });
 });

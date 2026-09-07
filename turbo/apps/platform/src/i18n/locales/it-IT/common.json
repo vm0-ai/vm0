@@ -2336,6 +2336,38 @@
       "startWithPrompt": "Crea",
       "templates": "Modelli"
     },
+    "taskEntries": {
+      "avatar": "Avatar parlante",
+      "browseWorkflows": "Esplora i workflow",
+      "chooseTask": "Scegli un’attività",
+      "chooseTemplate": "Scegli un modello",
+      "clearTask": "Rimuovi attività",
+      "hints": {
+        "image": "Descrivi l’immagine desiderata. Aggiungi un riferimento se disponibile.",
+        "slides": "Descrivi argomento, pubblico e storia da raccontare.",
+        "video": "Descrivi la scena e imposta i dettagli di questo video.",
+        "website": "Descrivi la pagina e il suo pubblico.",
+        "workflow": "Descrivi il risultato e quando eseguire l’attività. Inizia con una bozza."
+      },
+      "instructions": {
+        "image": "Genera un’immagine per la richiesta seguente.",
+        "slides": "Crea una presentazione per la richiesta seguente.",
+        "video": "Genera un video per la richiesta seguente.",
+        "website": "Crea un sito web per la richiesta seguente.",
+        "workflow": "Crea un workflow riutilizzabile per la richiesta seguente. Usa la skill workflow-setup e salva una bozza prima di configurare l’automazione."
+      },
+      "introVideo": "Video introduttivo",
+      "labels": {
+        "image": "Immagine",
+        "slides": "Slide",
+        "video": "Video",
+        "website": "Sito web",
+        "workflow": "Workflow"
+      },
+      "more": "Altro",
+      "workflowDescription": "Trasforma le attività ripetitive in workflow.",
+      "workflowHeading": "Lascia che il lavoro continui"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustrazione",

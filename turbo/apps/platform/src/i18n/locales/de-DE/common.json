@@ -2293,6 +2293,38 @@
       "startWithPrompt": "Erstellen",
       "templates": "Vorlagen"
     },
+    "taskEntries": {
+      "avatar": "Sprechender Avatar",
+      "browseWorkflows": "Workflows entdecken",
+      "chooseTask": "Aufgabe wählen",
+      "chooseTemplate": "Vorlage wählen",
+      "clearTask": "Aufgabe zurücksetzen",
+      "hints": {
+        "image": "Beschreibe dein Bild. Füge bei Bedarf eine Referenz hinzu.",
+        "slides": "Beschreibe dein Thema, deine Zielgruppe und deine Geschichte.",
+        "video": "Beschreibe die Szene und lege die Details für dieses Video fest.",
+        "website": "Beschreibe die gewünschte Seite und ihre Zielgruppe.",
+        "workflow": "Beschreibe das Ergebnis und den Zeitpunkt. Beginne mit einem Entwurf."
+      },
+      "instructions": {
+        "image": "Generiere ein Bild für die folgende Anfrage.",
+        "slides": "Erstelle eine Präsentation für die folgende Anfrage.",
+        "video": "Generiere ein Video für die folgende Anfrage.",
+        "website": "Erstelle eine Website für die folgende Anfrage.",
+        "workflow": "Erstelle einen wiederverwendbaren Workflow für die folgende Anfrage. Nutze den Skill workflow-setup und speichere einen Entwurf, bevor du die Automatisierung einrichtest."
+      },
+      "introVideo": "Introvideo",
+      "labels": {
+        "image": "Bild",
+        "slides": "Folien",
+        "video": "Video",
+        "website": "Website",
+        "workflow": "Workflow"
+      },
+      "more": "Mehr",
+      "workflowDescription": "Mache wiederkehrende Aufgaben zu Workflows.",
+      "workflowHeading": "Lass deine Arbeit weiterlaufen"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustration",

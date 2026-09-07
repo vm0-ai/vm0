@@ -2289,6 +2289,38 @@
       "startWithPrompt": "作成",
       "templates": "テンプレート"
     },
+    "taskEntries": {
+      "avatar": "話すアバター",
+      "browseWorkflows": "ワークフローを見る",
+      "chooseTask": "タスクを選択",
+      "chooseTemplate": "テンプレートを選択",
+      "clearTask": "タスクを解除",
+      "hints": {
+        "image": "作りたい画像を説明してください。参考資料も追加できます。",
+        "slides": "テーマ、対象者、伝えたい内容を説明してください。",
+        "video": "シーンを説明し、この動画の設定を調整してください。",
+        "website": "必要なページと対象者を説明してください。",
+        "workflow": "目的と実行するタイミングを説明してください。まず下書きを作成します。"
+      },
+      "instructions": {
+        "image": "次の依頼に対応する画像を生成してください。",
+        "slides": "次の依頼に対応するプレゼンテーションを作成してください。",
+        "video": "次の依頼に対応する動画を生成してください。",
+        "website": "次の依頼に対応するウェブサイトを作成してください。",
+        "workflow": "次の依頼に対応する再利用可能なワークフローを作成してください。workflow-setup スキルを使い、自動化を設定する前に下書きを保存してください。"
+      },
+      "introVideo": "紹介動画",
+      "labels": {
+        "image": "画像",
+        "slides": "スライド",
+        "video": "動画",
+        "website": "ウェブサイト",
+        "workflow": "ワークフロー"
+      },
+      "more": "その他",
+      "workflowDescription": "繰り返し行う作業をワークフローに。",
+      "workflowHeading": "繰り返す仕事を任せよう"
+    },
     "templates": {
       "categories": {
         "illustration": "イラストレーション",
