@@ -5,6 +5,7 @@ import type {
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
@@ -352,7 +353,11 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
   const clipboard = context.mocks.browser.clipboardWriteText();
   const downloads = context.mocks.browser.blobDownload();
 
-  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.RichMarkdownUnderline]: true },
+  });
 
   await expect(
     screen.findByText("Files from the completed review"),

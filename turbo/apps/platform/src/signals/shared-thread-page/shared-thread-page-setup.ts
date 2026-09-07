@@ -16,6 +16,7 @@ import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setPageSignal$ } from "../page-signal.ts";
 import { createSharedThreadRichContentSignals } from "./shared-thread-rich-content.ts";
+import { richMarkdownUnderlineEnabled$ } from "../external/feature-switch.ts";
 
 export const setupSharedThreadPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -29,6 +30,7 @@ export const setupSharedThreadPage$ = command(
       signal,
     );
     let sharedThread: SharedDisplayThread | null = null;
+    const underline = get(richMarkdownUnderlineEnabled$);
     if (result.status === 200) {
       const messages: SharedDisplayThread["messages"][number][] = [];
       const richMessages: (typeof result.body.messages)[number][] = [];
@@ -39,6 +41,7 @@ export const setupSharedThreadPage$ = command(
         }
         const tree = createPlainMarkdownTree(message.content, {
           mathEnabled: false,
+          underline,
         });
         if (tree === null) {
           richMessages.push(message);

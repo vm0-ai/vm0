@@ -20,6 +20,7 @@ import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
+import { richMarkdownUnderlineEnabled$ } from "../../signals/external/feature-switch.ts";
 
 type MarkdownNodeProp = { node?: Element };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
@@ -377,10 +378,9 @@ export function Markdown({
   readonly mediaPreview?: boolean;
   readonly escapeHtml?: boolean;
 }) {
-  const tree = parseMarkdownTree(
-    escapeHtml ? escapeHtmlTags(source) : source,
-    {},
-  );
+  const tree = parseMarkdownTree(escapeHtml ? escapeHtmlTags(source) : source, {
+    underline: useGet(richMarkdownUnderlineEnabled$),
+  });
   return (
     <MarkdownTreeFrame
       className={className}

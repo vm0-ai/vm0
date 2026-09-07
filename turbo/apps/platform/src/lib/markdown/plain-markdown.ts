@@ -13,12 +13,12 @@ const BLOCK_SYNTAX =
  */
 export function createPlainMarkdownTree(
   source: string,
-  options: { readonly mathEnabled: boolean },
+  options: { readonly mathEnabled: boolean; readonly underline?: boolean },
 ): Root | null {
   if (
     source.trim() !== source ||
     source.includes("\r") ||
-    source.includes("++") ||
+    (options.underline && source.includes("++")) ||
     INLINE_RICH_SYNTAX.test(source) ||
     (options.mathEnabled && source.includes("$")) ||
     AUTOLINK.test(source)

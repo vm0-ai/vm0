@@ -13,6 +13,7 @@ import {
 } from "../mermaid-diagram.ts";
 import { retryRichMarkdown$ } from "../rich-markdown-retry.ts";
 import { tapError } from "../utils.ts";
+import { richMarkdownUnderlineEnabled$ } from "../external/feature-switch.ts";
 
 export interface SharedThreadRichContentState {
   readonly status: "loading" | "error" | "ready";
@@ -45,43 +46,47 @@ export function createSharedThreadRichContentSignals(
     return get(internalState$);
   });
 
-  const load$ = command(async ({ set }, signal: AbortSignal): Promise<void> => {
-    set(internalState$, (current): SharedThreadRichContentState => {
-      return { status: "loading", trees: current.trees };
-    });
-    const trees = await tapError(
-      (async (): Promise<ReadonlyMap<number, Root>> => {
-        // Keep parser failures on the promise consumed by `tapError`.
-        await Promise.resolve();
-        signal.throwIfAborted();
-        const next = new Map<number, Root>();
-        for (const message of messages) {
-          const tree = parseMarkdownTree(message.content, {
-            mermaid: true,
+  const load$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const underline = get(richMarkdownUnderlineEnabled$);
+      set(internalState$, (current): SharedThreadRichContentState => {
+        return { status: "loading", trees: current.trees };
+      });
+      const trees = await tapError(
+        (async (): Promise<ReadonlyMap<number, Root>> => {
+          // Keep parser failures on the promise consumed by `tapError`.
+          await Promise.resolve();
+          signal.throwIfAborted();
+          const next = new Map<number, Root>();
+          for (const message of messages) {
+            const tree = parseMarkdownTree(message.content, {
+              mermaid: true,
+              underline,
+            });
+            embedMermaidSignals(tree, (code) => {
+              return set(mermaidDiagrams.register$, code);
+            });
+            embedImageLoadSignals(tree, (url) => {
+              return set(imageLoads.register$, url);
+            });
+            next.set(message.messageIndex, tree);
+          }
+          signal.throwIfAborted();
+          return next;
+        })(),
+        () => {
+          set(internalState$, (current): SharedThreadRichContentState => {
+            return { status: "error", trees: current.trees };
           });
-          embedMermaidSignals(tree, (code) => {
-            return set(mermaidDiagrams.register$, code);
-          });
-          embedImageLoadSignals(tree, (url) => {
-            return set(imageLoads.register$, url);
-          });
-          next.set(message.messageIndex, tree);
-        }
-        signal.throwIfAborted();
-        return next;
-      })(),
-      () => {
-        set(internalState$, (current): SharedThreadRichContentState => {
-          return { status: "error", trees: current.trees };
-        });
-      },
-    );
-    signal.throwIfAborted();
-    if (trees === undefined) {
-      return;
-    }
-    set(internalState$, { status: "ready", trees });
-  });
+        },
+      );
+      signal.throwIfAborted();
+      if (trees === undefined) {
+        return;
+      }
+      set(internalState$, { status: "ready", trees });
+    },
+  );
 
   const retry$ = command(({ set }): Promise<void> => {
     ownerSignal.throwIfAborted();

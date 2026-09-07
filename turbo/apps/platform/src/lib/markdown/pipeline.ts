@@ -1,5 +1,5 @@
 import type { Data, Element, ElementContent, Root, RootContent } from "hast";
-import { Marked, Renderer, type Token, type Tokens } from "marked";
+import { marked, Marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -111,6 +111,8 @@ declare module "hast" {
 type MarkdownCard = NonNullable<Data["card"]>;
 
 interface MarkdownParseOptions {
+  /** Enable the isolated display parser and its explicit underline extension. */
+  readonly underline?: boolean;
   /**
    * Replace closed ```mermaid fences with diagram marker nodes. Only surfaces
    * whose trees are prepared by a command enable this — the command resolves
@@ -517,7 +519,8 @@ export function parseMarkdownTree(
   source: string,
   options: MarkdownParseOptions,
 ): Root {
-  const html = markdownParser.parse(source, {
+  const parser = options.underline ? markdownParser : marked;
+  const html = parser.parse(source, {
     async: false,
     renderer: options.mermaid ? createMarkedRenderer() : null,
   });

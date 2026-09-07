@@ -1,6 +1,8 @@
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 
 import { platformOkouWordmarkLightImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -8,9 +10,51 @@ import {
   getLinkByName,
   setupSharedThreadPage,
   sharedThread,
+  SHARED_THREAD_ID,
 } from "./shared-thread-test-helpers.ts";
 
 const context = testContext();
+
+test.each([false, true])(
+  "Shared Markdown respects the underline switch: %s",
+  async (enabled) => {
+    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+      return respond(
+        200,
+        sharedThread({
+          messages: [
+            {
+              messageIndex: 0,
+              role: "assistant",
+              content: "++Shared plain++",
+              runIndex: 0,
+            },
+            {
+              messageIndex: 1,
+              role: "assistant",
+              content: "**Prefix** ++Shared rich++",
+              runIndex: 0,
+            },
+          ],
+        }),
+      );
+    });
+    await setupPage({
+      context,
+      path: `/share/threads/${SHARED_THREAD_ID}`,
+      auth: null,
+      featureSwitches: { [FeatureSwitchKey.RichMarkdownUnderline]: enabled },
+    });
+    const plain = await screen.findByText(
+      enabled ? "Shared plain" : "++Shared plain++",
+    );
+    const rich = await screen.findByText(
+      enabled ? "Shared rich" : "++Shared rich++",
+    );
+    expect(plain.tagName).toBe(enabled ? "U" : "P");
+    expect(rich.tagName).toBe(enabled ? "U" : "P");
+  },
+);
 
 test("A brand-only public title is not repeated", async () => {
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {

@@ -371,6 +371,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RichMarkdownUnderline]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Render ++underline++ with an isolated Markdown parser. Refresh the page after changing this switch.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
     maintainer: "bingjie@vm0.ai",
     description:
