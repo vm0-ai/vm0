@@ -131,6 +131,17 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
     "data-clerk-user-banned-error",
     expect.stringContaining("support@vm0.ai"),
   );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-form-code-incorrect-error",
+    "This action couldn't be completed. Please try again later or contact support if this persists.",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-form-password-not-strong-enough-error",
+    "Your password is not strong enough.",
+  );
+  expect(clerkProviderConfig()).not.toHaveAttribute(
+    "data-clerk-form-password-incorrect-error",
+  );
   expect(
     document.querySelector("[data-auth-v1-legacy-clerk-css]"),
   ).not.toBeInTheDocument();
@@ -206,6 +217,22 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-user-banned-error",
     expect.stringContaining("support@okou.ai"),
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-form-code-incorrect-error",
+    "That code is incorrect. Try again.",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-form-password-incorrect-error",
+    "This action couldn't be completed. Please try again later or contact support if this persists.",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-form-password-not-strong-enough-error",
+    "Your password is not strong enough.",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-reset-password-action",
+    "Reset password",
   );
 });
 

@@ -29,6 +29,7 @@ function replaceClerkApplicationName<T>(value: T, brandName: BrandName): T {
 }
 
 export function getClerkLocalization(
+  mode: "sign-in" | "sign-up",
   brandName: BrandName,
   locale: SupportedLocale,
   clerkLocalizations: ClerkLocalizationCache,
@@ -42,10 +43,39 @@ export function getClerkLocalization(
     brandName === "Okou"
       ? replaceClerkApplicationName(localization, brandName)
       : localization;
+  const formCodeIncorrect =
+    mode === "sign-in"
+      ? t(($) => {
+          return $.auth.v2.signIn.invalidCode;
+        })
+      : t(($) => {
+          return $.auth.v2.signUp.unknownError;
+        });
   return {
     ...brandedLocalization,
+    signIn: {
+      ...brandedLocalization.signIn,
+      resetPassword: {
+        ...brandedLocalization.signIn?.resetPassword,
+        formButtonPrimary: t(($) => {
+          return $.auth.v2.signIn.resetPassword;
+        }),
+      },
+    },
     unstable__errors: {
       ...brandedLocalization.unstable__errors,
+      form_code_incorrect: formCodeIncorrect,
+      ...(mode === "sign-in"
+        ? {
+            form_password_incorrect: t(($) => {
+              return $.auth.v2.signIn.unknownError;
+            }),
+          }
+        : {
+            form_password_not_strong_enough: t(($) => {
+              return $.auth.v2.signUp.passwordInvalid;
+            }),
+          }),
       not_allowed_access: t(($) => {
         return $.auth.clerk.accessNotAllowed;
       }),

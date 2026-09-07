@@ -44,9 +44,13 @@ interface ClerkProviderProps {
   localization?: {
     signIn?: {
       emailCode?: { subtitle?: string };
+      resetPassword?: { formButtonPrimary?: string };
       start?: { actionLink?: string; title?: string };
     };
     unstable__errors?: {
+      form_code_incorrect?: string;
+      form_password_incorrect?: string;
+      form_password_not_strong_enough?: string;
       not_allowed_access?: string;
       user_banned?: string;
     };
@@ -64,22 +68,28 @@ export function ClerkProvider({
   signInUrl,
   signUpUrl,
 }: ClerkProviderProps) {
+  const {
+    signIn: { emailCode = {}, resetPassword = {}, start = {} } = {},
+    unstable__errors: errors = {},
+  } = localization ?? {};
   return createElement(
     Fragment,
     null,
     createElement("span", {
-      "data-clerk-sign-in-email-code-subtitle":
-        localization?.signIn?.emailCode?.subtitle,
-      "data-clerk-sign-in-start-action-link":
-        localization?.signIn?.start?.actionLink,
-      "data-clerk-sign-in-start-title": localization?.signIn?.start?.title,
-      "data-clerk-access-not-allowed-error":
-        localization?.unstable__errors?.not_allowed_access,
+      "data-clerk-sign-in-email-code-subtitle": emailCode.subtitle,
+      "data-clerk-sign-in-start-action-link": start.actionLink,
+      "data-clerk-sign-in-start-title": start.title,
+      "data-clerk-access-not-allowed-error": errors.not_allowed_access,
+      "data-clerk-form-code-incorrect-error": errors.form_code_incorrect,
+      "data-clerk-form-password-incorrect-error":
+        errors.form_password_incorrect,
+      "data-clerk-form-password-not-strong-enough-error":
+        errors.form_password_not_strong_enough,
       "data-clerk-after-sign-out-url": afterSignOutUrl,
       "data-clerk-provider-sign-in-url": signInUrl,
       "data-clerk-provider-sign-up-url": signUpUrl,
-      "data-clerk-user-banned-error":
-        localization?.unstable__errors?.user_banned,
+      "data-clerk-user-banned-error": errors.user_banned,
+      "data-clerk-reset-password-action": resetPassword.formButtonPrimary,
       "data-testid": "clerk-provider-config",
       hidden: true,
     }),

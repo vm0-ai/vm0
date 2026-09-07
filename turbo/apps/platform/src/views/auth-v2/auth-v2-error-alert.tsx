@@ -1,4 +1,9 @@
+import { cn } from "@okouai/ui";
 import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
+import {
+  AUTH_ERROR_ALERT_CLASS,
+  AUTH_ERROR_ALERT_TEXT_CLASS,
+} from "../auth/auth-action-styles.ts";
 
 export function AuthV2ErrorAlert({
   focusKey,
@@ -12,7 +17,7 @@ export function AuthV2ErrorAlert({
   return (
     <Alert
       aria-atomic="true"
-      className="px-3 py-2 text-xs text-red-700 outline-none dark:text-red-300"
+      className={cn(AUTH_ERROR_ALERT_CLASS, AUTH_ERROR_ALERT_TEXT_CLASS)}
       id={id}
       ref={(element) => {
         if (!element || element.dataset.authV2ErrorFocusKey === focusKey) {
@@ -31,7 +36,7 @@ export function AuthV2ErrorAlert({
       tabIndex={-1}
       variant="destructive"
     >
-      <AlertDescription className="text-xs leading-4">
+      <AlertDescription className={AUTH_ERROR_ALERT_TEXT_CLASS}>
         {message}
       </AlertDescription>
     </Alert>

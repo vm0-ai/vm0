@@ -24,7 +24,7 @@ function clerkVariables(): Record<string, string> {
     colorNeutral: "hsl(var(--foreground))",
     colorForeground: "hsl(var(--foreground))",
     colorMutedForeground: "hsl(var(--muted-foreground))",
-    colorPrimaryForeground: "hsl(var(--primary-foreground))",
+    colorPrimaryForeground: "hsl(var(--brand-text-foreground))",
     colorMuted: "hsl(var(--muted))",
     colorInput: "hsl(var(--input))",
     colorInputForeground: "hsl(var(--foreground))",

@@ -19,9 +19,14 @@ import { getAuthV1ProviderAppearance } from "./provider-appearance.ts";
 interface ClerkProviderProps {
   readonly children: ReactNode;
   readonly clerk: BrowserClerk;
+  readonly mode: "sign-in" | "sign-up";
 }
 
-export function AuthV1ClerkProvider({ children, clerk }: ClerkProviderProps) {
+export function AuthV1ClerkProvider({
+  children,
+  clerk,
+  mode,
+}: ClerkProviderProps) {
   const { t } = useTranslation();
   const clerkLocalizations = useGet(clerkLocalizations$);
   const locale = useGet(locale$);
@@ -38,6 +43,7 @@ export function AuthV1ClerkProvider({ children, clerk }: ClerkProviderProps) {
     allowedRedirectOrigins,
     appearance: getAuthV1ProviderAppearance(),
     localization: getClerkLocalization(
+      mode,
       clerkBrandName,
       locale,
       clerkLocalizations,

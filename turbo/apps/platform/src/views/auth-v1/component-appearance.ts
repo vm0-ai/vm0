@@ -11,6 +11,8 @@ import {
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import type { BrandName } from "../../signals/branding.ts";
 import {
+  AUTH_ERROR_ALERT_CLASS,
+  AUTH_ERROR_ALERT_TEXT_CLASS,
   AUTH_FIELD_INPUT_CLASS,
   AUTH_LINK_ACTION_CLASS,
   AUTH_PRIMARY_ACTION_CLASS,
@@ -174,12 +176,20 @@ export function getAuthV1ComponentAppearance(
       formFieldInputShowPasswordButton: authV1PasswordToggleClass,
       formFieldInputShowPasswordIcon: "size-4",
       formButtonPrimary: authV1PrimaryActionClass,
-      formButtonReset: AUTH_LINK_ACTION_CLASS,
-      formFieldErrorText: "mt-2 text-sm leading-5 text-destructive",
+      // Clerk 6.12 renders this public reset control without visible copy or an
+      // accessible name. Removing the inert control is the only supported way
+      // to keep it out of the tab order; appearance cannot add an aria-label.
+      formButtonReset: "hidden",
+      formFieldErrorText: cn(
+        AUTH_ERROR_ALERT_CLASS,
+        AUTH_ERROR_ALERT_TEXT_CLASS,
+        "mt-2",
+      ),
       formFieldHintText: "mt-2 text-sm leading-5 text-muted-foreground",
       formFieldInfoText: "mt-2 text-sm leading-5 text-muted-foreground",
       formFieldSuccessText: "mt-2 text-sm leading-5 text-foreground",
-      alertText: "text-sm leading-5 text-foreground",
+      alert: AUTH_ERROR_ALERT_CLASS,
+      alertText: AUTH_ERROR_ALERT_TEXT_CLASS,
       identityPreview:
         "flex min-h-6 w-full items-center justify-center gap-2 text-sm leading-5 text-muted-foreground",
       identityPreviewText: "min-w-0 flex-1 truncate text-center",
@@ -187,6 +197,11 @@ export function getAuthV1ComponentAppearance(
       formResendCodeLink: authV1ResendCodeLinkClass,
       otpCodeFieldInputs: "gap-2",
       otpCodeFieldInput: authV1OtpInputClass,
+      otpCodeFieldErrorText: cn(
+        AUTH_ERROR_ALERT_CLASS,
+        AUTH_ERROR_ALERT_TEXT_CLASS,
+        "mt-2",
+      ),
       alternativeMethods: "gap-2",
       alternativeMethodsBlockButton: cn(
         authV1OutlineActionClass,

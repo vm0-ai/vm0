@@ -7,6 +7,8 @@ import {
   platformVm0LogoDarkImg,
 } from "../../../lib/static-assets.ts";
 import {
+  AUTH_ERROR_ALERT_CLASS,
+  AUTH_ERROR_ALERT_TEXT_CLASS,
   AUTH_FIELD_INPUT_CLASS,
   AUTH_LINK_ACTION_CLASS,
   AUTH_PRIMARY_ACTION_CLASS,
@@ -88,6 +90,18 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   );
   expect(primaryActionClasses).toContain("okou-auth-action-text");
   expect(primaryActionClasses).toContain("border-0");
+  expect(elementClasses(appearance, "formButtonReset")).toBe("hidden");
+  for (const key of ["formFieldErrorText", "otpCodeFieldErrorText"]) {
+    expect(elementClasses(appearance, key)).toContain(AUTH_ERROR_ALERT_CLASS);
+    expect(elementClasses(appearance, key)).toContain(
+      AUTH_ERROR_ALERT_TEXT_CLASS,
+    );
+    expect(elementClasses(appearance, key)).toContain("mt-2");
+  }
+  expect(elementClasses(appearance, "alert")).toBe(AUTH_ERROR_ALERT_CLASS);
+  expect(elementClasses(appearance, "alertText")).toBe(
+    AUTH_ERROR_ALERT_TEXT_CLASS,
+  );
   expect(
     elementClasses(appearance, "lastAuthenticationStrategyBadge"),
   ).toContain("okou-auth-badge-text");
@@ -221,6 +235,7 @@ test("The hosted auth provider exposes only design tokens below Tailwind utiliti
     borderRadius: "var(--radius-lg)",
     colorBackground: "hsl(var(--card))",
     colorPrimary: "hsl(var(--brand-text))",
+    colorPrimaryForeground: "hsl(var(--brand-text-foreground))",
     fontFamily: "var(--font-family-sans)",
     fontSize: "var(--text-sm)",
   });

@@ -120,7 +120,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
 
 export function AuthV1Page({ clerk, mode }: AuthV1PageProps) {
   return (
-    <AuthV1ClerkProvider clerk={clerk}>
+    <AuthV1ClerkProvider clerk={clerk} mode={mode}>
       <AuthV1PageContent mode={mode} />
     </AuthV1ClerkProvider>
   );
