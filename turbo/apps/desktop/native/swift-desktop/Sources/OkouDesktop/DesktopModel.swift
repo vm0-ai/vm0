@@ -30,6 +30,7 @@ final class DesktopModel: ObservableObject {
   private(set) var changingAccount = false
   var onChange: @MainActor () -> Void = {}
   private let filesystem = FilesystemTools()
+  private var directoryPanel: NSOpenPanel?
 
   private struct FeatureSwitches: Decodable {
     let effectiveSwitches: [String: Bool]
@@ -199,6 +200,7 @@ final class DesktopModel: ObservableObject {
       let switches = try JSONDecoder().decode(FeatureSwitches.self, from: body.encoded())
         .effectiveSwitches
       pluginsAvailable = switches["computerUseDesktopPlugins"] == true
+      if !pluginsAvailable { cancelDirectorySelection() }
       debugAvailable = switches["_debug"] == true
       if !debugAvailable { debugEnabled = false }
       let recordingEnabled = switches["introVideo"] == true
@@ -222,6 +224,7 @@ final class DesktopModel: ObservableObject {
 
   private func disableFeatures() async throws {
     pluginsAvailable = false
+    cancelDirectorySelection()
     debugAvailable = false
     debugEnabled = false
     let wasRecordingEnabled = recorder.available
@@ -267,6 +270,7 @@ final class DesktopModel: ObservableObject {
     let wasOnline = ["online", "connecting", "recovering"].contains(host.status)
     let recordingAvailable = recorder.available
     changingAccount = true
+    cancelDirectorySelection()
     featureRequestID = nil
     recorder.available = false
     areaSelector.cancel()
@@ -367,17 +371,31 @@ final class DesktopModel: ObservableObject {
     try preferences.update { $0["computerUsePlugins"]["filesystem"]["enabled"] = .bool(enabled) }
     changed()
   }
-  func addDirectory() throws {
+  func addDirectory() async throws {
+    guard directoryPanel == nil, pluginsAvailable, !changingAccount, !shuttingDown else { return }
     let panel = NSOpenPanel()
+    directoryPanel = panel
+    defer { directoryPanel = nil }
+    let authRevision = auth.revision
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = true
-    guard panel.runModal() == .OK else { return }
+    // A nested modal run loop prevents main-actor heartbeat and command tasks
+    // from advancing while the user is deciding which folders to allow.
+    let response = await withCheckedContinuation { continuation in
+      panel.begin { continuation.resume(returning: $0) }
+    }
+    guard response == .OK, !Task.isCancelled, pluginsAvailable,
+      !changingAccount, !shuttingDown, auth.revision == authRevision
+    else { return }
     let paths = Array(Set(allowedDirectories + panel.urls.map(\.path))).sorted()
     try preferences.update {
       $0["computerUsePlugins"]["filesystem"]["allowedDirectories"] = .strings(paths)
     }
     changed()
+  }
+  func cancelDirectorySelection() {
+    directoryPanel?.cancel(nil)
   }
   func removeDirectory(_ path: String) throws {
     let paths = allowedDirectories.filter { $0 != path }
@@ -394,6 +412,7 @@ final class DesktopModel: ObservableObject {
     let wasOnline = ["online", "connecting", "recovering"].contains(host.status)
     let recordingAvailable = recorder.available
     shuttingDown = true
+    cancelDirectorySelection()
     recorder.available = false
     // Drain claimed work before cancelling permission probes that share its helper.
     await host.stop()

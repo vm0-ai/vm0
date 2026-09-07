@@ -18,6 +18,23 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The configured `b8dfd731` release passed twenty validated filesystem cases
+through the actual Desktop/server API, covering all thirteen tools. Independent
+disk checks confirmed Unicode edits/moves, byte-identical 148,000-byte text and
+68-byte PNG downloads, and rejection of direct, parent-relative and symlink
+access outside the selected test directory. Concurrent filesystem changes and
+the remaining matching edges still require acceptance.
+
+That same app reproduced stalled heartbeats and queued commands while its
+native Add Folder dialog was unanswered. Cancelling the dialog resumed both
+with the same app/helper processes; the main-thread sample was in `runModal()`.
+Directory selection now uses AppKit's asynchronous completion, retains one
+picker, and cancels it on account change, feature withdrawal or shutdown.
+The native integration test holds a real picker open while periodic helper
+queries advance, then cancels without changing the allowed directories. The
+PR progress record distinguishes this repair's packaged acceptance from the
+earlier filesystem and browser-consent results.
+
 The unchanged `19a0f11e` release reproduced a blocked command queue while a
 Safari Automation consent dialog remained unanswered. Its AppleScript child
 exited at the three-second deadline; a native stack sample then showed the

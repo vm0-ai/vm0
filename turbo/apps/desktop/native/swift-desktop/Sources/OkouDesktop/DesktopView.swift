@@ -212,7 +212,7 @@ struct DesktopView: View {
                 }
               }
             }
-            Button("Add Folder…") { model.run { try model.addDirectory() } }
+            Button("Add Folder…") { model.run { try await model.addDirectory() } }
           }.padding(8)
         }
         GroupBox("MCP Servers") {

@@ -399,6 +399,45 @@ import Testing
     try FileManager.default.removeItem(at: malformedPermissions)
     try await desktop.requestPermission("accessibility")
     #expect(desktop.ready)
+    // Modeless AppKit panels require the application event loop. A command-line
+    // test runner otherwise exits when the panel is dismissed.
+    let startedApplication = !NSApp.isRunning
+    if startedApplication {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        RunLoop.main.perform {
+          DispatchQueue.main.async { continuation.resume() }
+          NSApp.run()
+        }
+      }
+    }
+    defer {
+      if startedApplication {
+        NSApp.stop(nil)
+        let event = NSEvent.otherEvent(
+          with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0,
+          windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0)!
+        NSApp.postEvent(event, atStart: false)
+      }
+    }
+    // Keep a real native picker unanswered while the desktop's periodic helper
+    // requests advance. The independent run-loop watchdog also dismisses a
+    // regressed synchronous picker so a failure cannot strand the test host.
+    let pickerWatchdog = DispatchWorkItem {
+      RunLoop.main.perform(inModes: [.default, .modalPanel]) {
+        MainActor.assumeIsolated { desktop.cancelDirectorySelection() }
+      }
+    }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 15, execute: pickerWatchdog)
+    defer { pickerWatchdog.cancel() }
+    let directoriesBefore = desktop.allowedDirectories
+    let choosingDirectory = Task { try await desktop.addDirectory() }
+    try await waitForPermissionRefresh(
+      desktop, after: try #require(desktop.permissions["queries"].number))
+    #expect(NSApp.windows.contains { $0 is NSOpenPanel && $0.isVisible })
+    desktop.cancelDirectorySelection()
+    try await choosingDirectory.value
+    #expect(desktop.allowedDirectories == directoriesBefore)
+    pickerWatchdog.cancel()
     try await desktop.recorder.loadSources()
     try await desktop.recorder.start(source: source, systemAudio: true, microphone: true)
     await #expect(throws: DesktopFailure.self) { try await desktop.shutdown() }
