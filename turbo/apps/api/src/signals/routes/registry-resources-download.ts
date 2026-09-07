@@ -160,51 +160,51 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966",
   // Presentation runbook packages (self-contained per-template archives).
   "template:html-ppt-bloom-pitch-runbook":
-    "a27d82cae6cdeb84103c70705e2a2f6193948cbdb894aaeee6d3638de949bb11",
+    "497e4273d24490f3cdee17acb628d45e050993b1d184ac2055075928104ecb32",
   "template:html-ppt-blueprint-academy-runbook":
-    "02077258dd6ba2d12271ffedc2d1cf6c0ac3a16f6eb9a92246a92a5419e176ed",
+    "3bad140c244d8b7b2e9f59fe03cd2632d272cf27475cb6e8912e79c07fa2e685",
   "template:html-ppt-botane-organic-runbook":
-    "07231d8f7259db331a7b21eb190e7d887d9e26fb1b7dcacac46c3ca018ebd9d6",
+    "e254a8a30653053e47cb7dd38d47cf3af3b12d41ad3fd8adc597d6b7cafb5a43",
   "template:html-ppt-business-data-runbook":
-    "c8b571a0e2033a8167578685431daa54ebd4e37349771a972c059eb4b18c80d2",
+    "b4123b1cb5c52f963c2eea0d2c93decd10b0b8d53dd0993b929810fb5cf3ef49",
   "template:html-ppt-crayon-runbook":
-    "10d96f99628483c0316558e0e953ada3752a1081e8efa5cf5de2d7c80a535062",
+    "06ea2690e2d1020807422c3add9b86c6e64ccd7870c91b98e40f6e323483d46d",
   "template:html-ppt-creative-agency-runbook":
-    "335fbaeab805a9a43d12aa76109b76967d068e3589abc583309bd91f46c57d06",
+    "671c05f5d36647b5a0d6b5a70c9f123912861a9578fb1c810efd4e105daec51f",
   "template:html-ppt-data-report-runbook":
-    "7f12591d77e7f10370e719177d9bd6971bb39f70ee523db4d63f1903b5be1c58",
+    "0985049fe03377d34c631362ad896dad59a9f7a439f09b005698d206e330facf",
   "template:html-ppt-editorial-magazine-runbook":
-    "cb9ab480b90d244bdad2a5558685e029179f0cbca24440f5b839645f56dba1e6",
+    "01f505612db766ee1229487632d7f2a9d0fd2103fc6d5fb6144354c778882cb2",
   "template:html-ppt-landing-consulting-runbook":
-    "51e83fa99ace1efecc4a9377fc568b5e0019570b0c41d07bc7e91b8dd23134fd",
+    "ea0f579ddc193d289c8f8d5ab24f23d62dd80f3a37b29b78065d0d01ef378539",
   "template:html-ppt-lumina-runbook":
-    "eb6caf4fef7a9c9a090619adaa9d519cfa07853ccf0187c606845f2ff45a05c2",
+    "5cd06f02b2448c516953476df872bc870bda5458dd6b569a68df2631589321a9",
   "template:html-ppt-meridian-runbook":
-    "0a2640e872d20da93b749b47fa530d910ae3767372de7a539e1da08fb9a86d0a",
+    "4ac9ff4ab93c27b08b6eeb54dda6745bf53366c9e5104636014b4642762aa6f9",
   "template:html-ppt-mosaic-geometric-runbook":
-    "c122104f5f40ab093ef7ff18fc9a7becbba21eda1834a7e4ae500e5be3bad012",
+    "dc3462ea37e2e42071779217152a4a0353c054b4b0e585b2ab7ffda5b3f9069a",
   "template:html-ppt-neo-brutalism-runbook":
-    "6ef2724a5b511909c72e404b9fa6f67e0269a535eca6bd484bc73316bfd99cfe",
+    "44066ab6e1aa52c802465bda13c435c066a6f3a3fee9c3068f5966447ec53b31",
   "template:html-ppt-nocturne-runbook":
-    "2a20b5307b01ca1ae43de4b8045dcd1be4d68c43123d34d77e10a770cc9e5092",
+    "7c7adb5ec12610aae9b282086daa526a6eaf3c6ff3ff53de9d1f4c739563a328",
   "template:html-ppt-pixel-glitch-runbook":
-    "109943a86459c9c1a3197d94124b7f96f85c71023f73fd9850ac3e9cc19ed3ce",
+    "22437d165feecc89edb012746a8cb51eaa46c8513157466f7e26e6384aa45e47",
   "template:html-ppt-playful-launch-runbook":
-    "e1a4b54088cf63a29f56780ca31dbfdba0ba39ff32c9a9ad14a4a470773862c0",
+    "57894521c0f259ba2d5062fbe56467e7f0d5dbd809527e13f9777de982e3eb06",
   "template:html-ppt-playful-pop-runbook":
-    "87adf6d8063be6acd9a8aa044d2cd4359932c2dd238a6403aed03c32f11cfda7",
+    "dc3eb029aa3dc5afb249a3cb6f397c89fcf44bdba7feaa69c57af5ec7ed0cdb1",
   "template:html-ppt-prospectus-runbook":
-    "4b57858e10558e741c3577dafa7bfdef9b96a1ff9be4c7a8c3cfc6c4fc9266a2",
+    "635d67c5f800106ac5cec967895d4f4512b812499b8b0d11c8bf6f06a3d88430",
   "template:html-ppt-schoolhouse-runbook":
-    "5968097de13a9a0dda66c464cdd744a53f2018442610775eef4630d21b74c403",
+    "713573a006fa509211d3c60d95ee41b06b66d5a044d1685fc4ff972c84f91333",
   "template:html-ppt-sticker-scrapbook-runbook":
-    "16218ebefa4d55554f7db7e6d6e7f18ffe6c53e657b044db7ea69781b11c4906",
+    "532797d90df8878c6b2c8356046cc45c2939230e15adf8ad31e0e4a1985b8316",
   "template:html-ppt-strata-runbook":
-    "9f403b39dc7eab2db4d09ad74e1acd89201d6f982c654166af19ce6b69165fa6",
+    "9f50574bfee6c4002cd3ec02c05c1fd26ee96346748a053af5d995be9fc34e4c",
   "template:html-ppt-taped-consulting-runbook":
-    "33b13adddfe94f558ed91ae235e69312b3f4fc5150ff77b6718253eaf6c69ff0",
+    "fc9012486f15c0bc7ab969bf6e6997632c2765673b2b4c07b79d3209e635430c",
   "template:html-ppt-vantage-runbook":
-    "6e845f03b79a1c4683f9b9bfe8f018eb9808642d6cadbef9ab505d6892ab5adb",
+    "5f2bea9d3c153836bc5f9ca6c447ed5318bca0a5c0eaabf36ece3833f2c38d67",
 } as const satisfies Record<string, string>;
 
 /**
@@ -230,99 +230,145 @@ const PREVIOUS_PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS_BY_SHA256 = {
     "4d11467afafb68c7ac221a4ac66e237cf7a05a8f4bb17c29e09ba6ec64b394b5":
       "108b2ba3b9d1994da6f4f6ddf219992a2ca9f2584edf5f448269d523e8d5b988",
   },
-  // Superseded presentation runbook digests from the
-  // vm0-ai/Template-artifact@b4b701a republication.
+  // Superseded presentation runbook digests retained across the
+  // vm0-ai/Template-artifact@b4b701a and @73ae68e republications.
   "template:html-ppt-bloom-pitch-runbook": {
     b9003d1545000987eac1868220b4ea1379ec1cdd79e884bc08d13539c1cc5f88:
       "ec842f388ab90b98e0dadb3ffeb560bbd4b0a0aaaa93b84725732d98bf225710",
+    "732a602bf37d8f10d8be14c63fd7ae12de0591dae41f9661fd29aa8591bc6465":
+      "a27d82cae6cdeb84103c70705e2a2f6193948cbdb894aaeee6d3638de949bb11",
   },
   "template:html-ppt-blueprint-academy-runbook": {
     "3ba06b6767eb7fb59c7e4e1599acb908f1684c18bfed2f8d29231e6f057e065e":
       "7dca9890d2c2416b84cdb953d3c5be4a614f2913599a5e6dd990229e266b12a5",
+    "3f3cc69eb216990518ee46164ea0a69a370ce5714d566c0e995a98f8acd2a9d8":
+      "02077258dd6ba2d12271ffedc2d1cf6c0ac3a16f6eb9a92246a92a5419e176ed",
   },
   "template:html-ppt-botane-organic-runbook": {
     f422972f28f470b894e46739aa0cdec8604b7bda7b0738a9ebca3541e553f2ec:
       "861c2b0e4d1e819e73498bbfd139ba0b95ee40dabc1d2b8189d63eae557e62e7",
+    b4824cc2e220af95203b0041d959d3be53253878e760a2502b79e2d8503319cf:
+      "07231d8f7259db331a7b21eb190e7d887d9e26fb1b7dcacac46c3ca018ebd9d6",
   },
   "template:html-ppt-business-data-runbook": {
     cf039ee1f7a989af9935658f7920b7862ce029b57763f71c8562abdb6e9061d8:
       "cbe95f8e00c38c5cfdce0b72e5a09f5e4d464f8d7dac3151387027957c55d80f",
+    "1f35bf0411a528948e94e8fdccb530aea3f2ee81681277bf720161937c2c47c2":
+      "c8b571a0e2033a8167578685431daa54ebd4e37349771a972c059eb4b18c80d2",
   },
   "template:html-ppt-crayon-runbook": {
     "2f67f694ead043195e8ec3cbf3e0843e09df6d93dc49f57a261f0f7bd503ae2a":
       "16dc23497a7f6b8e4e0ced506bef7f5f126d0b069315cab319543a646e89a988",
+    "24547aae70248b373e13b32bfcba39a53bb4d0ddc8b5ded502e9e0f4d967629a":
+      "10d96f99628483c0316558e0e953ada3752a1081e8efa5cf5de2d7c80a535062",
   },
   "template:html-ppt-creative-agency-runbook": {
     "14ee0f1e2e3dcfd36fc571bb747681a063dfb43eb62a70f67d0fd06aa79ef977":
       "68c2d284c9bb93ace0e10f3f4c508549eaebecc2cc0638510ad38349e2324a55",
+    "98d4308b77075181a9bc25c97eb5aab63d406f08fbbdc11240b5242c18695ba0":
+      "335fbaeab805a9a43d12aa76109b76967d068e3589abc583309bd91f46c57d06",
   },
   "template:html-ppt-data-report-runbook": {
     "199bc3e337e66069ade2d15c3f71488e7d15b1cb2d25da8baffd943e13aceefa":
       "64cca3c4fde4a49ee4cd215ed02ed85f4a198a6f5938e844c18b172ba68c9db7",
+    "64c088e596fd4a5d00ff2d001725eab1ff9ccdf12b66360eff968a42adbd1af8":
+      "7f12591d77e7f10370e719177d9bd6971bb39f70ee523db4d63f1903b5be1c58",
   },
   "template:html-ppt-editorial-magazine-runbook": {
     "0068cfa0a3d91a9cbaeed98685f99afa6355dda8a4cab1d5e3cf7bb0e3d232f3":
       "8ab0a2a68c7a5020a3d142e75af739144542a7ff41c5a3d2e590881acc6178b3",
+    e135fe2d90af35ad9cc177718d1758c36e7089fe63ac4b075203c1c06f12ba35:
+      "cb9ab480b90d244bdad2a5558685e029179f0cbca24440f5b839645f56dba1e6",
   },
   "template:html-ppt-landing-consulting-runbook": {
     "622fa1cca454f057d4b5eaaa412033276ed6ad014ac7a79bc5b82cd1aaba0725":
       "e79f61d0053d69bcc413963fcb56b3677bc6a84616afe90be20374dfef55174a",
+    "94781705145e5dff3595dd9e5c08fc0e8985c29737ecf664554a91d6ccc95482":
+      "51e83fa99ace1efecc4a9377fc568b5e0019570b0c41d07bc7e91b8dd23134fd",
   },
   "template:html-ppt-lumina-runbook": {
     "470aa7096ac3c676d644cdf74369ddcb8d120231e1981d7e7c27844d48142ab1":
       "9d589fee85ed6094bb064049ae24692e104ccbeb7bcda89e707991e7039abf4e",
+    ee353d4ecefdbe8cda164bd6174baff75a549671c5d0f720b75eca31bf26c3bb:
+      "eb6caf4fef7a9c9a090619adaa9d519cfa07853ccf0187c606845f2ff45a05c2",
   },
   "template:html-ppt-meridian-runbook": {
     "16ceb52885a5a93dd6ff909cbc95d2a8a27d6d8ac79ce4e6b906e57b17d69fde":
       "f15524e2361922bf0e6eed507c937c642261863a78aa856483238ce954547ba3",
+    "37072fe02a4e4df34d064f39237f98895b5d6d7514857171aa6cb99cdf57209b":
+      "0a2640e872d20da93b749b47fa530d910ae3767372de7a539e1da08fb9a86d0a",
   },
   "template:html-ppt-mosaic-geometric-runbook": {
     "722f6ea996166bdce3a6ab5f0292d1ead73488f03c6ad1138883e47506971cfe":
       "03be08ea6767942ee6d9d2fd2eced72ec0dfaecd2bc7d473c01a0093c39d48eb",
+    "8b6698813045d4cf52e26d5cd73ca6574529e58e1f2cc22a6db9de7b3b6a3a18":
+      "c122104f5f40ab093ef7ff18fc9a7becbba21eda1834a7e4ae500e5be3bad012",
   },
   "template:html-ppt-neo-brutalism-runbook": {
     "488508a363064e08774ba3fc10eff15f72d0bc0df4ff19df841a8772869bd7a5":
       "df9fe0cb53d1afd611b47bece0ebd81fb8fb036d84910cd20b302b80706f8a41",
+    ebb3a334c12473527009ea73d2c6b2097d38b3502bd6d12e610ceab9ae0ca252:
+      "6ef2724a5b511909c72e404b9fa6f67e0269a535eca6bd484bc73316bfd99cfe",
   },
   "template:html-ppt-nocturne-runbook": {
     "22db828e89979fdbc6e388568f600098f781b03cff28a99419b4101057394227":
       "1b684cfa4128f95aeee027e41324050005cfb528fcc26f099d7eb54e37661e0b",
+    f78892def8d6a214ec3eadb384fce8da13dfec686319d9383798f536b8187fbb:
+      "2a20b5307b01ca1ae43de4b8045dcd1be4d68c43123d34d77e10a770cc9e5092",
   },
   "template:html-ppt-pixel-glitch-runbook": {
     "085c7f8276e7ff9f2c26d19da7bffcd436dcdbd895b741b24134e11c685e9d91":
       "c2e9d8b90f00a6df09d3a4ad33357fc32baab03196b68d52d66b1a2ec1e3c0a0",
+    "242b7f6df74dfc3799de68a11e721d6def4552b05009a9578e1cb88622c371e5":
+      "109943a86459c9c1a3197d94124b7f96f85c71023f73fd9850ac3e9cc19ed3ce",
   },
   "template:html-ppt-playful-launch-runbook": {
     b336b934a2f18904f2af959bf1da999f17bb71d5b727b30c94c89766dc8adcfb:
       "4135191a92b54a3babde10edf9f972cf83f3aeae582165bd6eabec274fde8b9d",
+    e7ce6bda402a444b83ada485c71c3e0538b3692b4803cd7f96054ca07e81180a:
+      "e1a4b54088cf63a29f56780ca31dbfdba0ba39ff32c9a9ad14a4a470773862c0",
   },
   "template:html-ppt-playful-pop-runbook": {
     "6f07a5183e71c5f1ab51fabb606433bf2bce40675c5612e47c0040aa21ca8358":
       "72bbfc0132f41cc130f5efcbd5f692233375847c46c67e646ac890cbe9bfce97",
+    d3de99c9b8e931de2343d511dda04f57d1deaa29c945ef4c91a5382e948c9263:
+      "87adf6d8063be6acd9a8aa044d2cd4359932c2dd238a6403aed03c32f11cfda7",
   },
   "template:html-ppt-prospectus-runbook": {
     fe2905801b1f8beff802640b717e421c7882da2b015254bba160a92f036f190f:
       "74ee81efc7b5f6794ddf077357e1e845c773b3d77ae9e02948911b19f8220919",
+    "7ec19e6ce032544d1e4653bed9485fce0a5551bea6197c450e0b60bc28d7d16f":
+      "4b57858e10558e741c3577dafa7bfdef9b96a1ff9be4c7a8c3cfc6c4fc9266a2",
   },
   "template:html-ppt-schoolhouse-runbook": {
     e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394:
       "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c",
+    "387b2fb59ecac95dbe3b4e6f27d7e6ebda3ce4be317227f6506f87d02e264fc0":
+      "5968097de13a9a0dda66c464cdd744a53f2018442610775eef4630d21b74c403",
   },
   "template:html-ppt-sticker-scrapbook-runbook": {
     "8bfb271c21004703cc7151358080b5c622c7ec18eb4a5492643f35c5825aadcf":
       "899be9feba1fbc6eba3515b6e06c97e800956b399d025269bd2daaa6fc1a9653",
+    a00b744d85d2e668cb98945e9758bc6222ea4f3c3b62e72842f1568d35501f3f:
+      "16218ebefa4d55554f7db7e6d6e7f18ffe6c53e657b044db7ea69781b11c4906",
   },
   "template:html-ppt-strata-runbook": {
     "78aea76e0a6aceb8fbe77a771781cbd276255f2728fc31fb5617d19550432617":
       "518f9b636a8cbf091d9147da200822fbc297a343a3cea95d9546f43a8000d458",
+    c1396282cf80446b4cb97f8fa6859b5bd95c50090f8dcf1278a817e6e0b64cfb:
+      "9f403b39dc7eab2db4d09ad74e1acd89201d6f982c654166af19ce6b69165fa6",
   },
   "template:html-ppt-taped-consulting-runbook": {
     bbf846cbf4c6591375d9b668f6e0fdf380d387fddb5c2eb173d935b03486b83f:
       "16c64fa119f5aa68607c831b2fa79330f597e10fa01501b8a063443bd7561639",
+    c4ccffadd45dac50b9b8dc3bf0fd6f2ffa91e1cc6691ba63b5a7a1784e16d7ca:
+      "33b13adddfe94f558ed91ae235e69312b3f4fc5150ff77b6718253eaf6c69ff0",
   },
   "template:html-ppt-vantage-runbook": {
     a6290319d2b8065ce105949a5f02ba37ed1738cf9c354cd74e4742826b7ee753:
       "7b0b0f91b885c67147dc800191edd4b80a62f9bfe0dd6dbe7fcfb49b8e4f8027",
+    "888b1478b295e1e6b0e7ae5b579261206fce4edf48c6f42893194471cdeb2c78":
+      "6e845f03b79a1c4683f9b9bfe8f018eb9808642d6cadbef9ab505d6892ab5adb",
   },
 } as const satisfies Readonly<Record<string, Readonly<Record<string, string>>>>;
 

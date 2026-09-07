@@ -32,12 +32,12 @@ function client() {
 
 describe("registry resource download", () => {
   const CURRENT_PRESENTATION_SHA256 =
-    "387b2fb59ecac95dbe3b4e6f27d7e6ebda3ce4be317227f6506f87d02e264fc0";
+    "3c9ef9d076ebd80d298db3393f823efcec592c63c69bacd4f7b8dc2c5ede33dd";
 
   it("downloads the current presentation template HEAD by resource id", async () => {
     const id = "template:html-ppt-schoolhouse-runbook";
     const anchorVersionId =
-      "5968097de13a9a0dda66c464cdd744a53f2018442610775eef4630d21b74c403";
+      "713573a006fa509211d3c60d95ee41b06b66d5a044d1685fc4ff972c84f91333";
     const headVersionId = "a".repeat(64);
     const s3Key = "registry-fixture/schoolhouse-runbook/latest";
     const fixture = await seedPrivateRegistryResourceVersionFixture({
@@ -97,7 +97,7 @@ describe("registry resource download", () => {
   it("downloads the presentation archive for the current registry digest", async () => {
     const id = "template:html-ppt-schoolhouse-runbook";
     const versionId =
-      "5968097de13a9a0dda66c464cdd744a53f2018442610775eef4630d21b74c403";
+      "713573a006fa509211d3c60d95ee41b06b66d5a044d1685fc4ff972c84f91333";
     const s3Key = "registry-fixture/schoolhouse-runbook/version";
     const fixture = await seedPrivateRegistryResourceVersionFixture({
       storageName: `registry-resource@${id}`,
