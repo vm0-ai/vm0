@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.633.0](https://github.com/vm0-ai/vm0/compare/core-v8.632.0...core-v8.633.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** route app realtime through shared worker ([#32366](https://github.com/vm0-ai/vm0/issues/32366)) ([02b8739](https://github.com/vm0-ai/vm0/commit/02b87392dba2e9d2c61ad34734ad3f091110d461))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.4
+
 ## [8.632.0](https://github.com/vm0-ai/vm0/compare/core-v8.631.5...core-v8.632.0) (2026-09-07)
 
 

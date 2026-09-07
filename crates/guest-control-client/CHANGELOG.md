@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.5](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.18.4...guest-control-client-v0.18.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire codex prefetch sandboxes after partial writes ([#32358](https://github.com/vm0-ai/vm0/issues/32358)) ([dd0454e](https://github.com/vm0-ai/vm0/commit/dd0454e8707ecb068cf839c76d04c315427d6783))
+
 ## [0.18.4](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.18.3...guest-control-client-v0.18.4) (2026-09-07)
 
 

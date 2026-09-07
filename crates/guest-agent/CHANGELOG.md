@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.11...guest-agent-v0.86.12) (2026-09-07)
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid per-character citation matching allocations ([#32348](https://github.com/vm0-ai/vm0/issues/32348)) ([7de3573](https://github.com/vm0-ai/vm0/commit/7de357333016948afe1c3452aa8a2fda2f03d964))
+
 ## [0.86.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.10...guest-agent-v0.86.11) (2026-09-07)
 
 

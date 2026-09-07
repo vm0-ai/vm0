@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.47.0...desktop-v0.48.0) (2026-09-07)
+
+
+### Features
+
+* **desktop:** add experimental cua driver selection ([#32379](https://github.com/vm0-ai/vm0/issues/32379)) ([d756fd7](https://github.com/vm0-ai/vm0/commit/d756fd78d2db6d234b43d33237ff71e2cc50cc59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.4
+
 ## [0.47.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.40...desktop-v0.47.0) (2026-09-07)
 
 

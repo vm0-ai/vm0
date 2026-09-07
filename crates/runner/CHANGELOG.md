@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.188.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.3...runner-rs-v0.188.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire codex prefetch sandboxes after partial writes ([#32358](https://github.com/vm0-ai/vm0/issues/32358)) ([dd0454e](https://github.com/vm0-ai/vm0/commit/dd0454e8707ecb068cf839c76d04c315427d6783))
+
 ## [0.188.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.2...runner-rs-v0.188.3) (2026-09-07)
 
 
