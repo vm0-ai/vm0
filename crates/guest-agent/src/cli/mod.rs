@@ -280,7 +280,7 @@ pub struct CliExecutionResult {
     pub active_input_delivery_ids: Vec<String>,
 }
 
-/// How top-level guest-agent handling should settle a finished CLI execution.
+/// One-shot outcome reported by the heartbeat loop or task while CLI execution is in progress.
 ///
 /// Heartbeat completion signal observed by CLI execution.
 ///
