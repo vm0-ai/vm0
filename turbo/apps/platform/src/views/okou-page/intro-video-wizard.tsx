@@ -389,25 +389,14 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
   );
 }
 
-function StylePicker() {
+function StylePickerHeader() {
   const { t } = useTranslation();
   const selection = useGet(introVideoWizardSignals.style$);
   const setSelection = useSet(introVideoWizardSignals.setStyle$);
   const close = useSet(introVideoWizardSignals.setPicker$);
-  const catalog = useLoadable(introVideoStyleGallerySignals.catalog$);
-  const reload = useSet(introVideoStyleGallerySignals.reload$);
-  const choose = (next: IntroVideoStyleSelection) => {
-    setSelection(next);
-    close(null);
-  };
   return (
-    <div className="grid gap-3">
-      <p className="text-sm leading-6 text-muted-foreground">
-        {t(($) => {
-          return $.chat.introVideo.style.description;
-        })}
-      </p>
-      <div className="grid gap-2">
+    <div className="shrink-0">
+      <div className="grid px-3 pt-3 sm:px-6 sm:pt-6">
         <UtilityOption
           title={t(($) => {
             return $.chat.introVideo.style.auto;
@@ -418,10 +407,30 @@ function StylePicker() {
           icon={<Sparkles size={17} />}
           selected={selection.kind === "auto"}
           onSelect={() => {
-            choose({ kind: "auto" });
+            setSelection({ kind: "auto" });
+            close(null);
           }}
         />
       </div>
+      <IntroVideoStyleTagNavigation />
+    </div>
+  );
+}
+
+function StylePicker() {
+  const { t } = useTranslation();
+  const selection = useGet(introVideoWizardSignals.style$);
+  const setSelection = useSet(introVideoWizardSignals.setStyle$);
+  const close = useSet(introVideoWizardSignals.setPicker$);
+  const catalog = useLoadable(introVideoStyleGallerySignals.catalog$);
+  const reload = useSet(introVideoStyleGallerySignals.reload$);
+  return (
+    <div className="grid gap-3">
+      <p className="text-sm leading-6 text-muted-foreground">
+        {t(($) => {
+          return $.chat.introVideo.style.description;
+        })}
+      </p>
       {catalog.state === "hasError" ? (
         <CatalogError onRetry={reload} />
       ) : catalog.state === "loading" ? (
@@ -439,7 +448,8 @@ function StylePicker() {
             selection.kind === "catalog" ? selection.style.id : undefined
           }
           onSelect={(style) => {
-            choose({ kind: "catalog", style });
+            setSelection({ kind: "catalog", style });
+            close(null);
           }}
         />
       )}
@@ -697,7 +707,7 @@ function PickerDialog({
             {pickerTitle(t, picker)}
           </DialogTitle>
         </DialogHeader>
-        {picker === "style" ? <IntroVideoStyleTagNavigation /> : null}
+        {picker === "style" ? <StylePickerHeader /> : null}
         <div
           data-intro-video-catalog-scroll=""
           className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
