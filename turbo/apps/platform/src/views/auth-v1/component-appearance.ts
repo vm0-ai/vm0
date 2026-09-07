@@ -13,6 +13,7 @@ import type { BrandName } from "../../signals/branding.ts";
 import {
   AUTH_FIELD_INPUT_CLASS,
   AUTH_LINK_ACTION_CLASS,
+  AUTH_PRIMARY_ACTION_CLASS,
   AUTH_SOCIAL_ACTION_CLASS,
 } from "../auth/auth-action-styles.ts";
 
@@ -28,6 +29,7 @@ const authV1SocialActionClass = cn(
 );
 const authV1PrimaryActionClass = cn(
   buttonVariants({ size: "default", variant: "default" }),
+  AUTH_PRIMARY_ACTION_CLASS,
   "w-full okou-auth-action-text shadow-none",
 );
 const authV1OtpInputClass = cn(

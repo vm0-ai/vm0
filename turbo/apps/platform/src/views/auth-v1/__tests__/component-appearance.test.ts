@@ -9,6 +9,7 @@ import {
 import {
   AUTH_FIELD_INPUT_CLASS,
   AUTH_LINK_ACTION_CLASS,
+  AUTH_PRIMARY_ACTION_CLASS,
   AUTH_SOCIAL_ACTION_CLASS,
 } from "../../auth/auth-action-styles.ts";
 import { getAuthV1ComponentAppearance } from "../component-appearance.ts";
@@ -73,12 +74,20 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   expect(elementClasses(appearance, "socialButtonsBlockButton")).toContain(
     AUTH_SOCIAL_ACTION_CLASS,
   );
-  expect(elementClasses(appearance, "formButtonPrimary")).toContain(
-    buttonVariants({ size: "default", variant: "default" }),
+  const primaryActionClasses = elementClasses(
+    appearance,
+    "formButtonPrimary",
+  ).split(" ");
+  expect(primaryActionClasses).toStrictEqual(
+    expect.arrayContaining(
+      buttonVariants({ size: "default", variant: "default" }).split(" "),
+    ),
   );
-  expect(elementClasses(appearance, "formButtonPrimary")).toContain(
-    "okou-auth-action-text",
+  expect(primaryActionClasses).toStrictEqual(
+    expect.arrayContaining(AUTH_PRIMARY_ACTION_CLASS.split(" ")),
   );
+  expect(primaryActionClasses).toContain("okou-auth-action-text");
+  expect(primaryActionClasses).toContain("border-0");
   expect(
     elementClasses(appearance, "lastAuthenticationStrategyBadge"),
   ).toContain("okou-auth-badge-text");
@@ -211,7 +220,7 @@ test("The hosted auth provider exposes only design tokens below Tailwind utiliti
   expect(appearance.variables).toMatchObject({
     borderRadius: "var(--radius-lg)",
     colorBackground: "hsl(var(--card))",
-    colorPrimary: "hsl(var(--primary))",
+    colorPrimary: "hsl(var(--brand-text))",
     fontFamily: "var(--font-family-sans)",
     fontSize: "var(--text-sm)",
   });
