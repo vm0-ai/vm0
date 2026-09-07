@@ -102,7 +102,8 @@ pub enum ExitStatus {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Response {
     /// The handler has observed SSH exec-success, not merely a connected socket.
-    Accepted,
+    /// An empty struct (not unit) variant makes serde reject unknown fields.
+    Accepted {},
     Stdout {
         data: String,
     },
@@ -172,7 +173,7 @@ impl ResponseState {
             return Err(invalid("SSH response after terminal"));
         }
         match response {
-            Response::Accepted if !self.accepted => self.accepted = true,
+            Response::Accepted {} if !self.accepted => self.accepted = true,
             Response::Stdout { data } | Response::Stderr { data } if self.accepted => {
                 let total = if matches!(response, Response::Stdout { .. }) {
                     &mut self.stdout_bytes

@@ -101,7 +101,7 @@ async fn arbitrary_binary_and_independent_stream_caps_round_trip() {
     let encoded = encode_output(&binary).unwrap();
     let send = async {
         let mut writer = ResponseWriter::new(host);
-        writer.send(&Response::Accepted).await.unwrap();
+        writer.send(&Response::Accepted {}).await.unwrap();
         for _ in 0..MAX_OUTPUT_BYTES / MAX_CHUNK_BYTES {
             writer
                 .send(&Response::Stdout {
@@ -192,6 +192,28 @@ async fn response_reader_rejects_bad_order_encoding_shapes_and_terminal_duplicat
                 Ok(None) => panic!("invalid response unexpectedly succeeded"),
                 Err(_) => break,
             }
+        }
+        assert!(reader.next().await.is_err());
+    }
+}
+
+#[tokio::test]
+async fn response_authority_fields_are_rejected_on_the_frame_that_contains_them() {
+    for response in [
+        json!({"type": "accepted", "host": "secret"}),
+        json!({"type": "stdout", "data": "eA==", "username": "root"}),
+        json!({"type": "finished", "status": {"kind": "exit", "code": 0, "hostKey": "secret"}, "stdout_truncated": false, "stderr_truncated": false}),
+        json!({"type": "error", "code": "unavailable", "effect": "unknown", "privateKey": "secret", "stdout_truncated": false, "stderr_truncated": false}),
+    ] {
+        let needs_acceptance = response["type"] != "accepted";
+        let mut bytes = Vec::new();
+        if needs_acceptance {
+            bytes.extend(raw_frame(json!({"type": "accepted"})));
+        }
+        bytes.extend(raw_frame(response));
+        let mut reader = ResponseReader::new(bytes.as_slice());
+        if needs_acceptance {
+            assert_eq!(reader.next().await.unwrap(), Some(Response::Accepted {}));
         }
         assert!(reader.next().await.is_err());
     }

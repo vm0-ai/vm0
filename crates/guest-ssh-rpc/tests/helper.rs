@@ -50,7 +50,7 @@ async fn one_shot_helper_streams_binary_frames_without_executing_the_command() {
             command
         );
         let mut writer = ResponseWriter::new(server);
-        writer.send(&Response::Accepted).await.unwrap();
+        writer.send(&Response::Accepted {}).await.unwrap();
         writer
             .send(&Response::Stdout {
                 data: ssh_rpc_proto::encode_output(&[0, 255, 10, 128]).unwrap(),
@@ -132,7 +132,11 @@ async fn connection_failure_is_not_started_but_lost_response_is_unknown_without_
         [Response::error(ErrorCode::Unavailable, Effect::NotStarted)]
     );
 
-    for sent in [vec![], wire(&Response::Accepted), vec![0, 0, 0, 10, b'{']] {
+    for sent in [
+        vec![],
+        wire(&Response::Accepted {}),
+        vec![0, 0, 0, 10, b'{'],
+    ] {
         let (client, mut server) = UnixStream::pair().unwrap();
         let mut output = Vec::new();
         let calls = AtomicUsize::new(0);
@@ -175,7 +179,7 @@ async fn duplicate_terminal_or_trailing_garbage_never_exposes_finished() {
             guest_ssh_rpc::run_with_io(bytes.as_slice(), &mut output, || async { Ok(client) });
         let host = async {
             ssh_rpc_proto::read_request(&mut server).await.unwrap();
-            for frame in [wire(&Response::Accepted), wire(&finished), trailing] {
+            for frame in [wire(&Response::Accepted {}), wire(&finished), trailing] {
                 server.write_all(&frame).await.unwrap();
             }
             server.shutdown().await.unwrap();
