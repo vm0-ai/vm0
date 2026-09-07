@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { chatSearchContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { installContinuityWorkspace } from "./chat-continuity-test-helpers.ts";
 import {
@@ -14,18 +14,17 @@ import {
 
 const context = testContext();
 const SEARCH_LABEL = "Search workspace...";
+const SEARCH_BUTTON_LABEL = "Search workspace";
 const THREAD_TITLE = "Workspace notes";
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
 } as const;
 
 async function openSearch() {
-  fireEvent.keyDown(document.body, {
-    key: "f",
-    code: "KeyF",
-    ctrlKey: true,
-    shiftKey: true,
+  const searchButton = await screen.findByLabelText(SEARCH_BUTTON_LABEL, {
+    selector: "button",
   });
+  click(searchButton);
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
   return {
     dialog,

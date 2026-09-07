@@ -12,6 +12,7 @@ import {
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "../sidebar-breakpoint.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   artifactSummary,
@@ -49,7 +50,9 @@ const IMAGE_URL = "https://files.example.test/launch-graphic.png";
 
 function useWideScreen(): void {
   context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 1280px)";
+    return (
+      query === SIDEBAR_DESKTOP_MEDIA_QUERY || query === "(min-width: 1280px)"
+    );
   });
 }
 

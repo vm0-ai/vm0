@@ -11,7 +11,10 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { Button, cn, useMediaQuery } from "@okouai/ui";
 import { Sidebar } from "./sidebar.tsx";
-import { AutomationMenuButton } from "./chat-thread-page.tsx";
+import {
+  AutomationMenuButton,
+  ChatThreadHeaderTitle,
+} from "./chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
@@ -263,6 +266,7 @@ function MobileTopBar() {
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
 
   const activeId = useGet(activeRoute$);
+  const thread = useCurrentThread();
 
   return (
     <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
@@ -283,7 +287,11 @@ function MobileTopBar() {
       >
         <Menu size={18} />
       </Button>
-      {breadcrumb && (
+      {activeId === "chat" ? (
+        <div className="flex-1 min-w-0">
+          {thread && <ChatThreadHeaderTitle thread={thread} />}
+        </div>
+      ) : breadcrumb ? (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
@@ -310,8 +318,9 @@ function MobileTopBar() {
             </div>
           </div>
         </div>
+      ) : (
+        <div className="flex-1" />
       )}
-      {!breadcrumb && <div className="flex-1" />}
       <MobileTopBarActions activeId={activeId} />
     </div>
   );

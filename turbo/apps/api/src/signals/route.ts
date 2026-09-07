@@ -132,6 +132,7 @@ import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
 import { socialRoutes } from "./routes/social";
 import { sshConnectionsRoutes } from "./routes/ssh-connections";
+import { runnerSshRoutes } from "./routes/runner-ssh";
 import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
@@ -310,6 +311,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webSearchRoutes,
   ...socialRoutes,
   ...sshConnectionsRoutes,
+  ...runnerSshRoutes,
   ...browserRoutes,
   ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,

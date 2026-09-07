@@ -203,6 +203,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Route application realtime subscriptions through the SharedWorker",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
@@ -390,6 +391,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ArtifactLinkKindIcons]: {
+    maintainer: "ethan@okou.ai",
+    description:
+      "Show image, video, or file icons before trusted artifact text links.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThinkingSpinner]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -426,13 +434,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadPinShortcut]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Use Command/Ctrl+Shift+D to pin or unpin the focused chat thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -454,12 +455,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show Codex and Claude Code personal subscription usage in the sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PinnedAgentAvatar64]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show 64px avatars in the horizontal pinned-agent grid with three cards per row.",
-    enabled: false,
   },
   [FeatureSwitchKey.PersonalModelProviderAccounts]: {
     maintainer: "ethan@vm0.ai",

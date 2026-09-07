@@ -23,10 +23,7 @@ import {
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import {
-  chatThreadPinShortcutEnabled$,
-  voiceInputV2Enabled$,
-} from "../external/feature-switch.ts";
+import { voiceInputV2Enabled$ } from "../external/feature-switch.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -251,11 +248,7 @@ const setupChatPageShortcutActions$ = command(
       {
         actions: {
           canToggleThreadPin: (event) => {
-            return (
-              get(chatThreadPinShortcutEnabled$) &&
-              !event.isComposing &&
-              event.keyCode !== 229
-            );
+            return !event.isComposing && event.keyCode !== 229;
           },
           clearEmoji: async () => {
             const thread = focusedThread();

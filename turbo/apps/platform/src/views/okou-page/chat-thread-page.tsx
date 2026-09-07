@@ -90,6 +90,7 @@ import {
   TooltipTrigger,
   BrandSlack,
   ElapsedTime,
+  useMediaQuery,
 } from "@okouai/ui";
 import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
 import type {
@@ -285,6 +286,7 @@ import {
 import { ChatFeedbackSelection } from "./chat-feedback-selection.tsx";
 import { formatSubscriptionUsageReset } from "./subscription-usage-format.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./sidebar-shared.tsx";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
 import { setBillingSubPage$ } from "../../signals/okou-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -628,11 +630,11 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
-const CHAT_THREAD_HEADER_CLASS =
-  "hidden h-14 shrink-0 items-center justify-between bg-transparent px-6 sm:flex";
-
-function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
-  const { t } = useTranslation();
+export function ChatThreadHeaderTitle({
+  thread,
+}: {
+  thread: ChatPanelSignals;
+}) {
   const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
   const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
   const threadTitleText = useGet(thread.threadTitleText$);
@@ -640,12 +642,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     openRenameChatThreadDialogForThreadId$,
   );
   const pageSignal = useGet(pageSignal$);
-  const sharingPhase = useGet(thread.sharing.phase$);
-  const selectedCount = useGet(thread.sharing.selectedCount$);
-  const startSharing = useSet(thread.sharing.start$);
-  const closeSharing = useSet(thread.sharing.close$);
-  const sharingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
+
   function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
     event.preventDefault();
     detach(
@@ -653,6 +650,45 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
       Reason.DomCallback,
     );
   }
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <ChatThreadEmojiMenuButton
+        threadId={thread.threadId}
+        title={threadTitle}
+        emoji={threadTitleEmoji}
+      />
+      {threadTitleText && (
+        <span
+          className="min-w-0 truncate text-sm font-medium text-foreground"
+          data-testid="chat-thread-header-title"
+          onDoubleClick={openRenameDialog}
+        >
+          {threadTitleText}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const CHAT_THREAD_HEADER_CLASS =
+  "flex h-14 shrink-0 items-center justify-between bg-transparent px-6";
+
+function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
+  const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
+  // Only mount one emoji picker for the thread's shared menu state.
+  return isDesktop ? <DesktopChatThreadHeader thread={thread} /> : null;
+}
+
+function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const sharingPhase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const startSharing = useSet(thread.sharing.start$);
+  const closeSharing = useSet(thread.sharing.close$);
+  const sharingEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
 
   if (sharingPhase !== "idle") {
     return (
@@ -686,23 +722,8 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
 
   return (
     <header className={CHAT_THREAD_HEADER_CLASS}>
-      <div className="flex min-w-0 items-center gap-2">
-        <ChatThreadEmojiMenuButton
-          threadId={thread.threadId}
-          title={threadTitle}
-          emoji={threadTitleEmoji}
-        />
-        {threadTitleText && (
-          <span
-            className="min-w-0 truncate text-sm font-medium text-foreground"
-            data-testid="chat-thread-header-title"
-            onDoubleClick={openRenameDialog}
-          >
-            {threadTitleText}
-          </span>
-        )}
-      </div>
-      <div className="hidden sm:flex items-center gap-0.5">
+      <ChatThreadHeaderTitle thread={thread} />
+      <div className="flex items-center gap-0.5">
         {sharingEnabled ? (
           <TooltipProvider>
             <Tooltip>
