@@ -45,8 +45,7 @@ function setupModels(): void {
 function button(label: string, container: ParentNode = document): HTMLElement {
   const result = queryAllByRoleFast("button", container).find((item) => {
     return (
-      item.getAttribute("aria-label") === label ||
-      item.textContent?.trim() === label
+      (item.getAttribute("aria-label") ?? item.textContent?.trim()) === label
     );
   });
   if (!result) {
@@ -233,6 +232,25 @@ test("Multiple templates keep a generic toolbar label and all references survive
         return part.titleSnapshot;
       }),
   ).toStrictEqual([first.title, second.title]);
+});
+
+test("Presentation recognizes an existing template picked before entering create mode", async () => {
+  setupModels();
+  const editor = await setupComposer();
+  const user = userEvent.setup({ delay: null });
+  const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
+  if (!first) {
+    throw new Error("Expected a presentation template");
+  }
+  await selectTemplate(user, first);
+  await user.click(editor);
+  await user.paste(" /create presentation");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  click(button("Create presentation", menu));
+  await waitFor(() => {
+    expect(button(first.title)).toBeInTheDocument();
+  });
+  expect(composerInlineTemplates()).toHaveLength(1);
 });
 
 test("Illustration mode opens the style gallery directly", async () => {

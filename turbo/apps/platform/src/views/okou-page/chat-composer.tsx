@@ -6726,7 +6726,7 @@ function TemplatePickerButton({
     selector: ({ editor }) => {
       const result: {
         title: string;
-        category: string;
+        type: string;
         position: number;
         legacy: boolean;
       }[] = [];
@@ -6736,11 +6736,11 @@ function TemplatePickerButton({
           node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME
         ) {
           const title: unknown = node.attrs.title;
-          const category: unknown = node.attrs.category;
-          if (typeof title === "string" && typeof category === "string") {
+          const type: unknown = node.attrs.templateType;
+          if (typeof title === "string" && typeof type === "string") {
             result.push({
               title,
-              category,
+              type,
               position,
               legacy: node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME,
             });
@@ -6759,7 +6759,7 @@ function TemplatePickerButton({
   const singleTemplate =
     templateMode &&
     templates.length === 1 &&
-    templates[0]?.category === templateMode
+    templates[0]?.type === templateMode
       ? templates[0]
       : undefined;
   const templateLabel =
@@ -6782,7 +6782,9 @@ function TemplatePickerButton({
   const openTemplatePicker = useSet(signals.template.openTemplatePicker$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const selectedCategory =
-    templateMode ?? resolveTemplatePickerCategory(category);
+    templateMode === "presentation"
+      ? "slides"
+      : (templateMode ?? resolveTemplatePickerCategory(category));
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,
