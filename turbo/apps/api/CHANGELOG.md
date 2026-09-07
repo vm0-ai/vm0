@@ -8,6 +8,21 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.558.0](https://github.com/vm0-ai/vm0/compare/api-v1.557.1...api-v1.558.0) (2026-09-07)
+
+
+### Features
+
+* **core:** enable the compact model menu for staff ([#32068](https://github.com/vm0-ai/vm0/issues/32068)) ([13b4f23](https://github.com/vm0-ai/vm0/commit/13b4f2301cfb9af727edf63d99cdfd698b722a94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.629.0
+    * @okouai/db bumped to 1.244.3
+
 ## [1.557.1](https://github.com/vm0-ai/vm0/compare/api-v1.557.0...api-v1.557.1) (2026-09-07)
 
 
