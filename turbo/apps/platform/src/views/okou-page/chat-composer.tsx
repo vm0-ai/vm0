@@ -10718,6 +10718,9 @@ function ComposerFooter({
   signals: ComposerSignals;
   actions: ComposerActions;
 }) {
+  const createMode = useGet(signals.create.mode$);
+  const narrowVideoGap =
+    createMode === "video" ? "@max-[328px]/composer:gap-0" : undefined;
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraft = useResolved(signals.voice.state$);
   const capture = useGet(signals.voice.capture$);
@@ -10732,7 +10735,13 @@ function ComposerFooter({
             ? "recording"
             : voiceDraft?.status;
   return (
-    <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2",
+        narrowVideoGap,
+        createMode === "video" && "@max-[328px]/composer:px-3",
+      )}
+    >
       {voiceInputV2Enabled &&
       status &&
       status !== "idle" &&
@@ -10746,7 +10755,12 @@ function ComposerFooter({
         />
       ) : (
         <>
-          <div className="flex min-w-0 items-center gap-1 text-muted-foreground sm:gap-1.5">
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-1 text-muted-foreground sm:gap-1.5",
+              narrowVideoGap,
+            )}
+          >
             <ComposerAttachButton signals={signals} />
             <ComposerTemplatePickerSlot signals={signals} />
             <ComposerWorkflowPromptSlot signals={signals} />
@@ -10756,7 +10770,12 @@ function ComposerFooter({
                 not which model the composer points at. */}
             <ComposerVideoOptionsChip signals={signals} />
           </div>
-          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-1 sm:gap-2",
+              narrowVideoGap,
+            )}
+          >
             <ComposerModelPickerSlot signals={signals} />
             <MicButton signals={signals} actions={actions} />
             <ComposerSendControl signals={signals} actions={actions} />
