@@ -2,6 +2,7 @@ import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import type {
   SessionResource,
   SignedInSessionResource,
+  UserOrganizationInvitationResource,
 } from "@clerk/react/types";
 import {
   command,
@@ -17,7 +18,11 @@ import { ROUTES } from "../route-paths.ts";
 import { settle, withCleanup } from "../utils.ts";
 import type { AuthV2Navigation, AuthV2RouteMode } from "./navigation.ts";
 
-const AUTH_V2_CHOOSE_ORGANIZATION_PATH = "/tasks/choose-organization";
+import {
+  createAuthV2SecurityTaskCommand,
+  type AuthV2SecurityTaskAction,
+  type AuthV2SecurityTaskState,
+} from "./continuation-security.ts";
 
 export interface AuthV2ContinuationOrganization {
   readonly id: string;
@@ -32,18 +37,19 @@ export type AuthV2ContinuationFailureReason =
   | "organization-activation-failed"
   | "session-unavailable";
 
-export type AuthV2ContinuationUnknownReason =
-  | "second-factor"
-  | "unknown-task"
-  | "unsupported-task";
+export type AuthV2ContinuationUnknownReason = "second-factor" | "unknown-task";
 
 export type AuthV2ContinuationState =
   | { readonly status: "loading" }
+  | AuthV2SecurityTaskState
   | { readonly status: "inactive" }
   | { readonly status: "recovering" }
   | {
       readonly accountIdentifier: string;
       readonly organizations: readonly AuthV2ContinuationOrganization[];
+      readonly invitations: readonly AuthV2ContinuationOrganization[];
+      readonly canCreateOrganization: boolean;
+      readonly error: "request-failed" | null;
       readonly selectingOrganizationId: string | null;
       readonly status: "incomplete";
       readonly task: "choose-organization";
@@ -60,6 +66,12 @@ export type AuthV2ContinuationState =
 
 export interface AuthV2ContinuationSignals {
   readonly completeSession$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly submitSecurityTask$: Command<
+    Promise<void>,
+    [AuthV2SecurityTaskAction, AbortSignal]
+  >;
+  readonly createOrganization$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly acceptInvitation$: Command<Promise<void>, [string, AbortSignal]>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly recover$: Command<Promise<void>, [AbortSignal]>;
   readonly restart$: Command<Promise<void>, [AbortSignal]>;
@@ -74,6 +86,7 @@ export type AuthV2ContinuationFlowHandoff = Pick<
 
 interface AuthV2ContinuationDependencies {
   readonly isContinuationRoute: boolean;
+  readonly isInvitationEntry?: boolean;
   readonly mode: AuthV2RouteMode;
   readonly navigation: AuthV2Navigation;
   readonly presentation: "inline" | "route";
@@ -93,11 +106,12 @@ interface ContinuationRuntime {
   readonly inFlight$: State<Promise<void> | null>;
   readonly redirected$: State<boolean>;
   readonly taskNavigated$: State<boolean>;
+  readonly invitations$: State<readonly UserOrganizationInvitationResource[]>;
 }
 
 type ApplySessionCommand = Command<
-  void,
-  [SessionResource, ContinuationSessionSource, DecorateUrl]
+  Promise<void>,
+  [SessionResource, ContinuationSessionSource, DecorateUrl, AbortSignal]
 >;
 
 function taskKey(
@@ -153,7 +167,133 @@ function createContinuationRuntime(): ContinuationRuntime {
     inFlight$: state<Promise<void> | null>(null),
     redirected$: state(false),
     taskNavigated$: state(false),
+    invitations$: state<readonly UserOrganizationInvitationResource[]>([]),
   };
+}
+
+function createApplyOrganizationTaskCommand(
+  atoms: ContinuationAtoms,
+  runtime: ContinuationRuntime,
+) {
+  return command(
+    async (
+      { set },
+      session: SessionResource,
+      source: ContinuationSessionSource,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      if (source === "organization") {
+        set(atoms.state$, {
+          reason: "organization-activation-failed",
+          status: "failure",
+        });
+        return false;
+      }
+      const organizations = availableOrganizations(session);
+      const user = session.user;
+      const invitations =
+        user && organizations.length === 0
+          ? await settle(
+              user.getOrganizationInvitations({
+                status: "pending",
+                pageSize: 100,
+              }),
+              signal,
+            )
+          : { ok: true as const, value: { data: [] } };
+      const pendingInvitations = invitations.ok ? invitations.value.data : [];
+      set(runtime.invitations$, pendingInvitations);
+      const canCreateOrganization =
+        organizations.length === 0 && user?.createOrganizationEnabled === true;
+      if (
+        organizations.length === 0 &&
+        pendingInvitations.length === 0 &&
+        !canCreateOrganization &&
+        invitations.ok
+      ) {
+        set(atoms.state$, {
+          reason: "no-organizations",
+          status: "failure",
+        });
+        return false;
+      }
+      set(atoms.state$, {
+        accountIdentifier: continuationAccountIdentifier(session),
+        organizations,
+        invitations: pendingInvitations.map((invitation) => {
+          return {
+            id: invitation.id,
+            name: invitation.publicOrganizationData.name,
+            imageUrl: invitation.publicOrganizationData.imageUrl,
+          };
+        }),
+        canCreateOrganization,
+        error: invitations.ok ? null : "request-failed",
+        selectingOrganizationId: null,
+        status: "incomplete",
+        task: "choose-organization",
+      });
+      return true;
+    },
+  );
+}
+
+function createApplyTaskCommand(
+  atoms: ContinuationAtoms,
+  runtime: ContinuationRuntime,
+) {
+  const applyOrganization$ = createApplyOrganizationTaskCommand(atoms, runtime);
+  return command(
+    async (
+      { get, set },
+      session: SessionResource,
+      key: string,
+      source: ContinuationSessionSource,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      if (key === "choose-organization") {
+        return await set(applyOrganization$, session, source, signal);
+      } else if (key === "reset-password") {
+        set(atoms.state$, {
+          accountIdentifier: continuationAccountIdentifier(session),
+          status: "incomplete",
+          task: "reset-password",
+          error: null,
+          updated: false,
+        });
+      } else if (key === "setup-mfa") {
+        const clerk = await get(clerk$);
+        signal.throwIfAborted();
+        const attributes =
+          clerk.__internal_environment?.userSettings.attributes;
+        const methods: ("totp" | "phone_code")[] = [];
+        if (attributes?.authenticator_app?.enabled) {
+          methods.push("totp");
+        }
+        if (attributes?.phone_number?.used_for_second_factor) {
+          methods.push("phone_code");
+        }
+        if (methods.length === 0) {
+          set(atoms.state$, { reason: "second-factor", status: "unknown" });
+          return false;
+        }
+        set(atoms.state$, {
+          accountIdentifier: continuationAccountIdentifier(session),
+          status: "incomplete",
+          task: "setup-mfa",
+          methods,
+          error: null,
+          secret: null,
+          phoneNumber: null,
+          backupCodes: null,
+        });
+      } else {
+        set(atoms.state$, { reason: "unknown-task", status: "unknown" });
+        return false;
+      }
+      return true;
+    },
+  );
 }
 
 function createApplySessionCommand(
@@ -161,6 +301,7 @@ function createApplySessionCommand(
   runtime: ContinuationRuntime,
   dependencies: AuthV2ContinuationDependencies,
 ): ApplySessionCommand {
+  const applyTask$ = createApplyTaskCommand(atoms, runtime);
   const redirect$ = command(({ get, set }, destination: string): void => {
     if (get(runtime.redirected$)) {
       return;
@@ -177,63 +318,35 @@ function createApplySessionCommand(
   });
 
   return command(
-    (
+    async (
       { set },
       session: SessionResource,
       source: ContinuationSessionSource,
       decorateUrl: DecorateUrl,
-    ): void => {
+      signal: AbortSignal,
+    ): Promise<void> => {
       set(atoms.sessionId$, session.id);
       const currentTask = taskKey(session);
       if (currentTask.kind === "key") {
-        if (currentTask.key === "choose-organization") {
-          if (source === "organization") {
-            set(atoms.state$, {
-              reason: "organization-activation-failed",
-              status: "failure",
-            });
-            return;
-          }
-          const organizations = availableOrganizations(session);
-          if (organizations.length === 0) {
-            set(atoms.state$, {
-              reason: "no-organizations",
-              status: "failure",
-            });
-            return;
-          }
-          set(atoms.state$, {
-            accountIdentifier: continuationAccountIdentifier(session),
-            organizations,
-            selectingOrganizationId: null,
-            status: "incomplete",
-            task: "choose-organization",
-          });
-          if (
-            dependencies.presentation === "route" &&
-            !dependencies.isContinuationRoute
-          ) {
-            set(
-              navigateToTask$,
-              decorateUrl(
-                dependencies.navigation.href(
-                  dependencies.mode,
-                  AUTH_V2_CHOOSE_ORGANIZATION_PATH,
-                ),
-              ),
-            );
-          }
+        if (
+          !(await set(applyTask$, session, currentTask.key, source, signal))
+        ) {
           return;
         }
-        set(atoms.state$, {
-          reason:
-            currentTask.key === "setup-mfa"
-              ? "second-factor"
-              : currentTask.key === "reset-password"
-                ? "unsupported-task"
-                : "unknown-task",
-          status: "unknown",
-        });
+        if (
+          dependencies.presentation === "route" &&
+          !dependencies.isContinuationRoute
+        ) {
+          set(
+            navigateToTask$,
+            decorateUrl(
+              dependencies.navigation.href(
+                dependencies.mode,
+                `/tasks/${currentTask.key}`,
+              ),
+            ),
+          );
+        }
         return;
       }
 
@@ -289,16 +402,22 @@ function createRecoveryCommand(
       set(atoms.state$, { reason: "missing-session", status: "failure" });
       return;
     }
-    set(applySession$, session, "recovery", clerk.buildUrlWithAuth.bind(clerk));
+    await set(
+      applySession$,
+      session,
+      "recovery",
+      clerk.buildUrlWithAuth.bind(clerk),
+      signal,
+    );
   });
 }
 
-function createCoalescedOperation(
+function createCoalescedOperation<Value>(
   runtime: ContinuationRuntime,
-  operation$: Command<Promise<void>, [string, AbortSignal]>,
-): Command<Promise<void>, [string, AbortSignal]> {
+  operation$: Command<Promise<void>, [Value, AbortSignal]>,
+): Command<Promise<void>, [Value, AbortSignal]> {
   return command(
-    async ({ get, set }, value: string, signal: AbortSignal): Promise<void> => {
+    async ({ get, set }, value: Value, signal: AbortSignal): Promise<void> => {
       const current = get(runtime.inFlight$);
       if (current) {
         await current;
@@ -337,8 +456,8 @@ function createCompleteSessionCommand(
       signal.throwIfAborted();
       const activation = await settle(
         clerk.setActive({
-          navigate: ({ decorateUrl, session }) => {
-            set(applySession$, session, "session", decorateUrl);
+          navigate: async ({ decorateUrl, session }) => {
+            await set(applySession$, session, "session", decorateUrl, signal);
           },
           session: sessionId,
         }),
@@ -373,6 +492,7 @@ function createSelectOrganizationCommand(
       const continuationState = get(atoms.state$);
       if (
         continuationState.status !== "incomplete" ||
+        continuationState.task !== "choose-organization" ||
         !continuationState.organizations.some((organization) => {
           return organization.id === organizationId;
         })
@@ -387,8 +507,14 @@ function createSelectOrganizationCommand(
       signal.throwIfAborted();
       const activation = await settle(
         clerk.setActive({
-          navigate: ({ decorateUrl, session }) => {
-            set(applySession$, session, "organization", decorateUrl);
+          navigate: async ({ decorateUrl, session }) => {
+            await set(
+              applySession$,
+              session,
+              "organization",
+              decorateUrl,
+              signal,
+            );
           },
           organization: organizationId,
         }),
@@ -405,6 +531,135 @@ function createSelectOrganizationCommand(
     },
   );
   return createCoalescedOperation(runtime, activateOrganization$);
+}
+
+function createResumeSessionCommand(
+  atoms: ContinuationAtoms,
+  applySession$: ApplySessionCommand,
+): Command<Promise<void>, [AbortSignal]> {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const sessionId = get(atoms.sessionId$);
+    if (!sessionId) {
+      return;
+    }
+    await clerk.setActive({
+      session: sessionId,
+      navigate: async ({ session, decorateUrl }) => {
+        await set(applySession$, session, "session", decorateUrl, signal);
+      },
+    });
+    signal.throwIfAborted();
+  });
+}
+
+function createOrganizationRecoveryCommands(
+  atoms: ContinuationAtoms,
+  runtime: ContinuationRuntime,
+  applySession$: ApplySessionCommand,
+) {
+  // Once a write succeeds, offer the resulting membership. Further attempts
+  // only activate it; the create/accept action is no longer available.
+  const perform$ = command(
+    async (
+      { get, set },
+      action: { kind: "create" | "accept"; value: string },
+      signal: AbortSignal,
+    ) => {
+      const current = get(atoms.state$);
+      if (
+        current.status !== "incomplete" ||
+        current.task !== "choose-organization"
+      ) {
+        return;
+      }
+      set(atoms.state$, { ...current, error: null });
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      if (clerk.session?.id !== get(atoms.sessionId$)) {
+        throw new Error("Authentication session changed");
+      }
+      let organization: AuthV2ContinuationOrganization;
+      if (action.kind === "create") {
+        if (!current.canCreateOrganization || !action.value.trim()) {
+          return;
+        }
+        const created = await clerk.createOrganization({
+          name: action.value.trim(),
+        });
+        signal.throwIfAborted();
+        organization = {
+          id: created.id,
+          name: action.value.trim(),
+          imageUrl: null,
+        };
+      } else {
+        const invitation = get(runtime.invitations$).find((item) => {
+          return item.id === action.value;
+        });
+        if (!invitation) {
+          return;
+        }
+        await invitation.accept();
+        signal.throwIfAborted();
+        organization = invitation.publicOrganizationData;
+      }
+      set(atoms.state$, {
+        ...current,
+        organizations: [organization],
+        invitations: [],
+        canCreateOrganization: false,
+        error: null,
+      });
+      await clerk.setActive({
+        organization: organization.id,
+        navigate: async ({ session, decorateUrl }) => {
+          await set(
+            applySession$,
+            session,
+            "organization",
+            decorateUrl,
+            signal,
+          );
+        },
+      });
+      signal.throwIfAborted();
+    },
+  );
+  const run$ = createCoalescedOperation(
+    runtime,
+    command(
+      async (
+        { get, set },
+        action: { kind: "create" | "accept"; value: string },
+        signal: AbortSignal,
+      ) => {
+        const result = await settle(set(perform$, action, signal), signal);
+        if (!result.ok) {
+          const current = get(atoms.state$);
+          if (
+            current.status === "incomplete" &&
+            current.task === "choose-organization"
+          ) {
+            set(atoms.state$, { ...current, error: "request-failed" });
+          }
+        }
+      },
+    ),
+  );
+  return {
+    createOrganization$: command(
+      async ({ set }, name: string, signal: AbortSignal) => {
+        await set(run$, { kind: "create", value: name }, signal);
+      },
+    ),
+    acceptInvitation$: command(
+      async ({ set }, id: string, signal: AbortSignal) => {
+        await set(run$, { kind: "accept", value: id }, signal);
+      },
+    ),
+  };
 }
 
 function createRestartCommand(
@@ -462,12 +717,25 @@ export function createAuthV2ContinuationSignals(
   const applySession$ = createApplySessionCommand(atoms, runtime, dependencies);
   const recover$ = createRecoveryCommand(atoms, applySession$, dependencies);
   return {
+    ...createOrganizationRecoveryCommands(atoms, runtime, applySession$),
+    submitSecurityTask$: createCoalescedOperation(
+      runtime,
+      createAuthV2SecurityTaskCommand({
+        ...atoms,
+        resume$: createResumeSessionCommand(atoms, applySession$),
+      }),
+    ),
     completeSession$: createCompleteSessionCommand(
       atoms,
       runtime,
       applySession$,
     ),
-    initialize$: recover$,
+    initialize$: dependencies.isInvitationEntry
+      ? command(({ set }) => {
+          set(atoms.state$, { status: "inactive" });
+          return Promise.resolve();
+        })
+      : recover$,
     recover$,
     restart$: createRestartCommand(atoms, runtime, dependencies),
     selectOrganization$: createSelectOrganizationCommand(

@@ -163,7 +163,6 @@ interface SignInResourceSnapshot {
   readonly secondFactorVerificationStrategy: string | null;
   readonly identifierMode: AuthV2ExternalCapabilities["identifierMode"];
   readonly transferable: boolean;
-  readonly unknownFactorStrategies: readonly string[];
 }
 
 interface AuthV2SignInFlowDependencies {
@@ -291,7 +290,6 @@ function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
 
 interface FactorDiscovery {
   readonly factors: readonly AuthV2SignInFactor[];
-  readonly unknownStrategies: readonly string[];
 }
 
 function oauthFactor(
@@ -312,11 +310,10 @@ function discoverFactors(
   passkeyCapability: AuthV2PasskeyCapability,
 ): FactorDiscovery {
   if (!factors) {
-    return { factors: [], unknownStrategies: [] };
+    return { factors: [] };
   }
 
   const discovered: AuthV2SignInFactor[] = [];
-  const unknownStrategies: string[] = [];
   for (const factor of factors) {
     if (factor.strategy === "password") {
       discovered.push({ id: "password", kind: "password" });
@@ -340,11 +337,9 @@ function discoverFactors(
       if (passkeyCapability !== "unavailable") {
         discovered.push({ id: "passkey", kind: "passkey" });
       }
-    } else {
-      unknownStrategies.push(factor.strategy);
     }
   }
-  return { factors: discovered, unknownStrategies };
+  return { factors: discovered };
 }
 
 function entryFactors(
@@ -370,7 +365,7 @@ function snapshotSignInResource(
   // exposes transferability on its future view, so keep that SDK detail
   // isolated in this adapter rather than leaking it into the flow or view.
   const discovered = isAuthV2SecondFactorStatus(resource.status)
-    ? { factors: discoverAuthV2SecondFactors(resource), unknownStrategies: [] }
+    ? { factors: discoverAuthV2SecondFactors(resource) }
     : discoverFactors(
         resource.supportedFirstFactors,
         capabilities.lastUsedOAuthStrategy,
@@ -409,7 +404,6 @@ function snapshotSignInResource(
       resource.secondFactorVerification?.strategy ?? null,
     identifierMode: capabilities.identifierMode,
     transferable: resource.__internal_future.isTransferable,
-    unknownFactorStrategies: discovered.unknownStrategies,
   };
 }
 
@@ -647,10 +641,7 @@ function deriveFirstFactorState(
   snapshot: SignInResourceSnapshot,
   options: DeriveSignInFlowOptions,
 ): AuthV2SignInState {
-  if (
-    snapshot.factors.length === 0 ||
-    snapshot.unknownFactorStrategies.length > 0
-  ) {
+  if (snapshot.factors.length === 0) {
     return unsupportedFactorState(snapshot);
   }
   const currentFactor = selectedFactorForSnapshot(
@@ -1662,7 +1653,6 @@ function createEntryNavigationCommands(
       secondFactorVerificationStrategy: null,
       identifierMode: get(atoms.capabilities$).identifierMode,
       transferable: false,
-      unknownFactorStrategies: [],
     });
     set(atoms.selectedFactor$, null);
     set(atoms.passwordRecovery$, false);

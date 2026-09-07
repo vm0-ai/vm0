@@ -1,4 +1,4 @@
-import { Button, cn } from "@okouai/ui";
+import { Button, cn, Input } from "@okouai/ui";
 import type { Computed } from "ccstate";
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -23,10 +23,31 @@ import {
   useAuthV2ContinuationCopy,
 } from "./continuation-copy.ts";
 
+import { AuthV2SecurityTaskContent } from "./security-task-content.tsx";
+import { AuthV2ErrorAlert } from "../auth-v2-error-alert.tsx";
+import { AuthV2SubmitButton } from "../auth-v2-submit-button.tsx";
+import {
+  useAuthV2SignInCopy,
+  type AuthV2SignInCopy,
+} from "../sign-in/sign-in-copy.ts";
+
 function continuationHeading(
   state: AuthV2ContinuationState,
   copy: AuthV2ContinuationCopy,
+  signInCopy: AuthV2SignInCopy,
 ): { readonly description: string; readonly title: string } {
+  if (state.status === "incomplete" && state.task === "reset-password") {
+    return {
+      title: signInCopy.newPasswordTitle,
+      description: signInCopy.newPasswordSubtitle,
+    };
+  }
+  if (state.status === "incomplete" && state.task === "setup-mfa") {
+    return {
+      title: state.backupCodes?.length ? copy.backupTitle : copy.securityTitle,
+      description: copy.securityDescription,
+    };
+  }
   if (state.status === "incomplete") {
     return {
       description: copy.chooseOrganizationDescription,
@@ -78,6 +99,58 @@ function LoadingContent({ label }: { readonly label: string }) {
   );
 }
 
+function OrganizationCreationForm({
+  copy,
+  pending,
+  creating,
+  createOrganization,
+  operationSignal$,
+}: {
+  readonly copy: AuthV2ContinuationCopy;
+  readonly pending: boolean;
+  readonly creating: boolean;
+  readonly createOrganization: (
+    name: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly operationSignal$: Computed<AbortSignal>;
+}) {
+  const operationSignal = useGet(operationSignal$);
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const name = new FormData(event.currentTarget).get("organizationName");
+        if (typeof name === "string") {
+          detach(
+            createOrganization(name, operationSignal),
+            Reason.DomCallback,
+            "create authentication organization",
+          );
+        }
+      }}
+    >
+      <div className="space-y-2">
+        <label className="text-sm font-medium" htmlFor="task-organization-name">
+          {copy.organizationName}
+        </label>
+        <Input
+          id="task-organization-name"
+          name="organizationName"
+          required
+          disabled={pending}
+        />
+      </div>
+      <AuthV2SubmitButton
+        busy={creating}
+        disabled={pending}
+        label={copy.createOrganization}
+      />
+    </form>
+  );
+}
+
 function OrganizationContent({
   copy,
   operationSignal$,
@@ -87,43 +160,114 @@ function OrganizationContent({
   readonly copy: AuthV2ContinuationCopy;
   readonly operationSignal$: Computed<AbortSignal>;
   readonly signals: AuthV2ContinuationSignals;
-  readonly state: Extract<AuthV2ContinuationState, { status: "incomplete" }>;
+  readonly state: Extract<
+    AuthV2ContinuationState,
+    { task: "choose-organization" }
+  >;
 }) {
   const operationSignal = useGet(operationSignal$);
   const [selectionLoadable, selectOrganization] = useLoadableSet(
     signals.selectOrganization$,
   );
-  const selectionPending = selectionLoadable.state === "loading";
+  const [createLoadable, createOrganization] = useLoadableSet(
+    signals.createOrganization$,
+  );
+  const [inviteLoadable, acceptInvitation] = useLoadableSet(
+    signals.acceptInvitation$,
+  );
+  const [recoveryLoadable, recover] = useLoadableSet(signals.recover$);
+  const selectionPending =
+    selectionLoadable.state === "loading" ||
+    createLoadable.state === "loading" ||
+    inviteLoadable.state === "loading" ||
+    recoveryLoadable.state === "loading";
   return (
-    <div className="divide-y divide-border">
-      {state.organizations.map((organization) => {
-        const selected =
-          state.selectingOrganizationId === organization.id && selectionPending;
-        const actionLabel = copy.selectOrganization(organization.name);
-        return (
-          <AuthV2ChoiceRow
-            actionLabel={actionLabel}
-            busy={selected}
-            disabled={selectionPending}
-            key={organization.id}
-            leading={
-              <WorkspaceLogo
-                imageUrl={organization.imageUrl}
-                name={organization.name}
-                size="md"
-              />
-            }
-            onSelect={() => {
-              detach(
-                selectOrganization(organization.id, operationSignal),
-                Reason.DomCallback,
-                "select auth v2 organization",
-              );
-            }}
-            primary={organization.name}
-          />
-        );
-      })}
+    <div className="space-y-4">
+      {state.error ? (
+        <>
+          <AuthV2ErrorAlert message={copy.taskError} focusKey={state.error} />
+          {state.invitations.length === 0 && !state.canCreateOrganization ? (
+            <Button
+              className="w-full"
+              disabled={selectionPending}
+              onClick={() => {
+                detach(
+                  recover(operationSignal),
+                  Reason.DomCallback,
+                  "reload organization choices",
+                );
+              }}
+            >
+              {copy.retry}
+            </Button>
+          ) : null}
+        </>
+      ) : null}
+      <div className="divide-y divide-border">
+        {state.organizations.map((organization) => {
+          const selected =
+            state.selectingOrganizationId === organization.id &&
+            selectionPending;
+          const actionLabel = copy.selectOrganization(organization.name);
+          return (
+            <AuthV2ChoiceRow
+              actionLabel={actionLabel}
+              busy={selected}
+              disabled={selectionPending}
+              key={organization.id}
+              leading={
+                <WorkspaceLogo
+                  imageUrl={organization.imageUrl}
+                  name={organization.name}
+                  size="md"
+                />
+              }
+              onSelect={() => {
+                detach(
+                  selectOrganization(organization.id, operationSignal),
+                  Reason.DomCallback,
+                  "select auth v2 organization",
+                );
+              }}
+              primary={organization.name}
+            />
+          );
+        })}
+        {state.invitations.map((invitation) => {
+          return (
+            <AuthV2ChoiceRow
+              key={invitation.id}
+              actionLabel={copy.joinOrganization(invitation.name)}
+              busy={inviteLoadable.state === "loading"}
+              disabled={selectionPending}
+              leading={
+                <WorkspaceLogo
+                  imageUrl={invitation.imageUrl}
+                  name={invitation.name}
+                  size="md"
+                />
+              }
+              primary={copy.joinOrganization(invitation.name)}
+              onSelect={() => {
+                detach(
+                  acceptInvitation(invitation.id, operationSignal),
+                  Reason.DomCallback,
+                  "accept authentication organization invitation",
+                );
+              }}
+            />
+          );
+        })}
+      </div>
+      {state.canCreateOrganization ? (
+        <OrganizationCreationForm
+          copy={copy}
+          pending={selectionPending}
+          creating={createLoadable.state === "loading"}
+          createOrganization={createOrganization}
+          operationSignal$={operationSignal$}
+        />
+      ) : null}
     </div>
   );
 }
@@ -225,16 +369,26 @@ export function AuthV2ContinuationCard({
   readonly surface?: "dialog" | "page";
 }) {
   const copy = useAuthV2ContinuationCopy(authBrand.brandName);
+  const signInCopy = useAuthV2SignInCopy(authBrand);
   if (state.status === "inactive") {
     return null;
   }
-  const heading = continuationHeading(state, copy);
+  const heading = continuationHeading(state, copy, signInCopy);
   const focusKey =
     "reason" in state
       ? `continuation:${state.status}:${state.reason}`
-      : `continuation:${state.status}`;
+      : state.status === "incomplete"
+        ? `continuation:${state.task}:${state.task === "setup-mfa" && state.backupCodes !== null ? "saved" : "input"}`
+        : `continuation:${state.status}`;
   const content =
-    state.status === "incomplete" ? (
+    state.status === "incomplete" && state.task !== "choose-organization" ? (
+      <AuthV2SecurityTaskContent
+        copy={copy}
+        operationSignal$={operationSignal$}
+        signals={signals}
+        state={state}
+      />
+    ) : state.status === "incomplete" ? (
       <OrganizationContent
         copy={copy}
         operationSignal$={operationSignal$}
@@ -266,7 +420,13 @@ export function AuthV2ContinuationCard({
       }
       description={heading.description}
       focusKey={focusKey}
-      layout={state.status === "incomplete" ? "choice" : "default"}
+      layout={
+        state.status === "incomplete" &&
+        state.task === "choose-organization" &&
+        state.organizations.length > 0
+          ? "choice"
+          : "default"
+      }
       surface={surface}
       title={heading.title}
     >

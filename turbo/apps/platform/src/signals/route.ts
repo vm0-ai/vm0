@@ -62,9 +62,18 @@ export const updateSearchParams$ = command(
 );
 
 export const replaceSearchParams$ = command(
-  ({ set }, searchParams: URLSearchParams, historyState: unknown = {}) => {
+  (
+    { set },
+    searchParams: URLSearchParams,
+    historyState: unknown = {},
+    hash = "",
+  ) => {
     const str = searchParams.toString();
-    replaceState(historyState, "", `${pathname()}${str ? `?${str}` : ""}`);
+    replaceState(
+      historyState,
+      "",
+      `${pathname()}${str ? `?${str}` : ""}${hash}`,
+    );
     set(internalHistoryState$, historyState);
     set(reloadPathname$, (x) => {
       return x + 1;
@@ -78,10 +87,15 @@ export const replacePathSilently$ = command(
     pathnameTemplate: Parameters<typeof generateRouterPath>[0],
     pathParams?: Parameters<typeof generateRouterPath>[1],
     searchParams?: URLSearchParams,
+    hash = "",
   ) => {
     const newPath = generateRouterPath(pathnameTemplate, pathParams);
     const searchStr = searchParams?.toString();
-    replaceState({}, "", `${newPath}${searchStr ? `?${searchStr}` : ""}`);
+    replaceState(
+      {},
+      "",
+      `${newPath}${searchStr ? `?${searchStr}` : ""}${hash}`,
+    );
     set(internalHistoryState$, {});
     set(reloadPathname$, (x) => {
       return x + 1;

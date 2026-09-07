@@ -55,7 +55,9 @@ function transferSignInStepPath(
   if (status === "needs_new_password") {
     return "/reset-password";
   }
-  return status === "needs_second_factor" ? "/factor-two" : null;
+  return status === "needs_second_factor" || status === "needs_client_trust"
+    ? "/factor-two"
+    : null;
 }
 
 function resolveAuthV2SignUpTransferState(

@@ -238,8 +238,7 @@ function continuationStateErrorCategory(
   if (flowState.status === "unknown") {
     switch (flowState.reason) {
       case "second-factor":
-      case "unknown-task":
-      case "unsupported-task": {
+      case "unknown-task": {
         return "unsupported-state";
       }
     }
@@ -803,6 +802,7 @@ function createContinuationInstrumentation(
       const flowState = get(signals.state$);
       if (
         flowState.status !== "incomplete" ||
+        flowState.task !== "choose-organization" ||
         !flowState.organizations.some((organization) => {
           return organization.id === organizationId;
         })

@@ -1,13 +1,15 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   type MockedMembership,
+  type mockOrganization,
   mockedClerk,
 } from "../../../../__tests__/mock-auth.ts";
 import {
   click,
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../../__tests__/page-helper.ts";
@@ -49,6 +51,11 @@ function waitForButton(name: string): Promise<HTMLElement> {
 
 function setupTaskPage(options: {
   readonly memberships?: MockedMembership[];
+  readonly canCreate?: boolean;
+  readonly creationLimit?: number;
+  readonly pendingInvitations?: Parameters<
+    typeof mockOrganization
+  >[0]["pendingInvitations"];
   readonly taskKey: string;
   readonly url?: string;
 }): Promise<void> {
@@ -58,9 +65,15 @@ function setupTaskPage(options: {
   );
   return setupPage({
     auth: {
-      organization: { activeOrg: null, memberships },
+      organization: {
+        activeOrg: null,
+        memberships,
+        pendingInvitations: options.pendingInvitations,
+      },
       session: { token: "test-token" },
       user: {
+        createOrganizationEnabled: options.canCreate ?? false,
+        createOrganizationsLimit: options.creationLimit,
         clientSessions: [
           {
             currentTask: { key: options.taskKey },
@@ -239,4 +252,84 @@ test("Unsupported continuation steps fail closed and can be restarted", async ()
     signOut.resolve(undefined);
     await signOut.promise;
   });
+});
+
+test("A user without organizations can create one when Clerk allows it and retry only activation", async () => {
+  const creation = createDeferredPromise<{ id: string }>(context.signal);
+  mockedClerk.createOrganization.mockReturnValue(creation.promise);
+  mockedClerk.setActive.mockRejectedValueOnce(
+    new Error("activation-private-token"),
+  );
+  await setupTaskPage({
+    canCreate: true,
+    creationLimit: 0,
+    taskKey: "choose-organization",
+  });
+  await fill(await screen.findByLabelText("Organization name"), "My new team");
+  const create = await waitForButton("Create organization");
+  click(create);
+  click(create);
+  await waitFor(() => {
+    return expect(create).toBeDisabled();
+  });
+  expect(mockedClerk.createOrganization).toHaveBeenCalledExactlyOnceWith({
+    name: "My new team",
+  });
+  await act(async () => {
+    creation.resolve({ id: "org_created" });
+    await creation.promise;
+  });
+  await screen.findByRole("alert");
+  expect(document.body).not.toHaveTextContent("activation-private-token");
+  click(await waitForButton("Continue with My new team"));
+  await waitFor(() => {
+    return expect(mockedClerk.setActive).toHaveBeenCalledTimes(2);
+  });
+  await screen.findByRole("heading", { name: "Sign-in complete" });
+  expect(mockedClerk.createOrganization).toHaveBeenCalledTimes(1);
+  expect(mockedClerk.setActive).toHaveBeenLastCalledWith(
+    expect.objectContaining({ organization: "org_created" }),
+  );
+});
+
+test("A user without an organization can accept an invitation even when creation is disabled", async () => {
+  const accepted = createDeferredPromise<unknown>(context.signal);
+  const accept = vi.fn<() => Promise<unknown>>(() => {
+    return accepted.promise;
+  });
+  mockedClerk.setActive.mockRejectedValueOnce(new Error("activation failed"));
+  await setupTaskPage({
+    taskKey: "choose-organization",
+    pendingInvitations: [
+      {
+        id: "invitation_one",
+        publicOrganizationData: {
+          id: "org_invited",
+          name: "Invited team",
+          imageUrl: "https://cdn.vm0.test/invited.png",
+        },
+        accept,
+      },
+    ],
+  });
+  const join = await waitForButton("Join Invited team");
+  expect(buttonNamed("Create organization")).toBeUndefined();
+  click(join);
+  click(join);
+  await waitFor(() => {
+    return expect(join).toBeDisabled();
+  });
+  expect(accept).toHaveBeenCalledTimes(1);
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  await act(async () => {
+    accepted.resolve(undefined);
+    await accepted.promise;
+  });
+  await screen.findByRole("alert");
+  click(await waitForButton("Continue with Invited team"));
+  await screen.findByRole("heading", { name: "Sign-in complete" });
+  expect(accept).toHaveBeenCalledTimes(1);
+  expect(mockedClerk.setActive).toHaveBeenLastCalledWith(
+    expect.objectContaining({ organization: "org_invited" }),
+  );
 });

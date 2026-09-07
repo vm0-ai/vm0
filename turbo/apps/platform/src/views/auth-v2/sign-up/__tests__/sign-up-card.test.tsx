@@ -484,39 +484,46 @@ test("An existing Google identity is transferred to the correct account exactly 
   );
 });
 
-test("An incomplete existing-account transfer continues at sign-in", async () => {
-  const assigned = context.mocks.browser.locationAssign();
-  mockedClerk.clientSignInCreate.mockImplementation(() => {
-    return moveSignInToAsync({
-      status: "needs_first_factor",
-      supportedFirstFactors: [{ strategy: "password" }],
+test.each([
+  ["needs_first_factor", "/sign-in/factor-one"],
+  ["needs_second_factor", "/sign-in/factor-two"],
+  ["needs_client_trust", "/sign-in/factor-two"],
+])(
+  "An existing-account transfer in %s continues at the required sign-in step",
+  async (status, expectedPath) => {
+    const assigned = context.mocks.browser.locationAssign();
+    mockedClerk.clientSignInCreate.mockImplementation(() => {
+      return moveSignInToAsync({
+        status,
+        supportedFirstFactors: [{ strategy: "password" }],
+      });
     });
-  });
-  const redirectUrl = "https://app.okou.ai/onboarding?source=transfer";
-  const path = `/sign-up/sso-callback?utm_campaign=transfer&redirect_url=${encodeURIComponent(redirectUrl)}#/callback?attempt=1`;
-  await setupSignUpPage(
-    {
-      externalAccountError: {
-        code: "external_account_exists",
-        message: "Account already exists",
+    const redirectUrl = "https://app.okou.ai/onboarding?source=transfer";
+    const path = `/sign-up/sso-callback?utm_campaign=transfer&redirect_url=${encodeURIComponent(redirectUrl)}#/callback?attempt=1`;
+    await setupSignUpPage(
+      {
+        externalAccountError: {
+          code: "external_account_exists",
+          message: "Account already exists",
+        },
+        externalAccountStatus: "transferable",
+        isTransferable: true,
+        status: "missing_requirements",
       },
-      externalAccountStatus: "transferable",
-      isTransferable: true,
-      status: "missing_requirements",
-    },
-    { path, url: `https://app.vm0.ai${path}` },
-  );
+      { path, url: `https://app.vm0.ai${path}` },
+    );
 
-  await waitFor(() => {
-    expect(assigned.calls).toHaveLength(1);
-  });
-  const destination = new URL(assigned.calls[0] ?? "", location.origin);
-  expect(destination.pathname).toBe("/sign-in/factor-one");
-  expect(destination.searchParams.get("redirect_url")).toBe(redirectUrl);
-  expect(destination.searchParams.get("utm_campaign")).toBe("transfer");
-  expect(destination.hash).toBe("#/callback?attempt=1");
-  expect(mockedClerk.setActive).not.toHaveBeenCalled();
-});
+    await waitFor(() => {
+      expect(assigned.calls).toHaveLength(1);
+    });
+    const destination = new URL(assigned.calls[0] ?? "", location.origin);
+    expect(destination.pathname).toBe(expectedPath);
+    expect(destination.searchParams.get("redirect_url")).toBe(redirectUrl);
+    expect(destination.searchParams.get("utm_campaign")).toBe("transfer");
+    expect(destination.hash).toBe("#/callback?attempt=1");
+    expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  },
+);
 
 test("A cancelled social callback leaves sign-up safe and retryable", async () => {
   mockAuthV2Capabilities({ googleOAuth: true });

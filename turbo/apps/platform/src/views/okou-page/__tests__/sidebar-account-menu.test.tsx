@@ -28,6 +28,8 @@ import {
 import {
   mockedClerk,
   mockSignInResource,
+  mockSignUpConfiguration,
+  mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -1463,6 +1465,109 @@ test("Continue or restart organization selection while adding an account", async
     sessionId: "session_pending",
   });
   expect(window.location.href).toBe(originalUrl);
+});
+
+async function signInToSecurityTask(dialog: HTMLElement, sessionId: string) {
+  mockSignInResource({
+    status: "needs_first_factor",
+    supportedFirstFactors: [{ strategy: "password" }],
+  });
+  mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
+  await fill(
+    await within(dialog).findByLabelText("Email address"),
+    `${sessionId}@example.test`,
+  );
+  click(buttonByText("Continue", dialog));
+  const password = await within(dialog).findByLabelText("Password");
+  mockedClerk.signInAttemptFirstFactor.mockImplementation(() => {
+    mockUser(
+      {
+        id: sessionId,
+        fullName: sessionId,
+        clientSessions: [
+          {
+            id: sessionId,
+            status: "pending",
+            currentTask: { key: "setup-mfa" },
+            user: { organizationMemberships: [] },
+          },
+        ],
+      },
+      { token: "test-token" },
+    );
+    mockSignInResource({ status: "complete", createdSessionId: sessionId });
+    return Promise.resolve(mockedClerk.client.signIn);
+  });
+  await fill(password, "correct-password");
+  click(buttonByText("Continue", dialog));
+  await within(dialog).findByLabelText("Phone number");
+}
+
+test("Restarting Add account isolates unfinished MFA resources between sessions", async () => {
+  mockSignUpConfiguration({
+    attributes: {
+      authenticator_app: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+      },
+      phone_number: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+        used_for_second_factor: true,
+      },
+    },
+  });
+  mockedClerk.userCreateTOTP
+    .mockResolvedValueOnce({
+      secret: "FIRST-SETUP-KEY",
+      backupCodes: ["first-account-recovery-code"],
+    })
+    .mockResolvedValueOnce({ secret: "SECOND-SETUP-KEY" });
+  mockedClerk.userVerifyTOTP.mockResolvedValue({});
+  type Phone = Awaited<ReturnType<typeof mockedClerk.userCreatePhoneNumber>>;
+  const prepare = vi
+    .fn<Phone["prepareVerification"]>()
+    .mockRejectedValueOnce(new Error("SMS delivery failed"))
+    .mockResolvedValue(undefined);
+  mockedClerk.userCreatePhoneNumber.mockResolvedValue({
+    id: "phone_created",
+    phoneNumber: "+15555550123",
+    verification: { status: "unverified" },
+    prepareVerification: prepare,
+    attemptVerification: vi.fn<Phone["attemptVerification"]>(),
+    setReservedForSecondFactor: vi.fn<Phone["setReservedForSecondFactor"]>(),
+  });
+  await setupAddAccountPage();
+  const dialog = await openAuthV2AddAccountDialog();
+  await signInToSecurityTask(dialog, "session_first");
+  click(buttonByText("Use an authenticator app", dialog));
+  await within(dialog).findByText("FIRST-SETUP-KEY");
+  await fill(within(dialog).getByLabelText("Phone number"), "+15555550123");
+  click(buttonByText("Send code", dialog));
+  await within(dialog).findByRole("alert");
+  expect(mockedClerk.userCreatePhoneNumber).toHaveBeenCalledTimes(1);
+  click(buttonByText("Sign out", dialog));
+  await within(dialog).findByLabelText("Email address");
+  expect(mockedClerk.signOut).toHaveBeenCalledWith({
+    sessionId: "session_first",
+  });
+
+  await signInToSecurityTask(dialog, "session_second");
+  await fill(within(dialog).getByLabelText("Phone number"), "+15555550123");
+  click(buttonByText("Send code", dialog));
+  await within(dialog).findByLabelText("Verification code");
+  expect(mockedClerk.userCreatePhoneNumber).toHaveBeenCalledTimes(2);
+  click(buttonByText("Use an authenticator app", dialog));
+  await within(dialog).findByText("SECOND-SETUP-KEY");
+  await fill(within(dialog).getByLabelText("Verification code"), "123456");
+  click(buttonByText("Verify", dialog));
+  await within(dialog).findByText(
+    "Your security settings are saved. Continue to finish signing in.",
+  );
+  expect(dialog).not.toHaveTextContent("first-account-recovery-code");
+  expect(dialog).not.toHaveTextContent("FIRST-SETUP-KEY");
 });
 
 test("Cancel an unfinished Add account sign-in", async () => {
