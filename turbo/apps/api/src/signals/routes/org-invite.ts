@@ -38,7 +38,7 @@ import {
 import type { RouteEntry } from "../route-entry";
 import { withBillingClerkRateLimit } from "./billing-clerk-rate-limit";
 
-const log = logger("api:zero:org-invite");
+const log = logger("api:org-invite");
 
 const adminRequired = Object.freeze({
   status: 403 as const,

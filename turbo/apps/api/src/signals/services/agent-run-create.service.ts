@@ -5800,7 +5800,7 @@ async function checkFinalRunAdmission(
 ): Promise<CreateRunErrorResult | null> {
   if (args.enforceBuiltInCredits) {
     return await args.timing.measure(
-      "api_dispatch_check_vm0_credits",
+      "api_dispatch_check_built_in_credits",
       "nested",
       async () => {
         const availability = await resolveOrgCreditAvailability({

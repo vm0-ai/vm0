@@ -2086,7 +2086,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         span_kind: "top_level",
       }),
     );
-    expect(observedActionTypes).not.toContain("api_dispatch_check_vm0_credits");
+    expect(observedActionTypes).not.toContain(
+      "api_dispatch_check_built_in_credits",
+    );
     expect(observedActionTypes).not.toContain("api_dispatch_notify_runner_job");
 
     for (const actionType of API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES) {
@@ -8430,7 +8432,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
     );
     expectApiDispatchSpanKind(
       timingEvents,
-      ["api_dispatch_check_vm0_credits"],
+      ["api_dispatch_check_built_in_credits"],
       "nested",
     );
     expectApiDispatchSpanKind(

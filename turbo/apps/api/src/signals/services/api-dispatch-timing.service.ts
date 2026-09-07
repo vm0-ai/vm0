@@ -211,7 +211,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_resolve_agent_execution_lookup_agent"
   | "api_dispatch_resolve_agent_execution_lookup_session_snapshot"
   | "api_dispatch_resolve_agent_execution_resolve_session_history"
-  | "api_dispatch_check_vm0_credits"
+  | "api_dispatch_check_built_in_credits"
   | "api_dispatch_insert_run_with_concurrency"
   | "api_dispatch_build_runner_job_payload"
   | "api_dispatch_prepare_pi_launch_resources"
