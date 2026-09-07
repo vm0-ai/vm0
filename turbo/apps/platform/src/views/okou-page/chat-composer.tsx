@@ -8597,11 +8597,17 @@ function MicButton({
             )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {micButtonTooltip(status)}
-          {voiceInputV2Enabled
-            ? ` (${getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})`
-            : null}
+        <TooltipContent
+          role="tooltip"
+          side="top"
+          className="flex flex-col items-center gap-1 py-1.5"
+        >
+          <span>{micButtonTooltip(status)}</span>
+          {voiceInputV2Enabled && (
+            <kbd className="whitespace-nowrap font-sans text-xs opacity-70">
+              {getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)}
+            </kbd>
+          )}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -9097,6 +9103,9 @@ function ComposerSendButton({
   onActivate: () => void;
 }) {
   const { t } = useTranslation();
+  const sendModeLoadable = useLastLoadable(sendMode$);
+  const sendMode =
+    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
   if (action === "stop") {
     return (
       <Button
@@ -9113,19 +9122,44 @@ function ComposerSendButton({
       </Button>
     );
   }
-  return (
+  const sendLabel = t(($) => {
+    return $.chat.actions.send;
+  });
+  const button = (
     <Button
-      showTooltip
       size="icon-sm"
       className="shrink-0"
       onClick={onActivate}
       disabled={action === "disabled"}
-      aria-label={t(($) => {
-        return $.chat.actions.send;
-      })}
+      aria-label={sendLabel}
     >
       <ArrowUp size={18} />
     </Button>
+  );
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            action === "disabled" ? (
+              <span className="inline-flex">{button}</span>
+            ) : (
+              button
+            )
+          }
+        />
+        <TooltipContent
+          role="tooltip"
+          side="top"
+          className="flex flex-col items-center gap-1 py-1.5"
+        >
+          <span>{sendLabel}</span>
+          <kbd className="whitespace-nowrap font-sans text-xs opacity-70">
+            {getShortcutLabel(sendMode === "enter" ? "enter" : "mod+enter")}
+          </kbd>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
