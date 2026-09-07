@@ -396,6 +396,23 @@ describe("official Runner SSH authority", () => {
       pin({ ...f, connectionId: foreign.connectionId }),
     ).resolves.toStrictEqual({ outcome: "unavailable" });
     expect((await list(foreign))[0]?.learnedHostKey).toBeNull();
+    // Keep the user and eligible staff Run unchanged: organization scoping must
+    // deny this independently of the hard staff gate and user ownership check.
+    await accept(
+      stateClient().action({
+        body: {
+          action: "move-connection-org",
+          orgId: f.orgId,
+          userId: f.userId,
+          connectionId: f.connectionId,
+          targetOrgId: `org_hidden_${randomUUID()}`,
+        },
+      }),
+      [200],
+    );
+    await expect(resolve(f)).resolves.toStrictEqual({ outcome: "unavailable" });
+    await expect(pin(f)).resolves.toStrictEqual({ outcome: "unavailable" });
+    expect(kms.decryptCalls).toBe(0);
   });
 
   it("treats every chat channel equally while denying non-chat or inactive Runs", async () => {
