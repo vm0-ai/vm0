@@ -353,11 +353,16 @@ function createAttachmentAnnotationSignals(args: {
   const internalAnnotations$ = state<ImageAnnotation | null>(
     args.initialAnnotations ?? null,
   );
+  // Marks without their annotated copy mean the copy is MISSING, not that
+  // making it failed. Reporting `failed` here put a retry badge on a draft
+  // nothing had been attempted for, and the user reads that as an error they
+  // caused. `restoreAttachments$` regenerates the copy instead, so the state
+  // that describes it is `pending`.
   const initialUploadState: AttachmentAnnotationUploadState =
     args.initialAnnotations && args.initialAnnotatedFileId
       ? { status: "uploaded", fileId: args.initialAnnotatedFileId }
       : args.initialAnnotations
-        ? { status: "failed" }
+        ? { status: "pending" }
         : { status: "idle" };
   const internalUploadState$ =
     state<AttachmentAnnotationUploadState>(initialUploadState);
@@ -982,7 +987,7 @@ export function createDraftSignals(): DraftSignals {
 
   const restoreAttachments$ = command(
     async (
-      { set },
+      { get, set },
       persisted: RestorableAttachment[],
       signal: AbortSignal,
     ): Promise<boolean> => {
@@ -993,7 +998,23 @@ export function createDraftSignals(): DraftSignals {
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
-      return await set(pruneUnavailableAttachments$, restored, signal);
+      // Rebuild any annotated copy the draft is missing. A draft saved while
+      // its copy was still uploading carries the marks alone, and the copy is
+      // what the model actually reads, so regenerating it is the only way the
+      // restored draft still means what the user drew. Started before the
+      // prune and awaited after it, so the two run together and this command
+      // still owns both.
+      const rebuilt = restored
+        .filter((attachment) => {
+          return get(attachment.annotatedFileId$) === null;
+        })
+        .map((attachment) => {
+          return set(attachment.retryAnnotationUpload$, signal);
+        });
+      const pruned = await set(pruneUnavailableAttachments$, restored, signal);
+      await Promise.all(rebuilt);
+      signal.throwIfAborted();
+      return pruned;
     },
   );
 

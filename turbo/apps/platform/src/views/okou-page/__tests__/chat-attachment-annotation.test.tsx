@@ -265,3 +265,30 @@ test("Retry attaching marks when the original image cannot be read", async () =>
   });
   expect(imageReads).toBe(2);
 });
+
+/**
+ * A draft that carries marks but no annotated copy restores as a failure the
+ * user never caused: `createAttachmentAnnotationSignals` reads that shape as
+ * `failed` without attempting anything. Committing used to write exactly that
+ * shape, because it saved the draft before the copy finished uploading, so a
+ * reload landed on a permanent retry badge for an upload that was merely
+ * unfinished.
+ */
+test("A draft with marks but no annotated copy is not shown as a failure", async () => {
+  const image = draftAttachment("restored-marks.png", {
+    annotations: boxAnnotation([{ id: "restored-mark", ordinal: 1 }]),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await screen.findByLabelText("Open image preview for restored-marks.png");
+
+  await waitFor(() => {
+    expect(screen.queryByLabelText(/Try again/)).toBeNull();
+  });
+});
