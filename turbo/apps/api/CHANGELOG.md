@@ -8,6 +8,26 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.564.0](https://github.com/vm0-ai/vm0/compare/api-v1.563.3...api-v1.564.0) (2026-09-07)
+
+
+### Features
+
+* **desktop:** add generation-owned cua command adapter ([#32360](https://github.com/vm0-ai/vm0/issues/32360)) ([b88375f](https://github.com/vm0-ai/vm0/commit/b88375f6c75f001e76dee446ada97ac1ad681e8b))
+
+
+### Bug Fixes
+
+* **pi-memory:** protect active maintenance from cleanup ([#32367](https://github.com/vm0-ai/vm0/issues/32367)) ([7e46f0c](https://github.com/vm0-ai/vm0/commit/7e46f0c9f2205853fe77ba7db67ea7acab2d9ab9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.632.0
+    * @okouai/db bumped to 1.245.6
+
 ## [1.563.3](https://github.com/vm0-ai/vm0/compare/api-v1.563.2...api-v1.563.3) (2026-09-07)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.40...desktop-v0.47.0) (2026-09-07)
+
+
+### Features
+
+* **desktop:** add generation-owned cua command adapter ([#32360](https://github.com/vm0-ai/vm0/issues/32360)) ([b88375f](https://github.com/vm0-ai/vm0/commit/b88375f6c75f001e76dee446ada97ac1ad681e8b))
+
 ## [0.46.40](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.39...desktop-v0.46.40) (2026-09-07)
 
 

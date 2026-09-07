@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.859.0](https://github.com/vm0-ai/vm0/compare/app-v0.858.3...app-v0.859.0) (2026-09-07)
+
+
+### Features
+
+* **app:** add create commands to the chat composer ([#32296](https://github.com/vm0-ai/vm0/issues/32296)) ([d821b1b](https://github.com/vm0-ai/vm0/commit/d821b1b1f56934f51a7a99adb45bfd1d813d32d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.632.0
+
 ## [0.858.3](https://github.com/vm0-ai/vm0/compare/app-v0.858.2...app-v0.858.3) (2026-09-07)
 
 
