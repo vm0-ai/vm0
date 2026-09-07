@@ -205,6 +205,7 @@ async def test_non_utf8_authenticated_models_etag_does_not_change_in_flight_owne
 
     mitm_addon.responseheaders(signal)
 
+    await asyncio.sleep(0)
     assert not follower_prepare.done()
     signal_telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(signal, signal_telemetry)
