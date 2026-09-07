@@ -40,6 +40,10 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   expect(signIn).toHaveTextContent("/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-up-url", "/v1/sign-up");
+  expect(screen.getByTestId("app-sign-in")).toHaveClass(
+    "w-[calc(100%+0.5rem)]",
+    "max-w-[25rem]",
+  );
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
