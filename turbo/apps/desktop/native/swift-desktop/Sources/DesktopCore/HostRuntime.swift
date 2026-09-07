@@ -41,6 +41,7 @@ public final class HostRuntime {
   private final class Connection {
     var accepting = true
     var executing = false
+    var commandID: String?
     var token: String?
     var startTask: Task<Void, Never>?
     var heartbeatTask: Task<Void, Never>?
@@ -104,18 +105,49 @@ public final class HostRuntime {
     }
   }
 
-  /// Stop claiming work, allow a claimed command and its completion to finish,
-  /// then revoke the host token. Updates and sign-out use the same drain.
+  /// Stop claiming work, report a claimed command as interrupted, revoke the
+  /// host token and go offline without waiting for that command to finish.
+  /// The execution itself is left to complete on the helper, as the Electron
+  /// host did, so a Stop never cuts native input short; its late completion is
+  /// rejected by the server. Only a replacement registration drains claimed work.
   public func stop() async {
     guard let stopped = connection else { return }
-    await drain(stopped)
-    guard connection === stopped else { return }
-    connection = nil
     executing = false
     hostID = nil
     status = "offline"
     recovery = nil
     onChange()
+    await release(stopped)
+    if connection === stopped { connection = nil }
+  }
+
+  private func release(_ stopped: Connection) async {
+    if let task = stopped.stopTask {
+      await task.value
+      return
+    }
+    stopped.accepting = false
+    stopped.startTask?.cancel()
+    stopped.heartbeatTask?.cancel()
+    if !stopped.executing { stopped.commandTask?.cancel() }
+    let task = Task {
+      await stopped.startTask?.value
+      stopped.startTask = nil
+      await stopped.heartbeatTask?.value
+      stopped.heartbeatTask = nil
+      if stopped.executing, let id = stopped.commandID, let token = stopped.token {
+        // Report the interrupted command so the server does not wait for its
+        // own timeout; a later completion from the execution is then rejected.
+        let interrupted = DesktopFailure(
+          "no_host", "Computer Use stopped before this command finished")
+        _ = try? await self.api.request(
+          "api/computer-use/host/commands/\(id)/complete", method: "POST",
+          body: interrupted.response, hostToken: token, timeout: 10)
+      }
+      await self.revoke(stopped)
+    }
+    stopped.stopTask = task
+    await task.value
   }
 
   private func drain(_ stopped: Connection) async {
@@ -197,6 +229,7 @@ public final class HostRuntime {
         if next["status"].string == "command" {
           let command = next["command"]
           let id = try command.requireString("id")
+          current.commandID = id
           current.executing = true
           if connection === current { executing = true }
           let start = Date()
@@ -233,6 +266,7 @@ public final class HostRuntime {
           }
           try await complete(id: id, result: result, token: token)
           current.executing = false
+          current.commandID = nil
           if connection === current { executing = false }
           lastCommand = Date()
           onChange()
@@ -244,6 +278,7 @@ public final class HostRuntime {
         try await Task.sleep(for: .seconds(elapsed < 10 ? 0.5 : elapsed < 60 ? 1 : 5))
       } catch {
         current.executing = false
+        current.commandID = nil
         if connection === current { executing = false }
         if !(await recover(error, phase: .commandPoll, attempt: &attempt, connection: current)) {
           return

@@ -18,6 +18,19 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The Electron host's user-initiated Stop revoked its token and went offline
+immediately; its drain path existed but was never called. The native
+`HostRuntime.stop` instead drained a claimed command first, so the earlier
+stdio MCP Stop only completed at the plugin's health deadline. Stop now reports
+the claimed command to the server as `no_host`, revokes the token and goes
+offline at once, leaving the execution to finish on the helper so native input
+is never cut short; its late completion is rejected by the server. Only a
+replacement registration after a revoked host still drains claimed work. A new
+red/green test holds a claimed command in an external helper: the unchanged
+runtime took 10.019 seconds to stop and completed the command, the repaired
+runtime stopped in under two seconds with the `no_host` report before the
+revoke. All 33 core and native tests passed on the actual Mac.
+
 The unchanged `e19929b` helper reproduced a ten-second `app.state` timeout
 against an independent AppKit folder picker while that same fixture continued
 its main-loop heartbeat. A diagnostic-only longer capture measured 1,147
