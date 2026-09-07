@@ -21,6 +21,8 @@ import {
   serializeSharedDatabaseError,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
+  type SharedDatabaseRealtimeMessage,
+  type SharedDatabaseRealtimeScope,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 import { logger } from "../signals/log.ts";
@@ -37,8 +39,17 @@ interface PendingRequest {
   readonly reject: (reason: unknown) => void;
 }
 
+interface PendingRealtimeSubscription {
+  readonly deferred: ReturnType<typeof createDeferredPromise<void>>;
+  readonly listener: (message: SharedDatabaseRealtimeMessage) => void;
+}
+
 export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly pendingRequests = new Map<string, PendingRequest>();
+  private readonly pendingRealtimeSubscriptions = new Map<
+    string,
+    PendingRealtimeSubscription
+  >();
   private readonly handleMessage: (event: MessageEvent<unknown>) => void;
   private readonly handleBridgeAbort: () => void;
   private registered = false;
@@ -86,6 +97,35 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.statusChanged(message.status);
         return;
       }
+      if (message.type === "realtime-subscribed") {
+        const subscription = this.pendingRealtimeSubscriptions.get(
+          message.subscriptionId,
+        );
+        if (subscription && !subscription.deferred.settled()) {
+          subscription.deferred.resolve();
+        }
+        return;
+      }
+      if (message.type === "realtime-event") {
+        this.pendingRealtimeSubscriptions
+          .get(message.subscriptionId)
+          ?.listener(message.message);
+        return;
+      }
+      if (message.type === "realtime-subscription-error") {
+        const subscription = this.pendingRealtimeSubscriptions.get(
+          message.subscriptionId,
+        );
+        if (subscription) {
+          this.pendingRealtimeSubscriptions.delete(message.subscriptionId);
+          if (!subscription.deferred.settled()) {
+            subscription.deferred.reject(
+              deserializeSharedDatabaseError(message.error),
+            );
+          }
+        }
+        return;
+      }
       const pending = this.pendingRequests.get(message.requestId);
       if (!pending) {
         return;
@@ -113,6 +153,44 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   fail(reason: unknown): void {
     this.close(reason);
+  }
+
+  subscribeRealtime(
+    subscriptionId: string,
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    this.requireRegistration();
+    if (this.closed) {
+      throw this.closeReason;
+    }
+    if (this.pendingRealtimeSubscriptions.has(subscriptionId)) {
+      throw new Error("Shared database realtime subscription already exists");
+    }
+    const deferred = createDeferredPromise<void>(this.bridgeSignal);
+    this.pendingRealtimeSubscriptions.set(subscriptionId, {
+      deferred,
+      listener,
+    });
+    this.emit({ type: "realtime-subscribe", subscriptionId, scope, topic });
+    return deferred.promise;
+  }
+
+  unsubscribeRealtime(subscriptionId: string): void {
+    const subscription = this.pendingRealtimeSubscriptions.get(subscriptionId);
+    if (!subscription) {
+      return;
+    }
+    this.pendingRealtimeSubscriptions.delete(subscriptionId);
+    if (!this.closed) {
+      this.emit({ type: "realtime-unsubscribe", subscriptionId });
+    }
+    if (!subscription.deferred.settled()) {
+      subscription.deferred.reject(
+        new DOMException("Realtime subscription closed", "AbortError"),
+      );
+    }
   }
 
   async getComputed<TKey extends ComputedKey>(
@@ -238,6 +316,12 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       pending.reject(reason);
     }
     this.pendingRequests.clear();
+    for (const subscription of this.pendingRealtimeSubscriptions.values()) {
+      if (!subscription.deferred.settled()) {
+        subscription.deferred.reject(reason);
+      }
+    }
+    this.pendingRealtimeSubscriptions.clear();
     if (reportDisconnected) {
       this.events.statusChanged("disconnected");
     }

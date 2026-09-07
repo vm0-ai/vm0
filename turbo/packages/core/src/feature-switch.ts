@@ -192,6 +192,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.SharedWorkerRealtime]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Route application realtime subscriptions through the SharedWorker",
+    enabled: false,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

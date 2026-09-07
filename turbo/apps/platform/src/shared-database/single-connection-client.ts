@@ -8,6 +8,10 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
+import type {
+  SharedDatabaseRealtimeMessage,
+  SharedDatabaseRealtimeScope,
+} from "./protocol.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 
 interface SingleConnectionSharedDatabaseBridgeOptions {
@@ -40,6 +44,24 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     const bridge = this.requireRegistered(this.bridge);
     await bridge.registerTab(this.requireRegistered(this.ownerSignal));
     signal.throwIfAborted();
+  }
+
+  subscribeRealtime(
+    subscriptionId: string,
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    return this.requireRegistered(this.bridge).subscribeRealtime(
+      subscriptionId,
+      scope,
+      topic,
+      listener,
+    );
+  }
+
+  unsubscribeRealtime(subscriptionId: string): void {
+    this.requireRegistered(this.bridge).unsubscribeRealtime(subscriptionId);
   }
 
   async query<TKey extends SharedDatabaseDataKey>(

@@ -1,19 +1,33 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
-import { setRealtimeDegradedNotifier$, setupRealtime$ } from "./realtime.ts";
+import {
+  setRealtimeDegradedNotifier$,
+  setSharedWorkerRealtimeBridge$,
+  setupRealtime$,
+} from "./realtime.ts";
 import { i18n } from "../i18n/index.ts";
 import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
-import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
+import {
+  bridgeConnected$,
+  installedSharedDatabaseBridge$,
+} from "./shared-database-bridge-state.ts";
 
 const runAppRealtimeDaemons$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (get(featureSwitch$)[FeatureSwitchKey.SharedWorkerRealtime] ?? false) {
+      await get(bridgeConnected$);
+      signal.throwIfAborted();
+      set(setSharedWorkerRealtimeBridge$, get(installedSharedDatabaseBridge$));
+    }
     await set(setupRealtime$, signal);
     signal.throwIfAborted();
     await Promise.all([
