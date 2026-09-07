@@ -275,14 +275,24 @@ export function ChatVideoPreviewButton({
 }
 
 /**
- * The body cards an event's markdown tree can stand a slot on. `MarkdownCardView`
- * is the single dispatch the markdown renderer uses for `data.card` nodes.
+ * Renders action slots and explicit artifact preview cards. Artifact links and
+ * image tiles keep their own Markdown renderers while sharing these signals.
  */
-export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
+export function MarkdownCardView({
+  card,
+  label,
+}: {
+  card: MarkdownCardRef;
+  label?: string;
+}) {
   switch (card.kind) {
     case "artifact": {
       return (
-        <ArtifactCardView signals={card.signals} threadId={card.threadId} />
+        <ArtifactCardView
+          signals={card.signals}
+          threadId={card.threadId}
+          label={label}
+        />
       );
     }
     case "connector-action": {
@@ -318,9 +328,11 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
 function ArtifactCardView({
   signals,
   threadId,
+  label,
 }: {
   signals: ArtifactSignals;
   threadId: string;
+  label?: string;
 }) {
   const { t } = useTranslation();
   const openFileLightbox = useSet(openAttachmentFileLightbox$);
@@ -391,7 +403,7 @@ function ArtifactCardView({
   return (
     <AttachmentPreview
       attachment={{
-        filename: signals.filename,
+        filename: signals.kind === "html" && label ? label : signals.filename,
         url: signals.url,
         contentType: contentTypeForBodyPreviewKind(signals.kind),
         ...(previewImagePending ? { previewImagePending: true } : {}),

@@ -112,7 +112,7 @@ test("A rich artifact preview requires a complete address", async () => {
           `Incomplete: ${incomplete}`,
           `Root relative: ${rootRelative}`,
           "Complete:",
-          complete,
+          `![Complete video](${complete})`,
         ].join("\n\n"),
       ),
     ],
@@ -139,7 +139,7 @@ test("A short Okou artifact link opens as a rich preview", async () => {
 
   await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
 
-  const preview = await findNamedLink("Open pdf preview for a1b2c3d4e5.pdf");
+  const preview = await findNamedLink("Open the review brief");
   expect(preview).toHaveAttribute("href", shortArtifact);
   click(preview);
   await waitFor(() => {
@@ -246,7 +246,7 @@ test("Only exact trusted public links receive rich attachment previews", async (
 
   await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
 
-  const sitePreview = await findNamedLink("Open html preview for Current site");
+  const sitePreview = await findNamedLink("Current site");
   expect(sitePreview).toHaveAttribute("href", currentSite);
   click(sitePreview);
   await waitFor(() => {
@@ -257,7 +257,7 @@ test("Only exact trusted public links receive rich attachment previews", async (
   });
   await closeFocusedPreview();
 
-  const pdfPreview = getNamedLink("Open pdf preview for report.pdf");
+  const pdfPreview = getNamedLink("Artifact PDF");
   expect(pdfPreview).toHaveAttribute("href", artifactPdf);
   click(pdfPreview);
   await waitFor(() => {

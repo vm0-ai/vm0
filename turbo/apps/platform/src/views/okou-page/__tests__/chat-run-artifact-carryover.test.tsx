@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
-import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -101,7 +101,7 @@ test("Carry an artifact referenced only by history below the main result", async
       id: "history-only-artifact",
       runId: RUN_ID,
       seqId: 2,
-      text: `Generated supporting evidence.\n\n${reportUrl}`,
+      text: `Generated supporting evidence.\n\n![Report](${reportUrl})`,
     }),
     assistantEvent({
       id: "history-only-main",
@@ -135,6 +135,41 @@ test("Carry an artifact referenced only by history below the main result", async
   expect(viewAgentProfileLinks()).toHaveLength(1);
 });
 
+test("A carried image link keeps its label and opens the image preview", async () => {
+  const url = artifactUrl("linked-evidence", "evidence.png");
+  await setupArtifactRun([
+    assistantEvent({
+      id: "linked-artifact-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: `Review [**Supporting evidence**](${url}) before continuing.`,
+    }),
+    assistantEvent({
+      id: "linked-artifact-main",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "Final linked evidence summary",
+    }),
+  ]);
+
+  const link = await waitFor(() => {
+    const link = queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent === "Supporting evidence";
+    });
+    if (!link) {
+      throw new Error("Expected the carried evidence link");
+    }
+    return link;
+  });
+  expect(link).toHaveAttribute("href", url);
+  expect(link.querySelector("strong")).toHaveTextContent("Supporting evidence");
+  expectDocumentOrder(screen.getByText("Final linked evidence summary"), link);
+  click(link);
+  await expect(
+    screen.findByTestId("attachment-lightbox-image"),
+  ).resolves.toHaveAttribute("src", url);
+});
+
 test("Keep completed result actions before recommended followups", async () => {
   const reportUrl = artifactUrl("followup-report", "followup-report.pdf");
   installRunChat({
@@ -149,7 +184,7 @@ test("Keep completed result actions before recommended followups", async () => {
         id: "followup-actions-history",
         runId: RUN_ID,
         seqId: 2,
-        text: `Generated the supporting report.\n\n${reportUrl}`,
+        text: `Generated the supporting report.\n\n![Report](${reportUrl})`,
       }),
       assistantEvent({
         id: "followup-actions-main",
@@ -214,19 +249,29 @@ test("Subtract final artifacts after ordered URL deduplication", async () => {
       id: "artifact-difference-first-history",
       runId: RUN_ID,
       seqId: 2,
-      text: ["First historical output", appendixUrl, repeatedUrl].join("\n\n"),
+      text: [
+        "First historical output",
+        `![Appendix](${appendixUrl})`,
+        `![Report](${repeatedUrl})`,
+      ].join("\n\n"),
     }),
     assistantEvent({
       id: "artifact-difference-second-history",
       runId: RUN_ID,
       seqId: 3,
-      text: ["Second historical output", repeatedUrl, sourceUrl].join("\n\n"),
+      text: [
+        "Second historical output",
+        `![Report](${repeatedUrl})`,
+        `![Source](${sourceUrl})`,
+      ].join("\n\n"),
     }),
     assistantEvent({
       id: "artifact-difference-main",
       runId: RUN_ID,
       seqId: 4,
-      text: ["Final artifact summary", repeatedUrl].join("\n\n"),
+      text: ["Final artifact summary", `![Report](${repeatedUrl})`].join(
+        "\n\n",
+      ),
     }),
   ]);
 
@@ -252,13 +297,13 @@ test("Keep artifacts with the same filename distinct when their URLs differ", as
       id: "same-name-first-history",
       runId: RUN_ID,
       seqId: 2,
-      text: `First report version\n\n${firstUrl}`,
+      text: `First report version\n\n![Report](${firstUrl})`,
     }),
     assistantEvent({
       id: "same-name-second-history",
       runId: RUN_ID,
       seqId: 3,
-      text: `Second report version\n\n${secondUrl}`,
+      text: `Second report version\n\n![Report](${secondUrl})`,
     }),
     assistantEvent({
       id: "same-name-main",
@@ -349,7 +394,7 @@ test("Carry artifacts across every run in the same run group", async () => {
           id: "earlier-run-artifact",
           runId: RUN_ID,
           seqId: 2,
-          text: `Earlier run output\n\n${earlierUrl}`,
+          text: `Earlier run output\n\n![Report](${earlierUrl})`,
         }),
       ),
       inRunGroup(

@@ -12,6 +12,7 @@ import {
   findNamedButton,
   findNamedLink,
   getNamedButton,
+  getNamedLink,
   mockAttachmentChat,
   mockPrivateUrlSequence,
   mockSplitAttachmentChats,
@@ -104,7 +105,7 @@ test("A composer image preview does not replace an open artifact sidebar", async
 
   await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
 
-  click(await findNamedLink("Open html preview for Workspace guide"));
+  click(await findNamedLink("Workspace guide"));
   click(await findNamedButton("Open in split view"));
   const sidebar = await screen.findByTestId("artifact-sidebar");
   expect(
@@ -159,9 +160,7 @@ test("An open artifact sidebar reuses one pane", async () => {
 
   await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
 
-  const sitePreview = await findNamedLink(
-    "Open html preview for Reference site",
-  );
+  const sitePreview = await findNamedLink("Reference site");
   click(sitePreview);
   click(await findNamedButton("Open in split view"));
   const sidebar = await screen.findByTestId("artifact-sidebar");
@@ -176,7 +175,7 @@ test("An open artifact sidebar reuses one pane", async () => {
     within(sidebar).getByTestId("artifact-sidebar-body-html"),
   ).toBeVisible();
 
-  click(getNamedButton("Open audio preview for walkthrough.mp3"));
+  click(getNamedLink("Walkthrough"));
   await waitFor(() => {
     expect(
       within(sidebar).getByTestId("artifact-sidebar-body-audio"),
@@ -192,7 +191,7 @@ test("Artifact thumbnails fall back to a usable live preview", async () => {
   mockAttachmentChat(context, {
     chatEvents: [
       assistantMessage(
-        `[Thumbnail success](${firstSite})\n\n[Thumbnail fallback](${secondSite})`,
+        `![Thumbnail success](${firstSite})\n\n![Thumbnail fallback](${secondSite})`,
       ),
     ],
     artifacts: [

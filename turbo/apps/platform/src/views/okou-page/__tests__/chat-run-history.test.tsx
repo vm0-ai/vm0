@@ -387,7 +387,7 @@ test("Count one output.message once when Markdown renders multiple child blocks"
         text: [
           "Final package",
           "![Package chart](https://example.com/package-chart.png)",
-          artifactUrl,
+          `![Package](${artifactUrl})`,
           "[Compare plans](/?settings=billing&billingView=plans)",
         ].join("\n\n"),
       }),
@@ -483,7 +483,8 @@ const finalOutputDocuments = [
   },
   {
     label: "an artifact card",
-    content: "https://cdn.vm7.io/artifacts/tests/run-folding/final-report.pdf",
+    content:
+      "![Report](https://cdn.vm7.io/artifacts/tests/run-folding/final-report.pdf)",
     find: () => {
       return findLink("Open pdf preview for final-report.pdf");
     },
