@@ -228,3 +228,93 @@ async fn run_in_sandbox_backs_off_api_reads_resets_and_stops_without_waiting() {
 async fn run_in_sandbox_cancels_api_read_backoff() {
     exercise_read_backoff(RunId::from(uuid::Uuid::from_u128(3)), true).await;
 }
+
+#[tokio::test]
+async fn run_in_sandbox_spaces_failed_api_reads_on_the_wire() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let mut actions = Vec::new();
+    let mut releases = Vec::new();
+    for _ in 0..3 {
+        let (release, gate) = tokio::sync::oneshot::channel();
+        releases.push(release);
+        actions.push(RawHttpAction::WaitThenRespond {
+            release: gate,
+            response: json_response("503 Service Unavailable", r#"{"error":"unavailable"}"#),
+        });
+    }
+    actions.push(RawHttpAction::Respond(json_response(
+        "200 OK",
+        &format!(
+            r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"wire retry recovered"}}"#,
+        ),
+    )));
+    let mut server = RawHttpTestServer::spawn(actions).await;
+    let notifications = ActiveInputNotifications::new();
+    let source = api_active_input_source(server.url(), run_id, &notifications, "wire-backoff-test");
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let run_task = tokio::spawn(async move {
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), Some(source)),
+        )
+        .await
+    });
+
+    let reserve_prefix = format!("POST /api/runners/runs/{run_id}/active-inputs/reserve ");
+    let initial = server.next_request("initial wire reserve").await;
+    assert!(initial.starts_with(&reserve_prefix));
+    let mut observed_delays = Vec::new();
+    for release in releases {
+        // Use real time and gate the response: backoff cannot begin before
+        // this point. Paused-clock channel checks can miss an early request
+        // whose real socket I/O has not yet been polled by the runtime.
+        let released_at = Instant::now();
+        release.send(()).unwrap();
+        notifications.notify(run_id);
+        let request = server.next_request("wire retry after failure").await;
+        observed_delays.push(released_at.elapsed());
+        assert!(request.starts_with(&reserve_prefix));
+    }
+    assert!(
+        overrides
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+    wait_gate.notify_one();
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(result.failure.is_none());
+    server.assert_finished().await;
+
+    let calls = overrides.process_control_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].message_id, DELIVERY_ID);
+    let payload = serde_json::from_slice::<serde_json::Value>(&calls[0].payload).unwrap();
+    assert_eq!(payload["text"], "wire retry recovered");
+    for (elapsed, minimum_ms) in observed_delays.into_iter().zip([200, 400, 800]) {
+        assert!(
+            elapsed >= Duration::from_millis(minimum_ms),
+            "reserve retry arrived after {elapsed:?}, before its {minimum_ms} ms lower bound"
+        );
+    }
+}
