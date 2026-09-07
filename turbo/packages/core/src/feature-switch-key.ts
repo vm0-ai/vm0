@@ -33,7 +33,7 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   StripeMarketplaceOAuthConnector = "stripeMarketplaceOAuthConnector",
   OkouDebug = "_debug",
-  SharedWorkerRealtime = "_sharedWorkerRealtime",
+  SharedWorkerRealtime = "sharedWorkerRealtime",
   Banking = "banking",
   Lab = "_lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
