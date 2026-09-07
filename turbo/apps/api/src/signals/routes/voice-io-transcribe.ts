@@ -175,7 +175,20 @@ async function validateVoiceDraftDuration(
       "AUDIO_DURATION_TOO_LONG",
     );
   }
-  return { durationSeconds };
+  if (
+    segment.overlapDurationSeconds > 0 &&
+    segment.overlapDurationSeconds >= durationSeconds
+  ) {
+    return badRequest(
+      "Voice segment must contain new audio beyond its overlap",
+    );
+  }
+  // Validate precise WAV duration above; only usage counters use whole seconds.
+  return {
+    durationSeconds: Math.ceil(
+      durationSeconds - segment.overlapDurationSeconds,
+    ),
+  };
 }
 
 const voiceIoTranscribeHandler$ = command(

@@ -88,8 +88,10 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const durationSeconds = await getAudioDuration(file);
+  const audioDurationSeconds = await getAudioDuration(file);
   signal.throwIfAborted();
+  const durationSeconds =
+    audioDurationSeconds === null ? null : Math.ceil(audioDurationSeconds);
   logSttUploadInspection(file, durationSeconds, formData);
   if (
     durationSeconds !== null &&

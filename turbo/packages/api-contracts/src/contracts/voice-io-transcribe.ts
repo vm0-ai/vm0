@@ -14,6 +14,7 @@ export const VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS = 75;
 export const voiceIoTranscribeSegmentOptionsSchema = z.object({
   previousTranscript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
   final: z.boolean(),
+  overlapDurationSeconds: z.number().min(0).max(2).default(0),
   totalDurationSeconds: z.number().nonnegative().max(300),
 });
 

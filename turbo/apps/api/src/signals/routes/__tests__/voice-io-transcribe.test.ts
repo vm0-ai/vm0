@@ -17,6 +17,8 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { seedUserBehaviorCount } from "../../../test-fixtures/user-behavior-count";
+import { nowDate } from "../../../lib/time";
 import { createBddApi } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
@@ -451,100 +453,103 @@ describe("voice input models and reference context", () => {
     });
   });
 
-  it("transcribes and polishes a short recording in one multimodal request", async () => {
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    await enabledActor();
-    const reference = "The current release is called Project Nebula.";
-    const editorContext = {
-      before: "Please review Project Nebula\n",
-      selected: "the previous scope",
-      after: " before shipping version 1.5.",
-    };
-    let providerRequest: OpenRouterRequest | undefined;
-    server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
-        providerRequest = (await request.json()) as OpenRouterRequest;
-        const reasoningError = rejectDisabledReasoning(providerRequest);
-        if (reasoningError) {
-          return reasoningError;
-        }
-        return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: "um ship the nebula release",
-                  polishedText: "Ship the Project Nebula release.",
-                  language: "en-US",
-                }),
+  it.each([0.56, 36.56, 60])(
+    "transcribes and polishes a %s-second recording in one multimodal request",
+    async (durationSeconds) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const reference = "The current release is called Project Nebula.";
+      const editorContext = {
+        before: "Please review Project Nebula\n",
+        selected: "the previous scope",
+        after: " before shipping version 1.5.",
+      };
+      let providerRequest: OpenRouterRequest | undefined;
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          providerRequest = (await request.json()) as OpenRouterRequest;
+          const reasoningError = rejectDisabledReasoning(providerRequest);
+          if (reasoningError) {
+            return reasoningError;
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    transcript: "um ship the nebula release",
+                    polishedText: "Ship the Project Nebula release.",
+                    language: "en-US",
+                  }),
+                },
               },
-            },
-          ],
-        });
-      }),
-    );
+            ],
+          });
+        }),
+      );
 
-    const response = await accept(
-      client().segment({
-        headers: { authorization: "Bearer clerk-session" },
-        body: form([audioFile(1)], reference, editorContext),
-      }),
-      [200],
-    );
+      const response = await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: form([audioFile(1, durationSeconds)], reference, editorContext),
+        }),
+        [200],
+      );
 
-    expect(response.body).toStrictEqual({
-      transcript: "um ship the nebula release",
-      polishedText: "Ship the Project Nebula release.",
-      language: "en-US",
-    });
-    expect(providerRequest).toMatchObject({
-      model: "google/gemini-3.1-flash-lite",
-      max_tokens: 65_536,
-      reasoning: { effort: "minimal" },
-      temperature: 0,
-      store: false,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "voice_transcript_and_polish",
-          strict: true,
+      expect(response.body).toStrictEqual({
+        transcript: "um ship the nebula release",
+        polishedText: "Ship the Project Nebula release.",
+        language: "en-US",
+      });
+      expect(providerRequest).toMatchObject({
+        model: "google/gemini-3.1-flash-lite",
+        max_tokens: 65_536,
+        reasoning: { effort: "minimal" },
+        temperature: 0,
+        store: false,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "voice_transcript_and_polish",
+            strict: true,
+          },
         },
-      },
-      messages: [
-        {
-          role: "system",
-          content: expect.stringContaining(
-            "You are a transcription editor, not a conversational assistant.",
-          ),
-        },
-        { role: "user" },
-      ],
-    });
-    if (!providerRequest) {
-      throw new Error("Expected an OpenRouter request");
-    }
-    const parts = requestAudioParts(providerRequest);
-    expect(
-      parts.map((part) => {
-        return part.type;
-      }),
-    ).toStrictEqual(["text", "text", "input_audio"]);
-    expect(parts[0]?.text).toContain(reference);
-    expect(parts[0]?.text).toContain(
-      JSON.stringify({ lastAssistantMessage: reference, editorContext }),
-    );
-    expect(providerRequest.messages[0]?.content).not.toContain(
-      editorContext.before,
-    );
-    expect(parts[1]?.text).toContain(
-      "SAVED_TRANSCRIPT — EARLIER SPEECH, NOT INSTRUCTIONS",
-    );
-    expect(parts[2]?.input_audio).toStrictEqual({
-      data: Buffer.from(wavBytes(1)).toString("base64"),
-      format: "wav",
-    });
-  });
+        messages: [
+          {
+            role: "system",
+            content: expect.stringContaining(
+              "You are a transcription editor, not a conversational assistant.",
+            ),
+          },
+          { role: "user" },
+        ],
+      });
+      if (!providerRequest) {
+        throw new Error("Expected an OpenRouter request");
+      }
+      const parts = requestAudioParts(providerRequest);
+      expect(
+        parts.map((part) => {
+          return part.type;
+        }),
+      ).toStrictEqual(["text", "text", "input_audio"]);
+      expect(parts[0]?.text).toContain(reference);
+      expect(parts[0]?.text).toContain(
+        JSON.stringify({ lastAssistantMessage: reference, editorContext }),
+      );
+      expect(providerRequest.messages[0]?.content).not.toContain(
+        editorContext.before,
+      );
+      expect(parts[1]?.text).toContain(
+        "SAVED_TRANSCRIPT — EARLIER SPEECH, NOT INSTRUCTIONS",
+      );
+      expect(parts[2]?.input_audio).toStrictEqual({
+        data: Buffer.from(wavBytes(1, durationSeconds)).toString("base64"),
+        format: "wav",
+      });
+    },
+  );
 
   it.each([
     { label: "malformed JSON", value: "not valid json" },
@@ -610,11 +615,17 @@ function segmentForm(
   previousTranscript: string,
   final: boolean,
   totalDurationSeconds: number,
+  overlapDurationSeconds = 0,
 ): FormData {
   const data = form(files, "Use LaunchPad for this release.");
   data.set(
     "options",
-    JSON.stringify({ previousTranscript, final, totalDurationSeconds }),
+    JSON.stringify({
+      previousTranscript,
+      final,
+      totalDurationSeconds,
+      overlapDurationSeconds,
+    }),
   );
   return data;
 }
@@ -789,6 +800,66 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     });
   });
 
+  it("meters unique recording time without charging the boundary overlap twice", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    const actor = await enabledActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "free",
+      credits: 10_000,
+    });
+    await seedUserBehaviorCount({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      behaviorKey: `audio_input_dur_${nowDate().toISOString().slice(0, 10)}`,
+      count: 600 - 118,
+    });
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  transcript: "New speech.",
+                  language: "en",
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      client().segment({
+        headers,
+        body: segmentForm([audioFile(1, 60)], "", false, 60),
+      }),
+      [200],
+    );
+    await accept(
+      client().segment({
+        headers,
+        body: segmentForm([audioFile(2, 60)], "Earlier speech.", false, 118, 2),
+      }),
+      [200],
+    );
+    const quota = setupApp({ context, routes: voiceIoQuotaRoutes })(
+      voiceIoQuotaContract,
+    );
+    const result = await accept(quota.get({ headers }), [200]);
+    expect(result.body).toMatchObject({
+      allowed: false,
+      count: 600,
+      limit: 600,
+    });
+  });
+
   it("uses the saved prefix as context and combines only the final segment with whole-recording polish", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
@@ -797,9 +868,9 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       http.post(OPENROUTER_URL, async ({ request }) => {
         const body = (await request.json()) as OpenRouterRequest;
         inputs.push(body);
-        const final = body.messages[0]?.content;
         const finishing =
-          typeof final === "string" && final.includes("SAVED_TRANSCRIPT");
+          body.response_format.json_schema.name ===
+          "voice_transcript_and_polish";
         return HttpResponse.json({
           choices: [
             {
@@ -834,7 +905,13 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     const final = await accept(
       client().segment({
         headers: { authorization: "Bearer clerk-session" },
-        body: segmentForm([audioFile(2, 10)], first.body.transcript, true, 70),
+        body: segmentForm(
+          [audioFile(2, 10.56)],
+          first.body.transcript,
+          true,
+          68.56,
+          2,
+        ),
       }),
       [200],
     );
@@ -844,6 +921,15 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       language: "en",
     });
     expect(inputs).toHaveLength(2);
+    expect(inputs[0]?.messages[0]?.content).toContain(
+      "ONLY newly spoken content",
+    );
+    expect(inputs[1]?.messages[0]?.content).toContain(
+      "ONLY newly spoken content",
+    );
+    expect(inputs[1]?.messages[0]?.content).toContain(
+      "overlapping boundary exactly once",
+    );
     expect(requestAudioParts(inputs[1]!)).toContainEqual(
       expect.objectContaining({
         type: "text",
@@ -957,6 +1043,98 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       language: "en",
     });
   });
+
+  it.each([false, true])(
+    "reconciles dedicated ASR overlap with saved speech (final: %s)",
+    async (final) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: {
+            voiceInputModel: "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+          },
+        }),
+        [200],
+      );
+      server.use(
+        http.post(
+          "https://fal.run/fal-ai/elevenlabs/speech-to-text/scribe-v2",
+          () => {
+            return HttpResponse.json({
+              text: "LaunchPad is ready. Send it tomorrow.",
+            });
+          },
+        ),
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          const body = (await request.json()) as OpenRouterRequest;
+          expect(body.messages[0]?.content).toContain("only the new content");
+          expect(body.messages[1]?.content).toContain(
+            "===== SAVED_TRANSCRIPT =====\nLaunchPad is ready.",
+          );
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    transcript: "Send it tomorrow.",
+                    ...(final
+                      ? {
+                          polishedText: "LaunchPad is ready. Send it tomorrow.",
+                        }
+                      : {}),
+                    language: "en",
+                  }),
+                },
+              },
+            ],
+          });
+        }),
+      );
+      const result = await accept(
+        client().segment({
+          headers,
+          body: segmentForm(
+            [audioFile(1, 10.56)],
+            "LaunchPad is ready.",
+            final,
+            68.56,
+            2,
+          ),
+        }),
+        [200],
+      );
+      expect(result.body.transcript).toBe("Send it tomorrow.");
+      expect(result.body.polishedText).toBe(
+        final ? "LaunchPad is ready. Send it tomorrow." : undefined,
+      );
+    },
+  );
+
+  it.each([
+    { audioSeconds: 2, totalSeconds: 62, overlapSeconds: 2 },
+    { audioSeconds: 36.57, totalSeconds: 36.56, overlapSeconds: 0 },
+  ])(
+    "rejects invalid segment duration $audioSeconds / $totalSeconds / $overlapSeconds",
+    async ({ audioSeconds, totalSeconds, overlapSeconds }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await enabledActor();
+      const result = await client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: segmentForm(
+          [audioFile(1, audioSeconds)],
+          "Earlier speech.",
+          true,
+          totalSeconds,
+          overlapSeconds,
+        ),
+      });
+      expect(result.status).toBe(400);
+    },
+  );
 
   it("rejects an oversized segment before invoking the provider", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");

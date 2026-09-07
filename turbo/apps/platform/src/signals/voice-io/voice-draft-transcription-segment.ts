@@ -29,6 +29,7 @@ interface SegmentOptions {
   readonly context: VoiceIoTranscribeContext;
   readonly segment?: VoiceDraftSegment;
   readonly totalDurationSeconds: number;
+  readonly overlapDurationSeconds: number;
   readonly previous$?: SegmentResult;
 }
 
@@ -53,6 +54,7 @@ async function segmentBody(
       previousTranscript,
       final: options.segment?.final ?? true,
       totalDurationSeconds: options.totalDurationSeconds,
+      overlapDurationSeconds: options.overlapDurationSeconds,
     }),
   );
   if (context.lastAssistantMessage) {

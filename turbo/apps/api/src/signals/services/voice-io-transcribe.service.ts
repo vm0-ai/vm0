@@ -22,6 +22,7 @@ import {
   polishLongVoiceTranscript,
   transcribeVoice,
   finishIncrementalVoice,
+  reconcileVoiceSegmentTranscript,
   type OpenRouterVoiceAudio,
 } from "../external/openrouter-voice";
 import {
@@ -109,6 +110,19 @@ function stitchTranscripts(pieces: readonly string[]): string {
   return transcript;
 }
 
+function normalizeVoiceTranscript(
+  result: VoiceIoTranscribeSegmentResponse,
+): VoiceIoTranscribeSegmentResponse {
+  return {
+    ...result,
+    transcript:
+      result.transcript === OPENROUTER_VOICE_NO_SPEECH ? "" : result.transcript,
+    ...(result.polishedText === OPENROUTER_VOICE_NO_SPEECH
+      ? { polishedText: "" }
+      : {}),
+  };
+}
+
 async function transcribeIncrementalVoice(
   input: VoiceDraftTranscriptionInput,
   signal: AbortSignal,
@@ -125,17 +139,7 @@ async function transcribeIncrementalVoice(
     if (!result) {
       throw new Error("Voice transcription is not configured");
     }
-    return {
-      ...result,
-      transcript:
-        result.transcript === OPENROUTER_VOICE_NO_SPEECH
-          ? ""
-          : result.transcript,
-      polishedText:
-        result.polishedText === OPENROUTER_VOICE_NO_SPEECH
-          ? ""
-          : result.polishedText,
-    };
+    return normalizeVoiceTranscript(result);
   }
   const result = audio
     ? input.model.kind === "transcription"
@@ -154,6 +158,23 @@ async function transcribeIncrementalVoice(
   }
   const transcript =
     result.transcript === OPENROUTER_VOICE_NO_SPEECH ? "" : result.transcript;
+  if (
+    input.model.kind === "transcription" &&
+    input.overlapDurationSeconds > 0 &&
+    input.previousTranscript
+  ) {
+    const reconciled = await reconcileVoiceSegmentTranscript(
+      transcript,
+      input,
+      input.final,
+      DEFAULT_VOICE_INPUT_MODEL,
+      signal,
+    );
+    if (!reconciled) {
+      throw new Error("Voice transcription is not configured");
+    }
+    return normalizeVoiceTranscript(reconciled);
+  }
   if (!input.final) {
     return { transcript, language: result.language };
   }
