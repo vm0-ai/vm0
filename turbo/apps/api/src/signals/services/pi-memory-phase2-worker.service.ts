@@ -20,7 +20,6 @@ import {
   type PiMemoryPhase2OwnerScope,
 } from "./pi-memory-phase2-job.service";
 import { PI_MEMORY_PHASE2_MODEL } from "./pi-memory-phase2-usage.service";
-import { piMemoryPhase2CheckpointSchemaReady } from "./pi-memory-phase2-checkpoint.service";
 
 const log = logger("PiMemoryPhase2Worker");
 
@@ -282,10 +281,6 @@ export const executePiMemoryPhase2Work$ = command(
   ): Promise<PiMemoryPhase2WorkerResult> => {
     const db = set(writeDb$);
     signal.throwIfAborted();
-    if (!(await piMemoryPhase2CheckpointSchemaReady(db))) {
-      signal.throwIfAborted();
-      return { outcome: "no_work" };
-    }
     const recovered = await recoverMaintenanceRun(db, input);
     signal.throwIfAborted();
     if (recovered) {
