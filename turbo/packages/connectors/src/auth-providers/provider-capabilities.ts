@@ -1363,6 +1363,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "noyo",
+    authMethodId: "api-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["clientId", "clientSecret"],
+        outputNames: ["accessToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
     connectorSlug: "resource-guru",
     authMethodId: "oauth",
     contract: {

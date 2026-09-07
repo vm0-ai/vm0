@@ -15,6 +15,7 @@ import {
   refreshDatadogToken,
 } from "../datadog/oauth";
 import { refreshNetSuiteAccessToken } from "../netsuite/api-token";
+import { fetchNoyoAccessToken } from "../noyo/api-token";
 import { fetchPayPalAccessToken } from "../paypal/api-token";
 import { fetchRampAccessToken } from "../ramp/api-token";
 import { refreshWorkdayAccessToken } from "../workday/api-token";
@@ -282,6 +283,38 @@ describe("connector backlog auth providers", () => {
         signal,
       ),
     ).resolves.toEqual({ accessToken: "paypal-token", expiresIn: 3600 });
+  });
+
+  it("gets a Noyo client-credentials token with JSON authentication", async () => {
+    let authorization: string | null = null;
+    let body: string | null = null;
+    server.use(
+      http.post(
+        "https://accounts.noyo.com/auth/public/token",
+        async ({ request }) => {
+          authorization = request.headers.get("authorization");
+          body = await request.text();
+          return HttpResponse.json({
+            access_token: "noyo-token",
+            expires_in: 864000,
+          });
+        },
+      ),
+    );
+
+    await expect(
+      fetchNoyoAccessToken(
+        {
+          clientId: "client-id",
+          clientSecret: "client-secret",
+        },
+        signal,
+      ),
+    ).resolves.toEqual({ accessToken: "noyo-token", expiresIn: 864000 });
+    expect(authorization).toBe(
+      `Basic ${Buffer.from("client-id:client-secret").toString("base64")}`,
+    );
+    expect(body).toBe(JSON.stringify({ grant_type: "client_credentials" }));
   });
 
   it("gets a Ramp client-credentials token with requested scopes", async () => {
