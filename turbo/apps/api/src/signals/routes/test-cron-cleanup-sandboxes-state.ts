@@ -268,6 +268,22 @@ async function getConnectorDiagnosticRegistrationForAction(
   });
 }
 
+async function deleteConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  await db
+    .delete(agentRunConnectorDiagnosticRegistrations)
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function deleteRunForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -1049,6 +1065,8 @@ const cronCleanupSandboxesActionHandlers = {
     seedConnectorDiagnosticRegistrationForAction,
   "get-connector-diagnostic-registration":
     getConnectorDiagnosticRegistrationForAction,
+  "delete-connector-diagnostic-registration":
+    deleteConnectorDiagnosticRegistrationForAction,
   "transition-run-terminal": transitionRunTerminalForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,
