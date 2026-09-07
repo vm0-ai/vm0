@@ -74,8 +74,6 @@ export enum FeatureSwitchKey {
   VoiceInputV2 = "voiceInputV2",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
-  GeistTypeface = "geistTypeface",
   AvatarComposerV2 = "avatarComposerV2",
   AvatarNeckSweater = "avatarNeckSweater",
-  NewUi = "newUi",
 }

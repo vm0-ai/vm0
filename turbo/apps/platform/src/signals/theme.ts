@@ -204,40 +204,9 @@ function applyColorThemeDocumentAttributes(
 }
 
 /**
- * Keep the Geist typeface attribute on the document while a themed app shell is
- * mounted. Document scope matches the color themes above: portaled dialogs,
- * popovers, and toasts read the same font tokens as the app shell.
- */
-function applyTypefaceDocumentAttribute(enabled: boolean) {
-  const root = document.documentElement;
-
-  if (enabled) {
-    root.dataset.typeface = "geist";
-  } else {
-    delete root.dataset.typeface;
-  }
-}
-
-/**
- * Keep the new shell attribute on the document while the app shell is mounted.
- * Document scope matches the two above: the shell's surfaces are read by the
- * sidebars and the workspace card, and portaled dialogs inherit the same
- * sidebar token.
- */
-function applyNewUiDocumentAttribute(enabled: boolean) {
-  const root = document.documentElement;
-
-  if (enabled) {
-    root.dataset.newUi = "";
-  } else {
-    delete root.dataset.newUi;
-  }
-}
-
-/**
- * Project the current shell appearance state onto the document. Mount state is
- * owned by the shell ref; semantic setters call this command again when their
- * source state changes without replacing the committed shell element.
+ * Project the current shell color theme onto the document. Mount state is owned
+ * by the shell ref; semantic setters call this command again when their source
+ * state changes without replacing the committed shell element.
  */
 export const syncShellDocumentAttributes$ = command(
   ({ get, set }, mounted?: boolean): void => {
@@ -251,13 +220,6 @@ export const syncShellDocumentAttributes$ = command(
       shellMounted &&
         (featureSwitches[FeatureSwitchKey.GradientColorThemes] ?? false),
       get(colorTheme$),
-    );
-    applyTypefaceDocumentAttribute(
-      shellMounted &&
-        (featureSwitches[FeatureSwitchKey.GeistTypeface] ?? false),
-    );
-    applyNewUiDocumentAttribute(
-      shellMounted && (featureSwitches[FeatureSwitchKey.NewUi] ?? false),
     );
   },
 );

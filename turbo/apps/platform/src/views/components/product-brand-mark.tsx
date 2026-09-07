@@ -1,5 +1,4 @@
 import { useGet } from "ccstate-react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   platformOkouWordmarkDarkImg,
@@ -7,7 +6,6 @@ import {
 } from "../../lib/static-assets.ts";
 import { brandName$, type BrandName } from "../../signals/branding.ts";
 import { theme$ } from "../../signals/theme.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 type ProductBrandMarkSize = "default" | "compact" | "small";
 
@@ -20,11 +18,7 @@ function Vm0BrandMark({
   label: string;
   decorative: boolean;
 }) {
-  // The mark is an SVG fill, not a token, so it cannot follow the palette the
-  // way the stylesheet does. Read the switch directly instead.
-  const brandFill = useGet(featureSwitch$)[FeatureSwitchKey.NewUi]
-    ? "#FFA500"
-    : "#ED4E01";
+  const brandFill = "#FFA500";
   const dimensions =
     size === "default"
       ? { width: 80, height: 24 }

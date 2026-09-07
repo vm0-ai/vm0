@@ -1,7 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   LayoutGrid,
   Package,
@@ -62,7 +61,6 @@ import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
 import { KeyboardShortcutTooltipGroup } from "../components/keyboard-shortcut-tooltip-group.tsx";
 
@@ -547,7 +545,7 @@ function LabeledRailLink({
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive
             ? "okou-nav-copy text-sidebar-foreground"
-            : "okou-nav-copy-muted text-sidebar-foreground/60 new-ui:text-sidebar-foreground/70"
+            : "okou-nav-copy-muted text-sidebar-foreground/70"
         }`}
       >
         {caption}
@@ -728,22 +726,10 @@ function ThreeColumnSearchDialogContainer() {
   );
 }
 
-/** Inset the chat list column keeps on its own, away from the workspace card. */
-const CHAT_LIST_INSET = "px-3";
-
-/* Under the new shell the workspace card's gutter runs down the right of this
-   column, painted in the sidebar colour, so it already reads as part of the
-   column. A full inset on this side stacks on top of it and the rows end up
-   twice as far from the card's border as from the rail, which is the gap that
-   reads as too wide. Spending the gutter's eight pixels here restores the
-   match. The overlay scrollbar hugs the column edge for the same reason: with
-   only four pixels left it would otherwise sit over the row's trailing menu
-   button rather than beside it. */
-const CHAT_LIST_INSET_BESIDE_CARD = "pl-3 pr-1";
+/** Inset the chat list keeps beside the workspace card's existing gutter. */
+const CHAT_LIST_INSET = "pl-3 pr-1";
 
 function ChatListColumn() {
-  const newUiEnabled = useGet(featureSwitch$)[FeatureSwitchKey.NewUi] ?? false;
-  const inset = newUiEnabled ? CHAT_LIST_INSET_BESIDE_CARD : CHAT_LIST_INSET;
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const navigate = useSet(detachedNavigateTo$);
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
@@ -765,15 +751,14 @@ function ChatListColumn() {
   return (
     <aside
       data-testid="chat-list-column"
-      className={cn(
-        "okou-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar",
-        // Under the new shell this column and the gutter around the workspace
-        // card are one surface, so a divider here would run parallel to the
-        // card's own border eight pixels away and read as a double rule.
-        !newUiEnabled && "border-r-[0.7px] border-sidebar-border",
-      )}
+      className="okou-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar"
     >
-      <div className={cn("flex shrink-0 items-center gap-1 pb-2 pt-3", inset)}>
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1 pb-2 pt-3",
+          CHAT_LIST_INSET,
+        )}
+      >
         <span className="okou-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
           {t(($) => {
             return $.appShell.sidebar.chat;
@@ -838,19 +823,19 @@ function ChatListColumn() {
         signals={threeColumnSidebarChatThreadScrollSignals.pinReorder}
         className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1"
       >
-        <div className={inset}>
+        <div className={CHAT_LIST_INSET}>
           <PinnedAgentListSection layout="horizontal" />
         </div>
         <ChatThreadsSection
           scrollSignals={threeColumnSidebarChatThreadScrollSignals}
-          contentClassName={inset}
+          contentClassName={CHAT_LIST_INSET}
           showMarkAllRead
         />
       </PinnedThreadDropZone>
       {/* Collapses to nothing when SidebarUpgradeCard renders null, so the
           thread list reaches the column bottom instead of clipping its last
           row above a reserved strip. */}
-      <div className={cn("pb-3 empty:hidden", inset)}>
+      <div className={cn("pb-3 empty:hidden", CHAT_LIST_INSET)}>
         <SidebarUpgradeCard />
       </div>
     </aside>

@@ -1182,11 +1182,6 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
   });
 });
 
-// The new shell parks the workspace card's eight-pixel gutter, painted in the
-// sidebar colour, immediately right of this column. Keeping the full inset here
-// as well stacks the two, so the rows sit twice as far from the card's border
-// as from the rail.
-
 test("Route New chat to the current agent and Chat to the default agent", async () => {
   prepareAgents();
   mockSidebarThreadStory([

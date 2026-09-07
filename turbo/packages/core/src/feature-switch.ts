@@ -433,13 +433,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
-  [FeatureSwitchKey.GeistTypeface]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Set the interface typeface to Geist and Geist Mono instead of Noto Sans and JetBrains Mono.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -486,14 +479,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
-  },
-  [FeatureSwitchKey.NewUi]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Lay the workspace out as a card floating on the shell's grey, with the two sidebars on the site's own greys and a brand-hued composer focus ring in dark.",
-    enabled: false,
-    // Ming only while the shell settles; widen once the layout is signed off.
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
 };
 
