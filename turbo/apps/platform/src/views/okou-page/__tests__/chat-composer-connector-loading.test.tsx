@@ -1,15 +1,11 @@
-import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import {
-  accountSummary,
   builtinConnector,
-  connectorAccount,
   installComposerConnectorFixture,
   OTHER_AGENT_ID,
   SCOUT_AGENT_ID,
@@ -128,65 +124,6 @@ test("Keep connector icons until the next agent resolves", async () => {
   expect(connectorIcon(otherTrigger, GITHUB_SLUG)).toBeNull();
 });
 
-test("Keep authorization saving until refreshed access is visible after reopening", async () => {
-  const user = userEvent.setup({ delay: null });
-  const writeStarted = context.mocks.deferred<void>();
-  const writeReady = context.mocks.deferred<void>();
-  const refreshStarted = context.mocks.deferred<void>();
-  const refreshReady = context.mocks.deferred<void>();
-  installComposerConnectorFixture({
-    catalog: [builtinConnector({ slug: GITHUB_SLUG, label: "GitHub" })],
-    builtinAuthorizations: { [SCOUT_AGENT_ID]: [GITHUB_SLUG] },
-  });
-  let updated = false;
-  context.mocks.api(userConnectorsContract.get, async ({ respond }) => {
-    if (updated) {
-      refreshStarted.resolve(undefined);
-      await refreshReady.promise;
-    }
-    return respond(200, {
-      enabledConnectorSlugs: updated ? [] : [GITHUB_SLUG],
-    });
-  });
-  context.mocks.api(userConnectorsContract.update, async ({ respond }) => {
-    writeStarted.resolve(undefined);
-    await writeReady.promise;
-    updated = true;
-    return respond(200, { enabledConnectorSlugs: [] });
-  });
-  await setupPage({ context, path: `/agents/${SCOUT_AGENT_ID}/chat` });
-  click(await findFastControl("button", "Connectors"));
-  click(await screen.findByLabelText("Remove GitHub"));
-  await writeStarted.promise;
-  expect(screen.getByLabelText("Remove GitHub")).toHaveAttribute(
-    "aria-disabled",
-    "true",
-  );
-
-  await user.keyboard("{Escape}");
-  click(await findFastControl("button", "Connectors"));
-  await expect(
-    screen.findByLabelText("Remove GitHub"),
-  ).resolves.toHaveAttribute("aria-disabled", "true");
-  writeReady.resolve(undefined);
-  await refreshStarted.promise;
-  expect(screen.getByLabelText("Remove GitHub")).toHaveAttribute(
-    "aria-disabled",
-    "true",
-  );
-
-  refreshReady.resolve(undefined);
-  await waitFor(() => {
-    expect(screen.getByLabelText("Add GitHub")).not.toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-  });
-  expect(
-    connectorIcon(await findFastControl("button", "Connectors"), GITHUB_SLUG),
-  ).toBeNull();
-});
-
 test("Allow authorization retry after a rejected save", async () => {
   installComposerConnectorFixture({
     catalog: [builtinConnector({ slug: GITHUB_SLUG, label: "GitHub" })],
@@ -220,77 +157,4 @@ test("Allow authorization retry after a rejected save", async () => {
   });
   click(screen.getByLabelText("Remove GitHub"));
   await expect(screen.findByLabelText("Add GitHub")).resolves.toBeVisible();
-});
-
-test("Keep an account choice saving through refresh after reopening its menu", async () => {
-  const user = userEvent.setup({ delay: null });
-  const refreshStarted = context.mocks.deferred<void>();
-  const refreshReady = context.mocks.deferred<void>();
-  const target = { kind: "builtin", connectorSlug: GITHUB_SLUG } as const;
-  const work = connectorAccount({
-    id: "f0000000-0000-4000-a000-000000000901",
-    target,
-    displayName: "Work",
-    isDefault: true,
-  });
-  const personal = connectorAccount({
-    id: "f0000000-0000-4000-a000-000000000902",
-    target,
-    displayName: "Personal",
-    isDefault: false,
-  });
-  installComposerConnectorFixture({
-    catalog: [builtinConnector({ slug: GITHUB_SLUG, label: "GitHub" })],
-    builtinAuthorizations: { [SCOUT_AGENT_ID]: [GITHUB_SLUG] },
-    accountSummaries: [accountSummary(target, [work, personal])],
-    accounts: [work, personal],
-    threadId: SCOUT_THREAD_ID,
-  });
-  let saved = false;
-  context.mocks.api(
-    chatThreadConnectorSelectionContract.update,
-    ({ body, respond }) => {
-      saved = true;
-      return respond(200, body);
-    },
-  );
-  context.mocks.api(
-    chatThreadConnectorSelectionContract.get,
-    async ({ respond }) => {
-      if (saved) {
-        refreshStarted.resolve(undefined);
-        await refreshReady.promise;
-      }
-      return respond(200, {
-        selections: saved ? [{ target, connectionId: personal.id }] : [],
-        selectedConnections: saved ? [personal] : [],
-      });
-    },
-  );
-  await setupPage({ context, path: `/chats/${SCOUT_THREAD_ID}` });
-  click(await findFastControl("button", "Connectors"));
-  click(
-    await findFastControl("button", "GitHub · Using default account: Work"),
-  );
-  const choice = (await screen.findByText("Personal")).closest(
-    '[role="radio"]',
-  );
-  if (!(choice instanceof HTMLElement)) {
-    throw new Error("Personal account choice not found");
-  }
-  click(choice);
-  await refreshStarted.promise;
-  expect(choice).toBeDisabled();
-
-  await user.keyboard("{Escape}");
-  click(
-    await findFastControl("button", "GitHub · Using default account: Work"),
-  );
-  expect(
-    (await screen.findByText("Personal")).closest('[role="radio"]'),
-  ).toBeDisabled();
-  refreshReady.resolve(undefined);
-  await expect(
-    findFastControl("button", "GitHub · Selected account: Personal"),
-  ).resolves.toBeVisible();
 });

@@ -8,6 +8,7 @@ import type {
 } from "../desktop-bridge";
 import type {
   ComputerUseAutomationPermissionTarget,
+  ComputerUseDriverId,
   DesktopComputerUseState,
 } from "../computer-use-types";
 
@@ -127,13 +128,29 @@ export const setupComputerUseBridge$ = command(
 );
 
 export const startComputerUse$ = command(async ({ set }) => {
-  await desktopComputerUseApi().start({ userInitiated: true });
-  set(reloadComputerUse$);
+  try {
+    await desktopComputerUseApi().start({ userInitiated: true });
+  } finally {
+    set(reloadComputerUse$);
+  }
 });
 
+export const selectComputerUseDriver$ = command(
+  async ({ set }, driver: ComputerUseDriverId) => {
+    try {
+      await desktopComputerUseApi().selectDriver(driver);
+    } finally {
+      set(reloadComputerUse$);
+    }
+  },
+);
+
 export const stopComputerUse$ = command(async ({ set }) => {
-  await desktopComputerUseApi().stop();
-  set(reloadComputerUse$);
+  try {
+    await desktopComputerUseApi().stop();
+  } finally {
+    set(reloadComputerUse$);
+  }
 });
 
 export const requestAccessibilityPermission$ = command(async ({ set }) => {

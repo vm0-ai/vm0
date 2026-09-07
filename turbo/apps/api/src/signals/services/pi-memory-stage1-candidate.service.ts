@@ -11,7 +11,7 @@ import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { advancePiMemoryPhase2InputRevision } from "./pi-memory-phase2-job.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
-import { isWebChatTriggerSource } from "./chat-trigger-source.service";
+import { isPiMemoryInteractiveChatTriggerSource } from "./chat-trigger-source.service";
 
 export type PiMemoryStage1AdmissionSkipReason =
   | "generation_disabled"
@@ -19,7 +19,7 @@ export type PiMemoryStage1AdmissionSkipReason =
   | "missing_chat_thread"
   | "not_completed"
   | "not_pi"
-  | "source_not_web_chat"
+  | "source_not_interactive_chat"
   | "stale_source";
 
 export type PiMemoryStage1Admission =
@@ -63,8 +63,11 @@ export function getPiMemoryStage1AdmissionPrerequisiteSkipReason(
     return "generation_disabled";
   }
   const triggerSource = triggerSourceSchema.safeParse(args.triggerSource);
-  if (!triggerSource.success || !isWebChatTriggerSource(triggerSource.data)) {
-    return "source_not_web_chat";
+  if (
+    !triggerSource.success ||
+    !isPiMemoryInteractiveChatTriggerSource(triggerSource.data)
+  ) {
+    return "source_not_interactive_chat";
   }
   if (args.chatThreadId === null) {
     return "missing_chat_thread";

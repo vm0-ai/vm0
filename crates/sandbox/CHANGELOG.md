@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.1...sandbox-v0.21.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire codex prefetch sandboxes after partial writes ([#32358](https://github.com/vm0-ai/vm0/issues/32358)) ([dd0454e](https://github.com/vm0-ai/vm0/commit/dd0454e8707ecb068cf839c76d04c315427d6783))
+
 ## [0.21.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.0...sandbox-v0.21.1) (2026-09-07)
 
 

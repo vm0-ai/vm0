@@ -19,6 +19,14 @@ Electron only owns the app shell and command bridge; the helper owns macOS
 Accessibility, target-window screenshot capture, and targeted CGEvent input
 dispatch.
 
+## Experimental Computer Use driver
+
+Okou remains the default actuator. A current Developer account can opt in to
+**Enable experimental CUA driver** and select **CUA (Experimental)** from the
+shared main-page controls. See [selection, recovery and manual verification](cua/README.md#developer-selection-and-recovery)
+and the exact [CUA 0.23.2 command contract](cua/ADAPTER.md). Selection is local to
+this installation; failed CUA execution never silently selects another driver.
+
 ## Development
 
 For quick Electron development without macOS bundle behavior, use:

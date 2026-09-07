@@ -63,8 +63,13 @@ export class CuaEmbeddedRuntime {
   getState() {
     return {
       phase: this.phase,
+      cleanupPending: this.context?.retired ?? false,
       generation: this.context?.id ?? null,
       driverVersion: artifacts.driverVersion,
+      loadedDriverVersion:
+        this.phase === "ready"
+          ? (this.context?.connection?.driverVersion ?? null)
+          : null,
       error: this.error,
     };
   }

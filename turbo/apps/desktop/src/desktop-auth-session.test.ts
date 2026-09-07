@@ -244,7 +244,8 @@ describe("Okou App session authority", () => {
       (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
         .status,
     ).toBe(401);
-    expect(changes).toEqual(["expired", null]);
+    expect(changes).toEqual([null, null, "expired", null, null]);
+    expect(session.getAuthority()).toBeNull();
     expect(await session.getAuthState()).toEqual(signedOut);
     expect(await session.getToken({ forceRefresh: true })).toBeNull();
     expect(windows).toHaveLength(2);

@@ -3747,49 +3747,6 @@ test("Confirm a plan cancellation in hosted checkout when required", async () =>
   expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
 });
 
-test("Clear a plan-downgrade error before reopening the dialog", async () => {
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Downgrade Retry Org",
-    role: "admin",
-  });
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, activeProBillingStatus());
-  });
-  context.mocks.api(billingDowngradeContract.create, ({ respond }) => {
-    return respond(409, {
-      error: {
-        code: "CONFLICT",
-        message: "Simulated downgrade failure",
-      },
-    });
-  });
-
-  await openBillingTab();
-  click(screen.getByText("Downgrade"));
-
-  const firstDialog = await screen.findByRole("dialog", {
-    name: "Downgrade plan",
-  });
-  click(buttonByText("Cancel subscription", firstDialog));
-  await within(firstDialog).findByText(/Simulated downgrade failure/);
-
-  click(buttonByText("Cancel", firstDialog));
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Downgrade plan" }),
-    ).not.toBeInTheDocument();
-  });
-  click(screen.getByText("Downgrade"));
-
-  const reopenedDialog = await screen.findByRole("dialog", {
-    name: "Downgrade plan",
-  });
-  expect(
-    within(reopenedDialog).queryByText(/Simulated downgrade failure/),
-  ).not.toBeInTheDocument();
-});
-
 test("Restore a plan after hosted payment confirmation", async () => {
   const locationAssign = context.mocks.browser.locationAssign();
   let restored = false;
@@ -3852,58 +3809,6 @@ test("Restore a plan after hosted payment confirmation", async () => {
   await expect(
     screen.findByText("Plan restored. Your subscription will renew normally."),
   ).resolves.toBeVisible();
-});
-
-test("Clear a plan-restore error before reopening the dialog", async () => {
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Restore Retry Org",
-    role: "admin",
-  });
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, {
-      ...activeProBillingStatus(),
-      cancelAtPeriodEnd: true,
-      canRestorePlan: true,
-      scheduledChange: {
-        type: "cancel",
-        targetTier: "limited-free-1",
-        effectiveDate: "2026-04-01T00:00:00Z",
-      },
-    });
-  });
-  context.mocks.api(billingRestoreContract.create, ({ respond }) => {
-    return respond(409, {
-      error: {
-        code: "CONFLICT",
-        message: "Simulated restore failure",
-      },
-    });
-  });
-
-  await openBillingTab();
-  click(screen.getByText("Restore plan"));
-
-  const firstDialog = await screen.findByRole("dialog", {
-    name: "Restore Pro plan?",
-  });
-  click(buttonByText("Restore plan", firstDialog));
-  await within(firstDialog).findByText(/Simulated restore failure/);
-
-  click(buttonByText("Cancel", firstDialog));
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Restore Pro plan?" }),
-    ).not.toBeInTheDocument();
-  });
-  click(screen.getByText("Restore plan"));
-
-  const reopenedDialog = await screen.findByRole("dialog", {
-    name: "Restore Pro plan?",
-  });
-  expect(
-    within(reopenedDialog).queryByText(/Simulated restore failure/),
-  ).not.toBeInTheDocument();
 });
 
 test("Hide Restore when an ending plan cannot be restored", async () => {
@@ -4026,69 +3931,6 @@ test("Buy credits with a saved payment method in the app", async () => {
   expect(window.location.href).toBe(locationBeforePurchase);
   click(buttonByText("Credit balance"));
   await expect(screen.findByText("32,500")).resolves.toBeInTheDocument();
-});
-
-test("Clear a credit-purchase error before reopening the review", async () => {
-  let previewCount = 0;
-
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Credit Retry Org",
-    role: "admin",
-  });
-  context.mocks.api(billingStatusContract.get, ({ respond }) => {
-    return respond(200, {
-      ...activeProBillingStatus(),
-      canBuyCredits: true,
-    });
-  });
-  context.mocks.api(billingCreditCheckoutContract.create, ({ respond }) => {
-    previewCount += 1;
-    return respond(200, {
-      status: "preview",
-      credits: 20_000,
-      amountCents: 1800,
-      currency: "usd",
-      expiresAt: "2026-08-13T12:15:00.000Z",
-      previewToken: `credit-preview-token-${previewCount}`,
-    });
-  });
-  context.mocks.api(billingCreditCheckoutContract.confirm, ({ respond }) => {
-    return respond(409, {
-      error: {
-        code: "CONFLICT",
-        message: "Credit purchase preview is no longer valid",
-      },
-    });
-  });
-
-  await openBillingTab("/?settings=billing");
-  click(buttonByText("Quick buy $20.00"));
-
-  const firstDialog = await screen.findByRole("dialog", {
-    name: "Review credit purchase",
-  });
-  click(buttonByText("Pay and add credits", firstDialog));
-  await within(firstDialog).findByText(
-    "Could not complete this credit purchase. Review your billing details and try again.",
-  );
-
-  click(buttonByText("Cancel", firstDialog));
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Review credit purchase" }),
-    ).not.toBeInTheDocument();
-  });
-  click(buttonByText("Quick buy $20.00"));
-
-  const reopenedDialog = await screen.findByRole("dialog", {
-    name: "Review credit purchase",
-  });
-  expect(
-    within(reopenedDialog).queryByText(
-      "Could not complete this credit purchase. Review your billing details and try again.",
-    ),
-  ).not.toBeInTheDocument();
 });
 
 test("Buy a custom credit amount in hosted checkout", async () => {

@@ -237,6 +237,8 @@ test("Use the fallback window before sidebar geometry is available", async () =>
       within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row"),
     ).toHaveLength(100);
   });
+  expect(within(sidebar).getByText("History 100")).toBeInTheDocument();
+  expect(within(sidebar).queryByText("History 101")).not.toBeInTheDocument();
 });
 
 test("Coalesce sidebar resize bursts and cancel pending measurements when hidden", async () => {

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.315.14](https://github.com/vm0-ai/vm0/compare/cli-v9.315.13...cli-v9.315.14) (2026-09-07)
+
+
+### Refactoring
+
+* **image-recognition:** remove legacy recognize compatibility ([#32381](https://github.com/vm0-ai/vm0/issues/32381)) ([82bfb2c](https://github.com/vm0-ai/vm0/commit/82bfb2c81b7c49442b4a9ed3f654a8b7de2f28be)), closes [#32371](https://github.com/vm0-ai/vm0/issues/32371)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.412.4
+    * @okouai/core bumped to 8.633.0
+    * @okouai/pi-agent-runtime bumped to 1.21.18
+
 ## [9.315.13](https://github.com/vm0-ai/vm0/compare/cli-v9.315.12...cli-v9.315.13) (2026-09-07)
 
 
