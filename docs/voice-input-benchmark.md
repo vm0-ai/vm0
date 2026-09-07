@@ -21,13 +21,13 @@ Gemini 3.8 Flash was the latest Gemini 3.x Flash in that catalog. Names in the
 picker refer to explicit model IDs; record the date and upstream response IDs
 as well, since providers can update an endpoint behind an existing ID.
 
-| Models                                                           | Provider path                           | Processing                                                                                                                                                                                   |
-| ---------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 3.6 Flash, 3.8 Flash      | OpenRouter chat completions             | Short audio: combined transcription and polish; long audio: parallel chunk transcription, then polish with the selected model                                                                |
-| OpenAI GPT Audio, GPT Audio Mini                                 | OpenRouter chat completions             | Short audio: combined transcription and polish; long audio: selected model transcribes chunks, then Gemini 3.1 Flash-Lite polishes the text. JSON is prompt-constrained and server-validated |
-| Qwen3 ASR Flash, ASR 1.7B, ASR 0.6B                              | OpenRouter audio transcriptions         | Transcription, then Gemini 3.1 Flash-Lite polish                                                                                                                                             |
-| OpenAI GPT Transcribe, GPT-4o Transcribe, GPT-4o Mini Transcribe | OpenRouter audio transcriptions         | Transcription, then Gemini 3.1 Flash-Lite polish                                                                                                                                             |
-| ElevenLabs Scribe v2                                             | fal synchronous speech-to-text endpoint | Transcription, then Gemini 3.1 Flash-Lite polish                                                                                                                                             |
+| Models                                                           | Provider path                           | Processing                                                                                                                                                                       |
+| ---------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 3.6 Flash, 3.8 Flash      | OpenRouter chat completions             | 60-second segments with 2-second overlap, transcribed serially with saved context; final audio and complete-recording polish share one call                                      |
+| OpenAI GPT Audio, GPT Audio Mini                                 | OpenRouter chat completions             | Serial 60-second overlapping segments; final audio and polish share one call. Text-only finalization uses Gemini 3.1 Flash-Lite. JSON is prompt-constrained and server-validated |
+| Qwen3 ASR Flash, ASR 1.7B, ASR 0.6B                              | OpenRouter audio transcriptions         | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite reconciles overlap with saved speech and polishes on the final segment                                              |
+| OpenAI GPT Transcribe, GPT-4o Transcribe, GPT-4o Mini Transcribe | OpenRouter audio transcriptions         | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite reconciles overlap with saved speech and polishes on the final segment                                              |
+| ElevenLabs Scribe v2                                             | fal synchronous speech-to-text endpoint | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite reconciles overlap with saved speech and polishes on the final segment                                              |
 
 The API uses its existing `OPENROUTER_API_KEY` and, for Scribe, `FAL_KEY`.
 Unavailable credentials or provider errors produce an explicit failure; a
@@ -35,9 +35,9 @@ comparison never silently changes to another transcription model. The existing
 audio-input quota, duration limits, and successful-use accounting still apply.
 
 GPT Audio's pure-text polish requests returned upstream HTTP 400 during the
-YouTube pilot. Its long-recording path therefore selects the shared default
-Gemini text model for polish before making requests; this is an explicit
-pipeline choice, not an error-triggered retry with another transcription model.
+YouTube pilot. Finalization with no remaining audio therefore selects the shared
+Gemini text model. When a final audio segment remains, GPT Audio transcribes it
+and polishes the complete recording in one call.
 Debug headers report both models. Short GPT Audio requests keep their combined
 audio-based path.
 
@@ -62,8 +62,11 @@ that context identical across models and preserve the deployed light-polish
 prompt version in the experiment record.
 
 Cover English, Chinese, mixed-language speech, numbers and identifiers, background
-noise, pauses, silence, and recordings on both sides of the 90-second chunking
-boundary. Keep each test within the current 300-second request limit. Normalize
+noise, pauses, silence, and recordings on both sides of the 60-second segment
+boundary. Check cuts at 60, 118, and 176 seconds, including a stop exactly at a
+cut and a fractional-second tail. V2 no longer loads a VAD model or WASM. Each
+new segment includes up to two seconds of preceding audio, but saved recording
+time and usage exclude this repeated interval. Keep each test within the current 300-second request limit. Normalize
 the replay fixture once so every model receives the same audio:
 
 ```sh
@@ -97,11 +100,10 @@ With `_debug` enabled, transcription responses include:
 
 - `X-Voice-Input-Model`: the configured transcription model ID.
 - `X-Voice-Polish-Model`: the configured polish model ID.
-- `Server-Timing`: `voice_combined` for short multimodal audio; otherwise
-  `voice_transcribe` and `voice_polish`, each with a duration in milliseconds.
+- `Server-Timing`: `voice_segment`, with the duration of the segment request
+  including any final polish, in milliseconds.
 
-`voice_transcribe` is wall time for the complete transcription phase, including
-parallel chunks, rather than a sum of overlapping requests. Timings include
+Measure the serial chain through the final response as well as each request. Timings include
 audio preparation at that phase and upstream network time. These headers do not
 change the existing response body. Failed requests and 204 no-speech responses
 must remain in the results with their status. A provider may still change its

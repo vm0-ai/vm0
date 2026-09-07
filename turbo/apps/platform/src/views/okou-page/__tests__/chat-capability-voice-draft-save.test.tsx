@@ -41,7 +41,7 @@ test.each([
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: 60 });
     });
-    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
       return HttpResponse.json({
         transcript: "recorded note",
         polishedText: "Recorded note.",

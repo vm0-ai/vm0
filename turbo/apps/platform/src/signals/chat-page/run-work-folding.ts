@@ -50,7 +50,7 @@ export interface RunWorkSection {
 type RunWorkArtifactCard = Extract<
   MarkdownCardRef,
   { readonly kind: "artifact" }
->;
+> & { readonly tree: Root };
 
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
@@ -116,7 +116,11 @@ function artifactCardsInTree(
   const cards: RunWorkArtifactCard[] = [];
   const visit = (node: Root | Element): void => {
     if (node.type === "element" && node.data?.card?.kind === "artifact") {
-      cards.push(node.data.card);
+      cards.push({
+        ...node.data.card,
+        tree: { type: "root", children: [node] },
+      });
+      return;
     }
     for (const child of node.children) {
       if (child.type === "element") {

@@ -123,7 +123,6 @@ import {
   CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS,
   ChatImagePreviewLink,
   ChatVideoPreviewButton,
-  MarkdownCardView,
 } from "./chat-body-cards.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ChatConversationLocator } from "./chat-conversation-locator.tsx";
@@ -7663,7 +7662,7 @@ function PagedAssistantTimeline({
               {item.artifactCards.map((card) => {
                 return (
                   <div key={card.signals.url} className="okou-markdown-card">
-                    <MarkdownCardView card={card} />
+                    <MarkdownEventBody tree={card.tree} mediaPreview />
                   </div>
                 );
               })}

@@ -33,7 +33,7 @@ function installVoiceInput(): void {
   context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
     return respond(200, { allowed: true, count: 0, limit: 60 });
   });
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json({
       transcript: "voice note",
       polishedText: "Voice note.",
@@ -51,19 +51,22 @@ test("Wait for nonempty PCM before showing the waveform and preserve the opening
     onPcmCapture: connected.resolve,
     finalPcmSamples: new Float32Array(0),
   });
-  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
-    const form = await request.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      throw new Error("Expected recorded audio");
-    }
-    uploaded.resolve(await file.arrayBuffer());
-    return HttpResponse.json({
-      transcript: "opening words",
-      polishedText: "Opening words.",
-      language: "en-US",
-    });
-  });
+  context.mocks.http.post(
+    "*/api/voice-io/transcribe/segment",
+    async ({ request }) => {
+      const form = await request.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) {
+        throw new Error("Expected recorded audio");
+      }
+      uploaded.resolve(await file.arrayBuffer());
+      return HttpResponse.json({
+        transcript: "opening words",
+        polishedText: "Opening words.",
+        language: "en-US",
+      });
+    },
+  );
   await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
   click(await findEnabledButton("Voice input"));
   const emit = await connected.promise;
@@ -240,7 +243,7 @@ test("Do not show another agent's retryable recording while the current draft is
       ),
     );
   });
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
   });
 
@@ -327,7 +330,7 @@ test("Do not carry a pending transcription into another agent's composer", async
       ),
     );
   });
-  context.mocks.http.post("*/api/voice-io/transcribe", async () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", async () => {
     requested.resolve();
     await response.promise;
     return HttpResponse.json({

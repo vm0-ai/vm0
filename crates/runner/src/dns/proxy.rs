@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::process::Stdio;
 
 use tokio::io::AsyncReadExt;
@@ -58,9 +59,14 @@ impl DnsProxy {
     /// Create a noop handle for testing. No `dnsmasq` process is spawned.
     #[cfg(test)]
     pub fn noop() -> Self {
+        Self::noop_on_port(0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn noop_on_port(port: u16) -> Self {
         Self {
             process: NetworkLogProcess::noop("dnsmasq", "dns"),
-            port: 0,
+            port,
         }
     }
 
@@ -137,12 +143,28 @@ async fn try_start(
     // exits during spawn.
     crate::parent_death::configure_parent_death_signal(&mut command);
 
-    let mut child = command.spawn()?;
-
     // Give dnsmasq a moment to bind, then verify it's still running.
     // Catches port-already-in-use, missing binary (spawn itself errors),
     // and bad config that causes immediate exit.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    try_start_with_grace(command, port, network_log_manager, |_| async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    })
+    .await
+}
+
+async fn try_start_with_grace<F, Fut>(
+    mut command: tokio::process::Command,
+    port: u16,
+    network_log_manager: NetworkLogManager,
+    startup_grace: F,
+) -> std::io::Result<DnsProxy>
+where
+    F: FnOnce(Option<u32>) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let mut child = command.spawn()?;
+
+    startup_grace(child.id()).await;
     match child.try_wait() {
         Ok(Some(status)) => {
             let stderr = read_child_stderr(&mut child).await;
@@ -271,6 +293,101 @@ mod tests {
         assert_eq!(
             dnsmasq_immediate_exit_error_kind(stderr),
             std::io::ErrorKind::Other
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn early_child_failure_is_reaped_before_returning() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let mut command = tokio::process::Command::new("sh");
+        command
+            .args([
+                "-c",
+                "printf 'dnsmasq: Address already in use\\n' >&2; exit 1",
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let observed_pid = Arc::new(AtomicU32::new(0));
+        let grace_pid = Arc::clone(&observed_pid);
+
+        let error =
+            match try_start_with_grace(command, 5353, NetworkLogManager::new(), move |pid| {
+                let pid = pid.expect("test child should have a process id");
+                grace_pid.store(pid, Ordering::SeqCst);
+                async move {
+                    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                        loop {
+                            if crate::process::read_process_stat(pid)
+                                .await
+                                .is_some_and(|stat| stat.state == 'Z')
+                            {
+                                break;
+                            }
+                            tokio::task::yield_now().await;
+                        }
+                    })
+                    .await
+                    .expect("test child should exit before the startup probe");
+                }
+            })
+            .await
+            {
+                Ok(_) => panic!("early child failure should not produce a DNS proxy"),
+                Err(error) => error,
+            };
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        assert!(error.to_string().contains("Address already in use"));
+        let pid = observed_pid.load(Ordering::SeqCst);
+        assert!(
+            crate::process::read_process_stat(pid).await.is_none(),
+            "failed startup child should be reaped before returning"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn running_child_is_transferred_to_proxy_ownership() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let mut command = tokio::process::Command::new("sh");
+        command
+            .args(["-c", "exec cat >&2"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let observed_pid = Arc::new(AtomicU32::new(0));
+        let grace_pid = Arc::clone(&observed_pid);
+
+        let proxy = try_start_with_grace(command, 5353, NetworkLogManager::new(), move |pid| {
+            grace_pid.store(
+                pid.expect("test child should have a process id"),
+                Ordering::SeqCst,
+            );
+            async {}
+        })
+        .await
+        .expect("running child should produce a DNS proxy");
+        let pid = observed_pid.load(Ordering::SeqCst);
+        let starttime = crate::process::read_process_stat(pid)
+            .await
+            .expect("running child should remain owned by the DNS proxy")
+            .starttime;
+
+        assert_eq!(proxy.port(), 5353);
+        proxy.stop().await.unwrap();
+        assert_ne!(
+            crate::process::read_process_stat(pid)
+                .await
+                .map(|stat| stat.starttime),
+            Some(starttime),
+            "stopped DNS proxy should reap its child"
         );
     }
 }

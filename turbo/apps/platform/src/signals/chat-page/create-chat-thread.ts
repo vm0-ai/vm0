@@ -141,6 +141,7 @@ import {
   embedMermaidSignals,
   type MermaidDiagramRegistry,
 } from "../mermaid-diagram.ts";
+import { embedMarkdownArtifacts$ } from "./markdown-artifacts.ts";
 import {
   createImageLoadRegistry,
   embedImageLoadSignals,
@@ -1780,8 +1781,6 @@ interface EventTreeRegistries {
 }
 
 function createCardRefRegistrar({
-  chatActionContext,
-  artifactCardSignals,
   connectorCardSignals,
   connectorAccountActionCardSignals,
   permissionCardSignals,
@@ -1794,13 +1793,6 @@ function createCardRefRegistrar({
   return command(
     ({ set }, descriptor: CardDescriptorBlock): MarkdownCardRef => {
       switch (descriptor.type) {
-        case "artifact": {
-          return {
-            kind: descriptor.type,
-            signals: set(artifactCardSignals.register$, descriptor.descriptor),
-            threadId: chatActionContext.threadId,
-          };
-        }
         case "connector-action": {
           return {
             kind: descriptor.type,
@@ -1881,6 +1873,42 @@ interface RichEventTreePlan {
   readonly descriptors: readonly CardDescriptorBlock[];
 }
 
+function createEventTreeParser(registries: EventTreeRegistries) {
+  const {
+    chatActionContext,
+    mermaidDiagrams,
+    artifactCardSignals,
+    imageLoads,
+  } = registries;
+  const registerCardRef$ = createCardRefRegistrar(registries);
+  return command(({ set }, plan: RichEventTreePlan): Root => {
+    const cards = new Map<string, MarkdownCardRef>();
+    for (const descriptor of plan.descriptors) {
+      cards.set(
+        markdownCardKey(cardSlotUrl(descriptor)),
+        set(registerCardRef$, descriptor),
+      );
+    }
+    const tree = parseMarkdownTree(plan.treeSource, {
+      mermaid: true,
+      cards,
+    });
+    embedMermaidSignals(tree, (code) => {
+      return set(mermaidDiagrams.register$, code);
+    });
+    set(
+      embedMarkdownArtifacts$,
+      tree,
+      artifactCardSignals,
+      chatActionContext.threadId,
+    );
+    embedImageLoadSignals(tree, (url) => {
+      return set(imageLoads.register$, url);
+    });
+    return tree;
+  });
+}
+
 function planEventTreeUpdates(
   events: readonly ChatEvent[],
   current: ReadonlyMap<string, EventTree>,
@@ -1944,7 +1972,7 @@ function markPendingEventTreesFailed(
 }
 
 function createEventTreeSignals(registries: EventTreeRegistries) {
-  const { chatActionContext, mermaidDiagrams, imageLoads } = registries;
+  const { chatActionContext } = registries;
 
   const internalEventTrees$ = state<ReadonlyMap<string, EventTree>>(new Map());
   const eventTrees$ = computed((get): ReadonlyMap<string, Root> => {
@@ -1966,7 +1994,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
     return errors;
   });
 
-  const registerCardRef$ = createCardRefRegistrar(registries);
+  const parseEventTree$ = createEventTreeParser(registries);
   const parseRichEventTrees$ = command(
     async (
       { get, set },
@@ -1987,23 +2015,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         ) {
           continue;
         }
-        const cards = new Map<string, MarkdownCardRef>();
-        for (const descriptor of plan.descriptors) {
-          cards.set(
-            markdownCardKey(cardSlotUrl(descriptor)),
-            set(registerCardRef$, descriptor),
-          );
-        }
-        const tree = parseMarkdownTree(plan.treeSource, {
-          mermaid: true,
-          cards,
-        });
-        embedMermaidSignals(tree, (code) => {
-          return set(mermaidDiagrams.register$, code);
-        });
-        embedImageLoadSignals(tree, (url) => {
-          return set(imageLoads.register$, url);
-        });
+        const tree = set(parseEventTree$, plan);
         parsed ??= new Map(pending);
         parsed.set(plan.eventId, {
           content: plan.content,

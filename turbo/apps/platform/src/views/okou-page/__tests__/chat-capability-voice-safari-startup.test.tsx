@@ -70,7 +70,7 @@ function installVoiceInput(userAgent: string) {
   context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
     return respond(200, { allowed: true, count: 0, limit: 60 });
   });
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json({
       transcript: "opening words",
       polishedText: "Opening words.",
@@ -90,7 +90,7 @@ test.each([
     const scheduled = holdStartupTimeout();
     const uploaded = context.mocks.deferred<ArrayBuffer>();
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         const form = await request.formData();
         const file = form.get("file");

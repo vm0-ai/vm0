@@ -53,8 +53,13 @@ ROOTFS_HASH=$2
 EXECUTION_KEY=$3
 BASE_DIR="/var/lib/vm0-runner/host-cpu-fairness/${EXECUTION_KEY}"
 UNIT="runner-host-cpu-managed-${EXECUTION_KEY}"
-LOCK_DIR="/run/lock/runner-host-cpu-fairness"
-LOCK_FD=""
+# Pre-R5c and interim workflow revisions can share this host. Acquire both
+# stable per-CPU inode namespaces in this order and never unlink their files.
+LOCK_DIRS=(
+  "/run/lock/vm0-host-cpu-fairness"
+  "/run/lock/runner-host-cpu-fairness"
+)
+LOCK_FDS=()
 
 case "$EXECUTION_KEY" in
   ''|*[!a-zA-Z0-9._-]*)
@@ -63,14 +68,19 @@ case "$EXECUTION_KEY" in
     ;;
 esac
 
+release_lock_fds() {
+  local lock_fd
+  for lock_fd in "$@"; do
+    flock --unlock "$lock_fd" || true
+    exec {lock_fd}>&-
+  done
+}
+
 cleanup() {
   sudo systemctl stop "${UNIT}.service" 2>/dev/null || true
   sudo rm -f -- "$TEST_BIN"
   sudo rm -rf -- "$BASE_DIR"
-  if [ -n "$LOCK_FD" ]; then
-    flock --unlock "$LOCK_FD" || true
-    exec {LOCK_FD}>&-
-  fi
+  release_lock_fds "${LOCK_FDS[@]}"
 }
 trap cleanup EXIT
 
@@ -99,19 +109,26 @@ fi
 
 read -r SELECTION_HASH _ < <(printf '%s' "$EXECUTION_KEY" | cksum)
 START_INDEX=$((SELECTION_HASH % ${#CPU_CANDIDATES[@]}))
-sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$LOCK_DIR"
+sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "${LOCK_DIRS[@]}"
 
 SELECTED_CPU=""
 for ((offset = 0; offset < ${#CPU_CANDIDATES[@]}; offset++)); do
   candidate_index=$(((START_INDEX + offset) % ${#CPU_CANDIDATES[@]}))
   candidate_cpu=${CPU_CANDIDATES[$candidate_index]}
-  exec {candidate_lock_fd}>"${LOCK_DIR}/cpu-${candidate_cpu}.lock"
-  if flock --nonblock "$candidate_lock_fd"; then
-    SELECTED_CPU=$candidate_cpu
-    LOCK_FD=$candidate_lock_fd
-    break
-  fi
-  exec {candidate_lock_fd}>&-
+  candidate_lock_fds=()
+  for lock_dir in "${LOCK_DIRS[@]}"; do
+    exec {candidate_lock_fd}>"${lock_dir}/cpu-${candidate_cpu}.lock"
+    if flock --nonblock "$candidate_lock_fd"; then
+      candidate_lock_fds+=("$candidate_lock_fd")
+      continue
+    fi
+    exec {candidate_lock_fd}>&-
+    release_lock_fds "${candidate_lock_fds[@]}"
+    continue 2
+  done
+  SELECTED_CPU=$candidate_cpu
+  LOCK_FDS=("${candidate_lock_fds[@]}")
+  break
 done
 if [ -z "$SELECTED_CPU" ]; then
   echo "no online host CPU is available for the fairness test" >&2

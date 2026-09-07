@@ -120,7 +120,7 @@ async function setupGeneratedOfficePreview(
       {
         id: `message-${filename}`,
         role: "assistant",
-        content: `[${filename}](${url})`,
+        content: `![${filename}](${url})`,
         runId: "navigation-artifact-run",
         seqId: 1,
         createdAt: "2026-09-01T12:00:00.000Z",
@@ -174,7 +174,7 @@ test("Keep attachment cards closed until the user selects one", async () => {
       {
         id: "navigation-completed-artifact",
         role: "assistant",
-        content: "[completed.pdf](/f/navigation/completed/completed.pdf)",
+        content: "![completed.pdf](/f/navigation/completed/completed.pdf)",
         runId: "navigation-completed-work",
         runEventId: "completed-artifact-event",
         sequenceNumber: 1,
@@ -200,7 +200,7 @@ test("Keep attachment cards closed until the user selects one", async () => {
       {
         id: "navigation-running-artifact",
         role: "assistant",
-        content: "[running.pdf](/f/navigation/running/running.pdf)",
+        content: "![running.pdf](/f/navigation/running/running.pdf)",
         runId: "navigation-running-work",
         runEventId: "running-artifact-event",
         sequenceNumber: 1,

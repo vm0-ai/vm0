@@ -227,7 +227,7 @@ test.each(["completed", "failed", "cancelled"] as const)(
         ...[
           "## Review\n\nChecked **dependencies** and `tests`.",
           "![Dependency chart](https://example.com/dependencies.png)",
-          "https://cdn.vm7.io/artifacts/history-preview/report/report.pdf",
+          "![report.pdf](https://cdn.vm7.io/artifacts/history-preview/report/report.pdf)",
           "The review is ready",
         ].map((text, index) => {
           return assistantEvent({

@@ -637,7 +637,7 @@ export function parseSpeechWavDurationSeconds(
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
     return null;
   }
-  return Math.max(1, Math.ceil(audioBytes / bytesPerSecond));
+  return audioBytes / bytesPerSecond;
 }
 
 // mp3 / mp4 / m4a / mpga: read the real container duration. Estimating from
@@ -659,7 +659,7 @@ async function parseCompressedAudioDurationSeconds(
     return null;
   }
   const { duration } = parsed.format;
-  return typeof duration === "number" ? Math.ceil(duration) : null;
+  return typeof duration === "number" ? duration : null;
 }
 
 function vintLen(firstByte: number): number | null {
@@ -781,7 +781,7 @@ function findDurationInInfo(
   if (durationInScale === null) {
     return null;
   }
-  return Math.ceil((durationInScale * timecodeScaleNs) / 1_000_000_000);
+  return (durationInScale * timecodeScaleNs) / 1_000_000_000;
 }
 
 function findDurationInSegment(buf: Uint8Array, pos: number): number | null {

@@ -65,6 +65,7 @@ import {
   type SidebarChatThreadWindow,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import type { SidebarChatThreadItemSignals } from "../../signals/chat-page/sidebar-chat-thread-item.ts";
+import { sidebarThreadTitleOverflowRef$ } from "../../signals/chat-page/sidebar-thread-title.ts";
 import {
   currentChatAgentScope$,
   currentChatAgentId$,
@@ -373,6 +374,7 @@ function ChatThreadItemLink({
   const select = useSet(signals.select$);
   const openRename = useSet(signals.openRename$);
   const pageSignal = useGet(pageSignal$);
+  const measureTitle = useSet(sidebarThreadTitleOverflowRef$);
 
   return (
     <Link
@@ -392,7 +394,7 @@ function ChatThreadItemLink({
         e.preventDefault();
         detach(openRename(pageSignal), Reason.DomCallback);
       }}
-      className={`col-span-2 col-start-1 row-start-1 grid h-8 grid-cols-subgrid items-center rounded-lg pl-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+      className={`okou-nav-title-row col-span-2 col-start-1 row-start-1 grid h-8 grid-cols-subgrid items-center rounded-lg pl-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
           ? "bg-state-selected text-sidebar-foreground font-medium"
           : isUnread
@@ -402,11 +404,13 @@ function ChatThreadItemLink({
     >
       <span className="flex min-w-0 items-center gap-2 pr-8">
         <ChatThreadListPaneIcon signals={signals} />
-        <span className="okou-nav-copy min-w-0 truncate">
-          {title ??
-            t(($) => {
-              return $.chat.newChat;
-            })}
+        <span className="okou-nav-copy okou-nav-title" ref={measureTitle}>
+          <span>
+            {title ??
+              t(($) => {
+                return $.chat.newChat;
+              })}
+          </span>
         </span>
       </span>
       <ThreadNumberShortcutHint

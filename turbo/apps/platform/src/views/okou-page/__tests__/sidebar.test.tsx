@@ -439,6 +439,72 @@ function createDataTransferStub(
   } as unknown as DataTransfer;
 }
 
+const SIDEBAR_TITLE_BOX_WIDTH = 160;
+const SIDEBAR_TITLE_CHARACTER_WIDTH = 9;
+
+function restoreElementProperty(
+  name: string,
+  descriptor: PropertyDescriptor | undefined,
+): void {
+  if (descriptor) {
+    Object.defineProperty(HTMLElement.prototype, name, descriptor);
+    return;
+  }
+  Reflect.deleteProperty(HTMLElement.prototype, name);
+}
+
+/**
+ * Gives the title box a fixed width and its text a width per character, so one
+ * title overflows the box and the other fits inside it.
+ */
+function stubSidebarTitleLayout(): void {
+  const clientWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  const scrollWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "scrollWidth",
+  );
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get(this: HTMLElement): number {
+      return this.classList.contains("okou-nav-title")
+        ? SIDEBAR_TITLE_BOX_WIDTH
+        : 0;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+    configurable: true,
+    get(this: HTMLElement): number {
+      if (!this.classList.contains("okou-nav-title")) {
+        return 0;
+      }
+      return Math.max(
+        SIDEBAR_TITLE_BOX_WIDTH,
+        (this.textContent?.length ?? 0) * SIDEBAR_TITLE_CHARACTER_WIDTH,
+      );
+    },
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      restoreElementProperty("clientWidth", clientWidth);
+      restoreElementProperty("scrollWidth", scrollWidth);
+    },
+    { once: true },
+  );
+}
+
+/** The clipping box a title is faded and scrolled inside. */
+function titleFadeBox(title: string): HTMLElement {
+  const box = within(sidebar()).getByText(title).parentElement;
+  if (!box) {
+    throw new Error(`${title} title fade box not found`);
+  }
+  return box;
+}
+
 function threadRowByTitle(
   title: string,
   container: HTMLElement = sidebar(),
@@ -715,6 +781,51 @@ test("Delete a chat after reviewing the impact", async () => {
     ).not.toBeInTheDocument();
     expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
   });
+});
+
+/**
+ * Deliberate exception to `docs/testing/testing-external-behavior.md`. The fade
+ * and the hover travel are a mask and a transform derived from measured text
+ * width, and happy-dom has no layout engine: it reports every box as
+ * zero-width and paints nothing, so neither the state nor the result exists on
+ * the page surface here. The measured distance is the only place the behavior
+ * is observable, and it is worth pinning because both the fade and the travel
+ * are derived from it — a wrong distance fades a title that fits, or stops the
+ * scroll before the end.
+ */
+test("Fade a clipped chat title and pace its scroll by the hidden distance", async () => {
+  stubSidebarTitleLayout();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    // 26 characters, so 234px of text in a 160px box.
+    createThread(EXISTING_THREAD_ID, "Quarterly launch narrative"),
+    createThread(AUTOMATION_THREAD_ID, "Release plan"),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  await expect(
+    within(sidebar()).findByText("Release plan"),
+  ).resolves.toBeInTheDocument();
+
+  const clipped = titleFadeBox("Quarterly launch narrative");
+  expect(clipped.style.getPropertyValue("--okou-nav-title-overflow")).toBe(
+    "74px",
+  );
+  expect(clipped.style.getPropertyValue("--okou-nav-title-duration")).toBe(
+    "2000ms",
+  );
+
+  const fitting = titleFadeBox("Release plan");
+  expect(fitting.style.getPropertyValue("--okou-nav-title-overflow")).toBe(
+    "0px",
+  );
+  expect(fitting.style.getPropertyValue("--okou-nav-title-duration")).toBe(
+    "780ms",
+  );
 });
 
 test("Filter the chat list to unread conversations", async () => {

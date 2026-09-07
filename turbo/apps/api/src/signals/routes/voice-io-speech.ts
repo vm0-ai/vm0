@@ -112,7 +112,7 @@ const generateSpeechResponse$ = command(
         publicBrand: args.publicBrand,
         voice: args.voice,
         audioBytes,
-        durationSeconds,
+        durationSeconds: Math.ceil(durationSeconds),
         pricing: args.pricing,
       },
       signal,

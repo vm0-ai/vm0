@@ -221,10 +221,12 @@ test("Fenced code stays readable for known and unknown languages", async () => {
   expect(unknownCode).toBeVisible();
 });
 
-test("Linked images and videos appear inline", async () => {
+test("Media links keep their text while image syntax shows a preview", async () => {
   const chat = createMarkdownChatFixture(context);
   const source = [
     "[Product screenshot](https://media.example.com/product.png)",
+    "",
+    "![Embedded screenshot](https://media.example.com/product.png)",
     "",
     "[Walkthrough video](https://media.example.com/walkthrough.mp4)",
   ].join("\n");
@@ -242,21 +244,24 @@ test("Linked images and videos appear inline", async () => {
   });
 
   const image = await screen.findByRole("img", {
-    name: "Product screenshot",
+    name: "Embedded screenshot",
   });
   fireEvent.load(image);
   expect(image).toBeVisible();
   expect(image).toHaveAttribute("src", "https://media.example.com/product.png");
 
   const frame = markdownFrameFor(image);
-  const video = frame.querySelector("video");
-  expect(video).not.toBeNull();
-  expect(video).toBeVisible();
-  expect(video).toHaveAttribute(
-    "src",
-    "https://media.example.com/walkthrough.mp4",
-  );
-  expect(video).toHaveAttribute("controls");
+  const links = queryAllByRoleFast("link", frame);
+  expect(
+    links.find((link) => {
+      return link.textContent === "Product screenshot";
+    }),
+  ).toHaveAttribute("href", "https://media.example.com/product.png");
+  expect(
+    links.find((link) => {
+      return link.textContent === "Walkthrough video";
+    }),
+  ).toHaveAttribute("href", "https://media.example.com/walkthrough.mp4");
 });
 
 test("Raw message content cannot impersonate Platform controls", async () => {

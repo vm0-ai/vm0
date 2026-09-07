@@ -30,8 +30,8 @@ function previewText(event: EnrichedChatEvent, fallback: string): string {
   const visit = (node: Root | Element): void => {
     if (node.type === "element") {
       const card = node.data?.card;
-      if (card !== undefined) {
-        parts.push(card.kind === "artifact" ? card.signals.filename : fallback);
+      if (card !== undefined && card.kind !== "artifact") {
+        parts.push(fallback);
         return;
       }
       if (node.tagName === "img") {
