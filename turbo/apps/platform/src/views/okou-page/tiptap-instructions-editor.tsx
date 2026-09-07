@@ -10,15 +10,25 @@ import { Document } from "@tiptap/extension-document";
 import { HardBreak } from "@tiptap/extension-hard-break";
 import { Heading } from "@tiptap/extension-heading";
 import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
+import { Image as ImageExtension } from "@tiptap/extension-image";
 import { Italic as ItalicExtension } from "@tiptap/extension-italic";
+import { Link as LinkExtension } from "@tiptap/extension-link";
 import {
   BulletList,
   ListItem,
   ListKeymap,
   OrderedList,
+  TaskItem,
+  TaskList,
 } from "@tiptap/extension-list";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Strike } from "@tiptap/extension-strike";
+import {
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@tiptap/extension-table";
 import { Text } from "@tiptap/extension-text";
 import { Underline } from "@tiptap/extension-underline";
 import {
@@ -116,9 +126,12 @@ const EDITOR_CLASSES =
   "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:my-2 [&_blockquote]:text-muted-foreground " +
   "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:font-[var(--font-family-mono)] " +
   "[&_pre]:bg-muted [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
-  "[&_hr]:border-border [&_hr]:my-4";
+  "[&_hr]:border-border [&_hr]:my-4 " +
+  "[&_a]:text-primary [&_a]:underline [&_img]:inline-block [&_img]:max-h-80 [&_img]:max-w-full [&_img]:object-contain " +
+  "[&_.tableWrapper]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3 " +
+  "[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-2 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1";
 
-function createInstructionsEditorExtensions() {
+function createInstructionsEditorExtensions(taskLabel: string) {
   return [
     BoldExtension,
     Blockquote,
@@ -132,12 +145,49 @@ function createInstructionsEditorExtensions() {
     Heading,
     UndoRedo,
     HorizontalRule,
+    ImageExtension.configure({ inline: true }),
     ItalicExtension,
+    LinkExtension.configure({
+      openOnClick: false,
+      autolink: false,
+      linkOnPaste: false,
+    }),
     ListItem,
     ListKeymap,
     OrderedList,
-    Paragraph,
+    Paragraph.extend({
+      parseMarkdown(token, helpers) {
+        // Tiptap unwraps image-only paragraphs for block images. Our images
+        // are inline so mixed text/images and image-only paragraphs both fit
+        // the document schema and survive subsequent edits.
+        if (token.tokens?.length === 1 && token.tokens[0]?.type === "image") {
+          return helpers.createNode(
+            "paragraph",
+            undefined,
+            helpers.parseInline(token.tokens),
+          );
+        }
+        const parseParagraph = Paragraph.config.parseMarkdown;
+        if (!parseParagraph) {
+          throw new Error("Paragraph extension is missing its Markdown parser");
+        }
+        return parseParagraph(token, helpers);
+      },
+    }),
     Strike,
+    Table.configure({ renderWrapper: true }),
+    TableCell,
+    TableHeader,
+    TableRow,
+    TaskList,
+    TaskItem.configure({
+      nested: true,
+      a11y: {
+        checkboxLabel(node) {
+          return node.textContent || taskLabel;
+        },
+      },
+    }),
     Text,
     Underline,
     TrailingNode,
@@ -235,7 +285,11 @@ export function TiptapInstructionsEditor({
   );
   const editor = useEditor({
     extensions: [
-      ...createInstructionsEditorExtensions(),
+      ...createInstructionsEditorExtensions(
+        t(($) => {
+          return $.activity.events.task;
+        }),
+      ),
       createBaselineExtension(onChange),
     ],
     content: initialContent,
