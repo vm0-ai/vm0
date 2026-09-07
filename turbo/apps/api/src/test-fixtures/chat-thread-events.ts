@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import {
+  chatThreadEventSequences,
+  chatThreadEvents,
+} from "@okouai/db/schema/chat-thread-event";
+import { chatThreadSnapshots } from "@okouai/db/schema/chat-thread-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -19,6 +23,7 @@ interface ChatThreadEventFixtureArgs {
   readonly chatThreadId: string;
   readonly agentId: string;
   readonly title: string;
+  readonly createdAt?: Date;
 }
 
 interface PersistedChatThreadEventFixture {
@@ -91,6 +96,7 @@ export async function holdChatThreadEventInsertTransactionFixture(
       chatThreadId: args.chatThreadId,
       agentId: args.agentId,
       title: args.title,
+      ...(args.createdAt === undefined ? {} : { createdAt: args.createdAt }),
     });
     const [event] = await tx
       .select({ id: chatThreadEvents.id, seqId: chatThreadEvents.seqId })
@@ -133,6 +139,7 @@ export async function insertChatThreadEventTransactionFixture(
       chatThreadId: args.chatThreadId,
       agentId: args.agentId,
       title: args.title,
+      ...(args.createdAt === undefined ? {} : { createdAt: args.createdAt }),
     });
     const [persisted] = await tx
       .select({ id: chatThreadEvents.id, seqId: chatThreadEvents.seqId })
@@ -148,9 +155,118 @@ export async function insertChatThreadEventTransactionFixture(
 }
 
 /**
- * Removes the exact snapshot anchor that Slice 1 must tolerate. No production
- * endpoint can construct this state while the current compactor intentionally
- * retains marker rows, so the route regression test owns this narrow fixture.
+ * Inserts the canonical null-Agent form retained from an already-deleted
+ * Agent. The production lifecycle writer always has a live Agent at append
+ * time, so retention coverage needs this narrow persisted-state fixture.
+ */
+export async function insertCanonicalOrphanChatThreadEventFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly chatThreadId: string;
+  readonly createdAt: Date;
+}): Promise<PersistedChatThreadEventFixture> {
+  const eventId = randomUUID();
+  const event = await db().transaction(async (tx) => {
+    const [sequence] = await tx
+      .insert(chatThreadEventSequences)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        lastSeqId: 1,
+      })
+      .onConflictDoUpdate({
+        target: [
+          chatThreadEventSequences.userId,
+          chatThreadEventSequences.orgId,
+        ],
+        set: {
+          lastSeqId: sql`${chatThreadEventSequences.lastSeqId} + 1`,
+        },
+      })
+      .returning({ seqId: chatThreadEventSequences.lastSeqId });
+    if (!sequence) {
+      throw new Error("Unable to reserve orphan chat-thread event seq_id");
+    }
+    const [persisted] = await tx
+      .insert(chatThreadEvents)
+      .values({
+        id: eventId,
+        userId: args.userId,
+        orgId: args.orgId,
+        seqId: sequence.seqId,
+        chatThreadId: args.chatThreadId,
+        kind: "deleted",
+        agentId: null,
+        createdAt: args.createdAt,
+      })
+      .returning({ id: chatThreadEvents.id, seqId: chatThreadEvents.seqId });
+    return persisted;
+  });
+  if (!event) {
+    throw new Error("Expected the canonical orphan chat-thread event");
+  }
+  return event;
+}
+
+/** Seeds an authoritative snapshot boundary for retention-route scenarios. */
+export async function setChatThreadSnapshotBoundaryFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly latestEventId: string;
+  readonly latestEventSeqId: number;
+  readonly updatedAt: Date;
+}): Promise<void> {
+  await db()
+    .insert(chatThreadSnapshots)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      latestEventId: args.latestEventId,
+      latestEventSeqId: args.latestEventSeqId,
+      chatThreads: [],
+      createdAt: args.updatedAt,
+      updatedAt: args.updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: [chatThreadSnapshots.userId, chatThreadSnapshots.orgId],
+      set: {
+        latestEventId: args.latestEventId,
+        latestEventSeqId: args.latestEventSeqId,
+        chatThreads: [],
+        updatedAt: args.updatedAt,
+      },
+    });
+}
+
+/** Reads exact physical lifecycle rows, including rows hidden by the reader. */
+export async function readChatThreadEventIdsFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly eventIds: readonly string[];
+}): Promise<readonly string[]> {
+  if (args.eventIds.length === 0) {
+    return [];
+  }
+  const rows = await db()
+    .select({ id: chatThreadEvents.id })
+    .from(chatThreadEvents)
+    .where(
+      and(
+        eq(chatThreadEvents.userId, args.userId),
+        eq(chatThreadEvents.orgId, args.orgId),
+        inArray(chatThreadEvents.id, args.eventIds),
+      ),
+    )
+    .orderBy(asc(chatThreadEvents.seqId));
+  return rows.map((row) => {
+    return row.id;
+  });
+}
+
+/**
+ * Removes an exact snapshot-boundary row to model a markerless cursor without
+ * waiting for the retention window. No production endpoint exposes physical
+ * lifecycle-row deletion, so the route regression test owns this fixture.
  */
 export async function deleteChatThreadEventMarkerFixture(args: {
   readonly userId: string;
