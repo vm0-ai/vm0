@@ -1087,11 +1087,11 @@ describe("Feishu integration", () => {
     return new URL(responseBody.redirectUrl);
   }
 
-  async function connectFixtureUser(
+  async function requestFeishuConnectUrl(
     fixture: FeishuRunFixture,
     actor = fixture.actor,
     openId = "ou_feishu_user",
-  ): Promise<void> {
+  ): Promise<string> {
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     await postEvent(
       fixture.callbackUrl,
@@ -1112,6 +1112,15 @@ describe("Feishu integration", () => {
       messageContent(loginReply).match(/https:\/\/[^"]+/u)?.[0],
       "Expected Feishu connect URL",
     );
+    return connectUrl;
+  }
+
+  async function connectFixtureUser(
+    fixture: FeishuRunFixture,
+    actor = fixture.actor,
+    openId = "ou_feishu_user",
+  ): Promise<string> {
+    const connectUrl = await requestFeishuConnectUrl(fixture, actor, openId);
     const connectApp = createAppWithRoutes({
       signal: context.signal,
       routes: feishuBrowserConnectRoutes,
@@ -1150,6 +1159,7 @@ describe("Feishu integration", () => {
       isConnected: true,
     });
     outboundMessages = [];
+    return connectUrl;
   }
 
   async function completeRunSession(args: {
@@ -3430,12 +3440,9 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {
+  it("deduplicates unconnected messages and sends one connect link", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, appId, callbackUrl, defaultAgentId } = fixture;
-    const client = setupApp({ context, routes: feishuConnectRoutes })(
-      feishuConnectContract,
-    );
+    const { appId, callbackUrl } = fixture;
 
     const firstEvent = directMessage(appId, "hello");
     const firstMessage = await postEvent(callbackUrl, firstEvent, {
@@ -3470,6 +3477,15 @@ describe("Feishu integration", () => {
     expect(`${new URL(connectUrl).origin}${new URL(connectUrl).pathname}`).toBe(
       `${APP_ORIGIN}/settings/feishu`,
     );
+  });
+
+  it("preserves agent access and retries welcome when reconnecting", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, appId, defaultAgentId } = fixture;
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
+      feishuConnectContract,
+    );
+    const connectUrl = await requestFeishuConnectUrl(fixture);
 
     const connectApp = createAppWithRoutes({
       signal: context.signal,
@@ -3595,6 +3611,28 @@ describe("Feishu integration", () => {
     });
     expect(welcome?.msgType).toBe("interactive");
     expect(welcome ? messageContent(welcome) : "").toContain("Okou");
+  });
+
+  it("rejects account rebinding and replaces the connected identity", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, appId, callbackUrl, defaultAgentId } = fixture;
+    const connectUrl = await connectFixtureUser(fixture);
+    const client = setupApp({ context, routes: feishuConnectRoutes })(
+      feishuConnectContract,
+    );
+    const connectApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: feishuBrowserConnectRoutes,
+    });
+    const memberState = await readFeishuMemberConnectorState(context, {
+      orgId: requireValue(actor.orgId, "Expected an organization"),
+      userId: actor.userId,
+      installationId: fixture.installationId,
+    });
+    const memberConnectorId = requireValue(
+      memberState.feishu_member_connection?.connector_id,
+      "Expected Feishu member connector linkage",
+    );
 
     const otherActor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
