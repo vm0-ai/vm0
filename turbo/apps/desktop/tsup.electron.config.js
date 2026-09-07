@@ -15,7 +15,6 @@ module.exports = defineConfig({
   // runtime instead of inlining it, which would defeat its crash isolation.
   external: ["electron", "./main.js"],
   noExternal: [
-    "update-electron-app",
     "@sentry/electron",
     /^@okouai\//,
     /^@modelcontextprotocol\/sdk\//,
