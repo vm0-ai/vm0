@@ -2324,7 +2324,6 @@
         "video": "Gaya video",
         "website": "Gaya situs web"
       },
-      "templates": "Templat",
       "useTemplate": "Gunakan {{title}}",
       "workflowDescription": "Ubah pekerjaan berulang menjadi workflow.",
       "workflowHeading": "Biarkan pekerjaan terus berjalan"

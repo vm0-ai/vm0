@@ -1,14 +1,17 @@
 import { command, computed, state } from "ccstate";
 
 import { cloudBrowserEnabledByDefault$ } from "../../cloud-browser-preference.ts";
+import { pageSignal$ } from "../../page-signal.ts";
 import { updateUserPreference$ } from "./user-preferences.ts";
 
-const internalPendingCloudBrowserEnabledByDefault$ = state<boolean | null>(
-  null,
-);
+const internalCloudBrowserSubmission$ = state<{
+  readonly enabled: boolean;
+  readonly signal: AbortSignal;
+} | null>(null);
 
-export const pendingCloudBrowserEnabledByDefault$ = computed((get) => {
-  return get(internalPendingCloudBrowserEnabledByDefault$);
+export const submittedCloudBrowserEnabledByDefault$ = computed((get) => {
+  const submission = get(internalCloudBrowserSubmission$);
+  return submission?.signal === get(pageSignal$) ? submission.enabled : null;
 });
 
 export const updateCloudBrowserEnabledByDefault$ = command(
@@ -17,14 +20,13 @@ export const updateCloudBrowserEnabledByDefault$ = command(
     enabled: boolean,
     signal: AbortSignal,
   ): Promise<void> => {
-    set(internalPendingCloudBrowserEnabledByDefault$, enabled);
+    signal.throwIfAborted();
+    set(internalCloudBrowserSubmission$, { enabled, signal });
     await set(
       updateUserPreference$,
       { cloudBrowserEnabledByDefault: enabled },
       signal,
-    ).finally(() => {
-      set(internalPendingCloudBrowserEnabledByDefault$, null);
-    });
+    );
     signal.throwIfAborted();
     await get(cloudBrowserEnabledByDefault$);
     signal.throwIfAborted();

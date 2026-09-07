@@ -1,5 +1,6 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
 import { blobs } from "@okouai/db/schema/blob";
 import { conversations } from "@okouai/db/schema/conversation";
@@ -10,6 +11,7 @@ import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { advancePiMemoryPhase2InputRevision } from "./pi-memory-phase2-job.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
+import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 
 export type PiMemoryStage1AdmissionSkipReason =
   | "generation_disabled"
@@ -17,7 +19,7 @@ export type PiMemoryStage1AdmissionSkipReason =
   | "missing_chat_thread"
   | "not_completed"
   | "not_pi"
-  | "source_not_web"
+  | "source_not_web_chat"
   | "stale_source";
 
 export type PiMemoryStage1Admission =
@@ -60,8 +62,9 @@ export function getPiMemoryStage1AdmissionPrerequisiteSkipReason(
   if (!args.generationEnabled) {
     return "generation_disabled";
   }
-  if (args.triggerSource !== "web") {
-    return "source_not_web";
+  const triggerSource = triggerSourceSchema.safeParse(args.triggerSource);
+  if (!triggerSource.success || !isWebChatTriggerSource(triggerSource.data)) {
+    return "source_not_web_chat";
   }
   if (args.chatThreadId === null) {
     return "missing_chat_thread";

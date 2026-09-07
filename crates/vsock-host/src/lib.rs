@@ -197,6 +197,17 @@ pub struct NormalOperationFence {
     _inner: operation_tracker::NormalOperationFence,
 }
 
+/// Owned reservation for an operation on a separate provider-owned transport.
+///
+/// This shares the normal-operation tracker with generic guest operations, so
+/// it prevents park for its whole lifetime. It sends no generic guest request
+/// and releases on Drop without requiring a guest terminal response. The
+/// provider must separately own transport cancellation on termination.
+#[must_use = "hold this reservation for the complete external operation"]
+pub struct ExternalOperationReservation {
+    _inner: operation_tracker::NormalOperationToken,
+}
+
 /// Reason why [`VsockHost::try_fence_normal_operations`] or
 /// [`VsockHost::exec_operation_capture_with_fence`] could not acquire a
 /// [`NormalOperationFence`].
@@ -321,6 +332,13 @@ pub struct VsockHost {
 }
 
 impl VsockHost {
+    /// Reserve the same operation lifetime used by the normal-operation fence.
+    pub fn reserve_external_operation(&self) -> io::Result<ExternalOperationReservation> {
+        Ok(ExternalOperationReservation {
+            _inner: self.shared.reserve_normal_operation()?,
+        })
+    }
+
     /// Try to fence new normal guest operations on this connection.
     ///
     /// The returned guard keeps normal operations fenced until it is dropped.

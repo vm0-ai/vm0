@@ -618,8 +618,9 @@
     "resultCount_other": "{{count}} परिणाम",
     "searchAgents": "खोज एजेंट...",
     "searching": "खोज जारी है...",
-    "searchWorkspace": "चैट, संदेश, वर्कफ़्लो और आर्टिफ़ैक्ट खोजें...",
+    "searchWorkspace": "वर्कस्पेस में खोजें...",
     "sections": {
+      "agents": "एजेंट",
       "artifacts": "आर्टिफ़ैक्ट्स",
       "chats": "चैट",
       "messages": "संदेश",

@@ -1482,3 +1482,58 @@ test("A desktop recording handoff submits the original recording and clicks once
   expect(submitted?.prompt).toContain("- Source: demo.mp4 (video)");
   expect(submitted?.prompt).toContain("- Voice: Use original source audio");
 });
+
+test("Task entries keep Intro Video behind its feature switch", async () => {
+  installIntroVideoFixture();
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerTaskEntries]: true,
+      [FeatureSwitchKey.IntroVideo]: false,
+    },
+  });
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(requiredButtonNamed("More", tasks));
+  const menu = await screen.findByRole("menu");
+  expect(within(menu).queryByText("Intro video")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "Create an intro video" }),
+  ).not.toBeInTheDocument();
+});
+
+test("Task entries open the enabled Intro Video wizard and submit its request", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerTaskEntries]: true,
+      [FeatureSwitchKey.IntroVideo]: true,
+    },
+  });
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(requiredButtonNamed("More", tasks));
+  const menu = await screen.findByRole("menu");
+  click(within(menu).getByText("Intro video"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Create an intro video",
+  });
+  await user.type(
+    within(dialog).getByLabelText("What should the video do?"),
+    "Introduce our ceramic studio.",
+  );
+  await user.click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Introduce our ceramic studio.");
+  });
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
+});

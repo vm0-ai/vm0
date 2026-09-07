@@ -12,6 +12,7 @@ libc.workspace = true
 nix = { workspace = true, features = ["user", "inotify", "fs", "signal", "sched"] }
 reqwest.workspace = true
 sandbox.workspace = true
+guest-rpc-proto.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 hex.workspace = true

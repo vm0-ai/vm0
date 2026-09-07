@@ -514,7 +514,7 @@ function okouCapabilityHeaders(
   capabilities: readonly Capability[],
 ): { readonly authorization: string } {
   if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor for zero auth");
+    throw new Error("Expected an org-scoped actor for Okou run authentication");
   }
   const seconds = Math.floor(now() / 1000);
   return {
@@ -530,7 +530,7 @@ function okouCapabilityHeaders(
   };
 }
 
-/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
+/** Okou run bearer with goal capabilities, as issued to sandboxes. */
 function goalHeaders(
   actor: ApiTestUser,
   runId: string,

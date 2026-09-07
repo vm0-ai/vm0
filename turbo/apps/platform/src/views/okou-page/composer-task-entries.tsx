@@ -3,12 +3,10 @@ import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
   CalendarDays,
-  ChevronDown,
   Clapperboard,
   GitBranch,
   Globe,
   Image,
-  LayoutTemplate,
   MoreHorizontal,
   Presentation,
   Sun,
@@ -25,21 +23,14 @@ import {
 } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core/workflow-template-items";
-import { IMAGE_MODEL_CONFIGS } from "@okouai/core/image-model-catalog";
-import type {
-  ComposerSignals,
-  ComposerImageModelSignals,
-} from "../../signals/okou-page/composer-signals.ts";
+import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import type { ComposerTask } from "../../signals/okou-page/composer-task.ts";
-import {
-  composerTaskEntriesEnabled$,
-  featureSwitch$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { introVideoWizardSignals } from "../../signals/okou-page/intro-video.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { localizedWorkflowTemplate } from "./workflow-template-copy.ts";
-import { ComposerInlineVideoOptions } from "./composer-video-options.tsx";
+import { IntroVideoWizard } from "./intro-video-wizard.tsx";
 import { ComposerTaskTemplates } from "./composer-task-templates.tsx";
 
 const TASKS = [
@@ -105,6 +96,7 @@ export function ComposerTaskEntries({
 }) {
   const { t } = useTranslation();
   const selected = useGet(signals.task.task$);
+  const flags = useLastResolved(featureSwitch$);
   const selectTask = useSet(signals.task.selectTask$);
   const labels = t(
     ($) => {
@@ -134,7 +126,7 @@ export function ComposerTaskEntries({
                   "bg-brand-subtle text-brand-text hover:bg-brand-subtle/70",
               )}
               onClick={() => {
-                selectTask(id);
+                selectTask(selected === id ? null : id);
               }}
             >
               <Icon className={cn(id === "workflow" && "text-brand-text")} />
@@ -148,6 +140,9 @@ export function ComposerTaskEntries({
         <WorkflowStarters signals={signals} />
       ) : (
         <ComposerTaskTemplates signals={signals} task={selected} />
+      )}
+      {flags?.[FeatureSwitchKey.IntroVideo] && (
+        <IntroVideoWizard composer={signals} />
       )}
     </div>
   );
@@ -279,86 +274,6 @@ export function ComposerTaskHeader({
       >
         <X />
       </Button>
-    </div>
-  );
-}
-
-function ImageTaskModel({
-  signals,
-  imageModel,
-}: {
-  readonly signals: ComposerSignals;
-  readonly imageModel: ComposerImageModelSignals;
-}) {
-  const model = useLastResolved(imageModel.effectiveImageModel$);
-  const setCategory = useSet(signals.model.setMediaModelCategory$);
-  const setOpen = useSet(signals.model.setModelPickerOpen$);
-  if (model === undefined) {
-    return null;
-  }
-  return (
-    <Button
-      variant="quiet"
-      size="sm"
-      onClick={() => {
-        setCategory("image");
-        setOpen(true);
-      }}
-    >
-      <Image />
-      {IMAGE_MODEL_CONFIGS[model].label}
-      <ChevronDown />
-    </Button>
-  );
-}
-
-export function ComposerTaskOptions({
-  signals,
-}: {
-  readonly signals: ComposerSignals;
-}) {
-  const { t } = useTranslation();
-  const task = useGet(signals.task.task$);
-  const enabled = useGet(composerTaskEntriesEnabled$);
-  const openTemplates = useSet(signals.template.openTemplatePicker$);
-  if (!enabled || task === null) {
-    return null;
-  }
-  const templateButton = (
-    <Button
-      variant="quiet"
-      size="sm"
-      onClick={() => {
-        openTemplates({
-          kind: "insert",
-          category: task === "image" ? "illustration" : task,
-        });
-      }}
-    >
-      <LayoutTemplate />
-      {t(($) => {
-        return $.chat.taskEntries.templates;
-      })}
-      <ChevronDown />
-    </Button>
-  );
-  return (
-    <div className="mx-3 mb-2 flex flex-wrap items-center gap-1 rounded-xl bg-gray-50 p-1.5">
-      {task === "video" && signals.videoModel ? (
-        <ComposerInlineVideoOptions
-          signals={signals}
-          videoModelSignals={signals.videoModel}
-        >
-          {templateButton}
-        </ComposerInlineVideoOptions>
-      ) : (
-        <>
-          {task === "image" && signals.imageModel && (
-            <ImageTaskModel signals={signals} imageModel={signals.imageModel} />
-          )}
-          {templateButton}
-        </>
-      )}
     </div>
   );
 }

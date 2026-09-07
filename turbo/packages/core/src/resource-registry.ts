@@ -3398,45 +3398,45 @@ export interface PresentationRunbookPackage {
 // older digest-pinned CLIs. Current CLIs download the storage HEAD, so these
 // intentionally do not track later presentation template publishes.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
-  bloom: "b9003d1545000987eac1868220b4ea1379ec1cdd79e884bc08d13539c1cc5f88",
+  bloom: "732a602bf37d8f10d8be14c63fd7ae12de0591dae41f9661fd29aa8591bc6465",
   "blueprint-academy":
-    "3ba06b6767eb7fb59c7e4e1599acb908f1684c18bfed2f8d29231e6f057e065e",
+    "3f3cc69eb216990518ee46164ea0a69a370ce5714d566c0e995a98f8acd2a9d8",
   "botane-organic":
-    "f422972f28f470b894e46739aa0cdec8604b7bda7b0738a9ebca3541e553f2ec",
+    "b4824cc2e220af95203b0041d959d3be53253878e760a2502b79e2d8503319cf",
   "business-data":
-    "cf039ee1f7a989af9935658f7920b7862ce029b57763f71c8562abdb6e9061d8",
-  crayon: "2f67f694ead043195e8ec3cbf3e0843e09df6d93dc49f57a261f0f7bd503ae2a",
+    "1f35bf0411a528948e94e8fdccb530aea3f2ee81681277bf720161937c2c47c2",
+  crayon: "24547aae70248b373e13b32bfcba39a53bb4d0ddc8b5ded502e9e0f4d967629a",
   "creative-agency":
-    "14ee0f1e2e3dcfd36fc571bb747681a063dfb43eb62a70f67d0fd06aa79ef977",
+    "98d4308b77075181a9bc25c97eb5aab63d406f08fbbdc11240b5242c18695ba0",
   "data-report":
-    "199bc3e337e66069ade2d15c3f71488e7d15b1cb2d25da8baffd943e13aceefa",
+    "64c088e596fd4a5d00ff2d001725eab1ff9ccdf12b66360eff968a42adbd1af8",
   "editorial-magazine":
-    "0068cfa0a3d91a9cbaeed98685f99afa6355dda8a4cab1d5e3cf7bb0e3d232f3",
+    "e135fe2d90af35ad9cc177718d1758c36e7089fe63ac4b075203c1c06f12ba35",
   "landing-consulting":
-    "622fa1cca454f057d4b5eaaa412033276ed6ad014ac7a79bc5b82cd1aaba0725",
-  lumina: "470aa7096ac3c676d644cdf74369ddcb8d120231e1981d7e7c27844d48142ab1",
-  meridian: "16ceb52885a5a93dd6ff909cbc95d2a8a27d6d8ac79ce4e6b906e57b17d69fde",
+    "94781705145e5dff3595dd9e5c08fc0e8985c29737ecf664554a91d6ccc95482",
+  lumina: "ee353d4ecefdbe8cda164bd6174baff75a549671c5d0f720b75eca31bf26c3bb",
+  meridian: "37072fe02a4e4df34d064f39237f98895b5d6d7514857171aa6cb99cdf57209b",
   "mosaic-geometric":
-    "722f6ea996166bdce3a6ab5f0292d1ead73488f03c6ad1138883e47506971cfe",
+    "8b6698813045d4cf52e26d5cd73ca6574529e58e1f2cc22a6db9de7b3b6a3a18",
   "neo-brutalism":
-    "488508a363064e08774ba3fc10eff15f72d0bc0df4ff19df841a8772869bd7a5",
-  nocturne: "22db828e89979fdbc6e388568f600098f781b03cff28a99419b4101057394227",
+    "ebb3a334c12473527009ea73d2c6b2097d38b3502bd6d12e610ceab9ae0ca252",
+  nocturne: "f78892def8d6a214ec3eadb384fce8da13dfec686319d9383798f536b8187fbb",
   "pixel-glitch":
-    "085c7f8276e7ff9f2c26d19da7bffcd436dcdbd895b741b24134e11c685e9d91",
+    "242b7f6df74dfc3799de68a11e721d6def4552b05009a9578e1cb88622c371e5",
   "playful-launch":
-    "b336b934a2f18904f2af959bf1da999f17bb71d5b727b30c94c89766dc8adcfb",
+    "e7ce6bda402a444b83ada485c71c3e0538b3692b4803cd7f96054ca07e81180a",
   "playful-pop":
-    "6f07a5183e71c5f1ab51fabb606433bf2bce40675c5612e47c0040aa21ca8358",
+    "d3de99c9b8e931de2343d511dda04f57d1deaa29c945ef4c91a5382e948c9263",
   prospectus:
-    "fe2905801b1f8beff802640b717e421c7882da2b015254bba160a92f036f190f",
+    "7ec19e6ce032544d1e4653bed9485fce0a5551bea6197c450e0b60bc28d7d16f",
   schoolhouse:
-    "e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394",
+    "387b2fb59ecac95dbe3b4e6f27d7e6ebda3ce4be317227f6506f87d02e264fc0",
   "sticker-scrapbook":
-    "8bfb271c21004703cc7151358080b5c622c7ec18eb4a5492643f35c5825aadcf",
-  strata: "78aea76e0a6aceb8fbe77a771781cbd276255f2728fc31fb5617d19550432617",
+    "a00b744d85d2e668cb98945e9758bc6222ea4f3c3b62e72842f1568d35501f3f",
+  strata: "c1396282cf80446b4cb97f8fa6859b5bd95c50090f8dcf1278a817e6e0b64cfb",
   "taped-consulting":
-    "bbf846cbf4c6591375d9b668f6e0fdf380d387fddb5c2eb173d935b03486b83f",
-  vantage: "a6290319d2b8065ce105949a5f02ba37ed1738cf9c354cd74e4742826b7ee753",
+    "c4ccffadd45dac50b9b8dc3bf0fd6f2ffa91e1cc6691ba63b5a7a1784e16d7ca",
+  vantage: "888b1478b295e1e6b0e7ae5b579261206fce4edf48c6f42893194471cdeb2c78",
 };
 
 function presentationRunbookArchiveSha256(slug: string): string {

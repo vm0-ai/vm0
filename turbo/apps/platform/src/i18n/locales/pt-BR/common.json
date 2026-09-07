@@ -2371,7 +2371,6 @@
         "video": "Estilos de vídeo",
         "website": "Estilos de site"
       },
-      "templates": "Modelos",
       "useTemplate": "Usar {{title}}",
       "workflowDescription": "Transforme tarefas recorrentes em workflows.",
       "workflowHeading": "Seu trabalho continua por você"

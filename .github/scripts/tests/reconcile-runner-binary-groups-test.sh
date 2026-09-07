@@ -128,6 +128,7 @@ SH
           "guest-mock-codex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
           "guest-reseed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
           "guest-tool-exec": "2222222222222222222222222222222222222222222222222222222222222222",
+          "guest-rpc": "2222222222222222222222222222222222222222222222222222222222222222",
           "guest-write-file": "1111111111111111111111111111111111111111111111111111111111111111"
         }
       }

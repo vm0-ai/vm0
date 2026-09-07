@@ -125,7 +125,7 @@ describe("CAPABILITIES", () => {
 });
 
 describe("CAPABILITY_META", () => {
-  it("should have metadata for every ZERO_CAPABILITY", () => {
+  it("should have metadata for every capability", () => {
     for (const cap of CAPABILITIES) {
       expect(CAPABILITY_META[cap]).toBeDefined();
       expect(CAPABILITY_META[cap].group).toBeTruthy();

@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.186.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.14...runner-rs-v0.186.15) (2026-09-07)
+
+## [0.186.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.13...runner-rs-v0.186.14) (2026-09-07)
+
+## [0.186.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.12...runner-rs-v0.186.13) (2026-09-07)
+
+
+### Bug Fixes
+
+* **python:** reject non-utf-8 catalog response headers ([#32135](https://github.com/vm0-ai/vm0/issues/32135)) ([f154925](https://github.com/vm0-ai/vm0/commit/f154925669183ea8a6c5679256122d5da4e81657))
+
+
+### Performance Improvements
+
+* **mitm-addon:** bulk-validate discarded utf-8 strings ([#32166](https://github.com/vm0-ai/vm0/issues/32166)) ([c0137f0](https://github.com/vm0-ai/vm0/commit/c0137f0ed0e1d6613929c604e71f28fe156f594d))
+
+## [0.186.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.11...runner-rs-v0.186.12) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** keep shared reactor work independently scheduled ([#32055](https://github.com/vm0-ai/vm0/issues/32055)) ([7b89f33](https://github.com/vm0-ai/vm0/commit/7b89f334da0b1cd8b14eeee723761f88ee9962bb))
+* **runner:** warn on unacknowledged promotion drains ([#32058](https://github.com/vm0-ai/vm0/issues/32058)) ([132e942](https://github.com/vm0-ai/vm0/commit/132e94205bc0e182d6c5696f3b1c6aff86318b9f))
+
 ## [0.186.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.10...runner-rs-v0.186.11) (2026-09-07)
 
 

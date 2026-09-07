@@ -103,7 +103,7 @@ async def test_vm0_api_auto_allow_injects_runner_preview_bypass(
     flow = real_flow(
         with_response=False,
         host="preview-api.vm6.ai",
-        path="/api/zero/chat-threads/thread-id/metadata",
+        path="/api/chat-threads/thread-id/metadata",
     )
     monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
 

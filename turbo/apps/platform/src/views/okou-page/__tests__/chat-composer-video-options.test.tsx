@@ -336,7 +336,7 @@ test("Link task recommendations and the input hint while keeping the template li
       return button.getAttribute("aria-label") === "Create workflow";
     }),
   ).toBeFalsy();
-  click(fastControl("button", "Templates"));
+  click(fastControl("button", "Explore templates"));
   const library = await screen.findByRole("dialog");
   click(fastControl("button", "Close", library));
   await waitFor(() => {
@@ -346,8 +346,13 @@ test("Link task recommendations and the input hint while keeping the template li
   await expect(
     screen.findByRole("region", { name: "Let your work keep working" }),
   ).resolves.toBeVisible();
-  expect(fastControl("button", "Template")).toBeVisible();
-  expect(fastControl("button", "Create workflow")).toBeVisible();
+  expect(
+    queryAllByRoleFast("button").filter((button) => {
+      return ["Template", "Create workflow"].includes(
+        button.getAttribute("aria-label") ?? "",
+      );
+    }),
+  ).toHaveLength(0);
 });
 
 test.each([
@@ -468,16 +473,16 @@ test("Configure and submit a video directly from task entries on mobile", async 
   const editor = await enterText("A ceramic cup in the morning light.");
   const tasks = await screen.findByRole("group", { name: "Choose a task" });
   click(fastControl("button", "Video", tasks));
-  const options = await screen.findByRole("group", { name: "Video options" });
-  expect(options).toContainElement(
-    screen.getByRole("combobox", { name: "Ratio" }),
+  click(
+    await waitFor(() => {
+      return fastControl("button", "Video options: Seedance 2.0");
+    }),
   );
-  click(screen.getByRole("combobox", { name: "Ratio" }));
-  click(await screen.findByRole("option", { name: "9:16" }));
+  await screen.findByLabelText("Video options");
+  const ratios = screen.getByRole("radiogroup", { name: "Ratio" });
+  click(optionRadio(ratios, "9:16"));
   await waitFor(() => {
-    expect(screen.getByRole("combobox", { name: "Ratio" })).toHaveTextContent(
-      "9:16",
-    );
+    expect(optionRadio(ratios, "9:16")).toHaveAttribute("aria-checked", "true");
   });
   click(screen.getByRole("switch", { name: "Generate audio" }));
   await waitFor(() => {
@@ -485,6 +490,7 @@ test("Configure and submit a video directly from task entries on mobile", async 
       screen.getByRole("switch", { name: "Generate audio" }),
     ).toHaveAttribute("aria-checked", "false");
   });
+  await userEvent.setup({ delay: null }).keyboard("{Escape}");
   await sendCurrent(editor, "A ceramic cup in the morning light.");
   await waitFor(() => {
     expect(submissions).toHaveLength(1);
@@ -557,9 +563,14 @@ test("Clear the task and its video settings while preserving the user's message"
   const editor = await enterText("Keep this exact message.");
   const tasks = await screen.findByRole("group", { name: "Choose a task" });
   click(fastControl("button", "Video", tasks));
-  await screen.findByRole("group", { name: "Video options" });
-  click(screen.getByRole("combobox", { name: "Ratio" }));
-  click(await screen.findByRole("option", { name: "9:16" }));
+  click(
+    await waitFor(() => {
+      return fastControl("button", "Video options: Seedance 2.0");
+    }),
+  );
+  await screen.findByLabelText("Video options");
+  click(optionRadio(screen.getByRole("radiogroup", { name: "Ratio" }), "9:16"));
+  await userEvent.setup({ delay: null }).keyboard("{Escape}");
   click(fastControl("button", "Clear task"));
   await waitFor(() => {
     expect(fastControl("button", "Video", tasks)).toHaveAttribute(
@@ -568,9 +579,7 @@ test("Clear the task and its video settings while preserving the user's message"
     );
   });
   expect(editor).toHaveTextContent("Keep this exact message.");
-  expect(
-    screen.queryByRole("group", { name: "Video options" }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Video options")).not.toBeInTheDocument();
   await sendCurrent(editor, "Keep this exact message.");
   await waitFor(() => {
     expect(submissions).toHaveLength(1);
@@ -626,7 +635,9 @@ test("Changing from a workflow starter to video removes conflicting templates bu
   });
   const tasks = screen.getByRole("group", { name: "Choose a task" });
   click(fastControl("button", "Video", tasks));
-  await screen.findByRole("group", { name: "Video options" });
+  await waitFor(() => {
+    return fastControl("button", "Video options: Seedance 2.0");
+  });
   expect(editor).toHaveTextContent("Use my morning notes.");
   expect(editor).not.toHaveTextContent("Morning brief");
   await sendCurrent(editor, "Use my morning notes.");
@@ -640,6 +651,72 @@ test("Changing from a workflow starter to video removes conflicting templates bu
     expect(submissions[0]?.userMessage?.parts).toContainEqual({
       type: "text",
       text: "Generate a video for the following request.\nUse my morning notes.",
+    });
+  });
+});
+
+test("Clicking the selected task again restores ordinary chat and preserves the draft", async () => {
+  const submissions = installVideoSubmissionCapture();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Keep my draft exactly.");
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  for (const name of ["Workflow", "Slides", "Image", "Video", "Website"]) {
+    const button = fastControl("button", name, tasks);
+    click(button);
+    await waitFor(() => {
+      expect(button).toHaveAttribute("aria-pressed", "true");
+    });
+    click(button);
+    await waitFor(() => {
+      expect(button).toHaveAttribute("aria-pressed", "false");
+    });
+    expect(editor).toHaveTextContent("Keep my draft exactly.");
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.getAttribute("aria-label") === "Clear task";
+      }),
+    ).toBeFalsy();
+  }
+  await sendCurrent(editor, "Keep my draft exactly.");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(
+      submissions[0]?.userMessage?.parts.filter((part) => {
+        return part.type === "text";
+      }),
+    ).toStrictEqual([{ type: "text", text: "Keep my draft exactly." }]);
+    expect(submissions[0]?.runOptions).toBeUndefined();
+  });
+});
+
+test("Send an image task with Enter after selecting its model", async () => {
+  const submissions = installVideoSubmissionCapture();
+  const user = userEvent.setup({ delay: null });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Draw a ceramic cup.");
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Image", tasks));
+  const picker = await screen.findByRole("combobox", { name: "Image models" });
+  click(picker);
+  click(await screen.findByRole("option", { name: "GPT Image 1" }));
+  await waitFor(() => {
+    expect(picker).toHaveTextContent("GPT Image 1");
+  });
+  await user.click(editor);
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.userMessage?.parts).toContainEqual({
+      type: "text",
+      text: "Generate an image for the following request.\nDraw a ceramic cup.",
     });
   });
 });

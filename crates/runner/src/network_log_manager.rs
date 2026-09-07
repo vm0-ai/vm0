@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use tokio::sync::mpsc::error::TrySendError;
@@ -47,6 +48,7 @@ struct Inner {
 struct WriteGate {
     started: Arc<Notify>,
     release: Arc<Semaphore>,
+    blocking: bool,
 }
 
 #[cfg(test)]
@@ -68,12 +70,14 @@ pub struct NetworkLogSession {
     path: Arc<Path>,
     generation: u64,
     closed: bool,
+    writer_failed: Arc<AtomicBool>,
 }
 
 /// Failure-scoped state observed while closing one network-log session.
 pub struct NetworkLogCloseObservation {
     drain: crate::network_log_drain::NetworkLogDrainReport,
     writer_backpressure_observed: bool,
+    writer_failed: bool,
 }
 
 impl NetworkLogCloseObservation {
@@ -83,6 +87,10 @@ impl NetworkLogCloseObservation {
 
     pub(crate) fn writer_backpressure_observed(&self) -> bool {
         self.writer_backpressure_observed
+    }
+
+    pub(crate) fn writer_failed(&self) -> bool {
+        self.writer_failed
     }
 }
 
@@ -102,10 +110,9 @@ impl NetworkLogSession {
         run_id: RunId,
         drain: &NetworkLogDrainCoordinator,
     ) -> NetworkLogCloseObservation {
-        let current = self
-            .manager
-            .begin_session_drain(&self.source_ip, &self.path, self.generation)
-            .await;
+        let current =
+            self.manager
+                .begin_session_drain(&self.source_ip, &self.path, self.generation);
         let drain = if current {
             drain
                 .drain(NetworkLogDrainContext {
@@ -118,17 +125,36 @@ impl NetworkLogSession {
         } else {
             Default::default()
         };
-        let writer_backpressure_observed = self
-            .manager
-            .finalize_session(&self.source_ip, &self.path, self.generation)
-            .await;
+        let writer_backpressure_observed =
+            self.manager
+                .finalize_session(&self.source_ip, &self.path, self.generation);
         #[cfg(test)]
         self.manager.before_close_upload_flush_for_test().await;
-        self.manager.flush_path(&self.path).await;
+        {
+            use tracing::Instrument;
+            async {
+                let _progress = crate::cleanup_progress::CleanupProgress::start(
+                    "network_log",
+                    "accepted_write_flush",
+                    crate::cleanup_progress::CleanupIdentity::Run(run_id),
+                );
+                self.manager.flush_path(&self.path).await;
+            }
+            .instrument(tracing::info_span!(
+                "network_log_flush", %run_id, source_ip = %self.source_ip,
+                path = %self.path.display(), generation = self.generation
+            ))
+            .await;
+        }
         self.closed = true;
+        let writer_failed = self.writer_failed.load(Ordering::Acquire);
+        if writer_failed {
+            warn!(%run_id, path = %self.path.display(), "network log session closed with write failures");
+        }
         NetworkLogCloseObservation {
             drain,
             writer_backpressure_observed,
+            writer_failed,
         }
     }
 }
@@ -139,17 +165,8 @@ impl Drop for NetworkLogSession {
             return;
         }
 
-        let manager = self.manager.clone();
-        let source_ip = self.source_ip.clone();
-        let path = Arc::clone(&self.path);
-        let generation = self.generation;
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            std::mem::drop(handle.spawn(async move {
-                manager
-                    .finalize_session(&source_ip, &path, generation)
-                    .await;
-            }));
-        }
+        self.manager
+            .finalize_session(&self.source_ip, &self.path, self.generation);
     }
 }
 
@@ -161,7 +178,11 @@ impl NetworkLogManager {
     #[cfg(test)]
     pub(crate) fn new_with_write_gate(started: Arc<Notify>, release: Arc<Semaphore>) -> Self {
         Self::new_for_test(
-            Some(WriteGate { started, release }),
+            Some(WriteGate {
+                started,
+                release,
+                blocking: false,
+            }),
             None,
             WriterConfig::default(),
         )
@@ -173,7 +194,15 @@ impl NetworkLogManager {
         release: Arc<Semaphore>,
         writer_config: WriterConfig,
     ) -> Self {
-        Self::new_for_test(Some(WriteGate { started, release }), None, writer_config)
+        Self::new_for_test(
+            Some(WriteGate {
+                started,
+                release,
+                blocking: false,
+            }),
+            None,
+            writer_config,
+        )
     }
 
     #[cfg(test)]
@@ -213,24 +242,21 @@ impl NetworkLogManager {
         source_ip: impl Into<String>,
         path: PathBuf,
     ) -> NetworkLogSession {
-        let registration = self
-            .inner
-            .state
-            .register_source_ip(source_ip.into(), path)
-            .await;
+        let registration = self.inner.state.register_source_ip(source_ip.into(), path);
         NetworkLogSession {
             manager: self.clone(),
             source_ip: registration.source_ip,
             path: registration.path,
             generation: registration.generation,
             closed: false,
+            writer_failed: registration.writer_failed,
         }
     }
 
     /// Remove a source mapping immediately.
     #[cfg(test)]
     pub async fn unregister_source_ip(&self, source_ip: &str) {
-        self.inner.state.unregister_source_ip(source_ip).await;
+        self.inner.state.unregister_source_ip(source_ip);
     }
 
     /// Accept a JSON network-log row for a source IP.
@@ -252,7 +278,7 @@ impl NetworkLogManager {
             }
         };
 
-        let Some(snapshot) = self.inner.state.source_snapshot(source_ip).await else {
+        let Some(snapshot) = self.inner.state.source_snapshot(source_ip) else {
             return false;
         };
         let writer_pool = self.writer_pool();
@@ -265,8 +291,7 @@ impl NetworkLogManager {
             Err(TrySendError::Full(sender)) => {
                 self.inner
                     .state
-                    .mark_writer_backpressure(source_ip, &snapshot)
-                    .await;
+                    .mark_writer_backpressure(source_ip, &snapshot);
                 match sender.reserve_owned().await {
                     Ok(permit) => permit,
                     Err(_) => {
@@ -291,7 +316,6 @@ impl NetworkLogManager {
             .inner
             .state
             .try_accept_snapshot(source_ip, &snapshot, line)
-            .await
         else {
             return false;
         };
@@ -302,7 +326,6 @@ impl NetworkLogManager {
     fn writer_pool(&self) -> &WriterPool {
         self.inner.writers.get_or_init(|| {
             WriterPool::start(
-                self.inner.state.completion_handle(),
                 self.inner.writer_config.normalized(),
                 #[cfg(test)]
                 self.inner.write_gate.clone(),
@@ -310,18 +333,16 @@ impl NetworkLogManager {
         })
     }
 
-    async fn begin_session_drain(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
+    fn begin_session_drain(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
         self.inner
             .state
             .begin_session_drain(source_ip, path, generation)
-            .await
     }
 
-    async fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
+    fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
         self.inner
             .state
             .finalize_session(source_ip, path, generation)
-            .await
     }
 
     /// Wait until all currently accepted Rust-side writes for `path` finish.
@@ -367,7 +388,7 @@ mod tests {
     }
 
     async fn source_ip_registered(manager: &NetworkLogManager, source_ip: &str) -> bool {
-        manager.inner.state.source_ip_registered(source_ip).await
+        manager.inner.state.source_ip_registered(source_ip)
     }
 
     async fn wait_source_ip_unregistered(manager: &NetworkLogManager, source_ip: &str) {
@@ -381,6 +402,183 @@ mod tests {
                 "source IP {source_ip} stayed registered after session drop",
             );
             tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn writer_panic_does_not_strand_accepted_sessions_or_flush_waiters() {
+        let dir = tempfile::tempdir().unwrap();
+        let first_path = dir.path().join("first.jsonl");
+        let second_path = dir.path().join("second.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let manager = NetworkLogManager::new_with_write_gate_and_config(
+            Arc::clone(&started),
+            Arc::clone(&release),
+            WriterConfig {
+                shards: 1,
+                ..Default::default()
+            },
+        );
+        let first = manager
+            .register_source_ip("10.0.0.1", first_path.clone())
+            .await;
+        let second = manager
+            .register_source_ip("10.0.0.2", second_path.clone())
+            .await;
+        assert!(manager.append_for_ip("10.0.0.1", json!({"row": 1})).await);
+        started.notified().await;
+        // The first batch is owned by the writer; these rows remain queued.
+        assert!(manager.append_for_ip("10.0.0.1", json!({"row": 2})).await);
+        assert!(manager.append_for_ip("10.0.0.2", json!({"row": 3})).await);
+        release.close(); // Fail at the append boundary, unwinding the outer writer.
+        let drain = NetworkLogDrainCoordinator::default();
+        let (first_observation, second_observation, (), ()) =
+            tokio::time::timeout(Duration::from_secs(2), async {
+                tokio::join!(
+                    first.close_for_upload(RunId::new_v4(), &drain),
+                    second.close_for_upload(RunId::new_v4(), &drain),
+                    manager.flush_path(&first_path),
+                    manager.flush_path(&first_path),
+                )
+            })
+            .await
+            .expect("terminated writer must not strand accepted rows or concurrent flush waiters");
+        assert!(first_observation.writer_failed());
+        assert!(second_observation.writer_failed());
+        assert!(!first_path.exists());
+        assert!(!second_path.exists());
+    }
+
+    // Prevent a failing assertion from leaving a real blocking task held while
+    // the test runtime tries to shut down.
+    struct CloseWriteGateOnDrop(Arc<Semaphore>);
+
+    impl Drop for CloseWriteGateOnDrop {
+        fn drop(&mut self) {
+            self.0.close();
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_writer_keeps_blocking_append_owned_until_real_file_completion() {
+        use tracing_subscriber::prelude::*;
+        use tracing_test_support::CapturedEvents;
+
+        let captured = CapturedEvents::default();
+        let _subscriber =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(captured.clone()));
+        tracing::callsite::rebuild_interest_cache();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Semaphore::new(0));
+        let _release_on_drop = CloseWriteGateOnDrop(Arc::clone(&release));
+        let manager = NetworkLogManager::new_for_test(
+            Some(WriteGate {
+                started: Arc::clone(&started),
+                release: Arc::clone(&release),
+                blocking: true,
+            }),
+            None,
+            WriterConfig {
+                shards: 1,
+                ..Default::default()
+            },
+        );
+        let session = manager.register_source_ip("10.0.0.1", path.clone()).await;
+        assert!(manager.append_for_ip("10.0.0.1", json!({"row": 1})).await);
+        tokio::time::timeout(Duration::from_secs(2), started.notified())
+            .await
+            .unwrap();
+        assert!(manager.append_for_ip("10.0.0.1", json!({"row": 2})).await);
+        let writer = &manager.writer_pool().tasks[0];
+        writer.abort();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !writer.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let drain = NetworkLogDrainCoordinator::noop();
+        let run_id = RunId::new_v4();
+        let close = session.close_for_upload(run_id, &drain);
+        tokio::pin!(close);
+        tokio::select! {
+            biased;
+            _ = &mut close => panic!("outer writer cancellation discharged an active blocking append"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert!(!path.exists());
+        tokio::time::pause();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(31)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            captured.entries().iter().any(|event| {
+                event.fields.get("message").map(String::as_str)
+                    == Some("required cleanup still pending")
+                    && event.fields.get("phase").map(String::as_str) == Some("accepted_write_flush")
+                    && event.fields.get("run_id") == Some(&run_id.to_string())
+            }),
+            "delayed flush must identify its run without claiming completion"
+        );
+        tokio::time::resume();
+        release.add_permits(1);
+        let observation = tokio::time::timeout(Duration::from_secs(2), close)
+            .await
+            .unwrap();
+        assert!(
+            observation.writer_failed(),
+            "the queued row was abandoned, not persisted"
+        );
+        assert_eq!(read_json_lines(&path), vec![json!({"row": 1})]);
+    }
+
+    #[tokio::test]
+    async fn blocking_append_failure_is_observed_after_source_mapping_is_removed() {
+        for panic in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("network.jsonl");
+            // A directory is rejected by the actual append boundary.
+            std::fs::create_dir(&path).unwrap();
+            let started = Arc::new(Notify::new());
+            let release = Arc::new(Semaphore::new(0));
+            let _release_on_drop = CloseWriteGateOnDrop(Arc::clone(&release));
+            let manager = NetworkLogManager::new_for_test(
+                Some(WriteGate {
+                    started: Arc::clone(&started),
+                    release: Arc::clone(&release),
+                    blocking: true,
+                }),
+                None,
+                WriterConfig::default(),
+            );
+            let session = manager.register_source_ip("10.0.0.1", path.clone()).await;
+            assert!(manager.append_for_ip("10.0.0.1", json!({"row": 1})).await);
+            tokio::time::timeout(Duration::from_secs(2), started.notified())
+                .await
+                .unwrap();
+            let drain = NetworkLogDrainCoordinator::noop();
+            let close = session.close_for_upload(RunId::new_v4(), &drain);
+            tokio::pin!(close);
+            tokio::select! {
+                biased;
+                _ = &mut close => panic!("close completed before append result"),
+                _ = tokio::task::yield_now() => {}
+            }
+            assert!(!source_ip_registered(&manager, "10.0.0.1").await);
+            if panic {
+                release.close();
+            } else {
+                release.add_permits(1);
+            }
+            let observation = tokio::time::timeout(Duration::from_secs(2), close)
+                .await
+                .unwrap();
+            assert!(observation.writer_failed());
+            assert!(path.is_dir());
         }
     }
 
@@ -699,8 +897,7 @@ mod tests {
             manager
                 .inner
                 .state
-                .source_and_pending_path_share_identity("10.200.0.2", &old_path)
-                .await,
+                .source_and_pending_path_share_identity("10.200.0.2", &old_path),
             "repeated appends should reuse the registered path allocation"
         );
 
@@ -717,8 +914,7 @@ mod tests {
             manager
                 .inner
                 .state
-                .source_and_pending_path_share_identity("10.200.0.2", &new_path)
-                .await,
+                .source_and_pending_path_share_identity("10.200.0.2", &new_path),
             "re-registered source should share its new path allocation"
         );
 
@@ -970,9 +1166,7 @@ mod tests {
         let manager = NetworkLogManager::new();
         let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
 
-        manager
-            .begin_session_drain(&session.source_ip, &session.path, session.generation)
-            .await;
+        manager.begin_session_drain(&session.source_ip, &session.path, session.generation);
         assert!(
             manager
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"late.test"}))
@@ -984,9 +1178,7 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["host"], "late.test");
 
-        manager
-            .finalize_session(&session.source_ip, &session.path, session.generation)
-            .await;
+        manager.finalize_session(&session.source_ip, &session.path, session.generation);
         assert!(
             !manager
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"closed.test"}))
@@ -1004,15 +1196,11 @@ mod tests {
             .register_source_ip("10.200.0.2", old_path.clone())
             .await;
 
-        manager
-            .begin_session_drain(&old.source_ip, &old.path, old.generation)
-            .await;
+        manager.begin_session_drain(&old.source_ip, &old.path, old.generation);
         let _new_session = manager
             .register_source_ip("10.200.0.2", new_path.clone())
             .await;
-        manager
-            .finalize_session(&old.source_ip, &old.path, old.generation)
-            .await;
+        manager.finalize_session(&old.source_ip, &old.path, old.generation);
 
         assert!(
             manager

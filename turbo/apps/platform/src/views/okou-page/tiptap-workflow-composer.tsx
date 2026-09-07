@@ -188,7 +188,7 @@ function WorkflowComposerPlaceholder({
   }
   return (
     <div
-      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 ${task === null ? "text-muted-foreground/40 new-ui:text-muted-foreground/80" : "text-muted-foreground"} ${
+      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 ${task === null ? "text-muted-foreground/80" : "text-muted-foreground"} ${
         hasTemplateAttachment ? "top-[54px]" : "top-0 pt-4"
       }`}
       aria-hidden="true"

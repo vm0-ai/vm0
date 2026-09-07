@@ -326,7 +326,7 @@ describe("GET /api/connectors/search", () => {
     expect(openai?.authMethods).toStrictEqual(["api-token"]);
   });
 
-  it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
+  it("accepts an Okou run token carrying connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await store.set(
@@ -360,7 +360,7 @@ describe("GET /api/connectors/search", () => {
     expect(response.body.connectors.length).toBeGreaterThan(0);
   });
 
-  it("rejects a ZERO_TOKEN missing the connector:read capability with 403", async () => {
+  it("rejects an Okou run token missing connector:read with 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     await store.set(

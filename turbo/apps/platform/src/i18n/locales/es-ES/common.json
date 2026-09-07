@@ -2371,7 +2371,6 @@
         "video": "Estilos de vídeo",
         "website": "Estilos de sitio web"
       },
-      "templates": "Plantillas",
       "useTemplate": "Usar {{title}}",
       "workflowDescription": "Convierte las tareas repetitivas en workflows.",
       "workflowHeading": "Deja que tu trabajo siga avanzando"

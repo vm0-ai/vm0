@@ -15,7 +15,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
 helper gap:
-- AUTH-02 device, desktop, sandbox, zero, realtime, and run-scoped token flows
+- AUTH-02 device, desktop, sandbox, realtime, and Okou run-token flows
   need a dedicated token helper; this file covers the CLI PAT flow end to end
   through device authorization and use.
 - AUTH-03 built-in/user connector and push subscription flows need their own
@@ -149,15 +149,6 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
-
-    const removedLimitedFreeEndpoint = await api.requestRawJson(
-      admin,
-      "/api/zero/onboarding/complete-limited-free",
-      "POST",
-      {},
-      [404],
-    );
-    expect(removedLimitedFreeEndpoint.status).toBe(404);
 
     const afterRepeatedBootstrap = await api.listAgents(admin);
     expect(

@@ -11,6 +11,83 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.855.1](https://github.com/vm0-ai/vm0/compare/app-v0.855.0...app-v0.855.1) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.6
+    * @okouai/core bumped to 8.630.1
+
+## [0.855.0](https://github.com/vm0-ai/vm0/compare/app-v0.854.2...app-v0.855.0) (2026-09-07)
+
+
+### Features
+
+* enable presentation templates for all organizations ([#32089](https://github.com/vm0-ai/vm0/issues/32089)) ([7096061](https://github.com/vm0-ai/vm0/commit/7096061d5771379747e1da8d891b457f67a89850))
+
+
+### Bug Fixes
+
+* derive chat preference progress from shared invocations ([#32189](https://github.com/vm0-ai/vm0/issues/32189)) ([b8b8331](https://github.com/vm0-ai/vm0/commit/b8b8331aec0727c7fba8ef36148ae1c88fd440e3))
+
+
+### Refactoring
+
+* **platform:** drop legacy data-vm0 readers ([#32187](https://github.com/vm0-ai/vm0/issues/32187)) ([5e65ca1](https://github.com/vm0-ai/vm0/commit/5e65ca1da74e6216f0be7dc68286a65006296cfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.5
+    * @okouai/connectors bumped to 3.7.0
+    * @okouai/core bumped to 8.630.0
+    * @okouai/ui bumped to 1.6.1
+
+## [0.854.2](https://github.com/vm0-ai/vm0/compare/app-v0.854.1...app-v0.854.2) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.4
+    * @okouai/core bumped to 8.629.2
+
+## [0.854.1](https://github.com/vm0-ai/vm0/compare/app-v0.854.0...app-v0.854.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **platform:** wait for skeleton before page readiness ([#32175](https://github.com/vm0-ai/vm0/issues/32175)) ([f68a10c](https://github.com/vm0-ai/vm0/commit/f68a10cf2ee61699911aba45781deb2b5c4dc194))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.3
+    * @okouai/connectors bumped to 3.6.0
+    * @okouai/core bumped to 8.629.1
+
+## [0.854.0](https://github.com/vm0-ai/vm0/compare/app-v0.853.0...app-v0.854.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** enlarge pinned agent avatars behind a feature switch ([#32067](https://github.com/vm0-ai/vm0/issues/32067)) ([ea29038](https://github.com/vm0-ai/vm0/commit/ea29038571b77c7dda8c95c8e500599c33db984c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.629.0
+
 ## [0.853.0](https://github.com/vm0-ai/vm0/compare/app-v0.852.0...app-v0.853.0) (2026-09-07)
 
 

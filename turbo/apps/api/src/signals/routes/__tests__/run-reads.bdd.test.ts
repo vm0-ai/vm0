@@ -3473,7 +3473,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
     // A claimed run's real Okou token reads the log surfaces by capability.
     const tokenRun = await api.createRun(actor, {
       agentId: agentOne.agentId,
-      prompt: "zero token run",
+      prompt: "Okou run token log access",
       modelProvider: "anthropic-api-key",
     });
     const tokenClaim = await api.claimRunnerJob(tokenRun.runId);

@@ -648,7 +648,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(sessions).toStrictEqual([
       {
         toolNames: PI_MEMORY_PHASE2_TOOL_NAMES,
-        thinkingLevel: "medium",
+        thinkingLevel: "max",
         sessionFile: undefined,
         extensions: 0,
         skills: 0,
@@ -668,7 +668,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       expect(request.url).toBe("/v1/responses");
       expect(request.body).toMatchObject({
         model: "MODEL_ALIAS_SECRET_31243",
-        reasoning: { effort: "medium" },
+        reasoning: { effort: "max" },
       });
       expect(
         (request.body.tools as Array<{ readonly name: string }>).map((tool) => {

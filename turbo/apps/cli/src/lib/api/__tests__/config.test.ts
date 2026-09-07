@@ -28,19 +28,6 @@ describe("Okou configuration", () => {
     await expect(getActiveToken()).resolves.toBe("okou-token-value");
   });
 
-  it("rejects an OKOU_TOKEN minted with the retired zero scope", async () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildFakeSandboxJwt({
-        scope: "zero",
-        orgId: "org-from-retired-scope-token",
-        capabilities: [],
-      }),
-    );
-
-    await expect(getActiveOrg()).resolves.toBeUndefined();
-  });
-
   it("reads the active organization from an okou-scoped OKOU_TOKEN", async () => {
     vi.stubEnv(
       "OKOU_TOKEN",

@@ -213,10 +213,6 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-fable-5.1")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-fable-5")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("anthropic/claude-fable-5")).toBe(
-      true,
-    );
     expect(isLimitedFree1RestrictedRunModel("claude-opus-5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-5")).toBe(
       true,
@@ -548,12 +544,6 @@ describe("model-first canonical catalog", () => {
     expect(
       getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5-1"),
     ).toBe("anthropic/claude-fable-5.1");
-    expect(
-      getProviderRuntimeModel("openrouter-api-key", "claude-fable-5"),
-    ).toBe("anthropic/claude-fable-5");
-    expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5")).toBe(
-      "anthropic/claude-fable-5",
-    );
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.5")).toBe(
       "gpt-5.5",
     );
@@ -614,7 +604,6 @@ describe("model-first canonical catalog", () => {
 
   it.each([
     "claude-fable-5-1",
-    "claude-fable-5",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-sonnet-5",
@@ -632,7 +621,6 @@ describe("model-first canonical catalog", () => {
   it("defines two statically compilable built-in model routes for every active model", () => {
     expect(Object.keys(BUILT_IN_MODEL_TO_PROVIDER)).toEqual([
       "claude-fable-5-1",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-opus-4-8",
       "claude-sonnet-5",
@@ -894,8 +882,6 @@ describe("model image input support", () => {
     "openai/gpt-6-astra",
     "claude-fable-5-1",
     "anthropic/claude-fable-5.1",
-    "claude-fable-5",
-    "anthropic/claude-fable-5",
     "claude-opus-5",
     "anthropic/claude-opus-5",
     "claude-sonnet-4-6",

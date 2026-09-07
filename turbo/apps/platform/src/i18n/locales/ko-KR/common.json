@@ -2324,7 +2324,6 @@
         "video": "동영상 스타일",
         "website": "웹사이트 스타일"
       },
-      "templates": "템플릿",
       "useTemplate": "{{title}} 사용",
       "workflowDescription": "반복하는 작업을 워크플로로 만드세요.",
       "workflowHeading": "반복되는 일을 맡겨 보세요"

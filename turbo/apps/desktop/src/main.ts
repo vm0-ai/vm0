@@ -76,9 +76,11 @@ import {
 } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import desktopBrandAssets from "./desktop-brand-assets.json";
-import { checkForDesktopUpdates } from "./desktop-auto-updates";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
-import type { DesktopMainModule } from "./desktop-main-module";
+import type {
+  DesktopAutoUpdatesController,
+  DesktopMainModule,
+} from "./desktop-main-module";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
 import { createDesktopComputerUseHostRuntime } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
@@ -180,7 +182,7 @@ ipcMain.on(DESKTOP_IDENTITY_CHANNEL, (event) => {
 });
 let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let mcpPluginManager: DesktopMcpPluginManager | null = null;
-let desktopAutoUpdatesInstalled = false;
+let desktopAutoUpdates: DesktopAutoUpdatesController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend({
@@ -993,8 +995,8 @@ export const desktopUpdateHooks: DesktopMainModule["desktopUpdateHooks"] =
   });
 
 export const notifyDesktopAutoUpdatesInstalled: DesktopMainModule["notifyDesktopAutoUpdatesInstalled"] =
-  (installed) => {
-    desktopAutoUpdatesInstalled = installed;
+  (autoUpdates) => {
+    desktopAutoUpdates = autoUpdates;
     applyApplicationMenu();
   };
 
@@ -1092,11 +1094,11 @@ function requestDesktopQuit(): void {
 }
 
 function requestDesktopUpdateCheck(): void {
-  if (!desktopAutoUpdatesInstalled) {
+  if (!desktopAutoUpdates) {
     return;
   }
 
-  checkForDesktopUpdates(config.identity.displayName);
+  desktopAutoUpdates.checkForUpdates(config.identity.displayName);
 }
 
 function applyApplicationMenu(): void {
@@ -1104,7 +1106,7 @@ function applyApplicationMenu(): void {
     { role: "about" },
     {
       label: "Check for Updates...",
-      enabled: desktopAutoUpdatesInstalled,
+      enabled: desktopAutoUpdates !== null,
       click: requestDesktopUpdateCheck,
     },
     { type: "separator" },

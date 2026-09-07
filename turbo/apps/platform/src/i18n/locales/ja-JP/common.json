@@ -2324,7 +2324,6 @@
         "video": "動画のスタイル",
         "website": "ウェブサイトのスタイル"
       },
-      "templates": "テンプレート",
       "useTemplate": "{{title}} を使用",
       "workflowDescription": "繰り返し行う作業をワークフローに。",
       "workflowHeading": "繰り返す仕事を任せよう"

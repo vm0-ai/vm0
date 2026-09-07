@@ -273,7 +273,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerTaskEntries]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Show workflow-first composer task entries with inline generation settings.",
+      "Show workflow-first composer task entries with task-specific generation settings.",
     enabled: false,
   },
   [FeatureSwitchKey.ModelPickerMenu]: {
@@ -283,6 +283,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
     enabledEmailHashes: ["6490c77f", "9fd4ee92"], // bingjie@okou.ai, bingjie@vm0.ai
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@vm0.ai",
@@ -315,8 +316,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable owner-scoped presentation template imports and catalog APIs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@vm0.ai",
@@ -335,10 +335,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
-    enabled: false,
-    // Staff first: this redraws every avatar that already exists, not just
-    // newly created ones, so the whole population changes the moment it widens.
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
@@ -423,6 +420,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkspaceAgentSearch]: {
+    maintainer: "ethan@okou.ai",
+    description: "Find agents by name in workspace search",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThreadPinShortcut]: {
     maintainer: "ethan@okou.ai",
     description:
@@ -438,13 +441,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
-  [FeatureSwitchKey.GeistTypeface]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Set the interface typeface to Geist and Geist Mono instead of Noto Sans and JetBrains Mono.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -458,6 +454,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show Codex and Claude Code personal subscription usage in the sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PinnedAgentAvatar64]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show 64px avatars in the horizontal pinned-agent grid with three cards per row.",
+    enabled: false,
   },
   [FeatureSwitchKey.PersonalModelProviderAccounts]: {
     maintainer: "ethan@vm0.ai",
@@ -484,14 +486,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
-  },
-  [FeatureSwitchKey.NewUi]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Lay the workspace out as a card floating on the shell's grey, with the two sidebars on the site's own greys and a brand-hued composer focus ring in dark.",
-    enabled: false,
-    // Ming only while the shell settles; widen once the layout is signed off.
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
 };
 

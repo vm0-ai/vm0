@@ -556,6 +556,8 @@ pub struct FirecrackerSandbox {
     park_outcome: Option<SandboxParkOutcome>,
     /// Host-side normal-operation fence held while this sandbox is parked.
     park_fence: Option<NormalOperationFence>,
+    guest_rpc_endpoint: Option<crate::guest_rpc::GuestRpcEndpoint>,
+    runtime_cancel: CancellationToken,
     /// Optional managed host CPU placement for the Firecracker process.
     host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
 }
@@ -671,6 +673,8 @@ impl FirecrackerSandbox {
             is_parked: false,
             park_outcome: None,
             park_fence: None,
+            guest_rpc_endpoint: None,
+            runtime_cancel: CancellationToken::new(),
             host_cpu_cgroup,
         }
     }
@@ -1342,7 +1346,14 @@ impl FirecrackerSandbox {
             return Err(error);
         }
 
-        let runtime_cancel = CancellationToken::new();
+        let runtime_cancel = self.runtime_cancel.clone();
+        // Synchronous bind precedes BOTH fresh guest boot and snapshot resume.
+        // Until successful startup, this local owner covers all error/cancel paths.
+        let guest_rpc_endpoint =
+            self.bind_guest_rpc_endpoint()
+                .map_err(|error| SandboxError::Start {
+                    message: format!("bind guest RPC transport: {error}"),
+                })?;
 
         // Start the vsock listener BEFORE launching Firecracker.
         // The UDS must be bound before the guest tries to connect.
@@ -1571,9 +1582,24 @@ impl FirecrackerSandbox {
             self.state_tx.subscribe(),
         ));
 
+        self.guest_rpc_endpoint = Some(guest_rpc_endpoint);
+
         info!(id = %self.id, "sandbox started");
         timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, true);
         Ok(())
+    }
+
+    fn bind_guest_rpc_endpoint(&self) -> io::Result<crate::guest_rpc::GuestRpcEndpoint> {
+        crate::guest_rpc::GuestRpcEndpoint::bind(
+            self.sock_paths.guest_rpc(),
+            crate::guest_rpc::GuestRpcContext {
+                sandbox_id: self.id.clone(),
+                state: Arc::clone(&self.state),
+                guest: Arc::clone(&self.guest),
+                coordinator: self.park_coordinator.clone(),
+            },
+            self.runtime_cancel.clone(),
+        )
     }
 }
 
@@ -1584,6 +1610,8 @@ async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
 
 impl Drop for FirecrackerSandbox {
     fn drop(&mut self) {
+        drop(self.guest_rpc_endpoint.take());
+        self.runtime_cancel.cancel();
         // Drop cannot await async teardown, so fall back to synchronous
         // runtime aborts and ask the monitor to kill the process group.
         self.runtime.abort_for_drop();
@@ -2082,6 +2110,7 @@ impl FirecrackerSandbox {
             )
             .await?;
         self.park_fence = Some(normal_operations_fence);
+        drop(self.guest_rpc_endpoint.take());
         match physical_outcome {
             PhysicalParkOutcome::Idle(park_outcome) => {
                 self.park_outcome = Some(park_outcome.clone());
@@ -2106,6 +2135,12 @@ impl Sandbox for FirecrackerSandbox {
 
     fn id(&self) -> &str {
         &self.id
+    }
+
+    fn guest_rpc(&self, expected_run_id: &str) -> Option<Arc<dyn sandbox::GuestRpcAcceptor>> {
+        self.guest_rpc_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.acceptor(expected_run_id))
     }
 
     fn source_ip(&self) -> &str {
@@ -2164,6 +2199,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn stop(&mut self) -> sandbox::Result<()> {
+        drop(self.guest_rpc_endpoint.take());
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
@@ -2226,6 +2262,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn kill(&mut self) -> sandbox::Result<()> {
+        drop(self.guest_rpc_endpoint.take());
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
@@ -2354,6 +2391,7 @@ impl Sandbox for FirecrackerSandbox {
         .await?;
         self.park_fence = Some(normal_operations_fence);
         self.park_outcome = Some(outcome.clone());
+        drop(self.guest_rpc_endpoint.take());
         Ok(outcome)
     }
 
@@ -2442,6 +2480,12 @@ impl Sandbox for FirecrackerSandbox {
             ));
         }
 
+        let guest_rpc_endpoint = self.bind_guest_rpc_endpoint().map_err(|error| {
+            idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                format!("bind guest RPC transport: {error}"),
+            )
+        })?;
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
         let id = self.id.clone();
@@ -2479,6 +2523,7 @@ impl Sandbox for FirecrackerSandbox {
         )
         .await?;
         self.park_outcome = None;
+        self.guest_rpc_endpoint = Some(guest_rpc_endpoint);
         Ok(())
     }
 
@@ -3602,11 +3647,13 @@ fn idle_transition_error(
 // building a fully-initialised `FirecrackerSandbox` (which pulls in the
 // network pool, NBD COW device, firecracker child process, etc.).
 
-/// Maximum time to wait for balloon inflation before pausing vCPUs.
-const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
-/// Additional bounded wait when the balloon is still making progress and the
+/// Initial time to wait for balloon inflation before considering an extension.
+const BALLOON_SETTLE_INITIAL_TIMEOUT: Duration = Duration::from_secs(5);
+/// Additional wait when the balloon is still making progress and the
 /// guest reports enough unused memory to finish reclaiming safely.
 const BALLOON_SETTLE_PROGRESS_GRACE: Duration = Duration::from_secs(5);
+/// Absolute upper bound for balloon inflation across all progress extensions.
+const BALLOON_SETTLE_MAX_TIMEOUT: Duration = Duration::from_secs(30);
 /// Fast-start poll intervals while waiting for balloon inflation.
 const BALLOON_SETTLE_FAST_POLL_INTERVALS: [Duration; 7] = [
     Duration::from_millis(25),
@@ -3846,34 +3893,48 @@ fn log_balloon_settle_timeout(
     summary: &BalloonSettleSummary,
     outcome: &SandboxParkOutcome,
 ) {
-    warn!(
-        id = %log_id,
-        actual = ?summary.last_actual_mib,
-        target = target_mib,
-        deficit_mib = ?summary.last_deficit_mib,
-        tolerance_mib,
-        elapsed_ms = summary.elapsed_ms(),
-        sample_count = summary.sample_count,
-        requested_target_mib = summary.requested_target_mib,
-        first_observed_target_mib = ?summary.first_observed_target_mib,
-        observed_target_mib = ?summary.last_observed_target_mib,
-        target_observed = summary.target_observed,
-        first_actual_mib = ?summary.first_actual_mib,
-        max_actual_mib = ?summary.max_actual_mib,
-        actual_delta_mib = ?summary.actual_delta_mib(),
-        reported_free_mib = ?summary.reported_free_mib(),
-        reported_available_mib = ?summary.reported_available_mib(),
-        reported_total_mib = ?summary.reported_total_mib(),
-        reason = summary.reason(),
-        admission_action = park_admission_action(outcome),
-        "balloon inflate incomplete after {}s, pausing anyway",
-        settle_timeout.as_secs()
-    );
+    macro_rules! emit_timeout {
+        ($level:expr) => {
+            tracing::event!(
+                $level,
+                id = %log_id,
+                actual = ?summary.last_actual_mib,
+                target = target_mib,
+                deficit_mib = ?summary.last_deficit_mib,
+                tolerance_mib,
+                elapsed_ms = summary.elapsed_ms(),
+                sample_count = summary.sample_count,
+                requested_target_mib = summary.requested_target_mib,
+                first_observed_target_mib = ?summary.first_observed_target_mib,
+                observed_target_mib = ?summary.last_observed_target_mib,
+                target_observed = summary.target_observed,
+                first_actual_mib = ?summary.first_actual_mib,
+                max_actual_mib = ?summary.max_actual_mib,
+                actual_delta_mib = ?summary.actual_delta_mib(),
+                reported_free_mib = ?summary.reported_free_mib(),
+                reported_available_mib = ?summary.reported_available_mib(),
+                reported_total_mib = ?summary.reported_total_mib(),
+                reason = summary.reason(),
+                admission_action = park_admission_action(outcome),
+                "balloon inflate incomplete after {}s, pausing anyway",
+                settle_timeout.as_secs()
+            );
+        };
+    }
+
+    if summary.reason() == "actual_progressing_timeout"
+        && matches!(outcome, SandboxParkOutcome::Reusable)
+    {
+        emit_timeout!(tracing::Level::INFO);
+    } else {
+        emit_timeout!(tracing::Level::WARN);
+    }
 }
 
 fn log_balloon_settle_progress_grace(
     log_id: &str,
     target_mib: u32,
+    progress_grace: Duration,
     summary: &BalloonSettleSummary,
 ) {
     info!(
@@ -3886,7 +3947,7 @@ fn log_balloon_settle_progress_grace(
         previous_actual_mib = ?summary.previous_actual_mib,
         reported_free_mib = ?summary.reported_free_mib(),
         reported_available_mib = ?summary.reported_available_mib(),
-        grace_ms = duration_ms(BALLOON_SETTLE_PROGRESS_GRACE),
+        grace_ms = duration_ms(progress_grace),
         "balloon inflation still progressing, extending settle deadline"
     );
 }
@@ -3920,11 +3981,12 @@ enum PhysicalParkOutcome {
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
 /// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// when guest pressure indicates further reclaim is unsafe, or after
-/// [`BALLOON_SETTLE_TIMEOUT`]. A severe deficit that is still progressing with
-/// enough unused guest memory gets one bounded
-/// [`BALLOON_SETTLE_PROGRESS_GRACE`]. The returned outcome rejects only the
-/// existing severe-deficit classification. Errors from stats fetching are
-/// non-fatal — we log and proceed to pause.
+/// [`BALLOON_SETTLE_INITIAL_TIMEOUT`]. A severe deficit that is still progressing
+/// with enough unused guest memory gets repeated
+/// [`BALLOON_SETTLE_PROGRESS_GRACE`] extensions up to
+/// [`BALLOON_SETTLE_MAX_TIMEOUT`]. The returned outcome rejects only the existing
+/// severe-deficit classification. Errors from stats fetching are non-fatal —
+/// we log and proceed to pause.
 #[cfg(test)]
 async fn wait_for_balloon_with_outcome(
     client: &ApiClient,
@@ -3945,17 +4007,18 @@ async fn wait_for_balloon_with_optional_handoff(
 ) -> BalloonSettleWaitResult {
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
-    let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
+    let mut settle_timeout = BALLOON_SETTLE_INITIAL_TIMEOUT;
     let mut deadline = summary.started_at + settle_timeout;
-    let mut progress_grace_used = false;
+    let max_deadline = summary.started_at + BALLOON_SETTLE_MAX_TIMEOUT;
     let mut fast_poll_intervals = BALLOON_SETTLE_FAST_POLL_INTERVALS.into_iter();
     loop {
-        if tokio::time::Instant::now() >= deadline {
-            if !progress_grace_used && summary.can_extend_for_progress() {
-                progress_grace_used = true;
-                settle_timeout += BALLOON_SETTLE_PROGRESS_GRACE;
-                deadline = summary.started_at + settle_timeout;
-                log_balloon_settle_progress_grace(log_id, target_mib, &summary);
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            if now < max_deadline && summary.can_extend_for_progress() {
+                let progress_grace = BALLOON_SETTLE_PROGRESS_GRACE.min(max_deadline - now);
+                deadline = now + progress_grace;
+                settle_timeout = deadline - summary.started_at;
+                log_balloon_settle_progress_grace(log_id, target_mib, progress_grace, &summary);
             } else {
                 let outcome = summary.park_outcome();
                 log_balloon_settle_timeout(

@@ -2328,7 +2328,6 @@
         "video": "वीडियो शैलियाँ",
         "website": "वेबसाइट शैलियाँ"
       },
-      "templates": "टेम्पलेट",
       "useTemplate": "{{title}} इस्तेमाल करें",
       "workflowDescription": "बार-बार किए जाने वाले कामों को वर्कफ़्लो में बदलें।",
       "workflowHeading": "आपका काम चलता रहे"

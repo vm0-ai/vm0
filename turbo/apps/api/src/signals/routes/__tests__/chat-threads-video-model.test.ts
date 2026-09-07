@@ -298,7 +298,7 @@ describe("POST /api/chat-threads/:id/video-model", () => {
     await expect(readVideoModelEvents(otherToken)).resolves.toStrictEqual([]);
   });
 
-  it("rejects a ZERO_TOKEN without chat-thread:write", async () => {
+  it("rejects an Okou run token without chat-thread:write", async () => {
     const fixture = await seedChatThread("Product launch clip");
     const token = okouToken({
       userId: fixture.userId,

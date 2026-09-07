@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { performance } from "node:perf_hooks";
 
 import {
   getSecretNameForType,
@@ -73,7 +74,8 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
-import { settle, tapError } from "../utils";
+import { recordSandboxOperations } from "../external/sandbox-op-log";
+import { safeSync, settle, tapError } from "../utils";
 import {
   decryptPersistentSecretsMap,
   decryptStoredSecretValue,
@@ -278,6 +280,27 @@ type ResolveFirewallAuthResult =
         };
       };
     };
+
+type FirewallAuthTimingActionType =
+  | "firewall_auth_prepare"
+  | "firewall_auth_resolve"
+  | "firewall_auth_admit";
+const FIREWALL_AUTH_SANDBOX_TYPE = "runner";
+
+interface FirewallAuthTimingRecord {
+  readonly actionType: FirewallAuthTimingActionType;
+  readonly durationMs: number;
+  readonly success: boolean;
+}
+
+type PreparedFirewallAuthRequest =
+  | {
+      readonly ok: true;
+      readonly referenced: ReferencedAuthKeys;
+      readonly prepared: PreparedFirewallAuth;
+      readonly billableExpiresAt: number | undefined;
+    }
+  | { readonly ok: false; readonly response: ResolveFirewallAuthResult };
 
 function connectorNotConfigured(): ResolveFirewallAuthResult {
   return {
@@ -660,6 +683,49 @@ const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+async function measureFirewallAuthStage<T>(
+  records: FirewallAuthTimingRecord[],
+  actionType: FirewallAuthTimingActionType,
+  operation: () => Promise<T>,
+  isSuccess: (result: T) => boolean,
+): Promise<T> {
+  const startedAt = performance.now();
+  let success = false;
+  return await (async () => {
+    const result = await operation();
+    success = isSuccess(result);
+    return result;
+  })().finally(() => {
+    records.push({
+      actionType,
+      durationMs: Math.max(0, performance.now() - startedAt),
+      success,
+    });
+  });
+}
+
+function recordFirewallAuthTimings(
+  runId: string,
+  records: readonly FirewallAuthTimingRecord[],
+): void {
+  const result = safeSync(() => {
+    recordSandboxOperations(
+      records.map((record) => {
+        return {
+          sandboxType: FIREWALL_AUTH_SANDBOX_TYPE,
+          actionType: record.actionType,
+          durationMs: record.durationMs,
+          success: record.success,
+          runId,
+        };
+      }),
+    );
+  });
+  if ("error" in result) {
+    L.warn("Failed to record firewall auth timings", { runId });
+  }
+}
 
 function inferAccessSourceType(accessSourceKey: string): AccessSecretSource {
   return modelProviderTypeForProviderKey(accessSourceKey)
@@ -5633,20 +5699,20 @@ function matchedConnectorSourceConflicts(args: {
   });
 }
 
-export async function resolveFirewallAuth(
+async function prepareFirewallAuthRequest(
   db: Db,
   auth: SandboxAuth,
   body: FirewallAuthBody,
-): Promise<ResolveFirewallAuthResult> {
+): Promise<PreparedFirewallAuthRequest> {
   const matchedFirewall = body.matchedFirewall;
   const customConnectorId = matchedFirewall?.customConnectorId;
   const run = await findFirewallAuthRun(db, auth);
   if (!run) {
     L.warn(`[${auth.runId}] Run not found for firewall auth`);
-    return badRequestMessage("Run not found");
+    return { ok: false, response: badRequestMessage("Run not found") };
   }
   if (!firewallAuthRunIsActive(run.status)) {
-    return forbiddenTerminalRun();
+    return { ok: false, response: forbiddenTerminalRun() };
   }
   const orgId = run.orgId;
   const forceRefreshStartedAtMicros =
@@ -5665,15 +5731,18 @@ export async function resolveFirewallAuth(
       referencedSecretKeys: referenced.secrets,
     })
   ) {
-    return badRequestMessage(
-      "Matched connector source does not match secret metadata",
-    );
+    return {
+      ok: false,
+      response: badRequestMessage(
+        "Matched connector source does not match secret metadata",
+      ),
+    };
   }
-  let preparation;
+  let preparation: FirewallAuthPreparation<PreparedFirewallAuth>;
   if (customConnectorId) {
     const sourceId = matchedFirewall.sourceId;
     if (sourceId === undefined) {
-      return connectorNotConfigured();
+      return { ok: false, response: connectorNotConfigured() };
     }
     preparation = await prepareCurrentCustomConnectorFirewallAuth({
       db,
@@ -5696,7 +5765,7 @@ export async function resolveFirewallAuth(
     });
   }
   if (!preparation.ok) {
-    return preparation.response;
+    return { ok: false, response: preparation.response };
   }
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
     db,
@@ -5705,28 +5774,88 @@ export async function resolveFirewallAuth(
     firewallBillable: body.firewallBillable,
   });
   if ("status" in billableCacheExpiry) {
-    return billableCacheExpiry;
+    return { ok: false, response: billableCacheExpiry };
   }
-  const resolution = await resolveFirewallAuthMaterial({
-    db,
-    auth,
-    body,
+  return {
+    ok: true,
     referenced,
     prepared: preparation.prepared,
-  });
+    billableExpiresAt: billableCacheExpiry.expiresAt,
+  };
+}
+
+async function resolveFirewallAuthWithTimings(
+  db: Db,
+  auth: SandboxAuth,
+  body: FirewallAuthBody,
+  timingRecords: FirewallAuthTimingRecord[],
+): Promise<ResolveFirewallAuthResult> {
+  const preparation = await measureFirewallAuthStage(
+    timingRecords,
+    "firewall_auth_prepare",
+    async () => {
+      return await prepareFirewallAuthRequest(db, auth, body);
+    },
+    (result) => {
+      return result.ok;
+    },
+  );
+  if (!preparation.ok) {
+    return preparation.response;
+  }
+  const resolution = await measureFirewallAuthStage(
+    timingRecords,
+    "firewall_auth_resolve",
+    async () => {
+      return await resolveFirewallAuthMaterial({
+        db,
+        auth,
+        body,
+        referenced: preparation.referenced,
+        prepared: preparation.prepared,
+      });
+    },
+    (result) => {
+      return result.ok;
+    },
+  );
   if (!resolution.ok) {
     return resolution.response;
   }
   const finalized = finalizeFirewallAuth({
     body,
-    referenced,
+    referenced: preparation.referenced,
     material: resolution.material,
-    billableExpiresAt: billableCacheExpiry.expiresAt,
+    billableExpiresAt: preparation.billableExpiresAt,
   });
   if (finalized.status !== 200) {
     return finalized;
   }
-  return (await admitFirewallAuthResponse(db, auth))
-    ? finalized
-    : forbiddenTerminalRun();
+  const admitted = await measureFirewallAuthStage(
+    timingRecords,
+    "firewall_auth_admit",
+    async () => {
+      return await admitFirewallAuthResponse(db, auth);
+    },
+    (result) => {
+      return result;
+    },
+  );
+  return admitted ? finalized : forbiddenTerminalRun();
+}
+
+export async function resolveFirewallAuth(
+  db: Db,
+  auth: SandboxAuth,
+  body: FirewallAuthBody,
+): Promise<ResolveFirewallAuthResult> {
+  const timingRecords: FirewallAuthTimingRecord[] = [];
+  return await resolveFirewallAuthWithTimings(
+    db,
+    auth,
+    body,
+    timingRecords,
+  ).finally(() => {
+    recordFirewallAuthTimings(auth.runId, timingRecords);
+  });
 }

@@ -72,6 +72,7 @@ export function createComposerTaskSignals(
   const selectTask$ = command(({ get, set }, task: ComposerTask | null) => {
     if (get(internalTask$) !== task) {
       set(ui.videoOptions.setVideoRunOptions$, {});
+      set(ui.videoOptions.setVideoOptionsOpen$, false);
     }
     set(clearTaskTemplates$, task);
     set(internalTask$, task);
@@ -84,6 +85,7 @@ export function createComposerTaskSignals(
   const resetTask$ = command(({ set }) => {
     set(internalTask$, null);
     set(ui.videoOptions.setVideoRunOptions$, {});
+    set(ui.videoOptions.setVideoOptionsOpen$, false);
   });
   // Capture the selected task in the same canonical document as text, files,
   // and template references. The editor and a failed send's draft stay intact.

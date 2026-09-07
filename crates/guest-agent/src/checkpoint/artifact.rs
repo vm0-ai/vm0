@@ -179,6 +179,23 @@ async fn build_artifact_snapshot_plan(
     }
 }
 
+fn compute_artifact_content_hash(entry: &env::ArtifactEnv, files: &[vas::FileEntry]) -> String {
+    let content_hash_start = std::time::Instant::now();
+    let content_hash = content_hash::compute_content_hash(
+        &entry.storage_id,
+        files
+            .iter()
+            .map(|file| (file.path.as_str(), file.hash.as_str())),
+    );
+    record_sandbox_op(
+        "artifact_content_hash_compute",
+        content_hash_start.elapsed(),
+        true,
+        None,
+    );
+    content_hash
+}
+
 async fn snapshot_artifact_plan(
     http: &HttpClient,
     run_id: &str,
@@ -207,37 +224,31 @@ async fn snapshot_artifact_plan(
     // (same SHA-256 the web producer emits), so an equality check on the
     // locally-recomputed hash is sufficient — no extra metadata needed.
     // See #10967 for the ~3.9s-per-checkpoint motivation.
-    let skip_check_start = std::time::Instant::now();
-    let content_hash_start = std::time::Instant::now();
-    let local_hash = content_hash::compute_content_hash(
-        &entry.storage_id,
-        files.iter().map(|f| (f.path.as_str(), f.hash.as_str())),
-    );
-    record_sandbox_op(
-        "artifact_content_hash_compute",
-        content_hash_start.elapsed(),
-        true,
-        None,
-    );
-    if local_hash == entry.version_id && maintenance_attestation.is_none() {
-        log_info!(
-            LOG_TAG,
-            "VAS artifact snapshot skipped (unchanged since mount): {}@{}",
-            entry.name,
-            entry.version_id
-        );
-        record_sandbox_op(
-            "artifact_snapshot_skipped",
-            skip_check_start.elapsed(),
-            true,
-            None,
-        );
-        return Ok(build_artifact_snapshot_entry(
-            &entry.name,
-            &entry.version_id,
-            &entry.mount_path,
-            entry.missing_root_policy,
-        ));
+    // Attested maintenance plans were already hash-validated before remote
+    // scheduling and must always publish for server-side settlement.
+    if maintenance_attestation.is_none() {
+        let skip_check_start = std::time::Instant::now();
+        let local_hash = compute_artifact_content_hash(entry, &files);
+        if local_hash == entry.version_id {
+            log_info!(
+                LOG_TAG,
+                "VAS artifact snapshot skipped (unchanged since mount): {}@{}",
+                entry.name,
+                entry.version_id
+            );
+            record_sandbox_op(
+                "artifact_snapshot_skipped",
+                skip_check_start.elapsed(),
+                true,
+                None,
+            );
+            return Ok(build_artifact_snapshot_entry(
+                &entry.name,
+                &entry.version_id,
+                &entry.mount_path,
+                entry.missing_root_policy,
+            ));
+        }
     }
 
     log_info!(
@@ -356,12 +367,7 @@ pub(super) async fn snapshot_artifact_entries_for_checkpoint(
         let [ArtifactSnapshotPlan::Snapshot { entry, files }] = plans.as_slice() else {
             return Err(maintenance_checkpoint_error());
         };
-        let local_hash = content_hash::compute_content_hash(
-            &entry.storage_id,
-            files
-                .iter()
-                .map(|file| (file.path.as_str(), file.hash.as_str())),
-        );
+        let local_hash = compute_artifact_content_hash(entry, files);
         if local_hash != attestation.validated_version_id {
             return Err(maintenance_checkpoint_error());
         }
@@ -700,8 +706,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn maintenance_success_forwards_exact_validation_attestation() {
-        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::lock().await;
+    async fn maintenance_success_computes_hash_once_and_forwards_exact_validation_attestation() {
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = crate::SandboxOpsTestGuard::with_override(&telemetry_path).await;
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let storage_id = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
@@ -709,10 +717,15 @@ mod tests {
         let selection_digest = "b".repeat(64);
         let lease_token = "44754115-d375-4c46-aea7-a55bd1b61ec7";
         let content = b"# Task Group: validated\n";
+        let secondary_content = b"Validated maintenance details\n";
         let file_hash = hex::encode(Sha256::digest(content));
+        let secondary_file_hash = hex::encode(Sha256::digest(secondary_content));
         let validated_version = content_hash::compute_content_hash(
             storage_id,
-            std::iter::once(("MEMORY.md", file_hash.as_str())),
+            [
+                ("MEMORY.md", file_hash.as_str()),
+                ("details.md", secondary_file_hash.as_str()),
+            ],
         );
         let expected_attestation = json!({
             "schemaVersion": 2,
@@ -749,8 +762,8 @@ mod tests {
                     "success": true,
                     "versionId": server_version,
                     "storageName": "memory",
-                    "size": content.len(),
-                    "fileCount": 1,
+                    "size": content.len() + secondary_content.len(),
+                    "fileCount": 2,
                 }),
             )
             .await;
@@ -768,6 +781,7 @@ mod tests {
         let memory_root = dir.path().join("memory");
         std::fs::create_dir_all(&memory_root).unwrap();
         std::fs::write(memory_root.join("MEMORY.md"), content).unwrap();
+        std::fs::write(memory_root.join("details.md"), secondary_content).unwrap();
         let launch_payload_file = dir.path().join("pi-launch-payload/payload.json");
         std::fs::create_dir_all(launch_payload_file.parent().unwrap()).unwrap();
         std::fs::write(
@@ -820,6 +834,17 @@ mod tests {
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].version, validated_version);
         server.await.unwrap();
+
+        let content_hash_compute_count = std::fs::read_to_string(telemetry_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|entry| {
+                entry.get("action_type").and_then(serde_json::Value::as_str)
+                    == Some("artifact_content_hash_compute")
+            })
+            .count();
+        assert_eq!(content_hash_compute_count, 1);
     }
 
     #[test]

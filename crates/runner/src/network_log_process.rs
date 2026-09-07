@@ -1,6 +1,8 @@
 use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, warn};
 
 use crate::child_cleanup::kill_and_reap_child_on_drop;
+use crate::error::{RunnerError, RunnerResult};
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainProducer};
 
 /// Owns the common post-spawn lifecycle of a required network-log process.
@@ -9,6 +11,9 @@ pub(crate) struct NetworkLogProcess {
     cancel: CancellationToken,
     task: Option<tokio::task::JoinHandle<DrainableLineReaderExit>>,
     child: Option<tokio::process::Child>,
+    child_cleanup: Option<tokio::task::JoinHandle<std::io::Result<()>>>,
+    #[cfg(test)]
+    reap_gate: Option<crate::child_cleanup::ReapGate>,
     drain: NetworkLogDrainProducer,
 }
 
@@ -25,6 +30,9 @@ impl NetworkLogProcess {
             cancel,
             task: Some(task),
             child: Some(child),
+            child_cleanup: None,
+            #[cfg(test)]
+            reap_gate: None,
             drain,
         }
     }
@@ -43,26 +51,59 @@ impl NetworkLogProcess {
         result
     }
 
-    /// Kill the child when necessary and wait for it to be reaped.
-    pub(crate) async fn kill_and_reap_child(&mut self) {
-        let child_reaped = if let Some(ref mut child) = self.child {
-            let _ = child.start_kill();
-            child.wait().await.is_ok()
-        } else {
-            false
+    /// Transfer child cleanup without blocking lifecycle publication. The
+    /// handle is joined by stop; dropping it leaves the reaper progressing.
+    pub(crate) fn start_child_cleanup(&mut self) {
+        let Some(child) = self.child.take() else {
+            return;
         };
-        if child_reaped {
-            self.child = None;
-        }
+        let pid = child.id();
+        let reaper = crate::child_cleanup::ChildReaper::new(self.child_label, child);
+        #[cfg(test)]
+        let reaper = reaper.with_gate(self.reap_gate.take());
+        self.child_cleanup = Some(tokio::spawn(reaper.reap().instrument(tracing::info_span!(
+            "network_log_child_cleanup",
+            component = self.child_label,
+            pid
+        ))));
     }
 
     /// Cancel the monitor task and wait for the child and task to finish.
-    pub(crate) async fn stop(mut self) {
+    pub(crate) async fn stop(mut self) -> RunnerResult<()> {
         self.cancel.cancel();
-        self.kill_and_reap_child().await;
-        if let Some(task) = self.task.take() {
-            let _ = task.await;
+        self.start_child_cleanup();
+        let child_result = if let Some(task) = self.child_cleanup.take() {
+            match task.await {
+                Ok(result) => result.map_err(|error| {
+                    RunnerError::Internal(format!(
+                        "{} child cleanup failed: {error}",
+                        self.child_label
+                    ))
+                }),
+                Err(error) => Err(RunnerError::Internal(format!(
+                    "{} child cleanup task failed: {error}",
+                    self.child_label
+                ))),
+            }
+        } else {
+            Ok(())
+        };
+        let monitor_result = if let Some(task) = self.task.take() {
+            task.await.map(|_| ()).map_err(|error| {
+                RunnerError::Internal(format!(
+                    "{} monitor cleanup failed: {error}",
+                    self.child_label
+                ))
+            })
+        } else {
+            Ok(())
+        };
+        if child_result.is_err()
+            && let Err(error) = &monitor_result
+        {
+            warn!(component = self.child_label, %error, "network-log monitor cleanup failed");
         }
+        child_result.and(monitor_result)
     }
 
     pub(crate) fn drain_producer(&self) -> NetworkLogDrainProducer {
@@ -94,8 +135,15 @@ impl NetworkLogProcess {
                 }
             })),
             child: None,
+            child_cleanup: None,
+            reap_gate: None,
             drain,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_reap_gate(&mut self, gate: crate::child_cleanup::ReapGate) {
+        self.reap_gate = Some(gate);
     }
 
     /// Replace the monitor with a task that panics when triggered.

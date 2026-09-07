@@ -142,7 +142,7 @@ const membersInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         orgId: auth.orgId,
         userId: auth.userId,
         // Fall back to "member" when the auth context lacks an explicit role
-        // (rare: Zero tokens whose membership lookup did not return a role).
+        // (rare: run-scoped tokens whose membership lookup returned no role).
         callerRole: auth.orgRole ?? "member",
       },
       signal,

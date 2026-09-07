@@ -375,7 +375,10 @@ export function AgentChatPage() {
             </div>
           </div>
 
-          <ChatComposer signals={composerSignals} />
+          <ChatComposer
+            signals={composerSignals}
+            showTaskShortcuts={!taskEntriesEnabled}
+          />
 
           {taskEntriesEnabled ? (
             <ComposerTaskEntries signals={composerSignals} />

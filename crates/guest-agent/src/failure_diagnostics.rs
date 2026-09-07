@@ -364,7 +364,7 @@ fn classify_cli_failure_reason(
     }
     // Subscription/usage limits are an expected quota state for both Codex
     // (ChatGPT plan "usage limit" or API billing "quota exceeded") and Claude
-    // Code (Max plan "session limit" / "weekly limit" / Fable model limit /
+    // Code (Max plan "session limit" / "weekly limit" /
     // org monthly spend limit), so classify them regardless of framework where
     // the wording is shared. This lets the runner log these expected outcomes
     // at info instead of error.
@@ -374,9 +374,7 @@ fn classify_cli_failure_reason(
         || normalized.contains("session limit")
         || normalized.contains("weekly limit")
         || (matches!(framework, AgentFramework::ClaudeCode)
-            && (normalized.contains("fable 5 requires usage credits")
-                || normalized.contains("reached your fable 5 limit")
-                || is_claude_subscription_access_disabled_error(&normalized)
+            && (is_claude_subscription_access_disabled_error(&normalized)
                 || is_claude_monthly_spend_limit_error(&normalized)))
     {
         return Some(FailureReason::UsageLimit);

@@ -137,6 +137,12 @@ function startRuntime(
       getVercelProtectionBypass: () => {
         return vercelProtectionBypass;
       },
+      onForceUpgrade: () => {
+        events.push({
+          type: "worker-unavailable",
+          reason: "force-upgrade-required",
+        });
+      },
     });
   };
   const runtime = new SharedDatabaseWorkerRuntime(
@@ -159,6 +165,101 @@ async function queryRuntime<TKey extends SharedDatabaseDataKey>(
 ): Promise<SharedDatabaseQueryResult<TKey>> {
   return await runtime.query(query, signal);
 }
+
+test.each(["catch-up", "rows", "snapshot"] as const)(
+  "treat a headerless 426 from %s as an upgrade request",
+  async (operation) => {
+    const { runtime, events } = startRuntime();
+    const response = () => {
+      return Response.json(
+        {
+          error: {
+            code: "CLIENT_UPGRADE_REQUIRED",
+            message: "Client update required",
+          },
+        },
+        { status: 426 },
+      );
+    };
+    const threadId = crypto.randomUUID();
+    if (operation === "catch-up") {
+      context.mocks.http.post("*/api/chat/events/catch-up", response);
+    } else {
+      context.mocks.http.get(
+        operation === "rows"
+          ? "*/api/chat-threads/:threadId/event-rows"
+          : "*/api/chat-threads/:threadId/event-snapshot",
+        response,
+      );
+    }
+    const request =
+      operation === "catch-up"
+        ? runtime.catchUpChatEvents([threadId], context.signal)
+        : runtime.query(
+            {
+              dataKey: chatEventKey(threadId),
+              afterSeqId: null,
+              consistency: "catch-up",
+            },
+            context.signal,
+          );
+    await expect(request).rejects.toMatchObject({
+      name: "SharedDatabaseHttpError",
+      status: 426,
+    });
+    expect(events).toContainEqual({
+      type: "worker-unavailable",
+      reason: "force-upgrade-required",
+    });
+  },
+);
+
+test.each(["catch-up", "rows", "snapshot"] as const)(
+  "still reject a successful %s response missing the schema header",
+  async (operation) => {
+    const { runtime, events } = startRuntime();
+    const threadId = crypto.randomUUID();
+    if (operation === "catch-up") {
+      context.mocks.http.post("*/api/chat/events/catch-up", () => {
+        return Response.json({
+          events: { [threadId]: [] },
+          notFoundThreads: [],
+        });
+      });
+    } else if (operation === "rows") {
+      context.mocks.http.get("*/api/chat-threads/:threadId/event-rows", () => {
+        return Response.json(chatEventRowsResponse([], { sinceSeqId: 0 }));
+      });
+    } else {
+      context.mocks.http.get(
+        "*/api/chat-threads/:threadId/event-snapshot",
+        () => {
+          return Response.json({
+            url: SNAPSHOT_URL,
+            lastEventId: null,
+            lastSeqId: 0,
+            expiresInSeconds: 3600,
+          });
+        },
+      );
+    }
+    const request =
+      operation === "catch-up"
+        ? runtime.catchUpChatEvents([threadId], context.signal)
+        : runtime.query(
+            {
+              dataKey: chatEventKey(threadId),
+              afterSeqId: null,
+              consistency: "catch-up",
+            },
+            context.signal,
+          );
+    await expect(request).rejects.toThrow(
+      "Unexpected Chat Event schema version null",
+    );
+    expect(events).toStrictEqual([]);
+  },
+);
 
 test("Keep cached chat data isolated by user and workspace", async () => {
   const firstIdentity = identity();

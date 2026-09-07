@@ -10,8 +10,8 @@ import { detach, Reason } from "../signals/utils.ts";
 
 const UPGRADE_COPY = {
   browser: {
-    action: "Update browser",
-    title: "Update your browser to continue",
+    action: "Get the latest Chrome",
+    title: "Use a supported browser to continue",
   },
   chrome: {
     action: "Update Chrome",
@@ -75,9 +75,9 @@ function UnsupportedBrowserPage({
           <h1 className="text-base leading-6 font-semibold">{copy.title}</h1>
           <p className="text-sm leading-[22px] text-muted-foreground">
             {assistantName}
-            {
-              " does not support your current browser version. Update your browser to continue."
-            }
+            {upgrade.target === "browser"
+              ? " does not support this browser on your device. Update your browser, or try another browser or device."
+              : " does not support your current browser version. Update your browser to continue."}
           </p>
         </div>
         <a

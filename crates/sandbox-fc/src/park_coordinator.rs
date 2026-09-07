@@ -19,6 +19,7 @@
 //!   normal-operation fence.
 //! - Coordinator locks are never held across `.await`.
 use std::sync::{Arc, Mutex, MutexGuard};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParkCoordinator {
@@ -32,6 +33,7 @@ impl ParkCoordinator {
                 state: CoordinatorState::Open,
                 next_attempt_id: 1,
                 active_run_id: None,
+                assignment_cancel: CancellationToken::new(),
             })),
         }
     }
@@ -57,6 +59,7 @@ impl ParkCoordinator {
         match inner.state.clone() {
             CoordinatorState::Open | CoordinatorState::Parked => {
                 inner.active_run_id = Some(run_id.to_owned());
+                inner.assignment_cancel = CancellationToken::new();
                 Ok(())
             }
             state => Err(RunControlBindError::InvalidState { state }),
@@ -73,6 +76,48 @@ impl ParkCoordinator {
         } else {
             Err(RunControlMismatch)
         }
+    }
+
+    /// Validate assignment and acquire the authoritative reservation while the
+    /// policy lock excludes park/termination admission. Never await here.
+    pub(crate) fn reserve_guest_rpc_operation(
+        &self,
+        expected_run_id: &str,
+        guest: &vsock_host::VsockHost,
+    ) -> std::io::Result<(vsock_host::ExternalOperationReservation, CancellationToken)> {
+        let inner = self.inner();
+        if inner.state != CoordinatorState::Open
+            || inner.active_run_id.as_deref() != Some(expected_run_id)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "guest RPC assignment unavailable",
+            ));
+        }
+        Ok((
+            guest.reserve_external_operation()?,
+            inner.assignment_cancel.child_token(),
+        ))
+    }
+
+    pub(crate) fn guest_rpc_assignment_cancellation(
+        &self,
+        expected_run_id: &str,
+    ) -> std::io::Result<CancellationToken> {
+        let inner = self.inner();
+        if inner.state != CoordinatorState::Open
+            || inner.active_run_id.as_deref() != Some(expected_run_id)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "guest RPC assignment unavailable",
+            ));
+        }
+        Ok(inner.assignment_cancel.child_token())
+    }
+
+    pub(crate) fn cancel_guest_rpc_operations(&self) {
+        self.inner().assignment_cancel.cancel();
     }
 
     pub(crate) fn begin_prepare_park(&self) -> Result<ParkAttempt, PrepareParkError> {
@@ -115,6 +160,7 @@ impl ParkCoordinator {
         match inner.state.clone() {
             CoordinatorState::ReadyForPark { attempt_id } if attempt_id == attempt.id => {
                 inner.state = CoordinatorState::Parked;
+                inner.assignment_cancel.cancel();
                 inner.active_run_id = None;
                 Ok(())
             }
@@ -151,6 +197,7 @@ impl ParkCoordinator {
             CoordinatorState::Terminating => TerminateAdmission::Accepted,
             _ => {
                 inner.state = CoordinatorState::Terminating;
+                inner.assignment_cancel.cancel();
                 TerminateAdmission::Accepted
             }
         }
@@ -261,6 +308,7 @@ struct Inner {
     state: CoordinatorState,
     next_attempt_id: u64,
     active_run_id: Option<String>,
+    assignment_cancel: CancellationToken,
 }
 
 impl Inner {
@@ -291,6 +339,7 @@ impl Inner {
         }
 
         self.state = CoordinatorState::Dirty { reason };
+        self.assignment_cancel.cancel();
     }
 }
 

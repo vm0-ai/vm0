@@ -17,7 +17,7 @@ function client() {
 }
 
 describe("/api/feature-switches", () => {
-  it("defaults the compact model menu to Bingjie without enabling other staff users", async () => {
+  it("defaults the compact model menu to Bingjie and the staff org while excluding other orgs", async () => {
     const clerk = createRouteMocks(context).clerk;
     const headers = { authorization: "Bearer clerk-session" };
     clerk.session(
@@ -30,14 +30,17 @@ describe("/api/feature-switches", () => {
       owner.body.effectiveSwitches[FeatureSwitchKey.ModelPickerMenu],
     ).toBeTruthy();
 
-    clerk.session(
-      `user_${randomUUID()}`,
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      "org:member",
-    );
+    const staffUserId = `user_${randomUUID()}`;
+    clerk.session(staffUserId, "org_3ANttyrbWYJk6JKRSTRLEsbsDLe", "org:member");
     const staff = await accept(client().get({ headers }), [200]);
     expect(
       staff.body.effectiveSwitches[FeatureSwitchKey.ModelPickerMenu],
+    ).toBeTruthy();
+
+    clerk.session(staffUserId, `org_${randomUUID()}`, "org:member");
+    const nonStaffOrg = await accept(client().get({ headers }), [200]);
+    expect(
+      nonStaffOrg.body.effectiveSwitches[FeatureSwitchKey.ModelPickerMenu],
     ).toBeFalsy();
   });
 

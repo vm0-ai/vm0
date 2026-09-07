@@ -2328,7 +2328,6 @@
         "video": "Videostile",
         "website": "Website-Stile"
       },
-      "templates": "Vorlagen",
       "useTemplate": "{{title}} verwenden",
       "workflowDescription": "Mache wiederkehrende Aufgaben zu Workflows.",
       "workflowHeading": "Lass deine Arbeit weiterlaufen"

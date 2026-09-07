@@ -66,6 +66,7 @@ fn expected_runtime_destinations() -> BTreeMap<&'static str, &'static str> {
         ("guest-reseed", guest_binary::RESEED_PATH),
         ("guest-write-file", guest_binary::WRITE_FILE_PATH),
         ("guest-tool-exec", guest_binary::TOOL_EXEC_PATH),
+        ("guest-rpc", guest_binary::GUEST_RPC_PATH),
         ("guest-mock-claude", guest_binary::MOCK_CLAUDE_PATH),
         ("guest-mock-codex", guest_binary::MOCK_CODEX_PATH),
     ])

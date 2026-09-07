@@ -45,8 +45,7 @@ interface BearerCredential {
 
 /**
  * Session actor (Clerk mocks set on use) or a raw bearer token minted through
- * the CLI device flow (PAT) or the test token signers (sandbox/zero). Precedent:
- * api-bdd-runs' raw-bearer run creation.
+ * the CLI device flow (PAT) or the sandbox and Okou run-token test signers.
  */
 type Credential = ApiTestUser | BearerCredential;
 
@@ -77,13 +76,11 @@ const c = initContract();
 /**
  * Permissive mirror of the user-model-preference update route used to send
  * contract-invalid bodies through the app (the real contract types reject
- * them at compile time). Mirrors the raw `app.request` cases in the legacy
- * user-model-preference test.
+ * them at compile time).
  *
- * The path is the neutral one the real contract declares: this is a client
- * against an app built from `userConfigRoutes`, so it reaches the real handler
- * rather than registering a route of its own, and #30807 retired the branded
- * forms this mirror used to send.
+ * The path is the one the real contract declares. This client runs against an
+ * app built from `userConfigRoutes`, so it reaches the real handler instead of
+ * registering a route of its own.
  */
 const rawModelPreferenceContract = c.router({
   update: {

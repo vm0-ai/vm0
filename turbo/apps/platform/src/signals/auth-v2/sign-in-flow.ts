@@ -951,6 +951,7 @@ function createResourceCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   startCooldown$: Command<void, [string, AbortSignal]>,
+  restart$: Command<void, []>,
   dependencies: AuthV2SignInFlowDependencies,
 ): {
   readonly applyResource$: ApplySignInResourceCommand;
@@ -1054,6 +1055,11 @@ function createResourceCommands(
 
       signal.throwIfAborted();
       set(atoms.accounts$, discoverAuthV2ExistingAccounts(clerk));
+      if (get(atoms.useAnotherAccount$)) {
+        // Add-account opens a fresh flow even if Clerk retains an earlier attempt.
+        set(restart$);
+        return;
+      }
       await set(applyResource$, clerk.client.signIn, signal);
       signal.throwIfAborted();
     },
@@ -1826,6 +1832,7 @@ export function createAuthV2SignInSignals(
 ): AuthV2SignInSignals {
   const atoms = createSignInFlowAtoms();
   const runtime = createSignInFlowRuntime();
+  const formCommands = createFormCommands(atoms, runtime);
   const startCooldown$ = createStartCooldownCommand(
     signInResendCooldown,
     atoms,
@@ -1835,6 +1842,7 @@ export function createAuthV2SignInSignals(
     atoms,
     runtime,
     startCooldown$,
+    formCommands.restart$,
     dependencies,
   );
   const submitOperation$ = createSubmitOperation$(
@@ -1853,7 +1861,6 @@ export function createAuthV2SignInSignals(
     applyResource$,
     startCooldown$,
   );
-  const formCommands = createFormCommands(atoms, runtime);
   const runGoogleOneTap$ = createGoogleOneTapCommand(
     atoms,
     runtime,

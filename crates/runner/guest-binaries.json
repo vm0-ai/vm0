@@ -42,6 +42,13 @@
     "destination": "/usr/local/bin/guest-tool-exec"
   },
   {
+    "package": "guest-rpc",
+    "binary": "guest-rpc",
+    "pathEnv": "GUEST_RPC_PATH",
+    "bundledEnv": "BUNDLED_GUEST_RPC",
+    "destination": "/usr/local/bin/guest-rpc"
+  },
+  {
     "package": "guest-mock-claude",
     "binary": "guest-mock-claude",
     "pathEnv": "GUEST_MOCK_CLAUDE_PATH",

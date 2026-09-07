@@ -90,6 +90,8 @@ pub(crate) struct StatusForDoctor {
     #[serde(default)]
     idle_sandboxes: Vec<StatusIdleSandbox>,
     #[serde(default)]
+    pub(crate) blank_sandboxes: Vec<StatusBlankSandbox>,
+    #[serde(default)]
     pub(crate) proxy_port: Option<u16>,
     #[serde(default)]
     pub(crate) dns_port: Option<u16>,
@@ -126,6 +128,11 @@ pub(crate) struct StatusActiveRun {
 #[derive(Debug, Deserialize)]
 pub(crate) struct StatusIdleSandbox {
     pub(crate) reuse_key: String,
+    pub(crate) sandbox_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct StatusBlankSandbox {
     pub(crate) sandbox_id: String,
 }
 

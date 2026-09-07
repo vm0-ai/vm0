@@ -6,24 +6,32 @@ import {
   updateUserModelPreference$,
   userModelPreference$,
 } from "../../external/user-model-preference.ts";
+import { pageSignal$ } from "../../page-signal.ts";
 
-interface PendingDefaultModelSelection {
+interface DefaultModelSubmission {
   readonly selection: ModelProviderSelection | null;
+  readonly signal: AbortSignal;
 }
 
-const internalPendingDefaultModelSelection$ =
-  state<PendingDefaultModelSelection | null>(null);
+const internalDefaultModelSubmission$ = state<DefaultModelSubmission | null>(
+  null,
+);
 
-export const pendingDefaultModelSelection$ = computed((get) => {
-  return get(internalPendingDefaultModelSelection$);
+export const defaultModelSubmission$ = computed((get) => {
+  const submission = get(internalDefaultModelSubmission$);
+  return submission?.signal === get(pageSignal$)
+    ? { selection: submission.selection }
+    : null;
 });
 
-const persistDefaultModelPreference$ = command(
+export const updateDefaultModelPreference$ = command(
   async (
     { get, set },
     selection: ModelProviderSelection | null,
     signal: AbortSignal,
   ): Promise<void> => {
+    signal.throwIfAborted();
+    set(internalDefaultModelSubmission$, { selection, signal });
     await set(
       updateUserModelPreference$,
       {
@@ -36,20 +44,5 @@ const persistDefaultModelPreference$ = command(
     set(reloadUserModelPreference$);
     await get(userModelPreference$);
     signal.throwIfAborted();
-  },
-);
-
-export const updateDefaultModelPreference$ = command(
-  (
-    { set },
-    selection: ModelProviderSelection | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(internalPendingDefaultModelSelection$, { selection });
-    return set(persistDefaultModelPreference$, selection, signal).finally(
-      () => {
-        set(internalPendingDefaultModelSelection$, null);
-      },
-    );
   },
 );

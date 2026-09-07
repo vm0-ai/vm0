@@ -45,6 +45,42 @@ async fn shutdown_completes_without_deadlock() {
 }
 
 #[tokio::test]
+async fn discovery_end_publishes_stopping_without_cancelling_active_job() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("job should enter its process wait");
+
+    drop(env.handle.discover_tx);
+    wait_status_mode(&status_path, "stopping", Duration::from_secs(5)).await;
+    assert!(!token.is_cancelled(), "ending discovery is not a hard stop");
+    assert!(!run_handle.is_finished(), "active job still owns its drain");
+    wait_gate.release_one();
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "discovery end should drain the active job normally",
+    )
+    .await;
+    let completions = env.handle.completions.lock().unwrap();
+    let completion = completions
+        .iter()
+        .find(|entry| entry.run_id == run_id)
+        .unwrap();
+    assert_eq!(completion.exit_code, 0);
+    assert!(completion.error.is_none());
+}
+
+#[tokio::test]
 async fn shutdown_drains_memory_prefetch_before_stopped() {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let status_path = env._temp_dir.path().join("status.json");
@@ -229,6 +265,8 @@ async fn dns_monitor_task_panic_stops_runner_and_cancels_active_job() {
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let (_stdin, pid, starttime) = install_controllable_dns(&mut config).await;
+    let reap_gate = crate::child_cleanup::ReapGate::new();
+    config.shutdown.dns_handle.set_reap_gate(reap_gate.clone());
     let panic_trigger = config
         .shutdown
         .dns_handle
@@ -271,10 +309,20 @@ async fn dns_monitor_task_panic_stops_runner_and_cancels_active_job() {
         !run_handle.is_finished(),
         "blocked final heartbeat should hold teardown open",
     );
-    assert_child_reaped("dns", pid, starttime).await;
+    tokio::time::timeout(Duration::from_secs(2), reap_gate.entered.notified())
+        .await
+        .unwrap();
+    wait_status_mode(
+        &env._temp_dir.path().join("status.json"),
+        "stopping",
+        Duration::from_secs(2),
+    )
+    .await;
+    reap_gate.release.add_permits(1);
 
     env.handle.unblock_heartbeats();
     assert_run_error_contains(run_handle, "dns monitor task failed").await;
+    assert_child_reaped("dns", pid, starttime).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     let completions = env.handle.completions.lock().unwrap();
@@ -288,6 +336,223 @@ async fn dns_monitor_task_panic_stops_runner_and_cancels_active_job() {
 #[tokio::test]
 async fn normal_shutdown_cancels_dns_and_reaps_child_without_error() {
     assert_normal_shutdown_reaps_network_log_child(NetworkLogTestComponent::Dns).await;
+}
+
+#[tokio::test]
+async fn required_monitor_failure_publishes_stopping_before_delayed_child_reap() {
+    for component in [NetworkLogTestComponent::Dns, NetworkLogTestComponent::Kmsg] {
+        let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let (mut stdin, pid, starttime) = component.install(&mut config).await;
+        let gate = crate::child_cleanup::ReapGate::new();
+        match component {
+            NetworkLogTestComponent::Dns => config.shutdown.dns_handle.set_reap_gate(gate.clone()),
+            NetworkLogTestComponent::Kmsg => {
+                config.shutdown.kmsg_handle.set_reap_gate(gate.clone())
+            }
+        }
+        let status_path = env._temp_dir.path().join("status.json");
+        let run_handle = tokio::spawn(run(config));
+        wait_discover_entered(&env, Duration::from_secs(2)).await;
+        stdin.write_all(&[0xff, b'\n']).await.unwrap();
+        stdin.flush().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), gate.entered.notified())
+            .await
+            .unwrap();
+        wait_status_mode(&status_path, "stopping", Duration::from_secs(2)).await;
+        assert!(env.cancel.is_cancelled());
+        assert!(
+            !run_handle.is_finished(),
+            "cleanup must remain owned until the child wait finishes"
+        );
+        gate.release.add_permits(1);
+        assert_run_error_contains(run_handle, "ReadError").await;
+        assert_child_reaped(component.label(), pid, starttime).await;
+        wait_status_mode(&status_path, "stopped", Duration::from_secs(2)).await;
+    }
+}
+
+#[tokio::test]
+async fn cancelled_reactor_does_not_abort_owned_network_log_child_cleanup() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (mut stdin, pid, starttime) = install_controllable_dns(&mut config).await;
+    let gate = crate::child_cleanup::ReapGate::new();
+    config.shutdown.dns_handle.set_reap_gate(gate.clone());
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    stdin.write_all(&[0xff, b'\n']).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), gate.entered.notified())
+        .await
+        .unwrap();
+    run_handle.abort();
+    assert!(run_handle.await.unwrap_err().is_cancelled());
+    gate.release.add_permits(1);
+    wait_for_abnormal_child_cleanup(pid, starttime).await;
+}
+
+#[tokio::test]
+async fn mitm_recovery_keeps_lifecycle_live_and_shutdown_joins_old_child_cleanup() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let child = tokio::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .unwrap();
+    let pid = child.id().unwrap();
+    let starttime = crate::process::read_process_stat(pid)
+        .await
+        .unwrap()
+        .starttime;
+    let gate = crate::child_cleanup::ReapGate::new();
+    config.proxy.mitm.set_child_for_test(child);
+    config.proxy.mitm.set_reap_gate_for_test(gate.clone());
+    let (crash_tx, crash_rx) = mpsc::channel(1);
+    config.proxy.mitm_crash_rx = crash_rx;
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    crash_tx.send(()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), gate.entered.notified())
+        .await
+        .unwrap();
+    crash_tx.send(()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while crash_tx.capacity() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("reactor should consume the late crash notification");
+    // An expired retry timer must not busy-loop while old-child cleanup is
+    // still owned. Only the timer is advanced; the real child gate stays held.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(2)).await;
+    tokio::task::yield_now().await;
+    tokio::time::resume();
+    env.trigger_stopping().await;
+    wait_status_mode(&status_path, "stopping", Duration::from_secs(2)).await;
+    assert!(
+        !run_handle.is_finished(),
+        "shutdown must join the restart's old-child cleanup"
+    );
+    gate.release.add_permits(1);
+    // The noop proxy has no replacement runtime. Its startup failure still
+    // follows cleanup and is handled without abandoning the old process.
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "restart cleanup did not finish",
+    )
+    .await;
+    assert_child_reaped("mitmdump", pid, starttime).await;
+}
+
+#[tokio::test]
+async fn mitm_recovery_panic_stops_runner_instead_of_retrying_unknown_cleanup() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let child = tokio::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .unwrap();
+    let pid = child.id().unwrap();
+    let starttime = crate::process::read_process_stat(pid)
+        .await
+        .unwrap()
+        .starttime;
+    let gate = crate::child_cleanup::ReapGate::new();
+    config.proxy.mitm.set_child_for_test(child);
+    config.proxy.mitm.set_reap_gate_for_test(gate.clone());
+    let (crash_tx, crash_rx) = mpsc::channel(1);
+    config.proxy.mitm_crash_rx = crash_rx;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    crash_tx.send(()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), gate.entered.notified())
+        .await
+        .unwrap();
+    // A duplicate notification must not create another restart after failure.
+    crash_tx.send(()).await.unwrap();
+    gate.release.close();
+    assert_run_error_contains(run_handle, "mitmproxy recovery task failed").await;
+    assert!(env.cancel.is_cancelled());
+    assert!(crash_tx.is_closed());
+    wait_for_abnormal_child_cleanup(pid, starttime).await;
+}
+
+#[tokio::test]
+async fn prolonged_teardown_warns_without_completing_or_abandoning_cleanup() {
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::CapturedEvents;
+
+    let captured = CapturedEvents::default();
+    let _subscriber =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(captured.clone()));
+    tracing::callsite::rebuild_interest_cache();
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let cancel = CancellationToken::new();
+    let child_cancel = cancel.clone();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        child_cancel.cancelled().await;
+        release_rx.await.unwrap();
+    });
+    config.shutdown.memory_prefetch =
+        crate::prefetch::MemoryPrefetchTasks::from_test_handle(cancel, task);
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    env.trigger_stopping().await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if captured.entries().iter().any(|event| {
+                event.fields.get("message").map(String::as_str) == Some("teardown phase started")
+                    && event.fields.get("phase").map(String::as_str)
+                        == Some("memory_prefetch_drain")
+            }) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::pause();
+    tokio::task::yield_now().await;
+    tokio::time::advance(Duration::from_secs(31)).await;
+    tokio::task::yield_now().await;
+    let events = captured.entries();
+    let warning = events
+        .iter()
+        .find(|event| {
+            event.fields.get("message").map(String::as_str)
+                == Some("required cleanup still pending")
+                && event.fields.get("phase").map(String::as_str) == Some("memory_prefetch_drain")
+        })
+        .expect("held teardown must identify its pending phase");
+    assert_eq!(warning.level, tracing::Level::WARN);
+    assert_eq!(
+        warning.fields.get("component").map(String::as_str),
+        Some("runner")
+    );
+    assert!(warning.fields.contains_key("elapsed_ms"));
+    assert!(!run_handle.is_finished());
+    tokio::time::resume();
+    release_tx.send(()).unwrap();
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(2),
+        "cleanup completion should finish teardown",
+    )
+    .await;
+    captured.clear();
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(31)).await;
+    tokio::task::yield_now().await;
+    assert!(
+        !captured.entries().iter().any(|event| {
+            event.fields.get("message").map(String::as_str)
+                == Some("required cleanup still pending")
+        }),
+        "completed cleanup must not leave warning tasks alive"
+    );
+    tokio::time::resume();
 }
 
 /// SIGTERM while a job is in flight: per-job cancellation fires, the
@@ -526,6 +791,21 @@ async fn assert_child_reaped(component: &str, pid: u32, starttime: u64) {
         Some(starttime),
         "{component} child pid {pid} with start time {starttime} was not reaped",
     );
+}
+
+// Abnormal task termination transfers reaping to the Drop fallback. Unlike
+// normal shutdown's join, that fallback promises eventual process removal.
+async fn wait_for_abnormal_child_cleanup(pid: u32, starttime: u64) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while crate::process::read_process_stat(pid)
+            .await
+            .is_some_and(|stat| stat.starttime == starttime)
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("abnormal cleanup should eventually reap its owned child");
 }
 
 async fn assert_run_error_contains(

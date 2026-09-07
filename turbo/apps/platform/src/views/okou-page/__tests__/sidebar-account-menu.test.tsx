@@ -21,6 +21,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -1312,6 +1313,81 @@ test("Open Add account without leaving the current page", async () => {
   expect(window.location.href).toBe(originalUrl);
 });
 
+test.each(["Password", "Verification code"])(
+  "Reset Add account after closing the %s step",
+  async (step) => {
+    mockedClerk.clientSignInCreate.mockImplementation((params) => {
+      mockSignInResource({
+        identifier: params.identifier,
+        status: "needs_first_factor",
+        supportedFirstFactors: [{ strategy: "password" }],
+      });
+      return Promise.resolve(mockedClerk.client.signIn);
+    });
+    mockedClerk.signInAttemptFirstFactor.mockImplementation(() => {
+      mockSignInResource({
+        identifier: "second.account@example.test",
+        secondFactorVerificationStatus: "unverified",
+        secondFactorVerificationStrategy: "email_code",
+        status: "needs_client_trust",
+        supportedSecondFactors: [
+          {
+            emailAddressId: "email_second",
+            safeIdentifier: "s***@example.test",
+            strategy: "email_code",
+          },
+        ],
+      });
+      return Promise.resolve(mockedClerk.client.signIn);
+    });
+
+    await setupAddAccountPage();
+    const originalUrl = window.location.href;
+    const dialog = await openAuthV2AddAccountDialog();
+    const identifier = await within(dialog).findByLabelText("Email address");
+    await fill(identifier, "second.account@example.test");
+    fireEvent.submit(containingForm(identifier));
+
+    const password = await within(dialog).findByLabelText("Password");
+    await fill(password, "correct-password");
+    if (step === "Verification code") {
+      fireEvent.submit(containingForm(password));
+      const code = await within(dialog).findByLabelText("Verification code");
+      await fill(code, "12");
+      await userEvent.keyboard("{Escape}");
+    } else {
+      click(buttonByLabel("Close", dialog));
+    }
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("auth-v2-add-account-dialog"),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedDialog = await openAuthV2AddAccountDialog();
+    const freshIdentifier =
+      await within(reopenedDialog).findByLabelText("Email address");
+    expect(freshIdentifier).toHaveValue("");
+    expect(
+      within(reopenedDialog).queryByLabelText("Password"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(reopenedDialog).queryByLabelText("Verification code"),
+    ).not.toBeInTheDocument();
+    expect(mockedClerk.setActive).not.toHaveBeenCalled();
+    expect(window.location.href).toBe(originalUrl);
+
+    await fill(freshIdentifier, "third.account@example.test");
+    fireEvent.submit(containingForm(freshIdentifier));
+    const freshPassword =
+      await within(reopenedDialog).findByLabelText("Password");
+    expect(freshPassword).toHaveValue("");
+    expect(mockedClerk.clientSignInCreate).toHaveBeenLastCalledWith({
+      identifier: "third.account@example.test",
+    });
+  },
+);
+
 test("Continue or restart organization selection while adding an account", async () => {
   await setupAddAccountPage();
   const originalUrl = window.location.href;
@@ -1431,6 +1507,13 @@ test("Cancel an unfinished Add account sign-in", async () => {
     attempt.resolve(mockedClerk.client.signIn);
     await attempt.promise;
   });
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  expect(window.location.href).toBe(originalUrl);
+
+  const reopenedDialog = await openAuthV2AddAccountDialog();
+  const identifierAfterClose =
+    await within(reopenedDialog).findByLabelText("Email address");
+  expect(identifierAfterClose).toHaveValue("");
   expect(mockedClerk.setActive).not.toHaveBeenCalled();
   expect(window.location.href).toBe(originalUrl);
 });

@@ -123,6 +123,8 @@ pub(crate) struct WorkspaceImageCache {
     session_history_sidecar_export_permits: Arc<Semaphore>,
     #[cfg(test)]
     prepare_lock_test_gate: Option<WorkspaceImagePrepareLockTestGate>,
+    #[cfg(test)]
+    routine_gc_test_gate: Option<(Arc<tokio::sync::Notify>, Arc<Semaphore>)>,
 }
 
 #[cfg(test)]
@@ -266,6 +268,7 @@ impl WorkspaceImageCache {
                 MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY,
             )),
             prepare_lock_test_gate: None,
+            routine_gc_test_gate: None,
         }
     }
 
@@ -303,6 +306,16 @@ impl WorkspaceImageCache {
 
     pub(crate) fn paths(&self) -> &RunnerPaths {
         &self.inner.paths
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_routine_gc_test_gate(
+        mut self,
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<Semaphore>,
+    ) -> Self {
+        self.routine_gc_test_gate = Some((entered, release));
+        self
     }
 
     #[cfg(test)]

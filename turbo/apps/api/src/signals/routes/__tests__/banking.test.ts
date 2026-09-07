@@ -197,7 +197,7 @@ function finicityAuthHandler() {
   });
 }
 
-describe("POST /api/zero/banking/*", () => {
+describe("/api/banking/*", () => {
   beforeEach(() => {
     mockEnv("FINICITY_APP_KEY", "test-app-key");
     mockEnv("FINICITY_APP_SECRET", FINICITY_APP_SECRET);

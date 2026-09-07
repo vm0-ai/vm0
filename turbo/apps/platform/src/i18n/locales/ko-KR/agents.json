@@ -617,8 +617,9 @@
     "resultCount_other": "결과 {{count}}개",
     "searchAgents": "에이전트 검색...",
     "searching": "검색 중...",
-    "searchWorkspace": "채팅, 메시지, 워크플로, 아티팩트 검색...",
+    "searchWorkspace": "워크스페이스 검색...",
     "sections": {
+      "agents": "에이전트",
       "artifacts": "아티팩트",
       "chats": "채팅",
       "messages": "메시지",

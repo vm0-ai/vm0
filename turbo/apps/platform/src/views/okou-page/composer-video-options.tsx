@@ -18,6 +18,8 @@ import {
 import { Button, cn } from "@okouai/ui";
 import {
   VIDEO_MODEL_CONFIGS,
+  PUBLIC_VIDEO_MODELS,
+  type VideoModel,
   type ResolvedVideoGenerationOptions,
   type VideoAspectRatio,
   type VideoDuration,
@@ -33,6 +35,9 @@ import {
   videoRunOptionsPatch,
   videoRunOptionsText,
 } from "../../signals/okou-page/video-run-options.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { VideoModelBrandIcon } from "./components/model-provider-picker.tsx";
 
 /**
  * Groups the settings so the pane reads as blocks rather than a run of loose
@@ -274,26 +279,28 @@ function VideoSettingsPane({
   resolved,
   config,
   onChange,
+  showModel = true,
 }: {
   readonly resolved: ResolvedVideoGenerationOptions;
   readonly config: VideoModelConfig;
+  readonly showModel?: boolean;
   readonly onChange: (next: ResolvedVideoGenerationOptions) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1.5">
-      {/* The model these values belong to, as context. It is chosen from the
-          composer's own video control, so this pane never nests a picker. */}
-      <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
-        <span className="text-[13px] text-muted-foreground">
-          {t(($) => {
-            return $.chat.templates.videoOptionsModel;
-          })}
-        </span>
-        <span className="truncate text-[13px] font-medium text-foreground">
-          {config.label}
-        </span>
-      </div>
+      {showModel && (
+        <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
+          <span className="text-[13px] text-muted-foreground">
+            {t(($) => {
+              return $.chat.templates.videoOptionsModel;
+            })}
+          </span>
+          <span className="truncate text-[13px] font-medium text-foreground">
+            {config.label}
+          </span>
+        </div>
+      )}
       <SettingsPanel>
         <VideoOptionField
           label={t(($) => {
@@ -463,128 +470,91 @@ export function ComposerVideoOptionsChip({
   );
 }
 
-function InlineVideoOption<Value extends string>({
-  label,
-  value,
-  values,
-  onChange,
-}: {
-  readonly label: string;
-  readonly value: Value;
-  readonly values: readonly Value[];
-  readonly onChange: (next: Value) => void;
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        aria-label={label}
-        className="h-8 w-auto min-w-16 gap-2 px-2 text-xs"
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {values.map((option) => {
-          return (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
-    </Select>
-  );
-}
-
-export function ComposerInlineVideoOptions({
+/** A task-scoped media control anchored to the existing composer toolbar. */
+export function ComposerTaskVideoSettings({
   signals,
   videoModelSignals,
-  children,
 }: {
   readonly signals: ComposerSignals;
   readonly videoModelSignals: ComposerVideoModelSignals;
-  readonly children: ReactNode;
 }) {
+  const { t } = useTranslation();
+  const open = useGet(signals.videoOptions.videoOptionsOpen$);
+  const setOpen = useSet(signals.videoOptions.setVideoOptionsOpen$);
   const patch = useGet(signals.videoOptions.videoRunOptions$);
   const setPatch = useSet(signals.videoOptions.setVideoRunOptions$);
   const model = useLastResolved(videoModelSignals.effectiveVideoModel$);
-  const setCategory = useSet(signals.model.setMediaModelCategory$);
-  const setOpen = useSet(signals.model.setModelPickerOpen$);
-  const { t } = useTranslation();
+  const setModel = useSet(videoModelSignals.setVideoModel$);
+  const pageSignal = useGet(pageSignal$);
   if (model === undefined) {
-    return <>{children}</>;
+    return null;
   }
-  const resolved = resolveVideoRunOptions(patch, model);
   const config = VIDEO_MODEL_CONFIGS[model];
-  const update = (next: ResolvedVideoGenerationOptions) => {
-    setPatch(videoRunOptionsPatch(next, model));
-  };
+  const resolved = resolveVideoRunOptions(patch, model);
+  const label = t(($) => {
+    return $.chat.templates.videoOptions;
+  });
   return (
-    <div
-      role="group"
-      aria-label={t(($) => {
-        return $.chat.templates.videoOptions;
-      })}
-      className="flex flex-wrap items-center gap-1.5"
-    >
-      <Button
-        variant="quiet"
-        size="sm"
-        onClick={() => {
-          setCategory("video");
-          setOpen(true);
-        }}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="quiet"
+          size="sm"
+          className="max-w-[8.5rem] gap-1.5 font-normal sm:max-w-[14rem]"
+          aria-label={`${label}: ${config.label}`}
+        >
+          <VideoModelBrandIcon model={model} />
+          <span className="truncate">{config.label}</span>
+          <ChevronDown className="shrink-0 opacity-50" aria-hidden />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        side="top"
+        sideOffset={8}
+        collisionPadding={12}
+        className="w-[18rem] max-w-[calc(100vw-1.5rem)] max-h-[var(--available-height)] overflow-y-auto p-1.5"
+        aria-label={label}
       >
-        {config.label}
-        <ChevronDown />
-      </Button>
-      <InlineVideoOption
-        label={t(($) => {
-          return $.chat.templates.videoOptionsRatio;
-        })}
-        value={resolved.aspectRatio}
-        values={config.aspectRatios}
-        onChange={(aspectRatio) => {
-          update({ ...resolved, aspectRatio });
-        }}
-      />
-      <InlineVideoOption
-        label={t(($) => {
-          return $.chat.templates.videoOptionsDuration;
-        })}
-        value={resolved.duration}
-        values={config.durations}
-        onChange={(duration) => {
-          update({ ...resolved, duration });
-        }}
-      />
-      <InlineVideoOption
-        label={t(($) => {
-          return $.chat.templates.videoOptionsResolution;
-        })}
-        value={resolved.resolution}
-        values={config.resolutions}
-        onChange={(resolution) => {
-          update({ ...resolved, resolution });
-        }}
-      />
-      {config.supportsGenerateAudio && (
-        <div className="flex h-8 items-center gap-2 px-1 text-xs text-muted-foreground">
-          <Switch
-            size="compact"
-            checked={resolved.generateAudio}
-            aria-label={t(($) => {
-              return $.chat.templates.videoOptionsAudio;
-            })}
-            onCheckedChange={(generateAudio) => {
-              update({ ...resolved, generateAudio });
+        <div className="px-2.5 pt-2 pb-3">
+          <Select<VideoModel>
+            value={model}
+            onValueChange={(next) => {
+              detach(setModel(next, pageSignal), Reason.DomCallback);
             }}
-          />
-          {t(($) => {
-            return $.artifacts.kinds.audio;
-          })}
+          >
+            <SelectTrigger
+              className="h-9 w-full text-[13px]"
+              aria-label={t(($) => {
+                return $.settings.models.picker.videoModels;
+              })}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end" side="top">
+              {PUBLIC_VIDEO_MODELS.map((candidate) => {
+                return (
+                  <SelectItem key={candidate} value={candidate}>
+                    <span className="flex items-center gap-2">
+                      <VideoModelBrandIcon model={candidate} />
+                      {VIDEO_MODEL_CONFIGS[candidate].label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
-      )}
-      {children}
-    </div>
+        <VideoSettingsPane
+          resolved={resolved}
+          config={config}
+          showModel={false}
+          onChange={(next) => {
+            setPatch(videoRunOptionsPatch(next, model));
+          }}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }

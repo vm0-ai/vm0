@@ -57,7 +57,7 @@ describe("POST /api/uploads/prepare", () => {
     expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
   });
 
-  it("accepts ZERO_TOKEN with file:write capability and returns presigned URL", async () => {
+  it("accepts an Okou run token with file:write and returns a presigned URL", async () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;

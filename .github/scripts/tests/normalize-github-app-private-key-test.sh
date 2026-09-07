@@ -44,7 +44,7 @@ if printf '%s' '-----BEGIN PRIVATE KEY----- invalid -----END PRIVATE KEY-----' |
 fi
 
 rg --quiet --fixed-strings \
-  'SOURCE_PRIVATE_KEY_PEM: ${{ secrets.OKOU_GITHUB_APP_PRIVATE_KEY }}' \
+  'SOURCE_PRIVATE_KEY_PEM: ${{ secrets.OKOU_CI_APP_PRIVATE_KEY }}' \
   "$workflow" || fail "workflow must read the canonical PEM private key secret"
 rg --quiet --fixed-strings \
   'bash .github/scripts/normalize-github-app-private-key.sh' \
@@ -54,7 +54,7 @@ rg --quiet --fixed-strings \
   "$workflow" || fail "token action must consume the normalized private key"
 
 if rg --quiet --fixed-strings \
-  'private-key: ${{ secrets.OKOU_GITHUB_APP_PRIVATE_KEY }}' \
+  'private-key: ${{ secrets.OKOU_CI_APP_PRIVATE_KEY }}' \
   "$workflow"; then
   fail "token action must not receive the secret directly"
 fi
