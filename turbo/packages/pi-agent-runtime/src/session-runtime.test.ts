@@ -23,7 +23,7 @@ const TERRA_MODEL = {
   model: "gpt-5.6-terra",
   api: "openai-responses" as const,
   dialect: "openai-responses" as const,
-  thinkingLevel: "low" as const,
+  thinkingLevel: "max" as const,
 };
 
 const EMPTY_RESOURCE_SNAPSHOT = {
@@ -520,7 +520,7 @@ describe("official Pi AgentSession runtime", () => {
         config: {
           transport: "sse",
           baseUrl: provider.baseUrl.replace(/\/v1$/, route.basePath),
-          thinkingLevel: "low",
+          thinkingLevel: "max",
           ...(route.dialect === "openai-codex-responses"
             ? {
                 ...(route.tier === undefined
@@ -589,7 +589,7 @@ describe("official Pi AgentSession runtime", () => {
               model: route.model,
               stream: true,
               store: false,
-              reasoning: { effort: "low" },
+              reasoning: { effort: "max" },
             },
           });
           if (route.tier === undefined) {
@@ -869,7 +869,7 @@ describe("official Pi AgentSession runtime", () => {
           url: "/v1/responses",
           body: {
             model: "gpt-5.6-terra",
-            reasoning: { effort: "low" },
+            reasoning: { effort: "max" },
           },
         });
         if (serviceTier === undefined) {
@@ -1037,7 +1037,7 @@ describe("official Pi AgentSession runtime", () => {
     }
   });
 
-  it("uses Terra low thinking for a fresh session", async () => {
+  it("uses Terra max thinking for a fresh session", async () => {
     const sessionManager = SessionManager.inMemory("/home/user/workspace", {
       id: "00000000-0000-4000-8000-000000000124",
     });
@@ -1051,12 +1051,12 @@ describe("official Pi AgentSession runtime", () => {
     });
 
     try {
-      expect(created.session.agent.state.thinkingLevel).toBe("low");
+      expect(created.session.agent.state.thinkingLevel).toBe("max");
       expect(
         sessionManager.getBranch().filter((entry) => {
           return entry.type === "thinking_level_change";
         }),
-      ).toEqual([expect.objectContaining({ thinkingLevel: "low" })]);
+      ).toEqual([expect.objectContaining({ thinkingLevel: "max" })]);
     } finally {
       created.session.dispose();
     }

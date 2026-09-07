@@ -5364,7 +5364,7 @@ function expectApiKeyTerraRequest(
       model: route.runtimeModel,
       stream: true,
       store: false,
-      reasoning: { effort: "low" },
+      reasoning: { effort: "max" },
     },
   });
   const { body } = z
@@ -5416,7 +5416,7 @@ function expectApiKeyTerraSandboxCarrier(
     ...(route.type === "vercel-ai-gateway-codex"
       ? { catalogModel: route.catalogModel }
       : {}),
-    thinkingLevel: "low",
+    thinkingLevel: "max",
     credentialBindings: [
       {
         kind: "api-key",
@@ -5453,7 +5453,7 @@ function expectNativeSubscriptionRequest(
       model: "gpt-5.6-terra",
       stream: true,
       store: false,
-      reasoning: { effort: "low" },
+      reasoning: { effort: "max" },
     },
   });
   const { body } = z
@@ -14938,7 +14938,7 @@ describe("CHAT-02: run-level model overrides", () => {
           provider: "openai-codex",
           baseUrl: "https://chatgpt.com/backend-api",
           model: "gpt-5.6-terra",
-          thinkingLevel: "low",
+          thinkingLevel: "max",
           credentialBindings: [
             {
               kind: "access-token",
@@ -15445,7 +15445,7 @@ describe("CHAT-02: run-level model overrides", () => {
             model: route.runtimeModel,
             stream: true,
             store: false,
-            reasoning: { effort: "low" },
+            reasoning: { effort: "max" },
           },
         });
         expect(request.body).not.toHaveProperty("previous_response_id");
