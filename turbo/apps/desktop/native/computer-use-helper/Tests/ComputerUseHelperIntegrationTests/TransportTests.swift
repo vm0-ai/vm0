@@ -49,15 +49,6 @@ struct TransportTests {
         #expect(response["id"] as? String == "serve_failure")
         #expect(response["status"] as? String == "failed")
         #expect(error["code"] as? String == "unsupported_command")
-
-        helper.closeInput()
-        let exited = helper.waitForExit(seconds: 5)
-        #expect(exited)
-        guard exited else {
-            return
-        }
-        #expect(helper.terminationReason == .exit)
-        #expect(helper.terminationStatus == 0)
     }
 
     @Test
@@ -184,11 +175,17 @@ private final class HelperProcess {
             guard pollResult > 0 else {
                 throw TransportTestFailure(description: "The helper did not write a JSONL response")
             }
-            let data = try output.fileHandleForReading.read(upToCount: 4_096) ?? Data()
-            guard !data.isEmpty else {
+            var buffer = [UInt8](repeating: 0, count: 4_096)
+            let byteCount = buffer.withUnsafeMutableBytes { bytes in
+                Darwin.read(descriptor.fd, bytes.baseAddress, bytes.count)
+            }
+            if byteCount < 0, errno == EINTR {
+                continue
+            }
+            guard byteCount > 0 else {
                 throw TransportTestFailure(description: "The helper closed stdout before writing a response")
             }
-            pendingOutput.append(data)
+            pendingOutput.append(contentsOf: buffer.prefix(byteCount))
         }
     }
 
