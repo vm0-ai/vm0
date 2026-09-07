@@ -298,7 +298,11 @@ async function handleWorkflowLaunchResult(
   if (!failed) {
     return null;
   }
-  log.warn("Workflow queue event rejected after run creation failure", {
+  const logRejection =
+    result.response.body.error.code === "INSUFFICIENT_CREDITS"
+      ? log.debug
+      : log.warn;
+  logRejection("Workflow queue event rejected after run creation failure", {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
     code: result.response.body.error.code,

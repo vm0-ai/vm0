@@ -103,7 +103,8 @@ function signInErrorCategory(
     case "user-banned": {
       return "invalid-credentials";
     }
-    case "code-expired": {
+    case "code-expired":
+    case "invalid-code": {
       return "invalid-code";
     }
     case "passkey-cancelled": {
@@ -372,8 +373,15 @@ function signInFactorMethod(
     case "email-code": {
       return "email-code";
     }
-    case "client-trust-email-code": {
-      return "email-code";
+    case "second-factor": {
+      return (
+        {
+          email_code: "email-code",
+          phone_code: "phone-code",
+          totp: "totp",
+          backup_code: "backup-code",
+        } as const
+      )[factor.strategy];
     }
     case "oauth": {
       return factor.strategy === "oauth_apple" ? "apple-oauth" : "google-oauth";
@@ -488,9 +496,12 @@ function createSignInAttemptSignals(
           ? { method: "email-code", step: "email-code" }
           : null;
       }
-      case "client-trust-code": {
-        return get(signals.code$).trim()
-          ? { method: "email-code", step: "email-code" }
+      case "second-factor": {
+        return get(signals.code$).trim() && flowState.selectedFactor
+          ? {
+              method: signInFactorMethod(flowState.selectedFactor),
+              step: "second-factor",
+            }
           : null;
       }
       case "password-reset-code": {
@@ -550,11 +561,14 @@ function createSignInAttemptSignals(
     if (flowState.status !== "incomplete") {
       return null;
     }
-    if (
-      flowState.step === "email-code" ||
-      flowState.step === "client-trust-code"
-    ) {
+    if (flowState.step === "email-code") {
       return { method: "email-code", step: "email-code" };
+    }
+    if (flowState.step === "second-factor" && flowState.selectedFactor) {
+      return {
+        method: signInFactorMethod(flowState.selectedFactor),
+        step: "second-factor",
+      };
     }
     return flowState.step === "password-reset-code"
       ? { method: "password-reset", step: "password-reset-code" }

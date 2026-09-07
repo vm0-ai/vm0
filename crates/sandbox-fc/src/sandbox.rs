@@ -556,6 +556,8 @@ pub struct FirecrackerSandbox {
     park_outcome: Option<SandboxParkOutcome>,
     /// Host-side normal-operation fence held while this sandbox is parked.
     park_fence: Option<NormalOperationFence>,
+    guest_rpc_endpoint: Option<crate::guest_rpc::GuestRpcEndpoint>,
+    runtime_cancel: CancellationToken,
     /// Optional managed host CPU placement for the Firecracker process.
     host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
 }
@@ -671,6 +673,8 @@ impl FirecrackerSandbox {
             is_parked: false,
             park_outcome: None,
             park_fence: None,
+            guest_rpc_endpoint: None,
+            runtime_cancel: CancellationToken::new(),
             host_cpu_cgroup,
         }
     }
@@ -1342,7 +1346,14 @@ impl FirecrackerSandbox {
             return Err(error);
         }
 
-        let runtime_cancel = CancellationToken::new();
+        let runtime_cancel = self.runtime_cancel.clone();
+        // Synchronous bind precedes BOTH fresh guest boot and snapshot resume.
+        // Until successful startup, this local owner covers all error/cancel paths.
+        let guest_rpc_endpoint =
+            self.bind_guest_rpc_endpoint()
+                .map_err(|error| SandboxError::Start {
+                    message: format!("bind guest RPC transport: {error}"),
+                })?;
 
         // Start the vsock listener BEFORE launching Firecracker.
         // The UDS must be bound before the guest tries to connect.
@@ -1571,9 +1582,24 @@ impl FirecrackerSandbox {
             self.state_tx.subscribe(),
         ));
 
+        self.guest_rpc_endpoint = Some(guest_rpc_endpoint);
+
         info!(id = %self.id, "sandbox started");
         timing.record(SandboxStartStage::RuntimeFinalize, finalize_started, true);
         Ok(())
+    }
+
+    fn bind_guest_rpc_endpoint(&self) -> io::Result<crate::guest_rpc::GuestRpcEndpoint> {
+        crate::guest_rpc::GuestRpcEndpoint::bind(
+            self.sock_paths.guest_rpc(),
+            crate::guest_rpc::GuestRpcContext {
+                sandbox_id: self.id.clone(),
+                state: Arc::clone(&self.state),
+                guest: Arc::clone(&self.guest),
+                coordinator: self.park_coordinator.clone(),
+            },
+            self.runtime_cancel.clone(),
+        )
     }
 }
 
@@ -1584,6 +1610,8 @@ async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
 
 impl Drop for FirecrackerSandbox {
     fn drop(&mut self) {
+        drop(self.guest_rpc_endpoint.take());
+        self.runtime_cancel.cancel();
         // Drop cannot await async teardown, so fall back to synchronous
         // runtime aborts and ask the monitor to kill the process group.
         self.runtime.abort_for_drop();
@@ -2082,6 +2110,7 @@ impl FirecrackerSandbox {
             )
             .await?;
         self.park_fence = Some(normal_operations_fence);
+        drop(self.guest_rpc_endpoint.take());
         match physical_outcome {
             PhysicalParkOutcome::Idle(park_outcome) => {
                 self.park_outcome = Some(park_outcome.clone());
@@ -2106,6 +2135,12 @@ impl Sandbox for FirecrackerSandbox {
 
     fn id(&self) -> &str {
         &self.id
+    }
+
+    fn guest_rpc(&self, expected_run_id: &str) -> Option<Arc<dyn sandbox::GuestRpcAcceptor>> {
+        self.guest_rpc_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.acceptor(expected_run_id))
     }
 
     fn source_ip(&self) -> &str {
@@ -2164,6 +2199,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn stop(&mut self) -> sandbox::Result<()> {
+        drop(self.guest_rpc_endpoint.take());
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
@@ -2226,6 +2262,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn kill(&mut self) -> sandbox::Result<()> {
+        drop(self.guest_rpc_endpoint.take());
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
@@ -2354,6 +2391,7 @@ impl Sandbox for FirecrackerSandbox {
         .await?;
         self.park_fence = Some(normal_operations_fence);
         self.park_outcome = Some(outcome.clone());
+        drop(self.guest_rpc_endpoint.take());
         Ok(outcome)
     }
 
@@ -2442,6 +2480,12 @@ impl Sandbox for FirecrackerSandbox {
             ));
         }
 
+        let guest_rpc_endpoint = self.bind_guest_rpc_endpoint().map_err(|error| {
+            idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                format!("bind guest RPC transport: {error}"),
+            )
+        })?;
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
         let id = self.id.clone();
@@ -2479,6 +2523,7 @@ impl Sandbox for FirecrackerSandbox {
         )
         .await?;
         self.park_outcome = None;
+        self.guest_rpc_endpoint = Some(guest_rpc_endpoint);
         Ok(())
     }
 

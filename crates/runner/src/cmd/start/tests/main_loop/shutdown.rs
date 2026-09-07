@@ -178,7 +178,7 @@ async fn assert_network_log_eof_stops_runner(component: NetworkLogTestComponent)
         !run_handle.is_finished(),
         "blocked final heartbeat should hold teardown open",
     );
-    assert_child_reaped(component.label(), pid, starttime).await;
+    wait_for_child_cleanup(component.label(), pid, starttime).await;
     assert!(
         env.cancel.is_cancelled(),
         "{} EOF should stop discovery",
@@ -206,7 +206,7 @@ async fn assert_network_log_read_error_stops_runner(component: NetworkLogTestCom
         "{} read error should drive runner teardown",
         component.label(),
     );
-    assert_child_reaped(component.label(), pid, starttime).await;
+    wait_for_child_cleanup(component.label(), pid, starttime).await;
     assert!(
         env.cancel.is_cancelled(),
         "{} read error should stop discovery",
@@ -386,7 +386,7 @@ async fn cancelled_reactor_does_not_abort_owned_network_log_child_cleanup() {
     run_handle.abort();
     assert!(run_handle.await.unwrap_err().is_cancelled());
     gate.release.add_permits(1);
-    wait_for_abnormal_child_cleanup(pid, starttime).await;
+    wait_for_child_cleanup("dns", pid, starttime).await;
 }
 
 #[tokio::test]
@@ -474,7 +474,7 @@ async fn mitm_recovery_panic_stops_runner_instead_of_retrying_unknown_cleanup() 
     assert_run_error_contains(run_handle, "mitmproxy recovery task failed").await;
     assert!(env.cancel.is_cancelled());
     assert!(crash_tx.is_closed());
-    wait_for_abnormal_child_cleanup(pid, starttime).await;
+    wait_for_child_cleanup("mitmdump", pid, starttime).await;
 }
 
 #[tokio::test]
@@ -793,9 +793,9 @@ async fn assert_child_reaped(component: &str, pid: u32, starttime: u64) {
     );
 }
 
-// Abnormal task termination transfers reaping to the Drop fallback. Unlike
-// normal shutdown's join, that fallback promises eventual process removal.
-async fn wait_for_abnormal_child_cleanup(pid: u32, starttime: u64) {
+// Independently owned cleanup promises eventual process removal. Joined
+// cleanup paths use assert_child_reaped to enforce the stronger postcondition.
+async fn wait_for_child_cleanup(component: &str, pid: u32, starttime: u64) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while crate::process::read_process_stat(pid)
             .await
@@ -805,7 +805,11 @@ async fn wait_for_abnormal_child_cleanup(pid: u32, starttime: u64) {
         }
     })
     .await
-    .expect("abnormal cleanup should eventually reap its owned child");
+    .unwrap_or_else(|_| {
+        panic!(
+            "{component} cleanup did not reap child pid {pid} with start time {starttime} within 2s"
+        )
+    });
 }
 
 async fn assert_run_error_contains(

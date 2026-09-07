@@ -47,9 +47,6 @@ type IncompleteSignInState = Extract<
   AuthV2SignInState,
   { status: "incomplete" }
 >;
-type SignInFactorKind = NonNullable<
-  IncompleteSignInState["selectedFactor"]
->["kind"];
 
 interface SignInStepProps {
   readonly copy: AuthV2SignInCopy;
@@ -797,6 +794,104 @@ function ClientTrustNotice({
   );
 }
 
+function SignInCodeInput({
+  backupCode,
+  code,
+  copy,
+  invalid,
+  setCode,
+}: {
+  readonly backupCode: boolean;
+  readonly code: string;
+  readonly copy: AuthV2SignInCopy;
+  readonly invalid: boolean;
+  readonly setCode: (value: string) => void;
+}) {
+  if (backupCode) {
+    return (
+      <div className="space-y-2">
+        <label
+          className="block text-sm font-medium text-foreground"
+          htmlFor="auth-v2-code"
+        >
+          {copy.backupCodeLabel}
+        </label>
+        <Input
+          aria-describedby={invalid ? AUTH_V2_SIGN_IN_ERROR_ID : undefined}
+          aria-invalid={invalid ? true : undefined}
+          autoCapitalize="none"
+          autoComplete="off"
+          className="border border-border"
+          id="auth-v2-code"
+          name="code"
+          onChange={(event) => {
+            setCode(event.currentTarget.value);
+          }}
+          required
+          spellCheck={false}
+          value={code}
+        />
+      </div>
+    );
+  }
+  return (
+    <AuthV2OtpInput
+      errorId={AUTH_V2_SIGN_IN_ERROR_ID}
+      invalid={invalid}
+      label={copy.codeLabel}
+      name="code"
+      onChange={setCode}
+      value={code}
+    />
+  );
+}
+
+function CodeResendButton({
+  copy,
+  expired,
+  operationPending,
+  onResend,
+  resending,
+  signals,
+}: {
+  readonly copy: AuthV2SignInCopy;
+  readonly expired: boolean;
+  readonly operationPending: boolean;
+  readonly onResend: () => void;
+  readonly resending: boolean;
+  readonly signals: AuthV2SignInSignals;
+}) {
+  const resendCooldownLifecycleRef = useSet(
+    signals.resendCooldownLifecycleRef$,
+  );
+  const resendState = useGet(signals.resendState$);
+  const coolingDown = resendState.status === "cooling-down";
+  return (
+    <>
+      {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
+      <Button
+        className={cn(
+          expired
+            ? "w-full"
+            : "mx-auto h-auto w-fit p-0 text-[13px] leading-[17px]",
+          AUTH_V2_LINK_ACTION_CLASS,
+        )}
+        disabled={operationPending || (coolingDown && !expired)}
+        type="button"
+        variant={expired ? "outline" : "link"}
+        onClick={onResend}
+      >
+        {resending ? (
+          <Loader2 className="animate-spin" aria-hidden="true" />
+        ) : null}
+        {coolingDown && !expired
+          ? copy.resendCodeCooldown(resendState.remainingSeconds)
+          : copy.resendCode}
+      </Button>
+    </>
+  );
+}
+
 function CodeStep({
   copy,
   operationSignal$,
@@ -807,23 +902,28 @@ function CodeStep({
 }) {
   const code = useGet(signals.code$);
   const error = useGet(signals.error$);
-  const resendState = useGet(signals.resendState$);
   const operationSignal = useGet(operationSignal$);
   const setCode = useSet(signals.setCode$);
   const backToIdentifier = useSet(signals.backToIdentifier$);
   const backToMethods = useSet(signals.backToMethods$);
-  const resendCooldownLifecycleRef = useSet(
-    signals.resendCooldownLifecycleRef$,
-  );
   const [submitLoadable, submit] = useLoadableSet(signals.submit$);
   const [resendLoadable, resendCode] = useLoadableSet(signals.resendCode$);
   const submitting = submitLoadable.state === "loading";
   const resending = resendLoadable.state === "loading";
-  const expired = error?.code === "code-expired";
-  const coolingDown = resendState.status === "cooling-down";
   const operationPending = submitting || resending;
   const selectedFactor = state.selectedFactor;
-  const clientTrust = selectedFactor?.kind === "client-trust-email-code";
+  const secondFactor =
+    selectedFactor?.kind === "second-factor" ? selectedFactor : null;
+  const backupCode = secondFactor?.strategy === "backup_code";
+  const canResend =
+    !secondFactor ||
+    secondFactor.strategy === "email_code" ||
+    secondFactor.strategy === "phone_code";
+  const expired = canResend && error?.code === "code-expired";
+  const safeIdentifier =
+    secondFactor && "safeIdentifier" in secondFactor
+      ? secondFactor.safeIdentifier
+      : null;
   const handleSubmit = authV2SubmitHandler(() => {
     return submit(operationSignal);
   }, "submit auth v2 sign in");
@@ -837,53 +937,46 @@ function CodeStep({
   return (
     <div className="flex flex-col gap-4">
       <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
-        {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
         <div className="flex flex-col gap-2">
           <FlowErrorAlert
             copy={copy}
             handledFields={["code"]}
             signals={signals}
           />
-          {clientTrust ? (
+          {safeIdentifier ? (
             <p className="text-center text-sm text-muted-foreground">
-              {selectedFactor.safeIdentifier}
+              {safeIdentifier}
             </p>
           ) : null}
-          <AuthV2OtpInput
-            errorId={AUTH_V2_SIGN_IN_ERROR_ID}
+          <SignInCodeInput
+            backupCode={backupCode}
+            code={code}
+            copy={copy}
             invalid={error?.field === "code"}
-            label={copy.codeLabel}
-            name="code"
-            onChange={setCode}
-            value={code}
+            setCode={setCode}
           />
           {error?.field === "code" ? (
             <AuthV2FieldError
               focusKey={`${error.code}:${error.field}:${error.clerkCode ?? ""}`}
               id={AUTH_V2_SIGN_IN_ERROR_ID}
-              message={signInErrorMessage(error, copy)}
+              message={
+                error.code === "code-expired" && !canResend
+                  ? copy.verificationCodeExpired
+                  : signInErrorMessage(error, copy)
+              }
             />
           ) : null}
-          <Button
-            className={cn(
-              expired
-                ? "w-full"
-                : "mx-auto h-auto w-fit p-0 text-[13px] leading-[17px]",
-              AUTH_V2_LINK_ACTION_CLASS,
-            )}
-            disabled={operationPending || (coolingDown && !expired)}
-            type="button"
-            variant={expired ? "outline" : "link"}
-            onClick={handleResend}
-          >
-            {resending ? (
-              <Loader2 className="animate-spin" aria-hidden="true" />
-            ) : null}
-            {coolingDown && !expired
-              ? copy.resendCodeCooldown(resendState.remainingSeconds)
-              : copy.resendCode}
-          </Button>
-          <ClientTrustNotice copy={copy} visible={clientTrust} />
+          {canResend ? (
+            <CodeResendButton
+              copy={copy}
+              expired={expired}
+              operationPending={operationPending}
+              onResend={handleResend}
+              resending={resending}
+              signals={signals}
+            />
+          ) : null}
+          <ClientTrustNotice copy={copy} visible={state.clientTrust} />
         </div>
         <AuthV2SubmitButton
           busy={submitting}
@@ -896,7 +989,8 @@ function CodeStep({
         backToMethods={backToMethods}
         copy={copy}
         disabled={operationPending}
-        factorKind={selectedFactor?.kind ?? null}
+        factor={selectedFactor}
+        hasAlternativeFactors={state.factors.length > 1}
       />
     </div>
   );
@@ -907,22 +1001,27 @@ function CodeStepBottomAction({
   backToMethods,
   copy,
   disabled,
-  factorKind,
+  factor,
+  hasAlternativeFactors,
 }: {
   readonly backToIdentifier: () => void;
   readonly backToMethods: () => void;
   readonly copy: AuthV2SignInCopy;
   readonly disabled: boolean;
-  readonly factorKind: SignInFactorKind | null;
+  readonly factor: AuthV2SignInFactor | null;
+  readonly hasAlternativeFactors: boolean;
 }) {
-  if (factorKind === "email-code") {
+  if (
+    factor?.kind === "email-code" ||
+    (factor?.kind === "second-factor" && hasAlternativeFactors)
+  ) {
     return (
       <AuthV2BackLink disabled={disabled} onClick={backToMethods}>
         {copy.useAnotherMethod}
       </AuthV2BackLink>
     );
   }
-  if (factorKind !== "client-trust-email-code") {
+  if (factor?.kind !== "second-factor") {
     return null;
   }
   return (
@@ -1140,7 +1239,7 @@ export function SignInCardContent({
       />
     );
   }
-  if (state.step === "client-trust-code") {
+  if (state.step === "second-factor") {
     return (
       <CodeStep
         copy={copy}

@@ -29,6 +29,7 @@ import {
 } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
+import { seedBuiltInModelKey } from "./helpers/runtime-state";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { agentsRoutes } from "../agents";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -55,6 +56,8 @@ const WORKFLOW_NAME = "scheduler-workflow";
 
 interface Scenario {
   readonly actor: ApiTestUser;
+  readonly customerId: string;
+  readonly subscriptionId: string;
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -105,7 +108,7 @@ async function setup(
   } = {},
 ): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
-  const { actor } = await wf.setupWorkflowOrg({
+  const { actor, customerId, subscriptionId } = await wf.setupWorkflowOrg({
     timezone: options.timezone,
     tier: options.tier,
   });
@@ -123,6 +126,8 @@ async function setup(
   context.mocks.s3.send.mockResolvedValue({});
   return {
     actor,
+    customerId,
+    subscriptionId,
     orgId: actor.orgId,
     userId: actor.userId,
     agentId: agent.agentId,
@@ -248,6 +253,7 @@ async function completeRunThroughSandbox(
   scenario: Scenario,
   runId: string,
   exitCode: number,
+  failureReason?: "insufficient_credits",
 ): Promise<void> {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
@@ -256,6 +262,12 @@ async function completeRunThroughSandbox(
     {
       runId,
       exitCode,
+      ...(failureReason
+        ? {
+            failureReason,
+            error: "Insufficient credits. Add credits to continue.",
+          }
+        : {}),
       checkpoint: {
         cliAgentType: "claude-code",
         cliAgentSessionId: `workflow-automation-cli-${runId}`,
@@ -759,6 +771,112 @@ describe("okou workflow automation scheduler", () => {
     );
     expect(replacementThreadId).not.toBe(firstThreadId);
     await disableAutomation(replacement.automationId);
+  });
+
+  it.each(["loop", "cron"] as const)(
+    "keeps a credit-blocked %s automation enabled and resumes after billing recovers",
+    async (scheduleType) => {
+      const scenario = await setup();
+      await seedBuiltInModelKey(context, "claude-sonnet-5");
+      await runsApi.updateOrgModelPolicies(scenario.actor, [
+        {
+          model: "claude-sonnet-5",
+          isDefault: true,
+          defaultProviderType: "built-in",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ]);
+      const created = await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId: scenario.workflowId },
+          body: {
+            schedule:
+              scheduleType === "loop"
+                ? { type: "loop", intervalSeconds: 300 }
+                : {
+                    type: "cron",
+                    cronExpression: "*/5 * * * *",
+                    timezone: "UTC",
+                  },
+          },
+        }),
+        [201],
+      );
+      // Let the paid entitlement expire through the production time boundary.
+      mockNow(now() + 100 * 86_400_000);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const threadId = await executeDueWorkflowAutomations(created.body.id);
+        await expect(workflowRunMessages(threadId)).resolves.toHaveLength(0);
+        const automation = await wf.readAutomation(created.body.id);
+        expect(automation.enabled).toBeTruthy();
+        if (!automation.nextRunAt) {
+          throw new Error("Expected a credit-blocked automation to recur");
+        }
+        expect(Date.parse(automation.nextRunAt)).toBeGreaterThan(now());
+        mockNow(Date.parse(automation.nextRunAt));
+      }
+
+      await runsApi.grantProEntitlement(scenario.actor, {
+        customerId: scenario.customerId,
+        subscriptionId: scenario.subscriptionId,
+      });
+      const threadId = await executeDueWorkflowAutomations(created.body.id);
+      const run = await onlyWorkflowRunMessage(threadId);
+      expect((await wf.readAutomation(created.body.id)).enabled).toBeTruthy();
+      await runsApi.requestCancelRun(scenario.actor, run.runId, [200]);
+      await disableAutomation(created.body.id);
+    },
+  );
+
+  it("keeps recurring after three runs stop for insufficient credits", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 300);
+    const seenRunIds = new Set<string>();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const threadId = await executeDueWorkflowAutomations(
+        automation.automationId,
+      );
+      const run = (await workflowRunMessages(threadId)).find((message) => {
+        return !seenRunIds.has(message.runId);
+      });
+      if (!run) {
+        throw new Error("Expected a new scheduled run");
+      }
+      seenRunIds.add(run.runId);
+      await completeRunThroughSandbox(
+        scenario,
+        run.runId,
+        1,
+        "insufficient_credits",
+      );
+      await expect
+        .poll(async () => {
+          const read = await wf.readAutomation(automation.automationId);
+          return { enabled: read.enabled, nextRunAt: read.nextRunAt };
+        })
+        .toStrictEqual({ enabled: true, nextRunAt: expect.any(String) });
+      const read = await wf.readAutomation(automation.automationId);
+      if (!read.nextRunAt) {
+        throw new Error("Expected the next run after insufficient credits");
+      }
+      mockNow(Date.parse(read.nextRunAt));
+    }
+
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
+    const messages = await workflowRunMessages(threadId);
+    expect(messages).toHaveLength(4);
+    const recovered = messages.find((message) => {
+      return !seenRunIds.has(message.runId);
+    });
+    if (!recovered) {
+      throw new Error("Expected the automation to recover on its next run");
+    }
+    await completeRunThroughSandbox(scenario, recovered.runId, 0);
+    await disableAutomation(automation.automationId);
   });
 
   it("auto-disables an automation after three consecutive failures", async () => {

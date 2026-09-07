@@ -1380,6 +1380,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-rpc"
+version = "0.1.0"
+dependencies = [
+ "guest-rpc-proto",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "guest-rpc-proto"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "guest-session-prune"
 version = "0.3.74"
 dependencies = [
@@ -2629,6 +2649,7 @@ dependencies = [
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
+ "guest-rpc",
  "guest-tool-exec",
  "guest-write-file",
  "hex",
@@ -2809,6 +2830,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-util",
  "trybuild",
  "uuid",
 ]
@@ -2821,6 +2843,7 @@ dependencies = [
  "clap",
  "futures-util",
  "guest-contracts",
+ "guest-rpc-proto",
  "hex",
  "libc",
  "nbd-cow",

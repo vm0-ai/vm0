@@ -14,6 +14,18 @@ import {
 
 export interface AuthV2SignInCopy {
   readonly accessNotAllowed: string;
+  readonly authenticatorMethod: string;
+  readonly authenticatorSubtitle: string;
+  readonly backupCodeLabel: string;
+  readonly backupCodeMethod: string;
+  readonly backupCodeSubtitle: string;
+  readonly invalidCode: string;
+  readonly phoneCodeSubtitle: string;
+  readonly phoneCodeTitle: string;
+  readonly secondFactorTitle: string;
+  readonly secondFactorSubtitle: string;
+  readonly verificationCodeExpired: string;
+  readonly phoneCodeMethod: (identifier: string) => string;
   readonly addAccount: string;
   readonly appleMethod: string;
   readonly appleProvider: string;
@@ -194,6 +206,47 @@ function signInCodeCopy(
     clientTrustNotice: t(($) => {
       return $.auth.v2.signIn.clientTrustNotice;
     }),
+    authenticatorMethod: t(($) => {
+      return $.auth.v2.signIn.authenticatorMethod;
+    }),
+    authenticatorSubtitle: t(($) => {
+      return $.auth.v2.signIn.authenticatorSubtitle;
+    }),
+    backupCodeLabel: t(($) => {
+      return $.auth.v2.signIn.backupCodeLabel;
+    }),
+    backupCodeMethod: t(($) => {
+      return $.auth.v2.signIn.backupCodeMethod;
+    }),
+    backupCodeSubtitle: t(($) => {
+      return $.auth.v2.signIn.backupCodeSubtitle;
+    }),
+    invalidCode: t(($) => {
+      return $.auth.v2.signIn.invalidCode;
+    }),
+    phoneCodeSubtitle: t(($) => {
+      return $.auth.v2.signIn.phoneCodeSubtitle;
+    }),
+    phoneCodeTitle: t(($) => {
+      return $.auth.v2.signIn.phoneCodeTitle;
+    }),
+    secondFactorTitle: t(($) => {
+      return $.auth.v2.signIn.secondFactorTitle;
+    }),
+    secondFactorSubtitle: t(($) => {
+      return $.auth.v2.signIn.secondFactorSubtitle;
+    }),
+    verificationCodeExpired: t(($) => {
+      return $.auth.v2.signIn.verificationCodeExpired;
+    }),
+    phoneCodeMethod: (identifier: string) => {
+      return t(
+        ($) => {
+          return $.auth.v2.signIn.phoneCodeMethod;
+        },
+        { identifier },
+      );
+    },
     codeExpired: t(($) => {
       return $.auth.v2.signIn.codeExpired;
     }),
@@ -392,6 +445,9 @@ export function signInErrorMessage(
   if (error.code === "passkey-unavailable") {
     return copy.passkeyUnavailable;
   }
+  if (error.code === "invalid-code") {
+    return copy.invalidCode;
+  }
   if (error.code === "code-expired") {
     return copy.codeExpired;
   }
@@ -421,7 +477,11 @@ export function signInCardDescription(
     return copy.noMethodsMessage;
   }
   if (flowState.step === "choose-factor") {
-    return copy.chooseMethodSubtitle;
+    return flowState.factors.some((factor) => {
+      return factor.kind === "second-factor";
+    })
+      ? copy.secondFactorSubtitle
+      : copy.chooseMethodSubtitle;
   }
   if (flowState.step === "choose-session") {
     return copy.chooseAccountSubtitle;
@@ -438,11 +498,19 @@ export function signInCardDescription(
   if (flowState.step === "help") {
     return copy.helpDescription;
   }
-  if (
-    flowState.step === "email-code" ||
-    flowState.step === "client-trust-code"
-  ) {
+  if (flowState.step === "email-code") {
     return copy.emailCodeSubtitle;
+  }
+  if (
+    flowState.step === "second-factor" &&
+    flowState.selectedFactor?.kind === "second-factor"
+  ) {
+    return {
+      email_code: copy.emailCodeSubtitle,
+      phone_code: copy.phoneCodeSubtitle,
+      totp: copy.authenticatorSubtitle,
+      backup_code: copy.backupCodeSubtitle,
+    }[flowState.selectedFactor.strategy];
   }
   if (flowState.step === "password-reset-code") {
     return copy.resetPasswordCodeSubtitle;
@@ -467,7 +535,11 @@ export function signInCardTitle(
     return copy.chooseAccountTitle;
   }
   if (flowState.step === "choose-factor") {
-    return copy.chooseMethodTitle;
+    return flowState.factors.some((factor) => {
+      return factor.kind === "second-factor";
+    })
+      ? copy.secondFactorTitle
+      : copy.chooseMethodTitle;
   }
   if (flowState.step === "password") {
     return copy.passwordTitle;
@@ -478,11 +550,20 @@ export function signInCardTitle(
   if (flowState.step === "help") {
     return copy.helpTitle;
   }
-  if (
-    flowState.step === "email-code" ||
-    flowState.step === "client-trust-code"
-  ) {
+  if (flowState.step === "email-code") {
     return copy.emailCodeTitle;
+  }
+  if (
+    flowState.step === "second-factor" &&
+    flowState.selectedFactor?.kind === "second-factor"
+  ) {
+    if (flowState.selectedFactor.strategy === "email_code") {
+      return copy.emailCodeTitle;
+    }
+    if (flowState.selectedFactor.strategy === "phone_code") {
+      return copy.phoneCodeTitle;
+    }
+    return copy.secondFactorTitle;
   }
   if (flowState.step === "password-reset-code") {
     return copy.resetPasswordCodeTitle;
@@ -510,6 +591,22 @@ export function signInFactorLabel(
   }
   if (factor.kind === "passkey") {
     return copy.passkeyMethod;
+  }
+  if (factor.kind === "second-factor") {
+    switch (factor.strategy) {
+      case "email_code": {
+        return copy.emailCodeMethod(factor.safeIdentifier);
+      }
+      case "phone_code": {
+        return copy.phoneCodeMethod(factor.safeIdentifier);
+      }
+      case "totp": {
+        return copy.authenticatorMethod;
+      }
+      case "backup_code": {
+        return copy.backupCodeMethod;
+      }
+    }
   }
   return copy.emailCodeMethod(factor.safeIdentifier);
 }

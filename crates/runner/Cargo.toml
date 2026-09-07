@@ -68,6 +68,7 @@ guest-mock-claude = { workspace = true }
 guest-mock-codex = { workspace = true }
 guest-reseed = { workspace = true }
 guest-tool-exec = { workspace = true }
+guest-rpc = { workspace = true }
 guest-write-file = { workspace = true }
 httpmock = { workspace = true }
 http-body = "1"

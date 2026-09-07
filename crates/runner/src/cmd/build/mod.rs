@@ -111,6 +111,15 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-tool-exec binary (required)")
     )]
     guest_tool_exec: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-rpc binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-rpc binary (required)")
+    )]
+    guest_rpc: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
@@ -133,6 +142,7 @@ impl BuildArgs {
             "guest-reseed" => self.guest_reseed.take(),
             "guest-write-file" => self.guest_write_file.take(),
             "guest-tool-exec" => self.guest_tool_exec.take(),
+            "guest-rpc" => self.guest_rpc.take(),
             _ => None,
         }
     }
