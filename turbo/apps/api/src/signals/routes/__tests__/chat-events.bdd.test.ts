@@ -10172,6 +10172,8 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(beforeSandbox).toStrictEqual([]);
     await flushWaitUntilForTest();
+    // Pending late-attempt usage is intentionally absent from public usage
+    // summaries, so inspect this run's uniquely owned ledger rows directly.
     await expect(readRunUsageEventsFixture(run.runId)).resolves.toMatchObject([
       { category: "tokens.input", quantity: 5, status: "pending" },
       { category: "tokens.output", quantity: 3, status: "pending" },
@@ -10325,6 +10327,8 @@ describe("CHAT-02: model-first provider policies", () => {
       usagePricingResolution,
     });
     await providerEntered.promise;
+    // No public API can deterministically hold this lifecycle transaction
+    // across the coordination cap; this run-owned fixture isolates that race.
     const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
       runId: run.runId,
       signal: context.signal,
