@@ -13,7 +13,10 @@ import { authV1PageMountRef$ } from "../../signals/auth-v1-page-mount.ts";
 import { theme$ } from "../../signals/theme.ts";
 import { AuthV1Layout } from "./auth-v1-layout.tsx";
 import { AuthV1ClerkProvider } from "./clerk-provider.tsx";
-import { getAuthV1ComponentAppearance } from "./component-appearance.ts";
+import {
+  getAuthV1LegacyComponentAppearance,
+  getAuthV1SignInAppearance,
+} from "./component-appearance.ts";
 
 export type AuthV1PageMode = "sign-in" | "sign-up";
 
@@ -61,17 +64,14 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
             signUpForceRedirectUrl={redirectUrl}
           />
         )}
-        <AuthV1Layout authBrand={authBrand}>
+        <AuthV1Layout authBrand={authBrand} includeLegacyClerkStyles={false}>
           <div
             className="relative z-10 flex w-full max-w-md flex-col gap-3"
             data-testid="app-sign-in"
             ref={authPageMountRef}
           >
             <SignIn
-              appearance={getAuthV1ComponentAppearance(
-                theme,
-                authBrand.brandName,
-              )}
+              appearance={getAuthV1SignInAppearance(theme, authBrand)}
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
               forceRedirectUrl={redirectUrl}
@@ -93,10 +93,13 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
   );
 
   return (
-    <AuthV1Layout authBrand={authBrand}>
+    <AuthV1Layout authBrand={authBrand} includeLegacyClerkStyles>
       <div data-testid="app-sign-up" ref={authPageMountRef}>
         <SignUp
-          appearance={getAuthV1ComponentAppearance(theme, authBrand.brandName)}
+          appearance={getAuthV1LegacyComponentAppearance(
+            theme,
+            authBrand.brandName,
+          )}
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
           forceRedirectUrl={redirectUrl}

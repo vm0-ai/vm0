@@ -1,3 +1,5 @@
+@layer theme, base, clerk, components, utilities;
+
 @import "tailwindcss";
 @import "@okouai/ui/styles/globals.css";
 

@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import { AuthShell } from "../auth/auth-shell.tsx";
 
-const CLERK_CSS = `
+// Sign-up still depends on the restored pre-AuthV2 stylesheet. Sign-in no
+// longer mounts it; remove this remainder when the sign-up surface migrates.
+const LEGACY_CLERK_CSS = `
 /* Remove shadows from Clerk components */
 .cl-card,
 .cl-rootBox,
@@ -385,12 +387,21 @@ a[class*="resendCode"] {
 interface AuthV1LayoutProps {
   authBrand: AuthBrandContext;
   children: ReactNode;
+  includeLegacyClerkStyles: boolean;
 }
 
-export function AuthV1Layout({ authBrand, children }: AuthV1LayoutProps) {
+export function AuthV1Layout({
+  authBrand,
+  children,
+  includeLegacyClerkStyles,
+}: AuthV1LayoutProps) {
   return (
     <>
-      <style suppressHydrationWarning>{CLERK_CSS}</style>
+      {includeLegacyClerkStyles ? (
+        <style data-auth-v1-legacy-clerk-css suppressHydrationWarning>
+          {LEGACY_CLERK_CSS}
+        </style>
+      ) : null}
       <AuthShell authBrand={authBrand}>{children}</AuthShell>
     </>
   );

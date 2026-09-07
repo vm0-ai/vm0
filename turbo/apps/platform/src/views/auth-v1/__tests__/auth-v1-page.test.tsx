@@ -7,7 +7,10 @@ import {
   setupPage,
   startPage,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
+import {
+  platformOkouWordmarkDarkImg,
+  platformVm0LogoDarkImg,
+} from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -40,6 +43,11 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   expect(signIn).toHaveTextContent("/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-up-url", "/v1/sign-up");
+  expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
+  expect(signIn).toHaveAttribute(
+    "data-clerk-logo-image-url",
+    platformVm0LogoDarkImg,
+  );
   expect(signIn).toHaveAttribute(
     "data-clerk-force-redirect-url",
     "https://app.vm0.ai",
@@ -64,6 +72,9 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
     "aria-hidden",
     "true",
   );
+  expect(
+    document.querySelector("[data-auth-v1-legacy-clerk-css]"),
+  ).not.toBeInTheDocument();
 });
 
 test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
@@ -108,6 +119,9 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
     "data-clerk-user-banned-error",
     expect.stringContaining("support@vm0.ai"),
   );
+  expect(
+    document.querySelector("[data-auth-v1-legacy-clerk-css]"),
+  ).toBeInTheDocument();
 });
 
 test("The hosted form waits behind the skeleton until Clerk mounts it", async () => {
@@ -157,8 +171,11 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
 
   const signIn = screen.getByTestId("clerk-sign-in");
   expect(signIn).toHaveAttribute("data-clerk-force-redirect-url", redirectUrl);
-  expect(signIn).toHaveAttribute("data-clerk-logo-placement", "none");
-  expect(signIn).not.toHaveAttribute("data-clerk-logo-image-url");
+  expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
+  expect(signIn).toHaveAttribute(
+    "data-clerk-logo-image-url",
+    platformOkouWordmarkDarkImg,
+  );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",
     redirectUrl,
@@ -269,41 +286,4 @@ test("Hosted auth pages scroll inside the root safe area", async () => {
   const themeToggle = screen.getByLabelText("Toggle theme");
   expect(themeToggle.className).toContain("var(--sat)");
   expect(themeToggle.className).toContain("var(--sar)");
-});
-
-test("Clerk checkboxes keep their native size inside the styled card", async () => {
-  await setupSignedOutPage("/v1/sign-in");
-
-  const clerkSurface = screen.getByTestId("clerk-sign-in");
-  const card = document.createElement("div");
-  card.className = "cl-card";
-  const checkbox = document.createElement("input");
-  checkbox.className = "cl-formFieldInput cl-checkbox";
-  checkbox.type = "checkbox";
-  checkbox.checked = true;
-  card.append(checkbox);
-  clerkSurface.append(card);
-
-  expect(getComputedStyle(checkbox).width).toBe("16px");
-  expect(getComputedStyle(checkbox).height).toBe("16px");
-});
-
-test("The Clerk passkey action renders as a full-width outline control", async () => {
-  await setupSignedOutPage("/v1/sign-in");
-
-  const clerkSurface = screen.getByTestId("clerk-sign-in");
-  const action = document.createElement("div");
-  action.className = "cl-footerAction cl-footerAction__usePasskey";
-  const link = document.createElement("a");
-  link.className = "cl-footerActionLink cl-footerActionLink__usePasskey";
-  link.href = "#";
-  link.textContent = "Use passkey instead";
-  action.append(link);
-  clerkSurface.append(action);
-
-  expect(getComputedStyle(action).width).toBe("100%");
-  expect(getComputedStyle(link).display).toBe("inline-flex");
-  expect(getComputedStyle(link).height).toBe("36px");
-  expect(getComputedStyle(link).width).toBe("100%");
-  expect(getComputedStyle(link).borderStyle).toBe("solid");
 });

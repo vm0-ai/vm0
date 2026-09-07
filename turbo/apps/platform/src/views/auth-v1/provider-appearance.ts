@@ -27,6 +27,7 @@ export function getAuthV1ProviderAppearance(): Appearance {
     ...userButtonElements(),
   };
   return {
+    cssLayerName: "clerk",
     variables: clerkVariables(),
     elements,
   };
@@ -40,8 +41,11 @@ function clerkVariables(): Record<string, string> {
     colorForeground: "hsl(var(--foreground))",
     colorMutedForeground: "hsl(var(--muted-foreground))",
     colorPrimaryForeground: "hsl(var(--primary-foreground))",
+    colorMuted: "hsl(var(--muted))",
     colorInput: "hsl(var(--input))",
     colorInputForeground: "hsl(var(--foreground))",
+    colorBorder: "hsl(var(--border))",
+    colorRing: "hsl(var(--ring))",
     colorDanger: "hsl(var(--destructive))",
     colorSuccess: "hsl(142 71% 45%)",
     colorWarning: "hsl(38 92% 50%)",
@@ -50,6 +54,7 @@ function clerkVariables(): Record<string, string> {
       "var(--font-family-sans, 'Noto Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)",
     fontSize: "0.875rem",
     borderRadius: "0.5rem",
+    spacing: "1rem",
   };
 }
 
