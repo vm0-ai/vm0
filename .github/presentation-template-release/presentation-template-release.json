@@ -1,8 +1,8 @@
 {
   "source": {
     "repo": "vm0-ai/Template-artifact",
-    "commit": "f60350f3c34e8702b885489a8f9a183aaa633389",
-    "directory": "Template-Presentation-v3"
+    "commit": "988a6cdd4a756a8139c509da483bb8c6ffb79263",
+    "directory": "Template-Presentation"
   },
   "templates": [
     {
@@ -122,8 +122,8 @@
       "storageId": "b416a10f-20d4-4ccd-80e4-ef89718cc0c9",
       "oldVersionId": "c122104f5f40ab093ef7ff18fc9a7becbba21eda1834a7e4ae500e5be3bad012",
       "oldSha256": "8b6698813045d4cf52e26d5cd73ca6574529e58e1f2cc22a6db9de7b3b6a3a18",
-      "newVersionId": "03be08ea6767942ee6d9d2fd2eced72ec0dfaecd2bc7d473c01a0093c39d48eb",
-      "newSha256": "722f6ea996166bdce3a6ab5f0292d1ead73488f03c6ad1138883e47506971cfe"
+      "newVersionId": "58a1e6f5bd38e61a0eba0f6c023b387216d74db6293a9c06b7056298e562fd0f",
+      "newSha256": "b4de61e9c40fe5b647ef8a7ec9a20088c7a8a85b003179f5ea16869bd7cf4424"
     },
     {
       "slug": "neo-brutalism",
