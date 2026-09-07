@@ -13,6 +13,7 @@ from usage.json_selective import JsonSelectiveExtractor, ScalarField
         (b"   null", 5),
         (b'"' + b"\\n" * 17 + b'"', 3),
         (b'"' + b"\xe2\x98\x83" * 11 + b'"', 3),
+        (b'"' + b"x" * (64 * 1024 - 1) + b"\xe2\x98\x83" + b'"', 4),
         (b'"' + b"x" * (64 * 1024 + 1) + b'"', 4),
     ],
     ids=[
@@ -21,6 +22,7 @@ from usage.json_selective import JsonSelectiveExtractor, ScalarField
         "whitespace",
         "escaped-string",
         "non-ascii-string",
+        "utf8-crosses-bulk-boundary",
         "bulk-ascii-string",
     ],
 )

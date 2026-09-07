@@ -193,6 +193,45 @@ def test_bulk_skips_large_unselected_string_after_escape_without_storing_value()
     assert bytewise_accept_calls < 64
 
 
+@pytest.mark.parametrize(
+    "unit",
+    [
+        pytest.param(b"\xc3\xa9", id="two-byte"),
+        pytest.param(b"\xe2\x98\x83", id="three-byte"),
+        pytest.param(b"\xf0\x9f\x98\x80", id="four-byte"),
+        pytest.param(b"ascii-\xc3\xa9-\xe2\x98\x83-\xf0\x9f\x98\x80", id="mixed"),
+    ],
+)
+def test_bulk_validates_large_unselected_utf8_without_storing_value(unit):
+    bytewise_accept_calls = 0
+    accept_string_byte_code = JsonSelectiveExtractor._accept_string_byte.__code__
+
+    def count_bytewise_accept_calls(frame: FrameType, event: str, _arg: object) -> None:
+        nonlocal bytewise_accept_calls
+        if event == "call" and frame.f_code is accept_string_byte_code:
+            bytewise_accept_calls += 1
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+    large_text = unit * ((2 * 1024 * 1024) // len(unit))
+    payload = b'{"content":[{"text":"' + large_text + b'"}],"usage":{"input_tokens":7}}'
+
+    chunk_size = 64 * 1024
+    previous_profile = sys.getprofile()
+    sys.setprofile(count_bytewise_accept_calls)
+    try:
+        for offset in range(0, len(payload), chunk_size):
+            extractor.feed(payload[offset : offset + chunk_size])
+    finally:
+        sys.setprofile(previous_profile)
+    result = extractor.finish()
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+    assert bytewise_accept_calls < 256
+
+
 def test_bulk_skip_accepts_empty_unselected_key_and_value():
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")}
