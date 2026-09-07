@@ -1,5 +1,5 @@
-import { and, asc, eq, exists, gt, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, asc, eq, exists, gt, gte, notExists, sql } from "drizzle-orm";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 import type {
   ChatThreadEvent,
   ChatThreadServiceTier,
@@ -183,6 +183,40 @@ type ChatThreadEventRow = {
   readonly createdAt: Date;
 };
 
+const chatThreadEventSelection = Object.freeze({
+  id: chatThreadEvents.id,
+  seqId: chatThreadEvents.seqId,
+  kind: chatThreadEvents.kind,
+  chatThreadId: chatThreadEvents.chatThreadId,
+  agentId: chatThreadEvents.agentId,
+  title: chatThreadEvents.title,
+  pinOrder: chatThreadEvents.pinOrder,
+  selectedModel: chatThreadEvents.selectedModel,
+  serviceTier: chatThreadEvents.serviceTier,
+  computerUseHostId: chatThreadEvents.computerUseHostId,
+  cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
+  selectedVideoModel: chatThreadEvents.selectedVideoModel,
+  selectedImageModel: chatThreadEvents.selectedImageModel,
+  createdAt: chatThreadEvents.createdAt,
+});
+
+const pageChatThreadEventSelection = Object.freeze({
+  id: pageChatThreadEvent.id,
+  seqId: pageChatThreadEvent.seqId,
+  kind: pageChatThreadEvent.kind,
+  chatThreadId: pageChatThreadEvent.chatThreadId,
+  agentId: pageChatThreadEvent.agentId,
+  title: pageChatThreadEvent.title,
+  pinOrder: pageChatThreadEvent.pinOrder,
+  selectedModel: pageChatThreadEvent.selectedModel,
+  serviceTier: pageChatThreadEvent.serviceTier,
+  computerUseHostId: pageChatThreadEvent.computerUseHostId,
+  cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
+  selectedVideoModel: pageChatThreadEvent.selectedVideoModel,
+  selectedImageModel: pageChatThreadEvent.selectedImageModel,
+  createdAt: pageChatThreadEvent.createdAt,
+});
+
 export function chatThreadServiceTierFromCodex(
   codexServiceTier: CodexServiceTier | null,
 ): ChatThreadServiceTier | null {
@@ -216,6 +250,85 @@ function toApiChatThreadEvent(
   };
 }
 
+async function getChatThreadEventRowsAfterCursor(
+  db: ReadonlyDb,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly sinceSeqId: number;
+  },
+): Promise<readonly ChatThreadEventRow[] | null> {
+  const validCursor = db.$with("valid_cursor").as(
+    unionAll(
+      db
+        .select({ seqId: cursorChatThreadEvent.seqId })
+        .from(cursorChatThreadEvent)
+        .where(
+          and(
+            eq(cursorChatThreadEvent.userId, args.userId),
+            eq(cursorChatThreadEvent.orgId, args.orgId),
+            eq(cursorChatThreadEvent.seqId, args.sinceSeqId),
+            notExists(
+              db
+                .select({ userId: chatThreadSnapshots.userId })
+                .from(chatThreadSnapshots)
+                .where(
+                  and(
+                    eq(chatThreadSnapshots.userId, args.userId),
+                    eq(chatThreadSnapshots.orgId, args.orgId),
+                    gte(chatThreadSnapshots.latestEventSeqId, args.sinceSeqId),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      db
+        .select({
+          seqId: sql`${chatThreadSnapshots.latestEventSeqId}`
+            .mapWith(chatThreadEvents.seqId)
+            .as("seq_id"),
+        })
+        .from(chatThreadSnapshots)
+        .where(
+          and(
+            eq(chatThreadSnapshots.userId, args.userId),
+            eq(chatThreadSnapshots.orgId, args.orgId),
+            eq(chatThreadSnapshots.latestEventSeqId, args.sinceSeqId),
+          ),
+        ),
+    ),
+  );
+
+  // Validation and page selection share one statement snapshot so a cursor
+  // cannot cross an append or compaction boundary between the two checks.
+  const cursorRows = await db
+    .with(validCursor)
+    .select({ event: pageChatThreadEventSelection })
+    .from(validCursor)
+    .leftJoin(
+      pageChatThreadEvent,
+      and(
+        eq(pageChatThreadEvent.userId, args.userId),
+        eq(pageChatThreadEvent.orgId, args.orgId),
+        gt(pageChatThreadEvent.seqId, validCursor.seqId),
+        exists(
+          db
+            .select({ id: agents.id })
+            .from(agents)
+            .where(eq(agents.id, pageChatThreadEvent.agentId)),
+        ),
+      ),
+    )
+    .orderBy(asc(pageChatThreadEvent.seqId))
+    .limit(CHAT_THREAD_EVENTS_PAGE_SIZE + 1);
+  if (cursorRows.length === 0) {
+    return null;
+  }
+  return cursorRows.flatMap((row) => {
+    return row.event ? [row.event] : [];
+  });
+}
+
 export async function getChatThreadEventsSince(
   db: ReadonlyDb,
   args: {
@@ -232,79 +345,19 @@ export async function getChatThreadEventsSince(
   | { readonly kind: "expired" }
 > {
   let rows: readonly ChatThreadEventRow[];
-  const cursorPredicate =
-    args.sinceSeqId === undefined
-      ? undefined
-      : eq(cursorChatThreadEvent.seqId, args.sinceSeqId);
-  if (cursorPredicate !== undefined) {
-    // Keep a valid cursor row when its page is empty.
-    const cursorRows = await db
-      .select({
-        event: {
-          id: pageChatThreadEvent.id,
-          seqId: pageChatThreadEvent.seqId,
-          kind: pageChatThreadEvent.kind,
-          chatThreadId: pageChatThreadEvent.chatThreadId,
-          agentId: pageChatThreadEvent.agentId,
-          title: pageChatThreadEvent.title,
-          pinOrder: pageChatThreadEvent.pinOrder,
-          selectedModel: pageChatThreadEvent.selectedModel,
-          serviceTier: pageChatThreadEvent.serviceTier,
-          computerUseHostId: pageChatThreadEvent.computerUseHostId,
-          cloudBrowserEnabled: pageChatThreadEvent.cloudBrowserEnabled,
-          selectedVideoModel: pageChatThreadEvent.selectedVideoModel,
-          selectedImageModel: pageChatThreadEvent.selectedImageModel,
-          createdAt: pageChatThreadEvent.createdAt,
-        },
-      })
-      .from(cursorChatThreadEvent)
-      .leftJoin(
-        pageChatThreadEvent,
-        and(
-          eq(pageChatThreadEvent.userId, args.userId),
-          eq(pageChatThreadEvent.orgId, args.orgId),
-          gt(pageChatThreadEvent.seqId, cursorChatThreadEvent.seqId),
-          exists(
-            db
-              .select({ id: agents.id })
-              .from(agents)
-              .where(eq(agents.id, pageChatThreadEvent.agentId)),
-          ),
-        ),
-      )
-      .where(
-        and(
-          eq(cursorChatThreadEvent.userId, args.userId),
-          eq(cursorChatThreadEvent.orgId, args.orgId),
-          cursorPredicate,
-        ),
-      )
-      .orderBy(asc(pageChatThreadEvent.seqId))
-      .limit(CHAT_THREAD_EVENTS_PAGE_SIZE + 1);
-    if (cursorRows.length === 0) {
+  if (args.sinceSeqId !== undefined) {
+    const cursorRows = await getChatThreadEventRowsAfterCursor(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+      sinceSeqId: args.sinceSeqId,
+    });
+    if (cursorRows === null) {
       return { kind: "expired" };
     }
-    rows = cursorRows.flatMap((row) => {
-      return row.event ? [row.event] : [];
-    });
+    rows = cursorRows;
   } else {
     rows = await db
-      .select({
-        id: chatThreadEvents.id,
-        seqId: chatThreadEvents.seqId,
-        kind: chatThreadEvents.kind,
-        chatThreadId: chatThreadEvents.chatThreadId,
-        agentId: chatThreadEvents.agentId,
-        title: chatThreadEvents.title,
-        pinOrder: chatThreadEvents.pinOrder,
-        selectedModel: chatThreadEvents.selectedModel,
-        serviceTier: chatThreadEvents.serviceTier,
-        computerUseHostId: chatThreadEvents.computerUseHostId,
-        cloudBrowserEnabled: chatThreadEvents.cloudBrowserEnabled,
-        selectedVideoModel: chatThreadEvents.selectedVideoModel,
-        selectedImageModel: chatThreadEvents.selectedImageModel,
-        createdAt: chatThreadEvents.createdAt,
-      })
+      .select(chatThreadEventSelection)
       .from(chatThreadEvents)
       .where(
         and(

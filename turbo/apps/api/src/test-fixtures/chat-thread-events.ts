@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { count, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -145,6 +145,33 @@ export async function insertChatThreadEventTransactionFixture(
     throw new Error("Expected the chat-thread event insert");
   }
   return event;
+}
+
+/**
+ * Removes the exact snapshot anchor that Slice 1 must tolerate. No production
+ * endpoint can construct this state while the current compactor intentionally
+ * retains marker rows, so the route regression test owns this narrow fixture.
+ */
+export async function deleteChatThreadEventMarkerFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly eventId: string;
+  readonly seqId: number;
+}): Promise<void> {
+  const deleted = await db()
+    .delete(chatThreadEvents)
+    .where(
+      and(
+        eq(chatThreadEvents.userId, args.userId),
+        eq(chatThreadEvents.orgId, args.orgId),
+        eq(chatThreadEvents.id, args.eventId),
+        eq(chatThreadEvents.seqId, args.seqId),
+      ),
+    )
+    .returning({ id: chatThreadEvents.id });
+  if (deleted.length !== 1) {
+    throw new Error("Expected one chat-thread snapshot marker to be deleted");
+  }
 }
 
 /**
