@@ -1,5 +1,7 @@
+import { timeout } from "signal-timers";
 import {
   bestEffort,
+  createChildAbortController,
   createDeferredPromise,
   onRejection,
   withCleanup,
@@ -8,6 +10,7 @@ import {
 export const VOICE_DRAFT_PCM_SAMPLE_RATE = 16_000;
 
 const PCM_WORKLET_PROCESSOR_NAME = "okou-voice-draft-pcm-capture";
+const SAFARI_CAPTURE_START_TIMEOUT_MS = 5000;
 const PCM_WORKLET_SOURCE = `
 const TARGET_SAMPLE_RATE = 16000;
 const OUTPUT_BATCH_SAMPLES = 4096;
@@ -236,6 +239,28 @@ function createVoiceDraftSampleWriter(
   };
 }
 
+async function waitForSafariCaptureStart(
+  ready: ReturnType<typeof createDeferredPromise<void>>,
+  signal: AbortSignal,
+): Promise<void> {
+  // Safari can initially supply only zeros after capture has started.
+  // Bound the extra wait so a quiet room still becomes ready.
+  const startupController = createChildAbortController(signal);
+  timeout(
+    () => {
+      if (!ready.settled()) {
+        ready.resolve();
+      }
+    },
+    SAFARI_CAPTURE_START_TIMEOUT_MS,
+    { signal: startupController.signal },
+  );
+  await withCleanup(ready.promise, () => {
+    startupController.abort();
+  });
+  signal.throwIfAborted();
+}
+
 export async function startVoiceDraftPcmCapture(
   stream: MediaStream,
   persistence: VoiceDraftPcmPersistence,
@@ -282,6 +307,11 @@ export async function startVoiceDraftPcmCapture(
       );
       const finished = createDeferredPromise<void>(signal);
       const firstBatch = createDeferredPromise<void>(signal);
+      const userAgent = navigator.userAgent;
+      const isSafari =
+        /\bVersion\/[\d.]+.*\bSafari\//.test(userAgent) &&
+        !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(userAgent);
+      const safariReady = isSafari ? createDeferredPromise<void>(signal) : null;
       const samples = createVoiceDraftSampleWriter(persistence, signal);
       let stopped = false;
       worklet.port.addEventListener(
@@ -293,6 +323,15 @@ export async function startVoiceDraftPcmCapture(
               samples.append(batch);
               if (!firstBatch.settled()) {
                 firstBatch.resolve();
+              }
+              if (
+                safariReady &&
+                !safariReady.settled() &&
+                batch.some((sample) => {
+                  return sample !== 0;
+                })
+              ) {
+                safariReady.resolve();
               }
             }
           } else if (event.data === "done" && !finished.settled()) {
@@ -338,9 +377,12 @@ export async function startVoiceDraftPcmCapture(
         (async () => {
           source.connect(worklet);
           // Connected nodes do not prove the microphone is supplying samples.
-          // Silence counts, and the first batch stays in the normal write queue.
+          // Keep every batch in the normal write queue, including startup silence.
           await firstBatch.promise;
           signal.throwIfAborted();
+          if (safariReady && !safariReady.settled()) {
+            await waitForSafariCaptureStart(safariReady, signal);
+          }
           return capture;
         })(),
         capture.cancel,

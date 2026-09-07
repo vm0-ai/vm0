@@ -8,6 +8,18 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.560.1](https://github.com/vm0-ai/vm0/compare/api-v1.560.0...api-v1.560.1) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.6
+    * @okouai/core bumped to 8.630.1
+    * @okouai/db bumped to 1.244.7
+    * @okouai/pi-agent-runtime bumped to 1.21.11
+
 ## [1.560.0](https://github.com/vm0-ai/vm0/compare/api-v1.559.1...api-v1.560.0) (2026-09-07)
 
 

@@ -11,11 +11,14 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../mocks/server";
-import { recognizeCommand } from "../index";
+import {
+  imageRecognitionCommand,
+  imageRecognitionCompatibilityCommand,
+} from "../index";
 
 const PREPARE_URL = "http://localhost:3000/api/uploads/prepare";
 const COMPLETE_URL = "http://localhost:3000/api/uploads/complete";
-const RECOGNIZE_URL = "http://localhost:3000/api/recognize";
+const IMAGE_RECOGNITION_URL = "http://localhost:3000/api/image-recognition";
 const PUT_URL = "https://mock-r2.test/recognition-upload";
 
 function installUploadHandlers(fileId: string, filename: string, size: number) {
@@ -58,40 +61,40 @@ function installUploadHandlers(fileId: string, filename: string, size: number) {
   );
 }
 
-describe("okou recognize command", () => {
-  const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
-    return undefined as never;
-  });
-  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
-  let tempDir: string;
+const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+  return undefined as never;
+});
+const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+const mockConsoleError = vi
+  .spyOn(console, "error")
+  .mockImplementation(() => {});
+let tempDir: string;
 
-  beforeEach(() => {
-    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-token");
-    tempDir = join(tmpdir(), `image-recognition-${randomUUID()}`);
-    mkdirSync(tempDir, { recursive: true });
-  });
+beforeEach(() => {
+  vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
+  vi.stubEnv("OKOU_TOKEN", "test-token");
+  tempDir = join(tmpdir(), `image-recognition-${randomUUID()}`);
+  mkdirSync(tempDir, { recursive: true });
+});
 
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
-    rmSync(tempDir, { recursive: true, force: true });
-  });
+afterEach(() => {
+  mockExit.mockClear();
+  mockConsoleLog.mockClear();
+  mockConsoleError.mockClear();
+  rmSync(tempDir, { recursive: true, force: true });
+});
 
+describe("okou image-recognition command", () => {
   it("uploads one image, recognizes it, and prints only text", async () => {
     const fileId = randomUUID();
     const filePath = join(tempDir, "screen.png");
     const bytes = Buffer.from("fake-png-bytes");
     writeFileSync(filePath, bytes);
     installUploadHandlers(fileId, "screen.png", bytes.length);
-    let recognizeCalls = 0;
+    let imageRecognitionCalls = 0;
     server.use(
-      http.post(RECOGNIZE_URL, async ({ request }) => {
-        recognizeCalls += 1;
+      http.post(IMAGE_RECOGNITION_URL, async ({ request }) => {
+        imageRecognitionCalls += 1;
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         await expect(request.json()).resolves.toStrictEqual({
           fileId,
@@ -104,7 +107,7 @@ describe("okou recognize command", () => {
       }),
     );
 
-    await recognizeCommand.parseAsync([
+    await imageRecognitionCommand.parseAsync([
       "node",
       "okou",
       "--file",
@@ -113,7 +116,7 @@ describe("okou recognize command", () => {
       "  Read the error message  ",
     ]);
 
-    expect(recognizeCalls).toBe(1);
+    expect(imageRecognitionCalls).toBe(1);
     expect(mockConsoleLog.mock.calls).toStrictEqual([
       ["The dialog says access denied."],
     ]);
@@ -136,7 +139,7 @@ describe("okou recognize command", () => {
         networkCalled = true;
         return HttpResponse.json({});
       }),
-      http.post(RECOGNIZE_URL, () => {
+      http.post(IMAGE_RECOGNITION_URL, () => {
         networkCalled = true;
         return HttpResponse.json({});
       }),
@@ -166,7 +169,7 @@ describe("okou recognize command", () => {
 
     for (const input of invalidInputs) {
       mockConsoleError.mockClear();
-      await recognizeCommand.parseAsync([
+      await imageRecognitionCommand.parseAsync([
         "node",
         "okou",
         "--file",
@@ -188,7 +191,7 @@ describe("okou recognize command", () => {
     writeFileSync(filePath, "png");
     installUploadHandlers(fileId, "screen.png", 3);
     server.use(
-      http.post(RECOGNIZE_URL, () => {
+      http.post(IMAGE_RECOGNITION_URL, () => {
         return HttpResponse.json(
           {
             error: {
@@ -201,7 +204,7 @@ describe("okou recognize command", () => {
       }),
     );
 
-    await recognizeCommand.parseAsync([
+    await imageRecognitionCommand.parseAsync([
       "node",
       "okou",
       "--file",
@@ -221,22 +224,121 @@ describe("okou recognize command", () => {
   });
 
   it("exposes no model, retry, JSON, or billing options", () => {
-    const optionNames = recognizeCommand.options.map((option) => {
+    const optionNames = imageRecognitionCommand.options.map((option) => {
       return option.attributeName();
     });
     expect(optionNames).toStrictEqual(["file", "prompt"]);
   });
 
-  it("uses Okou branding in recognition help", () => {
+  it("uses the canonical command name and Okou branding in help", () => {
     let helpOutput = "";
-    recognizeCommand.configureOutput({
+    imageRecognitionCommand.configureOutput({
       writeOut: (text: string) => {
         helpOutput += text;
       },
     });
 
-    recognizeCommand.outputHelp();
+    imageRecognitionCommand.outputHelp();
 
+    expect(helpOutput).toContain("okou image-recognition --file");
+    expect(helpOutput).not.toContain("okou recognize --file");
     expect(helpOutput).toContain("Uses a fixed Okou-managed recognition model");
+  });
+});
+
+describe("okou recognize compatibility command", () => {
+  it("keeps okou recognize on the compatibility API path", async () => {
+    const fileId = randomUUID();
+    const filePath = join(tempDir, "compatibility.png");
+    const bytes = Buffer.from("compatibility-png");
+    writeFileSync(filePath, bytes);
+    installUploadHandlers(fileId, "compatibility.png", bytes.length);
+    let compatibilityCalls = 0;
+    let canonicalCalls = 0;
+    server.use(
+      http.post("http://localhost:3000/api/recognize", async ({ request }) => {
+        compatibilityCalls += 1;
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        await expect(request.json()).resolves.toStrictEqual({
+          fileId,
+          prompt: "Read the compatibility image",
+        });
+        return HttpResponse.json({
+          text: "Compatibility result",
+          metadata: { creditsCharged: 7 },
+        });
+      }),
+      http.post(IMAGE_RECOGNITION_URL, () => {
+        canonicalCalls += 1;
+        return HttpResponse.json({
+          text: "Canonical result",
+          metadata: { creditsCharged: 7 },
+        });
+      }),
+    );
+
+    await imageRecognitionCompatibilityCommand.parseAsync([
+      "node",
+      "okou",
+      "--file",
+      filePath,
+      "--prompt",
+      "  Read the compatibility image  ",
+    ]);
+
+    expect(compatibilityCalls).toBe(1);
+    expect(canonicalCalls).toBe(0);
+    expect(mockConsoleLog.mock.calls).toStrictEqual([["Compatibility result"]]);
+    expect(mockConsoleError).not.toHaveBeenCalled();
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("keeps compatibility validation ahead of upload", async () => {
+    const missing = join(tempDir, "missing.png");
+    let networkCalled = false;
+    server.use(
+      http.post(PREPARE_URL, () => {
+        networkCalled = true;
+        return HttpResponse.json({});
+      }),
+      http.post("http://localhost:3000/api/recognize", () => {
+        networkCalled = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    await imageRecognitionCompatibilityCommand.parseAsync([
+      "node",
+      "okou",
+      "--file",
+      missing,
+      "--prompt",
+      "describe",
+    ]);
+
+    expect(networkCalled).toBe(false);
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "no such file",
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
+  it("bounds compatibility help to the canonical command", () => {
+    let helpOutput = "";
+    imageRecognitionCompatibilityCommand.configureOutput({
+      writeOut: (text: string) => {
+        helpOutput += text;
+      },
+    });
+
+    imageRecognitionCompatibilityCommand.outputHelp();
+
+    expect(helpOutput).toContain(
+      "Compatibility command for okou image-recognition",
+    );
+    expect(helpOutput).toContain(
+      "Use okou image-recognition for new invocations",
+    );
+    expect(helpOutput).toContain("okou recognize --file");
   });
 });
