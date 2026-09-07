@@ -1,3 +1,5 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use guest_contracts::active_input::encoded_active_input_len;
@@ -59,6 +61,7 @@ pub(crate) struct ApiActiveInputSource {
     run_id: RunId,
     sandbox_token: String,
     notifications: ActiveInputSubscription,
+    consecutive_read_failures: u32,
 }
 
 #[derive(Clone)]
@@ -76,6 +79,8 @@ pub(crate) enum ActiveInputBatch {
 const LOCAL_ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 pub(crate) const API_ACTIVE_INPUT_RECHECK_INTERVAL: Duration = Duration::from_secs(30);
 const ACTIVE_INPUT_NOTIFICATION_CAPACITY: usize = 256;
+const API_ACTIVE_INPUT_RETRY_INITIAL_INTERVAL: Duration = Duration::from_millis(250);
+const API_ACTIVE_INPUT_RETRY_MAX_INTERVAL: Duration = Duration::from_secs(4);
 
 #[derive(Clone)]
 pub(crate) struct ActiveInputNotifications {
@@ -135,6 +140,7 @@ impl ActiveInputSource {
             run_id,
             sandbox_token,
             notifications,
+            consecutive_read_failures: 0,
         })
     }
 
@@ -181,6 +187,36 @@ impl ActiveInputSource {
             }
         }
     }
+
+    /// Back off failed API reads independently of local polling and Guest control.
+    /// The base doubles from 250 ms to 4 s; run/attempt jitter uses 80%-100% of
+    /// that base to spread shared-outage retries without exceeding the cap.
+    /// Notifications do not bypass this delay; the caller owns cancellation.
+    pub(crate) async fn wait_after_read_error(&self) {
+        let delay = match self {
+            Self::LocalQueue(_) => LOCAL_ACTIVE_INPUT_POLL_INTERVAL,
+            Self::Api(source) => {
+                let exponent = source.consecutive_read_failures.saturating_sub(1).min(4);
+                let base = API_ACTIVE_INPUT_RETRY_INITIAL_INTERVAL
+                    .saturating_mul(1_u32 << exponent)
+                    .min(API_ACTIVE_INPUT_RETRY_MAX_INTERVAL);
+                let mut hasher = DefaultHasher::new();
+                source.run_id.hash(&mut hasher);
+                source.consecutive_read_failures.hash(&mut hasher);
+                let jitter_per_mille = 800 + hasher.finish() % 201;
+                let delay =
+                    Duration::from_millis(base.as_millis() as u64 * jitter_per_mille / 1_000);
+                tracing::info!(
+                    run_id = %source.run_id,
+                    consecutive_failures = source.consecutive_read_failures,
+                    retry_delay_ms = delay.as_millis() as u64,
+                    "active-input API read retry scheduled"
+                );
+                delay
+            }
+        };
+        tokio::time::sleep(delay).await;
+    }
 }
 
 impl ApiActiveInputRecovery {
@@ -194,10 +230,17 @@ impl ApiActiveInputRecovery {
     }
 }
 
-async fn read_api_active_input(source: &ApiActiveInputSource) -> RunnerResult<ActiveInputBatch> {
+async fn read_api_active_input(
+    source: &mut ApiActiveInputSource,
+) -> RunnerResult<ActiveInputBatch> {
     let response = source
         .api
         .reserve_active_inputs(source.run_id, &source.sandbox_token)
-        .await?;
-    Ok(ActiveInputBatch::Api(response))
+        .await;
+    source.consecutive_read_failures = if response.is_ok() {
+        0
+    } else {
+        source.consecutive_read_failures.saturating_add(1)
+    };
+    response.map(ActiveInputBatch::Api)
 }

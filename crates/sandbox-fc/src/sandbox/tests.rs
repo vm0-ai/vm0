@@ -6169,6 +6169,7 @@ async fn unpark_resumes_and_deflates() {
         api.socket_path(),
         state_rx.clone(),
         "test-unpark",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6192,6 +6193,42 @@ async fn unpark_resumes_and_deflates() {
     if let Some(h) = controller.take() {
         h.abort();
     }
+}
+
+#[tokio::test]
+async fn terminal_unpark_resumes_and_deflates_without_background_controller() {
+    let mut api = MockLifecycleApi::new(std::collections::VecDeque::new(), None);
+
+    let mut is_parked = true;
+    let mut controller: Option<balloon::ControllerHandle> = None;
+    let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
+
+    unpark_inner(
+        &mut is_parked,
+        2048,
+        &mut controller,
+        api.socket_path(),
+        state_rx,
+        "test-terminal-unpark",
+        UnparkPurpose::TerminalOperations,
+    )
+    .await
+    .unwrap();
+
+    assert!(!is_parked, "is_parked should be cleared");
+    assert!(
+        controller.is_none(),
+        "terminal unpark must not start a background controller"
+    );
+
+    let requests = api.drain_requests();
+    let patches = patches(&requests);
+    assert_eq!(patches.len(), 2, "expected resume followed by deflate");
+    assert_eq!(patches[0].path, "/vm");
+    assert!(patches[0].body.contains("Resumed"));
+    assert_eq!(patches[1].path, "/balloon");
+    let body: serde_json::Value = serde_json::from_str(&patches[1].body).unwrap();
+    assert_eq!(body["amount_mib"].as_u64().unwrap(), 0);
 }
 
 #[tokio::test]
@@ -6239,6 +6276,7 @@ async fn unpark_returns_while_controller_guards_pending_deflation() {
         &api_socket,
         state_rx,
         "test-unpark-lagging-actual",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6294,6 +6332,7 @@ async fn unpark_propagates_deflate_error() {
         api.socket_path(),
         state_rx.clone(),
         "test-unpark-err",
+        UnparkPurpose::Reuse,
     )
     .await;
 
@@ -6329,6 +6368,7 @@ async fn unpark_small_vm_skips_balloon_but_resumes_vcpus() {
         api.socket_path(),
         state_rx.clone(),
         "test-unpark-small",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6399,6 +6439,7 @@ async fn double_unpark_is_idempotent() {
         api.socket_path(),
         state_rx.clone(),
         "du",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6411,6 +6452,7 @@ async fn double_unpark_is_idempotent() {
         api.socket_path(),
         state_rx.clone(),
         "du",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6448,6 +6490,7 @@ async fn unpark_without_park_is_noop() {
         api.socket_path(),
         state_rx.clone(),
         "fresh",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6490,6 +6533,7 @@ async fn park_unpark_park_cycle() {
         api.socket_path(),
         state_rx.clone(),
         "cycle",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6587,6 +6631,7 @@ async fn park_balloon_failure_leaves_flag_false() {
         api.socket_path(),
         state_rx.clone(),
         "test-park-fail",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6654,6 +6699,7 @@ async fn unpark_retry_after_failure_succeeds() {
         api.socket_path(),
         state_rx.clone(),
         "retry",
+        UnparkPurpose::Reuse,
     )
     .await;
     assert_idle_transition(first, SandboxIdleTransition::Unpark);
@@ -6667,6 +6713,7 @@ async fn unpark_retry_after_failure_succeeds() {
         api.socket_path(),
         state_rx.clone(),
         "retry",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();
@@ -6750,6 +6797,7 @@ async fn unpark_resume_http_400_propagates_as_idle_transition() {
         api.socket_path(),
         state_rx.clone(),
         "resume-fail",
+        UnparkPurpose::Reuse,
     )
     .await;
 
@@ -6789,6 +6837,7 @@ async fn unpark_retry_after_partial_failure_resumes_idempotently() {
         api.socket_path(),
         state_rx.clone(),
         "idem",
+        UnparkPurpose::Reuse,
     )
     .await;
     assert_idle_transition(first, SandboxIdleTransition::Unpark);
@@ -6802,6 +6851,7 @@ async fn unpark_retry_after_partial_failure_resumes_idempotently() {
         api.socket_path(),
         state_rx.clone(),
         "idem",
+        UnparkPurpose::Reuse,
     )
     .await
     .unwrap();

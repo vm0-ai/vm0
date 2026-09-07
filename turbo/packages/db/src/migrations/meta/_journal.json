@@ -75,8 +75,15 @@
     {
       "idx": 1088,
       "version": "7",
-      "when": 1788774540837,
-      "tag": "1088_large_sheva_callister",
+      "when": 1788768664992,
+      "tag": "1088_heygen_video_agent_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 1089,
+      "version": "7",
+      "when": 1788778360911,
+      "tag": "1089_nice_the_fury",
       "breakpoints": true
     }
   ]

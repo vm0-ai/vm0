@@ -3120,6 +3120,7 @@ export async function insertPiApiFirstTurnUsageEventsFixture(args: {
   readonly runId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly provider: string;
   readonly events: readonly {
     readonly idempotencyKey: string;
     readonly category: string;
@@ -3136,7 +3137,7 @@ export async function insertPiApiFirstTurnUsageEventsFixture(args: {
           orgId: args.orgId,
           userId: args.userId,
           kind: "model",
-          provider: "gpt-5.6-terra",
+          provider: args.provider,
           category: event.category,
           quantity: event.quantity,
         };

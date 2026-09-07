@@ -698,6 +698,21 @@ pub trait Sandbox: Send + Sync + Any {
         Ok(())
     }
 
+    /// Unpark only for terminal guest operations before destroying the sandbox.
+    ///
+    /// This has the same operation-readiness contract as [`unpark`](Self::unpark),
+    /// but providers may omit background work whose only purpose is serving a
+    /// future active workload. After this call succeeds, the lifecycle owner
+    /// must run only the bounded terminal operations needed to preserve state,
+    /// then terminate and destroy the sandbox without returning it to a pool or
+    /// binding another run.
+    ///
+    /// Providers that do not distinguish terminal finalization from normal
+    /// reuse preserve compatibility by performing a full unpark.
+    async fn unpark_for_terminal_operations(&mut self) -> Result<()> {
+        self.unpark().await
+    }
+
     // -- operations --
     //
     // Operations that start new guest work require the sandbox to be running

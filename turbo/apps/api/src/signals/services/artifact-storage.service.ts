@@ -275,6 +275,7 @@ export const storeGeneratedArtifactObject$ = command(
     { get, set },
     args: {
       readonly userId: string;
+      readonly identity?: { readonly id: string; readonly variant: string };
       readonly filenamePrefix: string;
       readonly extension: string;
       readonly body: Buffer;
@@ -283,7 +284,7 @@ export const storeGeneratedArtifactObject$ = command(
     },
     signal: AbortSignal,
   ): Promise<StoredGeneratedArtifactObject> => {
-    const proposedId = randomUUID();
+    const proposedId = args.identity?.id ?? randomUUID();
     const extension = args.extension.replace(/^\./u, "");
     const filenameFor = (id: string) => {
       return `${args.filenamePrefix}-${id.slice(0, 8)}.${extension}`;
@@ -293,6 +294,7 @@ export const storeGeneratedArtifactObject$ = command(
       {
         userId: args.userId,
         id: proposedId,
+        ...(args.identity ? { variant: args.identity.variant } : {}),
         filename: filenameFor(proposedId),
         publicBrand: args.publicBrand,
       },

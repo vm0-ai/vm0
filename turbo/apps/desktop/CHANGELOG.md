@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.46.37](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.36...desktop-v0.46.37) (2026-09-07)
+
+
+### Refactoring
+
+* **desktop:** own driver generations and command admission ([#32287](https://github.com/vm0-ai/vm0/issues/32287)) ([7605752](https://github.com/vm0-ai/vm0/commit/7605752e7e7b1f590785b6149b9034606ea6c6de))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.0
+
 ## [0.46.36](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.35...desktop-v0.46.36) (2026-09-07)
 
 

@@ -13,12 +13,11 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import { z } from "zod";
-import { piLaunchConfigSchema } from "@okouai/api-contracts/contracts/runners";
+import { executionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
-import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { piMemoryPhase2Checkpoints } from "@okouai/db/schema/pi-memory-phase2-checkpoint";
@@ -27,7 +26,7 @@ import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage
 import { storages } from "@okouai/db/schema/storage";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { createStore } from "ccstate";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -38,7 +37,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { db } from "../../../lib/db";
 import { mockOptionalEnv } from "../../../lib/env";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { generateSandboxToken } from "../../auth/tokens";
+import { runnersRoutes } from "../../routes/runners";
 import { webhooksAgentCompleteRoutes } from "../../routes/webhooks-agent-complete";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "../../routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "../../routes/webhooks-agent-storage";
@@ -47,7 +46,6 @@ import {
   advancePiMemoryPhase2InputRevision,
   notifyPiMemoryPhase2ExternalHeadChange,
 } from "../pi-memory-phase2-job.service";
-import { DEFAULT_AGENT_NAME } from "../default-agent-profile";
 import { executePiMemoryPhase2Work$ } from "../pi-memory-phase2-worker.service";
 import {
   piMemoryPhase2MaintenanceCallbackPayloadSchema,
@@ -62,12 +60,15 @@ import {
   setPhase2StorageHead,
 } from "./pi-memory-phase2-job.test-fixture";
 
-// #31937 requires infrastructure-only fault injection and exact control/usage
-// evidence. Public APIs cannot create lost ACKs, revoked in-flight claims, or
-// historical leases, and must not expose these private rows. Real routes still
-// own authentication, generic publication, usage ingestion, and completion.
+// #31937 and #32266 require infrastructure-only fault injection and exact
+// control/usage evidence. Public APIs cannot create lost ACKs, revoked
+// in-flight claims, historical leases, or Phase 2 cron state, and must not
+// expose these private rows. Real routes still own Runner claim authentication,
+// generic publication, usage ingestion, and completion.
 const context = testContext();
 const guestEnvironment = guestBoundaryEnvironment();
+const OFFICIAL_RUNNER_AUTHORIZATION =
+  "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const repo = resolve(
   fileURLToPath(new URL("../../../../../../..", import.meta.url)),
 );
@@ -178,6 +179,7 @@ function sse(response: ServerResponse, index: number, failure: boolean) {
 
 type Fault =
   | "none"
+  | "maintenance_agent_missing_retry"
   | "represented_no_diff"
   | "commit_ack"
   | "complete_transaction"
@@ -188,6 +190,84 @@ type Fault =
   | "invalid_marker"
   | "observer"
   | "new_input";
+
+type BoundaryScope = Awaited<ReturnType<typeof createPhase2TestScope>>;
+
+function phase2JobSeed(fault: Fault, dispatchTime: Date) {
+  if (fault !== "maintenance_agent_missing_retry") {
+    return { updatedAt: dispatchTime };
+  }
+  return {
+    status: "retryable_failure" as const,
+    retryCount: 1,
+    retryAt: new Date(dispatchTime.getTime() - 1),
+    lastErrorClass: "maintenance_agent_missing",
+    updatedAt: new Date(dispatchTime.getTime() - 1),
+  };
+}
+
+async function assertHistoricalMissingAgentRetry(args: {
+  readonly fault: Fault;
+  readonly scope: BoundaryScope;
+  readonly dispatchTime: Date;
+  readonly runId: string;
+}): Promise<void> {
+  if (args.fault !== "maintenance_agent_missing_retry") {
+    return;
+  }
+  await expect(
+    createStore().set(
+      executePiMemoryPhase2Work$,
+      {
+        scope: args.scope,
+        currentTime: new Date(args.dispatchTime.getTime() + 1),
+      },
+      context.signal,
+    ),
+  ).resolves.toStrictEqual({ outcome: "dispatched", runId: args.runId });
+  await expect(
+    db()
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, args.scope.orgId),
+          eq(agentRuns.userId, args.scope.userId),
+        ),
+      ),
+  ).resolves.toStrictEqual([{ id: args.runId }]);
+}
+
+async function claimMaintenanceRun(
+  app: ReturnType<typeof createAppWithRoutes>,
+  runId: string,
+) {
+  const response = await app.request(`/api/runners/jobs/${runId}/claim`, {
+    method: "POST",
+    headers: {
+      authorization: OFFICIAL_RUNNER_AUTHORIZATION,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      runnerIdentity: {
+        runnerId: randomUUID(),
+        heartbeatGeneration: 1,
+      },
+      capabilities: { piModelConfigGenerations: [1, 2, 3] },
+    }),
+  });
+  const body: unknown = await response.json();
+  expect(response.status, JSON.stringify(body)).toBe(200);
+  const execution = executionContextSchema.parse(body);
+  if (!execution.piLaunchConfig?.maintenance || !execution.piModelConfig) {
+    throw new Error("Claimed run is missing Pi maintenance context");
+  }
+  return {
+    execution,
+    maintenance: execution.piLaunchConfig.maintenance,
+    piLaunchConfig: execution.piLaunchConfig,
+  };
+}
 
 async function launch(fault: Fault, noDiff = false) {
   const scope = await createPhase2TestScope(`boundary-${fault}`, {
@@ -259,21 +339,16 @@ async function launch(fault: Fault, noDiff = false) {
     await setPhase2StorageHead(scope, baseVersion);
   }
   await seedOrgMetadata({ orgId: scope.orgId, tier: "pro", credits: 100_000 });
-  const agentId = randomUUID();
-  await db().insert(agents).values({
-    id: agentId,
-    orgId: scope.orgId,
-    owner: scope.userId,
-    name: DEFAULT_AGENT_NAME,
-    visibility: "public",
-  });
-  const cleanup: { runId?: string } = {};
+  const cleanup: { runId?: string; sessionId?: string } = {};
   onTestFinished(async () => {
     await db().delete(usageEvent).where(eq(usageEvent.orgId, scope.orgId));
-    if (cleanup.runId) {
+    if (cleanup.sessionId) {
+      await db()
+        .delete(agentSessions)
+        .where(eq(agentSessions.id, cleanup.sessionId));
+    } else if (cleanup.runId) {
       await db().delete(agentRuns).where(eq(agentRuns.id, cleanup.runId));
     }
-    await db().delete(agents).where(eq(agents.id, agentId));
   });
   await seedBuiltInModelKey(context, "gpt-5.6-terra");
   context.mocks.s3.getSignedUrl.mockResolvedValue(
@@ -282,11 +357,12 @@ async function launch(fault: Fault, noDiff = false) {
   if (!noDiff || fault === "represented_no_diff") {
     await insertPhase2Candidates(scope, [candidate]);
   }
-  await insertPendingPhase2Job(scope, { updatedAt: nowDate() });
+  const dispatchTime = nowDate();
+  await insertPendingPhase2Job(scope, phase2JobSeed(fault, dispatchTime));
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   const result = await createStore().set(
     executePiMemoryPhase2Work$,
-    { scope, currentTime: nowDate() },
+    { scope, currentTime: dispatchTime },
     context.signal,
   );
   expect(result.outcome).toBe("dispatched");
@@ -294,12 +370,40 @@ async function launch(fault: Fault, noDiff = false) {
     throw new Error("Maintenance dispatch failed");
   }
   cleanup.runId = result.runId;
-  // Runner activation is the only run-state fixture. Guest creates all session
-  // metadata, checkpoint requests, completion state and control settlement.
-  await db()
-    .update(agentRuns)
-    .set({ status: "running" })
+  const [maintenanceRunIdentity] = await db()
+    .select({
+      sessionId: agentRuns.sessionId,
+      chatThreadId: agentRuns.chatThreadId,
+    })
+    .from(agentRuns)
     .where(eq(agentRuns.id, result.runId));
+  if (!maintenanceRunIdentity) {
+    throw new Error("Missing maintenance run identity");
+  }
+  cleanup.sessionId = maintenanceRunIdentity.sessionId;
+  await expect(
+    db()
+      .select({ agentId: agentSessions.agentId })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, maintenanceRunIdentity.sessionId)),
+  ).resolves.toStrictEqual([{ agentId: null }]);
+  expect(maintenanceRunIdentity.chatThreadId).toBeNull();
+  await expect(
+    db()
+      .select({ id: agents.id })
+      .from(agents)
+      .where(eq(agents.orgId, scope.orgId)),
+  ).resolves.toStrictEqual([]);
+  await assertHistoricalMissingAgentRetry({
+    fault,
+    scope,
+    dispatchTime,
+    runId: result.runId,
+  });
+  await expect(readPhase2Job(scope)).resolves.toMatchObject({
+    status: "leased",
+    maintenanceRunId: result.runId,
+  });
   const [callback] = await db()
     .select()
     .from(agentRunCallbacks)
@@ -307,13 +411,6 @@ async function launch(fault: Fault, noDiff = false) {
   const binding = piMemoryPhase2MaintenanceCallbackPayloadSchema.parse(
     callback?.payload,
   );
-  const [queued] = await db()
-    .select()
-    .from(runnerJobQueue)
-    .where(eq(runnerJobQueue.runId, result.runId));
-  const execution = z
-    .object({ piLaunchConfig: piLaunchConfigSchema })
-    .parse(queued?.executionContext);
   const trigger = `maintenance_observer_${scope.memoryStorageId.replaceAll("-", "")}`;
   async function releaseObserver() {
     if (fault === "observer") {
@@ -372,6 +469,7 @@ async function launch(fault: Fault, noDiff = false) {
   const app = createAppWithRoutes({
     signal: context.signal,
     routes: [
+      ...runnersRoutes,
       ...webhooksAgentCompleteRoutes,
       ...webhooksAgentHealthUsageTelemetryRoutes,
       ...webhooksAgentStorageRoutes,
@@ -544,7 +642,23 @@ async function launch(fault: Fault, noDiff = false) {
       Body: Readable.from([object]),
     });
   });
-  const token = generateSandboxToken(scope.userId, result.runId, scope.orgId);
+  const { execution, maintenance, piLaunchConfig } = await claimMaintenanceRun(
+    app,
+    result.runId,
+  );
+  expect(execution.connectorRuntimeTargets).toStrictEqual([]);
+  expect(execution.piModelConfig).toMatchObject({
+    provider: "openai",
+    model: "gpt-5.6-terra",
+    api: "openai-responses",
+  });
+  expect(maintenance).toMatchObject({
+    memoryStorageId: scope.memoryStorageId,
+    claimedBaseVersionId: baseVersion.versionId,
+    leaseToken: binding.leaseToken,
+    selected: binding.selected,
+  });
+  const token = execution.sandboxToken;
   const quote = (value: string) => {
     return `'${value.replaceAll("'", String.raw`'\''`)}'`;
   };
@@ -570,7 +684,7 @@ async function launch(fault: Fault, noDiff = false) {
           missingRootPolicy: "fail",
         },
       ]),
-      piLaunchConfig: JSON.stringify(execution.piLaunchConfig),
+      piLaunchConfig: JSON.stringify(piLaunchConfig),
       piModelConfig: JSON.stringify({
         provider: "openai",
         model: "gpt-5.6-terra",
@@ -745,6 +859,7 @@ async function assertUsageReplay(
 describe("private maintenance across CLI, Guest, generic checkpoint and real PostgreSQL", () => {
   it.each([
     "none",
+    "maintenance_agent_missing_retry",
     "commit_ack",
     "complete_transaction",
     "complete_ack",

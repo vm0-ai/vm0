@@ -24,7 +24,6 @@ use crate::workspace_mount::freeze_workspace_drive;
 
 const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(30);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
-const SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 enum WorkspacePromotionAction {
     Promoted,
@@ -33,11 +32,11 @@ enum WorkspacePromotionAction {
 }
 
 /// A workspace image whose guest filesystem is frozen and whose sandbox must
-/// now be stopped and destroyed.
+/// now be terminated and destroyed.
 ///
-/// The active image is not safe to publish until [`Sandbox::stop`] succeeds.
+/// The active image is not safe to publish until sandbox termination succeeds.
 /// Callers must never resume, thaw, or pool the sandbox after preparation.
-#[must_use = "a prepared workspace promotion must be published or abandoned after stopping the sandbox"]
+#[must_use = "a prepared workspace promotion must be published or abandoned after terminating the sandbox"]
 pub(crate) struct PreparedWorkspaceImagePromotion {
     promotion: WorkspaceImagePromotionContext,
     sidecar_source: Option<SessionHistorySidecarSourceGuard>,
@@ -290,8 +289,6 @@ async fn export_session_history_sidecar(
                 error = %e,
                 "workspace image cache session history sidecar export errored"
             );
-            cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
-                .await;
             return None;
         }
     };
@@ -342,8 +339,6 @@ async fn export_session_history_sidecar(
                 "workspace image cache session history sidecar export failed"
             );
         }
-        cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
-            .await;
         return None;
     }
     let metadata = match serde_json::from_slice::<SessionHistorySidecarExportMetadata>(
@@ -365,19 +360,12 @@ async fn export_session_history_sidecar(
                 reason,
                 "workspace image cache session history sidecar export returned invalid metadata"
             );
-            cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
-                .await;
             return None;
         }
     };
-    let Some(entry_guard) = promotion
+    let entry_guard = promotion
         .try_acquire_session_history_sidecar_entry_guard()
-        .await
-    else {
-        cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
-            .await;
-        return None;
-    };
+        .await?;
     let tmp_path = entry_guard.session_history_sidecar_tmp_path();
     let source = entry_guard.session_history_sidecar_source(
         tmp_path,
@@ -400,8 +388,6 @@ async fn export_session_history_sidecar(
     {
         Ok(result) => result,
         Err(e) => {
-            cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
-                .await;
             sidecar_source.discard().await;
             warn!(
                 run_id = %promotion.run_id(),
@@ -416,7 +402,6 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
-    cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason).await;
     if copied.bytes_copied != metadata.encoded_size {
         sidecar_source.discard().await;
         warn!(
@@ -435,50 +420,6 @@ async fn export_session_history_sidecar(
     Some(sidecar_source)
 }
 
-async fn cleanup_guest_session_history_sidecar_export(
-    sandbox: &dyn Sandbox,
-    promotion: &WorkspaceImagePromotionContext,
-    export_path: &str,
-    reason: &'static str,
-) {
-    let command = ["rm -f --".to_string(), quote_shell_arg(export_path)].join(" ");
-    let request = ExecRequest {
-        cmd: &command,
-        timeout: SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT,
-        env: &[],
-        sudo: false,
-        expected_exit_codes: &[],
-        stdin_bytes: None,
-        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-    };
-    match sandbox
-        .exec_with_diagnostic_label(&request, "session-history-sidecar-cleanup")
-        .await
-    {
-        Ok(result) if helper_exec_succeeded(&result) => {}
-        Ok(result) => warn!(
-            run_id = %promotion.run_id(),
-            sandbox_id = %promotion.sandbox_id(),
-            profile_name = promotion.profile_name(),
-            reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
-            reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
-            reason,
-            error = %format_helper_exec_failure("session history sidecar cleanup", &result),
-            "workspace image cache session history sidecar cleanup failed"
-        ),
-        Err(e) => warn!(
-            run_id = %promotion.run_id(),
-            sandbox_id = %promotion.sandbox_id(),
-            profile_name = promotion.profile_name(),
-            reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
-            reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
-            reason,
-            error = %e,
-            "workspace image cache session history sidecar cleanup errored"
-        ),
-    }
-}
-
 pub(crate) async fn prepare_workspace_image_from_parked_sandbox(
     sandbox: &mut dyn Sandbox,
     promotion: Option<WorkspaceImagePromotionContext>,
@@ -486,7 +427,10 @@ pub(crate) async fn prepare_workspace_image_from_parked_sandbox(
 ) -> Option<PreparedWorkspaceImagePromotion> {
     let promotion = promotion?;
 
-    match AssertUnwindSafe(sandbox.unpark()).catch_unwind().await {
+    match AssertUnwindSafe(sandbox.unpark_for_terminal_operations())
+        .catch_unwind()
+        .await
+    {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
             warn!(

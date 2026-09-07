@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.188.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.187.1...runner-rs-v0.188.0) (2026-09-07)
+
+
+### Features
+
+* **runner:** publish explicit blank sandbox inventory ([#32269](https://github.com/vm0-ai/vm0/issues/32269)) ([bd9cddc](https://github.com/vm0-ai/vm0/commit/bd9cddcf6719c90848ed4ec497baca8cfd3191ea))
+
+
+### Bug Fixes
+
+* **pi:** enable thread active input forwarding ([#32298](https://github.com/vm0-ai/vm0/issues/32298)) ([bb0b432](https://github.com/vm0-ai/vm0/commit/bb0b432f4a226344b390412f56306101471b5e8f))
+
+
+### Refactoring
+
+* **runner:** share api degradation episode transitions ([#32248](https://github.com/vm0-ai/vm0/issues/32248)) ([818bce5](https://github.com/vm0-ai/vm0/commit/818bce52538a5598347edcd9d1ced997e9624a20))
+* **runtime:** neutralize private test markers ([#32270](https://github.com/vm0-ai/vm0/issues/32270)) ([b1a3e6f](https://github.com/vm0-ai/vm0/commit/b1a3e6f80100113525c2b38c3a9dd1583d03cfe5))
+
 ## [0.187.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.187.0...runner-rs-v0.187.1) (2026-09-07)
 
 

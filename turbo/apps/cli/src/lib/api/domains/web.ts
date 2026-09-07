@@ -37,6 +37,11 @@ import {
   introVideoStylesResponseSchema,
   introVideoVoicesResponseSchema,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
+import {
+  introVideoAgentResponseSchema,
+  type IntroVideoAgentGenerateRequest,
+  type IntroVideoAgentResponse,
+} from "@okouai/api-contracts/contracts/intro-video-agent";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -1059,6 +1064,52 @@ export async function generateWebIntroVideoPresenter(
     token,
     fallback: "Failed to generate Intro Video presenter",
   });
+}
+
+/** Submit once and return the durable native Video Agent job without waiting. */
+export async function generateWebIntroVideoAgent(
+  options: IntroVideoAgentGenerateRequest,
+): Promise<IntroVideoAgentResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/agent/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to submit Intro Video Agent job",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return introVideoAgentResponseSchema.parse(await response.json());
+}
+
+/** Reconcile one existing job; this endpoint never creates another video. */
+export async function getWebIntroVideoAgent(
+  generationId: string,
+): Promise<IntroVideoAgentResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoAgentResponseSchema.parse(
+    await getIntroVideoCatalog(
+      new URL(
+        `/api/intro-video/agent/${encodeURIComponent(generationId)}`,
+        baseUrl,
+      ),
+      "Failed to get Intro Video Agent job",
+    ),
+  );
 }
 
 /**

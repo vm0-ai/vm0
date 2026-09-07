@@ -1,6 +1,6 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
@@ -16,7 +16,6 @@ import {
 } from "./chat-run-test-fixtures.ts";
 
 const secondContext = testContext();
-const thirdContext = testContext();
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 
 function restoreHistory() {
@@ -41,21 +40,23 @@ function installVoiceBoundaries() {
   });
 }
 
+function pageRoot(element: Element): HTMLElement {
+  const root = Array.from(document.body.children).find((candidate) => {
+    return candidate.contains(element);
+  });
+  if (!(root instanceof HTMLElement)) {
+    throw new Error("Expected page root");
+  }
+  return root;
+}
+
 test.each(["user", "org", "target"] as const)(
   "Keep local recordings isolated when the composer changes %s",
   async (part) => {
     installVoiceBoundaries();
     const firstPage = createChildAbortController(context.signal);
-    const secondPage = createChildAbortController(secondContext.signal);
-    let successful = false;
     context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
-      return successful
-        ? HttpResponse.json({
-            transcript: "original",
-            polishedText: "Original recording.",
-            language: "en-US",
-          })
-        : HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
+      return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
     });
     await setupPage({
       context: { ...context, signal: firstPage.signal },
@@ -67,7 +68,7 @@ test.each(["user", "org", "target"] as const)(
     await findEnabledButton("Retry");
     unload(firstPage);
     await setupPage({
-      context: { ...secondContext, signal: secondPage.signal },
+      context: secondContext,
       path: part === "target" ? NEW_CHAT_PATH : RUN_PATH,
       featureSwitches: flags,
       auth: {
@@ -87,21 +88,56 @@ test.each(["user", "org", "target"] as const)(
     });
     await findEnabledButton("Voice input");
     expect(queryButton("Retry")).toBeNull();
-    click(await findEnabledButton("Voice input"));
-    click(await findEnabledButton("Stop recording"));
-    click(await findEnabledButton("Remove voice draft"));
-    await findEnabledButton("Voice input");
-    unload(secondPage);
-    successful = true;
-    await setupPage({
-      context: thirdContext,
-      path: RUN_PATH,
-      featureSwitches: flags,
-    });
-    click(await findEnabledButton("Retry"));
-    await findEnabledButton("Voice input");
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
-      "Original recording.",
-    );
   },
 );
+
+test("Removing another target's local recording preserves the original recording", async () => {
+  installVoiceBoundaries();
+  let successful = false;
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
+    return successful
+      ? HttpResponse.json({
+          transcript: "original",
+          polishedText: "Original recording.",
+          language: "en-US",
+        })
+      : HttpResponse.json({ error: "Temporary outage" }, { status: 503 });
+  });
+
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  const firstComposer = await screen.findByRole("textbox", {
+    name: "Message",
+  });
+  const firstRoot = pageRoot(firstComposer);
+  click(await findEnabledButton("Voice input", firstRoot));
+  click(await findEnabledButton("Stop recording", firstRoot));
+  await findEnabledButton("Retry", firstRoot);
+
+  restoreHistory();
+  await setupPage({
+    context: secondContext,
+    path: NEW_CHAT_PATH,
+    featureSwitches: flags,
+  });
+  const secondComposer = await waitFor(() => {
+    const composer = screen
+      .getAllByRole("textbox", { name: "Message" })
+      .find((candidate) => {
+        return candidate !== firstComposer;
+      });
+    expect(composer).toBeDefined();
+    return composer!;
+  });
+  const secondRoot = pageRoot(secondComposer);
+  await findEnabledButton("Voice input", secondRoot);
+  expect(queryButton("Retry", secondRoot)).toBeNull();
+  click(await findEnabledButton("Voice input", secondRoot));
+  click(await findEnabledButton("Stop recording", secondRoot));
+  click(await findEnabledButton("Remove voice draft", secondRoot));
+  await findEnabledButton("Voice input", secondRoot);
+
+  successful = true;
+  click(await findEnabledButton("Retry", firstRoot));
+  await findEnabledButton("Voice input", firstRoot);
+  expect(firstComposer).toHaveTextContent("Original recording.");
+});

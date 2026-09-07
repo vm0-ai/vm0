@@ -49,6 +49,9 @@ interface BuiltInGenerationRequestInternal {
     | "joggai"
     | "heygen";
   readonly providerJobId?: string;
+  readonly providerSessionId?: string;
+  readonly providerStatus?: string;
+  readonly providerNotice?: string;
   readonly providerStatusUrl?: string;
   readonly providerResponseUrl?: string;
   readonly providerTask?: string;
@@ -108,12 +111,19 @@ export function builtInGenerationRequestWithInternal(
       publicBrand: internal.publicBrand,
       provider: internal.provider,
       providerJobId: internal.providerJobId,
+      providerSessionId: internal.providerSessionId,
+      providerStatus: internal.providerStatus,
+      providerNotice: internal.providerNotice,
       providerStatusUrl: internal.providerStatusUrl,
       providerResponseUrl: internal.providerResponseUrl,
       providerTask: internal.providerTask,
       presentation: internal.presentation,
     }),
   };
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 export function readBuiltInGenerationRequestInternal(
@@ -152,6 +162,9 @@ export function readBuiltInGenerationRequestInternal(
         : undefined,
     providerJobId:
       typeof value.providerJobId === "string" ? value.providerJobId : undefined,
+    providerSessionId: optionalString(value.providerSessionId),
+    providerStatus: optionalString(value.providerStatus),
+    providerNotice: optionalString(value.providerNotice),
     providerStatusUrl:
       typeof value.providerStatusUrl === "string"
         ? value.providerStatusUrl
@@ -206,9 +219,20 @@ function builtInGenerationTimeoutCutoff(
 }
 
 function isStuckBuiltInGenerationJob(
-  job: BuiltInGenerationJobRow & { readonly updatedAt: Date },
+  job: BuiltInGenerationJobRow & {
+    readonly updatedAt: Date;
+    readonly request: unknown;
+  },
   referenceTime: Date,
 ): boolean {
+  // Video Agent sessions can remain active beyond the generic video timeout.
+  // Only an authoritative provider failure ends these resumable jobs.
+  if (
+    readBuiltInGenerationRequestInternal(job.request).providerTask ===
+    "intro-video-agent"
+  ) {
+    return false;
+  }
   if (!isActiveBuiltInGenerationStatus(job.status)) {
     return false;
   }
@@ -265,6 +289,7 @@ export const getBuiltInGenerationJob$ = command(
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
         updatedAt: builtInGenerationJobs.updatedAt,
+        request: builtInGenerationJobs.request,
         startedAt: builtInGenerationJobs.startedAt,
         completedAt: builtInGenerationJobs.completedAt,
       })
@@ -378,24 +403,13 @@ export const mergeBuiltInGenerationJobInternal$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
-    const [job] = await writeDb
-      .select({ request: builtInGenerationJobs.request })
-      .from(builtInGenerationJobs)
-      .where(eq(builtInGenerationJobs.id, args.generationId))
-      .limit(1);
-    signal.throwIfAborted();
-    if (!job || !isRecord(job.request)) {
-      return;
-    }
-
-    const current = readBuiltInGenerationRequestInternal(job.request);
+    const patch = compactObject({ ...args.internal });
+    // Merge in SQL so callbacks and submission/status persistence cannot erase
+    // each other's session ID, video ID, or admission metadata.
     await writeDb
       .update(builtInGenerationJobs)
       .set({
-        request: builtInGenerationRequestWithInternal(job.request, {
-          ...current,
-          ...args.internal,
-        }),
+        request: sql`jsonb_set(${builtInGenerationJobs.request}, '{__builtInGeneration}', coalesce(${builtInGenerationJobs.request}->'__builtInGeneration', '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb)`,
         updatedAt: nowDate(),
       })
       .where(eq(builtInGenerationJobs.id, args.generationId));

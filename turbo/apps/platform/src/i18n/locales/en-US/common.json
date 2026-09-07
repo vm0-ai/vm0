@@ -1912,7 +1912,6 @@
       "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
-      "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",

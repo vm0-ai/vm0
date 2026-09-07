@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.31](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.30...app-worker-v1.4.31) (2026-09-07)
+
+
+### Bug Fixes
+
+* **app:** align Okou metadata with website ([#32303](https://github.com/vm0-ai/vm0/issues/32303)) ([d97683e](https://github.com/vm0-ai/vm0/commit/d97683ee47534fbb9924951b734a07842fecd4ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.631.2
+
 ## [1.4.30](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.29...app-worker-v1.4.30) (2026-09-07)
 
 

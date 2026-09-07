@@ -236,7 +236,7 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             () = async {
                 if retry_after_read_error {
-                    tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
+                    source.wait_after_read_error().await;
                 } else {
                     source.wait_until_next_read().await;
                 }

@@ -647,12 +647,18 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        *o.lifecycle.stop_calls.lock_ignoring_poison() += 1;
         wait_lifecycle_gate(&o.lifecycle.stop_gate).await;
         o.lifecycle.stop_behaviors.next_result(())
     }
 
     async fn kill(&mut self) -> Result<()> {
-        Ok(())
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        *o.lifecycle.kill_calls.lock_ignoring_poison() += 1;
+        wait_lifecycle_gate(&o.lifecycle.kill_gate).await;
+        o.lifecycle.kill_behaviors.next_result(())
     }
 
     /// Mock park: bumps the override `park_calls` counter on every call (so
@@ -755,6 +761,13 @@ impl Sandbox for MockSandbox {
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
         wait_lifecycle_gate(&o.lifecycle.unpark_gate).await;
         o.lifecycle.unpark_behaviors.next_result(())
+    }
+
+    async fn unpark_for_terminal_operations(&mut self) -> Result<()> {
+        if let Some(o) = &self.overrides {
+            *o.lifecycle.terminal_unpark_calls.lock_ignoring_poison() += 1;
+        }
+        self.unpark().await
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {

@@ -1780,6 +1780,14 @@ export {
   type BuiltInGenerationResponse,
 } from "./built-in-generation";
 export {
+  introVideoAgentContract,
+  introVideoAgentGenerateRequestSchema,
+  introVideoAgentResponseSchema,
+  type IntroVideoAgentContract,
+  type IntroVideoAgentGenerateRequest,
+  type IntroVideoAgentResponse,
+} from "./intro-video-agent";
+export {
   voiceIoPolishContract,
   voiceIoPolishRequestSchema,
   voiceIoPolishResponseSchema,

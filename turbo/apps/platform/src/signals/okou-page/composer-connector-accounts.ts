@@ -16,7 +16,6 @@ import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/cont
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { withCleanup } from "../utils.ts";
 import {
   connectorAccountSummaryByTarget$,
   connectorAccountTargetKey,
@@ -62,7 +61,6 @@ export interface ComposerConnectorAccountSignals {
   readonly reload$: Command<void, []>;
   readonly openPopover$: Command<void, []>;
   readonly resetPendingSelections$: Command<void, []>;
-  readonly savingTargetKey$: Computed<string | null>;
 }
 
 function emptyPreferenceState(): ComposerConnectorAccountPreferenceState {
@@ -78,7 +76,7 @@ function selectionForConnection(
 function createConnectorAccountMutationSignals(args: {
   readonly threadId: string | undefined;
   readonly pendingState$: State<ComposerConnectorAccountPreferenceState>;
-  readonly savingTargetKey$: State<string | null>;
+  readonly preferenceState$: ComposerConnectorAccountSignals["preferenceState$"];
   readonly reload$: Command<void, []>;
 }): Pick<ComposerConnectorAccountSignals, "selectAccount$" | "useDefault$"> {
   const selectAccount$ = command(
@@ -89,7 +87,6 @@ function createConnectorAccountMutationSignals(args: {
     ): Promise<void> => {
       signal.throwIfAborted();
       const targetKey = connectorAccountTargetKey(connection.target);
-      set(args.savingTargetKey$, targetKey);
       if (!args.threadId) {
         const current = get(args.pendingState$);
         const selection = selectionForConnection(connection);
@@ -107,25 +104,21 @@ function createConnectorAccountMutationSignals(args: {
             connection,
           ],
         });
-        set(args.savingTargetKey$, null);
         return;
       }
-      await withCleanup(
-        accept(
-          get(apiClient$)(chatThreadConnectorSelectionContract).update({
-            params: { id: args.threadId },
-            body: selectionForConnection(connection),
-            fetchOptions: { signal },
-          }),
-          [200, 400, 404],
-          signal,
-        ),
-        () => {
-          set(args.savingTargetKey$, null);
-        },
+      await accept(
+        get(apiClient$)(chatThreadConnectorSelectionContract).update({
+          params: { id: args.threadId },
+          body: selectionForConnection(connection),
+          fetchOptions: { signal },
+        }),
+        [200],
+        signal,
       );
       signal.throwIfAborted();
       set(args.reload$);
+      await get(args.preferenceState$);
+      signal.throwIfAborted();
     },
   );
 
@@ -137,7 +130,6 @@ function createConnectorAccountMutationSignals(args: {
     ): Promise<void> => {
       signal.throwIfAborted();
       const targetKey = connectorAccountTargetKey(target);
-      set(args.savingTargetKey$, targetKey);
       if (!args.threadId) {
         const current = get(args.pendingState$);
         set(args.pendingState$, {
@@ -150,25 +142,21 @@ function createConnectorAccountMutationSignals(args: {
             },
           ),
         });
-        set(args.savingTargetKey$, null);
         return;
       }
-      await withCleanup(
-        accept(
-          get(apiClient$)(chatThreadConnectorSelectionContract).clear({
-            params: { id: args.threadId },
-            body: target,
-            fetchOptions: { signal },
-          }),
-          [204, 404],
-          signal,
-        ),
-        () => {
-          set(args.savingTargetKey$, null);
-        },
+      await accept(
+        get(apiClient$)(chatThreadConnectorSelectionContract).clear({
+          params: { id: args.threadId },
+          body: target,
+          fetchOptions: { signal },
+        }),
+        [204, 404],
+        signal,
       );
       signal.throwIfAborted();
       set(args.reload$);
+      await get(args.preferenceState$);
+      signal.throwIfAborted();
     },
   );
 
@@ -185,7 +173,6 @@ export function createComposerConnectorAccountSignals(
   const pendingState$ = state<ComposerConnectorAccountPreferenceState>(
     emptyPreferenceState(),
   );
-  const savingTargetKey$ = state<string | null>(null);
   const preferenceState$ = computed(
     async (get): Promise<ComposerConnectorAccountPreferenceState> => {
       if (!threadId) {
@@ -243,7 +230,7 @@ export function createComposerConnectorAccountSignals(
     {
       threadId,
       pendingState$,
-      savingTargetKey$,
+      preferenceState$,
       reload$: reloadPreference$,
     },
   );
@@ -275,8 +262,5 @@ export function createComposerConnectorAccountSignals(
     reload$,
     openPopover$,
     resetPendingSelections$,
-    savingTargetKey$: computed((get) => {
-      return get(savingTargetKey$);
-    }),
   };
 }

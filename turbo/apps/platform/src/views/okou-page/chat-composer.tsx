@@ -1,4 +1,8 @@
 import {
+  useComposerConnectorActions,
+  type ComposerConnectorActions,
+} from "./composer-connector-actions.ts";
+import {
   useComposerActions,
   type ComposerActions,
 } from "./composer-actions.ts";
@@ -41,7 +45,6 @@ import type {
   PresentationTemplateSummary,
 } from "../../signals/okou-page/presentation-template-library.ts";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
-import { equalArrays } from "../../lib/equality.ts";
 import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
@@ -197,20 +200,9 @@ import {
   defaultCustomConnectorAccountOptions,
   type DefaultConnectorAccountMutationOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
-import {
-  connectConnectorNoAuth$,
-  connectConnectorOAuthAuthCode$,
-  connectFlowConnectorSlug$,
-  matchesConnectorSearch,
-  justConnectedSlugs$,
-  pollingOAuthAuthCodeConnectorSlug$,
-  pollingOAuthDeviceAuthConnectorSlug$,
-} from "../../signals/okou-page/settings/connectors.ts";
+import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
-import {
-  customConnectors$,
-  resetCustomConnectorConnectInput$,
-} from "../../signals/okou-page/settings/custom-connectors.ts";
+import { resetCustomConnectorConnectInput$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -241,7 +233,6 @@ import {
 } from "../../signals/okou-page/computer-use-hosts.ts";
 import { computerUseHostsFromWorker$ } from "../../signals/shared-database.ts";
 import { computerUseProductName$ } from "../../signals/branding.ts";
-import type { ComposerConnectorAuthorizationState } from "../../signals/okou-page/connectors.ts";
 import {
   CONNECTOR_ACCOUNT_SEARCH_THRESHOLD,
   connectorAccountTargetKey,
@@ -329,17 +320,6 @@ function isHappyDomTestEnvironment(): boolean {
 interface ChatComposerProps {
   readonly signals: ComposerSignals;
   readonly showPendingItems?: boolean;
-}
-
-interface ComposerConnectorReadState {
-  readonly relatedCatalogItems: Loadable<
-    readonly PlatformConnectorCatalogStatusItem[]
-  >;
-  readonly addDialogCatalogItems: Loadable<
-    readonly PlatformConnectorCatalogStatusItem[]
-  >;
-  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
-  readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
 interface ComposerComputerUseHost {
@@ -7001,7 +6981,7 @@ function AddConnectorsDialog({
   signals,
   unconnected,
   unconnectedCustom,
-  busyConnectorSlug,
+  connecting,
   connectHandlers,
   onConnectCustom,
   onClose,
@@ -7009,7 +6989,7 @@ function AddConnectorsDialog({
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
   unconnectedCustom: CustomConnectorResponse[];
-  busyConnectorSlug: ConnectorSlug | null;
+  connecting: boolean;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
@@ -7075,7 +7055,7 @@ function AddConnectorsDialog({
                   key={item.slug}
                   variant="catalog"
                   connector={item}
-                  busy={busyConnectorSlug === item.slug}
+                  busy={connecting}
                   connect={connectHandlers(item)}
                 />
               );
@@ -7387,7 +7367,7 @@ function ComposerConnectorAccessRow({
       className="flex h-10 shrink-0 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
     >
       {actions ? (
-        <span className="order-2 flex shrink-0 items-center gap-2">
+        <span className="order-2 flex shrink-0 items-center gap-2 empty:hidden">
           {actions}
         </span>
       ) : null}
@@ -7414,6 +7394,7 @@ function ComposerConnectorAccessRow({
 
 function ComposerConnectorAccountMenu({
   signals,
+  actions,
   target,
   connectorLabel,
   selectedConnection,
@@ -7421,6 +7402,7 @@ function ComposerConnectorAccountMenu({
   explicit,
 }: {
   readonly signals: ComposerSignals;
+  readonly actions: ComposerConnectorActions;
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
   readonly selectedConnection: ConnectorAccountConnection | undefined;
@@ -7497,6 +7479,7 @@ function ComposerConnectorAccountMenu({
       >
         <ComposerConnectorAccountMenuContent
           signals={signals}
+          actions={actions}
           target={target}
           connectorLabel={connectorLabel}
         />
@@ -7717,10 +7700,12 @@ function ComposerConnectorAccountChoices({
 
 function ComposerConnectorAccountMenuContent({
   signals,
+  actions,
   target,
   connectorLabel,
 }: {
   readonly signals: ComposerSignals;
+  readonly actions: ComposerConnectorActions;
   readonly target: ConnectorAccountTarget;
   readonly connectorLabel: string;
 }) {
@@ -7731,13 +7716,14 @@ function ComposerConnectorAccountMenuContent({
   const summariesLoadable = useLastLoadable(
     signals.connector.accounts.summaryByTarget$,
   );
-  const accountsLoadable = useLoadable(signals.connector.accounts.accounts$);
+  const accountsLoadable = useLastLoadable(
+    signals.connector.accounts.accounts$,
+  );
   const search = useGet(signals.connector.accounts.search$);
-  const savingTargetKey = useGet(signals.connector.accounts.savingTargetKey$);
   const closeMenu = useSet(signals.connector.accounts.closeMenu$);
   const setSearch = useSet(signals.connector.accounts.setSearch$);
-  const selectAccount = useSet(signals.connector.accounts.selectAccount$);
-  const clearAccountSelection = useSet(signals.connector.accounts.useDefault$);
+  const selectAccount = actions.selectAccount;
+  const clearAccountSelection = actions.useDefaultAccount;
   const [loadMoreLoadable, loadMore] = useLoadableSet(
     signals.connector.accounts.loadMore$,
   );
@@ -7776,7 +7762,7 @@ function ComposerConnectorAccountMenuContent({
     search.length > 0 ||
     (summary?.accountCount ?? 0) > CONNECTOR_ACCOUNT_SEARCH_THRESHOLD ||
     accountList.nextCursor !== null;
-  const saving = savingTargetKey === targetKey;
+  const saving = actions.savingAccount;
   const selectAndClose = (connection: ConnectorAccountConnection): void => {
     detach(
       (async () => {
@@ -7937,6 +7923,55 @@ function deriveComposerConnectorPopoverState(args: {
   return { visibleConnectors, permissionConnector };
 }
 
+function ComposerConnectorAccountAction({
+  signals,
+  actions,
+  item,
+}: {
+  readonly signals: ComposerSignals;
+  readonly actions: ComposerConnectorActions;
+  readonly item: ComposerPopoverConnectorItem;
+}) {
+  const preference = useLastResolved(
+    signals.connector.accounts.preferenceState$,
+  );
+  const summaries = useLastResolved(
+    signals.connector.accounts.summaryByTarget$,
+  );
+  const target = composerPopoverConnectorTarget(item);
+  const targetKey = connectorAccountTargetKey(target);
+  const summary = summaries?.get(targetKey);
+  if (
+    !item.connector.authorized ||
+    (item.kind === "custom" &&
+      isIntegrationManagedCustomConnector(item.connector)) ||
+    !summary ||
+    summary.accountCount <= 1
+  ) {
+    return null;
+  }
+  const selection = preference?.selections.find((candidate) => {
+    return connectorAccountTargetKey(candidate.target) === targetKey;
+  });
+  return (
+    <ComposerConnectorAccountMenu
+      signals={signals}
+      actions={actions}
+      target={target}
+      connectorLabel={
+        item.kind === "builtin"
+          ? item.connector.label
+          : item.connector.displayName
+      }
+      explicit={selection !== undefined}
+      selectedConnection={preference?.selectedConnections.find((connection) => {
+        return connection.id === selection?.connectionId;
+      })}
+      defaultConnection={summary.defaultConnection}
+    />
+  );
+}
+
 function ConnectorsPopoverButton({
   signals,
   agentId,
@@ -7944,8 +7979,7 @@ function ConnectorsPopoverButton({
   agentConnectors,
   agentCustomConnectors,
   connectorsLoading,
-  savingConnectorSlug,
-  savingCustomConnectorId,
+  actions,
   computerUse,
   onOpenAddDialog,
   onToggle,
@@ -7957,8 +7991,7 @@ function ConnectorsPopoverButton({
   agentConnectors: ComposerConnectorItem[];
   agentCustomConnectors: ComposerCustomConnectorItem[];
   connectorsLoading: boolean;
-  savingConnectorSlug: ConnectorSlug | null;
-  savingCustomConnectorId: string | null;
+  actions: ComposerConnectorActions;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (
@@ -7973,12 +8006,6 @@ function ConnectorsPopoverButton({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
-  const accountPreferenceLoadable = useLastLoadable(
-    signals.connector.accounts.preferenceState$,
-  );
-  const accountSummariesLoadable = useLastLoadable(
-    signals.connector.accounts.summaryByTarget$,
-  );
   const accountMenuOpen = useGet(signals.connector.accounts.menuOpen$);
   const closeAccountMenu = useSet(signals.connector.accounts.closeMenu$);
   const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
@@ -8000,24 +8027,6 @@ function ConnectorsPopoverButton({
     }),
   ];
   const showSearch = connectorItems.length > 20;
-  const accountPreference =
-    accountPreferenceLoadable.state === "hasData"
-      ? accountPreferenceLoadable.data
-      : { selections: [], selectedConnections: [] };
-  const accountSummaries =
-    accountSummariesLoadable.state === "hasData"
-      ? accountSummariesLoadable.data
-      : new Map();
-  const selectionByTarget = new Map(
-    accountPreference.selections.map((selection) => {
-      return [connectorAccountTargetKey(selection.target), selection];
-    }),
-  );
-  const selectedConnectionById = new Map(
-    accountPreference.selectedConnections.map((connection) => {
-      return [connection.id, connection];
-    }),
-  );
   const { visibleConnectors, permissionConnector } =
     deriveComposerConnectorPopoverState({
       connectorItems,
@@ -8027,49 +8036,6 @@ function ConnectorsPopoverButton({
       permissionConnectorSlug,
       agentConnectors,
     });
-  const accountSummaryForItem = (item: ComposerPopoverConnectorItem) => {
-    if (
-      !item.connector.authorized ||
-      (item.kind === "custom" &&
-        isIntegrationManagedCustomConnector(item.connector))
-    ) {
-      return undefined;
-    }
-    const summary = accountSummaries.get(
-      connectorAccountTargetKey(composerPopoverConnectorTarget(item)),
-    );
-    if (!summary || summary.accountCount <= 1) {
-      return undefined;
-    }
-    return summary;
-  };
-  const accountModeButton = (item: ComposerPopoverConnectorItem) => {
-    const summary = accountSummaryForItem(item);
-    if (!summary) {
-      return null;
-    }
-    const target = composerPopoverConnectorTarget(item);
-    const targetKey = connectorAccountTargetKey(target);
-    const selection = selectionByTarget.get(targetKey);
-    return (
-      <ComposerConnectorAccountMenu
-        signals={signals}
-        target={target}
-        connectorLabel={
-          item.kind === "builtin"
-            ? item.connector.label
-            : item.connector.displayName
-        }
-        explicit={selection !== undefined}
-        selectedConnection={
-          selection
-            ? selectedConnectionById.get(selection.connectionId)
-            : undefined
-        }
-        defaultConnection={summary.defaultConnection}
-      />
-    );
-  };
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
@@ -8084,7 +8050,6 @@ function ConnectorsPopoverButton({
 
   return (
     <Popover
-      defaultOpen
       onOpenChange={(open, eventDetails) => {
         if (
           !open &&
@@ -8112,12 +8077,14 @@ function ConnectorsPopoverButton({
                   return $.chat.connectors.title;
                 })}
               >
-                <ConnectorTriggerIcons
-                  connectors={agentConnectors}
-                  customConnectors={agentCustomConnectors}
-                  hasComputerUse={Boolean(computerUse?.selectedHostId)}
-                  hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
-                />
+                {!connectorsLoading && (
+                  <ConnectorTriggerIcons
+                    connectors={agentConnectors}
+                    customConnectors={agentCustomConnectors}
+                    hasComputerUse={Boolean(computerUse?.selectedHostId)}
+                    hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
+                  />
+                )}
               </button>
             </TooltipTrigger>
           </PopoverTrigger>
@@ -8192,12 +8159,18 @@ function ConnectorsPopoverButton({
                           />
                         }
                         connectorLabel={connector.displayName}
-                        actions={accountModeButton(item)}
+                        actions={
+                          <ComposerConnectorAccountAction
+                            signals={signals}
+                            actions={actions}
+                            item={item}
+                          />
+                        }
                         checked={connector.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
                           await onToggleCustom(connector.id, checked);
                         })}
-                        loading={savingCustomConnectorId === connector.id}
+                        loading={actions.savingAuthorization}
                         ariaLabel={
                           connector.authorized
                             ? t(
@@ -8221,7 +8194,13 @@ function ConnectorsPopoverButton({
                     );
                   }
                   const connector = item.connector;
-                  const accountAction = accountModeButton(item);
+                  const accountAction = connector.authorized ? (
+                    <ComposerConnectorAccountAction
+                      signals={signals}
+                      actions={actions}
+                      item={item}
+                    />
+                  ) : null;
                   const showPermissionAction =
                     Boolean(agentId) &&
                     connector.authorized &&
@@ -8267,7 +8246,7 @@ function ConnectorsPopoverButton({
                       onCheckedChange={onDomEventFn(async (checked) => {
                         await onToggle(connector.slug, checked);
                       })}
-                      loading={savingConnectorSlug === connector.slug}
+                      loading={actions.savingAuthorization}
                       ariaLabel={
                         connector.authorized
                           ? t(
@@ -9902,80 +9881,6 @@ function ComposerTemporaryModelNoticeSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function equalComposerConnectorAuthorizationState(
-  left: ComposerConnectorAuthorizationState,
-  right: ComposerConnectorAuthorizationState,
-): boolean {
-  return (
-    left.agentId === right.agentId &&
-    equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs) &&
-    equalCustomConnectorGrants(
-      left.customConnectorGrants,
-      right.customConnectorGrants,
-    )
-  );
-}
-
-function equalCustomConnectorGrants(
-  left: readonly AgentCustomConnectorGrant[],
-  right: readonly AgentCustomConnectorGrant[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((grant, index) => {
-      const other = right[index];
-      return (
-        other !== undefined &&
-        grant.customConnectorId === other.customConnectorId &&
-        equalArrays(grant.permissionNames, other.permissionNames)
-      );
-    })
-  );
-}
-
-function useComposerConnectorReadState(
-  signals: ComposerSignals,
-): ComposerConnectorReadState {
-  return {
-    relatedCatalogItems: useLastLoadable(
-      signals.connector.relatedCatalogItems$,
-    ),
-    addDialogCatalogItems: useLastLoadable(
-      signals.connector.addDialogCatalogItems$,
-    ),
-    customConnectors: useLastLoadable(customConnectors$),
-    authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
-      equalityFn: equalComposerConnectorAuthorizationState,
-    }),
-  };
-}
-
-function matchingAuthorizedConnectorSlugs(
-  agentId: string,
-  authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly ConnectorSlug[] | null {
-  if (authorization.state !== "hasData") {
-    return null;
-  }
-  if (authorization.data.agentId !== agentId) {
-    return null;
-  }
-  return authorization.data.enabledConnectorSlugs;
-}
-
-function matchingCustomConnectorGrants(
-  agentId: string,
-  authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly AgentCustomConnectorGrant[] | null {
-  if (authorization.state !== "hasData") {
-    return null;
-  }
-  if (authorization.data.agentId !== agentId) {
-    return null;
-  }
-  return authorization.data.customConnectorGrants;
-}
-
 interface ResolvedComposerConnectorCollections {
   readonly authorizedSet: ReadonlySet<ConnectorSlug>;
   readonly connectorMap: ReadonlyMap<
@@ -9995,41 +9900,32 @@ function resolveComposerConnectorCollections({
   customConnectors,
   authorizedConnectorSlugs,
   customConnectorGrants,
-  optimisticConnected,
   selectedCustomConnectorId,
   mcpEnabled,
 }: {
-  relatedCatalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
-  addDialogCatalogItems: Loadable<
-    readonly PlatformConnectorCatalogStatusItem[]
-  >;
-  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  relatedCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
+  addDialogCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
+  customConnectors: readonly CustomConnectorResponse[];
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
-  optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
   mcpEnabled: boolean;
 }): ResolvedComposerConnectorCollections {
-  const resolvedRelatedCatalogItems =
-    relatedCatalogItems.state === "hasData" ? relatedCatalogItems.data : [];
-  const resolvedAddDialogCatalogItems =
-    addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
+  const resolvedRelatedCatalogItems = relatedCatalogItems;
+  const resolvedAddDialogCatalogItems = addDialogCatalogItems;
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
   const authorizedCustomSet = new Set(
     customConnectorGrants?.map((grant) => {
       return grant.customConnectorId;
     }) ?? [],
   );
-  const resolvedCustomConnectors =
-    customConnectors.state === "hasData"
-      ? customConnectors.data.filter((connector) => {
-          return (
-            connector.kind === "http" ||
-            mcpEnabled ||
-            authorizedCustomSet.has(connector.id)
-          );
-        })
-      : [];
+  const resolvedCustomConnectors = customConnectors.filter((connector) => {
+    return (
+      connector.kind === "http" ||
+      mcpEnabled ||
+      authorizedCustomSet.has(connector.id)
+    );
+  });
   const connectorMap = new Map(
     [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
       (connector) => {
@@ -10039,7 +9935,7 @@ function resolveComposerConnectorCollections({
   );
   const unconnectedConnectors = resolvedAddDialogCatalogItems.filter(
     (connector) => {
-      return !connector.connected && !optimisticConnected.has(connector.slug);
+      return !connector.connected;
     },
   );
   const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
@@ -10053,7 +9949,7 @@ function resolveComposerConnectorCollections({
   );
   const agentConnectors = resolvedRelatedCatalogItems
     .filter((connector) => {
-      return connector.connected || optimisticConnected.has(connector.slug);
+      return connector.connected;
     })
     .map((connector) => {
       return {
@@ -10232,104 +10128,32 @@ function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   };
 }
 
-function ComposerConnectorsActivator({
-  computerUse,
-  onActivate,
-}: {
-  readonly computerUse: ComposerComputerUse;
-  readonly onActivate: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-            )}
-            aria-label={t(($) => {
-              return $.chat.connectors.title;
-            })}
-            onClick={onActivate}
-          >
-            <ConnectorTriggerIcons
-              connectors={[]}
-              customConnectors={[]}
-              hasComputerUse={Boolean(computerUse.selectedHostId)}
-              hasCloudBrowser={computerUse.cloudBrowserEnabled}
-            />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {t(($) => {
-            return $.chat.connectors.title;
-          })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function ActivatedComposerConnectorsSlot({
+function ComposerConnectorsSlot({
   signals,
-  computerUse,
+  actions,
 }: {
-  readonly signals: ComposerSignals;
-  readonly computerUse: ComposerComputerUse;
+  signals: ComposerSignals;
+  actions: ComposerConnectorActions;
 }) {
+  const computerUse = useComposerComputerUse(signals);
   const { t } = useTranslation();
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
-  const connectorReadState = useComposerConnectorReadState(signals);
+  const connectorData = useLastResolved(signals.connector.data$);
+  const addDialogCatalogItems =
+    useLastResolved(signals.connector.addDialogCatalogItems$) ?? [];
   const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
 
-  // Connectors: connected (org-level) + authorized (agent-level) → available
-  const relatedCatalogItemsLoadable = connectorReadState.relatedCatalogItems;
-  const addDialogCatalogItemsLoadable =
-    connectorReadState.addDialogCatalogItems;
-  const customConnectorsLoadable = connectorReadState.customConnectors;
-  const authorizationLoadable = connectorReadState.authorization;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
-  const pendingConnectorSlug = connectorUi.pendingConnectorSlug;
   const selectedCustomConnectorId = connectorUi.selectedCustomConnectorId;
-  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
-  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
-  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
-  const busyConnectorSlug =
-    connectFlowSlug ?? pollingAuthCodeSlug ?? pollingDeviceAuthSlug;
-  const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
-  const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const setConnectorAuthorization = useSet(
-    signals.connector.setConnectorAuthorization$,
-  );
-  const optimisticConnected = useGet(justConnectedSlugs$);
-  const savingConnectorSlug = connectorUi.savingConnectorSlug;
-  const savingCustomConnectorId = connectorUi.savingCustomConnectorId;
+  const setConnectorAuthorization = actions.setAuthorization;
   const agentRecordId = signals.agentId;
   const displayName =
     agents.find((agent) => {
       return agent.agentId === agentRecordId;
     })?.displayName ?? "";
-
-  const authorizedConnectors = matchingAuthorizedConnectorSlugs(
-    agentRecordId,
-    authorizationLoadable,
-  );
-  const customConnectorGrants = matchingCustomConnectorGrants(
-    agentRecordId,
-    authorizationLoadable,
-  );
-
-  const connectorsLoading =
-    relatedCatalogItemsLoadable.state !== "hasData" ||
-    customConnectorsLoadable.state !== "hasData" ||
-    authorizedConnectors === null ||
-    customConnectorGrants === null;
 
   const {
     authorizedSet,
@@ -10340,12 +10164,13 @@ function ActivatedComposerConnectorsSlot({
     agentCustomConnectors,
     selectedCustomConnector,
   } = resolveComposerConnectorCollections({
-    relatedCatalogItems: relatedCatalogItemsLoadable,
-    addDialogCatalogItems: addDialogCatalogItemsLoadable,
-    customConnectors: customConnectorsLoadable,
-    authorizedConnectorSlugs: authorizedConnectors,
-    customConnectorGrants,
-    optimisticConnected,
+    relatedCatalogItems: connectorData?.relatedCatalogItems ?? [],
+    addDialogCatalogItems,
+    customConnectors: connectorData?.customConnectors ?? [],
+    authorizedConnectorSlugs:
+      connectorData?.authorization.enabledConnectorSlugs ?? null,
+    customConnectorGrants:
+      connectorData?.authorization.customConnectorGrants ?? null,
     selectedCustomConnectorId,
     mcpEnabled,
   });
@@ -10359,35 +10184,11 @@ function ActivatedComposerConnectorsSlot({
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
-    const authorized = await tapError(
-      (async () => {
-        await setConnectorAuthorization(
-          { kind: "builtin", connectorSlug },
-          true,
-          pageSignal,
-        );
-        return true;
-      })(),
-      () => {
-        toast.error(
-          t(
-            ($) => {
-              return $.chat.connectors.authorizationFailed;
-            },
-            {
-              connectorName: label,
-              agentName: displayName,
-            },
-          ),
-          {
-            id: `connector-save-error-${connectorSlug}`,
-          },
-        );
-      },
+    await setConnectorAuthorization(
+      { kind: "builtin", connectorSlug },
+      true,
+      pageSignal,
     );
-    if (authorized !== true) {
-      return false;
-    }
     toast.success(
       t(
         ($) => {
@@ -10402,21 +10203,18 @@ function ActivatedComposerConnectorsSlot({
         id: `connector-connected-${connectorSlug}`,
       },
     );
-    return true;
   };
 
   const completeConnectorAddition = async (
     connectorSlug: ConnectorSlug,
   ): Promise<void> => {
-    if (!authorizedSet.has(connectorSlug)) {
-      const authorized = await handleConnectSuccess(connectorSlug);
-      if (!authorized) {
-        updateConnectorUi({ pendingConnectorSlug: null });
-        return;
-      }
+    if (
+      connectorData?.authorization.agentId !== agentRecordId ||
+      !authorizedSet.has(connectorSlug)
+    ) {
+      await handleConnectSuccess(connectorSlug);
     }
     updateConnectorUi({
-      pendingConnectorSlug: null,
       showAddDialog: false,
     });
   };
@@ -10429,42 +10227,41 @@ function ActivatedComposerConnectorsSlot({
     return {
       openModal: () => {
         updateConnectorUi({
-          pendingConnectorSlug: connectorSlug,
           selectedConnectorSlug: connectorSlug,
         });
       },
       connectBrowserAuth: async (authMethod) => {
         if (!accountOptions) {
-          return false;
+          return;
         }
-        updateConnectorUi({ pendingConnectorSlug: connectorSlug });
-        const connected = await connectBrowserAuth(
-          connectorSlug,
-          authMethod,
+        await actions.connectBrowserAuth(
           {
-            connectorLabel: connector.label,
-            connectorIcon: connector.icon,
-            agentId: agentRecordId,
-            ...accountOptions,
+            connectorSlug,
+            method: authMethod,
+            options: {
+              connectorLabel: connector.label,
+              connectorIcon: connector.icon,
+              agentId: agentRecordId,
+              ...accountOptions,
+            },
+            onSuccess: () => {
+              return completeConnectorAddition(connectorSlug);
+            },
           },
           pageSignal,
         );
-        if (connected) {
-          await completeConnectorAddition(connectorSlug);
-        } else {
-          updateConnectorUi({ pendingConnectorSlug: null });
-        }
-        return connected;
       },
       connectNoAuth: async (authMethod) => {
         if (!accountOptions) {
-          return false;
+          return;
         }
-        updateConnectorUi({ pendingConnectorSlug: connectorSlug });
-        const connected = await connectNoAuth(
+        await actions.connectNoAuth(
           {
             connectorSlug,
             authMethod,
+            onSuccess: () => {
+              return completeConnectorAddition(connectorSlug);
+            },
             options: {
               connectorLabel: connector.label,
               agentId: agentRecordId,
@@ -10473,12 +10270,6 @@ function ActivatedComposerConnectorsSlot({
           },
           pageSignal,
         );
-        if (connected) {
-          await completeConnectorAddition(connectorSlug);
-        } else {
-          updateConnectorUi({ pendingConnectorSlug: null });
-        }
-        return connected;
       },
     };
   };
@@ -10487,15 +10278,11 @@ function ActivatedComposerConnectorsSlot({
     connectorSlug: ConnectorSlug,
     checked: boolean,
   ) => {
-    updateConnectorUi({ savingConnectorSlug: connectorSlug });
-    await bestEffort(
-      setConnectorAuthorization(
-        { kind: "builtin", connectorSlug },
-        checked,
-        pageSignal,
-      ),
+    await setConnectorAuthorization(
+      { kind: "builtin", connectorSlug },
+      checked,
+      pageSignal,
     );
-    updateConnectorUi({ savingConnectorSlug: null });
   };
 
   const handleCustomToggle = async (connectorId: string, checked: boolean) => {
@@ -10505,19 +10292,15 @@ function ActivatedComposerConnectorsSlot({
     if (checked && connector?.permissionBundleRef) {
       return;
     }
-    updateConnectorUi({ savingCustomConnectorId: connectorId });
-    await bestEffort(
-      setConnectorAuthorization(
-        {
-          kind: "custom",
-          connectorId,
-          permissionBundleRef: connector?.permissionBundleRef ?? null,
-        },
-        checked,
-        pageSignal,
-      ),
+    await setConnectorAuthorization(
+      {
+        kind: "custom",
+        connectorId,
+        permissionBundleRef: connector?.permissionBundleRef ?? null,
+      },
+      checked,
+      pageSignal,
     );
-    updateConnectorUi({ savingCustomConnectorId: null });
   };
 
   return (
@@ -10528,9 +10311,8 @@ function ActivatedComposerConnectorsSlot({
         agentDisplayName={displayName}
         agentConnectors={agentConnectors}
         agentCustomConnectors={agentCustomConnectors}
-        connectorsLoading={connectorsLoading}
-        savingConnectorSlug={savingConnectorSlug}
-        savingCustomConnectorId={savingCustomConnectorId}
+        connectorsLoading={connectorData === undefined}
+        actions={actions}
         computerUse={computerUse}
         onOpenAddDialog={() => {
           return updateConnectorUi({ showAddDialog: true });
@@ -10550,7 +10332,7 @@ function ActivatedComposerConnectorsSlot({
           updateConnectorUi({ selectedConnectorSlug: null });
         }}
         onBuiltinSuccess={async () => {
-          const connectorSlug = pendingConnectorSlug ?? selectedConnectorSlug;
+          const connectorSlug = selectedConnectorSlug;
           if (connectorSlug) {
             await completeConnectorAddition(connectorSlug);
           }
@@ -10564,7 +10346,7 @@ function ActivatedComposerConnectorsSlot({
           signals={signals}
           unconnected={unconnectedConnectors}
           unconnectedCustom={unconnectedCustomConnectors}
-          busyConnectorSlug={busyConnectorSlug}
+          connecting={actions.connecting}
           connectHandlers={connectorConnectHandlers}
           onConnectCustom={(connector) => {
             updateConnectorUi({
@@ -10574,7 +10356,6 @@ function ActivatedComposerConnectorsSlot({
           }}
           onClose={() => {
             return updateConnectorUi({
-              pendingConnectorSlug: null,
               showAddDialog: false,
             });
           }}
@@ -10584,41 +10365,14 @@ function ActivatedComposerConnectorsSlot({
   );
 }
 
-function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
-  const computerUse = useComposerComputerUse(signals);
-  const connectorUi = useGet(signals.connector.connectorUiState$);
-  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
-  const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
-
-  if (connectorUi.connectorDataActivated) {
-    return (
-      <ActivatedComposerConnectorsSlot
-        signals={signals}
-        computerUse={computerUse}
-      />
-    );
-  }
-
-  return (
-    <ComposerConnectorsActivator
-      computerUse={computerUse}
-      onActivate={() => {
-        updateConnectorUi({
-          connectorDataActivated: true,
-          popoverSortOrder: [],
-        });
-        openAccountsPopover();
-      }}
-    />
-  );
-}
-
 function ComposerFooter({
   signals,
   actions,
+  connectorActions,
 }: {
   signals: ComposerSignals;
   actions: ComposerActions;
+  connectorActions: ComposerConnectorActions;
 }) {
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraft = useResolved(signals.voice.state$);
@@ -10652,7 +10406,10 @@ function ComposerFooter({
             <ComposerAttachButton signals={signals} />
             <ComposerTemplatePickerSlot signals={signals} />
             <ComposerWorkflowPromptSlot signals={signals} />
-            <ComposerConnectorsSlot signals={signals} />
+            <ComposerConnectorsSlot
+              signals={signals}
+              actions={connectorActions}
+            />
             {/* Sits with the other input-scoped controls rather than beside
                 the model picker: it configures the message being written,
                 not which model the composer points at. */}
@@ -10671,6 +10428,7 @@ function ComposerFooter({
 
 function ComposerCard({ signals }: { signals: ComposerSignals }) {
   const actions = useComposerActions(signals);
+  const connectorActions = useComposerConnectorActions(signals.connector);
   const dragOver = useGet(signals.draft.dragOver$);
   const setDragOver = useSet(signals.draft.setDragOver$);
   const uploadFile = useComposerFileUpload(signals);
@@ -10711,7 +10469,11 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}
-          <ComposerFooter signals={signals} actions={actions} />
+          <ComposerFooter
+            signals={signals}
+            actions={actions}
+            connectorActions={connectorActions}
+          />
         </div>
       </CardContent>
     </Card>

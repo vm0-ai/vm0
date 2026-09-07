@@ -379,9 +379,9 @@ pub(super) async fn destroy_idle_jobs_and_wait(
     jobs: Vec<IdleDestroyJob>,
     context: &'static str,
 ) -> bool {
-    // Destroy in parallel -- each `stop_and_destroy` is ~1-3s (FC shutdown +
-    // cgroup/NBD/netns teardown). Serial destroy blows past shutdown and
-    // budget-pressure recovery budgets on multi-sandbox cleanup.
+    // Destroy in parallel -- cgroup/NBD/netns teardown can still make serial
+    // cleanup exceed shutdown and budget-pressure recovery budgets when many
+    // sandboxes are idle.
     let mut set = JoinSet::new();
     for job in jobs {
         set.spawn(destroy_idle_job(job, context));

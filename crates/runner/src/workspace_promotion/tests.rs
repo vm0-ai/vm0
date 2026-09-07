@@ -306,6 +306,7 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     .expect("workspace promotion should prepare");
 
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].sudo);
@@ -397,16 +398,14 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
             .unwrap_or_else(|error| panic!("invalid {field}: {error}; event={promotion_event:#?}"));
     }
     let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 3);
+    assert_eq!(exec_calls.len(), 2);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
     assert_eq!(exec_calls[0].timeout, Duration::from_secs(30));
     assert_eq!(
         exec_calls[0].env_keys,
         vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
     );
-    assert!(exec_calls[1].cmd.contains("rm -f --"));
-    assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
-    assert!(exec_calls[2].sudo);
+    assert!(exec_calls[1].sudo);
     let copy_calls = sandbox.copy_file_calls();
     assert_eq!(copy_calls.len(), 1);
     assert!(copy_calls[0].path.ends_with("/session-history-sidecar"));
@@ -725,13 +724,12 @@ async fn active_workspace_promotion_rejects_invalid_sidecar_metadata() {
         assert!(promoted, "{name}");
         assert!(sandbox.copy_file_calls().is_empty(), "{name}");
         let exec_calls = sandbox.exec_calls();
-        assert_eq!(exec_calls.len(), 3, "{name}");
+        assert_eq!(exec_calls.len(), 2, "{name}");
         assert!(
             exec_calls[0].cmd.contains("export-session-history-sidecar"),
             "{name}"
         );
-        assert!(exec_calls[1].cmd.contains("rm -f --"), "{name}");
-        assert!(exec_calls[2].sudo, "{name}");
+        assert!(exec_calls[1].sudo, "{name}");
         let event = captured_event(
             &events,
             "workspace image cache session history sidecar export returned invalid metadata",
@@ -1017,7 +1015,7 @@ async fn active_workspace_promotion_classifies_sidecar_export_failures() {
             "{name}: {event:#?}"
         );
         let exec_calls = sandbox.exec_calls();
-        assert_eq!(exec_calls.len(), 3, "{name}");
+        assert_eq!(exec_calls.len(), 2, "{name}");
         assert!(exec_calls[0].expected_exit_codes.is_empty(), "{name}");
     }
 }
@@ -1228,6 +1226,7 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
     assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
@@ -1253,6 +1252,7 @@ async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert_eq!(
         WorkspacePromotionFixture::checkout_result(&cache, &reuse_key).await,
         WorkspaceCacheCheckoutResult::Miss
@@ -1324,6 +1324,7 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
     assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
@@ -1349,6 +1350,7 @@ async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
     assert!(fixture.cache.held_workspace_states().await.is_empty());
     let event = captured_event(

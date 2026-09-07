@@ -1909,7 +1909,6 @@
       "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
       "addConnectors": "コネクタの追加",
-      "authorizationFailed": "{{connectorName}} は接続されましたが、{{agentName}} に対して認証できませんでした",
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",

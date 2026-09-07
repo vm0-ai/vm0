@@ -35,6 +35,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import {
   runnerState,
@@ -47,7 +48,6 @@ import {
   eq,
   gt,
   inArray,
-  isNotNull,
   lt,
   lte,
   notInArray,
@@ -827,7 +827,7 @@ interface ClaimedRun {
   readonly id: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentId: string;
+  readonly agentId: string | null;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
   readonly vars: unknown;
@@ -918,24 +918,36 @@ async function getClaimableJob(
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         vars: agentRuns.vars,
       },
+      maintenanceRunId: piMemoryPhase2Jobs.maintenanceRunId,
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .leftJoin(
+      piMemoryPhase2Jobs,
+      and(
+        eq(piMemoryPhase2Jobs.maintenanceRunId, agentRuns.id),
+        eq(piMemoryPhase2Jobs.orgId, agentRuns.orgId),
+        eq(piMemoryPhase2Jobs.userId, agentRuns.userId),
+        eq(piMemoryPhase2Jobs.status, "leased"),
+      ),
+    )
     .where(
       and(
         eq(runnerJobQueue.runId, runId),
         gt(runnerJobQueue.expiresAt, sql`now()`),
-        isNotNull(agentSessions.agentId),
       ),
     )
     .limit(1);
   signal.throwIfAborted();
 
-  if (jobWithRun?.run.agentId) {
+  if (
+    jobWithRun &&
+    (jobWithRun.run.agentId !== null || jobWithRun.maintenanceRunId === runId)
+  ) {
     return {
-      ...jobWithRun,
-      run: { ...jobWithRun.run, agentId: jobWithRun.run.agentId },
+      job: jobWithRun.job,
+      run: jobWithRun.run,
     };
   }
   return notFound("Job not found in queue");
@@ -1385,6 +1397,7 @@ async function refreshClaimNetworkPolicies(args: {
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
   const storedNetworkPolicies = args.storedContext.networkPolicies ?? {};
+  assertClaimConnectorIdentity(args.run, args.storedContext);
   if (Object.keys(storedNetworkPolicies).length === 0) {
     return {
       networkPolicies: args.storedContext.networkPolicies,
@@ -1409,6 +1422,11 @@ async function refreshClaimNetworkPolicies(args: {
         },
         path: "no_builtin_targets",
       };
+    }
+    if (args.run.agentId === null) {
+      throw new Error(
+        "Connector network policy refresh requires an Agent identity",
+      );
     }
 
     const scope = {
@@ -1495,6 +1513,20 @@ async function refreshClaimNetworkPolicies(args: {
       path: selected.path,
     };
   });
+}
+
+function assertClaimConnectorIdentity(
+  run: ClaimedRun,
+  storedContext: StoredExecutionContext,
+): void {
+  if (
+    run.agentId === null &&
+    storedContext.connectorRuntimeTargets.length > 0
+  ) {
+    throw new Error(
+      "Private Pi memory maintenance run cannot use connector runtime targets",
+    );
+  }
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
