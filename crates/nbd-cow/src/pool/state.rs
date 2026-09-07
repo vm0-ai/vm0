@@ -77,7 +77,7 @@ impl Default for DevicePoolConfig {
 pub(crate) struct DevicePoolSnapshot {
     pub(crate) cooldown: Vec<u32>,
     pub(crate) in_flight: HashSet<u32>,
-    pub(super) waiting_acquires: usize,
+    pub(crate) waiting_acquires: usize,
 }
 
 /// NBD device claim pool.

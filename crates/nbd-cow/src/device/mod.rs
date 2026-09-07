@@ -10,6 +10,7 @@ mod connection;
 mod create;
 mod create_timing;
 mod finalizer;
+mod kernel;
 mod pooled;
 
 pub use connection::is_our_thread;
