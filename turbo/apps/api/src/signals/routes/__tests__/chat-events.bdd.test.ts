@@ -18936,7 +18936,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     }
 
     // Run options are the composer's channel for video parameters now. They
-    // ride one message, reach no table, and only enter the prompt when the
+    // ride one message, reach no table, and only enter the agent prompt when the
     // user moved a value off the effective model's default -- and they enter
     // it as defaults this run's message can override, not as instructions.
     const videoRunOptions = await sendChatRun(actor, {
@@ -18951,9 +18951,8 @@ describe("CHAT-02: generation templates and attachments", () => {
         },
       },
     });
-    const videoRunOptionsPrompt =
-      (await api.readRun(actor, videoRunOptions.runId)).appendSystemPrompt ??
-      "";
+    const videoRunOptionsRun = await api.readRun(actor, videoRunOptions.runId);
+    const videoRunOptionsPrompt = videoRunOptionsRun.prompt;
     expect(videoRunOptionsPrompt).toContain("# Video Generation Defaults");
     expect(videoRunOptionsPrompt).toContain("- Aspect ratio: 9:16");
     expect(videoRunOptionsPrompt).toContain("- Duration: 6s");
@@ -18964,10 +18963,14 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoRunOptionsPrompt).toContain(
       "the message wins, for that parameter only",
     );
+    expect(videoRunOptionsPrompt).toMatch(/\n\nmake a clip from this brief$/);
     // Values only. A pre-assembled flag string is a ready-made answer that
     // stops being correct as soon as the message overrides one value.
     expect(videoRunOptionsPrompt).not.toContain("--aspect-ratio");
     expect(videoRunOptionsPrompt).not.toContain("--no-audio");
+    expect(videoRunOptionsRun.appendSystemPrompt ?? "").not.toContain(
+      "# Video Generation Defaults",
+    );
     await cancelChatRun(actor, videoRunOptions.runId);
 
     // Most runs never generate a video, so a send that set nothing carries no
@@ -18977,8 +18980,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       prompt: "answer a plain question",
     });
     expect(
-      (await api.readRun(actor, withoutVideoRunOptions.runId))
-        .appendSystemPrompt ?? "",
+      (await api.readRun(actor, withoutVideoRunOptions.runId)).prompt,
     ).not.toContain("# Video Generation Defaults");
     await cancelChatRun(actor, withoutVideoRunOptions.runId);
 

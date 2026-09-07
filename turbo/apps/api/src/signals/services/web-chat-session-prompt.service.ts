@@ -4,10 +4,7 @@ import {
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import type {
-  ChatRunVideoOptionsRequest,
-  UserMessageDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import {
@@ -24,7 +21,6 @@ import {
 
 import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
 import type { Db } from "../external/db";
-import { buildVideoRunOptionsPrompt } from "../../lib/video-run-options-prompt";
 import { BEFORE_DISPATCH_CANCELLED_ERROR } from "./agent-run-create.service";
 import type { ChatThreadSessionResolutionAction } from "./chat-session-continuity.service";
 import { loadWebChatIncompleteContext } from "./chat-incomplete-context.service";
@@ -62,11 +58,6 @@ interface WebChatPriorRun {
 
 export interface WebChatSessionPromptContext {
   readonly generationTemplatePrompt: string;
-  /**
-   * Video parameters sent with this message. Run-scoped and never persisted,
-   * so a rotated session or a queued dispatch has nothing to read back.
-   */
-  readonly videoRunOptions: ChatRunVideoOptionsRequest | null;
   readonly computerUseHostDisplayName: string | null;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
@@ -167,7 +158,6 @@ export function buildWebChatAppendSystemPrompt(args: {
     args.priorContext,
     args.incompleteContext,
     args.context.generationTemplatePrompt,
-    buildVideoRunOptionsPrompt(args.context.videoRunOptions),
     args.context.computerUseHostDisplayName
       ? buildComputerUseSystemPrompt(args.context.computerUseHostDisplayName)
       : "",

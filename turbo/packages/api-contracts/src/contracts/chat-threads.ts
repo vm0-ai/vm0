@@ -1092,10 +1092,10 @@ const chatThreadModelSelectionUpdateBodySchema = z.object({
 /**
  * Text-to-video parameters chosen for this send only.
  *
- * Deliberately not persisted anywhere: the API renders them into the run's
- * system prompt and forgets them, so a reload starts from the effective
- * model's defaults again. The model itself is absent because it is already
- * resolved from the thread pin and the member default the run carries.
+ * Deliberately not persisted as structured settings: the API renders them into
+ * the run's agent prompt, so a reload starts from the effective model's
+ * defaults again. The model itself is absent because it is already resolved
+ * from the thread pin and the member default the run carries.
  */
 const chatRunVideoOptionsRequestSchema = z
   .object({
