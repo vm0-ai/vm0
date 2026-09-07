@@ -419,6 +419,65 @@ async function allThreadEvents(actor: ApiTestUser) {
   return (await threadEventPage(actor)).events;
 }
 
+async function createSnapshotCursorScenario(label: string) {
+  mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped chat actor");
+  }
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: `${label} agent`,
+  });
+  const firstEventId = randomUUID();
+  const thread = await chat.createThread(actor, {
+    agentId: agent.agentId,
+    title: `${label} thread`,
+    eventId: firstEventId,
+  });
+  const markerEventId = randomUUID();
+  await chat.renameThread(actor, thread.id, `${label} marker`, markerEventId);
+
+  const events = await allThreadEvents(actor);
+  const firstEvent = events.find((event) => {
+    return event.id === firstEventId;
+  });
+  const markerEvent = events.find((event) => {
+    return event.id === markerEventId;
+  });
+  if (!firstEvent || !markerEvent) {
+    throw new Error("Expected snapshot cursor lifecycle events");
+  }
+
+  await compactChatThreadSnapshots();
+  const snapshot = await chat.getThreadSnapshot(actor);
+  const { latestEventId, latestSeqId } = snapshot;
+  expect(latestEventId).toBe(markerEvent.id);
+  expect(latestSeqId).toBe(markerEvent.seqId);
+  if (latestEventId === null || latestSeqId === null) {
+    throw new Error("Expected a non-empty snapshot cursor");
+  }
+  return {
+    actor,
+    orgId: actor.orgId,
+    agent,
+    thread,
+    firstEvent,
+    snapshot: { latestEventId, latestSeqId },
+  };
+}
+
+async function deleteSnapshotCursorMarker(
+  scenario: Awaited<ReturnType<typeof createSnapshotCursorScenario>>,
+): Promise<void> {
+  await deleteChatThreadEventMarkerFixture({
+    userId: scenario.actor.userId,
+    orgId: scenario.orgId,
+    eventId: scenario.snapshot.latestEventId,
+    seqId: scenario.snapshot.latestSeqId,
+  });
+}
+
 type ThreadArtifacts = Awaited<ReturnType<typeof chat.listThreadArtifacts>>;
 
 function expectDriveStatuses(
@@ -935,33 +994,26 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
   });
 
-  it("validates and paginates snapshot cursors without marker rows", async () => {
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+  it("keeps no-snapshot cursors anchored to real scoped rows", async () => {
     const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected an organization-scoped chat actor");
-    }
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
-      displayName: "Snapshot cursor agent",
+      displayName: "No-snapshot cursor agent",
     });
     const firstEventId = randomUUID();
     const thread = await chat.createThread(actor, {
       agentId: agent.agentId,
-      title: "Snapshot cursor thread",
+      title: "No-snapshot cursor thread",
       eventId: firstEventId,
     });
-
     const [firstEvent] = await allThreadEvents(actor);
     if (!firstEvent || firstEvent.id !== firstEventId) {
       throw new Error("Expected the initial chat-thread lifecycle event");
     }
+
     await expect(
       threadEventPage(actor, firstEvent.seqId),
-    ).resolves.toStrictEqual({
-      events: [],
-      hasMore: false,
-    });
+    ).resolves.toStrictEqual({ events: [], hasMore: false });
 
     // Reusing the event ID commits the reserved sequence without inserting a
     // second event, matching an allocation gap from a failed/idempotent write.
@@ -972,31 +1024,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       firstEventId,
     );
     await expectExpiredThreadEventCursor(actor, firstEvent.seqId + 1);
+  });
 
-    const snapshotMarkerEventId = randomUUID();
-    await chat.renameThread(
-      actor,
-      thread.id,
-      "Create the snapshot marker",
-      snapshotMarkerEventId,
-    );
-    const preSnapshotEvents = await allThreadEvents(actor);
-    const snapshotMarkerEvent = preSnapshotEvents.find((event) => {
-      return event.id === snapshotMarkerEventId;
-    });
-    if (!snapshotMarkerEvent) {
-      throw new Error("Expected the snapshot marker event");
-    }
-    expect(
-      preSnapshotEvents.map((event) => {
-        return event.seqId;
-      }),
-    ).toStrictEqual([firstEvent.seqId, firstEvent.seqId + 2]);
-
-    await compactChatThreadSnapshots();
-    const snapshot = await chat.getThreadSnapshot(actor);
-    expect(snapshot.latestEventId).toBe(snapshotMarkerEvent.id);
-    expect(snapshot.latestSeqId).toBe(snapshotMarkerEvent.seqId);
+  it("reads an exact markerless snapshot watermark atomically", async () => {
+    const scenario = await createSnapshotCursorScenario("Markerless cursor");
+    const { actor, agent, firstEvent, snapshot, thread } = scenario;
 
     // The unbounded read proves that the covered cursor row still physically
     // exists even though the snapshot watermark makes it intentionally stale.
@@ -1006,20 +1038,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       }),
     ).toBeTruthy();
     await expectExpiredThreadEventCursor(actor, firstEvent.seqId);
-
-    if (snapshot.latestEventId === null || snapshot.latestSeqId === null) {
-      throw new Error("Expected a non-empty snapshot cursor");
-    }
-    await deleteChatThreadEventMarkerFixture({
-      userId: actor.userId,
-      orgId: actor.orgId,
-      eventId: snapshot.latestEventId,
-      seqId: snapshot.latestSeqId,
-    });
+    await deleteSnapshotCursorMarker(scenario);
 
     const held = await holdChatThreadEventInsertTransactionFixture({
       userId: actor.userId,
-      orgId: actor.orgId,
+      orgId: scenario.orgId,
       chatThreadId: thread.id,
       agentId: agent.agentId,
       title: "Committed after the snapshot cursor read",
@@ -1032,10 +1055,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     await expect(
       threadEventPage(actor, snapshot.latestSeqId),
-    ).resolves.toStrictEqual({
-      events: [],
-      hasMore: false,
-    });
+    ).resolves.toStrictEqual({ events: [], hasMore: false });
 
     held.release();
     await held.done;
@@ -1045,6 +1065,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       events: [expect.objectContaining({ id: held.event.id })],
       hasMore: false,
     });
+  });
+
+  it("validates real cursors after a markerless snapshot watermark", async () => {
+    const scenario = await createSnapshotCursorScenario("Real cursor");
+    const { actor, snapshot, thread } = scenario;
+    await deleteSnapshotCursorMarker(scenario);
 
     const laterEventId = randomUUID();
     await chat.renameThread(
@@ -1053,12 +1079,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "Later real lifecycle event",
       laterEventId,
     );
-    const afterHeldCursor = await threadEventPage(actor, held.event.seqId);
-    const [laterEvent] = afterHeldCursor.events;
+    const afterSnapshotCursor = await threadEventPage(
+      actor,
+      snapshot.latestSeqId,
+    );
+    const [laterEvent] = afterSnapshotCursor.events;
     if (!laterEvent || laterEvent.id !== laterEventId) {
       throw new Error("Expected the later lifecycle event");
     }
-    expect(afterHeldCursor.hasMore).toBeFalsy();
+    expect(afterSnapshotCursor.hasMore).toBeFalsy();
 
     await chat.renameThread(
       actor,
@@ -1091,7 +1120,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       hasMore: false,
     });
 
-    const peer = bdd.user({ orgId: actor.orgId });
+    const peer = bdd.user({ orgId: scenario.orgId });
     const peerAgent = await bdd.createAgent(peer, {
       displayName: "Cross-user cursor agent",
     });
@@ -1112,17 +1141,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     await expectExpiredThreadEventCursor(otherOrgActor, nextRealEvent.seqId);
     await expectExpiredThreadEventCursor(actor, 999_999);
+  });
 
+  it("paginates a markerless snapshot tail without gaps or duplicates", async () => {
+    const scenario = await createSnapshotCursorScenario("Paginated cursor");
+    const { actor, snapshot, thread } = scenario;
+    await deleteSnapshotCursorMarker(scenario);
     const lifecyclePageSize = 1000;
-    const expectedTailEventIds = [
-      held.event.id,
-      laterEvent.id,
-      nextRealEvent.id,
-    ];
     const paginationEvents = Array.from(
-      {
-        length: lifecyclePageSize - expectedTailEventIds.length + 1,
-      },
+      { length: lifecyclePageSize + 1 },
       (_, index) => {
         return {
           id: randomUUID(),
@@ -1133,11 +1160,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await Promise.all(
       paginationEvents.map(async (event) => {
         await chat.renameThread(actor, thread.id, event.title, event.id);
-      }),
-    );
-    expectedTailEventIds.push(
-      ...paginationEvents.map((event) => {
-        return event.id;
       }),
     );
 
@@ -1163,6 +1185,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       }),
     );
     const pagedEventIds = pagedEvents.map((event) => {
+      return event.id;
+    });
+    const expectedTailEventIds = paginationEvents.map((event) => {
       return event.id;
     });
     expect(new Set(pagedEventIds).size).toBe(expectedTailEventIds.length);
