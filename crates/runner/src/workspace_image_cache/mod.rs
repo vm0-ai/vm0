@@ -110,7 +110,7 @@ const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
 const GIB: u64 = 1024 * 1024 * 1024;
 const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;
 const MAX_ENTRY_BYTES_CAP: u64 = 32 * GIB;
-const MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY: usize = 4;
+const MAX_WORKSPACE_PROMOTION_CONCURRENCY: usize = 4;
 
 #[cfg(test)]
 const TEST_FS_TOTAL_BYTES: u64 = 2_000 * GIB;
@@ -121,6 +121,7 @@ const TEST_FS_AVAILABLE_BYTES: u64 = 1_000 * GIB;
 pub(crate) struct WorkspaceImageCache {
     inner: Arc<WorkspaceImageCacheInner>,
     session_history_sidecar_export_permits: Arc<Semaphore>,
+    idle_workspace_reclamation_permits: Arc<Semaphore>,
     #[cfg(test)]
     prepare_lock_test_gate: Option<WorkspaceImagePrepareLockTestGate>,
     #[cfg(test)]
@@ -237,7 +238,10 @@ impl WorkspaceImageCache {
                     entry_lock_owners: Mutex::new(HashMap::new()),
                 }),
                 session_history_sidecar_export_permits: Arc::new(Semaphore::new(
-                    MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY,
+                    MAX_WORKSPACE_PROMOTION_CONCURRENCY,
+                )),
+                idle_workspace_reclamation_permits: Arc::new(Semaphore::new(
+                    MAX_WORKSPACE_PROMOTION_CONCURRENCY,
                 )),
             }
         }
@@ -265,30 +269,42 @@ impl WorkspaceImageCache {
                 fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
             session_history_sidecar_export_permits: Arc::new(Semaphore::new(
-                MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY,
+                MAX_WORKSPACE_PROMOTION_CONCURRENCY,
+            )),
+            idle_workspace_reclamation_permits: Arc::new(Semaphore::new(
+                MAX_WORKSPACE_PROMOTION_CONCURRENCY,
             )),
             prepare_lock_test_gate: None,
             routine_gc_test_gate: None,
         }
     }
 
-    fn with_session_history_sidecar_export_capacity(mut self, capacity: usize) -> Self {
+    fn with_promotion_capacity(mut self, capacity: usize) -> Self {
         self.session_history_sidecar_export_permits = Arc::new(Semaphore::new(capacity.max(1)));
+        self.idle_workspace_reclamation_permits = Arc::new(Semaphore::new(capacity.max(1)));
         self
     }
 
-    pub(crate) fn with_session_history_sidecar_export_host_cpus(self, host_cpus: usize) -> Self {
-        self.with_session_history_sidecar_export_capacity(
-            (host_cpus / 2).clamp(1, MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY),
-        )
+    pub(crate) fn with_promotion_host_cpus(self, host_cpus: usize) -> Self {
+        self.with_promotion_capacity((host_cpus / 2).clamp(1, MAX_WORKSPACE_PROMOTION_CONCURRENCY))
     }
 
     #[cfg(test)]
-    pub(crate) fn with_session_history_sidecar_export_capacity_for_test(
-        self,
-        capacity: usize,
-    ) -> Self {
-        self.with_session_history_sidecar_export_capacity(capacity)
+    pub(crate) fn with_promotion_capacity_for_test(self, capacity: usize) -> Self {
+        self.with_promotion_capacity(capacity)
+    }
+
+    async fn acquire_idle_workspace_reclamation_permit(
+        &self,
+    ) -> RunnerResult<OwnedSemaphorePermit> {
+        Arc::clone(&self.idle_workspace_reclamation_permits)
+            .acquire_owned()
+            .await
+            .map_err(|error| {
+                RunnerError::Internal(format!(
+                    "idle workspace reclamation admission closed unexpectedly: {error}"
+                ))
+            })
     }
 
     async fn acquire_session_history_sidecar_export_permit(
