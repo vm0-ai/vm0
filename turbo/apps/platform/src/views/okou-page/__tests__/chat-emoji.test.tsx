@@ -101,7 +101,7 @@ function nextAnimationFrame(): Promise<void> {
   return frame.promise;
 }
 
-test("Change a thread icon from the mobile header and keep one picker after resizing", async () => {
+test("Change a thread icon from the mobile header and retain it on desktop", async () => {
   const viewport = context.mocks.browser.matchMedia(false);
   context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
     return respond(204);
@@ -130,24 +130,40 @@ test("Change a thread icon from the mobile header and keep one picker after resi
     viewport.setMatches(true);
   });
   await waitFor(() => {
-    expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Open browser")).toBeInTheDocument();
     expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
   });
-  click(buttonByLabel("Change icon"));
-  await screen.findByRole("textbox", { name: "Search emoji" });
-
-  act(() => {
-    viewport.setMatches(false);
-  });
-  await waitFor(() => {
-    expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("textbox", { name: "Search emoji" }),
-    ).toHaveLength(1);
-  });
+  expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
   expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
-  expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
 });
+
+test.each([
+  { from: "mobile", to: "desktop", desktop: false },
+  { from: "desktop", to: "mobile", desktop: true },
+])(
+  "Keep one open emoji picker when resizing from $from to $to",
+  async ({ desktop }) => {
+    const viewport = context.mocks.browser.matchMedia(desktop);
+    await openEmojiPicker();
+
+    act(() => {
+      viewport.setMatches(!desktop);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(desktop ? "Open menu" : "Open browser"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("textbox", { name: "Search emoji" }),
+      ).toHaveLength(1);
+    });
+    expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      "Emoji planning",
+    );
+  },
+);
 
 test("Choosing an emoji category exits search results", async () => {
   const user = userEvent.setup();
