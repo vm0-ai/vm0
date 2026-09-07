@@ -533,12 +533,11 @@ runner_e2e_wait_for_firewall_log() {
                     | select(
                         .firewall_name == $firewallName and
                         .host == $host and
-                        .action == "BLOCK" and
                         (.firewall_error // null) != null
                     ) ]
                     | select(length > 0)' \
                 <<<"$last_logs"); then
-                echo "Firewall ${firewall_name@Q} on ${host@Q} reported an authentication error for run ${run_id}" >&2
+                echo "Firewall ${firewall_name@Q} on ${host@Q} reported an error for run ${run_id}" >&2
                 echo "Matching network telemetry: ${failed_logs}" >&2
                 echo "Last network telemetry: ${last_logs}" >&2
                 return 1
