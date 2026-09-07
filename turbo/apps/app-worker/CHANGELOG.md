@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.36...app-worker-v1.5.0) (2026-09-07)
+
+
+### Features
+
+* **app:** stream authenticated api prefetch responses ([#32364](https://github.com/vm0-ai/vm0/issues/32364)) ([88eda06](https://github.com/vm0-ai/vm0/commit/88eda06641dcf5b239f6274540f55ecc53d468ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.633.1
+
 ## [1.4.36](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.35...app-worker-v1.4.36) (2026-09-07)
 
 

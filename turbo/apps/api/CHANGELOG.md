@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.565.0](https://github.com/vm0-ai/vm0/compare/api-v1.564.1...api-v1.565.0) (2026-09-07)
+
+
+### Features
+
+* **app:** stream authenticated api prefetch responses ([#32364](https://github.com/vm0-ai/vm0/issues/32364)) ([88eda06](https://github.com/vm0-ai/vm0/commit/88eda06641dcf5b239f6274540f55ecc53d468ee))
+* **pi-memory:** learn from canonical connector chat threads ([#32390](https://github.com/vm0-ai/vm0/issues/32390)) ([fcbba63](https://github.com/vm0-ai/vm0/commit/fcbba6347c4b1c9d3daaf3772308e0489073065c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.413.0
+    * @okouai/core bumped to 8.633.1
+    * @okouai/db bumped to 1.245.8
+    * @okouai/pi-agent-runtime bumped to 1.21.19
+
 ## [1.564.1](https://github.com/vm0-ai/vm0/compare/api-v1.564.0...api-v1.564.1) (2026-09-07)
 
 
