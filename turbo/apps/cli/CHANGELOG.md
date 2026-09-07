@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.315.10](https://github.com/vm0-ai/vm0/compare/cli-v9.315.9...cli-v9.315.10) (2026-09-07)
+
+
+### Bug Fixes
+
+* **intro-video:** support managed native video agent generation ([#32305](https://github.com/vm0-ai/vm0/issues/32305)) ([f6c13bf](https://github.com/vm0-ai/vm0/commit/f6c13bf47c6995bd8c65f753741488231c6ae980))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.412.1
+    * @okouai/connectors bumped to 3.8.1
+    * @okouai/core bumped to 8.631.3
+    * @okouai/pi-agent-runtime bumped to 1.21.15
+
 ## [9.315.9](https://github.com/vm0-ai/vm0/compare/cli-v9.315.8...cli-v9.315.9) (2026-09-07)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.188.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.0...runner-rs-v0.188.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire sandbox after prefetch start timeout ([#32308](https://github.com/vm0-ai/vm0/issues/32308)) ([984a47b](https://github.com/vm0-ai/vm0/commit/984a47b8744fea46ceb63c03d43fcd19970ef31d))
+
 ## [0.188.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.187.1...runner-rs-v0.188.0) (2026-09-07)
 
 

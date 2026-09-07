@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.0...sandbox-v0.21.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire sandbox after prefetch start timeout ([#32308](https://github.com/vm0-ai/vm0/issues/32308)) ([984a47b](https://github.com/vm0-ai/vm0/commit/984a47b8744fea46ceb63c03d43fcd19970ef31d))
+
+
+### Performance Improvements
+
+* **runner:** streamline terminal idle finalization ([#32321](https://github.com/vm0-ai/vm0/issues/32321)) ([a49be00](https://github.com/vm0-ai/vm0/commit/a49be00e2242007a1510b464f994cf0b2157074f))
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.20.0...sandbox-v0.21.0) (2026-09-07)
 
 

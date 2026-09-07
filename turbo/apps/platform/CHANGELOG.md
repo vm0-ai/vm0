@@ -11,6 +11,23 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.858.1](https://github.com/vm0-ai/vm0/compare/app-v0.858.0...app-v0.858.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **auth:** complete invitations and required session tasks ([#32301](https://github.com/vm0-ai/vm0/issues/32301)) ([9e2c887](https://github.com/vm0-ai/vm0/commit/9e2c88767508d1a41c6bf8b7d7ed13f4c3f8bc60))
+* **intro-video:** support managed native video agent generation ([#32305](https://github.com/vm0-ai/vm0/issues/32305)) ([f6c13bf](https://github.com/vm0-ai/vm0/commit/f6c13bf47c6995bd8c65f753741488231c6ae980))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.1
+    * @okouai/connectors bumped to 3.8.1
+    * @okouai/core bumped to 8.631.3
+
 ## [0.858.0](https://github.com/vm0-ai/vm0/compare/app-v0.857.0...app-v0.858.0) (2026-09-07)
 
 
