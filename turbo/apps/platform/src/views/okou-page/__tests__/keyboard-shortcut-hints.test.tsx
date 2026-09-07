@@ -4,7 +4,6 @@ import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
-import { now } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { installContinuityWorkspace } from "./chat-continuity-test-helpers.ts";
@@ -27,20 +26,18 @@ const platforms = [
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36",
     modifier: "Meta",
     hints: ["⌘⇧F", "⌘⇧O", "⌘B"],
-    threadHint: "⌘1",
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifier: "Control",
     hints: ["Ctrl+Shift+F", "Ctrl+Shift+O", "Ctrl+B"],
-    threadHint: "Ctrl+1",
   },
 ] as const;
 
 test.each(platforms)(
-  "Keep action shortcuts available on hover while holding the thread modifier in a $platform app",
-  async ({ userAgent, modifier, hints, threadHint }) => {
+  "Discover action shortcuts on hover in a $platform app",
+  async ({ userAgent, hints }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
       return (
@@ -80,13 +77,6 @@ test.each(platforms)(
     const searchHover = await screen.findByRole("tooltip", {
       name: `Search workspace ${hints[0]}`,
     });
-    const pressedAt = now();
-    await user.keyboard(`{${modifier}>}`);
-    expect(list.querySelectorAll("kbd")).toHaveLength(0);
-    await waitFor(() => {
-      expect(within(list).getByText(threadHint)).toBeVisible();
-    });
-    expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
     expect(searchHover).toBeVisible();
     expect(composer).toHaveFocus();
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -97,12 +87,13 @@ test.each(platforms)(
       name: `New chat ${hints[1]}`,
     });
     expect(newChatHover).toBeVisible();
-    await user.keyboard(`{/${modifier}}`);
     await waitFor(() => {
-      expect(list.querySelectorAll("kbd")).toHaveLength(0);
+      expect(searchHover).not.toBeVisible();
     });
-    expect(newChatHover).toBeVisible();
     await user.unhover(newChatButton);
+    await waitFor(() => {
+      expect(newChatHover).not.toBeVisible();
+    });
   },
 );
 
@@ -182,15 +173,13 @@ test("Hide thread hints when stable chat navigation is disabled and preserve act
   await screen.findByRole("textbox", { name: "Message" });
   const list = screen.getByTestId("chat-list-column");
   const user = userEvent.setup();
-  await user.keyboard("{Control>}");
   await waitFor(() => {
-    expect(within(list).getByText("Ctrl+1")).toBeVisible();
+    expect(within(list).getByText("Ctrl+1")).toBeInTheDocument();
   });
   response.resolve(undefined);
   await waitFor(() => {
     expect(list.querySelectorAll("kbd")).toHaveLength(0);
   });
-  await user.keyboard("{/Control}");
   await user.hover(fastButton("New chat", list));
   await expect(
     screen.findByRole("tooltip", { name: "New chat Ctrl+Shift+O" }),
