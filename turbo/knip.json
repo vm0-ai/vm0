@@ -44,6 +44,14 @@
         "typescript-eslint"
       ]
     },
+    "apps/design-system": {
+      "entry": [
+        "src/main.tsx",
+        "scripts/**/*.mjs",
+        "src/**/__tests__/**/*.test.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs"]
+    },
     "apps/host-worker": {
       "entry": ["src/index.ts"],
       "project": ["src/**/*.ts", "*.config.mjs"],

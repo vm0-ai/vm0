@@ -1,0 +1,11 @@
+/*
+ * The catalogue loads the product's own stylesheet, unmodified.
+ *
+ * `apps/platform/.../css/index.css` already pulls in Tailwind and
+ * `@okouai/ui/styles/globals.css`, in that order, so importing this one file
+ * reproduces the exact cascade the product ships. Copying token values here
+ * instead would guarantee the catalogue drifts from the app it documents.
+ */
+@import "../../platform/src/views/css/index.css";
+
+@source "./";

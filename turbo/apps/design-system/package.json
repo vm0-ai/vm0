@@ -1,0 +1,43 @@
+{
+  "name": "@okouai/design-system",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "generate": "node scripts/extract-tokens.mjs && node scripts/extract-components.mjs",
+    "dev": "pnpm generate && vite --port 3007",
+    "build": "pnpm generate && vite build",
+    "preview": "vite preview",
+    "test": "pnpm generate && vitest run",
+    "lint": "oxlint --deny-warnings && eslint . --max-warnings 0",
+    "check-types": "pnpm generate && tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@okouai/ui": "workspace:*",
+    "lucide-react": "1.30.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "sonner": "^2.0.7"
+  },
+  "devDependencies": {
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.34.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.5.0",
+    "happy-dom": "^20.11.6",
+    "oxlint": "^1.75.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "^8.68.0",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.11"
+  }
+}
