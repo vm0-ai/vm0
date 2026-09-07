@@ -15,8 +15,13 @@ type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 // static asset hosts intentionally omit CORS headers, so render the real brand
 // asset through the supported logoBox slot and give Clerk a transparent,
 // self-contained image to preserve its accessible linked-logo structure.
-const TRANSPARENT_CLERK_LOGO_IMAGE_URL =
-  "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+function transparentClerkLogoImageUrl(brandName: BrandName): string {
+  const { width, height } =
+    brandName === "Okou"
+      ? { width: 1934, height: 512 }
+      : { width: 100, height: 30 };
+  return `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27${width}%27 height=%27${height}%27 viewBox=%270 0 ${width} ${height}%27%3E%3C/svg%3E`;
+}
 
 function authV1LogoImageUrl(
   theme: "light" | "dark",
@@ -47,7 +52,7 @@ export function getAuthV1SignInAppearance(
     theme: "simple",
     options: {
       elevation: "raised",
-      logoImageUrl: TRANSPARENT_CLERK_LOGO_IMAGE_URL,
+      logoImageUrl: transparentClerkLogoImageUrl(authBrand.brandName),
       logoLinkUrl: authBrand.homeUrl,
       logoPlacement: "inside",
       socialButtonsPlacement: "top",
@@ -70,10 +75,10 @@ export function getAuthV1SignInAppearance(
         padding: 0,
         width: logoWidth,
       },
-      logoImage: "block h-full w-full opacity-0",
+      logoImage: "block h-full w-auto opacity-0",
       headerTitle: "text-lg font-medium leading-7 text-foreground",
       headerSubtitle: "mt-1 text-sm leading-5 text-muted-foreground",
-      main: "mt-8 gap-6",
+      main: "m-0 gap-6",
       socialButtonsRoot: "m-0",
       socialButtons: "grid grid-cols-1 gap-2 sm:grid-cols-2",
       socialButtonsBlockButton:
@@ -81,7 +86,7 @@ export function getAuthV1SignInAppearance(
       socialButtonsBlockButtonText: "text-foreground",
       lastAuthenticationStrategyBadge:
         "rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground shadow-sm",
-      dividerRow: "my-6 gap-4",
+      dividerRow: "m-0 gap-4",
       dividerLine: "bg-border",
       dividerText: "text-sm text-muted-foreground",
       form: "gap-8",
@@ -119,10 +124,10 @@ export function getAuthV1SignInAppearance(
       alternativeMethodsBlockButtonText: "text-foreground",
       backLink:
         "text-brand-text transition-colors hover:text-brand-text-hover active:text-brand-text-hover",
-      footer: "bg-card",
+      footer: "m-0 gap-0 bg-card p-0",
       footerAction: "text-sm",
       footerAction__signIn:
-        "justify-center border-t border-border px-10 py-4 text-brand-text transition-colors hover:text-brand-text-hover",
+        "w-full justify-center border-t border-border px-10 py-4 text-brand-text transition-colors hover:text-brand-text-hover",
       footerActionText: "text-foreground",
       footerActionLink:
         "text-inherit no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",

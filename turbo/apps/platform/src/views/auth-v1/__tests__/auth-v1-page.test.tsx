@@ -43,7 +43,7 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/gif;base64,/u),
+    expect.stringMatching(/^data:image\/svg\+xml,/u),
   );
   expect(signIn).toHaveAttribute(
     "data-clerk-force-redirect-url",
@@ -171,7 +171,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/gif;base64,/u),
+    expect.stringMatching(/^data:image\/svg\+xml,/u),
   );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",

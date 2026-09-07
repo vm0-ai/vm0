@@ -47,7 +47,7 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(appearance.theme).toBe("simple");
   expect(appearance.options).toMatchObject({
     elevation: "raised",
-    logoImageUrl: expect.stringMatching(/^data:image\/gif;base64,/u),
+    logoImageUrl: expect.stringMatching(/^data:image\/svg\+xml,/u),
     logoLinkUrl: OKOU_AUTH_BRAND.homeUrl,
     logoPlacement: "inside",
     socialButtonsPlacement: "top",
