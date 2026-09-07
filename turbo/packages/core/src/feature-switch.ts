@@ -426,12 +426,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkspaceAgentSearch]: {
-    maintainer: "ethan@okou.ai",
-    description: "Find agents by name in workspace search",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:

@@ -63,8 +63,8 @@ function takeBootstrapResponse(
       continue;
     }
 
-    // The Worker emits this inert script from a response already validated by
-    // the bootstrap contract. Parsing here makes it the first API response.
+    // The Worker emits this inert script after parsing a successful JSON API
+    // response. Parsing here makes it the first response for the same request.
     const body: unknown = JSON.parse(script.textContent ?? "");
     const headers = new Headers({
       "Content-Type": script.dataset.contentType,

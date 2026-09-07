@@ -59,7 +59,6 @@ export enum FeatureSwitchKey {
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   StableChatThreadNavigation = "stableChatThreadNavigation",
-  WorkspaceAgentSearch = "workspaceAgentSearch",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PinnedAgentAvatar64 = "pinnedAgentAvatar64",
   PersonalModelProviderAccounts = "_multipleSubscriptions",

@@ -77,7 +77,6 @@ import {
   threeColumnAgentSearchResults$,
   threeColumnArtifactSearchResults$,
   threeColumnWorkflowSearchResults$,
-  workspaceAgentSearchEnabled$,
   type ThreeColumnArtifactSearchItem,
 } from "../../signals/okou-page/three-column-search-resources.ts";
 import { ArtifactThumbnailImage } from "./artifact-thumbnail.tsx";
@@ -862,7 +861,6 @@ function SpotlightSearchFilterBar({
   readonly onSelect: (filter: ThreeColumnSearchFilter) => void;
 }) {
   const { t } = useTranslation("agents");
-  const agentSearchEnabled = useGet(workspaceAgentSearchEnabled$);
   const options: readonly {
     readonly value: ThreeColumnSearchFilter;
     readonly label: string;
@@ -914,9 +912,6 @@ function SpotlightSearchFilterBar({
         className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
       >
         {options.map((option) => {
-          if (option.value === "agents" && !agentSearchEnabled) {
-            return null;
-          }
           return (
             <SpotlightFilterButton
               key={option.value}
@@ -1205,7 +1200,6 @@ export function ThreeColumnSearchDialog({
   const threadMap = useGet(workspaceSearchChatThreadMap$);
   const messageLoadable = useLoadable(workspaceSearchChatMessages$);
   const agentLoadable = useLoadable(threeColumnAgentSearchResults$);
-  const agentSearchEnabled = useGet(workspaceAgentSearchEnabled$);
   const workflowLoadable = useLoadable(threeColumnWorkflowSearchResults$);
   const artifactLoadable = useLoadable(threeColumnArtifactSearchResults$);
   const activeThreadIds = useLastResolved(sidebarActiveThreadIds$, {
@@ -1252,8 +1246,7 @@ export function ThreeColumnSearchDialog({
   );
   const showThreads = spotlightFilterShows(filter, "chats");
   const showMessages = spotlightFilterShows(filter, "messages");
-  const showAgents =
-    agentSearchEnabled && spotlightFilterShows(filter, "agents");
+  const showAgents = spotlightFilterShows(filter, "agents");
   const showWorkflows = spotlightFilterShows(filter, "workflows");
   const showArtifacts = spotlightFilterShows(filter, "artifacts");
   const visibleThreads = showThreads ? threadMatches : [];
