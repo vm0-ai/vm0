@@ -8,6 +8,11 @@ import { cn } from "@okouai/ui";
  */
 const THUMBNAIL_SIZE = {
   sm: "h-6 w-6",
+  // The labeled navigation rail draws its marks inside the same 36px chip as
+  // its icon buttons: `sm` reads timid against a 19px glyph in that box, and
+  // `md` leaves two pixels of chip around the mark, which is too little for
+  // the hover background to register. 28px is the step that fits both.
+  "sm+": "h-7 w-7",
   md: "h-8 w-8",
   lg: "h-10 w-10",
   xl: "h-12 w-12",
@@ -18,6 +23,7 @@ const THUMBNAIL_SIZE = {
 // Same ratio the file-preview icon already uses (20px/5px, 40px/10px).
 const THUMBNAIL_RADIUS = {
   sm: "rounded-[6px]",
+  "sm+": "rounded-[7px]",
   md: "rounded-[8px]",
   lg: "rounded-[10px]",
   xl: "rounded-[12px]",
@@ -25,6 +31,7 @@ const THUMBNAIL_RADIUS = {
 
 const THUMBNAIL_INITIAL_TEXT = {
   sm: "text-[11px]",
+  "sm+": "text-xs",
   md: "text-xs",
   lg: "text-sm",
   xl: "text-base",
