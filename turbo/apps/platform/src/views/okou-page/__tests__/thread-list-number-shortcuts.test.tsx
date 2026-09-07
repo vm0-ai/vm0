@@ -23,7 +23,7 @@ const context = testContext();
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
 } as const;
-const SEARCH_LABEL = "Search chats, messages, workflows, and artifacts...";
+const SEARCH_LABEL = "Search workspace...";
 
 function hintKeys(container: ParentNode): string[] {
   return [...container.querySelectorAll("kbd")]

@@ -152,6 +152,7 @@ export type ThreeColumnSearchFilter =
   | "all"
   | "chats"
   | "messages"
+  | "agents"
   | "workflows"
   | "artifacts";
 

@@ -8,6 +8,10 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
+  agentsByIdContract,
+  agentsMainContract,
+} from "@okouai/api-contracts/contracts/agents";
+import {
   workflowsCollectionContract,
   workflowsDetailContract,
   type WorkflowSummary,
@@ -36,7 +40,7 @@ const context = testContext();
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
 } as const;
-const SEARCH_LABEL = "Search chats, messages, workflows, and artifacts...";
+const SEARCH_LABEL = "Search workspace...";
 
 async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
   fireEvent.keyDown(document.body, {
@@ -67,6 +71,32 @@ function searchResultTitles(dialog: HTMLElement): string[] {
 }
 
 function installSearchResources() {
+  const agent = {
+    agentId: "c7000000-0000-4000-a000-000000000002",
+    displayName: "Budget agent",
+    ownerId: "test-user",
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "private" as const,
+  };
+  context.mocks.api(agentsMainContract.list, ({ respond }) => {
+    return respond(200, [
+      { ...agent, agentId: CHAT_LIST_AGENT_ID, displayName: "List agent" },
+      agent,
+    ]);
+  });
+  context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
+    return respond(200, {
+      ...agent,
+      agentId: params.id,
+      displayName:
+        params.id === agent.agentId ? agent.displayName : "List agent",
+    });
+  });
   const workflow: WorkflowSummary = {
     id: "f7000000-0000-4000-a000-000000000001",
     agentId: CHAT_LIST_AGENT_ID,
@@ -124,7 +154,7 @@ function installSearchResources() {
       }),
     );
   });
-  return { workflow, artifact };
+  return { agent, workflow, artifact };
 }
 
 test.each([
@@ -438,10 +468,16 @@ test("Search shortcuts preserve typing and ignore invalid combinations", async (
 test.each([
   {
     filter: "All",
-    titles: ["Budget planning", "Budget review", "Budget report"],
-    hints: ["1", "2", "3"],
-    digit: "3",
+    titles: [
+      "Budget planning",
+      "Budget agent",
+      "Budget review",
+      "Budget report",
+    ],
+    hints: ["1", "2", "3", "4"],
+    digit: "4",
   },
+  { filter: "Agents", titles: ["Budget agent"], hints: ["1"], digit: "1" },
   { filter: "Workflows", titles: ["Budget review"], hints: ["1"], digit: "1" },
 ])(
   "Open a resource from numbered search results in $filter",
@@ -456,22 +492,26 @@ test.each([
       caseId: 29,
       threads: [titleMatch],
     });
-    const { workflow, artifact } = installSearchResources();
+    const { agent, workflow, artifact } = installSearchResources();
     await setupPage({
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
       auth: workspace.auth,
-      featureSwitches,
+      featureSwitches: {
+        ...featureSwitches,
+        [FeatureSwitchKey.WorkspaceAgentSearch]: true,
+      },
     });
     const { dialog, search } = await openSearch();
     await fill(search, "budget");
     await waitFor(() => {
       expect(searchResultTitles(dialog)).toStrictEqual([
         "Budget planning",
+        "Budget agent",
         "Budget review",
         "Budget report",
       ]);
-      expect(numberedHints(dialog)).toStrictEqual(["1", "2", "3"]);
+      expect(numberedHints(dialog)).toStrictEqual(["1", "2", "3", "4"]);
     });
     const tab = queryAllByRoleFast("tab", dialog).find((item) => {
       return item.textContent === filter;
@@ -491,9 +531,13 @@ test.each([
       shiftKey: false,
     });
     const expectedPath =
-      filter === "Workflows" ? `/workflows/${workflow.id}` : "/artifacts";
-    const expectedArtifact = filter === "Workflows" ? null : artifact.id;
-    const expectedTab = filter === "Workflows" ? null : "file";
+      filter === "Agents"
+        ? `/agents/${agent.agentId}/chat`
+        : filter === "Workflows"
+          ? `/workflows/${workflow.id}`
+          : "/artifacts";
+    const expectedArtifact = filter === "All" ? artifact.id : null;
+    const expectedTab = filter === "All" ? "file" : null;
     await waitFor(() => {
       expect(pathname()).toBe(expectedPath);
       const searchParams = new URL(window.location.href).searchParams;

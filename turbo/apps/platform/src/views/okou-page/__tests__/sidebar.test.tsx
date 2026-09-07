@@ -822,11 +822,9 @@ test("Find conversations by title in workspace search", async () => {
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
-  const search = within(dialog).getByPlaceholderText(
-    "Search chats, messages, workflows, and artifacts...",
-  );
+  const search = within(dialog).getByPlaceholderText("Search workspace...");
 
   await fill(search, "research");
 
@@ -850,7 +848,7 @@ test("Find conversations by title in workspace search", async () => {
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
     expect(document.title).toBe("Support escalation | VM0");
@@ -894,13 +892,13 @@ test("Hide and show the chat list without losing workspace search", async () => 
 
   expect(searchEvent.defaultPrevented).toBeTruthy();
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
   });
@@ -1707,11 +1705,9 @@ test("Open and use workspace search with the keyboard", async () => {
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
-  const search = within(dialog).getByPlaceholderText(
-    "Search chats, messages, workflows, and artifacts...",
-  );
+  const search = within(dialog).getByPlaceholderText("Search workspace...");
 
   await fill(search, "support");
 
@@ -1725,7 +1721,7 @@ test("Open and use workspace search with the keyboard", async () => {
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
     expect(document.title).toBe("Support escalation | VM0");
@@ -1772,7 +1768,7 @@ test("Show current shortcuts without stacking help over workspace search", async
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
 
   fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
@@ -1808,7 +1804,7 @@ test("Open workspace search once from a focused composer shortcut", async () => 
   expect(repeatedEvent.defaultPrevented).toBeFalsy();
   expect(
     screen.queryByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
+      name: "Search workspace...",
     }),
   ).not.toBeInTheDocument();
 
@@ -1824,7 +1820,7 @@ test("Open workspace search once from a focused composer shortcut", async () => 
 
   expect(event.defaultPrevented).toBeTruthy();
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   expect(dialog).toBeInTheDocument();
 });
@@ -1851,7 +1847,7 @@ test("Open workspace search from a mobile viewport", async () => {
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   expect(dialog).toBeInTheDocument();
 });
@@ -2426,12 +2422,10 @@ test("Search workspace chats and messages", async () => {
   click(within(list).getByLabelText("Search workspace"));
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "deploy",
   );
 
@@ -2451,9 +2445,7 @@ test("Search workspace chats and messages", async () => {
   expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
 
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "missing",
   );
   await waitFor(() => {
@@ -2462,9 +2454,7 @@ test("Search workspace chats and messages", async () => {
   });
 
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "deploy",
   );
   click(buttonByText("Chats", dialog));
@@ -2480,7 +2470,7 @@ test("Search workspace chats and messages", async () => {
     expect(pathname()).toBe(`/chats/${RESEARCH_THREAD_ID}`);
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
   });
@@ -2587,7 +2577,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
   click(within(list).getByLabelText("Search workspace"));
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
 
   const rowFor = async (title: string): Promise<HTMLElement> => {
@@ -2615,9 +2605,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
   expect(archived).toHaveTextContent(/[A-Z][a-z]{2} \d{1,2},/u);
 
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "nothing matches this",
   );
 
