@@ -86,20 +86,12 @@ deploy_step = find_step(worker_release_job, "Deploy App Worker production")
 start_step = find_step(worker_release_job, "Start GitHub Deployment")
 finish_step = find_step(worker_release_job, "Finish GitHub Deployment")
 
-primary_app_domain_expression = (
-    "${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}"
-)
 preview_prepare_step = find_step(
     turbo["jobs"]["deploy-app"], "Prepare standalone app Worker preview"
 )
 for shell_prepare_step in (prepare_step, preview_prepare_step):
-    if shell_prepare_step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != (
-        primary_app_domain_expression
-    ):
-        raise RuntimeError(
-            f"{shell_prepare_step['name']} must retain the configured Clerk primary "
-            "domain with an app.okou.ai default"
-        )
+    if "CLERK_PRODUCTION_PRIMARY_APP_DOMAIN" in shell_prepare_step.get("env", {}):
+        raise RuntimeError(f"{shell_prepare_step['name']} must use Okou unconditionally")
     require_fragments(
         shell_prepare_step, ["bash .github/scripts/prepare-okou-app-worker-shell.sh"]
     )
@@ -151,8 +143,8 @@ deploy_source = require_fragments(
         "CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY",
         "CLERK_SECRET_KEY: env.CLERK_SECRET_KEY",
         "unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY",
-        '"https://app.vm0.ai|https://api.vm0.ai"',
-        '"https://app.okou.ai|https://api.okou.ai"',
+        'app_origin="https://app.okou.ai"',
+        'api_origin="https://api.okou.ai"',
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -185,6 +177,8 @@ if start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if finish_step.get("with", {}).get("status") != "${{ job.status }}":
     raise RuntimeError("production Worker deployment must report its final job status")
+if finish_step.get("with", {}).get("env_url") != "https://app.okou.ai":
+    raise RuntimeError("production Worker deployment must report the Okou App URL")
 
 steps = worker_release_job["steps"]
 if not (
@@ -222,16 +216,15 @@ if rollback_verification_step.get("run") != (
 for fragment in (
     '"pattern": "app.okou.ai/*"',
     '"zone_name": "okou.ai"',
-    '"pattern": "app.vm0.ai/*"',
-    '"zone_name": "vm0.ai"',
 ):
     if fragment not in worker_config_source:
         raise RuntimeError(f"production Worker config is missing: {fragment}")
+for retired_fragment in ('"pattern": "app.vm0.ai/*"', '"zone_name": "vm0.ai"'):
+    if retired_fragment in worker_config_source:
+        raise RuntimeError(f"production Worker config retains VM0: {retired_fragment}")
 
 for fragment in (
-    "https://app.vm0.ai",
     "https://app.okou.ai",
-    "https://api.vm0.ai",
     "https://api.okou.ai",
     "sign-in",
     "sign-up",
@@ -243,11 +236,11 @@ for fragment in (
 ):
     if fragment not in production_verifier_source:
         raise RuntimeError(f"production verifier is missing: {fragment}")
+for retired_origin in ("https://app.vm0.ai", "https://api.vm0.ai"):
+    if retired_origin in production_verifier_source:
+        raise RuntimeError(f"production verifier retains VM0: {retired_origin}")
 
-for api_origin, app_origin in (
-    ("https://api.vm0.ai", "https://app.vm0.ai"),
-    ("https://api.okou.ai", "https://app.okou.ai"),
-):
+for api_origin, app_origin in (("https://api.okou.ai", "https://app.okou.ai"),):
     for invocation in (
         f'verify_auth_redirect "{api_origin}" "{app_origin}"',
         f'verify_api_cors "{api_origin}" "{app_origin}"',

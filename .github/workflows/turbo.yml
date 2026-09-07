@@ -1528,7 +1528,6 @@ jobs:
       - name: Prepare standalone app Worker preview
         id: worker-preview
         env:
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
@@ -1618,7 +1617,7 @@ jobs:
             trap 'rm -f "$worker_secrets"' EXIT
             jq -n \
               '{
-                CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL,
+                CLERK_EDGE_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL,
                 CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
                 CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
               }' > "$worker_secrets"

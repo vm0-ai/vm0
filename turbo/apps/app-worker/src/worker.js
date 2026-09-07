@@ -13,13 +13,8 @@ const APP_ASSET_REQUEST_HEADER_NAMES = [
   "If-None-Match",
   "Range",
 ];
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
-const PRODUCTION_API_ORIGINS = new Map([
-  ["app.okou.ai", "https://api.okou.ai"],
-  ["app.vm0.ai", "https://api.vm0.ai"],
-]);
+const PRODUCTION_APP_HOSTNAME = "app.okou.ai";
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const APP_BOOTSTRAP_QUERY_PARAMETER = "__bootstrap";
 const CLERK_EDGE_SESSION_TIMEOUT_MS = 1000;
 const CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN =
   /^pr-[1-9][0-9]*-app-okou-app-preview\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev$/u;
@@ -41,19 +36,6 @@ const EMBEDDED_SHELL_CONTENT_TYPES = new Map([
   ["/icons/icon-512-maskable.png", "image/png"],
 ]);
 
-const VM0_APP_METADATA = {
-  brandName: "VM0",
-  canonicalUrl: "https://app.vm0.ai/",
-  description:
-    "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
-  documentTitle: "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
-  openGraphTitle: "VM0 - Your Trustworthy AI Teammate",
-  socialImagePath: "web/og-image.png",
-  staticAssetsOrigin: "https://static.vm0.io",
-  twitterDescription:
-    "VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
-};
-
 const OKOU_APP_METADATA = {
   brandName: "Okou",
   canonicalUrl: "https://app.okou.ai/",
@@ -66,22 +48,6 @@ const OKOU_APP_METADATA = {
   twitterDescription:
     "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
 };
-
-function appMetadata(hostname, configuredPublicBrand) {
-  if (configuredPublicBrand === "okou") {
-    return OKOU_APP_METADATA;
-  }
-  if (configuredPublicBrand === "vm0") {
-    return VM0_APP_METADATA;
-  }
-  const normalizedHostname = hostname.toLowerCase();
-  const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
-    return (
-      normalizedHostname === domain || normalizedHostname.endsWith(`.${domain}`)
-    );
-  });
-  return isOkou ? OKOU_APP_METADATA : VM0_APP_METADATA;
-}
 
 function apiOrigin(requestUrl) {
   const origin = derivePlatformServiceOrigin(requestUrl.origin, "api");
@@ -125,50 +91,10 @@ function previewAppAssetHtml(indexHtml, requestUrl) {
   }
 
   const previewAssetBase = `${requestUrl.origin}${APP_ASSET_PATH_PREFIX}`;
-  return indexHtml
-    .replaceAll(
-      `${VM0_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
-      previewAssetBase,
-    )
-    .replaceAll(
-      `${OKOU_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
-      previewAssetBase,
-    );
-}
-
-function rewriteStaticAssetAttribute(attributeName, staticAssetsOrigin) {
-  return {
-    element(element) {
-      const value = element.getAttribute(attributeName);
-      if (value === null) {
-        return;
-      }
-      const rewritten = value.replace(
-        /^https:\/\/static\.(?:vm0|okou)\.io(?=\/|$)/u,
-        staticAssetsOrigin,
-      );
-      if (rewritten !== value) {
-        element.setAttribute(attributeName, rewritten);
-      }
-    },
-  };
-}
-
-function addStaticAssetHandlers(rewriter, metadata) {
-  rewriter
-    .on(
-      'link[rel="icon"]',
-      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
-    )
-    .on(
-      'link[rel="preconnect"]',
-      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
-    )
-    .on(
-      'link[rel="apple-touch-icon"]',
-      rewriteStaticAssetAttribute("href", metadata.staticAssetsOrigin),
-    )
-    .on("img", rewriteStaticAssetAttribute("src", metadata.staticAssetsOrigin));
+  return indexHtml.replaceAll(
+    `${OKOU_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
+    previewAssetBase,
+  );
 }
 
 function htmlResponse(indexHtml, assetResponse, status, cacheControl) {
@@ -276,22 +202,15 @@ function appBootstrapScript(entry) {
 }
 
 function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
-  const debugFlags = requestUrl.searchParams.getAll(
-    APP_BOOTSTRAP_QUERY_PARAMETER,
-  );
-  if (
-    requestUrl.protocol !== "https:" ||
-    debugFlags.length !== 1 ||
-    debugFlags[0] !== "1"
-  ) {
+  if (requestUrl.protocol !== "https:") {
     return null;
   }
-  if (PRODUCTION_API_ORIGINS.has(requestUrl.hostname)) {
+  if (requestUrl.hostname === PRODUCTION_APP_HOSTNAME) {
     return requestUrl.origin;
   }
   return CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN.test(
     requestUrl.hostname,
-  ) && env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
+  ) && env.CLERK_EDGE_AUTHORIZED_PARTY === requestUrl.origin
     ? requestUrl.origin
     : null;
 }
@@ -342,15 +261,16 @@ async function clerkEdgeSession(
       return null;
     }
 
-    const { userId, orgId } = requestState.toAuth();
+    const { userId, sessionId } = requestState.toAuth();
     if (
       typeof userId !== "string" ||
       userId.length === 0 ||
-      (orgId !== null && typeof orgId !== "string")
+      typeof sessionId !== "string" ||
+      sessionId.length === 0
     ) {
       return null;
     }
-    return { userId, orgId };
+    return { userId, sessionId };
   } catch {
     // Clerk must never affect availability of the existing app shell.
     return null;
@@ -363,7 +283,6 @@ async function clerkEdgeSession(
 
 function rewriteAppPage(
   response,
-  metadata,
   edgeSessionPromise,
   request,
   requestUrl,
@@ -371,41 +290,63 @@ function rewriteAppPage(
 ) {
   const bootstrapState = { available: false };
   const rewriter = new HTMLRewriter()
-    .on("html", setBrandContext(metadata.brandName))
+    .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
     .on("title", {
       element(element) {
-        element.setInnerContent(metadata.documentTitle);
+        element.setInnerContent(OKOU_APP_METADATA.documentTitle);
       },
     })
-    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on(
+      'meta[name="application-name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on(
       'meta[name="apple-mobile-web-app-title"]',
-      setMetaContent(metadata.brandName),
+      setMetaContent(OKOU_APP_METADATA.brandName),
     )
-    .on('meta[name="description"]', setMetaContent(metadata.description))
+    .on(
+      'meta[name="description"]',
+      setMetaContent(OKOU_APP_METADATA.description),
+    )
     .on('meta[property="og:type"]', setMetaContent("website"))
-    .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
-    .on('meta[property="og:title"]', setMetaContent(metadata.openGraphTitle))
-    .on('meta[property="og:description"]', setMetaContent(metadata.description))
+    .on(
+      'meta[property="og:site_name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
+    .on(
+      'meta[property="og:title"]',
+      setMetaContent(OKOU_APP_METADATA.openGraphTitle),
+    )
+    .on(
+      'meta[property="og:description"]',
+      setMetaContent(OKOU_APP_METADATA.description),
+    )
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on(
       'meta[property="og:image:alt"]',
-      setMetaContent(metadata.openGraphTitle),
+      setMetaContent(OKOU_APP_METADATA.openGraphTitle),
     )
     .on('meta[name="twitter:card"]', setMetaContent("summary_large_image"))
     .on('meta[name="twitter:site"]', setMetaContent("@okou_ai"))
     .on('meta[name="twitter:creator"]', setMetaContent("@okou_ai"))
-    .on('meta[name="twitter:title"]', setMetaContent(metadata.openGraphTitle))
+    .on(
+      'meta[name="twitter:title"]',
+      setMetaContent(OKOU_APP_METADATA.openGraphTitle),
+    )
     .on(
       'meta[name="twitter:description"]',
-      setMetaContent(metadata.twitterDescription),
+      setMetaContent(OKOU_APP_METADATA.twitterDescription),
     )
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on("head", {
       element(element) {
@@ -413,16 +354,15 @@ function rewriteAppPage(
           html: true,
         });
         element.append(
-          `<link rel="canonical" href="${metadata.canonicalUrl}" />`,
+          `<link rel="canonical" href="${OKOU_APP_METADATA.canonicalUrl}" />`,
           { html: true },
         );
         element.append(
-          `<meta property="og:url" content="${metadata.canonicalUrl}" />`,
+          `<meta property="og:url" content="${OKOU_APP_METADATA.canonicalUrl}" />`,
           { html: true },
         );
       },
     });
-  addStaticAssetHandlers(rewriter, metadata);
   if (edgeSessionPromise !== null) {
     rewriter
       .on("body", {
@@ -465,11 +405,11 @@ function rewriteAppPage(
   );
 }
 
-async function rewriteManifest(response, metadata) {
+async function rewriteManifest(response) {
   const manifest = await response.json();
-  manifest.name = metadata.brandName;
-  manifest.short_name = metadata.brandName;
-  manifest.description = metadata.description;
+  manifest.name = OKOU_APP_METADATA.brandName;
+  manifest.short_name = OKOU_APP_METADATA.brandName;
+  manifest.description = OKOU_APP_METADATA.description;
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Encoding");
@@ -484,35 +424,45 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(response, title, canonicalUrl, metadata) {
-  const sharedDescription = `A conversation shared from ${metadata.brandName}`;
+function rewriteFound(response, title, canonicalUrl) {
+  const sharedDescription = `A conversation shared from ${OKOU_APP_METADATA.brandName}`;
   const rewriter = new HTMLRewriter()
-    .on("html", setBrandContext(metadata.brandName))
-    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
+    .on(
+      'meta[name="application-name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on(
       'meta[name="apple-mobile-web-app-title"]',
-      setMetaContent(metadata.brandName),
+      setMetaContent(OKOU_APP_METADATA.brandName),
     )
     .on("title", {
       element(element) {
-        element.setInnerContent(`${title} | ${metadata.brandName}`);
+        element.setInnerContent(`${title} | ${OKOU_APP_METADATA.brandName}`);
       },
     })
     .on('meta[name="description"]', setMetaContent(sharedDescription))
     .on('meta[property="og:type"]', setMetaContent("website"))
-    .on('meta[property="og:site_name"]', setMetaContent(metadata.brandName))
+    .on(
+      'meta[property="og:site_name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on('meta[property="og:title"]', setMetaContent(title))
     .on('meta[property="og:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
     .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
+      setMetaContent(
+        staticAssetUrl(OKOU_APP_METADATA, OKOU_APP_METADATA.socialImagePath),
+      ),
     )
     .on("head", {
       element(element) {
@@ -524,22 +474,24 @@ function rewriteFound(response, title, canonicalUrl, metadata) {
         });
       },
     });
-  addStaticAssetHandlers(rewriter, metadata);
   return rewriter.transform(response);
 }
 
-function rewriteNotFound(response, metadata) {
+function rewriteNotFound(response) {
   const rewriter = new HTMLRewriter()
-    .on("html", setBrandContext(metadata.brandName))
-    .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
+    .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
+    .on(
+      'meta[name="application-name"]',
+      setMetaContent(OKOU_APP_METADATA.brandName),
+    )
     .on(
       'meta[name="apple-mobile-web-app-title"]',
-      setMetaContent(metadata.brandName),
+      setMetaContent(OKOU_APP_METADATA.brandName),
     )
     .on("title", {
       element(element) {
         element.setInnerContent(
-          `Shared conversation not found | ${metadata.brandName}`,
+          `Shared conversation not found | ${OKOU_APP_METADATA.brandName}`,
         );
       },
     })
@@ -552,7 +504,6 @@ function rewriteNotFound(response, metadata) {
         });
       },
     });
-  addStaticAssetHandlers(rewriter, metadata);
   return rewriter.transform(response);
 }
 
@@ -777,7 +728,6 @@ async function handleRequest(
           404,
           "public, max-age=60, s-maxage=60",
         ),
-        appMetadata(requestUrl.hostname, env.PUBLIC_BRAND),
       );
     }
     if (!metaResponse.ok) {
@@ -789,19 +739,12 @@ async function handleRequest(
     } catch {
       return gatewayResponse(502);
     }
-    if (
-      typeof metadata.title !== "string" ||
-      metadata.title.length === 0 ||
-      (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
-    ) {
+    if (typeof metadata.title !== "string" || metadata.title.length === 0) {
       return gatewayResponse(502);
     }
-    const publicBrand = metadata.publicBrand;
-    const sharedAppMetadata =
-      publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
     const canonicalUrl = new URL(
       requestUrl.pathname,
-      sharedAppMetadata.canonicalUrl,
+      OKOU_APP_METADATA.canonicalUrl,
     ).toString();
     return rewriteFound(
       htmlResponse(
@@ -812,7 +755,6 @@ async function handleRequest(
       ),
       metadata.title,
       canonicalUrl,
-      sharedAppMetadata,
     );
   }
 
@@ -821,9 +763,8 @@ async function handleRequest(
     return assetResponse;
   }
 
-  const metadata = appMetadata(requestUrl.hostname, env.PUBLIC_BRAND);
   if (requestUrl.pathname === "/manifest.webmanifest") {
-    return rewriteManifest(assetResponse, metadata);
+    return rewriteManifest(assetResponse);
   }
   if (
     !assetResponse.headers
@@ -839,7 +780,6 @@ async function handleRequest(
     : null;
   return rewriteAppPage(
     assetResponse,
-    metadata,
     edgeSessionPromise,
     request,
     requestUrl,

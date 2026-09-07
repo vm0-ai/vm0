@@ -1611,7 +1611,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
         run: |
@@ -1731,32 +1730,29 @@ jobs:
             --message "app artifact ${ARTIFACT_SHA}"
           cd ..
 
-          for mapping in \
-            "https://app.vm0.ai|https://api.vm0.ai" \
-            "https://app.okou.ai|https://api.okou.ai"; do
-            IFS='|' read -r app_origin api_origin <<< "$mapping"
-            cors_result="$(
-              curl -fsS \
-                --connect-timeout 10 \
-                --max-time 30 \
-                --retry 12 \
-                --retry-delay 5 \
-                --retry-all-errors \
-                --request OPTIONS \
-                --header "Origin: ${app_origin}" \
-                --header "Access-Control-Request-Method: GET" \
-                --output /dev/null \
-                --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
-                "${api_origin}/api/__brand-smoke__"
-            )"
-            mapfile -t cors_values <<< "$cors_result"
-            if [[ "${cors_values[0]:-}" != "204" ||
-                  "${cors_values[1]:-}" != "$app_origin" ||
-                  "${cors_values[2]:-}" != "true" ]]; then
-              echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
-              exit 1
-            fi
-          done
+          app_origin="https://app.okou.ai"
+          api_origin="https://api.okou.ai"
+          cors_result="$(
+            curl -fsS \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --retry 12 \
+              --retry-delay 5 \
+              --retry-all-errors \
+              --request OPTIONS \
+              --header "Origin: ${app_origin}" \
+              --header "Access-Control-Request-Method: GET" \
+              --output /dev/null \
+              --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
+              "${api_origin}/api/__brand-smoke__"
+          )"
+          mapfile -t cors_values <<< "$cors_result"
+          if [[ "${cors_values[0]:-}" != "204" ||
+                "${cors_values[1]:-}" != "$app_origin" ||
+                "${cors_values[2]:-}" != "true" ]]; then
+            echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
+            exit 1
+          fi
 
       - name: Finish GitHub Deployment
         if: always()
@@ -1766,7 +1762,7 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: https://app.okou.ai
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Report App Worker URLs
@@ -1777,7 +1773,6 @@ jobs:
             echo
             echo "### Live"
             echo "- https://app.okou.ai"
-            echo "- https://app.vm0.ai"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Calculate duration
@@ -1805,7 +1800,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
+                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.okou.ai|Okou App>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}

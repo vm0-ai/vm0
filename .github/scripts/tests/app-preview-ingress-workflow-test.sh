@@ -99,7 +99,7 @@ end
 unless deploy_source.include?('worker_secrets="$(mktemp)"') &&
     deploy_source.include?("umask 077") &&
     deploy_source.include?('if [[ "$EVENT_NAME" == "pull_request" ]]') &&
-    deploy_source.include?('CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL') &&
+    deploy_source.include?('CLERK_EDGE_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL') &&
     deploy_source.include?('unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY')
   raise "Worker preview deployment must create an ephemeral exact-origin secrets file"
 end
