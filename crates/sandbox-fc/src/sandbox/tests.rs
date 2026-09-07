@@ -15,7 +15,7 @@ use vsock_proto::{
     MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot, RawMessage,
 };
 
-mod ssh_rpc;
+mod guest_rpc;
 
 struct TestNormalOperationFence;
 
@@ -188,7 +188,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         is_parked: false,
         park_outcome: None,
         park_fence: None,
-        ssh_endpoint: None,
+        guest_rpc_endpoint: None,
         runtime_cancel: CancellationToken::new(),
         host_cpu_cgroup: None,
     }
@@ -4016,7 +4016,7 @@ async fn start_with_observer_reports_backend_launch_failure() {
     let workspace = tempfile::tempdir().unwrap();
     let mut sandbox = test_sandbox_with_state(SandboxState::Created);
     sandbox.sandbox_paths = SandboxPaths::new(workspace.path().join("workspace"));
-    ssh_rpc::prepare_socket_paths(&mut sandbox, &workspace.path().join("sock"));
+    guest_rpc::prepare_socket_paths(&mut sandbox, &workspace.path().join("sock"));
     let mut observer = RecordingSandboxStartObserver::default();
 
     let error = sandbox

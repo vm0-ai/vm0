@@ -47,14 +47,14 @@ async fn fresh_and_restore_entrypoints_bind_before_backend_launch_and_clean_up_o
             });
         }
         let mut observer = BindObserver {
-            path: sandbox.sock_paths.ssh_rpc(),
+            path: sandbox.sock_paths.guest_rpc(),
             observed: false,
         };
         let error = sandbox
             .start_with_observer(&mut observer)
             .await
             .unwrap_err();
-        // Fail at the real backend prerequisite, after the SSH bind succeeded.
+        // Fail at the real backend prerequisite, after the guest RPC bind succeeded.
         assert!(error.to_string().contains(if restore {
             "workspace drive"
         } else {
@@ -62,7 +62,7 @@ async fn fresh_and_restore_entrypoints_bind_before_backend_launch_and_clean_up_o
         }));
         assert!(observer.observed);
         assert!(!observer.path.exists());
-        assert!(sandbox.ssh_rpc("run-a").is_none());
+        assert!(sandbox.guest_rpc("run-a").is_none());
     }
 }
 
@@ -73,9 +73,9 @@ async fn sandbox_stop_kill_and_drop_remove_the_owned_endpoint() {
         let mut sandbox = test_sandbox_with_state(SandboxState::Running);
         prepare_socket_paths(&mut sandbox, dir.path());
         sandbox.park_coordinator.bind_run_control("run-a").unwrap();
-        sandbox.ssh_endpoint = Some(sandbox.bind_ssh_endpoint().unwrap());
-        let path = sandbox.sock_paths.ssh_rpc();
-        let stale = sandbox.ssh_rpc("run-a").unwrap();
+        sandbox.guest_rpc_endpoint = Some(sandbox.bind_guest_rpc_endpoint().unwrap());
+        let path = sandbox.sock_paths.guest_rpc();
+        let stale = sandbox.guest_rpc("run-a").unwrap();
         match operation {
             "stop" => sandbox.stop().await.unwrap(),
             "kill" => sandbox.kill().await.unwrap(),
@@ -87,7 +87,7 @@ async fn sandbox_stop_kill_and_drop_remove_the_owned_endpoint() {
 }
 
 #[tokio::test]
-async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_ssh_request() {
+async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_guest_rpc_request() {
     for final_exec in [false, true] {
         let dir = tempfile::tempdir().unwrap();
         let mut sandbox = test_sandbox_with_state(SandboxState::Running);
@@ -95,11 +95,11 @@ async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_ssh_request()
         let (guest, _peer) = connected_mock_guest().await;
         sandbox.guest = guest;
         sandbox.park_coordinator.bind_run_control("run-a").unwrap();
-        sandbox.ssh_endpoint = Some(sandbox.bind_ssh_endpoint().unwrap());
-        let _ssh_peer = UnixStream::connect(sandbox.sock_paths.ssh_rpc())
+        sandbox.guest_rpc_endpoint = Some(sandbox.bind_guest_rpc_endpoint().unwrap());
+        let _rpc_peer = UnixStream::connect(sandbox.sock_paths.guest_rpc())
             .await
             .unwrap();
-        let accepted = sandbox.ssh_rpc("run-a").unwrap().accept().await.unwrap();
+        let accepted = sandbox.guest_rpc("run-a").unwrap().accept().await.unwrap();
         let result = if final_exec {
             sandbox
                 .final_exec_and_park(
@@ -112,7 +112,7 @@ async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_ssh_request()
                         stdin_bytes: None,
                         output_limits: sandbox::ExecOutputLimits::same(1024),
                     },
-                    "ssh-fence-test",
+                    "rpc-fence-test",
                 )
                 .await
                 .map(drop)
@@ -121,7 +121,7 @@ async fn sandbox_park_and_final_exec_park_cannot_cross_an_accepted_ssh_request()
         };
         assert!(result.is_err());
         assert_eq!(sandbox.park_coordinator.state(), CoordinatorState::Open);
-        assert!(sandbox.sock_paths.ssh_rpc().exists());
+        assert!(sandbox.sock_paths.guest_rpc().exists());
         assert!(!accepted.cancelled.is_cancelled());
         drop(accepted);
         drop(

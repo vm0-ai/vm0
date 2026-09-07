@@ -4,7 +4,7 @@ use std::future::Future;
 use std::io;
 use std::time::Duration;
 
-use ssh_rpc_proto::{Effect, ErrorCode, MAX_REQUEST_BYTES, Response, ResponseReader};
+use guest_rpc_proto::{Delivery, ErrorCode, MAX_REQUEST_BYTES, Response, ResponseReader};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time::{Instant, timeout_at};
@@ -12,13 +12,13 @@ use tokio::time::{Instant, timeout_at};
 const TIMEOUT: Duration = Duration::from_secs(60);
 const TERMINAL_BUDGET: Duration = Duration::from_millis(100);
 
-/// Production entry point: only the fixed host CID and SSH port are reachable.
+/// Production entry point: only the fixed host CID and RPC port are reachable.
 pub async fn run() -> io::Result<bool> {
     run_with_io(tokio::io::stdin(), tokio::io::stdout(), connect_vsock).await
 }
 
 /// Run one request with externally supplied I/O. The executable never exposes
-/// a destination override. Returns true only after a valid finished response.
+/// a destination override. Returns true after a valid result, not business success.
 pub async fn run_with_io<R, W, S, C, F>(mut input: R, mut output: W, connect: C) -> io::Result<bool>
 where
     R: AsyncRead + Unpin,
@@ -45,7 +45,7 @@ where
         // A cancelled/failed partial NDJSON write cannot be safely retried.
         return Err(io::Error::new(
             io::ErrorKind::BrokenPipe,
-            "SSH output unavailable",
+            "RPC output unavailable",
         ));
     }
     let terminal = match result
@@ -56,16 +56,16 @@ where
         Err(code) => Response::error(
             code,
             if sent {
-                Effect::Unknown
+                Delivery::Unknown
             } else {
-                Effect::NotStarted
+                Delivery::NotDispatched
             },
         ),
     };
     timeout_at(deadline, emit(&mut output, &terminal))
         .await
-        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "SSH output deadline"))??;
-    Ok(matches!(terminal, Response::Finished { .. }))
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "RPC output deadline"))??;
+    Ok(matches!(terminal, Response::Result { .. }))
 }
 
 async fn exchange<R, W, S, C, F>(
@@ -88,11 +88,11 @@ where
         .read_to_end(&mut bytes)
         .await
         .map_err(|_| ErrorCode::InvalidRequest)?;
-    let request = ssh_rpc_proto::parse_request(&bytes).map_err(|_| ErrorCode::InvalidRequest)?;
+    let request = guest_rpc_proto::parse_request(&bytes).map_err(|_| ErrorCode::InvalidRequest)?;
     let mut stream = connect().await.map_err(|_| ErrorCode::Unavailable)?;
-    // Even without an accepted response, any subsequent loss may hide effects.
+    // Once transmission is attempted, any subsequent loss may hide effects.
     *sent = true;
-    ssh_rpc_proto::write_request(&mut stream, &request)
+    guest_rpc_proto::write_request(&mut stream, &request)
         .await
         .map_err(|_| ErrorCode::Transport)?;
     stream.shutdown().await.map_err(|_| ErrorCode::Transport)?;
@@ -119,9 +119,7 @@ where
 }
 
 async fn emit(output: &mut (impl AsyncWrite + Unpin), response: &Response) -> io::Result<()> {
-    let mut bytes =
-        serde_json::to_vec(response).map_err(|_| io::Error::other("SSH output encoding"))?;
-    bytes.push(b'\n');
+    let bytes = response.to_ndjson()?;
     output.write_all(&bytes).await?;
     output.flush().await
 }
@@ -146,8 +144,8 @@ async fn connect_vsock() -> io::Result<UnixStream> {
     let address = libc::sockaddr_vm {
         svm_family: libc::AF_VSOCK as u16,
         svm_reserved1: 0,
-        svm_port: ssh_rpc_proto::VSOCK_PORT,
-        svm_cid: ssh_rpc_proto::HOST_CID,
+        svm_port: guest_rpc_proto::VSOCK_PORT,
+        svm_cid: guest_rpc_proto::HOST_CID,
         svm_zero: [0; 4],
     };
     // SAFETY: the initialized sockaddr_vm has the matching length and remains
@@ -178,6 +176,6 @@ async fn connect_vsock() -> io::Result<UnixStream> {
 async fn connect_vsock() -> io::Result<UnixStream> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "SSH transport requires Linux vsock",
+        "RPC transport requires Linux vsock",
     ))
 }

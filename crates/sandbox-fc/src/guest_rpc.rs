@@ -1,4 +1,4 @@
-//! Sandbox-owned dedicated guest listener. There is no production SSH handler.
+//! Sandbox-owned dedicated guest listener. There is no production method handler.
 
 use std::future::Future;
 use std::io;
@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
-use sandbox::{AcceptedSshRpc, SshRpcAcceptor, SshRpcStream};
+use sandbox::{AcceptedGuestRpc, GuestRpcAcceptor, GuestRpcStream};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -19,7 +19,7 @@ use crate::park_coordinator::ParkCoordinator;
 use crate::runtime_dirs::set_private_runtime_socket_mode;
 use crate::sandbox::SandboxState;
 
-pub(crate) struct SshRpcContext {
+pub(crate) struct GuestRpcContext {
     pub(crate) sandbox_id: String,
     pub(crate) state: Arc<AtomicU8>,
     pub(crate) guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
@@ -30,7 +30,7 @@ struct Shared {
     listener: Mutex<Option<Arc<UnixListener>>>,
     path: PathBuf,
     closed: CancellationToken,
-    context: SshRpcContext,
+    context: GuestRpcContext,
 }
 
 impl Shared {
@@ -43,11 +43,11 @@ impl Shared {
             return;
         }
         self.closed.cancel();
-        self.context.coordinator.cancel_ssh_operations();
+        self.context.coordinator.cancel_guest_rpc_operations();
         if let Err(error) = std::fs::remove_file(&self.path)
             && error.kind() != io::ErrorKind::NotFound
         {
-            tracing::warn!(sandbox_id = %self.context.sandbox_id, error = %error, "remove SSH listener failed");
+            tracing::warn!(sandbox_id = %self.context.sandbox_id, error = %error, "remove guest RPC listener failed");
         }
     }
 
@@ -62,15 +62,15 @@ impl Shared {
 }
 
 /// Sole close/unlink owner; capabilities cannot extend a listener epoch.
-pub(crate) struct SshRpcEndpoint {
+pub(crate) struct GuestRpcEndpoint {
     shared: Arc<Shared>,
     cleanup: tokio::task::JoinHandle<()>,
 }
 
-impl SshRpcEndpoint {
+impl GuestRpcEndpoint {
     pub(crate) fn bind(
         path: PathBuf,
-        context: SshRpcContext,
+        context: GuestRpcContext,
         runtime_cancel: CancellationToken,
     ) -> io::Result<Self> {
         // The parent is the already-validated 0700 sandbox vsock directory.
@@ -94,7 +94,7 @@ impl SshRpcEndpoint {
         Ok(Self { shared, cleanup })
     }
 
-    pub(crate) fn acceptor(&self, run_id: &str) -> Arc<dyn SshRpcAcceptor> {
+    pub(crate) fn acceptor(&self, run_id: &str) -> Arc<dyn GuestRpcAcceptor> {
         Arc::new(Acceptor {
             shared: Arc::clone(&self.shared),
             run_id: run_id.to_owned(),
@@ -102,7 +102,7 @@ impl SshRpcEndpoint {
     }
 }
 
-impl Drop for SshRpcEndpoint {
+impl Drop for GuestRpcEndpoint {
     fn drop(&mut self) {
         self.shared.close();
         self.cleanup.abort();
@@ -115,14 +115,14 @@ struct Acceptor {
 }
 
 #[async_trait]
-impl SshRpcAcceptor for Acceptor {
-    async fn accept(&self) -> io::Result<AcceptedSshRpc> {
+impl GuestRpcAcceptor for Acceptor {
+    async fn accept(&self) -> io::Result<AcceptedGuestRpc> {
         self.shared.ensure_running()?;
         let assignment_cancel = self
             .shared
             .context
             .coordinator
-            .ssh_assignment_cancellation(&self.run_id)?;
+            .guest_rpc_assignment_cancellation(&self.run_id)?;
         let listener = self
             .shared
             .listener
@@ -148,12 +148,12 @@ impl SshRpcAcceptor for Acceptor {
             .shared
             .context
             .coordinator
-            .reserve_ssh_operation(&self.run_id, &guest)?;
+            .reserve_guest_rpc_operation(&self.run_id, &guest)?;
         self.shared.ensure_running()?;
         if cancelled.is_cancelled() {
             return Err(unavailable());
         }
-        Ok(AcceptedSshRpc {
+        Ok(AcceptedGuestRpc {
             sandbox_id: self.shared.context.sandbox_id.clone(),
             stream: Box::new(ReservedStream {
                 stream,
@@ -173,7 +173,7 @@ struct ReservedStream {
     write_cancelled: Pin<Box<WaitForCancellationFutureOwned>>,
 }
 
-impl SshRpcStream for ReservedStream {}
+impl GuestRpcStream for ReservedStream {}
 
 impl AsyncRead for ReservedStream {
     fn poll_read(
@@ -218,7 +218,7 @@ impl AsyncWrite for ReservedStream {
 fn unavailable() -> io::Error {
     io::Error::new(
         io::ErrorKind::NotConnected,
-        "SSH sandbox transport unavailable",
+        "guest RPC sandbox transport unavailable",
     )
 }
 

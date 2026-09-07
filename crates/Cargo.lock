@@ -1380,6 +1380,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-rpc"
+version = "0.1.0"
+dependencies = [
+ "guest-rpc-proto",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "guest-rpc-proto"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "guest-session-prune"
 version = "0.3.74"
 dependencies = [
@@ -1388,17 +1408,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "uuid",
-]
-
-[[package]]
-name = "guest-ssh-rpc"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde_json",
- "ssh-rpc-proto",
- "tempfile",
- "tokio",
 ]
 
 [[package]]
@@ -2640,7 +2649,7 @@ dependencies = [
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
- "guest-ssh-rpc",
+ "guest-rpc",
  "guest-tool-exec",
  "guest-write-file",
  "hex",
@@ -2834,6 +2843,7 @@ dependencies = [
  "clap",
  "futures-util",
  "guest-contracts",
+ "guest-rpc-proto",
  "hex",
  "libc",
  "nbd-cow",
@@ -2845,7 +2855,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "ssh-rpc-proto",
  "tempfile",
  "thiserror",
  "tokio",
@@ -3204,17 +3213,6 @@ name = "spin"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
-
-[[package]]
-name = "ssh-rpc-proto"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
 
 [[package]]
 name = "stable_deref_trait"

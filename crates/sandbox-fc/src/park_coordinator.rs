@@ -80,7 +80,7 @@ impl ParkCoordinator {
 
     /// Validate assignment and acquire the authoritative reservation while the
     /// policy lock excludes park/termination admission. Never await here.
-    pub(crate) fn reserve_ssh_operation(
+    pub(crate) fn reserve_guest_rpc_operation(
         &self,
         expected_run_id: &str,
         guest: &vsock_host::VsockHost,
@@ -91,7 +91,7 @@ impl ParkCoordinator {
         {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotConnected,
-                "SSH assignment unavailable",
+                "guest RPC assignment unavailable",
             ));
         }
         Ok((
@@ -100,7 +100,7 @@ impl ParkCoordinator {
         ))
     }
 
-    pub(crate) fn ssh_assignment_cancellation(
+    pub(crate) fn guest_rpc_assignment_cancellation(
         &self,
         expected_run_id: &str,
     ) -> std::io::Result<CancellationToken> {
@@ -110,13 +110,13 @@ impl ParkCoordinator {
         {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotConnected,
-                "SSH assignment unavailable",
+                "guest RPC assignment unavailable",
             ));
         }
         Ok(inner.assignment_cancel.child_token())
     }
 
-    pub(crate) fn cancel_ssh_operations(&self) {
+    pub(crate) fn cancel_guest_rpc_operations(&self) {
         self.inner().assignment_cancel.cancel();
     }
 

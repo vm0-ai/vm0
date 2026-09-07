@@ -3,7 +3,7 @@ use super::*;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
-use ssh_rpc_proto::{Effect, ErrorCode, Response, ResponseReader, ResponseWriter};
+use guest_rpc_proto::{Delivery, ErrorCode, Response, ResponseReader, ResponseWriter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
 
@@ -12,7 +12,7 @@ struct Fixture {
     path: PathBuf,
     host: Arc<VsockHost>,
     _guest_peer: UnixStream,
-    endpoint: Option<SshRpcEndpoint>,
+    endpoint: Option<GuestRpcEndpoint>,
     state: Arc<AtomicU8>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     coordinator: ParkCoordinator,
@@ -63,7 +63,7 @@ impl Fixture {
         coordinator.bind_run_control("run-a").unwrap();
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let mut fixture = Self {
-            path: dir.path().join("ssh.sock"),
+            path: dir.path().join("guest-rpc.sock"),
             _dir: dir,
             host,
             _guest_peer: peer,
@@ -77,8 +77,8 @@ impl Fixture {
         fixture
     }
 
-    fn context(&self) -> SshRpcContext {
-        SshRpcContext {
+    fn context(&self) -> GuestRpcContext {
+        GuestRpcContext {
             sandbox_id: "sandbox-a".into(),
             state: Arc::clone(&self.state),
             guest: Arc::clone(&self.guest),
@@ -88,7 +88,7 @@ impl Fixture {
 
     fn bind(&mut self) {
         self.endpoint = Some(
-            SshRpcEndpoint::bind(
+            GuestRpcEndpoint::bind(
                 self.path.clone(),
                 self.context(),
                 self.runtime_cancel.clone(),
@@ -97,7 +97,7 @@ impl Fixture {
         );
     }
 
-    fn acceptor(&self, run: &str) -> Arc<dyn SshRpcAcceptor> {
+    fn acceptor(&self, run: &str) -> Arc<dyn GuestRpcAcceptor> {
         self.endpoint.as_ref().unwrap().acceptor(run)
     }
 }
@@ -123,7 +123,10 @@ async fn repeated_fake_handler_requests_hold_the_real_park_reservation() {
         );
         let mut writer = ResponseWriter::new(accepted.stream);
         writer
-            .send(&Response::error(ErrorCode::Unavailable, Effect::NotStarted))
+            .send(&Response::error(
+                ErrorCode::Unavailable,
+                Delivery::NotDispatched,
+            ))
             .await
             .unwrap();
         let mut reader = ResponseReader::new(peer);
@@ -205,7 +208,7 @@ async fn close_cancels_pending_accept_and_old_handles_cannot_follow_reassignment
 }
 
 #[tokio::test]
-async fn termination_cancels_inflight_io_and_pending_accept_without_waiting_for_ssh() {
+async fn termination_cancels_inflight_io_and_pending_accept_without_waiting_for_external_work() {
     let fixture = Fixture::new().await;
     let _peer = UnixStream::connect(&fixture.path).await.unwrap();
     let mut accepted = fixture.acceptor("run-a").accept().await.unwrap();
@@ -239,7 +242,7 @@ async fn termination_cancels_inflight_io_and_pending_accept_without_waiting_for_
 async fn runtime_exit_unlinks_socket_and_bind_failure_preserves_the_other_owner() {
     let fixture = Fixture::new().await;
     assert!(
-        SshRpcEndpoint::bind(
+        GuestRpcEndpoint::bind(
             fixture.path.clone(),
             fixture.context(),
             CancellationToken::new()

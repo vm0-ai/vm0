@@ -1,14 +1,12 @@
 [package]
-name = "ssh-rpc-proto"
+name = "guest-rpc-proto"
 version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-base64.workspace = true
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 tokio = { workspace = true, features = ["io-util"] }
-uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }

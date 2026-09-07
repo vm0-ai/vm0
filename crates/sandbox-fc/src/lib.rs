@@ -39,6 +39,7 @@ mod guest_dns_failure_diagnostics;
 mod guest_dns_probe;
 mod guest_dns_readiness;
 mod guest_operations;
+mod guest_rpc;
 mod host_cpu_cgroup;
 mod leaked_resources;
 mod network;
@@ -52,7 +53,6 @@ mod runtime_dirs;
 mod sandbox;
 mod snapshot;
 mod snapshot_mount_namespace;
-mod ssh_rpc;
 mod workspace_drive_image;
 
 pub use api::{ApiClient, ApiError, BalloonStatistics};

@@ -21,10 +21,10 @@ mod config;
 mod control;
 mod error;
 mod factory;
+mod guest_rpc;
 mod runtime;
 mod sandbox;
 mod snapshot;
-mod ssh_rpc;
 mod types;
 
 pub use config::{
@@ -44,6 +44,7 @@ pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,
     SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
 };
+pub use guest_rpc::{AcceptedGuestRpc, GuestRpcAcceptor, GuestRpcStream};
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::{
     GuestMemorySnapshot, Sandbox, SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
@@ -55,7 +56,6 @@ pub use sandbox::{
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
-pub use ssh_rpc::{AcceptedSshRpc, SshRpcAcceptor, SshRpcStream};
 pub use types::{
     CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB,
     EXEC_OUTPUT_LIMIT_7_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult,

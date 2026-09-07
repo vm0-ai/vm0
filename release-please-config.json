@@ -84,10 +84,10 @@
         "crates/guest-tool-exec": {
             "release-type": "rust"
         },
-        "crates/guest-ssh-rpc": {
+        "crates/guest-rpc": {
             "release-type": "rust"
         },
-        "crates/ssh-rpc-proto": {
+        "crates/guest-rpc-proto": {
             "release-type": "rust"
         },
         "crates/guest-common": {
