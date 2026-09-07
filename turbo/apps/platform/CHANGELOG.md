@@ -11,6 +11,28 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.856.0](https://github.com/vm0-ai/vm0/compare/app-v0.855.1...app-v0.856.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** find agents by name in workspace search ([#32208](https://github.com/vm0-ai/vm0/issues/32208)) ([d64a34e](https://github.com/vm0-ai/vm0/commit/d64a34e75a1a1429922679d32905b2c1d6519f10))
+
+
+### Bug Fixes
+
+* **auth:** support second-factor verification in custom sign-in ([#32216](https://github.com/vm0-ai/vm0/issues/32216)) ([a9edf50](https://github.com/vm0-ai/vm0/commit/a9edf5029c0c6ba6f06d0fa1609f11371f3f3d0e))
+* **platform:** align composer shortcut tooltips ([#32217](https://github.com/vm0-ai/vm0/issues/32217)) ([d76bd97](https://github.com/vm0-ai/vm0/commit/d76bd975004e7b03fe9b992df00ffcf87d0a009f))
+* **platform:** handle expected client failures and unsupported browsers ([#32227](https://github.com/vm0-ai/vm0/issues/32227)) ([c438eb7](https://github.com/vm0-ai/vm0/commit/c438eb7dfeaf10ae9876ab51de1af92fb82dda07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.410.0
+    * @okouai/core bumped to 8.631.0
+
 ## [0.855.1](https://github.com/vm0-ai/vm0/compare/app-v0.855.0...app-v0.855.1) (2026-09-07)
 
 

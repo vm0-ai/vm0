@@ -125,6 +125,8 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) stop_behaviors: LifecycleBehaviors<()>,
+    /// Optional gate that blocks every `stop()` entry before its result is consumed.
+    pub(crate) stop_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default reusable outcome.
     pub(crate) park_behaviors: LifecycleBehaviors<SandboxParkOutcome>,
@@ -140,6 +142,8 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) unpark_behaviors: LifecycleBehaviors<()>,
+    /// Optional gate that blocks every recorded `unpark()` entry until released.
+    pub(crate) unpark_gate: Mutex<Option<MockLifecycleGate>>,
     /// Optional gate that records and blocks every factory `destroy()` entry
     /// until released.
     pub(crate) destroy_gate: Mutex<Option<MockLifecycleGate>>,
@@ -828,6 +832,16 @@ impl MockSandboxOverrides {
     /// Used by runner tests to exercise panic-safe cleanup boundaries.
     pub fn push_stop_panic(&self, message: impl Into<String>) {
         self.lifecycle.stop_behaviors.push_panic(message);
+    }
+
+    /// Block every `stop()` call before consuming its queued result or panic.
+    pub fn set_stop_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.stop_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Block every `unpark()` call after recording it and before consuming its result.
+    pub fn set_unpark_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.unpark_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Queue a `park()` result applied to the next factory-created sandbox.

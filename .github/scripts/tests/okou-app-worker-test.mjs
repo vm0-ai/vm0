@@ -275,7 +275,7 @@ const embeddedIndexTemplate = builtIndexTemplate
   .replace(
     "</head>",
     [
-      '<link id="vm0-main-stylesheet" rel="preload" as="style" href="https://static.okou.io/okou-app/assets/index-Test1234.css" />',
+      '<link id="okou-main-stylesheet" rel="preload" as="style" href="https://static.okou.io/okou-app/assets/index-Test1234.css" />',
       '<link rel="modulepreload" href="https://static.okou.io/okou-app/assets/vendor-Test1234.js" />',
       "</head>",
     ].join("\n"),

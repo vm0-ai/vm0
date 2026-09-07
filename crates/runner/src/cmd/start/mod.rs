@@ -928,7 +928,7 @@ async fn run_start_with_home(
         home: home.clone(),
         workspace_cache: Some(
             WorkspaceImageCache::shared(paths.clone(), &home, &group_name)
-                .with_session_history_sidecar_export_host_cpus(host_cpus),
+                .with_promotion_host_cpus(host_cpus),
         ),
     });
 

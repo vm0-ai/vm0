@@ -9,8 +9,10 @@ import type { PermissionSignals } from "./permission-card-signals.ts";
 import type { PlanUpgradeSignals } from "./plan-upgrade-block.ts";
 
 /**
- * The signals behind one card slot in an event's markdown tree. Slots resolve
- * against cards registered ahead of parsing; the ref rides on the hast node's
+ * The signals behind one resource occurrence in an event's markdown tree.
+ * Action slots resolve against cards registered ahead of parsing; artifact
+ * links and images register after parsing and keep their original tags.
+ * The ref rides on the hast node's
  * `data`, which `rehype-raw` cannot produce, so quoted HTML cannot forge one.
  */
 export type MarkdownCardRef =
@@ -41,7 +43,7 @@ export type MarkdownCardRef =
 
 declare module "hast" {
   interface Data {
-    /** Set by the pipeline's card pass: the card a slot paragraph stands for. */
+    /** Resource signals for an action slot, artifact link, or artifact image. */
     card?: MarkdownCardRef;
   }
 }

@@ -139,6 +139,7 @@ set(cleanup$, () => {
 ```
 
 This is especially dangerous because:
+
 1. The side effects (cancel, close) execute **immediately** instead of being deferred
 2. The stored value becomes `undefined` (the return value of the arrow function), not the function
 3. There is no runtime error at the `set()` call site — the bug is silent
@@ -163,7 +164,7 @@ The outer `() => cleanupFn` is called as the updater — it receives `previousVa
 From ccstate's core (`ccstate/core/index.js`):
 
 ```javascript
-if (typeof val === 'function') {
+if (typeof val === "function") {
   var updater = val;
   newValue = updater(previousValue);
 } else {
@@ -181,6 +182,7 @@ This is by design — it mirrors React's `useState` updater pattern:
 ### When to watch out
 
 Any time a `state()` atom holds a function type:
+
 - `state<(() => void) | null>(null)` — cleanup callbacks
 - `state<(arg: T) => R>(defaultFn)` — configurable handlers
 - `state<Function | null>(null)` — generic function storage
@@ -221,10 +223,7 @@ export const fetchAgentsList$ = command(async ({ get, set }, signal) => {
 const internalReload$ = state(0);
 export const agents$ = computed(async (get) => {
   get(internalReload$);
-  const result = await accept(
-    get(apiClient$)(contract).list(),
-    [200],
-  );
+  const result = await accept(get(apiClient$)(contract).list(), [200]);
   return result.body;
 });
 export const reloadAgents$ = command(({ set }) => {
@@ -445,6 +444,36 @@ set(startLoop$, { runId }, resumeSignal);
 const resumeSignal = set(resetSending$, signal);
 set(startLoop$, { runId }, resumeSignal);
 ```
+
+## Debounced and Throttled Commands
+
+Use the factories in `signals/command-scheduling.ts` for command scheduling:
+
+```typescript
+const debouncedSearch$ = debounceCommand(search$, 300);
+const throttledCatchUp$ = throttleCommand(catchUp$, 1000);
+
+// Source command arguments are preserved, with AbortSignal last.
+const result = await set(debouncedSearch$, keyword, signal);
+await set(throttledCatchUp$, signal);
+```
+
+- `debounceCommand` waits for the quiet interval, resets the wait on each call,
+  and passes a cancellable child signal to the source command. Superseded calls
+  reject with `AbortError`; a command already running must cooperate with its
+  signal. Keep an existing domain `resetSignal()` when clear, send, or close
+  actions also need to cancel work without scheduling a replacement.
+- `throttleCommand` runs an idle call immediately, serializes executions, and
+  keeps at least the specified interval between starts. Calls while busy share
+  one trailing execution with the latest arguments. Further calls do not reset
+  its deadline. All callers observe their execution's result or error.
+- Scheduling state is private to each factory and each Store. Throttled calls
+  that share a factory in a Store must use the same lifecycle signal. Create a
+  fresh factory at the owning lifecycle boundary when that owner changes, as
+  indicator catch-up does in its `rootSignal$`-dependent computed.
+- Create wrappers at module scope or in a signal factory, never during React
+  render or on every invocation. Return or await their Promises; only detach
+  at the existing DOM boundary.
 
 ## Detach, Floating Promises, and Test Cleanup
 
@@ -865,11 +894,8 @@ export function createChatThreadSignals(
   existingDraft?: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const {
-    internalLocalMessages$,
-    messages$,
-    allFinished$,
-  } = createMessageState(threadData$);
+  const { internalLocalMessages$, messages$, allFinished$ } =
+    createMessageState(threadData$);
   const { setScrollContainer$ } = createScrollSignals();
   const draft = existingDraft ?? createDraftSignals();
 
@@ -909,10 +935,7 @@ export const setupChatPage$ = command(
     const threadId = get(currentChatThreadId$);
     const thread = get(currentChatThreadSignals$)!;
 
-    set(
-      updatePage$,
-      createElement(ChatThreadPage, { key: threadId, thread }),
-    );
+    set(updatePage$, createElement(ChatThreadPage, { key: threadId, thread }));
     // ...
     await set(thread.loadMessages$, signal);
   },

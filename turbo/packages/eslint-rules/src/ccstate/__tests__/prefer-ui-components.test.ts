@@ -52,7 +52,7 @@ ruleTester.run("prefer-ui-components", rule, {
     {
       code: `
         const card = (
-          <button className="zero-card flex flex-col p-4 text-left hover:bg-state-hover">
+          <button className="sample-card flex flex-col p-4 text-left hover:bg-state-hover">
             {body}
           </button>
         );

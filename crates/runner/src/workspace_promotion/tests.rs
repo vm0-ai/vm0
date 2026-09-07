@@ -1,4 +1,6 @@
-use super::test_support::{TEST_WORKSPACE_IMAGE_SIZE_BYTES, WorkspacePromotionFixture};
+use super::test_support::{
+    TEST_WORKSPACE_IMAGE_SIZE_BYTES, WorkspacePromotionFixture, test_restored_session_identity,
+};
 use super::*;
 
 use std::os::unix::fs::PermissionsExt;
@@ -13,10 +15,9 @@ use api_contracts::generated::constants::runners::{
 use async_trait::async_trait;
 use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
-    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistoryFramework,
-    SessionHistoryIdentity, SessionHistoryRefKind, SessionHistorySidecarExportFailure,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
     SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
-    SessionHistorySidecarRepresentation, SessionHistorySourceRef,
+    SessionHistorySidecarRepresentation,
 };
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
@@ -26,7 +27,6 @@ use sandbox::{
 use sandbox_mock::{
     ExecMatcher, MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides,
 };
-use sha2::{Digest, Sha256};
 use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 
@@ -58,28 +58,6 @@ async fn mock_sandbox_with_overrides(
         })
         .await
         .expect("create sandbox")
-}
-
-fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredSessionIdentity {
-    let metadata = SessionHistoryIdentity::new(
-        SessionHistoryFramework::ClaudeCode,
-        hex::encode(Sha256::digest(session_id.as_bytes())),
-        SessionHistoryRefKind::Blob,
-        hex::encode(Sha256::digest(history)),
-        history.len() as u64,
-        SessionHistorySourceRef::ClaudeCode {
-            config_dir: "/home/user/.claude".to_string(),
-            working_dir: CANONICAL_WORKING_DIR.to_string(),
-            session_id: session_id.to_string(),
-        },
-    )
-    .unwrap();
-    RestoredSessionIdentity::from_final_metadata(
-        metadata,
-        "/home/user/.vm0/guest-agent/runs/run-1/final-session-history-identity.json",
-        "/home/user/.vm0/guest-agent/runs/run-1",
-    )
-    .unwrap()
 }
 
 async fn prepare_and_publish_workspace_image(

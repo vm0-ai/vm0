@@ -65,6 +65,7 @@ import {
   type WorkspaceSearchChatThread,
 } from "../../signals/okou-page/workspace-chat-search.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   threadNumberShortcutsEnabled$,
   threadNumberShortcutIndex$,
@@ -1197,6 +1198,7 @@ export function ThreeColumnSearchDialog({
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const signal = useGet(pageSignal$);
   const filter = useGet(threeColumnSearchFilter$);
   const setFilter = useSet(setThreeColumnSearchFilter$);
   const threadLoadable = useLoadable(threeColumnSearchChatThreads$);
@@ -1346,7 +1348,9 @@ export function ThreeColumnSearchDialog({
         shouldFilter: false,
         loop: true,
         value: query,
-        onValueChange: setQuery,
+        onValueChange: (value) => {
+          detach(setQuery(value, signal), Reason.DomCallback);
+        },
       }}
     >
       <div

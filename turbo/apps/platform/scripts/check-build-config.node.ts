@@ -391,9 +391,9 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
   const criticalStyleIndex = htmlSource.indexOf(
     '<style id="app-bootstrap-critical-styles">',
   );
-  const stylesheetIndex = htmlSource.indexOf('id="vm0-main-stylesheet"');
+  const stylesheetIndex = htmlSource.indexOf('id="okou-main-stylesheet"');
   const stylesheetLoaderIndex = htmlSource.indexOf(
-    'id="vm0-main-stylesheet-loader"',
+    'id="okou-main-stylesheet-loader"',
   );
   const clerkCoreIndex = htmlSource.indexOf('id="okou-clerk-core-script"');
   const clerkBootstrapIndex = htmlSource.indexOf(
@@ -413,7 +413,7 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
   assert.ok(skeletonIndex > headEndIndex);
   assert.match(
     htmlSource,
-    /<link id="vm0-main-stylesheet" rel="preload" as="style"[^>]*>/u,
+    /<link id="okou-main-stylesheet" rel="preload" as="style"[^>]*>/u,
   );
   assert.equal((htmlSource.match(/<link rel="stylesheet"/gu) ?? []).length, 0);
   assert.doesNotMatch(htmlSource, /\sfetchpriority=/u);

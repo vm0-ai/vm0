@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.187.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.15...runner-rs-v0.187.0) (2026-09-07)
+
+
+### Features
+
+* **rpc:** add generic guest-to-runner transport and sandbox fencing ([#32161](https://github.com/vm0-ai/vm0/issues/32161)) ([847d733](https://github.com/vm0-ai/vm0/commit/847d733315462a73b0aae20f992737b9df289bf9))
+* **runner:** distinguish blank sandboxes in doctor and monitoring ([#32092](https://github.com/vm0-ai/vm0/issues/32092)) ([febec8a](https://github.com/vm0-ai/vm0/commit/febec8a3399be74b0f14a89cb9f42e39dd5ce69f))
+
+
+### Bug Fixes
+
+* **firewall:** attribute auth fetch deadlines ([#32195](https://github.com/vm0-ai/vm0/issues/32195)) ([c3c8778](https://github.com/vm0-ai/vm0/commit/c3c8778e1352786e8c21d868531656f79a9624a7))
+* **runner:** expose api transport failure causes ([#32188](https://github.com/vm0-ai/vm0/issues/32188)) ([ecbe1ff](https://github.com/vm0-ai/vm0/commit/ecbe1ff6cacdb9b251aff1e37217eab41366b158))
+
 ## [0.186.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.14...runner-rs-v0.186.15) (2026-09-07)
 
 ## [0.186.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.13...runner-rs-v0.186.14) (2026-09-07)

@@ -1,7 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
 
-import { isImageUrl, isSafeMediaUrl } from "../lib/media-url.ts";
+import { isSafeMediaUrl } from "../lib/media-url.ts";
 
 /**
  * Load state of one presented image. The owner that prepares an image for
@@ -78,18 +78,11 @@ function mediaImageUrl(node: Element): string | undefined {
     const src = node.properties.src;
     return typeof src === "string" && isSafeMediaUrl(src) ? src : undefined;
   }
-  if (node.tagName === "a") {
-    const href = node.properties.href;
-    return typeof href === "string" && isSafeMediaUrl(href) && isImageUrl(href)
-      ? href
-      : undefined;
-  }
   return undefined;
 }
 
 /**
- * Attach load signals to every node the media renderers show as an inline
- * image preview: `<img>` elements and links whose destination is an image.
+ * Attach load signals to image nodes on surfaces without artifact signals.
  */
 export function embedImageLoadSignals(
   tree: Root,
@@ -97,7 +90,7 @@ export function embedImageLoadSignals(
 ): void {
   const visitNode = (node: Root | Element): void => {
     for (const child of node.children) {
-      if (child.type !== "element") {
+      if (child.type !== "element" || child.data?.card) {
         continue;
       }
       const url = mediaImageUrl(child);

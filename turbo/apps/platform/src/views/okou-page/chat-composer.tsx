@@ -2483,7 +2483,7 @@ function applyPresentationTemplateThumbnailTheme(
   themeVariables: PresentationTemplateThemeVariables,
 ): void {
   const root = host.shadowRoot?.querySelector<HTMLElement>(
-    ".vm0-shadow-preview-root",
+    ".presentation-template-shadow-preview-root",
   );
   if (root === undefined || root === null) {
     return;
@@ -2524,7 +2524,7 @@ function renderPresentationTemplateShadowThumbnail(
       position: relative;
       width: 100%;
     }
-    .vm0-shadow-preview-root {
+    .presentation-template-shadow-preview-root {
       background: #fff;
       height: 100%;
       inset: 0;
@@ -2534,10 +2534,10 @@ function renderPresentationTemplateShadowThumbnail(
       user-select: none;
       width: 100%;
     }
-    .vm0-shadow-preview-root *,
-    .vm0-shadow-preview-root *:hover,
-    .vm0-shadow-preview-root *:focus,
-    .vm0-shadow-preview-root *:focus-visible {
+    .presentation-template-shadow-preview-root *,
+    .presentation-template-shadow-preview-root *:hover,
+    .presentation-template-shadow-preview-root *:focus,
+    .presentation-template-shadow-preview-root *:focus-visible {
       caret-color: transparent !important;
       outline: 0 !important;
       pointer-events: none !important;
@@ -2550,13 +2550,13 @@ function renderPresentationTemplateShadowThumbnail(
     if (clone instanceof HTMLStyleElement && clone.textContent !== null) {
       clone.textContent = clone.textContent.replaceAll(
         ":root",
-        ":host, .vm0-shadow-preview-root",
+        ":host, .presentation-template-shadow-preview-root",
       );
     }
     shadow.append(clone);
   }
   const root = document.createElement("div");
-  root.className = "vm0-shadow-preview-root";
+  root.className = "presentation-template-shadow-preview-root";
   root.append(
     ...Array.from(doc.body.childNodes).map((node) => {
       return node.cloneNode(true);

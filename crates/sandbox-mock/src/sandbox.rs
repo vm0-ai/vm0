@@ -647,6 +647,7 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
+        wait_lifecycle_gate(&o.lifecycle.stop_gate).await;
         o.lifecycle.stop_behaviors.next_result(())
     }
 
@@ -752,6 +753,7 @@ impl Sandbox for MockSandbox {
             .lock_ignoring_poison()
             .push(self.run_control_id.clone());
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
+        wait_lifecycle_gate(&o.lifecycle.unpark_gate).await;
         o.lifecycle.unpark_behaviors.next_result(())
     }
 

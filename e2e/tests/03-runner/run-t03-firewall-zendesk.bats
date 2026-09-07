@@ -39,11 +39,11 @@ set -euo pipefail
 printf 'ZENDESK_API_TOKEN=%s\n' "$ZENDESK_API_TOKEN"
 printf 'ZENDESK_EMAIL=%s\n' "$ZENDESK_EMAIL"
 printf 'ZENDESK_SUBDOMAIN=%s\n' "$ZENDESK_SUBDOMAIN"
-# A Zendesk response is outside this test's contract. Use the real templated
-# authority so credential injection follows the normal upstream binding path,
-# while keeping the request on IPv4 and bounding the third-party wait.
+# A Zendesk response is outside this test's contract. Keep the request on the
+# real IPv4 authority and outlive the proxy's 10-second firewall-auth deadline,
+# so auth reaches a decision before this shell can complete the run.
 curl_status=0
-curl --ipv4 --silent --show-error --max-time 5 \
+curl --ipv4 --silent --show-error --max-time 15 \
     --output /dev/null \
     "https://__SUBDOMAIN__.zendesk.com/api/v2/users/me.json" || curl_status=$?
 printf 'ZENDESK_REQUEST_SENT=%s\n' "$curl_status"

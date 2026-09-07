@@ -1,15 +1,48 @@
 import { command, computed, state } from "ccstate";
+import { debounceCommand } from "../command-scheduling.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { resetSignal } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
 // ---------------------------------------------------------------------------
 const internalChatListQuery$ = state("");
+const internalDebouncedChatListQuery$ = state(Promise.resolve(""));
+const resetChatListQueryDebounce$ = resetSignal();
+const CHAT_LIST_QUERY_DEBOUNCE_MS = 300;
+
 export const chatListQuery$ = computed((get) => {
   return get(internalChatListQuery$);
 });
-export const setChatListQuery$ = command(({ set }, query: string) => {
-  set(internalChatListQuery$, query);
+
+export const debouncedChatListQuery$ = computed((get) => {
+  return get(internalDebouncedChatListQuery$);
+});
+
+const readChatListQuery$ = command(({ get }, _signal: AbortSignal) => {
+  return get(chatListQuery$).trim().toLowerCase();
+});
+const debounceChatListQuery$ = debounceCommand(
+  readChatListQuery$,
+  CHAT_LIST_QUERY_DEBOUNCE_MS,
+);
+
+export const setChatListQuery$ = command(
+  ({ set }, query: string, signal: AbortSignal) => {
+    set(internalChatListQuery$, query);
+    const debounceSignal = set(resetChatListQueryDebounce$, signal);
+    const debouncedQuery = query.trim()
+      ? set(debounceChatListQuery$, debounceSignal)
+      : Promise.resolve("");
+    set(internalDebouncedChatListQuery$, debouncedQuery);
+    return debouncedQuery;
+  },
+);
+
+export const clearChatListQuery$ = command(({ set }) => {
+  set(resetChatListQueryDebounce$);
+  set(internalDebouncedChatListQuery$, Promise.resolve(""));
+  set(internalChatListQuery$, "");
 });
 
 // ---------------------------------------------------------------------------
@@ -161,6 +194,9 @@ export const threeColumnSearchOpen$ = computed((get) => {
   return get(internalThreeColumnSearchOpen$);
 });
 export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
+  if (!open) {
+    set(clearChatListQuery$);
+  }
   set(internalThreeColumnSearchOpen$, open);
 });
 
@@ -175,7 +211,7 @@ export const setThreeColumnSearchFilter$ = command(
 );
 
 export const openThreeColumnSearchDialog$ = command(({ set }) => {
-  set(internalChatListQuery$, "");
+  set(clearChatListQuery$);
   set(internalThreeColumnSearchFilter$, "all");
   set(internalThreeColumnSearchOpen$, true);
 });

@@ -33,8 +33,8 @@ cat > "$html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
 <meta name="okou-app-version" content="0.812.5">
-<link id="vm0-main-stylesheet" rel="preload" as="style" crossorigin href="https://static.test/okou-app/assets/index-QrSt7890.css">
-<script id="vm0-main-stylesheet-loader"></script>
+<link id="okou-main-stylesheet" rel="preload" as="style" crossorigin href="https://static.test/okou-app/assets/index-QrSt7890.css">
+<script id="okou-main-stylesheet-loader"></script>
 <script type="module" crossorigin src="https://static.test/okou-app/assets/app-AbCd1234.js"></script>
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
@@ -44,8 +44,8 @@ cat > "$old_html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">
 <meta name="okou-app-version" content="0.812.4">
-<link id="vm0-main-stylesheet" rel="preload" as="style" crossorigin href="https://static.test/okou-app/assets/index-Old12345.css">
-<script id="vm0-main-stylesheet-loader"></script>
+<link id="okou-main-stylesheet" rel="preload" as="style" crossorigin href="https://static.test/okou-app/assets/index-Old12345.css">
+<script id="okou-main-stylesheet-loader"></script>
 <script type="module" crossorigin src="https://static.test/okou-app/assets/app-Old12345.js"></script>
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">

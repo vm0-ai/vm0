@@ -85,6 +85,7 @@ function ForwardTargetPicker({
   const { t } = useTranslation();
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const signal = useGet(pageSignal$);
   const assistantName = useGet(assistantName$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const defaultAgentName = useLastResolved(defaultAgentName$) ?? assistantName;
@@ -107,7 +108,9 @@ function ForwardTargetPicker({
       shouldFilter={false}
       loop
       value={query}
-      onValueChange={setQuery}
+      onValueChange={(value) => {
+        detach(setQuery(value, signal), Reason.DomCallback);
+      }}
       className="min-h-0"
     >
       <div className="relative px-5 pb-4 pt-3">

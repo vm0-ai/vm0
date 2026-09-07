@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.315.7](https://github.com/vm0-ai/vm0/compare/cli-v9.315.6...cli-v9.315.7) (2026-09-07)
+
+
+### Refactoring
+
+* **image-recognition:** add canonical cli command ([#32218](https://github.com/vm0-ai/vm0/issues/32218)) ([e726c07](https://github.com/vm0-ai/vm0/commit/e726c07c01dd4d59df42aef0a64241f8b642fc70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.410.0
+    * @okouai/core bumped to 8.631.0
+    * @okouai/pi-agent-runtime bumped to 1.21.12
+
 ## [9.315.6](https://github.com/vm0-ai/vm0/compare/cli-v9.315.5...cli-v9.315.6) (2026-09-07)
 
 

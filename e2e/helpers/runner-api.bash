@@ -504,10 +504,11 @@ runner_e2e_wait_for_firewall_log() {
     local timeout_seconds="${6:-90}"
     local started_at=$SECONDS
     local last_logs='[]'
+    local failed_logs='[]'
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if last_logs=$(runner_e2e_network_logs "$run_id" 2>&1) &&
-            jq -e \
+        if last_logs=$(runner_e2e_network_logs "$run_id" 2>&1); then
+            if jq -e \
                 --arg firewallName "$firewall_name" \
                 --arg host "$host" \
                 --arg expectedUrlRewrite "$expected_url_rewrite" \
@@ -521,8 +522,26 @@ runner_e2e_wait_for_firewall_log() {
                     ($expectedUrlRewrite == "ignore" or
                         .auth_url_rewrite == ($expectedUrlRewrite == "true")))' \
                 <<<"$last_logs" >/dev/null; then
-            printf '%s\n' "$last_logs"
-            return 0
+                printf '%s\n' "$last_logs"
+                return 0
+            fi
+
+            if failed_logs=$(jq -ce \
+                --arg firewallName "$firewall_name" \
+                --arg host "$host" '
+                    [ .[]
+                    | select(
+                        .firewall_name == $firewallName and
+                        .host == $host and
+                        (.firewall_error // null) != null
+                    ) ]
+                    | select(length > 0)' \
+                <<<"$last_logs"); then
+                echo "Firewall ${firewall_name@Q} on ${host@Q} reported an error for run ${run_id}" >&2
+                echo "Matching network telemetry: ${failed_logs}" >&2
+                echo "Last network telemetry: ${last_logs}" >&2
+                return 1
+            fi
         fi
         sleep 2
     done
