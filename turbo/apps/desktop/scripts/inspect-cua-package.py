@@ -44,8 +44,10 @@ def signing(path):
             fields[key] = value
         if separator and key == "Authority":
             authorities.append(value)
+    # codesign prefixes an implicitly synthesized requirement with "# ".
+    # Preserve that distinction; an ad-hoc cdhash requirement is not a Team ID.
     designated = [line for line in (requirement.stdout + requirement.stderr).splitlines()
-                  if line.startswith("designated => ")]
+                  if line.startswith(("designated => ", "# designated => "))]
     if not fields.get("Identifier") or len(designated) != 1:
         raise InspectionError("code_signature_identity_missing")
     return {
@@ -55,7 +57,8 @@ def signing(path):
         "team": fields.get("TeamIdentifier"),
         "authorities": authorities,
         "cdhash": fields.get("CDHash"),
-        "designatedRequirement": designated[0].removeprefix("designated => "),
+        "designatedRequirement": designated[0].removeprefix("# ").removeprefix("designated => "),
+        "designatedRequirementImplicit": designated[0].startswith("# "),
     }
 
 

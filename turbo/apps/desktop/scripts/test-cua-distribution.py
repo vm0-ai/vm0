@@ -255,7 +255,8 @@ from pathlib import Path
 tool = Path(sys.argv[0]).name
 if tool == 'codesign':
     if os.environ.get('CUA_TEST_INVALID_SIGNATURE'): sys.exit(1)
-    if '--requirements' in sys.argv: print('designated => identifier "ai.okou.desktop"')
+    if '--requirements' in sys.argv:
+        print('designated => identifier "ai.okou.desktop"' if os.environ.get('CUA_TEST_EXPLICIT_REQUIREMENT') else '# designated => cdhash H"abc"')
     elif '--display' in sys.argv: print('Identifier=ai.okou.desktop\\nTeamIdentifier=not set\\nSignature=adhoc\\nCDHash=abc', file=sys.stderr)
 elif tool == 'lipo': print('arm64')
 else: sys.exit(1)
@@ -273,11 +274,17 @@ else: sys.exit(1)
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
         self.assertEqual(report["signature"]["kind"], "ad-hoc")
+        self.assertTrue(report["signature"]["designatedRequirementImplicit"])
+        self.assertEqual(report["signature"]["designatedRequirement"], 'cdhash H"abc"')
         self.assertEqual(report["gatekeeperAssessment"], "not-accepted")
         self.assertEqual(report["stapling"], "not-validated")
         self.assertTrue(report["archive"]["matchesInspectedApp"])
         self.assertEqual(report["archive"]["sha256"], hashlib.sha256(archive.read_bytes()).hexdigest())
         self.assertNotIn(str(self.root), result.stdout)
+        explicit = subprocess.run(args, env={**environment, "CUA_TEST_EXPLICIT_REQUIREMENT": "1"},
+                                  capture_output=True, text=True)
+        self.assertEqual(explicit.returncode, 0, explicit.stderr)
+        self.assertFalse(json.loads(explicit.stdout)["signature"]["designatedRequirementImplicit"])
         with zipfile.ZipFile(archive, "a") as output:
             output.writestr("Okou.app/Contents/unexpected", "tampered")
         result = subprocess.run(args, env=environment, capture_output=True, text=True)
