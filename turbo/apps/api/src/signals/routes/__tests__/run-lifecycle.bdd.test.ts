@@ -19159,7 +19159,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       }
     }
 
-    const oversizedInputFailures = [
+    const globallySuppressedFailures = [
       await completeFailure({ failureReason: "input_too_large" }),
       await completeFailure({
         modelProvider: "built-in",
@@ -19169,8 +19169,17 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         failureReason: "input_too_large",
         persistedModelProvider: "legacy-unknown-provider",
       }),
+      await completeFailure({ failureReason: "execution_timeout" }),
+      await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "execution_timeout",
+      }),
+      await completeFailure({
+        failureReason: "execution_timeout",
+        persistedModelProvider: "legacy-unknown-provider",
+      }),
     ];
-    for (const { runId } of oversizedInputFailures) {
+    for (const { runId } of globallySuppressedFailures) {
       for (const level of axiomLevels) {
         expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
       }
@@ -19191,7 +19200,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       }),
       await completeFailure({}),
       await completeFailure({ failureReason: "session_history_limit" }),
-      await completeFailure({ failureReason: "execution_timeout" }),
       await completeFailure({ failureReason: "unsupported_model" }),
     ];
     for (const control of visibleControls) {
