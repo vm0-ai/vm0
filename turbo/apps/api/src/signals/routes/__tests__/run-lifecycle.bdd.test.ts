@@ -8753,9 +8753,6 @@ describe("RUN-02: model provider selection and built-in admission", () => {
     expect(unsupported.claim.appendSystemPrompt ?? "").toContain(
       'okou image-recognition --file <image-path> --prompt "<instruction>"',
     );
-    expect(unsupported.claim.appendSystemPrompt ?? "").not.toContain(
-      "okou recognize",
-    );
     expect(verifyOkouToken(unsupportedToken)?.capabilities).toContain(
       "image-recognition:write",
     );

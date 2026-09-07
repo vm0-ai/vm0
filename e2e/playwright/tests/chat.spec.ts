@@ -1,5 +1,6 @@
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
+import { omitAppApiPrefetch } from "../lib/app-api-prefetch";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
@@ -20,6 +21,8 @@ test.describe("dark theme", () => {
   test.use({ colorScheme: "dark" });
 
   test("focused composer does not cast a dark veil", async ({ page }) => {
+    await omitAppApiPrefetch(page, appUrl);
+
     await page.route("**/api/user-preferences", async (route) => {
       if (route.request().method() !== "GET") {
         await route.continue();

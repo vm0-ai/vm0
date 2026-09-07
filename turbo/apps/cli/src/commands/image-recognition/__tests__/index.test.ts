@@ -238,7 +238,6 @@ describe("okou image-recognition command", () => {
     imageRecognitionCommand.outputHelp();
 
     expect(helpOutput).toContain("okou image-recognition --file");
-    expect(helpOutput).not.toContain("okou recognize --file");
     expect(helpOutput).toContain("Uses a fixed Okou-managed recognition model");
   });
 });

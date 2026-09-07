@@ -232,7 +232,16 @@ globalThis.HTMLRewriter = class HTMLRewriter {
         for (const { handler, selector } of handlers) {
           html = await rewriteHtml(html, selector, handler);
         }
-        controller.enqueue(new TextEncoder().encode(html));
+        const marker = "<!--okou-app-api-prefetch-->";
+        const markerIndex = html.indexOf(marker);
+        const encoder = new TextEncoder();
+        if (markerIndex === -1) {
+          controller.enqueue(encoder.encode(html));
+        } else {
+          const splitIndex = markerIndex + Math.floor(marker.length / 2);
+          controller.enqueue(encoder.encode(html.slice(0, splitIndex)));
+          controller.enqueue(encoder.encode(html.slice(splitIndex)));
+        }
         controller.close();
       },
     });
@@ -388,7 +397,7 @@ function clerkEdgeSessionJson(html) {
   return JSON.parse(matches[0][1]);
 }
 
-function appBootstrapJson(html, path) {
+function prefetchedApiJson(html, path) {
   for (const match of html.matchAll(
     /<script\b[^>]*data-okou-api-bootstrap=""[^>]*>([\s\S]*?)<\/script>/giu,
   )) {
@@ -397,7 +406,19 @@ function appBootstrapJson(html, path) {
       return JSON.parse(match[1]);
     }
   }
-  throw new Error(`App bootstrap script is unavailable for ${path}`);
+  throw new Error(`Prefetched API script is unavailable for ${path}`);
+}
+
+function prefetchedApiPaths(html) {
+  return [
+    ...html.matchAll(/<script\b[^>]*data-okou-api-bootstrap=""[^>]*>/giu),
+  ].map((match) => {
+    const path = parseAttributes(match[0]).get("data-path");
+    if (path === undefined) {
+      throw new Error("Prefetched API script path is unavailable");
+    }
+    return decodeURIComponent(path);
+  });
 }
 
 async function responseSnapshot(targetWorker, url, env) {
@@ -767,9 +788,10 @@ for (const unchanged of [
 }
 
 const currentUserId = "user_current</script><script>alert(1)</script>";
+const escapedScript = currentUserId.slice("user_current".length);
 const currentSessionId = "sess_current";
-const emptyBootstrapFetcher = () => {
-  return Promise.resolve(Response.json({ responses: [] }));
+const failedApiFetcher = () => {
+  return Promise.resolve(new Response(null, { status: 402 }));
 };
 const authenticatedWorker = workerModule.createWorker(
   embeddedShell,
@@ -807,7 +829,7 @@ const authenticatedWorker = workerModule.createWorker(
       },
     };
   },
-  emptyBootstrapFetcher,
+  failedApiFetcher,
 );
 const authenticated = await responseSnapshot(
   authenticatedWorker,
@@ -858,6 +880,7 @@ const productionEdgeWorker = workerModule.createWorker(
           isAuthenticated: true,
           toAuth() {
             return {
+              orgId: "org_production",
               sessionId: "sess_production",
               userId: "user_production",
             };
@@ -866,7 +889,7 @@ const productionEdgeWorker = workerModule.createWorker(
       },
     };
   },
-  emptyBootstrapFetcher,
+  failedApiFetcher,
 );
 const productionAuthenticated = await responseSnapshot(
   productionEdgeWorker,
@@ -894,7 +917,7 @@ const authenticatedWithoutSession = await responseSnapshot(
         return { userId: "user_without_session", sessionId: null };
       },
     }),
-    emptyBootstrapFetcher,
+    failedApiFetcher,
   ),
   edgePreviewUrl,
   edgePreviewEnvironment,
@@ -909,73 +932,229 @@ assert.equal(
 );
 assertNoClerkSecrets(authenticatedWithoutSession);
 
-const bootstrapPagePath =
-  "/agents/agent-1/chat?x-vercel-protection-bypass=query-secret&keep=value";
-let observedBootstrapRequest = null;
-const bootstrapWorker = workerModule.createWorker(
+let apiFetchCallsWithoutOrganization = 0;
+const authenticatedWithoutOrganization = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers(),
+      isAuthenticated: true,
+      toAuth() {
+        return {
+          userId: "user_without_organization",
+          sessionId: "sess_without_organization",
+          orgId: null,
+        };
+      },
+    }),
+    () => {
+      apiFetchCallsWithoutOrganization += 1;
+      return Promise.resolve(Response.json({}));
+    },
+  ),
+  edgePreviewUrl,
+  edgePreviewEnvironment,
+);
+assert.deepEqual(clerkEdgeSessionJson(authenticatedWithoutOrganization.body), {
+  userId: "user_without_organization",
+  sessionId: "sess_without_organization",
+});
+assert.equal(apiFetchCallsWithoutOrganization, 0);
+assertNoClerkSecrets(authenticatedWithoutOrganization);
+
+const prefetchPagePath =
+  "/settings/profile?x-vercel-protection-bypass=query-secret&keep=value";
+const agentBody = Promise.withResolvers();
+const featureSwitchesBody = Promise.withResolvers();
+const observedApiRequests = [];
+const apiRequestsStarted = Promise.withResolvers();
+const prefetchWorker = workerModule.createWorker(
   embeddedShell,
   clerkClientReturning({
     headers: new Headers(),
     isAuthenticated: true,
     toAuth() {
-      return { userId: "user_bootstrap", sessionId: "sess_bootstrap" };
+      return {
+        userId: "user_prefetch",
+        sessionId: "sess_prefetch",
+        orgId: "org_prefetch",
+      };
     },
   }),
   (input, init) => {
-    observedBootstrapRequest = {
+    const url = new URL(input);
+    observedApiRequests.push({
       headers: new Headers(init?.headers),
-      url: new URL(input),
-    };
-    return Promise.resolve(
-      Response.json({
-        responses: [
-          {
-            method: "GET",
-            path: "/api/feature-switches",
-            contentType: "application/json",
-            body: {
-              switches: { escaped: "</script><script>alert(1)</script>" },
-              effectiveSwitches: {},
-            },
-          },
-        ],
-      }),
-    );
+      method: init?.method,
+      url,
+    });
+    if (observedApiRequests.length === 3) {
+      apiRequestsStarted.resolve();
+    }
+    if (url.pathname === "/api/agents") {
+      return {
+        ok: true,
+        json() {
+          return agentBody.promise;
+        },
+      };
+    }
+    if (url.pathname === "/api/feature-switches") {
+      return {
+        ok: true,
+        json() {
+          return featureSwitchesBody.promise;
+        },
+      };
+    }
+    return new Response(null, { status: 402 });
   },
 );
-const bootstrapped = await responseSnapshot(
-  bootstrapWorker,
-  `${edgePreviewOrigin}${bootstrapPagePath}`,
+const prefetchedResponse = await prefetchWorker.fetch(
+  new Request(`${edgePreviewOrigin}${prefetchPagePath}`, {
+    headers: {
+      Cookie:
+        "__session=jwt-cookie-must-not-render; __clerk_db_jwt=dev-browser-jwt-must-not-render",
+    },
+  }),
   edgePreviewEnvironment,
 );
-assert.equal(observedBootstrapRequest?.url.origin, previewOrigin);
-assert.equal(observedBootstrapRequest?.url.pathname, "/api/bootstrap");
-assert.equal(
-  observedBootstrapRequest?.url.searchParams.get("path"),
-  bootstrapPagePath,
-);
-assert.equal(
-  observedBootstrapRequest?.headers.get("Origin"),
-  edgePreviewOrigin,
-);
-assert.equal(
-  observedBootstrapRequest?.headers.get("Cookie"),
-  "__session=jwt-cookie-must-not-render; __clerk_db_jwt=dev-browser-jwt-must-not-render",
-);
-assert.equal(
-  observedBootstrapRequest?.headers.get("x-vercel-protection-bypass"),
-  "query-secret",
-);
-assert.doesNotMatch(bootstrapped.body, /id="app-bootstrap-skeleton"/u);
-assert.deepEqual(appBootstrapJson(bootstrapped.body, "/api/feature-switches"), {
-  switches: { escaped: "</script><script>alert(1)</script>" },
+await apiRequestsStarted.promise;
+assert.deepEqual(observedApiRequests.map(({ url }) => url.pathname).sort(), [
+  "/api/agents",
+  "/api/feature-switches",
+  "/api/user-preferences",
+]);
+for (const { headers, method, url } of observedApiRequests) {
+  assert.equal(url.origin, previewOrigin);
+  assert.equal(url.search, "");
+  assert.equal(method, "GET");
+  assert.equal(headers.get("Origin"), edgePreviewOrigin);
+  assert.equal(
+    headers.get("Cookie"),
+    "__session=jwt-cookie-must-not-render; __clerk_db_jwt=dev-browser-jwt-must-not-render",
+  );
+  assert.equal(headers.get("x-vercel-protection-bypass"), "query-secret");
+}
+const prefetchedReader = prefetchedResponse.body.getReader();
+const prefetchedDecoder = new TextDecoder();
+const firstPrefixChunk = await prefetchedReader.read();
+assert.equal(firstPrefixChunk.done, false);
+const secondPrefixChunk = await prefetchedReader.read();
+assert.equal(secondPrefixChunk.done, false);
+const prefixHtml =
+  prefetchedDecoder.decode(firstPrefixChunk.value, { stream: true }) +
+  prefetchedDecoder.decode(secondPrefixChunk.value, { stream: true });
+assert.match(prefixHtml, /id="root"/u);
+assert.match(prefixHtml, /id="app-bootstrap-skeleton"/u);
+assert.doesNotMatch(prefixHtml, /data-okou-api-bootstrap/u);
+assert.doesNotMatch(prefixHtml, /<\/body>/u);
+
+agentBody.resolve([{ agentId: "agent-prefetched" }]);
+const agentChunk = await prefetchedReader.read();
+assert.equal(agentChunk.done, false);
+const agentHtml = prefetchedDecoder.decode(agentChunk.value, { stream: true });
+assert.deepEqual(prefetchedApiPaths(agentHtml), ["/api/agents"]);
+assert.deepEqual(prefetchedApiJson(agentHtml, "/api/agents"), [
+  { agentId: "agent-prefetched" },
+]);
+assert.doesNotMatch(agentHtml, /api%2Ffeature-switches/u);
+
+featureSwitchesBody.resolve({
+  switches: { escaped: escapedScript },
   effectiveSwitches: {},
 });
-assert.doesNotMatch(bootstrapped.body, /<script>alert\(1\)<\/script>/u);
-assert.ok(
-  bootstrapped.body.indexOf("data-okou-api-bootstrap") <
-    bootstrapped.body.indexOf('id="root"'),
+const featureSwitchesChunk = await prefetchedReader.read();
+assert.equal(featureSwitchesChunk.done, false);
+const featureSwitchesHtml = prefetchedDecoder.decode(
+  featureSwitchesChunk.value,
+  { stream: true },
 );
+assert.deepEqual(prefetchedApiPaths(featureSwitchesHtml), [
+  "/api/feature-switches",
+]);
+assert.deepEqual(
+  prefetchedApiJson(featureSwitchesHtml, "/api/feature-switches"),
+  {
+    switches: { escaped: escapedScript },
+    effectiveSwitches: {},
+  },
+);
+
+let suffixHtml = "";
+while (true) {
+  const suffixChunk = await prefetchedReader.read();
+  if (suffixChunk.done) {
+    break;
+  }
+  suffixHtml += prefetchedDecoder.decode(suffixChunk.value, { stream: true });
+}
+suffixHtml += prefetchedDecoder.decode();
+const prefetchedHtml = `${prefixHtml}${agentHtml}${featureSwitchesHtml}${suffixHtml}`;
+assert.match(suffixHtml, /<\/body>/u);
+assert.deepEqual(prefetchedApiPaths(prefetchedHtml), [
+  "/api/agents",
+  "/api/feature-switches",
+]);
+assert.doesNotMatch(prefetchedHtml, /api%2Fuser-preferences/u);
+assert.doesNotMatch(prefetchedHtml, /<script>alert\(1\)<\/script>/u);
+assert.ok(
+  prefetchedHtml.indexOf('id="app-bootstrap-skeleton"') <
+    prefetchedHtml.indexOf("data-okou-api-bootstrap"),
+);
+
+const timedOutPrefetch = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers(),
+      isAuthenticated: true,
+      toAuth() {
+        return {
+          userId: "user_prefetch_timeout",
+          sessionId: "sess_prefetch_timeout",
+          orgId: "org_prefetch_timeout",
+        };
+      },
+    }),
+    (input, init) => {
+      const path = new URL(input).pathname;
+      if (path === "/api/feature-switches") {
+        return Promise.resolve(
+          Response.json({ switches: {}, effectiveSwitches: {} }),
+        );
+      }
+      if (path !== "/api/agents") {
+        return Promise.resolve(new Response(null, { status: 402 }));
+      }
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener(
+          "abort",
+          () => {
+            reject(new Error("App API prefetch deadline reached"));
+          },
+          { once: true },
+        );
+      });
+    },
+  ),
+  edgePreviewUrl,
+  edgePreviewEnvironment,
+);
+assert.match(timedOutPrefetch.body, /id="app-bootstrap-skeleton"/u);
+assert.deepEqual(prefetchedApiPaths(timedOutPrefetch.body), [
+  "/api/feature-switches",
+]);
+assert.deepEqual(
+  prefetchedApiJson(timedOutPrefetch.body, "/api/feature-switches"),
+  { switches: {}, effectiveSwitches: {} },
+);
+assert.doesNotMatch(timedOutPrefetch.body, /api%2Fagents/u);
+assert.doesNotMatch(timedOutPrefetch.body, /api%2Fuser-preferences/u);
+assert.deepEqual(clerkEdgeSessionJson(timedOutPrefetch.body), {
+  userId: "user_prefetch_timeout",
+  sessionId: "sess_prefetch_timeout",
+});
 
 const embeddedServiceWorker = await embeddedWorker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),

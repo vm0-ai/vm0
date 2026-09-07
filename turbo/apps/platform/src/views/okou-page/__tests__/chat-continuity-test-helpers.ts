@@ -34,6 +34,7 @@ interface ContinuityDraftPatch {
 interface ContinuityWorkspaceOptions {
   readonly caseId: number;
   readonly threads: readonly ChatThreadSnapshotProjection[];
+  readonly chatListRemoteGate?: Promise<void>;
   readonly drafts?: ReadonlyMap<string, ChatThreadDraft>;
   readonly beforeDraftResponse?: (threadId: string) => Promise<void>;
   readonly beforeMetadataResponse?: (threadId: string) => Promise<void>;
@@ -193,6 +194,7 @@ export async function installContinuityWorkspace(
   installChatListStream(context, {
     caseId: options.caseId,
     snapshot: options.threads,
+    remoteGate: options.chatListRemoteGate,
   });
   installActiveChatBoundaries(context);
 
