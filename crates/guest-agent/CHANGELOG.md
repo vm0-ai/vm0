@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.4...guest-agent-v0.86.5) (2026-09-07)
+
+
+### Refactoring
+
+* remove retired fable 5 runtime definitions ([#32210](https://github.com/vm0-ai/vm0/issues/32210)) ([785a8f8](https://github.com/vm0-ai/vm0/commit/785a8f86e9f531445c1c25ffc46509d59dbddc58))
+
 ## [0.86.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.3...guest-agent-v0.86.4) (2026-09-07)
 
 

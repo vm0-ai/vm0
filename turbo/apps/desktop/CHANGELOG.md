@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.46.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.33...desktop-v0.46.34) (2026-09-07)
+
+
+### Bug Fixes
+
+* **desktop:** exit helper cleanly on broken stdout ([#32197](https://github.com/vm0-ai/vm0/issues/32197)) ([1df0c7d](https://github.com/vm0-ai/vm0/commit/1df0c7df5d1dc362ed2755af82520f244acd792a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.6
+
 ## [0.46.33](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.32...desktop-v0.46.33) (2026-09-07)
 
 
