@@ -2049,6 +2049,7 @@
       "style": {
         "auto": "Deixar o Okou escolher",
         "autoDescription": "Adapte a direção visual às suas instruções e materiais",
+        "browseGroups": "Explorar grupos de estilos",
         "description": "O estilo influencia o modelo visual usado pelo agente — cenas, transições, sobreposições de texto e ritmo seguem o sistema de design do estilo.",
         "groups": {
           "cinematic": "Cinema e fotografia",

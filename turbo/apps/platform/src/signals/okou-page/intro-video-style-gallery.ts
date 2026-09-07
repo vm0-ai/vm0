@@ -46,7 +46,9 @@ function createIntroVideoStyleGallerySignals() {
           requestedTokens.add(token);
         }
       } while (token !== null);
-      return styles;
+      return styles.filter((style) => {
+        return style.aspectRatio !== "9:16";
+      });
     }),
     reload$: command(({ set }) => {
       set(internalReload$, (revision) => {

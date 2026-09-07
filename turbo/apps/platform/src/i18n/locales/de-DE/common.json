@@ -2017,6 +2017,7 @@
       "style": {
         "auto": "Okou wählen lassen",
         "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
+        "browseGroups": "Stilgruppen durchsuchen",
         "description": "Der Stil beeinflusst die visuelle Vorlage des Agenten — Szenen, Übergänge, Texteinblendungen und Tempo folgen dem Designsystem des Stils.",
         "groups": {
           "cinematic": "Film und Fotografie",

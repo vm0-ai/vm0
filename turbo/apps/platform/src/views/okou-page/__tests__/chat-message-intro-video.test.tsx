@@ -370,7 +370,7 @@ test("The whole upload area opens the file picker and still accepts drops", asyn
   expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
 });
 
-test("Styles from every catalog page are grouped by tag across aspect ratios", async () => {
+test("Style groups include every catalog page and exclude portrait references", async () => {
   installIntroVideoFixture();
   const nextPage = createDeferredPromise<void>(context.signal);
   context.mocks.api(
@@ -385,6 +385,12 @@ test("Styles from every catalog page are grouped by tag across aspect ratios", a
               id: "portrait",
               name: "Portrait film",
               aspectRatio: "9:16",
+              tags: ["cinematic"],
+            },
+            {
+              id: "second-landscape",
+              name: "Second landscape film",
+              aspectRatio: "16:9",
               tags: ["cinematic"],
             },
             { id: "paper", name: "Paper craft", tags: ["handmade"] },
@@ -437,8 +443,11 @@ test("Styles from every catalog page are grouped by tag across aspect ratios", a
     requiredButtonNamed("Select style Landscape film", cinematic),
   ).toHaveTextContent("16:9");
   expect(
-    requiredButtonNamed("Select style Portrait film", cinematic),
-  ).toHaveTextContent("9:16");
+    requiredButtonNamed("Select style Second landscape film", cinematic),
+  ).toHaveTextContent("16:9");
+  expect(
+    within(picker).queryByLabelText("Select style Portrait film"),
+  ).toBeNull();
   for (const [group, style] of [
     ["Handmade and materials", "Paper craft"],
     ["Retro tech and interfaces", "Pixel screen"],
@@ -459,8 +468,10 @@ test("Styles from every catalog page are grouped by tag across aspect ratios", a
   expect(
     requiredButtonNamed("Select style New provider category", other),
   ).toBeVisible();
-  click(requiredButtonNamed("Select style Portrait film", cinematic));
-  expect(requiredButtonNamed("Style reference: Portrait film")).toBeVisible();
+  click(requiredButtonNamed("Select style Second landscape film", cinematic));
+  expect(
+    requiredButtonNamed("Style reference: Second landscape film"),
+  ).toBeVisible();
 });
 
 test("A failed later style page can retry and show the complete catalog", async () => {
@@ -793,9 +804,7 @@ test("Selecting a landscape style from a tag group preserves the explicit portra
   expect(
     requiredButtonNamed("Select style Wide story", group),
   ).toHaveTextContent("16:9");
-  expect(
-    requiredButtonNamed("Select style Tall story", group),
-  ).toHaveTextContent("9:16");
+  expect(within(picker).queryByLabelText("Select style Tall story")).toBeNull();
   await user.click(within(picker).getByLabelText("Select style Wide story"));
   await user.click(requiredButtonNamed("Create video", dialog));
   await waitFor(() => {

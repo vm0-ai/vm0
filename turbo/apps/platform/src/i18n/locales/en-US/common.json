@@ -2017,6 +2017,7 @@
       "style": {
         "auto": "Let Okou choose",
         "autoDescription": "Match a visual direction to your prompt and material",
+        "browseGroups": "Browse style groups",
         "description": "The style influences the visual template the agent uses — scenes, transitions, text overlays, and pacing will follow the style’s design system.",
         "groups": {
           "cinematic": "Film and photography",

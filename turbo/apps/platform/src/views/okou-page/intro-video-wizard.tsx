@@ -59,7 +59,10 @@ import {
 } from "./avatar-template-picker.tsx";
 import { IntroVideoAvatarGroupCard } from "./intro-video-avatar-group-card.tsx";
 import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
-import { IntroVideoStyleGallery } from "./intro-video-style-gallery.tsx";
+import {
+  IntroVideoStyleGallery,
+  IntroVideoStyleTagNavigation,
+} from "./intro-video-style-gallery.tsx";
 
 function formatBytes(size: number): string {
   if (size < 1024) {
@@ -694,6 +697,7 @@ function PickerDialog({
             {pickerTitle(t, picker)}
           </DialogTitle>
         </DialogHeader>
+        {picker === "style" ? <IntroVideoStyleTagNavigation /> : null}
         <div
           data-intro-video-catalog-scroll=""
           className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
