@@ -2295,9 +2295,9 @@
     },
     "taskEntries": {
       "avatar": "बोलता अवतार",
+      "browseTemplates": "टेम्पलेट देखें",
       "browseWorkflows": "वर्कफ़्लो देखें",
       "chooseTask": "काम चुनें",
-      "chooseTemplate": "टेम्पलेट चुनें",
       "clearTask": "काम हटाएँ",
       "hints": {
         "image": "मनचाही इमेज बताएँ। संदर्भ हो तो जोड़ें।",
@@ -2322,6 +2322,14 @@
         "workflow": "वर्कफ़्लो"
       },
       "more": "और",
+      "templateHeadings": {
+        "image": "इमेज शैलियाँ",
+        "slides": "प्रस्तुति शैलियाँ",
+        "video": "वीडियो शैलियाँ",
+        "website": "वेबसाइट शैलियाँ"
+      },
+      "templates": "टेम्पलेट",
+      "useTemplate": "{{title}} इस्तेमाल करें",
       "workflowDescription": "बार-बार किए जाने वाले कामों को वर्कफ़्लो में बदलें।",
       "workflowHeading": "आपका काम चलता रहे"
     },

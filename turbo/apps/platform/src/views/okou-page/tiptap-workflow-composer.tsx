@@ -13,6 +13,7 @@ import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/okou-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/okou-page/chat-thread-suggestion-domain.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
+import type { ComposerTask } from "../../signals/okou-page/composer-task.ts";
 import { ComposerMentionSuggestionMenu } from "./chat-thread-suggestion.tsx";
 import {
   buildComposerSlashWorkflows,
@@ -127,7 +128,18 @@ function ComposerSuggestionCaretAnchor({
   return virtualRef ? <PopoverAnchor virtualRef={virtualRef} /> : null;
 }
 
-function workflowComposerPlaceholder(sending: boolean | undefined): string {
+function workflowComposerPlaceholder(
+  sending: boolean | undefined,
+  task: ComposerTask | null,
+): string {
+  if (!sending && task !== null) {
+    return i18n.t(
+      ($) => {
+        return $.chat.taskEntries.hints;
+      },
+      { returnObjects: true },
+    )[task];
+  }
   return sending
     ? i18n.t(($) => {
         return $.workflows.composer.nextMessage;
@@ -160,6 +172,7 @@ function WorkflowComposerPlaceholder({
   sending: boolean | undefined;
 }) {
   useTranslation();
+  const task = useGet(composer.task.task$);
   const hasInput = useGet(composer.editor.hasInput$);
   const hasEditorContent = useEditorState({
     editor: composer.editor.editor,
@@ -175,12 +188,12 @@ function WorkflowComposerPlaceholder({
   }
   return (
     <div
-      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/40 new-ui:text-muted-foreground/80 ${
+      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 ${task === null ? "text-muted-foreground/40 new-ui:text-muted-foreground/80" : "text-muted-foreground"} ${
         hasTemplateAttachment ? "top-[54px]" : "top-0 pt-4"
       }`}
       aria-hidden="true"
     >
-      {workflowComposerPlaceholder(sending)}
+      {workflowComposerPlaceholder(sending, task)}
     </div>
   );
 }

@@ -2338,9 +2338,9 @@
     },
     "taskEntries": {
       "avatar": "Avatar parlante",
+      "browseTemplates": "Explorar plantillas",
       "browseWorkflows": "Explorar workflows",
       "chooseTask": "Elige una tarea",
-      "chooseTemplate": "Elegir plantilla",
       "clearTask": "Quitar tarea",
       "hints": {
         "image": "Describe la imagen que quieres. Añade una referencia si tienes.",
@@ -2365,6 +2365,14 @@
         "workflow": "Workflow"
       },
       "more": "Más",
+      "templateHeadings": {
+        "image": "Estilos de imagen",
+        "slides": "Estilos de presentación",
+        "video": "Estilos de vídeo",
+        "website": "Estilos de sitio web"
+      },
+      "templates": "Plantillas",
+      "useTemplate": "Usar {{title}}",
       "workflowDescription": "Convierte las tareas repetitivas en workflows.",
       "workflowHeading": "Deja que tu trabajo siga avanzando"
     },

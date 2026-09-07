@@ -6707,6 +6707,7 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const task = useGet(signals.task.task$);
   const open = useGet(signals.template.templatePickerOpen$);
   const skipEnterAnimation = useGet(
     signals.template.templatePickerSkipEnterAnimation$,
@@ -6733,40 +6734,42 @@ function TemplatePickerButton({
 
   return (
     <>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              iconSize="md"
-              className="shrink-0"
-              aria-label={t(($) => {
+      {task === null && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0"
+                aria-label={t(($) => {
+                  return $.artifacts.templates.template;
+                })}
+                aria-pressed={false}
+                onPointerEnter={prewarmPicker}
+                onFocus={prewarmPicker}
+                onPointerDown={prewarmPicker}
+                onClick={() => {
+                  prewarmPicker();
+                  openTemplatePicker({
+                    kind: "insert",
+                    category: selectedCategory,
+                  });
+                }}
+              >
+                <SwatchBook size={18} aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              {t(($) => {
                 return $.artifacts.templates.template;
               })}
-              aria-pressed={false}
-              onPointerEnter={prewarmPicker}
-              onFocus={prewarmPicker}
-              onPointerDown={prewarmPicker}
-              onClick={() => {
-                prewarmPicker();
-                openTemplatePicker({
-                  kind: "insert",
-                  category: selectedCategory,
-                });
-              }}
-            >
-              <SwatchBook size={18} aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="text-xs">
-            {t(($) => {
-              return $.artifacts.templates.template;
-            })}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
       {open && (
         <TemplatePickerDialog
           value={referenceValue ?? undefined}
@@ -10589,6 +10592,7 @@ function ComposerFooter({
   signals: ComposerSignals;
   actions: ComposerActions;
 }) {
+  const task = useGet(signals.task.task$);
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraft = useResolved(signals.voice.state$);
   const capture = useGet(signals.voice.capture$);
@@ -10620,7 +10624,7 @@ function ComposerFooter({
           <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
             <ComposerAttachButton signals={signals} />
             <ComposerTemplatePickerSlot signals={signals} />
-            <ComposerWorkflowPromptSlot signals={signals} />
+            {task === null && <ComposerWorkflowPromptSlot signals={signals} />}
             <ComposerConnectorsSlot signals={signals} />
             {/* Sits with the other input-scoped controls rather than beside
                 the model picker: it configures the message being written,

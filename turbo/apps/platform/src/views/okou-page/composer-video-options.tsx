@@ -522,7 +522,7 @@ export function ComposerInlineVideoOptions({
       aria-label={t(($) => {
         return $.chat.templates.videoOptions;
       })}
-      className="mb-2 flex flex-wrap items-center gap-2"
+      className="flex flex-wrap items-center gap-1.5"
     >
       <Button
         variant="quiet"

@@ -7,6 +7,9 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
 import { FeatureSwitchKey, VIDEO_TEMPLATE_ITEMS } from "@okouai/core";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
 import { expect, test } from "vitest";
 
 import {
@@ -284,9 +287,9 @@ test("Start a workflow without overwriting the draft or sending on selection", a
   const editor = await enterText("Summarize my inbox every morning.");
   const tasks = await screen.findByRole("group", { name: "Choose a task" });
   click(fastControl("button", "Workflow", tasks));
-  await screen.findByText(
-    "Describe the outcome and when it should run. Start with a draft.",
-  );
+  await waitFor(() => {
+    expect(fastControl("button", "Clear task")).toBeVisible();
+  });
   expect(editor).toHaveTextContent("Summarize my inbox every morning.");
   expect(submissions).toHaveLength(0);
   await sendCurrent(editor, "Summarize my inbox every morning.");
@@ -298,6 +301,158 @@ test("Start a workflow without overwriting the draft or sending on selection", a
     });
     expect(submissions[0]?.runOptions).toBeUndefined();
   });
+});
+
+test("Link task recommendations and the input hint while keeping the template library reachable", async () => {
+  installVideoEnvironment();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  await screen.findByRole("textbox", { name: "Message" });
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Video", tasks));
+  await expect(
+    screen.findByRole("region", { name: "Video styles" }),
+  ).resolves.toBeVisible();
+  expect(
+    screen.queryByRole("region", { name: "Let your work keep working" }),
+  ).not.toBeInTheDocument();
+  expect(fastControl("button", "Workflow", tasks)).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  expect(
+    screen.getByText(
+      "Describe your scene, then set the details for this video.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.queryByText("Ask me to automate workflows, manage tasks..."),
+  ).not.toBeInTheDocument();
+  expect(
+    queryAllByRoleFast("button").some((button) => {
+      return button.getAttribute("aria-label") === "Create workflow";
+    }),
+  ).toBeFalsy();
+  click(fastControl("button", "Templates"));
+  const library = await screen.findByRole("dialog");
+  click(fastControl("button", "Close", library));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  click(fastControl("button", "Clear task"));
+  await expect(
+    screen.findByRole("region", { name: "Let your work keep working" }),
+  ).resolves.toBeVisible();
+  expect(fastControl("button", "Template")).toBeVisible();
+  expect(fastControl("button", "Create workflow")).toBeVisible();
+});
+
+test.each([
+  {
+    task: "Slides",
+    heading: "Presentation styles",
+    template: PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
+    type: "presentation",
+    selection: {
+      templateId: PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!.templateId,
+    },
+  },
+  {
+    task: "Image",
+    heading: "Image styles",
+    template: ILLUSTRATION_TEMPLATE_ITEMS[0]!,
+    type: "illustration",
+    selection: {
+      illustrationStyleId: ILLUSTRATION_TEMPLATE_ITEMS[0]!.illustrationStyleId,
+    },
+  },
+  {
+    task: "Video",
+    heading: "Video styles",
+    template: VIDEO_TEMPLATE_ITEMS[0]!,
+    type: "video",
+    selection: { stylePresetId: VIDEO_TEMPLATE_ITEMS[0]!.id },
+  },
+  {
+    task: "Website",
+    heading: "Website styles",
+    template: WEBSITE_TEMPLATE_ITEMS[0]!,
+    type: "website",
+    selection: { websiteTemplateId: WEBSITE_TEMPLATE_ITEMS[0]!.id },
+  },
+])(
+  "Select and submit a $task recommendation without replacing the draft",
+  async ({ task, heading, template, type, selection }) => {
+    const submissions = installVideoSubmissionCapture();
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+    });
+    const prompt = "Use this style for my launch.";
+    const editor = await enterText(prompt);
+    const tasks = await screen.findByRole("group", { name: "Choose a task" });
+    click(fastControl("button", task, tasks));
+    const recommendations = await screen.findByRole("region", {
+      name: heading,
+    });
+    click(fastControl("button", `Use ${template.title}`, recommendations));
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(template.title);
+      expect(editor).toHaveTextContent(prompt);
+    });
+    expect(submissions).toHaveLength(0);
+    await sendCurrent(editor, prompt);
+    await waitFor(() => {
+      expect(submissions).toHaveLength(1);
+      expect(submissions[0]?.userMessage?.parts).toContainEqual({
+        type: "template",
+        titleSnapshot: template.title,
+        template: expect.objectContaining({
+          type,
+          selection: expect.objectContaining(selection),
+        }),
+      });
+    });
+  },
+);
+
+test("Keep the video plan gate on task recommendations", async () => {
+  const submissions = installVideoSubmissionCapture();
+  mockBillingCapabilities(
+    { supportByok: false, restrictedVm0Models: true },
+    "limited-free-1",
+  );
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ComposerTaskEntries]: true },
+  });
+  const editor = await enterText("Keep this draft.");
+  const tasks = await screen.findByRole("group", { name: "Choose a task" });
+  click(fastControl("button", "Video", tasks));
+  const recommendations = await screen.findByRole("region", {
+    name: "Video styles",
+  });
+  const title = VIDEO_TEMPLATE_ITEMS[0]!.title;
+  click(
+    await waitFor(() => {
+      return fastControl(
+        "button",
+        `View plans for video template ${title}`,
+        recommendations,
+      );
+    }),
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeVisible();
+  });
+  expect(composerInlineTemplates()).toHaveLength(0);
+  expect(editor).toHaveTextContent("Keep this draft.");
+  expect(submissions).toHaveLength(0);
 });
 
 test("Configure and submit a video directly from task entries on mobile", async () => {

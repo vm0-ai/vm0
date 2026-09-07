@@ -2338,9 +2338,9 @@
     },
     "taskEntries": {
       "avatar": "Avatar parlante",
+      "browseTemplates": "Esplora modelli",
       "browseWorkflows": "Esplora i workflow",
       "chooseTask": "Scegli un’attività",
-      "chooseTemplate": "Scegli un modello",
       "clearTask": "Rimuovi attività",
       "hints": {
         "image": "Descrivi l’immagine desiderata. Aggiungi un riferimento se disponibile.",
@@ -2365,6 +2365,14 @@
         "workflow": "Workflow"
       },
       "more": "Altro",
+      "templateHeadings": {
+        "image": "Stili di immagine",
+        "slides": "Stili di presentazione",
+        "video": "Stili di video",
+        "website": "Stili di sito web"
+      },
+      "templates": "Modelli",
+      "useTemplate": "Usa {{title}}",
       "workflowDescription": "Trasforma le attività ripetitive in workflow.",
       "workflowHeading": "Lascia che il lavoro continui"
     },

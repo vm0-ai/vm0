@@ -2295,9 +2295,9 @@
     },
     "taskEntries": {
       "avatar": "Talking avatar",
+      "browseTemplates": "Explore templates",
       "browseWorkflows": "Explore workflows",
       "chooseTask": "Choose a task",
-      "chooseTemplate": "Choose a template",
       "clearTask": "Clear task",
       "hints": {
         "image": "Describe the image you have in mind. Add a reference if you have one.",
@@ -2322,6 +2322,14 @@
         "workflow": "Workflow"
       },
       "more": "More",
+      "templateHeadings": {
+        "image": "Image styles",
+        "slides": "Presentation styles",
+        "video": "Video styles",
+        "website": "Website styles"
+      },
+      "templates": "Templates",
+      "useTemplate": "Use {{title}}",
       "workflowDescription": "Turn the things you do again and again into workflows.",
       "workflowHeading": "Let your work keep working"
     },

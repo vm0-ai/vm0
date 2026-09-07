@@ -2291,9 +2291,9 @@
     },
     "taskEntries": {
       "avatar": "Avatar berbicara",
+      "browseTemplates": "Jelajahi templat",
       "browseWorkflows": "Jelajahi workflow",
       "chooseTask": "Pilih tugas",
-      "chooseTemplate": "Pilih templat",
       "clearTask": "Hapus tugas",
       "hints": {
         "image": "Jelaskan gambar yang diinginkan. Tambahkan referensi jika ada.",
@@ -2318,6 +2318,14 @@
         "workflow": "Workflow"
       },
       "more": "Lainnya",
+      "templateHeadings": {
+        "image": "Gaya gambar",
+        "slides": "Gaya presentasi",
+        "video": "Gaya video",
+        "website": "Gaya situs web"
+      },
+      "templates": "Templat",
+      "useTemplate": "Gunakan {{title}}",
       "workflowDescription": "Ubah pekerjaan berulang menjadi workflow.",
       "workflowHeading": "Biarkan pekerjaan terus berjalan"
     },

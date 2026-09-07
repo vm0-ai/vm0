@@ -8,6 +8,7 @@ import {
   GitBranch,
   Globe,
   Image,
+  LayoutTemplate,
   MoreHorizontal,
   Presentation,
   Sun,
@@ -39,6 +40,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { localizedWorkflowTemplate } from "./workflow-template-copy.ts";
 import { ComposerInlineVideoOptions } from "./composer-video-options.tsx";
+import { ComposerTaskTemplates } from "./composer-task-templates.tsx";
 
 const TASKS = [
   { id: "workflow", icon: GitBranch },
@@ -111,9 +113,9 @@ export function ComposerTaskEntries({
     { returnObjects: true },
   );
   return (
-    <div className="flex flex-col gap-6" data-testid="composer-task-entries">
+    <div className="flex flex-col gap-4" data-testid="composer-task-entries">
       <div
-        className="flex flex-wrap items-center justify-center gap-1 sm:gap-2"
+        className="flex flex-wrap items-center gap-1 border-b border-border/60 pb-3 sm:gap-2"
         role="group"
         aria-label={t(($) => {
           return $.chat.taskEntries.chooseTask;
@@ -123,27 +125,30 @@ export function ComposerTaskEntries({
           return (
             <Button
               key={id}
-              variant={id === "workflow" ? "ghost" : "quiet"}
+              variant="quiet"
               size="sm"
               aria-pressed={selected === id}
               className={cn(
                 "gap-2",
-                id === "workflow" && "bg-brand-subtle/50",
                 selected === id &&
                   "bg-brand-subtle text-brand-text hover:bg-brand-subtle/70",
               )}
               onClick={() => {
-                selectTask(selected === id ? null : id);
+                selectTask(id);
               }}
             >
-              <Icon />
+              <Icon className={cn(id === "workflow" && "text-brand-text")} />
               {labels[id]}
             </Button>
           );
         })}
         <MoreTasks signals={signals} />
       </div>
-      <WorkflowStarters signals={signals} />
+      {selected === null || selected === "workflow" ? (
+        <WorkflowStarters signals={signals} />
+      ) : (
+        <ComposerTaskTemplates signals={signals} task={selected} />
+      )}
     </div>
   );
 }
@@ -249,12 +254,6 @@ export function ComposerTaskHeader({
     },
     { returnObjects: true },
   );
-  const hints = t(
-    ($) => {
-      return $.chat.taskEntries.hints;
-    },
-    { returnObjects: true },
-  );
   if (task === null) {
     return null;
   }
@@ -263,19 +262,14 @@ export function ComposerTaskHeader({
       return item.id === task;
     })?.icon ?? GitBranch;
   return (
-    <div className="flex items-start justify-between gap-3 px-4 pt-4">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <Icon className="mt-0.5 size-4 shrink-0 text-brand-text" aria-hidden />
-        <div>
-          <span className="text-sm font-medium text-brand-text">
-            {labels[task]}
-          </span>
-          <p className="mt-1 text-xs text-muted-foreground">{hints[task]}</p>
-        </div>
+    <div className="flex items-center justify-between gap-3 px-4 pt-3">
+      <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-brand-text">
+        <Icon className="size-4 shrink-0" aria-hidden />
+        <span>{labels[task]}</span>
       </div>
       <Button
         variant="quiet"
-        size="icon-sm"
+        size="icon-xs"
         aria-label={t(($) => {
           return $.chat.taskEntries.clearTask;
         })}
@@ -331,7 +325,7 @@ export function ComposerTaskOptions({
     return null;
   }
   return (
-    <div className="mx-4 mb-3 border-t border-border/60 pt-3">
+    <div className="mx-3 mb-2 flex flex-wrap items-center gap-1 rounded-xl bg-gray-50 p-1.5">
       {task === "video" && signals.videoModel && (
         <ComposerInlineVideoOptions
           signals={signals}
@@ -352,11 +346,11 @@ export function ComposerTaskOptions({
             });
           }}
         >
-          <Presentation />
+          <LayoutTemplate />
           {t(($) => {
-            return $.chat.taskEntries.chooseTemplate;
+            return $.chat.taskEntries.templates;
           })}
-          <ArrowUpRight />
+          <ChevronDown />
         </Button>
       </div>
     </div>

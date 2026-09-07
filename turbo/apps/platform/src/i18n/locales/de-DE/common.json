@@ -2295,9 +2295,9 @@
     },
     "taskEntries": {
       "avatar": "Sprechender Avatar",
+      "browseTemplates": "Vorlagen entdecken",
       "browseWorkflows": "Workflows entdecken",
       "chooseTask": "Aufgabe wählen",
-      "chooseTemplate": "Vorlage wählen",
       "clearTask": "Aufgabe zurücksetzen",
       "hints": {
         "image": "Beschreibe dein Bild. Füge bei Bedarf eine Referenz hinzu.",
@@ -2322,6 +2322,14 @@
         "workflow": "Workflow"
       },
       "more": "Mehr",
+      "templateHeadings": {
+        "image": "Bildstile",
+        "slides": "Präsentationsstile",
+        "video": "Videostile",
+        "website": "Website-Stile"
+      },
+      "templates": "Vorlagen",
+      "useTemplate": "{{title}} verwenden",
       "workflowDescription": "Mache wiederkehrende Aufgaben zu Workflows.",
       "workflowHeading": "Lass deine Arbeit weiterlaufen"
     },
