@@ -125,6 +125,11 @@ node apps/desktop/scripts/smoke-test-packaged-app.js
 node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
 ```
 
+Before packaging, CI runs the existing distribution/inspection suite directly
+with `python3 apps/desktop/scripts/test-cua-distribution.py`. Python owns all
+its cases and teardown; the complete suite is not wrapped in one timed Vitest
+case. The Desktop TypeScript suite remains a separate CI step.
+
 The first checks the actual trusted preload, forged auth completion rejection,
 selection/enable/Start/Stop bridge presence, initial and settled driver state
 (off/Okou, no ready CUA, valid generation/version fields) and real SDK dormancy

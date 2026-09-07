@@ -120,6 +120,11 @@ jobs:
       - name: Test desktop
         run: pnpm -F @okouai/desktop test
 
+      # This is an existing Python integration suite, not one Vitest test.
+      # Let unittest own its cases and cleanup instead of blocking a JS worker.
+      - name: Test CUA distribution and package inspection
+        run: python3 apps/desktop/scripts/test-cua-distribution.py
+
       - name: Test native helper
         run: pnpm -F @okouai/desktop test:native
 
