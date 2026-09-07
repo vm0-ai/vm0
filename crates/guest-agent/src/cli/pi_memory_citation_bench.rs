@@ -5,7 +5,6 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-#[path = "../src/cli/pi_memory_citation.rs"]
 mod pi_memory_citation;
 
 use pi_memory_citation::{CLOSE, OPEN, project_segments};
