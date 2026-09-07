@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.46.32](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.31...desktop-v0.46.32) (2026-09-07)
+
+
+### Bug Fixes
+
+* **desktop:** hold update checks through native settle ([#32182](https://github.com/vm0-ai/vm0/issues/32182)) ([644bdf6](https://github.com/vm0-ai/vm0/commit/644bdf6296bd2992494d1ddc483c114e05501b93))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.4
+
 ## [0.46.31](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.30...desktop-v0.46.31) (2026-09-07)
 
 

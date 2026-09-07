@@ -8,6 +8,23 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.559.1](https://github.com/vm0-ai/vm0/compare/api-v1.559.0...api-v1.559.1) (2026-09-07)
+
+
+### Refactoring
+
+* **image-recognition:** add the canonical API route ([#32183](https://github.com/vm0-ai/vm0/issues/32183)) ([5ed8c24](https://github.com/vm0-ai/vm0/commit/5ed8c247e132d1c40698b03436bcf186b1924656))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.4
+    * @okouai/core bumped to 8.629.2
+    * @okouai/db bumped to 1.244.5
+    * @okouai/pi-agent-runtime bumped to 1.21.9
+
 ## [1.559.0](https://github.com/vm0-ai/vm0/compare/api-v1.558.0...api-v1.559.0) (2026-09-07)
 
 
