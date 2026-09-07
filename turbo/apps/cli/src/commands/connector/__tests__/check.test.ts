@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type {
-  ConnectorCheckDiagnosticResult,
-  ConnectorCheckPolicy,
-  ConnectorCheckRequest,
+import {
+  connectorCheckRequestBodySchema,
+  type ConnectorCheckDiagnosticResult,
+  type ConnectorCheckPolicy,
+  type ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
@@ -171,6 +172,27 @@ function stubDiagnostic(
     http.post(diagnosticEndpoint(baseUrl), async ({ request }) => {
       const body: unknown = await request.json();
       onRequest?.(body);
+      const parsed = connectorCheckRequestBodySchema.parse(body);
+      if ("includeCustomConnectors" in parsed || "target" in parsed) {
+        if ("connector" in result) {
+          const { connectorSlug, ...identity } = result.connector;
+          return HttpResponse.json({
+            ...result,
+            connector: {
+              ...identity,
+              target: { kind: "builtin", connectorSlug },
+            },
+          });
+        }
+        if (result.outcome === "ambiguous") {
+          return HttpResponse.json({
+            ...result,
+            candidates: result.candidates.map(({ connectorSlug, label }) => {
+              return { target: { kind: "builtin", connectorSlug }, label };
+            }),
+          });
+        }
+      }
       return HttpResponse.json(result);
     }),
   );
