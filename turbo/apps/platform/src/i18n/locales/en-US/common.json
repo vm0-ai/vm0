@@ -1871,6 +1871,19 @@
     "composer": {
       "agentSuggestions": "Agents",
       "configureModel": "Configure model",
+      "create": {
+        "chooseStyle": "Choose style",
+        "chooseTemplate": "Choose template",
+        "exit": "Exit create mode",
+        "image": "Create image",
+        "imagePlaceholder": "Describe the image you want to create…",
+        "presentation": "Create presentation",
+        "presentationPlaceholder": "What is your presentation about?",
+        "settingsAdjusted": "Some video settings were adjusted for this model",
+        "title": "Create",
+        "video": "Create video",
+        "videoPlaceholder": "Describe the video you want to create…"
+      },
       "createWorkflow": "Create workflow",
       "imageModelForThisChat": "Image model for this chat",
       "message": "Message",

@@ -38,7 +38,7 @@ pub use control::{
 pub use error::{
     Result, SandboxError, SandboxGuestDnsReadinessReason, SandboxIdleTransition,
     SandboxInitializationPhase, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SandboxOperationTimeoutStage,
+    SandboxOperationReason, SandboxOperationTimeoutStage, SandboxOperationWriteStage,
 };
 pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,

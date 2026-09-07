@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.632.0](https://github.com/vm0-ai/vm0/compare/core-v8.631.5...core-v8.632.0) (2026-09-07)
+
+
+### Features
+
+* **app:** add create commands to the chat composer ([#32296](https://github.com/vm0-ai/vm0/issues/32296)) ([d821b1b](https://github.com/vm0-ai/vm0/commit/d821b1b1f56934f51a7a99adb45bfd1d813d32d9))
+
 ## [8.631.5](https://github.com/vm0-ai/vm0/compare/core-v8.631.4...core-v8.631.5) (2026-09-07)
 
 

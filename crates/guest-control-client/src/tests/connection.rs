@@ -19,7 +19,8 @@ use super::support::{
     set_next_route_id, setup_host_and_mock_guest, wait_for_pending_request_count,
 };
 use crate::{
-    GuestControlClient, NormalOperationFenceRejection, operation_tracker::NormalOperationReadiness,
+    GuestControlClient, NormalOperationFenceRejection, RequestWriteError, RequestWriteStage,
+    operation_tracker::NormalOperationReadiness,
 };
 
 fn unique_vsock_paths(label: &str) -> (String, PathBuf) {
@@ -1098,6 +1099,14 @@ async fn request_write_failure_poisons_connection_and_cleans_pending() {
         .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    assert_eq!(
+        err.get_ref()
+            .unwrap()
+            .downcast_ref::<RequestWriteError>()
+            .unwrap()
+            .stage(),
+        RequestWriteStage::FrameWrite,
+    );
     assert!(!is_connected(&host));
     assert_eq!(pending_request_count(&host), 0);
     assert_eq!(

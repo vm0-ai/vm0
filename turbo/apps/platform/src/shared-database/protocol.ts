@@ -9,6 +9,25 @@ import {
 
 const requestIdSchema = z.string().min(1);
 
+export const sharedDatabaseRealtimeScopeSchema = z.enum([
+  "credential",
+  "org",
+  "user",
+]);
+
+export type SharedDatabaseRealtimeScope = z.infer<
+  typeof sharedDatabaseRealtimeScopeSchema
+>;
+
+export const sharedDatabaseRealtimeMessageSchema = z.object({
+  name: z.string(),
+  data: z.unknown(),
+});
+
+export type SharedDatabaseRealtimeMessage = z.infer<
+  typeof sharedDatabaseRealtimeMessageSchema
+>;
+
 const sharedDatabaseErrorSchema = z
   .object({
     name: z.string(),
@@ -67,6 +86,59 @@ const disconnectRequestSchema = z
   .object({ type: z.literal("disconnect") })
   .strict();
 
+const userRealtimeTopicSchema = z.union([
+  z.literal("agentphone:changed"),
+  z.literal("billing:changed"),
+  z.literal("browserSessionChanged"),
+  z.literal("connector:changed"),
+  z.literal("connectorPermissionUpdated"),
+  z.literal("customConnectorListChanged"),
+  z.literal("feishu:changed"),
+  z.literal("github:changed"),
+  z.literal("presentationTemplatesChanged"),
+  z.literal("slack:changed"),
+  z.literal("teams:changed"),
+  z.literal("telegram:changed"),
+  z.literal("userPreferenceChanged"),
+  z
+    .string()
+    .regex(
+      /^chatThread(?:Artifacts|Automations|Detail|Workflows)Changed:[^:]+$/u,
+    ),
+]);
+
+function isSharedDatabaseAppRealtimeSubscription(
+  scope: SharedDatabaseRealtimeScope,
+  topic: string,
+): boolean {
+  return (
+    (scope === "user" && userRealtimeTopicSchema.safeParse(topic).success) ||
+    (scope === "org" && topic === "presentationTemplatesChanged")
+  );
+}
+
+const realtimeSubscribeRequestSchema = z
+  .object({
+    type: z.literal("realtime-subscribe"),
+    subscriptionId: requestIdSchema,
+    scope: sharedDatabaseRealtimeScopeSchema,
+    topic: z.string().min(1),
+  })
+  .strict()
+  .refine(
+    ({ scope, topic }) => {
+      return isSharedDatabaseAppRealtimeSubscription(scope, topic);
+    },
+    { message: "Realtime subscription is not supported" },
+  );
+
+const realtimeUnsubscribeRequestSchema = z
+  .object({
+    type: z.literal("realtime-unsubscribe"),
+    subscriptionId: requestIdSchema,
+  })
+  .strict();
+
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   registerTabMessageSchema,
   queryRequestSchema,
@@ -74,6 +146,8 @@ export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   tokenResultMessageSchema,
   tokenErrorMessageSchema,
   disconnectRequestSchema,
+  realtimeSubscribeRequestSchema,
+  realtimeUnsubscribeRequestSchema,
 ]);
 
 export type SharedDatabaseClientMessage = z.infer<
@@ -201,6 +275,29 @@ const statusMessageSchema = z
   })
   .strict();
 
+const realtimeSubscribedMessageSchema = z
+  .object({
+    type: z.literal("realtime-subscribed"),
+    subscriptionId: requestIdSchema,
+  })
+  .strict();
+
+const realtimeEventMessageSchema = z
+  .object({
+    type: z.literal("realtime-event"),
+    subscriptionId: requestIdSchema,
+    message: sharedDatabaseRealtimeMessageSchema,
+  })
+  .strict();
+
+const realtimeSubscriptionErrorMessageSchema = z
+  .object({
+    type: z.literal("realtime-subscription-error"),
+    subscriptionId: requestIdSchema,
+    error: sharedDatabaseErrorSchema,
+  })
+  .strict();
+
 export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   resultMessageSchema,
   errorMessageSchema,
@@ -211,6 +308,9 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   reloadComputedMessageSchema,
   chatThreadReadCursorUpdatedMessageSchema,
   statusMessageSchema,
+  realtimeSubscribedMessageSchema,
+  realtimeEventMessageSchema,
+  realtimeSubscriptionErrorMessageSchema,
 ]);
 
 export type SharedDatabaseWorkerMessage = z.infer<

@@ -1,5 +1,14 @@
 # Changelog
 
+## [9.315.13](https://github.com/vm0-ai/vm0/compare/cli-v9.315.12...cli-v9.315.13) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.632.0
+
 ## [9.315.12](https://github.com/vm0-ai/vm0/compare/cli-v9.315.11...cli-v9.315.12) (2026-09-07)
 
 

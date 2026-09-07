@@ -39,6 +39,10 @@ import {
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
 } from "./data-key.ts";
+import type {
+  SharedDatabaseRealtimeMessage,
+  SharedDatabaseRealtimeScope,
+} from "./protocol.ts";
 import { MessagePortSharedDatabaseBridge } from "./message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
 import {
@@ -78,6 +82,12 @@ interface DirectRealtimeMessage {
   readonly name: string;
 }
 
+interface DirectRealtimeSubscription {
+  readonly listener: (message: SharedDatabaseRealtimeMessage) => void;
+  readonly scope: SharedDatabaseRealtimeScope;
+  readonly topic: string;
+}
+
 function waitForWorkerOperation<T>(
   operation: Promise<T>,
   signal: AbortSignal,
@@ -108,6 +118,10 @@ function directWorkerPort(
 
 class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly connectionId = crypto.randomUUID();
+  private readonly realtimeSubscriptions = new Map<
+    string,
+    DirectRealtimeSubscription
+  >();
   private connectionSignal: AbortSignal | null = null;
 
   constructor(
@@ -143,12 +157,20 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     },
   );
 
-  handleRealtimeMessage(message: DirectRealtimeMessage): void {
+  handleRealtimeMessage(
+    scope: SharedDatabaseRealtimeScope,
+    message: DirectRealtimeMessage,
+  ): void {
     this.workerStore.set(
       handleSharedDatabaseRealtimeMessage$,
       message,
       this.workerSignal,
     );
+    for (const subscription of this.realtimeSubscriptions.values()) {
+      if (subscription.scope === scope && subscription.topic === message.name) {
+        subscription.listener(message);
+      }
+    }
     const computedKey: ComputedKey | null =
       message.name === "threadListChanged" ||
       message.name === "chatThreadReadCursorUpdated"
@@ -192,6 +214,23 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       detach(daemon, Reason.Daemon, "test shared database Worker");
     }
     return Promise.resolve();
+  }
+
+  subscribeRealtime(
+    subscriptionId: string,
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    if (this.realtimeSubscriptions.has(subscriptionId)) {
+      throw new Error("Shared database realtime subscription already exists");
+    }
+    this.realtimeSubscriptions.set(subscriptionId, { listener, scope, topic });
+    return Promise.resolve();
+  }
+
+  unsubscribeRealtime(subscriptionId: string): void {
+    this.realtimeSubscriptions.delete(subscriptionId);
   }
 
   async getComputed<TKey extends ComputedKey>(
@@ -247,6 +286,24 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
   async registerTab(signal: AbortSignal): Promise<void> {
     await this.bridge.registerTab(signal);
     await this.afterRegistration?.();
+  }
+
+  subscribeRealtime(
+    subscriptionId: string,
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    return this.bridge.subscribeRealtime(
+      subscriptionId,
+      scope,
+      topic,
+      listener,
+    );
+  }
+
+  unsubscribeRealtime(subscriptionId: string): void {
+    this.bridge.unsubscribeRealtime(subscriptionId);
   }
 
   getComputed<TKey extends ComputedKey>(
@@ -315,10 +372,10 @@ export const setupSharedWorkerTestBootstrap$ = command(
         } else {
           if (!directRealtimeForwardingInstalled) {
             subscribeChatDatabaseEvents((message) => {
-              directBridge?.handleRealtimeMessage(message);
+              directBridge?.handleRealtimeMessage("credential", message);
             }, signal);
             subscribeUserRealtimeEvents((message) => {
-              directBridge?.handleRealtimeMessage(message);
+              directBridge?.handleRealtimeMessage("user", message);
             }, signal);
             subscribeChatDatabaseRecovery(() => {
               directBridge?.handleRealtimeRecovery();

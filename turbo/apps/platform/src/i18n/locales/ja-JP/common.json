@@ -1868,6 +1868,19 @@
     "composer": {
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
+      "create": {
+        "chooseStyle": "スタイルを選択",
+        "chooseTemplate": "テンプレートを選択",
+        "exit": "作成モードを終了",
+        "image": "画像を作成",
+        "imagePlaceholder": "作成したい画像を説明してください…",
+        "presentation": "プレゼンテーションを作成",
+        "presentationPlaceholder": "プレゼンテーションのテーマは何ですか？",
+        "settingsAdjusted": "このモデルに合わせて一部の動画設定を調整しました",
+        "title": "作成",
+        "video": "動画を作成",
+        "videoPlaceholder": "作成したい動画を説明してください…"
+      },
       "createWorkflow": "ワークフローの作成",
       "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",

@@ -1900,6 +1900,19 @@
     "composer": {
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
+      "create": {
+        "chooseStyle": "Elegir estilo",
+        "chooseTemplate": "Elegir plantilla",
+        "exit": "Salir del modo de creación",
+        "image": "Crear imagen",
+        "imagePlaceholder": "Describe la imagen que quieres crear…",
+        "presentation": "Crear presentación",
+        "presentationPlaceholder": "¿De qué trata tu presentación?",
+        "settingsAdjusted": "Se han ajustado algunas opciones de vídeo para este modelo",
+        "title": "Crear",
+        "video": "Crear vídeo",
+        "videoPlaceholder": "Describe el vídeo que quieres crear…"
+      },
       "createWorkflow": "Crear flujo de trabajo",
       "imageModelForThisChat": "Modelo de imagen para este chat",
       "message": "Mensaje",

@@ -1900,6 +1900,19 @@
     "composer": {
       "agentSuggestions": "Agents",
       "configureModel": "Configurer le modèle",
+      "create": {
+        "chooseStyle": "Choisir un style",
+        "chooseTemplate": "Choisir un modèle",
+        "exit": "Quitter le mode création",
+        "image": "Créer une image",
+        "imagePlaceholder": "Décrivez l’image à créer…",
+        "presentation": "Créer une présentation",
+        "presentationPlaceholder": "Quel est le sujet de votre présentation ?",
+        "settingsAdjusted": "Certains paramètres vidéo ont été adaptés à ce modèle",
+        "title": "Créer",
+        "video": "Créer une vidéo",
+        "videoPlaceholder": "Décrivez la vidéo à créer…"
+      },
       "createWorkflow": "Créer un workflow",
       "imageModelForThisChat": "Modèle d’image pour cette discussion",
       "message": "Message",

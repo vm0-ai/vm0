@@ -45,6 +45,12 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.ComposerCreateCommands]: {
+    maintainer: "bingjie@okou.ai",
+    description: "Create commands and mode-specific composer controls",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
     description: "Test-only feature switch for flag system validation",
@@ -190,6 +196,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
+    enabled: false,
+  },
+  [FeatureSwitchKey.SharedWorkerRealtime]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Route application realtime subscriptions through the SharedWorker",
     enabled: false,
   },
   [FeatureSwitchKey.Banking]: {

@@ -1868,6 +1868,19 @@
     "composer": {
       "agentSuggestions": "에이전트",
       "configureModel": "모델 구성",
+      "create": {
+        "chooseStyle": "스타일 선택",
+        "chooseTemplate": "템플릿 선택",
+        "exit": "만들기 모드 종료",
+        "image": "이미지 만들기",
+        "imagePlaceholder": "만들고 싶은 이미지를 설명하세요…",
+        "presentation": "프레젠테이션 만들기",
+        "presentationPlaceholder": "프레젠테이션의 주제는 무엇인가요?",
+        "settingsAdjusted": "이 모델에 맞게 일부 동영상 설정을 조정했습니다",
+        "title": "만들기",
+        "video": "동영상 만들기",
+        "videoPlaceholder": "만들고 싶은 동영상을 설명하세요…"
+      },
       "createWorkflow": "워크플로 생성",
       "imageModelForThisChat": "이 채팅의 이미지 모델",
       "message": "메시지",

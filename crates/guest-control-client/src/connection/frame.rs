@@ -16,6 +16,8 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::time::Instant;
 
+use crate::{RequestWriteError, RequestWriteStage};
+
 use super::Shared;
 
 /// `Skip` is a successful no-frame outcome, decided under the writer lock.
@@ -59,7 +61,10 @@ impl Shared {
         let wait_started_at = Instant::now();
         let mut writer = self.writer.lock().await;
         let wait = wait_started_at.elapsed();
-        if pre_write()? == FrameWriteDecision::Skip {
+        let decision = pre_write().map_err(|error| {
+            RequestWriteError::into_io_error(RequestWriteStage::BeforeFrameWrite, error)
+        })?;
+        if decision == FrameWriteDecision::Skip {
             return Ok(FrameWriteDecision::Skip);
         }
 
@@ -76,7 +81,9 @@ impl Shared {
         drop(writer);
 
         write_finished(FrameWriteTiming { wait, write }, &result);
-        result?;
+        result.map_err(|error| {
+            RequestWriteError::into_io_error(RequestWriteStage::FrameWrite, error)
+        })?;
         Ok(FrameWriteDecision::Write)
     }
 }

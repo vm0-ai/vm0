@@ -13,7 +13,11 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import { executionContextSchema } from "@okouai/api-contracts/contracts/runners";
+import {
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  executionContextSchema,
+} from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -31,20 +35,24 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { guestBoundaryEnvironment } from "../../../__tests__/env-stub";
-import { nowDate } from "../../../lib/time";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { mockNow, nowDate } from "../../../lib/time";
 import { settle } from "../../utils";
-import { testContext } from "../../../__tests__/test-context";
 import { db } from "../../../lib/db";
 import { mockOptionalEnv } from "../../../lib/env";
+import { holdAgentRunRowLockFixture } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { runnersRoutes } from "../../routes/runners";
 import { webhooksAgentCompleteRoutes } from "../../routes/webhooks-agent-complete";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "../../routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "../../routes/webhooks-agent-storage";
+import { testCronCleanupSandboxesStateRoutes } from "../../routes/test-cron-cleanup-sandboxes-state";
 import { seedBuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
 import {
   advancePiMemoryPhase2InputRevision,
   notifyPiMemoryPhase2ExternalHeadChange,
+  PI_MEMORY_PHASE2_LEASE_DURATION_MS,
 } from "../pi-memory-phase2-job.service";
 import { executePiMemoryPhase2Work$ } from "../pi-memory-phase2-worker.service";
 import {
@@ -192,6 +200,120 @@ type Fault =
   | "new_input";
 
 type BoundaryScope = Awaited<ReturnType<typeof createPhase2TestScope>>;
+type CleanupMode = "active" | "renewed-race";
+interface ActiveMaintenanceFence {
+  readonly selectionDigest: string;
+  readonly selectedCount: number;
+  readonly selectedUtf8Bytes: number;
+}
+
+async function cleanupMaintenanceRun(runId: string, scope: BoundaryScope) {
+  const response = await accept(
+    setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+      testCronCleanupSandboxesStateContract,
+    ).cleanup({
+      body: {
+        chatThreadIds: [],
+        runIds: [runId],
+        orgIds: [scope.orgId],
+        exportJobIds: [],
+      },
+    }),
+    [200],
+  );
+  return response.body;
+}
+
+async function readActiveMaintenanceFence(
+  runId: string,
+  scope: BoundaryScope,
+): Promise<ActiveMaintenanceFence> {
+  const job = await readPhase2Job(scope);
+  if (
+    !job ||
+    job.claimedSelectionDigest === null ||
+    job.claimedSelectedCount === null ||
+    job.claimedSelectedUtf8Bytes === null
+  ) {
+    throw new Error("Missing active maintenance fence");
+  }
+  expect(job).toMatchObject({ status: "leased", maintenanceRunId: runId });
+  return {
+    selectionDigest: job.claimedSelectionDigest,
+    selectedCount: job.claimedSelectedCount,
+    selectedUtf8Bytes: job.claimedSelectedUtf8Bytes,
+  };
+}
+
+async function crossActiveCleanupBoundary(
+  runId: string,
+  scope: BoundaryScope,
+  cleanupMode: CleanupMode | undefined,
+): Promise<void> {
+  if (cleanupMode === "active") {
+    const cleanupResult = await cleanupMaintenanceRun(runId, scope);
+    expect(cleanupResult.threadlessRuns).toStrictEqual({
+      discovered: 0,
+      cancelled: 0,
+      waiting: 0,
+      deleted: 0,
+      failed: 0,
+      errors: [],
+    });
+  }
+  if (cleanupMode === "renewed-race") {
+    await db()
+      .update(piMemoryPhase2Jobs)
+      .set({ leaseExpiresAt: new Date(nowDate().getTime() - 1) })
+      .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId));
+    const runLock = await holdAgentRunRowLockFixture({
+      runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      runLock.release();
+      await runLock.done;
+    });
+    const cleanupRequest = cleanupMaintenanceRun(runId, scope);
+    await expect.poll(runLock.waiterCount).toBeGreaterThan(0);
+    await db()
+      .update(piMemoryPhase2Jobs)
+      .set({
+        leaseExpiresAt: new Date(
+          nowDate().getTime() + PI_MEMORY_PHASE2_LEASE_DURATION_MS,
+        ),
+      })
+      .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId));
+    runLock.release();
+    await runLock.done;
+    const cleanupResult = await cleanupRequest;
+    expect(cleanupResult.threadlessRuns).toStrictEqual({
+      discovered: 1,
+      cancelled: 0,
+      waiting: 1,
+      deleted: 0,
+      failed: 0,
+      errors: [],
+    });
+    const continuousResult = await cleanupMaintenanceRun(runId, scope);
+    expect(continuousResult.threadlessRuns).toStrictEqual({
+      discovered: 0,
+      cancelled: 0,
+      waiting: 0,
+      deleted: 0,
+      failed: 0,
+      errors: [],
+    });
+  }
+  if (cleanupMode) {
+    await expect(
+      db()
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, runId)),
+    ).resolves.toStrictEqual([{ status: "running" }]);
+  }
+}
 
 function phase2JobSeed(fault: Fault, dispatchTime: Date) {
   if (fault !== "maintenance_agent_missing_retry") {
@@ -269,7 +391,7 @@ async function claimMaintenanceRun(
   };
 }
 
-async function launch(fault: Fault, noDiff = false) {
+async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
   const scope = await createPhase2TestScope(`boundary-${fault}`, {
     emptyBase: true,
   });
@@ -400,10 +522,7 @@ async function launch(fault: Fault, noDiff = false) {
     dispatchTime,
     runId: result.runId,
   });
-  await expect(readPhase2Job(scope)).resolves.toMatchObject({
-    status: "leased",
-    maintenanceRunId: result.runId,
-  });
+  const activeFence = await readActiveMaintenanceFence(result.runId, scope);
   const [callback] = await db()
     .select()
     .from(agentRunCallbacks)
@@ -658,6 +777,7 @@ async function launch(fault: Fault, noDiff = false) {
     leaseToken: binding.leaseToken,
     selected: binding.selected,
   });
+  await crossActiveCleanupBoundary(result.runId, scope, cleanupMode);
   const token = execution.sandboxToken;
   const quote = (value: string) => {
     return `'${value.replaceAll("'", String.raw`'\''`)}'`;
@@ -783,6 +903,7 @@ async function launch(fault: Fault, noDiff = false) {
     objects,
     memory,
     releaseObserver,
+    activeFence,
   };
 }
 
@@ -858,17 +979,30 @@ async function assertUsageReplay(
 
 describe("private maintenance across CLI, Guest, generic checkpoint and real PostgreSQL", () => {
   it.each([
-    "none",
-    "maintenance_agent_missing_retry",
-    "commit_ack",
-    "complete_transaction",
-    "complete_ack",
-    "observer",
-    "new_input",
+    { label: "none", fault: "none", cleanupMode: undefined },
+    {
+      label: "maintenance_agent_missing_retry",
+      fault: "maintenance_agent_missing_retry",
+      cleanupMode: undefined,
+    },
+    { label: "commit_ack", fault: "commit_ack", cleanupMode: undefined },
+    {
+      label: "complete_transaction",
+      fault: "complete_transaction",
+      cleanupMode: undefined,
+    },
+    { label: "complete_ack", fault: "complete_ack", cleanupMode: undefined },
+    { label: "observer", fault: "observer", cleanupMode: undefined },
+    { label: "new_input", fault: "new_input", cleanupMode: undefined },
+    {
+      label: "cleanup lease renewal",
+      fault: "none",
+      cleanupMode: "renewed-race",
+    },
   ] as const)(
-    "settles changed output exactly once through %s",
-    async (fault) => {
-      const run = await launch(fault);
+    "settles changed output exactly once through $label",
+    async ({ fault, cleanupMode }) => {
+      const run = await launch(fault, false, cleanupMode);
       expect(run.job, run.output).toMatchObject({
         completedRevision: 1,
         retryCount: 0,
@@ -1021,13 +1155,73 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
           .from(storageVersionLineage)
           .where(eq(storageVersionLineage.runId, run.runId)),
       ).resolves.toHaveLength(1);
+
+      if (cleanupMode === "renewed-race") {
+        const completedAt = run.run?.completedAt;
+        if (!completedAt) {
+          throw new Error("Cleanup regression run did not complete");
+        }
+        const staleLeaseToken = randomUUID();
+        await db()
+          .update(piMemoryPhase2Jobs)
+          .set({
+            status: "leased",
+            inputRevision: 2,
+            claimedRevision: 2,
+            claimedBaseVersionId: later.versionId,
+            leaseToken: staleLeaseToken,
+            legacyLeaseToken: null,
+            sandboxLeaseToken: staleLeaseToken,
+            leaseExpiresAt: new Date(completedAt.getTime() - 1),
+            maintenanceRunId: run.runId,
+            retryCount: 0,
+            retryAt: null,
+            lastErrorClass: null,
+            claimedSelectionDigest: run.activeFence.selectionDigest,
+            claimedSelectedCount: run.activeFence.selectedCount,
+            claimedSelectedUtf8Bytes: run.activeFence.selectedUtf8Bytes,
+            lastObservedHeadVersionId: later.versionId,
+            updatedAt: completedAt,
+          })
+          .where(
+            eq(piMemoryPhase2Jobs.memoryStorageId, run.scope.memoryStorageId),
+          );
+        mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+        const cleanupResult = await cleanupMaintenanceRun(run.runId, run.scope);
+        expect(cleanupResult.threadlessRuns).toStrictEqual({
+          discovered: 1,
+          cancelled: 0,
+          waiting: 0,
+          deleted: 1,
+          failed: 0,
+          errors: [],
+        });
+        await expect(
+          db()
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
+            .where(eq(agentRuns.id, run.runId)),
+        ).resolves.toStrictEqual([]);
+      }
     },
   );
 
-  it.each(["none", "represented_no_diff"] as const)(
-    "settles real no-diff with %s selection and no provider charge",
-    async (fault) => {
-      const run = await launch(fault, true);
+  it.each([
+    { label: "none", fault: "none", cleanupMode: undefined },
+    {
+      label: "represented_no_diff",
+      fault: "represented_no_diff",
+      cleanupMode: undefined,
+    },
+    {
+      label: "represented_no_diff across active cleanup",
+      fault: "represented_no_diff",
+      cleanupMode: "active",
+    },
+  ] as const)(
+    "settles real no-diff with $label selection and no provider charge",
+    async ({ fault, cleanupMode }) => {
+      const run = await launch(fault, true, cleanupMode);
       expect(run.job, run.output).toMatchObject({
         completedRevision: 1,
         lastMaintenanceOutcome: "no_diff",
@@ -1070,6 +1264,29 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
           .from(storageVersionLineage)
           .where(eq(storageVersionLineage.runId, run.runId)),
       ).resolves.toHaveLength(0);
+
+      if (cleanupMode === "active") {
+        const completedAt = run.run?.completedAt;
+        if (!completedAt) {
+          throw new Error("Cleanup no-diff run did not complete");
+        }
+        mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+        const cleanupResult = await cleanupMaintenanceRun(run.runId, run.scope);
+        expect(cleanupResult.threadlessRuns).toStrictEqual({
+          discovered: 1,
+          cancelled: 0,
+          waiting: 0,
+          deleted: 1,
+          failed: 0,
+          errors: [],
+        });
+        await expect(
+          db()
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
+            .where(eq(agentRuns.id, run.runId)),
+        ).resolves.toStrictEqual([]);
+      }
     },
   );
 

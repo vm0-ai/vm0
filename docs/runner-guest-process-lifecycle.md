@@ -92,6 +92,28 @@ independent Runner validation of its path output. That authority is not
 available through generic exec APIs, and generic cleanup and storage
 operations retain workload cgroups.
 
+## Optional Codex Prefetch Start Failures
+
+Codex model-catalog prefetch is best-effort only while the sandbox remains safe
+for later work. A start deadline before the frame-write boundary, safe local
+validation/admission failure, or explicit guest start rejection can skip the
+prefetch on the same sandbox. An ordinary write failure is classified at the
+serialized writer boundary, independently of the request deadline: a failed
+`write_all` may have emitted a partial frame and poisons the connection.
+
+Possible partial writes and start deadlines during/after writing stop further
+workspace, storage, and Agent preparation on that sandbox. Fresh preparation
+destroys it and may retry once with prefetch disabled, only after cleanup is
+confirmed. This consumes the existing shared preparation retry budget; uncertain
+cleanup or an already-consumed retry prevents another attempt. A direct run on
+an already-owned sandbox fails through its existing cleanup owner instead of
+replacing the sandbox in place.
+
+Ordinary write failures retain `start_failed` prefetch telemetry; typed request
+deadlines retain `start_timed_out`. The original write cause remains available
+for diagnostics. Error text or an I/O timeout kind alone does not determine
+whether this is a request deadline or whether the sandbox can be reused.
+
 ## Agent Start Timing
 
 `runner_agent_start_process`, `runner_executor_start_to_spawn`,
