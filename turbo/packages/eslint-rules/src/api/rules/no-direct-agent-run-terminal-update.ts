@@ -85,10 +85,14 @@ function unsafeAgentRunUpdateValues(
       }
       continue;
     }
-    if (
-      entry.type !== AST_NODE_TYPES.Property ||
-      propertyName(entry) !== "status"
-    ) {
+    if (entry.type !== AST_NODE_TYPES.Property) {
+      return entry;
+    }
+    const name = propertyName(entry);
+    if (name === null) {
+      return entry;
+    }
+    if (name !== "status") {
       continue;
     }
     const value = stringLiteralValue(entry.value);
@@ -126,7 +130,14 @@ export const noDirectAgentRunTerminalUpdate = createRule({
           return;
         }
         const values = node.arguments[0];
-        if (!values || values.type === AST_NODE_TYPES.SpreadElement) {
+        if (!values) {
+          return;
+        }
+        if (values.type === AST_NODE_TYPES.SpreadElement) {
+          context.report({
+            node: values,
+            messageId: "directTerminalUpdate",
+          });
           return;
         }
         const unsafeValues = unsafeAgentRunUpdateValues(

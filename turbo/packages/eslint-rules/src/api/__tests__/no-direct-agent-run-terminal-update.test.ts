@@ -78,6 +78,22 @@ ruleTester.run(
         errors: [{ messageId: "directTerminalUpdate" }],
       },
       {
+        name: "computed update property is rejected",
+        code: `${preamble}
+          declare const key: "status";
+          tx.update(agentRuns).set({ [key]: "failed" });
+        `,
+        errors: [{ messageId: "directTerminalUpdate" }],
+      },
+      {
+        name: "spread update argument is rejected",
+        code: `${preamble}
+          declare const values: [{ status: "failed" }];
+          tx.update(agentRuns).set(...values);
+        `,
+        errors: [{ messageId: "directTerminalUpdate" }],
+      },
+      {
         name: "aliased table and values are rejected",
         code: `
           import { agentRuns as runs } from "@okouai/db/schema/agent-run";
