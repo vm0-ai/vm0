@@ -98,6 +98,44 @@ test("One image keeps distinct link labels and image previews in the same messag
   ).resolves.toHaveAttribute("src", url);
 });
 
+test("Artifact links show image, video, and file kinds", async () => {
+  const imageUrl = publicArtifactUrl("screenshot.png");
+  const videoUrl = publicArtifactUrl("walkthrough.mp4");
+  const fileUrl = publicArtifactUrl("report.pdf");
+  const externalUrl = "https://media.example.com/reference.png";
+  installMessage(
+    [
+      `[Screenshot](${imageUrl})`,
+      `[Walkthrough](${videoUrl})`,
+      `[Report](${fileUrl})`,
+      `[Reference](${externalUrl})`,
+    ].join("\n\n"),
+  );
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  expect(
+    within(await findNamedLink("Screenshot")).getByTestId(
+      "markdown-artifact-link-icon-image",
+    ),
+  ).toBeVisible();
+  expect(
+    within(getNamedLink("Walkthrough")).getByTestId(
+      "markdown-artifact-link-icon-video",
+    ),
+  ).toBeVisible();
+  expect(
+    within(getNamedLink("Report")).getByTestId(
+      "markdown-artifact-link-icon-file",
+    ),
+  ).toBeVisible();
+  expect(
+    getNamedLink("Reference").querySelector(
+      "[data-testid^='markdown-artifact-link-icon-']",
+    ),
+  ).toBeNull();
+});
+
 test("Bare platform URLs stay links and fenced URLs stay code", async () => {
   const url = publicArtifactUrl("bare-evidence.png");
   const site = "https://literal-site.sites.vm7.io";
