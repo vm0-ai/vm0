@@ -411,9 +411,8 @@ function waitForFirstPageContent(signal: AbortSignal): {
     skeletonHasMounted ||= skeleton !== null;
     if (
       pageHasRendered &&
-      (!skeletonHasMounted ||
-        skeleton === null ||
-        skeleton.getAttribute("aria-hidden") === "true")
+      skeletonHasMounted &&
+      (skeleton === null || skeleton.getAttribute("aria-hidden") === "true")
     ) {
       settle();
     }

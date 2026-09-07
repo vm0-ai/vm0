@@ -3,15 +3,14 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopConfig } from "./config";
 import { OFFLINE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
-import {
-  checkForDesktopUpdates,
-  installDesktopAutoUpdates,
-} from "./desktop-auto-updates";
+import { installDesktopAutoUpdates } from "./desktop-auto-updates";
+import type { DesktopAutoUpdatesController } from "./desktop-main-module";
 
 const mocks = vi.hoisted(() => {
   type AutoUpdaterListener = (...args: readonly unknown[]) => void;
   const autoUpdaterListeners = new Map<string, Set<AutoUpdaterListener>>();
   const autoUpdaterOnceListeners = new Map<string, Set<AutoUpdaterListener>>();
+  const scheduledUpdateChecks: Array<() => void> = [];
 
   function addAutoUpdaterListener(
     eventName: string,
@@ -44,6 +43,7 @@ const mocks = vi.hoisted(() => {
     autoUpdater: {
       checkForUpdates: vi.fn<() => void>(),
       quitAndInstall: vi.fn(),
+      setFeedURL: vi.fn(),
       on: vi.fn(addAutoUpdaterListener),
       once: vi.fn(addAutoUpdaterOnceListener),
       removeListener: vi.fn(removeAutoUpdaterListener),
@@ -53,21 +53,22 @@ const mocks = vi.hoisted(() => {
     dialog: {
       showMessageBox: vi.fn<() => Promise<{ response: number }>>(),
     },
-    updateElectronApp: vi.fn(),
+    scheduledUpdateChecks,
+    setInterval: vi.fn((callback: () => void) => {
+      scheduledUpdateChecks.push(callback);
+      return 1;
+    }),
   };
 });
+
+vi.mock("node:timers", () => ({
+  setInterval: mocks.setInterval,
+}));
 
 vi.mock("electron", () => ({
   app: mocks.app,
   autoUpdater: mocks.autoUpdater,
   dialog: mocks.dialog,
-}));
-
-vi.mock("update-electron-app", () => ({
-  UpdateSourceType: {
-    StaticStorage: "staticStorage",
-  },
-  updateElectronApp: mocks.updateElectronApp,
 }));
 
 const originalPlatform = process.platform;
@@ -93,10 +94,6 @@ const productionConfig: DesktopConfig = {
   allowedAppOrigins: new Set(["https://app.vm0.ai"]),
 };
 
-interface CapturedUpdateOptions {
-  readonly onNotifyUser: (info: { readonly releaseName: string }) => void;
-}
-
 function stubDesktopAutoUpdatePlatform(
   arch: NodeJS.Architecture = "arm64",
 ): void {
@@ -110,40 +107,35 @@ function stubDesktopAutoUpdatePlatform(
   });
 }
 
-function installAndCaptureUpdateOptions(
+function installAndCaptureAutoUpdates(
   getComputerUseHostState: () => ComputerUseHostRuntimeState,
 ): {
-  readonly updateOptions: CapturedUpdateOptions;
+  readonly autoUpdates: DesktopAutoUpdatesController;
   readonly prepareForQuitAndInstall: ReturnType<typeof vi.fn>;
 } {
   const prepareForQuitAndInstall = vi.fn(async () => {});
+  const autoUpdates = installDesktopAutoUpdates({
+    config: productionConfig,
+    apiBaseUrl: "https://api.vm0.ai",
+    getComputerUseHostState,
+    prepareForQuitAndInstall,
+  });
 
-  expect(
-    installDesktopAutoUpdates({
-      config: productionConfig,
-      apiBaseUrl: "https://api.vm0.ai",
-      getComputerUseHostState,
-      prepareForQuitAndInstall,
-    }),
-  ).toBe(true);
+  if (!autoUpdates) {
+    throw new Error("Expected Desktop auto-updates to install");
+  }
 
-  expect(mocks.updateElectronApp).toHaveBeenCalledTimes(1);
-  const [updateOptions] = mocks.updateElectronApp.mock.calls[0] ?? [];
-  expect(updateOptions).toEqual(
-    expect.objectContaining({
-      notifyUser: true,
-      updateInterval: "30 minutes",
-      updateSource: expect.objectContaining({
-        baseUrl:
-          "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64",
-      }),
-    }),
+  expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledExactlyOnceWith({
+    url: "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64/RELEASES.json",
+    serverType: "json",
+  });
+  expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+  expect(mocks.setInterval).toHaveBeenCalledExactlyOnceWith(
+    expect.any(Function),
+    30 * 60 * 1000,
   );
 
-  return {
-    updateOptions: updateOptions as CapturedUpdateOptions,
-    prepareForQuitAndInstall,
-  };
+  return { autoUpdates, prepareForQuitAndInstall };
 }
 
 function emitAutoUpdaterEvent(
@@ -160,7 +152,27 @@ function emitAutoUpdaterEvent(
   });
 }
 
-async function flushDownloadedUpdateCallback(): Promise<void> {
+function expectActiveUpdateCheckListenerCount(expected: number): void {
+  for (const eventName of [
+    "update-not-available",
+    "update-available",
+    "error",
+  ]) {
+    expect(mocks.autoUpdaterOnceListeners.get(eventName)?.size ?? 0).toBe(
+      expected,
+    );
+  }
+}
+
+function runScheduledUpdateCheck(): void {
+  const scheduledUpdateCheck = mocks.scheduledUpdateChecks[0];
+  if (!scheduledUpdateCheck) {
+    throw new Error("Expected a scheduled Desktop update check");
+  }
+  scheduledUpdateCheck();
+}
+
+async function flushAsyncCallbacks(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
   await Promise.resolve();
 }
@@ -170,6 +182,7 @@ describe("desktop auto-updates", () => {
     vi.clearAllMocks();
     mocks.autoUpdaterListeners.clear();
     mocks.autoUpdaterOnceListeners.clear();
+    mocks.scheduledUpdateChecks.length = 0;
     mocks.app.isPackaged = true;
     mocks.dialog.showMessageBox.mockResolvedValue({ response: 1 });
     stubDesktopAutoUpdatePlatform();
@@ -186,17 +199,11 @@ describe("desktop auto-updates", () => {
     });
   });
 
-  it("silently restarts after a downloaded update when Computer Use is offline", async () => {
-    const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => OFFLINE_COMPUTER_USE_HOST_STATE);
+  it("configures the feed and starts one immediate check on a 30-minute schedule", () => {
+    installAndCaptureAutoUpdates(() => OFFLINE_COMPUTER_USE_HOST_STATE);
 
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
-
-    await vi.waitFor(() => {
-      expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
-      expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
-    });
-    expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+    expectActiveUpdateCheckListenerCount(1);
+    expect(mocks.scheduledUpdateChecks).toHaveLength(1);
   });
 
   it("does not install auto-updates on Intel Macs", () => {
@@ -209,8 +216,10 @@ describe("desktop auto-updates", () => {
         getComputerUseHostState: () => OFFLINE_COMPUTER_USE_HOST_STATE,
         prepareForQuitAndInstall: vi.fn(async () => {}),
       }),
-    ).toBe(false);
-    expect(mocks.updateElectronApp).not.toHaveBeenCalled();
+    ).toBeNull();
+    expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled();
+    expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(mocks.setInterval).not.toHaveBeenCalled();
   });
 
   it("selects the isolated Okou update feed for an Okou identity", () => {
@@ -235,30 +244,28 @@ describe("desktop auto-updates", () => {
         getComputerUseHostState: () => OFFLINE_COMPUTER_USE_HOST_STATE,
         prepareForQuitAndInstall: vi.fn(async () => {}),
       }),
-    ).toBe(true);
-    expect(mocks.updateElectronApp).toHaveBeenCalledWith(
-      expect.objectContaining({
-        updateSource: expect.objectContaining({
-          baseUrl:
-            "https://api.okou.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64",
-        }),
-      }),
-    );
+    ).not.toBeNull();
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledExactlyOnceWith({
+      url: "https://api.okou.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json",
+      serverType: "json",
+    });
   });
 
-  it("checks for updates on request", () => {
-    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(true);
+  it("coalesces a manual request with the startup check", async () => {
+    const { autoUpdates } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
 
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows when requested update checks find no update", async () => {
-    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(true);
+    expectActiveUpdateCheckListenerCount(1);
 
     emitAutoUpdaterEvent("update-not-available");
-    await flushDownloadedUpdateCallback();
+    await flushAsyncCallbacks();
 
-    expect(mocks.dialog.showMessageBox).toHaveBeenCalledWith(
+    expectActiveUpdateCheckListenerCount(0);
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         title: "No Updates Available",
         message: "Zero Computer Use is up to date.",
@@ -266,23 +273,93 @@ describe("desktop auto-updates", () => {
     );
   });
 
-  it("shows when requested update checks fail", async () => {
-    const error = new Error("feed unavailable");
+  it("coalesces a manual request with a scheduled check", async () => {
+    const { autoUpdates } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+    emitAutoUpdaterEvent("update-available");
+
+    runScheduledUpdateCheck();
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expectActiveUpdateCheckListenerCount(1);
+
+    emitAutoUpdaterEvent("update-not-available");
+    await flushAsyncCallbacks();
+
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces rapid manual requests into one check and one result", async () => {
+    const { autoUpdates } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+    emitAutoUpdaterEvent("update-available");
+
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expectActiveUpdateCheckListenerCount(1);
+
+    emitAutoUpdaterEvent("update-not-available");
+    await flushAsyncCallbacks();
+
+    expectActiveUpdateCheckListenerCount(0);
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { eventName: "update-available", args: [] },
+    { eventName: "update-not-available", args: [] },
+    { eventName: "error", args: [new Error("feed unavailable")] },
+  ])(
+    "releases state and listeners after $eventName so another manual check can start",
+    async ({ eventName, args }) => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      const { autoUpdates } = installAndCaptureAutoUpdates(
+        () => OFFLINE_COMPUTER_USE_HOST_STATE,
+      );
+      emitAutoUpdaterEvent("update-available");
+
+      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+
+      emitAutoUpdaterEvent(eventName, ...args);
+      await flushAsyncCallbacks();
+
+      expectActiveUpdateCheckListenerCount(0);
+      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+      expectActiveUpdateCheckListenerCount(1);
+
+      consoleError.mockRestore();
+    },
+  );
+
+  it("shows genuine errors from a requested check", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    mocks.autoUpdater.checkForUpdates.mockImplementationOnce(() => {
-      throw error;
-    });
+    const { autoUpdates } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+    emitAutoUpdaterEvent("update-available");
 
-    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(false);
-    await flushDownloadedUpdateCallback();
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    const error = new Error("feed unavailable");
+    emitAutoUpdaterEvent("error", error);
+    await flushAsyncCallbacks();
 
     expect(consoleError).toHaveBeenCalledWith(
       "Desktop update check failed",
       error,
     );
-    expect(mocks.dialog.showMessageBox).toHaveBeenCalledWith(
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         title: "Unable to Check for Updates",
         message: "Zero Computer Use could not check for updates.",
@@ -293,15 +370,59 @@ describe("desktop auto-updates", () => {
     consoleError.mockRestore();
   });
 
-  it("defers without prompting during recent command activity", async () => {
-    const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => ({
-        ...OFFLINE_COMPUTER_USE_HOST_STATE,
-        lastCommandAt: new Date().toISOString(),
-      }));
+  it("cleans up and reports a synchronous requested-check failure", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { autoUpdates } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+    emitAutoUpdaterEvent("update-available");
+    const error = new Error("feed unavailable");
+    mocks.autoUpdater.checkForUpdates.mockImplementationOnce(() => {
+      throw error;
+    });
 
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
-    await flushDownloadedUpdateCallback();
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(false);
+    await flushAsyncCallbacks();
+
+    expectActiveUpdateCheckListenerCount(0);
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        title: "Unable to Check for Updates",
+        detail: "feed unavailable",
+      }),
+    );
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+
+    consoleError.mockRestore();
+  });
+
+  it("silently restarts after a downloaded update when Computer Use is offline", async () => {
+    const { prepareForQuitAndInstall } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
+
+    await vi.waitFor(() => {
+      expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+      expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("defers without prompting during recent command activity", async () => {
+    const { prepareForQuitAndInstall } = installAndCaptureAutoUpdates(() => ({
+      ...OFFLINE_COMPUTER_USE_HOST_STATE,
+      lastCommandAt: new Date().toISOString(),
+    }));
+
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
+    await flushAsyncCallbacks();
 
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
     expect(prepareForQuitAndInstall).not.toHaveBeenCalled();
@@ -313,13 +434,16 @@ describe("desktop auto-updates", () => {
       ...OFFLINE_COMPUTER_USE_HOST_STATE,
       lastCommandAt: new Date().toISOString(),
     };
-    const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => hostState);
+    const { prepareForQuitAndInstall } = installAndCaptureAutoUpdates(
+      () => hostState,
+    );
 
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
-    await flushDownloadedUpdateCallback();
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
+    await flushAsyncCallbacks();
 
     hostState = OFFLINE_COMPUTER_USE_HOST_STATE;
+    runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
 
     await vi.waitFor(() => {
@@ -329,23 +453,32 @@ describe("desktop auto-updates", () => {
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
   });
 
-  it("keeps a downloaded update pending across active checks", async () => {
+  it("keeps a downloaded update pending across active scheduled checks", async () => {
     let hostState: ComputerUseHostRuntimeState = {
       ...OFFLINE_COMPUTER_USE_HOST_STATE,
       lastCommandAt: new Date().toISOString(),
     };
-    const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => hostState);
+    const { prepareForQuitAndInstall } = installAndCaptureAutoUpdates(
+      () => hostState,
+    );
 
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
+    await flushAsyncCallbacks();
+
+    runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
+    emitAutoUpdaterEvent("update-not-available");
+    runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
-    await flushDownloadedUpdateCallback();
+    emitAutoUpdaterEvent("update-not-available");
+    await flushAsyncCallbacks();
 
     expect(prepareForQuitAndInstall).not.toHaveBeenCalled();
     expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
 
     hostState = OFFLINE_COMPUTER_USE_HOST_STATE;
+    runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
 
     await vi.waitFor(() => {
@@ -357,16 +490,16 @@ describe("desktop auto-updates", () => {
   it("defers when Computer Use activity inspection fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     let inspectionFails = true;
-    const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => {
-        if (inspectionFails) {
-          throw new Error("state unavailable");
-        }
-        return OFFLINE_COMPUTER_USE_HOST_STATE;
-      });
+    const { prepareForQuitAndInstall } = installAndCaptureAutoUpdates(() => {
+      if (inspectionFails) {
+        throw new Error("state unavailable");
+      }
+      return OFFLINE_COMPUTER_USE_HOST_STATE;
+    });
 
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
-    await flushDownloadedUpdateCallback();
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
+    await flushAsyncCallbacks();
 
     expect(warn).toHaveBeenCalledWith(
       "Unable to inspect Computer Use activity for update",
@@ -377,6 +510,7 @@ describe("desktop auto-updates", () => {
     expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
 
     inspectionFails = false;
+    runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
 
     await vi.waitFor(() => {
@@ -388,8 +522,9 @@ describe("desktop auto-updates", () => {
   });
 
   it("starts only one install while an update restart is in progress", async () => {
-    const { updateOptions, prepareForQuitAndInstall } =
-      installAndCaptureUpdateOptions(() => OFFLINE_COMPUTER_USE_HOST_STATE);
+    const { prepareForQuitAndInstall } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
     let finishPreparation: (() => void) | undefined;
     prepareForQuitAndInstall.mockImplementationOnce(
       () =>
@@ -398,14 +533,16 @@ describe("desktop auto-updates", () => {
         }),
     );
 
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
     await vi.waitFor(() => {
       expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
     });
 
+    runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
-    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
-    await flushDownloadedUpdateCallback();
+    emitAutoUpdaterEvent("update-downloaded");
+    await flushAsyncCallbacks();
 
     expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
     expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
@@ -416,7 +553,7 @@ describe("desktop auto-updates", () => {
     });
 
     emitAutoUpdaterEvent("checking-for-update");
-    await flushDownloadedUpdateCallback();
+    await flushAsyncCallbacks();
     expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
     expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
   });

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.30](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.29...desktop-v0.46.30) (2026-09-07)
+
+
+### Bug Fixes
+
+* **desktop:** remove hero symbol background ([#32076](https://github.com/vm0-ai/vm0/issues/32076)) ([266467a](https://github.com/vm0-ai/vm0/commit/266467a02c0b386407b67441b32e6830be07ffbc))
+
 ## [0.46.29](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.28...desktop-v0.46.29) (2026-09-07)
 
 

@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.854.0](https://github.com/vm0-ai/vm0/compare/app-v0.853.0...app-v0.854.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** enlarge pinned agent avatars behind a feature switch ([#32067](https://github.com/vm0-ai/vm0/issues/32067)) ([ea29038](https://github.com/vm0-ai/vm0/commit/ea29038571b77c7dda8c95c8e500599c33db984c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.629.0
+
 ## [0.853.0](https://github.com/vm0-ai/vm0/compare/app-v0.852.0...app-v0.853.0) (2026-09-07)
 
 

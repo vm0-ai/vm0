@@ -51,9 +51,23 @@ _INTERNAL_PATH_MARKERS = frozenset(
     )
 )
 _JSON_CONTROL_CHAR_MAX = 0x20
-# These are the only bytes that can change discarded string state. Non-ASCII
-# bytes stay on the bytewise path so UTF-8 validation remains unchanged.
+# These are the only bytes that can change discarded string state while
+# scanning an ordinary ASCII prefix.
 _DISCARDED_STRING_STATE_BYTE_RE = re.compile(rb'[\x00-\x1f"\\\x80-\xff]')
+# Possessive repetition validates discarded raw UTF-8 without retaining the
+# matched span or backtracking over it.
+_DISCARDED_STRING_UTF8_SPAN_RE = re.compile(
+    rb"(?:"
+    rb"[\x20-\x21\x23-\x5b\x5d-\x7f]"
+    rb"|[\xc2-\xdf][\x80-\xbf]"
+    rb"|\xe0[\xa0-\xbf][\x80-\xbf]"
+    rb"|[\xe1-\xec\xee-\xef][\x80-\xbf]{2}"
+    rb"|\xed[\x80-\x9f][\x80-\xbf]"
+    rb"|\xf0[\x90-\xbf][\x80-\xbf]{2}"
+    rb"|[\xf1-\xf3][\x80-\xbf]{3}"
+    rb"|\xf4[\x80-\x8f][\x80-\xbf]{2}"
+    rb")*+"
+)
 _UTF8_ONE_BYTE_MAX = 0x80
 _UTF8_CONT_MIN = 0x80
 _UTF8_CONT_MAX = 0xBF
@@ -71,7 +85,7 @@ _UTF8_SURROGATE_MIN = 0xD800
 _UTF8_SURROGATE_MAX = 0xDFFF
 _DEFAULT_MAX_DEPTH = 256
 _SLOW_SCALAR_BYTES_PER_WORK_UNIT = 32
-_DISCARDED_ASCII_BYTES_PER_WORK_UNIT = 64 * 1024
+_DISCARDED_STRING_BULK_BYTES_PER_WORK_UNIT = 64 * 1024
 JSON_WORK_LIMIT_EXCEEDED = "work limit exceeded"
 JSON_INTEGER_VALUE_LIMIT_EXCEEDED = "integer value limit exceeded"
 _JSON_STRING_OR_CONTAINER_RE = re.compile(rb'"(?:\\.|[^"\\])*"|[{}\[\]]', re.DOTALL)
@@ -372,7 +386,7 @@ class JsonSelectiveExtractor:
         self._literal: _LiteralState | None = None
         self._work_units_used = 0
         self._slow_work_bytes_remaining = 0
-        self._discarded_ascii_work_bytes_remaining = 0
+        self._discarded_string_bulk_work_bytes_remaining = 0
 
     def reset(self) -> None:
         """Reset document state while retaining the fixed observation configuration."""
@@ -393,7 +407,7 @@ class JsonSelectiveExtractor:
         self._literal = None
         self._work_units_used = 0
         self._slow_work_bytes_remaining = 0
-        self._discarded_ascii_work_bytes_remaining = 0
+        self._discarded_string_bulk_work_bytes_remaining = 0
 
     def accepts_more_input(self) -> bool:
         """Return whether later bytes can still affect this document parser.
@@ -797,18 +811,47 @@ class JsonSelectiveExtractor:
             return i
         work_limited = self.max_work_units is not None
         if _can_bulk_skip_discarded_string_byte(state, chunk[i]):
-            end = self._discarded_ascii_work_span_end(len(chunk), i) if work_limited else len(chunk)
+            end = (
+                self._discarded_string_bulk_work_span_end(len(chunk), i)
+                if work_limited
+                else len(chunk)
+            )
             if self._error:
                 return i
             match = _DISCARDED_STRING_STATE_BYTE_RE.search(chunk, i, end)
             if match is None:
                 if work_limited:
-                    self._discarded_ascii_work_bytes_remaining -= end - i
+                    self._discarded_string_bulk_work_bytes_remaining -= end - i
                 return end
             skipped = match.start() - i
             if work_limited:
-                self._discarded_ascii_work_bytes_remaining -= skipped
+                self._discarded_string_bulk_work_bytes_remaining -= skipped
             return i + skipped
+
+        if _can_bulk_validate_discarded_utf8(state, chunk[i]):
+            end = (
+                self._discarded_string_bulk_work_span_end(len(chunk), i)
+                if work_limited
+                else len(chunk)
+            )
+            if self._error:
+                return i
+            match = _DISCARDED_STRING_UTF8_SPAN_RE.match(chunk, i, end)
+            match_end = match.end() if match is not None else i
+            if match_end > i:
+                if work_limited:
+                    self._discarded_string_bulk_work_bytes_remaining -= match_end - i
+                return match_end
+
+        if _is_discarded_raw_utf8_byte(state, chunk[i]):
+            if work_limited:
+                self._discarded_string_bulk_work_span_end(len(chunk), i)
+                if self._error:
+                    return i
+            self._accept_string_byte(state, chunk[i])
+            if work_limited:
+                self._discarded_string_bulk_work_bytes_remaining -= 1
+            return i + 1
 
         end = self._slow_work_span_end(len(chunk), i) if work_limited else len(chunk)
         if self._error:
@@ -1142,14 +1185,16 @@ class JsonSelectiveExtractor:
             self._slow_work_bytes_remaining = _SLOW_SCALAR_BYTES_PER_WORK_UNIT
         return min(chunk_len, i + self._slow_work_bytes_remaining)
 
-    def _discarded_ascii_work_span_end(self, chunk_len: int, i: int) -> int:
+    def _discarded_string_bulk_work_span_end(self, chunk_len: int, i: int) -> int:
         if self.max_work_units is None:
             return chunk_len
-        if self._discarded_ascii_work_bytes_remaining == 0:
+        if self._discarded_string_bulk_work_bytes_remaining == 0:
             if not self._consume_work_unit():
                 return i
-            self._discarded_ascii_work_bytes_remaining = _DISCARDED_ASCII_BYTES_PER_WORK_UNIT
-        return min(chunk_len, i + self._discarded_ascii_work_bytes_remaining)
+            self._discarded_string_bulk_work_bytes_remaining = (
+                _DISCARDED_STRING_BULK_BYTES_PER_WORK_UNIT
+            )
+        return min(chunk_len, i + self._discarded_string_bulk_work_bytes_remaining)
 
 
 def _is_hex_byte(b: int) -> bool:
@@ -1183,6 +1228,19 @@ def _can_bulk_skip_discarded_string_byte(state: _StringState, b: int) -> bool:
         and not state.unicode_remaining
         and not state.utf8_remaining
         and _is_discarded_ascii_string_byte(b)
+    )
+
+
+def _can_bulk_validate_discarded_utf8(state: _StringState, b: int) -> bool:
+    return not state.utf8_remaining and _is_discarded_raw_utf8_byte(state, b)
+
+
+def _is_discarded_raw_utf8_byte(state: _StringState, b: int) -> bool:
+    return (
+        state.raw is None
+        and not state.escape
+        and not state.unicode_remaining
+        and b >= _UTF8_ONE_BYTE_MAX
     )
 
 
