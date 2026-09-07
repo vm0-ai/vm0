@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use guest_contracts::active_input::encode_active_input;
+use guest_contracts::active_input::{ACTIVE_INPUT_CLOSED_DIAGNOSTIC, encode_active_input};
+use tracing::Level;
+use tracing_subscriber::prelude::*;
 
 use crate::active_input::{
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, API_ACTIVE_INPUT_RECHECK_INTERVAL,
@@ -13,8 +15,8 @@ use crate::executor::active_input::{
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::support::{
-    RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context,
-    sandbox_read_file_error, test_executor_config, test_telemetry,
+    CapturedEvent, CapturedEvents, RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox,
+    minimal_context, sandbox_read_file_error, test_executor_config, test_telemetry,
 };
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -72,6 +74,114 @@ fn api_active_input_source(
         "sandbox-token".to_string(),
         notifications.subscribe(run_id),
     )
+}
+
+async fn run_local_active_input_rejection(diagnostic: &str) -> Vec<CapturedEvent> {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    overrides.push_process_control_outcome(sandbox::ProcessControlOutcome::GuestStatus {
+        status: sandbox::ProcessControlGuestStatus::Rejected,
+        diagnostic: diagnostic.to_string(),
+    });
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let group_dir = dir.path().join("active-inputs");
+    LocalQueue::new(group_dir.clone())
+        .write_active_input_sync(&ActiveInputEntry {
+            run_id: ctx.run_id,
+            sequence: 1,
+            text: "late follow-up".to_string(),
+        })
+        .unwrap();
+    let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let release_overrides = Arc::clone(&overrides);
+    let release_task = tokio::spawn(async move {
+        assert!(
+            release_overrides
+                .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+                .await
+        );
+        wait_gate.notify_one();
+    });
+
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(cancel, Some(source)),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    drop(guard);
+    release_task.await.unwrap();
+
+    assert!(result.failure.is_none());
+    assert_eq!(overrides.process_control_calls().len(), 1);
+    captured.entries()
+}
+
+fn active_input_stop_event(events: &[CapturedEvent]) -> &CapturedEvent {
+    let mut matching = events.iter().filter(|event| {
+        event
+            .fields
+            .get("message")
+            .is_some_and(|message| message == "active-input control stopped")
+    });
+    let event = matching
+        .next()
+        .unwrap_or_else(|| panic!("missing active-input stop event; captured={events:#?}"));
+    assert!(
+        matching.next().is_none(),
+        "expected one active-input stop event; captured={events:#?}"
+    );
+    event
+}
+
+fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+    assert_eq!(
+        event.fields.get(field).map(String::as_str),
+        Some(expected),
+        "field {field} mismatch; event={event:#?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_classifies_active_input_rejection_logs() {
+    let closed_events = run_local_active_input_rejection(ACTIVE_INPUT_CLOSED_DIAGNOSTIC).await;
+    let closed = active_input_stop_event(&closed_events);
+    assert_eq!(closed.level, Level::INFO);
+    assert_event_field(closed, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(closed, "outcome", "closed");
+    assert_event_field(closed, "diagnostic", ACTIVE_INPUT_CLOSED_DIAGNOSTIC);
+
+    let rejected_events = run_local_active_input_rejection("unexpected rejection").await;
+    let rejected = active_input_stop_event(&rejected_events);
+    assert_eq!(rejected.level, Level::WARN);
+    assert_event_field(rejected, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(rejected, "outcome", "rejected");
+    assert_event_field(rejected, "diagnostic", "unexpected rejection");
 }
 
 #[tokio::test]

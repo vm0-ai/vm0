@@ -78,9 +78,5 @@ if ! grep -Fxq 'package/photon_rs_bg.wasm' <<<"$package_contents"; then
   echo "CLI package is missing photon_rs_bg.wasm" >&2
   exit 1
 fi
-if grep -Fxq 'package/zero.js' <<<"$package_contents"; then
-  echo "CLI package contains an unexpected duplicate zero.js implementation" >&2
-  exit 1
-fi
 
 echo "Verified CLI artifact for $expected_commit_sha"

@@ -1,4 +1,4 @@
-import { waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { startPlatformEntrypoint } from "../lib/platform-entrypoint.ts";
@@ -25,7 +25,7 @@ async function stopApplication(): Promise<void> {
 }
 
 describe("platform entrypoint", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     googleAdsRequestedAfterApplicationStart = false;
     context.mocks.browser.url("https://app.vm0.ai/");
     context.mocks.clerk();
@@ -51,14 +51,53 @@ describe("platform entrypoint", () => {
         return appendChild(node);
       },
     );
-
-    startPlatformEntrypoint();
-    await waitForApplicationStart();
   });
 
   afterEach(stopApplication);
 
-  it("starts the application before requesting Google Ads", () => {
+  it("starts the application before requesting Google Ads", async () => {
+    context.mocks.browser.userAgent(
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36",
+    );
+    vi.stubGlobal("SharedWorker", class extends EventTarget {});
+    startPlatformEntrypoint();
+    await waitForApplicationStart();
     expect(googleAdsRequestedAfterApplicationStart).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: /browser to continue/ }),
+    ).toBeNull();
+  });
+
+  it.each([138, 142, 143])(
+    "shows browser guidance before bootstrap on Android Chrome %s without SharedWorker",
+    async (version) => {
+      context.mocks.browser.userAgent(
+        `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Mobile Safari/537.36`,
+      );
+      vi.stubGlobal("SharedWorker", undefined);
+      startPlatformEntrypoint();
+      await expect(
+        screen.findByRole("heading", {
+          name: "Use a supported browser to continue",
+        }),
+      ).resolves.toBeVisible();
+      expect(
+        document.querySelector('a[href="https://www.google.com/chrome/"]'),
+      ).toBeVisible();
+      expect(context.mocks.sentry().initializations).toHaveLength(0);
+      expect(context.mocks.sentry().reports).toHaveLength(0);
+    },
+  );
+
+  it("keeps version upgrade guidance for an older browser with SharedWorker", async () => {
+    context.mocks.browser.userAgent(
+      "Mozilla/5.0 Chrome/110.0.0.0 Safari/537.36",
+    );
+    vi.stubGlobal("SharedWorker", class extends EventTarget {});
+    startPlatformEntrypoint();
+    await expect(
+      screen.findByRole("heading", { name: "Update Chrome to continue" }),
+    ).resolves.toBeVisible();
+    expect(context.mocks.sentry().initializations).toHaveLength(0);
   });
 });

@@ -71,7 +71,7 @@ assert_zero_snapshot() {
   local mode
   local result
 
-  for state in active idle preparing unknown; do
+  for state in active idle blank preparing unknown; do
     assert_line "vm0_runner_sandboxes{state=\"$state\"} 0"
   done
   for mode in starting running draining stopping unknown; do
@@ -187,12 +187,116 @@ test_canonical_idle_field_behavior() {
 
   assert_line 'vm0_runner_sandboxes{state="active"} 0'
   assert_line 'vm0_runner_sandboxes{state="idle"} 1'
+  assert_line 'vm0_runner_sandboxes{state="blank"} 0'
   assert_line 'vm0_runner_sandboxes{state="preparing"} 0'
   assert_line 'vm0_runner_sandboxes{state="unknown"} 0'
   assert_line 'vm0_runner_instances{mode="running"} 3'
   assert_line 'vm0_runner_status_files{result="included"} 3'
   assert_line 'vm0_runner_status_files{result="invalid"} 0'
   assert_line 'vm0_runner_status_collection_success 1'
+}
+
+test_blank_inventory_formats() {
+  local format
+  local idle
+  local blank
+  for format in legacy explicit overlap; do
+    reset_dirs
+    mkdir -p "$runners_dir/current"
+    idle="{\"sandbox_id\":\"$uuid_a\",\"reuse_key\":\"thread:exact\"}"
+    blank="\"blank_sandboxes\":[{\"sandbox_id\":\"$uuid_b\"}],"
+    if [ "$format" != explicit ]; then
+      idle+=",{\"sandbox_id\":\"$uuid_b\",\"reuse_key\":\"__vm0_blank__:$uuid_b\"}"
+    fi
+    if [ "$format" = legacy ]; then
+      blank=""
+    fi
+    printf '%s\n' "{\"mode\":\"running\",$blank\"idle_sandboxes\":[$idle]}" \
+      >"$runners_dir/current/status.json"
+
+    run_collector
+
+    assert_line 'vm0_runner_sandboxes{state="idle"} 1'
+    assert_line 'vm0_runner_sandboxes{state="blank"} 1'
+    assert_line 'vm0_runner_sandboxes{state="active"} 0'
+    assert_line 'vm0_runner_sandboxes{state="preparing"} 0'
+    assert_line 'vm0_runner_sandboxes{state="unknown"} 0'
+    assert_line 'vm0_runner_status_files{result="included"} 1'
+    assert_line 'vm0_runner_status_collection_success 1'
+    assert_stderr_empty
+    if grep -qE "sandbox_id|run_id|reuse_key|__vm0_blank__|$uuid_a|$uuid_b" "$output_file"; then
+      fail "blank inventory leaked identity-level data into metrics"
+    fi
+  done
+}
+
+test_mixed_blank_inventory_deduplicates_by_uuid_and_lifecycle() {
+  reset_dirs
+  mkdir -p "$runners_dir/legacy" "$runners_dir/explicit" "$runners_dir/stopped"
+  cat >"$runners_dir/legacy/status.json" <<EOF
+{
+  "mode": "draining",
+  "active_runs": [
+    {"sandbox_id":"$uuid_b","phase":"running"},
+    {"sandbox_id":"$uuid_d","phase":"preparing"},
+    {"sandbox_id":"$uuid_e","phase":"future-phase"}
+  ],
+  "idle_sandboxes": [
+    {"sandbox_id":"$uuid_a","reuse_key":"__vm0_blank__:$uuid_a"},
+    {"sandbox_id":"$uuid_c","reuse_key":"thread:exact"},
+    {"sandbox_id":"$uuid_g","reuse_key":"__vm0_blank__:$uuid_h"},
+    {"sandbox_id":"$uuid_h"}
+  ]
+}
+EOF
+  cat >"$runners_dir/explicit/status.json" <<EOF
+{
+  "mode": "running",
+  "idle_sandboxes": [{"sandbox_id":"$uuid_f","reuse_key":"overlap"}],
+  "blank_sandboxes": [
+    {"sandbox_id":"$uuid_a"}, {"sandbox_id":"$uuid_b"},
+    {"sandbox_id":"$uuid_c"}, {"sandbox_id":"$uuid_d"},
+    {"sandbox_id":"$uuid_e"}, {"sandbox_id":"$uuid_f"},
+    {"sandbox_id":"00000000000040008000000000000006"}
+  ]
+}
+EOF
+  printf '%s\n' '{"mode":"stopped","blank_sandboxes":null}' \
+    >"$runners_dir/stopped/status.json"
+
+  run_collector
+
+  assert_line 'vm0_runner_sandboxes{state="idle"} 3'
+  assert_line 'vm0_runner_sandboxes{state="blank"} 2'
+  assert_line 'vm0_runner_sandboxes{state="active"} 1'
+  assert_line 'vm0_runner_sandboxes{state="preparing"} 1'
+  assert_line 'vm0_runner_sandboxes{state="unknown"} 1'
+  assert_line 'vm0_runner_status_files{result="included"} 2'
+  assert_line 'vm0_runner_status_files{result="stopped"} 1'
+  assert_line 'vm0_runner_status_collection_success 1'
+  assert_stderr_empty
+}
+
+test_malformed_blank_inventory_invalidates_only_its_status_file() {
+  reset_dirs
+  mkdir -p "$runners_dir/valid" "$runners_dir/invalid"
+  printf '%s\n' "{\"mode\":\"running\",\"idle_sandboxes\":[{\"sandbox_id\":\"$uuid_a\"}]}" \
+    >"$runners_dir/valid/status.json"
+  local blank
+  for blank in null '{}' '"invalid"' '[null]' '[{}]' \
+    '[{"sandbox_id":1}]' '[{"sandbox_id":""}]' '[{"sandbox_id":"not-a-uuid"}]'; do
+    printf '%s\n' "{\"mode\":\"running\",\"blank_sandboxes\":$blank}" \
+      >"$runners_dir/invalid/status.json"
+
+    run_collector
+
+    assert_line 'vm0_runner_sandboxes{state="idle"} 1'
+    assert_line 'vm0_runner_sandboxes{state="blank"} 0'
+    assert_line 'vm0_runner_status_files{result="included"} 1'
+    assert_line 'vm0_runner_status_files{result="invalid"} 1'
+    assert_line 'vm0_runner_status_collection_success 0'
+    grep -q 'invalid/status.json' "$stderr_file" || fail "malformed blank was not reported"
+  done
 }
 
 test_invalid_files_publish_partial_metrics() {
@@ -359,6 +463,9 @@ test_playbook_provisions_collector_identity_and_cadence() {
 test_missing_and_empty_runner_roots_emit_zero_metrics
 test_aggregates_current_and_future_statuses
 test_canonical_idle_field_behavior
+test_blank_inventory_formats
+test_mixed_blank_inventory_deduplicates_by_uuid_and_lifecycle
+test_malformed_blank_inventory_invalidates_only_its_status_file
 test_invalid_files_publish_partial_metrics
 test_rejects_runner_and_status_symlinks
 test_output_is_deterministic_and_replaced_atomically

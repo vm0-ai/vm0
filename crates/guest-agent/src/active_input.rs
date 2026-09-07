@@ -5,7 +5,9 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use guest_contracts::active_input::{ActiveInputDecodeError, decode_active_input};
+use guest_contracts::active_input::{
+    ACTIVE_INPUT_CLOSED_DIAGNOSTIC, ActiveInputDecodeError, decode_active_input,
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -510,7 +512,10 @@ impl ActiveInputController {
     /// disabled, or closed inputs are rejected. A bounded backlog returns
     /// [`ActiveInputControlOutcome::QueueFull`] so callers can distinguish
     /// backpressure from validation rejection. Callers should branch on the
-    /// outcome variant rather than treating diagnostic text as a stable protocol.
+    /// outcome variant rather than treating diagnostic text as a stable
+    /// protocol. The one exception is
+    /// [`ACTIVE_INPUT_CLOSED_DIAGNOSTIC`], which Runner uses to classify the
+    /// expected closed-lifecycle race for logging.
     pub fn handle_control_payload(&self, payload: &[u8]) -> ActiveInputControlOutcome {
         let ActiveInputMode::Enabled(_) = &self.inner.mode else {
             return ActiveInputControlOutcome::Rejected {
@@ -549,7 +554,7 @@ impl ActiveInputController {
         }
         if state.lifecycle != Lifecycle::Open {
             return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input is closed",
+                diagnostic: ACTIVE_INPUT_CLOSED_DIAGNOSTIC,
             };
         }
         if state.deliveries_by_id.len() >= ACTIVE_INPUT_DELIVERY_ID_CAPACITY {
@@ -597,7 +602,7 @@ impl ActiveInputController {
                 state.deliveries_by_id.remove(frame.delivery_id());
                 state.lifecycle = Lifecycle::Closed;
                 ActiveInputControlOutcome::Rejected {
-                    diagnostic: "active input is closed",
+                    diagnostic: ACTIVE_INPUT_CLOSED_DIAGNOSTIC,
                 }
             }
         }

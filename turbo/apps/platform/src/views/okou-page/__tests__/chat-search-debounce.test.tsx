@@ -13,7 +13,7 @@ import {
 } from "./chat-list-test-helpers.ts";
 
 const context = testContext();
-const SEARCH_LABEL = "Search chats, messages, workflows, and artifacts...";
+const SEARCH_LABEL = "Search workspace...";
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
 } as const;

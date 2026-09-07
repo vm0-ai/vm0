@@ -134,23 +134,15 @@ describe("desktop update routes", () => {
     });
   });
 
-  // #28465 moved these two routes off `/api/okou/**` to the neutral path, and
-  // #31088 removed the branded compatibility rows that kept the branded forms
-  // answering — #31090 then removed the mechanism itself — so the neutral path
-  // is the only one either route serves.
-  //
-  // The update line is asserted alongside the path, because the move alone
-  // would have changed it: the neutral path has to serve the final
-  // `ai-okou-desktop` line rather than the pre-adoption `okou` line it
-  // succeeded. Both Okou manifests are mocked at different versions, so reading
-  // the wrong one resolves to the wrong release and fails here rather than
-  // 404ing. Every expectation is written out rather than derived from the path
-  // under test, which would assert nothing.
+  // The neutral release and DMG routes must serve the current
+  // `ai-okou-desktop` line. Both Okou manifests are mocked at different
+  // versions, so reading the wrong one resolves to the wrong release. Every
+  // expectation is explicit rather than derived from the path under test.
   //
   // The unqualified DMG route is what the Zero migration wall's `Download Okou`
   // button opens and what the bridge compiled into installed Zero builds
   // hard-codes, so this case guards a live migration dependency.
-  it("serves the moved desktop routes on the neutral path", async () => {
+  it("serves the current Okou desktop line on the neutral routes", async () => {
     mockDesktopUpdateManifest(
       stableManifest("0.12.0", {
         "0.12.0": darwinArm64Release("0.12.0", okouZipUrl("0.12.0")),

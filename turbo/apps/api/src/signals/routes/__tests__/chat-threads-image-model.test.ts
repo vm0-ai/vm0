@@ -247,7 +247,7 @@ describe("POST /api/chat-threads/:id/image-model", () => {
     await expect(readImageModelEvents(otherToken)).resolves.toStrictEqual([]);
   });
 
-  it("rejects a ZERO_TOKEN without chat-thread:write", async () => {
+  it("rejects an Okou run token without chat-thread:write", async () => {
     const fixture = await seedChatThread("Product launch still");
     const token = okouToken({
       userId: fixture.userId,

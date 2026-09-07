@@ -237,6 +237,9 @@ export interface StripeRefund {
   readonly id: string;
   readonly status: string | null;
   readonly failure_reason?: string | null;
+  readonly amount: number;
+  readonly payment_intent: StripeRef;
+  readonly metadata: Record<string, string> | null;
 }
 
 export interface StripeCreditNote {
@@ -678,6 +681,11 @@ export interface StripeCheckoutSessionsApi {
 }
 
 export interface StripeRefundsApi {
+  list(params: {
+    readonly payment_intent: string;
+    readonly limit: number;
+    readonly starting_after?: string;
+  }): Promise<StripeList<StripeRefund>>;
   retrieve(id: string): Promise<StripeRefund>;
   create(
     params: {

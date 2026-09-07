@@ -4,7 +4,6 @@ import {
   type PiModelConfig,
   type PiModelConfigLegacy,
 } from "@okouai/api-contracts/contracts/runners";
-import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderPiEndpoint,
   getSecretNameForType,
@@ -21,7 +20,6 @@ import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { isPiAgentModelSupported } from "@okouai/pi-agent-runtime";
 
 import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
-import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import { GATEWAY_RUNTIME_SECRET_NAME } from "./model-provider-gateway-runtime";
 
 /**
@@ -163,13 +161,16 @@ function isFastTerraPiProvider(
   );
 }
 
+/**
+ * Route canonical chat threads by model and provider policy. Trigger source is
+ * intentionally absent so every queued connector shares the same admission.
+ */
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
   readonly codexServiceTier: "fast" | undefined;
   readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
-  readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): boolean {
   const catalogProvider = piCatalogProvider(args.selectedModel);
@@ -193,7 +194,7 @@ export function shouldUsePiExecution(args: {
       (isStandardTerra || isFastTerra));
   return (
     args.chatThreadId !== undefined &&
-    isWebChatTriggerSource(args.triggerSource) &&
+    args.chatThreadId.length > 0 &&
     isPiModelProvider &&
     (isExistingPiModel || isStandardTerra || isFastTerra) &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)

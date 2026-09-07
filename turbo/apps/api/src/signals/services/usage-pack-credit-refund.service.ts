@@ -11,6 +11,7 @@ import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
   getStripeClient,
+  stripeErrorInfo,
   type StripeClient,
   type StripeCreditNote,
   type StripeCreditNoteParams,
@@ -468,21 +469,14 @@ async function processPaymentIntentRefund(
   const stripe = getStripeClient();
   const refund = row.stripeRefundId
     ? await stripe.refunds.retrieve(row.stripeRefundId)
-    : await stripe.refunds.create(
-        {
-          payment_intent: row.stripePaymentIntentId,
-          amount: row.requestedAmountCents,
-          metadata: {
-            purpose: "usage_pack_member_credit_refund",
-            orgId: row.orgId,
-            userId: row.userId,
-            creditGrantId: row.creditGrantId,
-          },
-        },
-        {
-          idempotencyKey: `usage-pack-credit-refund:${row.creditGrantId}:${row.attempt}`,
-        },
-      );
+    : await createOrReconcileRefund(db, stripe, row, {
+        paymentIntentId: row.stripePaymentIntentId,
+        amountCents: row.requestedAmountCents,
+        idempotencyKey: `usage-pack-credit-refund:${row.creditGrantId}:${row.attempt}`,
+      });
+  if (!refund) {
+    return;
+  }
   const state = await applyStripeRefundState(db, row, refund);
   if (state === "succeeded") {
     await markRefundSucceeded(db, row, refund.id, row.requestedAmountCents);
@@ -604,20 +598,103 @@ async function loadOrCreateInvoiceRefund(
   if (!paymentIntentId) {
     return null;
   }
-  return await stripe.refunds.create(
-    {
+  return await createOrReconcileRefund(db, stripe, row, {
+    paymentIntentId,
+    amountCents: refundAmountCents,
+    idempotencyKey: `usage-pack-credit-refund:${row.creditGrantId}:${row.attempt}:refund`,
+  });
+}
+
+async function reconcileAlreadyRefundedCharge(
+  db: Pick<Db, "update">,
+  stripe: StripeClient,
+  row: UsagePackCreditRefundRow,
+  paymentIntentId: string,
+  amountCents: number,
+): Promise<StripeRefund | null> {
+  let startingAfter: string | undefined;
+  let matchingRefund: StripeRefund | null = null;
+  do {
+    const page = await stripe.refunds.list({
       payment_intent: paymentIntentId,
-      amount: refundAmountCents,
-      metadata: {
-        purpose: "usage_pack_member_credit_refund",
-        orgId: row.orgId,
-        userId: row.userId,
-        creditGrantId: row.creditGrantId,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    for (const refund of page.data) {
+      if (
+        refund.status !== "succeeded" ||
+        refund.amount !== amountCents ||
+        stripeRefId(refund.payment_intent) !== paymentIntentId ||
+        refund.metadata?.purpose !== "usage_pack_member_credit_refund" ||
+        refund.metadata.creditGrantId !== row.creditGrantId ||
+        refund.metadata.orgId !== row.orgId ||
+        refund.metadata.userId !== row.userId
+      ) {
+        continue;
+      }
+      if (matchingRefund) {
+        await markRefundFailed(
+          db,
+          row,
+          "stripe_charge_already_refunded_ambiguous",
+        );
+        return null;
+      }
+      matchingRefund = refund;
+    }
+    if (!page.has_more) {
+      break;
+    }
+    const lastRefundId = page.data.at(-1)?.id;
+    if (!lastRefundId || lastRefundId === startingAfter) {
+      throw new Error("Stripe refund pagination did not advance");
+    }
+    startingAfter = lastRefundId;
+  } while (startingAfter);
+
+  if (!matchingRefund) {
+    await markRefundFailed(db, row, "stripe_charge_already_refunded_unmatched");
+  }
+  return matchingRefund;
+}
+
+async function createOrReconcileRefund(
+  db: Pick<Db, "update">,
+  stripe: StripeClient,
+  row: UsagePackCreditRefundRow,
+  args: {
+    readonly paymentIntentId: string;
+    readonly amountCents: number;
+    readonly idempotencyKey: string;
+  },
+): Promise<StripeRefund | null> {
+  const result = await settle(
+    stripe.refunds.create(
+      {
+        payment_intent: args.paymentIntentId,
+        amount: args.amountCents,
+        metadata: {
+          purpose: "usage_pack_member_credit_refund",
+          orgId: row.orgId,
+          userId: row.userId,
+          creditGrantId: row.creditGrantId,
+        },
       },
-    },
-    {
-      idempotencyKey: `usage-pack-credit-refund:${row.creditGrantId}:${row.attempt}:refund`,
-    },
+      { idempotencyKey: args.idempotencyKey },
+    ),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (stripeErrorInfo(result.error)?.code !== "charge_already_refunded") {
+    throw result.error;
+  }
+  return await reconcileAlreadyRefundedCharge(
+    db,
+    stripe,
+    row,
+    args.paymentIntentId,
+    args.amountCents,
   );
 }
 

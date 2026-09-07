@@ -170,7 +170,13 @@ function creditNote(
     refunds: [
       {
         amount_refunded: amount,
-        refund: { id: `re_${id}`, status: refundStatus },
+        refund: {
+          id: `re_${id}`,
+          status: refundStatus,
+          amount,
+          payment_intent: null,
+          metadata: {},
+        },
       },
     ],
   };

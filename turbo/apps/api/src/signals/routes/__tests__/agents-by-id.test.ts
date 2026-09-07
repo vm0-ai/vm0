@@ -128,16 +128,12 @@ function okouTokenFor(
 }
 
 describe("GET /api/agents/:id", () => {
-  // Until #30807 this pair also read each credential through `/api/okou` and
-  // `/api/zero` and asserted the three forms agreed. That row is gone, so what
-  // is left is the part that was never about the namespace: three different
-  // credentials reading back the same agent. The branded path validation case
-  // went with the row too — `returns 400 for invalid path params` below already
-  // covers that response on the path the contract declares.
+  // Exercise every supported credential against the same declared contract
+  // path. Invalid path parameters have dedicated coverage below.
   it("reads back the same agent for session, PAT, and run-capability auth", async () => {
     const actor = bdd.user({ orgRole: "org:member" });
     const agent = await createAgent(actor, {
-      displayName: "Namespace Parity Agent",
+      displayName: "Credential Parity Agent",
       visibility: "private",
     });
 
@@ -303,8 +299,8 @@ describe("GET /api/agents/:id", () => {
   it("returns the agent for an agent token with agent:read capability", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, {
-      displayName: "Zero Token Agent",
-      description: "Read by zero token",
+      displayName: "Okou Run Token Agent",
+      description: "Read by an Okou run token",
     });
     const token = okouTokenFor(actor, ["agent:read"]);
     mockClerkMembership(context, actor, "org:admin");
@@ -320,8 +316,8 @@ describe("GET /api/agents/:id", () => {
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
       ownerId: actor.userId,
-      displayName: "Zero Token Agent",
-      description: "Read by zero token",
+      displayName: "Okou Run Token Agent",
+      description: "Read by an Okou run token",
     });
   });
 });
