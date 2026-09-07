@@ -102,22 +102,11 @@ const composeJobTokenPayloadSchema = jwtBaseSchema.extend({
   jobId: z.string().min(1),
 });
 
-// The `zero` scope is retired and no issuer produces it any more. The shape
-// stays reachable through the test signer alone so verification tests can
-// prove a legacy token is rejected.
-type RetiredZeroScopePayload = Omit<
-  z.input<typeof okouTokenPayloadSchema>,
-  "scope"
-> & {
-  readonly scope: "zero";
-};
-
 type JwtPayloadInput =
   | z.input<typeof sandboxTokenPayloadSchema>
   | z.input<typeof okouTokenPayloadSchema>
   | z.input<typeof cliTokenPayloadSchema>
-  | z.input<typeof composeJobTokenPayloadSchema>
-  | RetiredZeroScopePayload;
+  | z.input<typeof composeJobTokenPayloadSchema>;
 
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;

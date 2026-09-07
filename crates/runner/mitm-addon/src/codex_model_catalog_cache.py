@@ -364,9 +364,19 @@ def _is_responses_path(original_url: str) -> bool:
     return parsed.path == _RESPONSES_PATH or parsed.path.startswith(f"{_RESPONSES_PATH}/")
 
 
+def _strict_utf8_bytes(value: str) -> bytes | None:
+    try:
+        return value.encode()
+    except UnicodeEncodeError:
+        return None
+
+
 def _usable_etag_value(value: str) -> str | None:
     value = value.strip()
-    if not value or value == "*" or len(value.encode()) > _MAX_ETAG_BYTES:
+    if not value or value == "*":
+        return None
+    encoded = _strict_utf8_bytes(value)
+    if encoded is None or len(encoded) > _MAX_ETAG_BYTES:
         return None
     opaque = value[2:] if value.startswith("W/") else value
     if (
@@ -746,8 +756,11 @@ def _response_headers_bypass_reason(
     if encoding != _IDENTITY_ENCODING and not (allow_brotli and encoding == _BROTLI_ENCODING):
         return "response_encoding"
     content_type = headers.get("Content-Type", "")
-    if len(content_type.encode()) > _MAX_CONTENT_TYPE_BYTES or not _content_type_is_json(
-        content_type
+    encoded_content_type = _strict_utf8_bytes(content_type)
+    if (
+        encoded_content_type is None
+        or len(encoded_content_type) > _MAX_CONTENT_TYPE_BYTES
+        or not _content_type_is_json(content_type)
     ):
         return "response_content_type"
     if _response_cache_control_is_unsafe(headers):

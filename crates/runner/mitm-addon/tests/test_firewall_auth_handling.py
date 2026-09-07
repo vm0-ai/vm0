@@ -1101,8 +1101,14 @@ class TestHandleFirewallRequest:
                 ConnectionResetError("connection reset"),
                 "connection reset",
             ),
+            (
+                auth_client.FirewallAuthDeadlineExceededError(
+                    auth_client.FirewallAuthFetchPhase.RESPONSE_HEADERS
+                ),
+                "Firewall auth fetch deadline exceeded during response_headers",
+            ),
         ],
-        ids=["url-error", "socket-timeout", "connection-reset"],
+        ids=["url-error", "socket-timeout", "connection-reset", "deadline-phase"],
     )
     async def test_auth_endpoint_transport_failure_returns_502(
         self,

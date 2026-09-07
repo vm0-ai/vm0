@@ -1,5 +1,4 @@
 import { useGet, useLastResolved, useLoadable } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Cpu, Globe, Keyboard, Loader2 } from "lucide-react";
 import { cn } from "@okouai/ui";
@@ -14,40 +13,30 @@ import { sendMode$ } from "../../../../../signals/send-mode.ts";
 import { cloudBrowserEnabledByDefault$ } from "../../../../../signals/cloud-browser-preference.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
 import { resolveModelFirstStoredUserSelection } from "../../../../../signals/okou-page/model-default-selection.ts";
-import {
-  pendingDefaultModelSelection$,
-  updateDefaultModelPreference$,
-} from "../../../../../signals/okou-page/settings/default-model-preference.ts";
-import {
-  updateSendMode$,
-  pendingSendMode$,
-} from "../../../../../signals/okou-page/settings/send-mode-preference.ts";
-import {
-  pendingCloudBrowserEnabledByDefault$,
-  updateCloudBrowserEnabledByDefault$,
-} from "../../../../../signals/okou-page/settings/cloud-browser-preference.ts";
 import { ModelProviderPicker } from "../../model-provider-picker.tsx";
+import type { ChatPreferenceActions } from "../chat-preference-actions.ts";
 import { PreferenceCardRow } from "../preference-card-row.tsx";
 
 const SEND_OPTIONS: readonly SendMode[] = ["enter", "cmd-enter"];
 
-function DefaultModelPreference() {
+function DefaultModelPreference({
+  action,
+}: {
+  action: ChatPreferenceActions["model"];
+}) {
   const { t } = useTranslation();
   const userPreference = useLastResolved(userModelPreference$);
   const policies = useLastResolved(orgModelPolicies$);
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const pending = useGet(pendingDefaultModelSelection$);
-  const [updateLoadable, updatePreference] = useLoadableSet(
-    updateDefaultModelPreference$,
-  );
+  const { submission, update: updatePreference } = action;
   const pageSignal = useGet(pageSignal$);
   const current = resolveModelFirstStoredUserSelection({
     userPreference,
     policies,
     codexFastModeEnabled,
   });
-  const effective = pending === null ? current : pending.selection;
-  const mutating = updateLoadable.state === "loading";
+  const effective = submission === null ? current : submission.selection;
+  const mutating = submission !== null;
 
   const handleChange = (selection: Parameters<typeof updatePreference>[0]) => {
     detach(updatePreference(selection, pageSignal), Reason.DomCallback);
@@ -77,18 +66,19 @@ function DefaultModelPreference() {
   );
 }
 
-function CloudBrowserDefaultPreference() {
+function CloudBrowserDefaultPreference({
+  action,
+}: {
+  action: ChatPreferenceActions["cloudBrowser"];
+}) {
   const { t } = useTranslation();
   const preferenceLoadable = useLoadable(cloudBrowserEnabledByDefault$);
   const current =
     preferenceLoadable.state === "hasData" ? preferenceLoadable.data : true;
-  const pending = useGet(pendingCloudBrowserEnabledByDefault$);
-  const [updateLoadable, updatePreference] = useLoadableSet(
-    updateCloudBrowserEnabledByDefault$,
-  );
+  const { submission, update: updatePreference } = action;
   const pageSignal = useGet(pageSignal$);
-  const mutating = updateLoadable.state === "loading";
-  const effective = pending ?? current;
+  const mutating = submission !== null;
+  const effective = submission ?? current;
 
   const handleToggle = (checked: boolean) => {
     detach(updatePreference(checked, pageSignal), Reason.DomCallback);
@@ -116,15 +106,17 @@ function CloudBrowserDefaultPreference() {
   );
 }
 
-export function SendModePreference() {
+export function SendModePreference({
+  action,
+}: {
+  action: ChatPreferenceActions["sendMode"];
+}) {
   const { t } = useTranslation();
   const prefsLoadable = useLoadable(sendMode$);
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
-  const [saveModeLoadable, saveSendMode] = useLoadableSet(updateSendMode$);
+  const { submission: saving, update: saveSendMode } = action;
   const pageSignal = useGet(pageSignal$);
-  const pendingMode = useGet(pendingSendMode$);
-  const saving = saveModeLoadable.state === "loading" ? pendingMode : null;
 
   const handleChange = (value: SendMode) => {
     detach(saveSendMode(value, pageSignal), Reason.DomCallback);
@@ -189,12 +181,12 @@ export function SendModePreference() {
   );
 }
 
-export function ChatSection() {
+export function ChatSection({ actions }: { actions: ChatPreferenceActions }) {
   return (
     <div className="flex flex-col gap-3">
-      <DefaultModelPreference />
-      <CloudBrowserDefaultPreference />
-      <SendModePreference />
+      <DefaultModelPreference action={actions.model} />
+      <CloudBrowserDefaultPreference action={actions.cloudBrowser} />
+      <SendModePreference action={actions.sendMode} />
     </div>
   );
 }

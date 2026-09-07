@@ -5,6 +5,7 @@ mod bounded_command;
 mod byte_size;
 mod ca;
 mod child_cleanup;
+mod cleanup_progress;
 mod cmd;
 mod config;
 mod deps;
@@ -455,7 +456,7 @@ mod tests {
             .join(" ");
 
         assert!(normalized_help.contains(
-            "drain Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)"
+            "drain Drain without waiting for active jobs (waits for bounded same-process acknowledgement)"
         ));
     }
 

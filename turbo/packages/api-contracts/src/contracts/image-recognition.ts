@@ -37,7 +37,7 @@ export type ImageRecognitionResponse = z.infer<
   typeof imageRecognitionResponseSchema
 >;
 
-const recognitionResponses = {
+const imageRecognitionResponses = {
   200: imageRecognitionResponseSchema,
   400: apiErrorSchema,
   401: apiErrorSchema,
@@ -50,14 +50,22 @@ const recognitionResponses = {
   503: apiErrorSchema,
 } as const;
 
+const imageRecognitionRoute = {
+  method: "POST" as const,
+  headers: authHeadersSchema,
+  body: imageRecognitionRequestSchema,
+  responses: imageRecognitionResponses,
+  summary: "Recognize one owned image through a managed multimodal model",
+};
+
 export const imageRecognitionContract = c.router({
+  imageRecognition: {
+    ...imageRecognitionRoute,
+    path: "/api/image-recognition",
+  },
   recognize: {
-    method: "POST",
+    ...imageRecognitionRoute,
     path: "/api/recognize",
-    headers: authHeadersSchema,
-    body: imageRecognitionRequestSchema,
-    responses: recognitionResponses,
-    summary: "Recognize one owned image through a managed multimodal model",
   },
 });
 

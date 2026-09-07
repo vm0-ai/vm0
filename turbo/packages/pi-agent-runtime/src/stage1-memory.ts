@@ -397,7 +397,7 @@ export async function runPiMemoryStage1Extraction(
   const message = await consumeAssistantMessage(
     piAgentStreamForConfig(args.model)(model, context, {
       apiKey: args.model.apiKey,
-      reasoning: "low",
+      reasoning: "max",
       samplingParams: {
         max_output_tokens: 32_768,
         text: {

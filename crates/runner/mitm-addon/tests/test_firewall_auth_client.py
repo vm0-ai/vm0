@@ -1836,10 +1836,11 @@ class TestFirewallAuthAsyncTransport:
             patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             mitm_ctx(api_url="http://firewall-auth.invalid"),
-            pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+            pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
         ):
             await auth_client.fetch_firewall_headers(firewall_auth_request())
 
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.CONNECT
         assert [address[0] for address in connect_probe.attempted_addresses] == list(pending_hosts)
         assert {address[0] for address in connect_probe.cancelled_addresses} == set(pending_hosts)
         assert connect_probe.max_active_count == 3
@@ -1903,9 +1904,43 @@ class TestFirewallAuthAsyncTransport:
             await asyncio.wait_for(request_received.wait(), timeout=2.0)
             await asyncio.wait_for(peer_closed.wait(), timeout=2.0)
 
-        assert str(exc_info.value) == "Firewall auth fetch deadline exceeded"
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.RESPONSE_BODY
+        assert str(exc_info.value) == ("Firewall auth fetch deadline exceeded during response_body")
         assert "sensitive-encrypted-secrets" not in str(exc_info.value)
         assert "sensitive-sandbox-token" not in str(exc_info.value)
+
+    async def test_total_deadline_attributes_a_stalled_response_header_wait(self, mitm_ctx):
+        request_received = asyncio.Event()
+        peer_closed = asyncio.Event()
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await _read_raw_http_request(reader)
+            request_received.set()
+            with suppress(ConnectionResetError):
+                while await reader.read(64 * 1024):
+                    pass
+            peer_closed.set()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_client) as port:
+            with (
+                mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
+                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+            await asyncio.wait_for(request_received.wait(), timeout=2.0)
+            await asyncio.wait_for(peer_closed.wait(), timeout=2.0)
+
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.RESPONSE_HEADERS
+        assert str(exc_info.value) == (
+            "Firewall auth fetch deadline exceeded during response_headers"
+        )
 
     async def test_total_deadline_aborts_a_stalled_tls_handshake(self, mitm_ctx):
         handshake_started = asyncio.Event()
@@ -1938,12 +1973,14 @@ class TestFirewallAuthAsyncTransport:
                 patch.dict(os.environ, proxy_environment),
                 mitm_ctx(api_url=f"https://127.0.0.1:{port}"),
                 patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.5),
-                pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
             ):
                 await auth_client.fetch_firewall_headers(firewall_auth_request())
 
             await asyncio.wait_for(handshake_started.wait(), timeout=2.0)
             await asyncio.wait_for(peer_closed.wait(), timeout=2.0)
+
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.TLS
 
     async def test_total_deadline_cancels_dns_lookup_before_connect(self, mitm_ctx):
         class BlockingResolver:
@@ -1977,10 +2014,11 @@ class TestFirewallAuthAsyncTransport:
             patch.object(auth_client, "_dns_resolver", resolver),
             patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.05),
             mitm_ctx(api_url="http://firewall-auth.invalid"),
-            pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+            pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
         ):
             await auth_client.fetch_firewall_headers(firewall_auth_request())
 
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.DNS
         assert resolver.started.is_set()
         assert resolver.cancelled.is_set()
 
@@ -2036,6 +2074,11 @@ class TestFirewallAuthAsyncTransport:
         assert all(
             isinstance(result, auth_client.FirewallAuthDeadlineExceededError)
             for result in shared_results
+        )
+        assert all(
+            result.phase is auth_client.FirewallAuthFetchPhase.RESPONSE_BODY
+            for result in shared_results
+            if isinstance(result, auth_client.FirewallAuthDeadlineExceededError)
         )
         assert len({id(result) for result in shared_results}) == 1
         assert retry["headers"] == {}
@@ -2303,12 +2346,14 @@ class TestFirewallAuthAsyncTransport:
                 patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
                 mitm_ctx(api_url="https://platform.example"),
-                pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
             ):
                 await auth_client.fetch_firewall_headers(firewall_auth_request())
 
             await asyncio.wait_for(connect_received.wait(), timeout=2.0)
             await asyncio.wait_for(proxy_peer_closed.wait(), timeout=2.0)
+
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.PROXY_CONNECT
 
     async def test_https_proxy_connect_preserves_origin_tls_and_isolates_credentials(
         self,

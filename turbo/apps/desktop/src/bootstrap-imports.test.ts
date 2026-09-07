@@ -8,11 +8,7 @@ import { describe, expect, it } from "vitest";
 // outside the allowlist below — most importantly anything under `@okouai/*`.
 // scripts/check-bootstrap-bundle.mjs re-checks the built bundle.
 
-const ALLOWED_PACKAGES = new Set([
-  "electron",
-  "update-electron-app",
-  "@sentry/electron/main",
-]);
+const ALLOWED_PACKAGES = new Set(["electron", "@sentry/electron/main"]);
 
 // "./main.js" is the runtime require of the main bundle, intentionally
 // external to the bootstrap bundle.

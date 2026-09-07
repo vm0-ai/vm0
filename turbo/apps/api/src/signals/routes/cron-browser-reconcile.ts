@@ -2,8 +2,6 @@ import { cronBrowserReconcileContract } from "@okouai/api-contracts/contracts/cr
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
-import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { drainStaleChatThreadQueues$ } from "../services/chat-thread-queue-drain.service";
 import { reconcileBrowsers$ } from "../services/browser.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -13,12 +11,6 @@ const reconcileBrowsersRoute$ = command(
       return cronUnauthorized();
     }
     const body = await set(reconcileBrowsers$, signal);
-    signal.throwIfAborted();
-    await set(
-      drainStaleChatThreadQueues$,
-      { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
-      signal,
-    );
     signal.throwIfAborted();
     return { status: 200 as const, body };
   },

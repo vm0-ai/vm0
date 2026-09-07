@@ -208,7 +208,8 @@ function shouldSuppressKnownFailureLog(
   failureReason: KnownRunFailureReason,
 ): boolean {
   switch (failureReason) {
-    case "input_too_large": {
+    case "input_too_large":
+    case "execution_timeout": {
       return true;
     }
     case "insufficient_credits":
@@ -231,7 +232,6 @@ function shouldSuppressKnownFailureLog(
       );
     }
     case "session_history_limit":
-    case "execution_timeout":
     case "unsupported_model": {
       return false;
     }

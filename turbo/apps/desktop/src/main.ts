@@ -35,7 +35,7 @@ import {
   notifyDesktopComputerUseChanged,
 } from "./computer-use-electron";
 import {
-  ComputerUseHostRuntime,
+  type ComputerUseHostRuntime,
   readSystemHostName,
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
@@ -76,11 +76,13 @@ import {
 } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import desktopBrandAssets from "./desktop-brand-assets.json";
-import { checkForDesktopUpdates } from "./desktop-auto-updates";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
-import type { DesktopMainModule } from "./desktop-main-module";
+import type {
+  DesktopAutoUpdatesController,
+  DesktopMainModule,
+} from "./desktop-main-module";
 import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-autostart";
-import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { createDesktopComputerUseHostRuntime } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
 import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
 import { DesktopMcpPluginManager } from "./desktop-mcp-plugin";
@@ -99,6 +101,7 @@ import {
 } from "./desktop-smoke-test";
 import { installDesktopTray, type DesktopTrayController } from "./desktop-tray";
 import { DesktopAuthSession } from "./desktop-auth-session";
+import { DesktopAuthWindow } from "./desktop-auth-window";
 import {
   installDesktopAuthIpc,
   notifyDesktopAuthChanged,
@@ -113,9 +116,7 @@ import {
   buildDesktopAuthStartUrl,
   buildDesktopAuthTokenUrl,
   createDesktopAuthStartGate,
-  isDesktopAuthCompletionNavigation,
   isElectronNavigationAborted,
-  isDesktopAuthSelectOrgNavigation,
   isDesktopAuthStartNavigation,
   parseDesktopAuthCallback,
   parseDesktopAuthCallbackArgv,
@@ -135,7 +136,7 @@ import {
   desktopRendererUrl,
   isDesktopRendererUrl,
 } from "./desktop-renderer-url";
-import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
+import { decideWindowOpen } from "./window-policy";
 
 const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
@@ -144,26 +145,18 @@ const addDesktopClientHeaders = createDesktopClientHeaderInjector({
   product: config.identity.product,
 });
 const desktopAuthStartUrl = buildDesktopAuthStartUrl(
-  config.webUrl,
+  config.authUrl,
   config.identity.authScheme,
 );
 const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
-  config.webUrl,
+  config.authUrl,
   true,
 );
-const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
+const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.authUrl);
 const localRendererUrl = desktopRendererUrl();
 const localRecorderUrl = desktopRecorderUrl("bar");
 const ZERO_FEATURE_SWITCHES_PATH = "/api/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
-const ELECTRON_ERR_ABORTED = -3;
-const DESKTOP_SIGN_OUT_STORAGES = [
-  "cookies",
-  "localstorage",
-  "indexdb",
-  "serviceworkers",
-  "cachestorage",
-] as const;
 const SCREEN_RECORDING_POLL_INTERVAL_MS = 1000;
 const MAC_ACCESSIBILITY_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
@@ -189,7 +182,7 @@ ipcMain.on(DESKTOP_IDENTITY_CHANNEL, (event) => {
 });
 let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let mcpPluginManager: DesktopMcpPluginManager | null = null;
-let desktopAutoUpdatesInstalled = false;
+let desktopAutoUpdates: DesktopAutoUpdatesController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend({
@@ -437,25 +430,13 @@ function notifyDeveloperToolsChanged(): void {
   }
 }
 
-async function runAuthWindow(request: {
-  readonly url: string;
-  readonly visible: boolean;
-  readonly allowInteractiveFallbacks: boolean;
-}): Promise<void> {
-  const authWindow = new BrowserWindow({
-    ...browserWindowOptions(),
-    show: request.visible,
-    width: request.visible ? 520 : 480,
-    height: 640,
-    skipTaskbar: !request.visible,
-  });
-  installAuthConsumeWindowPolicy(authWindow);
-  const pending = waitForAuthConsumeWindow(authWindow, {
-    allowInteractiveFallbacks: request.allowInteractiveFallbacks,
-  });
-  await loadAuthUrl(authWindow, request.url);
-  await pending;
-}
+const authWindow = new DesktopAuthWindow({
+  authOrigin: config.authUrl.origin,
+  partition: config.authPartition,
+  windowOptions: () => browserWindowOptions(),
+  openExternal,
+});
+let authStorageClearing: Promise<void> | null = null;
 
 let authSession: DesktopAuthSession | null = null;
 let pendingDesktopAuthCallback: DesktopAuthCallback | null = null;
@@ -471,14 +452,19 @@ function getAuthSession(): DesktopAuthSession {
 
   authSession = new DesktopAuthSession({
     apiBaseUrl: desktopApiBaseUrl,
+    product: config.identity.product,
     cookieUrls: [config.webUrl, config.platformUrl],
     cookieSource: session.fromPartition(config.sessionPartition),
     addClientHeaders: addDesktopClientHeaders,
     tokenUrl: desktopAuthTokenUrl,
     consumeUrl: (code, handoffId) =>
-      buildDesktopAuthConsumeUrl(config.webUrl, code, handoffId),
+      buildDesktopAuthConsumeUrl(config.authUrl, code, handoffId),
     selectOrgUrl: desktopAuthSelectOrgUrl,
-    runAuthWindow,
+    runAuthWindow: async (request) => {
+      await authStorageClearing;
+      request.signal.throwIfAborted();
+      return await authWindow.run(request);
+    },
     onChange: notifyAuthChanged,
     onAuthCompleted: maybeStartComputerUseAfterAuth,
   });
@@ -675,39 +661,39 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
   const installationId = readOrCreateComputerUseInstallationId(
     desktopPreferencesPath(),
   );
-  return new ComputerUseHostRuntime({
-    platformUrl: config.platformUrl,
-    installationId,
-    hostName: readSystemHostName(config.identity.displayName),
-    appVersion: app.getVersion(),
-    sessionFetch: createDesktopComputerUseSessionFetch({
+  return createDesktopComputerUseHostRuntime(
+    {
       platformUrl: config.platformUrl,
-      session: desktopSession,
+      installationId,
+      hostName: readSystemHostName(config.identity.displayName),
+      appVersion: app.getVersion(),
+      hostFetch: (input, init) => {
+        return fetch(input, init);
+      },
       addClientHeaders: addDesktopClientHeaders,
-      getCachedAuthToken: () => getAuthSession().getCachedToken(),
-      getAuthToken: (options) => getAuthSession().getToken(options),
-    }),
-    hostFetch: (input, init) => {
-      return fetch(input, init);
-    },
-    addClientHeaders: addDesktopClientHeaders,
-    getPermissions: refreshComputerUsePermissionState,
-    getSupportedCapabilities: supportedComputerUseCapabilities,
-    executeCommand: (command, permissions) => {
-      if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
-        if (isComputerUseMcpPluginCallPayload(command.payload)) {
-          return ensureMcpPluginManager().execute(command);
+      getPermissions: refreshComputerUsePermissionState,
+      getSupportedCapabilities: supportedComputerUseCapabilities,
+      executeCommand: (command, permissions) => {
+        if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+          if (isComputerUseMcpPluginCallPayload(command.payload)) {
+            return ensureMcpPluginManager().execute(command);
+          }
+          return ensureFilesystemPluginManager().execute(command);
         }
-        return ensureFilesystemPluginManager().execute(command);
-      }
-      return executeComputerUseCommand(command, permissions, {
-        nativeBackend: computerUseNativeBackend,
-        snapshotStore: computerUseSnapshotStore,
-      });
+        return executeComputerUseCommand(command, permissions, {
+          nativeBackend: computerUseNativeBackend,
+          snapshotStore: computerUseSnapshotStore,
+        });
+      },
+      onCommandFailure: automationPermissionPrompt,
+      onChange: notifyComputerUseChanged,
     },
-    onCommandFailure: automationPermissionPrompt,
-    onChange: notifyComputerUseChanged,
-  });
+    {
+      product: config.identity.product,
+      session: desktopSession,
+      getAuthSession,
+    },
+  );
 }
 
 async function startComputerUseRuntime(
@@ -1009,21 +995,20 @@ export const desktopUpdateHooks: DesktopMainModule["desktopUpdateHooks"] =
   });
 
 export const notifyDesktopAutoUpdatesInstalled: DesktopMainModule["notifyDesktopAutoUpdatesInstalled"] =
-  (installed) => {
-    desktopAutoUpdatesInstalled = installed;
+  (autoUpdates) => {
+    desktopAutoUpdates = autoUpdates;
     applyApplicationMenu();
   };
 
-async function clearDesktopAuthStorage(): Promise<void> {
-  await session.fromPartition(config.sessionPartition).clearStorageData({
-    storages: [...DESKTOP_SIGN_OUT_STORAGES],
-  });
-}
-
 async function signOutDesktopSession(): Promise<void> {
-  await clearDesktopAuthStorage();
   getAuthSession().signOut();
-  await computerUseController.stopForAuthChange();
+  authStorageClearing = (authStorageClearing ?? Promise.resolve()).then(
+    async () => {
+      await authWindow.clearStorage();
+      await computerUseController.stopForAuthChange();
+    },
+  );
+  await authStorageClearing;
 }
 
 function installDesktopAuth(): void {
@@ -1035,11 +1020,10 @@ function installDesktopAuth(): void {
       },
       openOrgSelection: () => getAuthSession().selectOrganization(),
       signOut: signOutDesktopSession,
-      completeSignIn: (token) => getAuthSession().completeSignIn(token),
     },
     {
       rendererUrl: localRendererUrl,
-      allowedAppOrigins: config.allowedAppOrigins,
+      authWindow,
     },
   );
 }
@@ -1110,11 +1094,11 @@ function requestDesktopQuit(): void {
 }
 
 function requestDesktopUpdateCheck(): void {
-  if (!desktopAutoUpdatesInstalled) {
+  if (!desktopAutoUpdates) {
     return;
   }
 
-  checkForDesktopUpdates(config.identity.displayName);
+  desktopAutoUpdates.checkForUpdates(config.identity.displayName);
 }
 
 function applyApplicationMenu(): void {
@@ -1122,7 +1106,7 @@ function applyApplicationMenu(): void {
     { role: "about" },
     {
       label: "Check for Updates...",
-      enabled: desktopAutoUpdatesInstalled,
+      enabled: desktopAutoUpdates !== null,
       click: requestDesktopUpdateCheck,
     },
     { type: "separator" },
@@ -1206,18 +1190,8 @@ function logComputerUseLaunchError(error: unknown): void {
   console.error("Desktop Computer Use launch setup check failed", error);
 }
 
-async function loadAuthUrl(window: BrowserWindow, url: string): Promise<void> {
-  try {
-    await window.loadURL(url);
-  } catch (error) {
-    if (!isElectronNavigationAborted(error)) {
-      throw error;
-    }
-  }
-}
-
 function openDesktopAuthStart(rawUrl: string): boolean {
-  if (!isDesktopAuthStartNavigation(rawUrl, config.allowedAppOrigins)) {
+  if (!isDesktopAuthStartNavigation(rawUrl, new Set([config.authUrl.origin]))) {
     return false;
   }
 
@@ -1364,6 +1338,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
 interface DesktopSmokeBridgeState {
   readonly auth: boolean;
+  readonly authCompletionRejected: boolean;
   readonly computerUse: boolean;
   readonly developerTools: boolean;
   readonly identity: DesktopIdentityInfo | null;
@@ -1390,6 +1365,8 @@ function isDesktopSmokeBridgeState(
     value !== null &&
     "auth" in value &&
     typeof value.auth === "boolean" &&
+    "authCompletionRejected" in value &&
+    typeof value.authCompletionRejected === "boolean" &&
     "computerUse" in value &&
     typeof value.computerUse === "boolean" &&
     "developerTools" in value &&
@@ -1402,12 +1379,13 @@ function isDesktopSmokeBridgeState(
 async function verifyDesktopSmokeBridge(): Promise<void> {
   const window = await createMainWindow();
   const rawState: unknown = await window.webContents.executeJavaScript(
-    `({
+    `(async () => ({
       auth: typeof window.vm0DesktopAuth === "object",
+      authCompletionRejected: await window.vm0DesktopAuth.completeSignIn({ token: "smoke-test-token" }).then(() => false, () => true),
       computerUse: typeof window.vm0DesktopComputerUse === "object",
       developerTools: typeof window.vm0DesktopDeveloperTools === "object",
       identity: window.vm0DesktopIdentity ?? null,
-    })`,
+    }))()`,
     true,
   );
 
@@ -1420,6 +1398,7 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
   const state = rawState;
   if (
     !state.auth ||
+    !state.authCompletionRejected ||
     !state.computerUse ||
     !state.developerTools ||
     !state.identity ||
@@ -1433,126 +1412,14 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
   }
 }
 
-function installAuthConsumeWindowPolicy(window: BrowserWindow): void {
-  window.webContents.on("will-navigate", (event, url) => {
-    if (isAllowedAppNavigation(url, config.allowedAppOrigins)) {
-      return;
-    }
-    event.preventDefault();
-    const decision = decideWindowOpen(url, noAllowedAppOrigins);
-    if (decision.action === "open-external") {
-      openExternal(decision.url);
-    }
-  });
-
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    const decision = decideWindowOpen(url, noAllowedAppOrigins);
-    if (decision.action === "open-external") {
-      openExternal(decision.url);
-    }
-    return { action: "deny" };
-  });
-}
-
-function waitForAuthConsumeWindow(
-  window: BrowserWindow,
-  options: { readonly allowInteractiveFallbacks: boolean },
+async function maybeStartComputerUseAfterAuth(
+  signal: AbortSignal,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let closed = false;
-    const timeout = setTimeout(() => {
-      rejectAuth(new Error("Desktop auth consume timed out"));
-    }, 30_000);
-
-    const cleanup = (): void => {
-      clearTimeout(timeout);
-      if (!closed && !window.isDestroyed()) {
-        window.webContents.off("did-navigate", handleNavigation);
-        window.webContents.off("did-fail-load", handleLoadFailure);
-        window.off("closed", handleClosed);
-      }
-    };
-
-    const resolveAuth = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      if (!window.isDestroyed()) {
-        window.close();
-      }
-      resolve();
-    };
-
-    const rejectAuth = (error: Error): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      if (!window.isDestroyed()) {
-        window.close();
-      }
-      reject(error);
-    };
-
-    const handleNavigation = (_event: Electron.Event, url: string): void => {
-      if (
-        !options.allowInteractiveFallbacks &&
-        isDesktopAuthStartNavigation(url, config.allowedAppOrigins)
-      ) {
-        resolveAuth();
-        return;
-      }
-      if (isDesktopAuthSelectOrgNavigation(url, config.allowedAppOrigins)) {
-        if (options.allowInteractiveFallbacks) {
-          showAndFocusWindow(window);
-          return;
-        }
-        resolveAuth();
-        return;
-      }
-      if (isDesktopAuthCompletionNavigation(url, config.allowedAppOrigins)) {
-        resolveAuth();
-      }
-    };
-
-    const handleLoadFailure = (
-      _event: Electron.Event,
-      errorCode: number,
-      errorDescription: string,
-      _validatedUrl: string,
-      isMainFrame: boolean,
-    ): void => {
-      if (errorCode === ELECTRON_ERR_ABORTED) {
-        return;
-      }
-      if (isMainFrame) {
-        rejectAuth(
-          new Error(
-            `Desktop auth consume failed: ${errorCode} ${errorDescription}`,
-          ),
-        );
-      }
-    };
-
-    const handleClosed = (): void => {
-      closed = true;
-      rejectAuth(new Error("Desktop auth consume window closed"));
-    };
-
-    window.webContents.on("did-navigate", handleNavigation);
-    window.webContents.on("did-fail-load", handleLoadFailure);
-    window.on("closed", handleClosed);
-  });
-}
-
-async function maybeStartComputerUseAfterAuth(): Promise<void> {
   await computerUseController.stopForAuthChange();
+  signal.throwIfAborted();
   notifyAuthChanged();
   const permissions = await refreshComputerUsePermissionState();
+  signal.throwIfAborted();
   notifyComputerUseChanged();
   if (hasRequiredComputerUsePermissions(permissions)) {
     await computerUseController.start({ userInitiated: true });

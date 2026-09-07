@@ -409,9 +409,10 @@ function ChatThreadItemLink({
             })}
         </span>
       </span>
-      <span className="flex items-center pr-2 empty:hidden">
-        <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
-      </span>
+      <ThreadNumberShortcutHint
+        shortcutNumber={shortcutNumber}
+        className="mr-2"
+      />
     </Link>
   );
 }

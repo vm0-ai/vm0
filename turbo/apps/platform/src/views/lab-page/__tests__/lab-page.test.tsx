@@ -182,7 +182,7 @@ test("A user can toggle a Lab feature and reset all overrides", async () => {
   });
 });
 
-test("A feature switch update resynchronizes shell document attributes", async () => {
+test("A feature switch update resynchronizes color theme document attributes", async () => {
   const user = userEvent.setup();
 
   await setupPage({
@@ -190,14 +190,14 @@ test("A feature switch update resynchronizes shell document attributes", async (
     path: "/_/lab",
     featureSwitches: {
       [FeatureSwitchKey.Lab]: true,
-      [FeatureSwitchKey.NewUi]: false,
+      [FeatureSwitchKey.GradientColorThemes]: false,
     },
   });
   await screen.findByRole("heading", { name: "Lab" });
 
   let effectiveSwitches: Record<string, boolean> = {
     [FeatureSwitchKey.Lab]: true,
-    [FeatureSwitchKey.NewUi]: false,
+    [FeatureSwitchKey.GradientColorThemes]: false,
   };
   context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
     return respond(200, {
@@ -214,16 +214,16 @@ test("A feature switch update resynchronizes shell document attributes", async (
   });
 
   const featureControl = within(
-    featureSwitchRow(FeatureSwitchKey.NewUi),
+    featureSwitchRow(FeatureSwitchKey.GradientColorThemes),
   ).getByRole("switch");
   expect(featureControl).not.toBeChecked();
-  expect(document.documentElement.dataset.newUi).toBeUndefined();
+  expect(document.documentElement.dataset.gradientColorThemes).toBeUndefined();
 
   await user.click(featureControl);
 
   await waitFor(() => {
     expect(featureControl).toBeChecked();
-    expect(document.documentElement.dataset.newUi).toBe("");
+    expect(document.documentElement.dataset.gradientColorThemes).toBe("");
   });
 });
 

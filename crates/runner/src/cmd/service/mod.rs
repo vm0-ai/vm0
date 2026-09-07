@@ -63,7 +63,7 @@ enum ServiceCommand {
     Install(ServiceRunArgs),
     /// Uninstall the runner service (stop + disable + remove unit)
     Uninstall(ServiceUninstallArgs),
-    /// Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)
+    /// Drain without waiting for active jobs (waits for bounded same-process acknowledgement)
     Drain(drain_resume::DrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(drain_resume::ResumeArgs),
@@ -606,18 +606,18 @@ async fn uninstall_with_ops(
     ops.uninstall_unit(unit).await
 }
 
-fn selected_config_base_dir_from_live_instances(
+fn selected_config_live_instance_from_instances(
     unit: &RunnerServiceUnit,
     config_path: &Path,
     instances: &[LiveRunnerInstance],
-) -> RunnerResult<Option<PathBuf>> {
+) -> RunnerResult<Option<LiveRunnerInstance>> {
     let matches = instances
         .iter()
         .filter(|instance| instance.config_path == config_path && instance.subcommand == "start")
         .collect::<Vec<_>>();
 
     match matches.as_slice() {
-        [instance] => Ok(Some(instance.base_dir.clone())),
+        [instance] => Ok(Some((*instance).clone())),
         [] => Ok(None),
         _ => Err(RunnerError::Internal(format!(
             "{} has multiple live runner instance records for selected config {}",
@@ -627,13 +627,23 @@ fn selected_config_base_dir_from_live_instances(
     }
 }
 
+async fn selected_config_live_instance(
+    unit: &RunnerServiceUnit,
+    config_path: &Path,
+    home: &HomePaths,
+) -> RunnerResult<Option<LiveRunnerInstance>> {
+    let instances = live_runner_instances::try_list(home).await?;
+    selected_config_live_instance_from_instances(unit, config_path, &instances)
+}
+
 async fn selected_config_base_dir(
     unit: &RunnerServiceUnit,
     config_path: &Path,
     home: &HomePaths,
 ) -> RunnerResult<Option<PathBuf>> {
-    let instances = live_runner_instances::try_list(home).await?;
-    selected_config_base_dir_from_live_instances(unit, config_path, &instances)
+    Ok(selected_config_live_instance(unit, config_path, home)
+        .await?
+        .map(|instance| instance.base_dir))
 }
 
 fn wait_running_timeout_error(
@@ -1439,18 +1449,18 @@ profiles:
     }
 
     #[test]
-    fn readiness_base_dir_waits_without_live_record() {
+    fn selected_config_waits_without_live_record() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
 
         let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
-        let base_dir =
-            selected_config_base_dir_from_live_instances(&unit, &config_path, &[]).unwrap();
+        let instance =
+            selected_config_live_instance_from_instances(&unit, &config_path, &[]).unwrap();
 
-        assert_eq!(base_dir, None);
+        assert_eq!(instance, None);
     }
 
     #[test]
-    fn readiness_base_dir_uses_exact_config_path_during_release_overlap() {
+    fn selected_config_uses_exact_path_during_release_overlap() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
         let config_path = actual_base_dir.join("runner.yaml");
@@ -1462,14 +1472,16 @@ profiles:
             ),
         ];
 
-        let base_dir =
-            selected_config_base_dir_from_live_instances(&unit, &config_path, &instances).unwrap();
+        let instance =
+            selected_config_live_instance_from_instances(&unit, &config_path, &instances)
+                .unwrap()
+                .unwrap();
 
-        assert_eq!(base_dir, Some(actual_base_dir));
+        assert_eq!(instance.base_dir, actual_base_dir);
     }
 
     #[test]
-    fn readiness_base_dir_rejects_duplicate_live_records() {
+    fn selected_config_rejects_duplicate_live_records() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
         let instances = vec![
@@ -1483,7 +1495,7 @@ profiles:
             ),
         ];
 
-        let error = selected_config_base_dir_from_live_instances(&unit, &config_path, &instances)
+        let error = selected_config_live_instance_from_instances(&unit, &config_path, &instances)
             .unwrap_err();
 
         assert!(
