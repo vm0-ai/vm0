@@ -459,6 +459,13 @@ function ExpandedFooter() {
 
 // --- Three-column (Slack-style) layout ---
 
+/* Everything in the rail is a 36px square, so centring it in the 72px column
+   leaves 18px down either side. The vertical padding matches that, which is
+   what puts the workspace logo and the account mark the same distance from
+   the corner they sit in as from the edge beside them. */
+const RAIL_FRAME =
+  "okou-nav okou-nav-rail hidden md:flex h-full w-[72px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 py-[18px]";
+
 function LabeledRailLink({
   id,
   navPath,
@@ -633,10 +640,7 @@ function LabeledNavRail() {
     onNavSelect(id);
   };
   return (
-    <aside
-      data-testid="labeled-nav-rail"
-      className="okou-nav okou-nav-rail hidden md:flex h-full w-[72px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 pb-2 pt-3"
-    >
+    <aside data-testid="labeled-nav-rail" className={RAIL_FRAME}>
       <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
         <OrgSwitcherCompact />

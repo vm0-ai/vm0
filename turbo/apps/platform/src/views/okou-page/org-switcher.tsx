@@ -334,7 +334,7 @@ export function OrgSwitcherCompact() {
           <WorkspaceLogo
             name={orgName}
             imageUrl={currentOrg?.imageUrl}
-            size="sm+"
+            size="md+"
           />
           <PendingInvitationsBadge />
         </Button>
