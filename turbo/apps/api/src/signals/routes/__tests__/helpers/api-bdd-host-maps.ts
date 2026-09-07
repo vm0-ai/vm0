@@ -22,7 +22,7 @@ interface AuthHeaders {
 }
 
 /**
- * Host routes accept both browser sessions and run-scoped zero tokens, so the
+ * Host routes accept both browser sessions and Okou run tokens, so the
  * host helpers take either a Clerk-backed test user or a raw bearer token.
  */
 interface BearerActor {

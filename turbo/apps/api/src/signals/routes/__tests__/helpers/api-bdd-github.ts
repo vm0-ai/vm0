@@ -322,24 +322,6 @@ export function createGithubBddApi(context: TestContext) {
     );
   }
 
-  async function requestConnect(
-    actor: ApiTestUser | null,
-    query: string,
-    options: { readonly origin?: string } = {},
-  ): Promise<RawRouteResponse> {
-    const headers = authenticate(actor);
-    return await rawRequest(
-      `/api/zero/github/oauth/connect${query ? `?${query}` : ""}`,
-      {
-        method: "GET",
-        origin: options.origin,
-        headers: headers.authorization
-          ? { authorization: headers.authorization }
-          : undefined,
-      },
-    );
-  }
-
   async function requestSetupCallback(
     query: string,
     options: { readonly origin?: string } = {},
@@ -352,7 +334,6 @@ export function createGithubBddApi(context: TestContext) {
 
   return {
     requestInstall,
-    requestConnect,
     requestSetupCallback,
 
     async readInstallation(

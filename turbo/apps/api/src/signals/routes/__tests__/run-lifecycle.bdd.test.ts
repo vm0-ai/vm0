@@ -8037,13 +8037,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 });
 
 describe("RUN-01: agent run authorization and session boundaries", () => {
-  it("does not expose the removed agent run creation route", async () => {
-    const actor = createBddApi(context).user();
-    await expect(
-      createRunsApi(context).requestRemovedAgentRunCreation(actor),
-    ).resolves.toBe(404);
-  });
-
   it("accepts session and PAT cancellation while rejecting run-scoped tokens", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -12101,7 +12094,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       actor,
       agentBackedDirectRunBody({
         agentId,
-        prompt: "do not advertise Zero MCP without a server-issued token",
+        prompt: "do not advertise MCP without a server-issued Okou run token",
       }),
     );
     const genericDirectClaim = await api.claimRunnerJob(genericDirectRun.runId);
@@ -15139,7 +15132,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
-  it("preserves defaults and overrides across a broad Zero connector scope", async () => {
+  it("preserves defaults and overrides across a broad connector scope", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);

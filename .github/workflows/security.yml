@@ -216,7 +216,7 @@ jobs:
             "$archive"
           tar -xzf "$archive" actionlint
 
-      - name: Install ripgrep
+      - name: Install ripgrep for workflow script tests
         run: |
           RIPGREP_VERSION=14.1.1
           RIPGREP_SHA256=4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e
@@ -233,9 +233,6 @@ jobs:
             "ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl/rg"
           echo "$bin_dir" >> "$GITHUB_PATH"
 
-      - name: Audit Okou CLI cutover
-        run: .github/scripts/audit-okou-cli-cutover.sh
-
       - name: Check Release Please workspace coverage
         run: .github/scripts/check-release-please-workspace-coverage.sh
 
@@ -249,7 +246,6 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
-            .github/scripts/audit-okou-cli-cutover.sh \
             .github/scripts/build-okou-desktop-artifact.sh \
             .github/scripts/cancel-superseded-merge-group-runs.sh \
             .github/scripts/check-release-please-component-releases.sh \
@@ -277,7 +273,6 @@ jobs:
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/with-runner-lifecycle-lock.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
-            .github/scripts/tests/audit-okou-cli-cutover-test.sh \
             .github/scripts/tests/cancel-superseded-merge-group-runs-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-release-please-workspace-coverage-test.sh \

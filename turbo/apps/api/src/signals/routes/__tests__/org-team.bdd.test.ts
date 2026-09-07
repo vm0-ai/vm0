@@ -16,21 +16,19 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { expectApiError } from "./helpers/api-bdd";
 
 /*
-ORG-01/02/03, TEAM, and AGENT-02 chains replacing the legacy zero-org*,
-zero-team, and zero-default-agent route tests:
-- Org/member/Slack-connection DB row asserts are replaced by follow-up
+ORG-01/02/03, TEAM, and AGENT-02 integration chains:
+- Org/member/Slack-connection state is asserted through follow-up
   GET /org, listMembers, listOrgs, Slack connect-status reads, and response
-  messages; onboarding row asserts by onboarding status and agents list.
+  messages; onboarding state through onboarding status and agents list.
 - Boundary-call asserts are kept only where contract-critical: the Clerk
   `updateOrganizationLogo(orgId, {file})` shape, the `updateOrganization`
   call shape and the membership_requests REST call-count 0 for non-admin
   callers (security guarantee).
-- Per-route 401 / no-org / sandbox-token-rejection duplicates are merged:
+- Per-route 401 / no-org / sandbox-token-rejection matrices are consolidated:
   one representative per distinct inner-handler statement, plus two
   representative sandbox rejections in the run-scoped token chain.
-- "zero token without billing:read -> 403" is dropped: `generateOkouToken`
-  grants billing:read unconditionally, so the case is not API-constructible
-  (zero-maps precedent).
+- A missing billing:read case is not constructible because
+  `generateOkouToken` grants that capability unconditionally.
 */
 
 const context = testContext();

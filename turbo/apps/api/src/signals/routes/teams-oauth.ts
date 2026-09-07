@@ -167,10 +167,7 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
 
 /**
  * Both brands send Microsoft the canonical path; the brand decides the host
- * only. The VM0 brand used to keep `/api/zero/teams/oauth/callback` so that
- * `api.vm0.ai` and `/api/zero/**` would retire together, and #30667 unpicked
- * that coupling: the Microsoft app registration already holds the canonical
- * path on both brand hosts, so unifying it needs no provider-console change.
+ * only. The Microsoft app registration holds this path on both brand hosts.
  *
  * Project here rather than in `getOAuthApiOrigin`, whose other caller builds
  * the built-in connector callback that is already registered with every

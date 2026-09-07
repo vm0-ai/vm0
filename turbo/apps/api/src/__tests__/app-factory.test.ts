@@ -919,7 +919,7 @@ describe("createApp", () => {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/zero/org", {
+      const response = await app.request("/api/chat-threads", {
         method: "OPTIONS",
         headers: {
           origin: "https://app.vm0.ai",
@@ -958,7 +958,7 @@ describe("createApp", () => {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/zero/org", {
+      const response = await app.request("/api/chat-threads", {
         method: "OPTIONS",
         headers: {
           origin: "https://pr-20640-app.omby.ai",
@@ -1159,12 +1159,12 @@ describe("createApp", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
-    it("upgrades retired memory viewer clients before route matching", async () => {
+    it("force-upgrades an older app client before current route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/zero/memory", {
+      const response = await app.request("/api/chat-threads", {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,

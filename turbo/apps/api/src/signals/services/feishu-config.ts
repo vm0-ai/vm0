@@ -73,11 +73,8 @@ export async function loadFeishuInstallationConfig(
 
 /**
  * The event subscription URL an operator registers in their own Feishu Open
- * Platform app. #28278 step 3 switched this producer to the final path, and
- * #31068 retired the branded row behind it, so an installation still holding
- * the old URL in its own Feishu console stops delivering until its operator
- * copies this one back. The hostname carries the installation's product brand
- * while the path and installation ID remain provider-compatible.
+ * Platform app. The hostname carries the installation's product brand while
+ * the path and installation ID remain provider-compatible.
  */
 export function feishuCallbackUrl(
   installationId: string,
@@ -93,11 +90,7 @@ export function feishuCallbackUrl(
  * The redirect URI for the OAuth branch that does not hand off to the frontend,
  * reached only when `callbackTarget` is absent. The Feishu console holds
  * `feishuOAuthAppCallbackUrl()` instead, so nothing outside this service pins
- * this path; #28544 moved it off the legacy `/api/zero/**` namespace it had
- * kept, to the neutral path its contract now declares. #28709 retired the
- * branded compatibility row that kept both branded forms routable, #31088
- * emptied that table and #31090 removed it, so the neutral path is the only one
- * served.
+ * this path. It uses the neutral path declared by its contract.
  */
 export function feishuOAuthCallbackUrl(): string {
   return new URL(

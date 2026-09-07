@@ -10,8 +10,8 @@ import {
 import { safeUrlParse } from "../signals/utils";
 import { env } from "./env";
 
-// Hono owns CORS for /api/okou/* directly. Responses from registered routes
-// need their own CORS headers because they no longer fall through a Next proxy.
+// Hono owns CORS for registered API routes directly. Their responses need
+// CORS headers here because they do not pass through a frontend proxy.
 const STATIC_ALLOWED_ORIGINS = Object.freeze(
   new Set([
     "https://www.vm0.ai",

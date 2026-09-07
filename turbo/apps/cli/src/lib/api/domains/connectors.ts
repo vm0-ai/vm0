@@ -138,9 +138,7 @@ export async function inspectConnectorAccounts(
   handleError(result, "Failed to inspect connector accounts for this run");
 }
 
-/**
- * List all connectors for the authenticated user (zero proxy)
- */
+/** List all connectors for the authenticated user. */
 export async function listConnectors(): Promise<ConnectorListResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorsMainContract, config);
@@ -229,8 +227,8 @@ export async function diagnoseConnectorCheck(
 }
 
 /**
- * Get a connector by slug (zero proxy)
- * Returns null if not connected (404 response)
+ * Get a connector by slug.
+ * Returns null if not connected (404 response).
  */
 export async function getConnector(
   connectorSlug: ConnectorSlug,
