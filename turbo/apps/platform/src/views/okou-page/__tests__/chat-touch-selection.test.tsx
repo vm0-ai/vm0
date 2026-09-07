@@ -218,6 +218,34 @@ test("Touch selection survives release and quotes an adjusted range without a na
   );
 });
 
+test("Touch selection uses the AI reply boundary instead of the Markdown subtree", async () => {
+  const renderedDetail = "A rendered detail outside Markdown.";
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  mockTouchLayout(renderedDetail);
+  installCapabilityChat({ events: completedConversation(PASSAGE) });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
+  await readyChat();
+  const passage = await screen.findByText(PASSAGE);
+  const assistantReply = passage.closest('[data-role="assistant"]');
+  if (!assistantReply) {
+    throw new Error("AI reply boundary was not rendered");
+  }
+  const detail = document.createElement("div");
+  detail.textContent = renderedDetail;
+  assistantReply.append(detail);
+
+  await longPress(detail, renderedDetail.indexOf("rendered") + 1);
+  click(await findButton("Copy"));
+
+  await waitFor(() => {
+    expect(clipboard.writes).toStrictEqual(["rendered"]);
+  });
+});
+
 test.each(["button", "keyboard"])(
   "Touch copy via %s segments Chinese text with the standard caret API",
   async (input) => {

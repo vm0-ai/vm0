@@ -767,14 +767,14 @@ body {
    iOS/PWA text-edit menus cannot reliably be cancelled with touch-callout alone.
    The mode is set synchronously from pointerdown, including on hybrid devices. */
 [data-chat-selection-mode="touch"]
-  :is(.okou-chat-bubble-assistant, [data-feedback-source]) {
+  :is([data-role="assistant"], [data-feedback-source]) {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
 
 [data-chat-selection-mode="touch"]
-  :is(.okou-chat-bubble-assistant, [data-feedback-source])
+  :is([data-role="assistant"], [data-feedback-source])
   :is(
     a,
     button,

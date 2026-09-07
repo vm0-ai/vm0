@@ -34,15 +34,14 @@ import {
   savedChatTranslationLanguage$,
 } from "./chat-translation.ts";
 import {
+  closestChatSelectionScope,
   createTouchSelectionListeners,
   createTouchSelectionOverlayRef,
-  FEEDBACK_SOURCE_SELECTOR,
   measureTouchSelection,
   touchSelectionText,
   type TouchSelectionGeometry,
 } from "./chat-touch-selection.ts";
 
-const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
@@ -157,48 +156,10 @@ export interface ChatThreadFeedbackSignals {
   >;
 }
 
-function closestFeedbackSource(node: Node | null): Element | null {
-  if (!node) {
-    return null;
-  }
-  const element = node instanceof Element ? node : node.parentElement;
-  return element?.closest(FEEDBACK_SOURCE_SELECTOR) ?? null;
-}
-
-function resolveSelectionSource(range: Range): Element | null {
-  const commonSource = closestFeedbackSource(range.commonAncestorContainer);
-  if (commonSource) {
-    return commonSource;
-  }
-
-  // Multi-line selections can report an outer message group as the range's
-  // common ancestor even when both endpoints are inside assistant bubbles.
-  const startSource = closestFeedbackSource(range.startContainer);
-  const endSource = closestFeedbackSource(range.endContainer);
-  if (startSource && !endSource && range.endOffset === 0) {
-    // Chromium can end a whole-paragraph selection at offset 0 in the
-    // following action-area sibling. Accept only that trailing boundary in
-    // the same assistant group as the selected content.
-    const endElement =
-      range.endContainer instanceof Element
-        ? range.endContainer
-        : range.endContainer.parentElement;
-    const startGroup = startSource.closest(ASSISTANT_GROUP_SELECTOR);
-    const endGroup = endElement?.closest(ASSISTANT_GROUP_SELECTOR);
-    if (startGroup !== null && startGroup === endGroup) {
-      return startSource;
-    }
-  }
-  if (!startSource || !endSource) {
-    return null;
-  }
-  if (startSource === endSource) {
-    return startSource;
-  }
-
-  const startGroup = startSource.closest(ASSISTANT_GROUP_SELECTOR);
-  const endGroup = endSource.closest(ASSISTANT_GROUP_SELECTOR);
-  return startGroup !== null && startGroup === endGroup ? startSource : null;
+function resolveSelectionScope(range: Range): Element | null {
+  const startScope = closestChatSelectionScope(range.startContainer);
+  const endScope = closestChatSelectionScope(range.endContainer);
+  return startScope !== null && startScope === endScope ? startScope : null;
 }
 
 function resolveSelectionThreadId(source: Element): string | null {
@@ -317,6 +278,7 @@ function readFeedbackSelection(
       : null);
   if (
     !range ||
+    range.collapsed ||
     !range.startContainer.isConnected ||
     !range.endContainer.isConnected
   ) {
@@ -328,7 +290,7 @@ function readFeedbackSelection(
   if (!text) {
     return null;
   }
-  const sourceElement = resolveSelectionSource(range);
+  const sourceElement = resolveSelectionScope(range);
   if (!sourceElement) {
     return null;
   }
@@ -862,7 +824,7 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            closestFeedbackSource(event.target) !== null;
+            closestChatSelectionScope(event.target) !== null;
           const activeElement = doc.activeElement;
           if (
             mouseSelectionInProgress &&
