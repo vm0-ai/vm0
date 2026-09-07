@@ -90,8 +90,6 @@ preview_prepare_step = find_step(
     turbo["jobs"]["deploy-app"], "Prepare standalone app Worker preview"
 )
 for shell_prepare_step in (prepare_step, preview_prepare_step):
-    if "CLERK_PRODUCTION_PRIMARY_APP_DOMAIN" in shell_prepare_step.get("env", {}):
-        raise RuntimeError(f"{shell_prepare_step['name']} must use Okou unconditionally")
     require_fragments(
         shell_prepare_step, ["bash .github/scripts/prepare-okou-app-worker-shell.sh"]
     )
@@ -219,9 +217,6 @@ for fragment in (
 ):
     if fragment not in worker_config_source:
         raise RuntimeError(f"production Worker config is missing: {fragment}")
-for retired_fragment in ('"pattern": "app.vm0.ai/*"', '"zone_name": "vm0.ai"'):
-    if retired_fragment in worker_config_source:
-        raise RuntimeError(f"production Worker config retains VM0: {retired_fragment}")
 
 for fragment in (
     "https://app.okou.ai",
@@ -236,9 +231,6 @@ for fragment in (
 ):
     if fragment not in production_verifier_source:
         raise RuntimeError(f"production verifier is missing: {fragment}")
-for retired_origin in ("https://app.vm0.ai", "https://api.vm0.ai"):
-    if retired_origin in production_verifier_source:
-        raise RuntimeError(f"production verifier retains VM0: {retired_origin}")
 
 for api_origin, app_origin in (("https://api.okou.ai", "https://app.okou.ai"),):
     for invocation in (

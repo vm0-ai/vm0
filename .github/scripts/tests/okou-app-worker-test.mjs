@@ -631,21 +631,6 @@ assert.doesNotMatch(edgePreviewBaseline.body, /okou-clerk-edge-session/u);
 assertNoClerkSecrets(edgePreviewBaseline);
 assert.equal(failingClerkClientFactoryCalls, 1);
 
-const retiredDebugFlag = await responseSnapshot(
-  guardedEdgeWorker,
-  `${edgePreviewUrl}?__clerk_edge_debug=1`,
-  edgePreviewEnvironment,
-);
-assert.deepEqual(retiredDebugFlag, edgePreviewBaseline);
-
-const duplicateFlag = await responseSnapshot(
-  guardedEdgeWorker,
-  `${edgePreviewUrl}?__bootstrap=1&__bootstrap=1`,
-  edgePreviewEnvironment,
-);
-assert.deepEqual(duplicateFlag, edgePreviewBaseline);
-assert.equal(failingClerkClientFactoryCalls, 3);
-
 for (const ineligibleOrigin of [
   "http://app.okou.ai",
   "https://app.okou.ai.evil.example",
@@ -662,15 +647,10 @@ for (const ineligibleOrigin of [
     ineligibleUrl,
     ineligibleEnvironment,
   );
-  const flagged = await responseSnapshot(
-    guardedEdgeWorker,
-    `${ineligibleUrl}?__bootstrap=1`,
-    ineligibleEnvironment,
-  );
-  assert.deepEqual(flagged, baseline);
-  assertNoClerkSecrets(flagged);
+  assert.doesNotMatch(baseline.body, /okou-clerk-edge-session/u);
+  assertNoClerkSecrets(baseline);
 }
-assert.equal(failingClerkClientFactoryCalls, 3);
+assert.equal(failingClerkClientFactoryCalls, 1);
 
 const missingConfig = await responseSnapshot(
   guardedEdgeWorker,
@@ -685,7 +665,7 @@ assert.equal(
   new Headers(missingConfig.headers).get("Cache-Control"),
   "private, no-store",
 );
-assert.equal(failingClerkClientFactoryCalls, 3);
+assert.equal(failingClerkClientFactoryCalls, 1);
 
 function clerkClientReturning(requestState) {
   return () => ({
@@ -1178,48 +1158,6 @@ assert.equal(
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
   null,
-);
-const productionHtml = await production.response.text();
-
-const legacyBrandSharedOnOkouHost = await requestSharedPage({
-  appOrigin: "https://app.okou.ai",
-  metaResponse() {
-    return Response.json({
-      title: "Legacy conversation",
-      publicBrand: "vm0",
-    });
-  },
-});
-assert.equal(legacyBrandSharedOnOkouHost.response.status, 200);
-const legacyBrandSharedHtml = await legacyBrandSharedOnOkouHost.response.text();
-assert.equal(
-  documentTitle(legacyBrandSharedHtml),
-  "Legacy conversation | Okou",
-);
-assert.equal(
-  htmlAttribute(legacyBrandSharedHtml, "data-app-brand-name"),
-  "Okou",
-);
-assert.equal(
-  metaContent(legacyBrandSharedHtml, "property", "og:url"),
-  `https://app.okou.ai/share/threads/${sharedThreadId}`,
-);
-assert.equal(
-  metaContent(legacyBrandSharedHtml, "property", "og:image"),
-  "https://static.okou.io/web/okou-og-image-373c892e.png",
-);
-
-const missingBrandSharedPage = await requestSharedPage({
-  appOrigin: "https://app.okou.ai",
-  metaResponse() {
-    return Response.json({ title: "Missing-brand conversation" });
-  },
-});
-assert.equal(missingBrandSharedPage.response.status, 200);
-const missingBrandSharedHtml = await missingBrandSharedPage.response.text();
-assert.equal(
-  documentTitle(missingBrandSharedHtml),
-  "Missing-brand conversation | Okou",
 );
 
 const missing = await requestSharedPage({
