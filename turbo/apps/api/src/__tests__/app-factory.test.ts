@@ -1115,7 +1115,6 @@ describe("createApp", () => {
           },
         });
 
-        expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.843.1");
         expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
         await expect(response.json()).resolves.toStrictEqual({
           error: "Client update required",
@@ -1159,25 +1158,28 @@ describe("createApp", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
-    it("force-upgrades an older app client before current route matching", async () => {
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const response = await app.request("/api/chat-threads", {
-        method: "GET",
-        headers: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.621.0",
-        },
-      });
+    it.each(["0.621.0", "0.843.1", "0.855.1", "0.856.0"])(
+      "force-upgrades App %s before current route matching",
+      async (version) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const response = await app.request("/api/chat-threads", {
+          method: "GET",
+          headers: {
+            [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+            [CLIENT_VERSION_HEADER]: version,
+          },
+        });
 
-      expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
-      await expect(response.json()).resolves.toStrictEqual({
-        error: "Client update required",
-      });
-      expect(response.headers.get("cache-control")).toBe("no-store");
-    });
+        expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+        await expect(response.json()).resolves.toStrictEqual({
+          error: "Client update required",
+        });
+        expect(response.headers.get("cache-control")).toBe("no-store");
+      },
+    );
 
     it.each([
       MINIMUM_WEB_CLIENT_VERSION,
