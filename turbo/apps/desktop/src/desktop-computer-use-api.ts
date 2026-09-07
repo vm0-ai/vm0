@@ -35,13 +35,33 @@ export function createDesktopComputerUseHostRuntime(
   return new ComputerUseHostRuntime({
     ...options,
     acquireCommand: () => {
-      const native = options.driver.acquireCommand();
+      // Pin before claim whenever native commands are advertised. Plugin-only
+      // polling remains independent of native startup, permissions and cleanup.
+      const native =
+        options.driver.getCapabilities().length > 0
+          ? options.driver.acquireCommand()
+          : null;
       return {
-        ...native,
+        beginCommand: (budget) => native?.beginCommand?.(budget),
+        release: () => native?.release(),
+        abort: () => native?.abort?.(),
+        getPermissions: (command) =>
+          command?.kind === COMPUTER_USE_PLUGIN_CALL_KIND || !native
+            ? Promise.resolve({ accessibility: false, screenRecording: false })
+            : native.getPermissions(command),
         executeCommand: (command, permissions) =>
           command.kind === COMPUTER_USE_PLUGIN_CALL_KIND
             ? options.executePluginCommand(command)
-            : native.executeCommand(command, permissions),
+            : native
+              ? native.executeCommand(command, permissions)
+              : Promise.resolve({
+                  status: "failed",
+                  error: {
+                    code: "accessibility_unavailable",
+                    message:
+                      "Native capabilities were withdrawn before claim; no action was dispatched",
+                  },
+                }),
       };
     },
     // Okou shares the App session's bearer, refresh and sign-out lifetime.

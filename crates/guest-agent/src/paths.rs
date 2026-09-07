@@ -9,7 +9,7 @@
 //! - "system log" = guest-agent's own stderr (matches TS `SYSTEM_LOG_FILE` and API `systemLog`)
 //! - "agent log" = AI agent (Claude Code) stdout output
 //! - "metrics" = periodic CPU/memory/disk snapshots
-//! - "sandbox ops" = operation timing records (defined in guest-common, re-exported here)
+//! - "sandbox ops" = operation timing records (defined in guest-telemetry, re-exported here)
 //! - runtime-file paths are scoped to the current run ID
 
 pub use api_contracts::generated::constants::runners::paths::{

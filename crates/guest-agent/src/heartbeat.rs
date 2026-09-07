@@ -10,11 +10,11 @@ use crate::http::{
     HttpAttemptFailureKind, HttpAttemptFinished, HttpAttemptObserver, HttpAttemptOutcome,
     HttpAttemptStarted, HttpClient,
 };
-use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
     HeartbeatAttemptFailureKind, HeartbeatCompletedAttemptDiagnostic,
     HeartbeatFailedCycleDiagnostic, HeartbeatFailureDiagnostic,
 };
+use guest_telemetry::{log_error, log_info, log_warn};
 use serde_json::json;
 use std::sync::Mutex;
 use std::time::Duration;

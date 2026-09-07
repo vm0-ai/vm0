@@ -1301,7 +1301,7 @@ async fn detect_orphan_namespaces() -> Vec<Warning> {
     let Some(namespaces) = observe_network_namespaces().await else {
         return warnings;
     };
-    let lock_paths = sandbox_fc::LockPaths::new();
+    let lock_paths = sandbox_firecracker::LockPaths::new();
 
     for namespace in namespaces {
         let lock_path = lock_paths.netns_pool(namespace.pool_idx);
@@ -1343,7 +1343,7 @@ async fn observe_network_namespaces() -> Option<Vec<ObservedNetworkNamespace>> {
 fn parse_netns_list_line(line: &str) -> Option<(&str, u32)> {
     // ip netns list output: "vm0-ns-00-0a (id: 42)" or just "vm0-ns-00-0a"
     let ns_name = line.split_whitespace().next()?;
-    let parsed = sandbox_fc::parse_netns_name(ns_name)?;
+    let parsed = sandbox_firecracker::parse_netns_name(ns_name)?;
     Some((ns_name, parsed.pool_index))
 }
 

@@ -415,8 +415,8 @@ async fn validate_profile_snapshot_artifacts(
     rootfs_paths: &RootfsPaths,
 ) -> RunnerResult<SnapshotPaths> {
     let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
-    match sandbox_fc::validate_snapshot_output(&snapshot_paths).await {
-        Ok(sandbox_fc::SnapshotOutputValidation::Complete) => Ok(snapshot_paths),
+    match sandbox_firecracker::validate_snapshot_output(&snapshot_paths).await {
+        Ok(sandbox_firecracker::SnapshotOutputValidation::Complete) => Ok(snapshot_paths),
         Ok(validation) => Err(RunnerError::Config(format!(
             "profile {name} snapshot is incomplete: {validation}"
         ))),

@@ -27,6 +27,7 @@ import {
   type ChatThreadWorkflowAutomation,
   type GmailAutomationEventConfig,
   type GoogleCalendarAutomationEventConfig,
+  type GoogleCalendarWatchActionRequiredReason,
   type GoogleMeetAutomationEventConfig,
   type GoogleFormsResponseSubmittedEventConfig,
   type GoogleFormsResponseSubmittedEventCreateConfig,
@@ -50,6 +51,7 @@ import {
 } from "@okouai/api-contracts/contracts/workflows";
 import { parseScheduledAtTime } from "@okouai/core/timezone";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { googleCalendarWatchStates } from "@okouai/db/schema/google-calendar-event";
 import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automation-event";
@@ -791,10 +793,15 @@ async function loadStripeWorkflowAutomationHealth(
   };
 }
 
+interface EventSummaryWarnings {
+  readonly googleCalendar?: GoogleCalendarWatchActionRequiredReason;
+  readonly googleForms?: string;
+}
+
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
-  warning?: string,
+  warnings: EventSummaryWarnings = {},
 ): WorkflowAutomationSummary | null {
   if (row.eventType === "chat-run-finished") {
     return {
@@ -840,6 +847,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
+      ...(warnings.googleCalendar === undefined
+        ? {}
+        : { warning: warnings.googleCalendar }),
     };
   }
   if (row.eventType === "google-calendar-event-updated") {
@@ -852,6 +862,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
+      ...(warnings.googleCalendar === undefined
+        ? {}
+        : { warning: warnings.googleCalendar }),
     };
   }
   if (row.eventType === "google-calendar-event-cancelled") {
@@ -864,6 +877,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
+      ...(warnings.googleCalendar === undefined
+        ? {}
+        : { warning: warnings.googleCalendar }),
     };
   }
   if (row.eventType === "google-forms-response-submitted") {
@@ -876,7 +892,9 @@ function eventRowToSummary(
       ),
       schedule: null,
       scheduleSummary: null,
-      ...(warning === undefined ? {} : { warning }),
+      ...(warnings.googleForms === undefined
+        ? {}
+        : { warning: warnings.googleForms }),
     };
   }
   if (row.eventType === "google-meet-transcript-generated") {
@@ -901,6 +919,54 @@ function eventRowToSummary(
     return notionPageContentUpdatedRowSummary(row, chatThreadId);
   }
   return null;
+}
+
+function googleCalendarIdFromAutomationRow(row: AutomationRow): string | null {
+  if (row.eventType === "google-calendar-event-created") {
+    return googleCalendarEventCreatedEventConfigSchema.parse(row.eventConfig)
+      .calendarId;
+  }
+  if (row.eventType === "google-calendar-event-updated") {
+    return googleCalendarEventUpdatedEventConfigSchema.parse(row.eventConfig)
+      .calendarId;
+  }
+  if (row.eventType === "google-calendar-event-cancelled") {
+    return googleCalendarEventCancelledEventConfigSchema.parse(row.eventConfig)
+      .calendarId;
+  }
+  return null;
+}
+
+async function loadGoogleCalendarAutomationWarning(
+  db: ReadonlyDb,
+  row: AutomationRow,
+): Promise<GoogleCalendarWatchActionRequiredReason | undefined> {
+  const calendarId = googleCalendarIdFromAutomationRow(row);
+  if (calendarId === null || row.eventConnectorId === null) {
+    return undefined;
+  }
+  const [state] = await db
+    .select({
+      reason: googleCalendarWatchStates.actionRequiredReason,
+      startedAt: googleCalendarWatchStates.actionRequiredAt,
+    })
+    .from(googleCalendarWatchStates)
+    .where(
+      and(
+        eq(googleCalendarWatchStates.orgId, row.orgId),
+        eq(googleCalendarWatchStates.userId, row.ownerUserId),
+        eq(googleCalendarWatchStates.connectorId, row.eventConnectorId),
+        eq(googleCalendarWatchStates.calendarId, calendarId),
+      ),
+    )
+    .limit(1);
+  if (!state) {
+    return undefined;
+  }
+  if ((state.reason === null) !== (state.startedAt === null)) {
+    throw new Error("Incomplete Google Calendar action-required episode");
+  }
+  return state.reason ?? undefined;
 }
 
 async function rowToSummary(
@@ -931,7 +997,10 @@ async function rowToSummary(
         })),
       };
     }
-    const eventSummary = eventRowToSummary(row, chatThreadId, options.warning);
+    const eventSummary = eventRowToSummary(row, chatThreadId, {
+      googleCalendar: await loadGoogleCalendarAutomationWarning(db, row),
+      googleForms: options.warning,
+    });
     if (eventSummary) {
       return eventSummary;
     }

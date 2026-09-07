@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use nix::fcntl::Flock;
 use sandbox::SnapshotProvider;
-use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
+use sandbox_firecracker::DNS_PROBE_RESOLVER_IPV4;
 
 use crate::ca;
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
@@ -50,13 +50,13 @@ pub struct BuildArgs {
     guest_agent: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
-        arg(long, help = "Path to guest-download binary [default: bundled]")
+        arg(long, help = "Path to guest-storage-apply binary [default: bundled]")
     )]
     #[cfg_attr(
         not(bundled_guests),
-        arg(long, help = "Path to guest-download binary (required)")
+        arg(long, help = "Path to guest-storage-apply binary (required)")
     )]
-    guest_download: Option<PathBuf>,
+    guest_storage_apply: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
         arg(long, help = "Path to guest-init binary [default: bundled]")
@@ -68,31 +68,31 @@ pub struct BuildArgs {
     guest_init: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
-        arg(long, help = "Path to guest-mock-claude binary [default: bundled]")
+        arg(long, help = "Path to claude-mock binary [default: bundled]")
     )]
     #[cfg_attr(
         not(bundled_guests),
-        arg(long, help = "Path to guest-mock-claude binary (required)")
+        arg(long, help = "Path to claude-mock binary (required)")
     )]
-    guest_mock_claude: Option<PathBuf>,
+    claude_mock: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
-        arg(long, help = "Path to guest-mock-codex binary [default: bundled]")
+        arg(long, help = "Path to codex-mock binary [default: bundled]")
     )]
     #[cfg_attr(
         not(bundled_guests),
-        arg(long, help = "Path to guest-mock-codex binary (required)")
+        arg(long, help = "Path to codex-mock binary (required)")
     )]
-    guest_mock_codex: Option<PathBuf>,
+    codex_mock: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
-        arg(long, help = "Path to guest-reseed binary [default: bundled]")
+        arg(long, help = "Path to guest-state-restore binary [default: bundled]")
     )]
     #[cfg_attr(
         not(bundled_guests),
-        arg(long, help = "Path to guest-reseed binary (required)")
+        arg(long, help = "Path to guest-state-restore binary (required)")
     )]
-    guest_reseed: Option<PathBuf>,
+    guest_state_restore: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
         arg(long, help = "Path to guest-write-file binary [default: bundled]")
@@ -113,13 +113,13 @@ pub struct BuildArgs {
     guest_tool_exec: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
-        arg(long, help = "Path to guest-rpc binary [default: bundled]")
+        arg(long, help = "Path to runner-rpc-client binary [default: bundled]")
     )]
     #[cfg_attr(
         not(bundled_guests),
-        arg(long, help = "Path to guest-rpc binary (required)")
+        arg(long, help = "Path to runner-rpc-client binary (required)")
     )]
-    guest_rpc: Option<PathBuf>,
+    runner_rpc_client: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
@@ -135,14 +135,14 @@ impl BuildArgs {
     fn take_guest_path(&mut self, name: &str) -> Option<PathBuf> {
         match name {
             "guest-agent" => self.guest_agent.take(),
-            "guest-download" => self.guest_download.take(),
+            "guest-storage-apply" => self.guest_storage_apply.take(),
             "guest-init" => self.guest_init.take(),
-            "guest-mock-claude" => self.guest_mock_claude.take(),
-            "guest-mock-codex" => self.guest_mock_codex.take(),
-            "guest-reseed" => self.guest_reseed.take(),
+            "claude-mock" => self.claude_mock.take(),
+            "codex-mock" => self.codex_mock.take(),
+            "guest-state-restore" => self.guest_state_restore.take(),
             "guest-write-file" => self.guest_write_file.take(),
             "guest-tool-exec" => self.guest_tool_exec.take(),
-            "guest-rpc" => self.guest_rpc.take(),
+            "runner-rpc-client" => self.runner_rpc_client.take(),
             _ => None,
         }
     }

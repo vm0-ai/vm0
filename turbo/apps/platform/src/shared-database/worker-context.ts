@@ -30,6 +30,16 @@ export type WorkerBroadcastMessage = Extract<
   }
 >;
 
+type WorkerConnectionMessage = Extract<
+  SharedDatabaseWorkerMessage,
+  {
+    readonly type:
+      | "realtime-event"
+      | "realtime-subscribed"
+      | "realtime-subscription-error";
+  }
+>;
+
 const lastConnectionStatusState$ = state<SharedDatabaseConnectionStatus | null>(
   null,
 );
@@ -60,6 +70,21 @@ export const broadcastSharedDatabaseWorkerMessage$ = command(
       L.debug("send message to app", connectionId, message);
       connection.port.postMessage(message);
     }
+  },
+);
+
+export const sendSharedDatabaseWorkerMessageToConnection$ = command(
+  (
+    { get },
+    connectionId: ConnectionId,
+    message: WorkerConnectionMessage,
+  ): void => {
+    const connection = get(connectionsState$).get(connectionId);
+    if (!connection) {
+      return;
+    }
+    L.debug("send message to app", connectionId, message);
+    connection.port.postMessage(message);
   },
 );
 

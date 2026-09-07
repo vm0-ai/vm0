@@ -357,7 +357,15 @@ function desktop(
         events.push("claim");
         reached.resolve();
         await response.promise;
-        return HttpResponse.json({ status: "command", command });
+        return HttpResponse.json({
+          status: "command",
+          command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: null,
+            ...command,
+          },
+        });
       }),
       http.post<never, Record<string, unknown>>(
         `${api}/api/computer-use/host/commands/${command.id}/complete`,

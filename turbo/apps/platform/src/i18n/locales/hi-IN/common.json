@@ -1871,6 +1871,19 @@
     "composer": {
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
+      "create": {
+        "chooseStyle": "शैली चुनें",
+        "chooseTemplate": "टेम्पलेट चुनें",
+        "exit": "बनाने के मोड से बाहर निकलें",
+        "image": "छवि बनाएँ",
+        "imagePlaceholder": "आप जो छवि बनाना चाहते हैं उसका वर्णन करें…",
+        "presentation": "प्रस्तुति बनाएँ",
+        "presentationPlaceholder": "आपकी प्रस्तुति का विषय क्या है?",
+        "settingsAdjusted": "इस मॉडल के लिए कुछ वीडियो सेटिंग समायोजित की गई हैं",
+        "title": "बनाएँ",
+        "video": "वीडियो बनाएँ",
+        "videoPlaceholder": "आप जो वीडियो बनाना चाहते हैं उसका वर्णन करें…"
+      },
       "createWorkflow": "वर्कफ़्लो बनाएँ",
       "imageModelForThisChat": "इस चैट के लिए इमेज मॉडल",
       "message": "संदेश",

@@ -19,8 +19,6 @@ use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 use guest_agent::{codex_session_cleanup, session_history_identity};
 
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationReason, EventDeliveryDiagnostic, FailureClass,
     FailureDiagnostic, FailureReason, WorkloadResourceLimitDiagnostic,
@@ -30,6 +28,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SessionHistoryIdentityExpectation,
 };
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_error, log_info, log_warn};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1271,14 +1271,14 @@ mod tests {
 
     impl SystemLogOverrideGuard {
         fn set(path: &std::path::Path) -> Self {
-            guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
+            guest_telemetry::log::set_system_log_file(path.to_string_lossy().as_ref());
             Self
         }
     }
 
     impl Drop for SystemLogOverrideGuard {
         fn drop(&mut self) {
-            guest_common::log::clear_system_log_file();
+            guest_telemetry::log::clear_system_log_file();
         }
     }
 
@@ -1286,14 +1286,14 @@ mod tests {
 
     impl SandboxOpsOverrideGuard {
         fn set(path: &std::path::Path) -> Self {
-            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            guest_telemetry::telemetry::set_sandbox_ops_log_file(path);
             Self
         }
     }
 
     impl Drop for SandboxOpsOverrideGuard {
         fn drop(&mut self) {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
+            guest_telemetry::telemetry::clear_sandbox_ops_log_file();
         }
     }
 

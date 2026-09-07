@@ -470,6 +470,21 @@ export class DesktopMcpPluginManager {
     );
   }
 
+  /** Resolve actual tools before publishing non-empty plugin-only capabilities. */
+  async prepareForHost(): Promise<void> {
+    this.hostRuntimeOnline = true;
+    await Promise.all(
+      Object.entries(this.preferences.servers).map(async ([name, config]) => {
+        const slot = this.ensureSlot(name);
+        if (this.serverShouldRun(config) && !slot.runtime) {
+          await this.restartSlotRuntime(name, slot);
+          if (!this.serverShouldRun(this.preferences.servers[name]))
+            await this.stopSlotRuntime(name, slot);
+        }
+      }),
+    );
+  }
+
   private ensureSlot(name: string): McpServerSlot {
     const existing = this.slots.get(name);
     if (existing) {

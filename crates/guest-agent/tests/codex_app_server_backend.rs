@@ -99,7 +99,7 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     );
     assert_eq!(
         events[2].pointer("/item/text").and_then(Value::as_str),
-        Some("guest-mock-codex app-server response: drive the app-server backend")
+        Some("codex-mock app-server response: drive the app-server backend")
     );
     assert_eq!(events[3]["usage"], common::expected_codex_turn_usage());
 

@@ -7,12 +7,12 @@
 
 use super::process_group::ChildProcessGroup;
 use crate::error::AgentError;
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
     CliTerminationSignal,
 };
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_info, log_warn};
 use std::pin::Pin;
 use std::time::Duration;
 use tokio::time::{Instant, Sleep};

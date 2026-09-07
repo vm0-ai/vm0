@@ -238,8 +238,8 @@ describe("embedded CUA host lifecycle", () => {
     expect((await stat(external.hosts[0]!.directory)).mode & 0o777).toBe(0o700);
     await Promise.all([owner.stop(), owner.stop()]);
     expect(external.active.size).toBe(0);
-    expect(external.events.indexOf("destroy-client-1")).toBeLessThan(
-      external.events.indexOf("stop-1"),
+    expect(external.events.indexOf("stop-1")).toBeLessThan(
+      external.events.indexOf("destroy-client-1"),
     );
     expect(external.events.at(-1)).toBe("destroy-host-1");
     expect(owner.getState().generation).toBeNull();

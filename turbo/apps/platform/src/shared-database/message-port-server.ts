@@ -28,6 +28,10 @@ import {
   queryStoreMessage$,
   startSharedDatabaseWorkerDaemons$,
 } from "./worker-signals.ts";
+import {
+  startWorkerRealtimeSubscription$,
+  stopWorkerRealtimeSubscription$,
+} from "./worker-realtime-subscriptions.ts";
 
 type RequestMessage = Extract<
   SharedDatabaseClientMessage,
@@ -36,6 +40,14 @@ type RequestMessage = Extract<
 type TokenResponseMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "token-error" | "token-result" }
+>;
+type RealtimeSubscribeMessage = Extract<
+  SharedDatabaseClientMessage,
+  { readonly type: "realtime-subscribe" }
+>;
+type RealtimeUnsubscribeMessage = Extract<
+  SharedDatabaseClientMessage,
+  { readonly type: "realtime-unsubscribe" }
 >;
 
 interface PendingTokenRequest {
@@ -231,6 +243,29 @@ export class SharedDatabaseMessagePortServer {
     pending.resolve(message.token);
   }
 
+  private startRealtimeSubscription(
+    message: RealtimeSubscribeMessage,
+    signal: AbortSignal,
+  ): void {
+    const daemon = this.store.set(
+      startWorkerRealtimeSubscription$,
+      this.connectionId,
+      message,
+      signal,
+    );
+    if (daemon) {
+      detach(daemon, Reason.Daemon, "shared database realtime subscription");
+    }
+  }
+
+  private stopRealtimeSubscription(message: RealtimeUnsubscribeMessage): void {
+    this.store.set(
+      stopWorkerRealtimeSubscription$,
+      this.connectionId,
+      message.subscriptionId,
+    );
+  }
+
   private disconnect(reason: string): void {
     if (this.disconnected) {
       return;
@@ -300,6 +335,14 @@ export class SharedDatabaseMessagePortServer {
             );
           });
         }
+        return;
+      }
+      if (message.type === "realtime-subscribe") {
+        this.startRealtimeSubscription(message, registeredSignal);
+        return;
+      }
+      if (message.type === "realtime-unsubscribe") {
+        this.stopRealtimeSubscription(message);
         return;
       }
       await this.startRequest(message, registeredSignal, () => {

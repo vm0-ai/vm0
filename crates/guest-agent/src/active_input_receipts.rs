@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use api_contracts::generated::types::runners::runs::active_inputs::receipt::Response;
-use guest_common::{log_info, log_warn};
+use guest_telemetry::{log_info, log_warn};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 

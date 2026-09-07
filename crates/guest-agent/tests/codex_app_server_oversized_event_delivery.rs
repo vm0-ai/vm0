@@ -230,7 +230,7 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         .iter()
         .find(|event| event["type"] == "warning")
         .ok_or("normal warning was not delivered")?;
-    assert_eq!(warning["message"], "guest-mock-codex warning 999");
+    assert_eq!(warning["message"], "codex-mock warning 999");
 
     let local_events = read_jsonl(runtime.paths.agent_log_file())?;
     let local_agent = delivered_item(&local_events, "oversized-agent-message")?;

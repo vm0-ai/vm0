@@ -5,14 +5,14 @@ struct SystemLogOverrideGuard;
 
 impl SystemLogOverrideGuard {
     fn set(path: &std::path::Path) -> Self {
-        guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
+        guest_telemetry::log::set_system_log_file(path.to_string_lossy().as_ref());
         Self
     }
 }
 
 impl Drop for SystemLogOverrideGuard {
     fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
     }
 }
 

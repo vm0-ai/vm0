@@ -7,11 +7,11 @@
     "destination": "/usr/local/bin/guest-agent"
   },
   {
-    "package": "guest-download",
-    "binary": "guest-download",
-    "pathEnv": "GUEST_DOWNLOAD_PATH",
-    "bundledEnv": "BUNDLED_GUEST_DOWNLOAD",
-    "destination": "/usr/local/bin/guest-download"
+    "package": "guest-storage-apply",
+    "binary": "guest-storage-apply",
+    "pathEnv": "GUEST_STORAGE_APPLY_PATH",
+    "bundledEnv": "BUNDLED_GUEST_STORAGE_APPLY",
+    "destination": "/usr/local/bin/guest-storage-apply"
   },
   {
     "package": "guest-init",
@@ -21,11 +21,11 @@
     "destination": "/sbin/guest-init"
   },
   {
-    "package": "guest-reseed",
-    "binary": "guest-reseed",
-    "pathEnv": "GUEST_RESEED_PATH",
-    "bundledEnv": "BUNDLED_GUEST_RESEED",
-    "destination": "/sbin/guest-reseed"
+    "package": "guest-state-restore",
+    "binary": "guest-state-restore",
+    "pathEnv": "GUEST_STATE_RESTORE_PATH",
+    "bundledEnv": "BUNDLED_GUEST_STATE_RESTORE",
+    "destination": "/sbin/guest-state-restore"
   },
   {
     "package": "guest-write-file",
@@ -42,24 +42,24 @@
     "destination": "/usr/local/bin/guest-tool-exec"
   },
   {
-    "package": "guest-rpc",
-    "binary": "guest-rpc",
-    "pathEnv": "GUEST_RPC_PATH",
-    "bundledEnv": "BUNDLED_GUEST_RPC",
-    "destination": "/usr/local/bin/guest-rpc"
+    "package": "runner-rpc-client",
+    "binary": "runner-rpc-client",
+    "pathEnv": "RUNNER_RPC_CLIENT_PATH",
+    "bundledEnv": "BUNDLED_RUNNER_RPC_CLIENT",
+    "destination": "/usr/local/bin/runner-rpc-client"
   },
   {
-    "package": "guest-mock-claude",
-    "binary": "guest-mock-claude",
-    "pathEnv": "GUEST_MOCK_CLAUDE_PATH",
-    "bundledEnv": "BUNDLED_GUEST_MOCK_CLAUDE",
-    "destination": "/usr/local/bin/guest-mock-claude"
+    "package": "claude-mock",
+    "binary": "claude-mock",
+    "pathEnv": "CLAUDE_MOCK_PATH",
+    "bundledEnv": "BUNDLED_CLAUDE_MOCK",
+    "destination": "/usr/local/bin/claude-mock"
   },
   {
-    "package": "guest-mock-codex",
-    "binary": "guest-mock-codex",
-    "pathEnv": "GUEST_MOCK_CODEX_PATH",
-    "bundledEnv": "BUNDLED_GUEST_MOCK_CODEX",
-    "destination": "/usr/local/bin/guest-mock-codex"
+    "package": "codex-mock",
+    "binary": "codex-mock",
+    "pathEnv": "CODEX_MOCK_PATH",
+    "bundledEnv": "BUNDLED_CODEX_MOCK",
+    "destination": "/usr/local/bin/codex-mock"
   }
 ]

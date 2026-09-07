@@ -23,7 +23,7 @@ use crate::provider::ApiClient;
 pub(crate) const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: usize =
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES_U64 as usize;
 const _: () = assert!(
-    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES,
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES == guest_control_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES,
     "API active-input payload limit must match the vsock exec-control limit",
 );
 const _: () = assert!(

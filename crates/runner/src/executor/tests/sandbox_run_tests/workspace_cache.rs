@@ -494,89 +494,98 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
 }
 
 #[tokio::test]
-async fn post_write_prefetch_timeout_replaces_consumed_cache_hit_with_fresh_workspace() {
-    let dir = tempfile::tempdir().unwrap();
-    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = WorkspaceImageCache::new(runner_paths.clone());
-    let mut config = test_executor_config(dir.path()).await;
-    config.workspace_cache = Some(cache.clone());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_process_error(SandboxError::OperationTimeout {
-        operation: sandbox::SandboxOperation::StartProcess,
-        stage: sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse,
-        timeout_ms: 1_000,
-    });
-    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-    let mut context = codex_oauth_context();
-    let session_id = "00000000-0000-4000-8000-000000032219";
-    set_reuse_and_session_identity(&mut context, session_id, r#"{"type":"init"}"#);
-    let params = JobParams {
-        workspace_disk_mb: 16,
-        ..default_params()
-    };
-    let expected_seed = seed_workspace_image_cache(&cache, &runner_paths, session_id, 16).await;
-    let mut telemetry = test_telemetry(&config, &context);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &context,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
+async fn post_write_prefetch_failure_replaces_consumed_cache_hit_with_fresh_workspace() {
+    for start_error in [
+        SandboxError::OperationTimeout {
+            operation: sandbox::SandboxOperation::StartProcess,
+            stage: sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+            timeout_ms: 1_000,
         },
-        &config,
-        &params,
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+        SandboxError::OperationWrite {
+            operation: sandbox::SandboxOperation::StartProcess,
+            stage: sandbox::SandboxOperationWriteStage::FrameWrite,
+            source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "partial write"),
+        },
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = WorkspaceImageCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_error(start_error);
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut context = codex_oauth_context();
+        let session_id = "00000000-0000-4000-8000-000000032219";
+        set_reuse_and_session_identity(&mut context, session_id, r#"{"type":"init"}"#);
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let expected_seed = seed_workspace_image_cache(&cache, &runner_paths, session_id, 16).await;
+        let mut telemetry = test_telemetry(&config, &context);
 
-    assert_eq!(outcome.exit_code(), 0);
-    assert!(outcome.workspace_image.is_none());
-    let configs = overrides.create_configs();
-    assert_eq!(configs.len(), 2);
-    assert_eq!(
-        configs[0].workspace_drive,
-        Some(sandbox::WorkspaceDriveConfig {
-            size_mb: 16,
-            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(
-                expected_seed.clone(),
-            )),
-        })
-    );
-    assert_eq!(
-        configs[1].workspace_drive,
-        Some(sandbox::WorkspaceDriveConfig {
-            size_mb: 16,
-            seed_image: None,
-        })
-    );
-    assert!(!expected_seed.exists());
-    assert_eq!(overrides.destroy_call_count(), 1);
-    assert_eq!(overrides.start_process_calls().len(), 1);
-    assert_eq!(overrides.start_agent_process_calls().len(), 1);
-    assert_eq!(
-        telemetry
-            .pending_ops_snapshot()
-            .iter()
-            .filter(|(action, _, _)| action == "runner_codex_model_catalog_prefetch")
-            .count(),
-        1
-    );
-    assert_telemetry_action(
-        &telemetry,
-        "runner_fresh_sandbox_retry_without_codex_prefetch",
-        true,
-        None,
-    );
-    assert_telemetry_action(
-        &telemetry,
-        "runner_fresh_sandbox_retry_without_workspace_image",
-        true,
-        None,
-    );
-    assert_proxy_registry_empty(dir.path()).await;
+        let outcome = execute_new_sandbox(
+            &factory,
+            &context,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.workspace_image.is_none());
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 2);
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(
+                    expected_seed.clone(),
+                )),
+            })
+        );
+        assert_eq!(
+            configs[1].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: None,
+            })
+        );
+        assert!(!expected_seed.exists());
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(overrides.start_process_calls().len(), 1);
+        assert_eq!(overrides.start_agent_process_calls().len(), 1);
+        assert_eq!(
+            telemetry
+                .pending_ops_snapshot()
+                .iter()
+                .filter(|(action, _, _)| action == "runner_codex_model_catalog_prefetch")
+                .count(),
+            1
+        );
+        assert_telemetry_action(
+            &telemetry,
+            "runner_fresh_sandbox_retry_without_codex_prefetch",
+            true,
+            None,
+        );
+        assert_telemetry_action(
+            &telemetry,
+            "runner_fresh_sandbox_retry_without_workspace_image",
+            true,
+            None,
+        );
+        assert_proxy_registry_empty(dir.path()).await;
+    }
 }
 
 #[tokio::test]

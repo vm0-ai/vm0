@@ -291,6 +291,53 @@ async fn codex_catalog_prefetch_post_write_timeout_stops_direct_run_before_agent
 }
 
 #[tokio::test]
+async fn codex_catalog_prefetch_partial_write_stops_direct_run_before_guest_work() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_error(SandboxError::OperationWrite {
+        operation: SandboxOperation::StartProcess,
+        stage: sandbox::SandboxOperationWriteStage::FrameWrite,
+        source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "partial write"),
+    });
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let error = run_in_sandbox(
+        &*sandbox,
+        &context,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .err()
+    .expect("an owned sandbox must not continue after an unsafe write");
+
+    assert!(matches!(
+        error,
+        crate::error::RunnerError::Sandbox(SandboxError::OperationWrite {
+            stage: sandbox::SandboxOperationWriteStage::FrameWrite,
+            ..
+        })
+    ));
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert!(overrides.storage_manifest_calls().is_empty());
+    assert!(overrides.write_files_calls().is_empty());
+    assert!(overrides.wait_process_calls().is_empty());
+    assert!(overrides.process_cancel_calls().is_empty());
+    assert_prefetch_outcome(&telemetry, false, Some("start_failed"), "partial_write");
+}
+
+#[tokio::test]
 async fn codex_catalog_prefetch_records_start_cancellation() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let start_gate = MockLifecycleGate::new();

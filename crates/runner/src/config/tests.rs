@@ -149,7 +149,7 @@ async fn test_home_with_artifacts(dir: &std::path::Path, hashes: &[(&str, &str)]
             }
             tokio::fs::write(
                 snapshot.complete_marker(),
-                sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+                sandbox_firecracker::SNAPSHOT_COMPLETE_MARKER_CONTENT,
             )
             .await
             .unwrap();
@@ -888,7 +888,7 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
     }
     tokio::fs::write(
         snapshot.complete_marker(),
-        sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+        sandbox_firecracker::SNAPSHOT_COMPLETE_MARKER_CONTENT,
     )
     .await
     .unwrap();

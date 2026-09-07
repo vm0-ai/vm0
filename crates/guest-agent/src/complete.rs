@@ -23,8 +23,8 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::run_context::GuestRuntime;
 use api_contracts::generated::types::webhooks::agent::complete;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::FailureReason;
+use guest_telemetry::{log_info, log_warn};
 use serde::Serialize;
 use std::time::Instant;
 

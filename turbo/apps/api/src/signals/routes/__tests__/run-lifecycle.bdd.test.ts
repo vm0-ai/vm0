@@ -1875,34 +1875,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).not.toContain(`/home/user/.claude/skills/${INTRO_VIDEO_SKILL_NAME}`);
   });
 
-  it("advertises presentation screenshots only while their rollout switch is on", async () => {
+  it("always advertises presentation screenshots", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
     const toolHint =
       "okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>";
 
-    const gatedOff = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "render this deck to page images",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationScreenshot]: true,
-    });
-
-    const gatedOn = await api.createRun(actor, {
-      agentId,
-      prompt: "render this deck to page images",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    expect(gatedOnClaim.appendSystemPrompt ?? "").toContain(toolHint);
+    const stored = await api.readRun(actor, run.runId);
+    expect(stored.appendSystemPrompt ?? "").toContain(toolHint);
   });
 
   it("asks chat runs for a generic progressive artifact preview only while its switch is on", async () => {

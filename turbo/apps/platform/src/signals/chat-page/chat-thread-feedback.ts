@@ -39,6 +39,7 @@ import {
 const FEEDBACK_SOURCE_SELECTOR =
   ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
@@ -150,7 +151,34 @@ function closestFeedbackSource(node: Node | null): Element | null {
   return element?.closest(FEEDBACK_SOURCE_SELECTOR) ?? null;
 }
 
-function resolveSelectionSource(range: Range): Element | null {
+function closestExpandedFeedbackSource(node: Node | null): Element | null {
+  if (!node) {
+    return null;
+  }
+  const element = node instanceof Element ? node : node.parentElement;
+  return (
+    element?.closest(ASSISTANT_GROUP_SELECTOR) ??
+    element?.closest("[data-feedback-source]") ??
+    null
+  );
+}
+
+function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
+  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
+}
+
+function resolveSelectionSource(
+  range: Range,
+  expandToAssistantReply: boolean,
+): Element | null {
+  if (expandToAssistantReply) {
+    const startSource = closestExpandedFeedbackSource(range.startContainer);
+    const endSource = closestExpandedFeedbackSource(range.endContainer);
+    return startSource !== null && startSource === endSource
+      ? startSource
+      : null;
+  }
+
   const commonSource = closestFeedbackSource(range.commonAncestorContainer);
   if (commonSource) {
     return commonSource;
@@ -291,7 +319,9 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function readFeedbackSelection(): CapturedFeedbackSelection | null {
+function readFeedbackSelection(
+  expandToAssistantReply: boolean,
+): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
@@ -301,7 +331,7 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     return null;
   }
   const range = selection.getRangeAt(0);
-  const sourceElement = resolveSelectionSource(range);
+  const sourceElement = resolveSelectionSource(range, expandToAssistantReply);
   if (!sourceElement) {
     return null;
   }
@@ -369,7 +399,11 @@ function createSelectionState(threadId: string) {
   });
   const capture$ = command(({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    const selection = readFeedbackSelection();
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+    );
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -391,7 +425,11 @@ function createSelectionState(threadId: string) {
     if (!currentSelection) {
       return;
     }
-    const selection = readFeedbackSelection();
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+    );
     if (
       !selection ||
       selection.threadId !== threadId ||
@@ -781,7 +819,11 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            closestFeedbackSource(event.target) !== null;
+            (shouldExpandSelectionToAssistantReply(
+              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+            )
+              ? closestExpandedFeedbackSource(event.target)
+              : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;
           if (
             mouseSelectionInProgress &&

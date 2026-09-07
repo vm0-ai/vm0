@@ -1328,7 +1328,7 @@ async fn create_started_sandbox(
                     warn!(
                         run_id = %context.run_id,
                         error = %unregister_error,
-                        "failed to unregister sandbox from proxy after Codex prefetch start timeout"
+                        "failed to unregister sandbox from proxy after unsafe Codex prefetch start failure"
                     );
                     false
                 }

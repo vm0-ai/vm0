@@ -1,9 +1,10 @@
-# Experimental embedded CUA runtime (slice 2)
+# Experimental embedded CUA runtime and adapter
 
 Okou remains the only registered/default Computer Use driver. This slice ships
-a dormant, host-owned runtime and a fixed verification entry point. It does not
-implement a command adapter, Developer selector, preferences, renderer
-diagnostics, or a runtime updater.
+a dormant, host-owned runtime and a fixed verification entry point. Slice 3 adds
+an internal [command adapter](ADAPTER.md) factory for the next slice to connect.
+Normal startup does not register or import it. There is no Developer selector,
+preference, renderer diagnostic panel, or runtime updater.
 
 ## Distribution and integrity
 
@@ -80,8 +81,10 @@ environment, permission mode, or generic command route.
 SDK startup validates embedded PID/endpoint/protocol ownership. The wrapper
 also requires exact `driverVersion === "0.23.2"` on both the connection and
 client metadata. Starts coalesce. Stop retires admission immediately, aborts
-pending client probes, retains late startup/exit results, destroys the client,
-awaits native stop and the matching exit observer, destroys the host, and then
+pending client work, starts the public native stop/reap independently of hung
+SDK/session callbacks, retains late startup/exit results, destroys the client
+only after its pending calls settle, awaits the matching exit observer and
+confirmed stopped state, destroys the host, and then
 removes its private directory. A caller deadline never proves process exit:
 unresolved or failed cleanup keeps that generation owned and blocks replacement.
 Unexpected exit cannot replay a command, revive old readiness, or choose Okou.

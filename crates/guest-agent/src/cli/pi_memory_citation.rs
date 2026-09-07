@@ -56,6 +56,13 @@ struct SourcedChar {
     source: usize,
 }
 
+fn delimiter_starts_with(delimiter: &str, pending: &[SourcedChar]) -> bool {
+    let mut characters = delimiter.chars();
+    pending
+        .iter()
+        .all(|item| characters.next() == Some(item.value))
+}
+
 pub(super) struct CitationParser {
     visible_segments: Vec<String>,
     citation: PiMemoryCitation,
@@ -91,14 +98,13 @@ impl CitationParser {
         if self.inside {
             self.close_pending.push(character);
             loop {
-                let pending: String = self.close_pending.iter().map(|item| item.value).collect();
-                if pending == CLOSE {
-                    self.finish_body(false);
-                    self.close_pending.clear();
-                    self.inside = false;
-                    return;
-                }
-                if CLOSE.starts_with(&pending) {
+                if delimiter_starts_with(CLOSE, &self.close_pending) {
+                    // Delimiters are ASCII, so a matching prefix has one byte per character.
+                    if self.close_pending.len() == CLOSE.len() {
+                        self.finish_body(false);
+                        self.close_pending.clear();
+                        self.inside = false;
+                    }
                     return;
                 }
                 if self.close_pending.is_empty() {
@@ -111,19 +117,19 @@ impl CitationParser {
 
         self.outside_pending.push(character);
         loop {
-            let pending: String = self.outside_pending.iter().map(|item| item.value).collect();
-            if pending == OPEN {
-                self.outside_pending.clear();
-                self.inside = true;
-                self.body.clear();
-                self.body_oversized = false;
+            if delimiter_starts_with(OPEN, &self.outside_pending) {
+                if self.outside_pending.len() == OPEN.len() {
+                    self.outside_pending.clear();
+                    self.inside = true;
+                    self.body.clear();
+                    self.body_oversized = false;
+                }
                 return;
             }
-            if pending == CLOSE {
-                self.outside_pending.clear();
-                return;
-            }
-            if OPEN.starts_with(&pending) || CLOSE.starts_with(&pending) {
+            if delimiter_starts_with(CLOSE, &self.outside_pending) {
+                if self.outside_pending.len() == CLOSE.len() {
+                    self.outside_pending.clear();
+                }
                 return;
             }
             if self.outside_pending.is_empty() {

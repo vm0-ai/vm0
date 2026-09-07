@@ -1868,6 +1868,19 @@
     "composer": {
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
+      "create": {
+        "chooseStyle": "Pilih gaya",
+        "chooseTemplate": "Pilih templat",
+        "exit": "Keluar dari mode pembuatan",
+        "image": "Buat gambar",
+        "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
+        "presentation": "Buat presentasi",
+        "presentationPlaceholder": "Apa topik presentasi Anda?",
+        "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "title": "Buat",
+        "video": "Buat video",
+        "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
+      },
       "createWorkflow": "Buat alur kerja",
       "imageModelForThisChat": "Model gambar untuk chat ini",
       "message": "Pesan",

@@ -668,7 +668,7 @@ mod tests {
     }
 
     /// Documents the `Final` mode behavior under the residual mid-chunk
-    /// race tracked in #11010: if vsock-guest's chunk boundary split a
+    /// race tracked in #11010: if guest-control-server's chunk boundary split a
     /// UTF-8 character, the final flush sees invalid bytes. The code
     /// must replace them with U+FFFD and advance the position — not
     /// panic, not truncate the tail. Guards against accidental

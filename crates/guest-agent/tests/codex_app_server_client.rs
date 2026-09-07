@@ -45,11 +45,7 @@ async fn codex_app_server_initializes_and_sends_initialized_notification() -> Re
     let mut client = spawn_client(None)?;
 
     let initialized = wait_result(client.initialize(), "initialize").await?;
-    assert!(
-        initialized
-            .user_agent
-            .starts_with("guest-mock-codex-app-server/")
-    );
+    assert!(initialized.user_agent.starts_with("codex-mock-app-server/"));
     assert!(!initialized.codex_home.is_empty());
 
     let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
@@ -172,7 +168,7 @@ async fn codex_app_server_buffers_interleaved_notifications() -> Result<(), Stri
             .params
             .as_ref()
             .and_then(|value| value.get("message")),
-        Some(&json!("guest-mock-codex notification"))
+        Some(&json!("codex-mock notification"))
     );
     assert!(client.pop_notification().is_none());
 
@@ -292,7 +288,7 @@ async fn codex_app_server_preserves_partial_notification_after_cancelled_read() 
             .params
             .as_ref()
             .and_then(|params| params.get("message")),
-        Some(&json!("guest-mock-codex notification"))
+        Some(&json!("codex-mock notification"))
     );
 
     wait_result(client.shutdown(), "shutdown").await
@@ -365,7 +361,7 @@ async fn codex_app_server_rejects_server_requests_and_continues() -> Result<(), 
     assert_eq!(state["hasPendingResponse"], false);
     assert_eq!(
         state["serverRequestResponses"][0]["id"],
-        "guest-mock-codex-server-request-1"
+        "codex-mock-server-request-1"
     );
     assert_eq!(state["serverRequestResponses"][0]["error"]["code"], -32601);
     assert!(

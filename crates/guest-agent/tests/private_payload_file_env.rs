@@ -95,8 +95,8 @@ fn remove_test_env(key: impl AsRef<OsStr>) {
 }
 
 fn reset_bootstrap_env() {
-    guest_common::log::clear_system_log_file();
-    guest_common::telemetry::clear_sandbox_ops_log_file();
+    guest_telemetry::log::clear_system_log_file();
+    guest_telemetry::telemetry::clear_sandbox_ops_log_file();
     // SAFETY: the integration binary contains exactly one synchronous test and
     // no thread is reading the environment while scenarios are configured.
     unsafe {

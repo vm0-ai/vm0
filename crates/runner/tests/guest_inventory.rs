@@ -61,14 +61,14 @@ fn expected_runtime_destinations() -> BTreeMap<&'static str, &'static str> {
 
     BTreeMap::from([
         ("guest-agent", guest_binary::AGENT_PATH),
-        ("guest-download", guest_binary::DOWNLOAD_PATH),
+        ("guest-storage-apply", guest_binary::STORAGE_APPLY_PATH),
         ("guest-init", guest_binary::INIT_PATH),
-        ("guest-reseed", guest_binary::RESEED_PATH),
+        ("guest-state-restore", guest_binary::STATE_RESTORE_PATH),
         ("guest-write-file", guest_binary::WRITE_FILE_PATH),
         ("guest-tool-exec", guest_binary::TOOL_EXEC_PATH),
-        ("guest-rpc", guest_binary::GUEST_RPC_PATH),
-        ("guest-mock-claude", guest_binary::MOCK_CLAUDE_PATH),
-        ("guest-mock-codex", guest_binary::MOCK_CODEX_PATH),
+        ("runner-rpc-client", guest_binary::RUNNER_RPC_CLIENT_PATH),
+        ("claude-mock", guest_binary::CLAUDE_MOCK_PATH),
+        ("codex-mock", guest_binary::CODEX_MOCK_PATH),
     ])
 }
 
@@ -156,7 +156,13 @@ fn delivered_guests_match_cargo_and_release_contracts() {
         .filter(|dependency| {
             dependency.kind.as_deref() == Some("dev")
                 && dependency.path.is_some()
-                && dependency.name.starts_with("guest-")
+                && metadata.packages.iter().any(|package| {
+                    package.name == dependency.name
+                        && package
+                            .targets
+                            .iter()
+                            .any(|target| target.kind.iter().any(|kind| kind == "bin"))
+                })
         })
         .map(|dependency| dependency.name.as_str())
         .collect();

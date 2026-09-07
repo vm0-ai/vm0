@@ -52,7 +52,7 @@ setup_repo() {
     "${REPO}/.github" \
     "${REPO}/native/helper/src" \
     "${REPO}/native/runner/src" \
-    "${REPO}/native/vsock-test/src" \
+    "${REPO}/native/guest-control-tests/src" \
     "${REPO}/turbo/apps/app/src" \
     "${REPO}/turbo/packages/tool" \
     "${REPO}/turbo/packages/ui/src"
@@ -74,7 +74,7 @@ setup_repo() {
 
   printf '%s\n' \
     '[workspace]' \
-    'members = ["helper", "runner", "vsock-test"]' \
+    'members = ["helper", "runner", "guest-control-tests"]' \
     'resolver = "2"' \
     >"${REPO}/native/Cargo.toml"
   printf '%s\n' \
@@ -94,16 +94,16 @@ setup_repo() {
     >"${REPO}/native/runner/Cargo.toml"
   printf '%s\n' \
     '[package]' \
-    'name = "vsock-test"' \
+    'name = "guest-control-tests"' \
     'version = "1.0.0"' \
     'edition = "2024"' \
     '' \
     '[dependencies]' \
     'helper = { path = "../helper" }' \
-    >"${REPO}/native/vsock-test/Cargo.toml"
+    >"${REPO}/native/guest-control-tests/Cargo.toml"
   printf 'helper source\n' >"${REPO}/native/helper/src/lib.rs"
   printf 'runner source\n' >"${REPO}/native/runner/src/lib.rs"
-  printf 'test source\n' >"${REPO}/native/vsock-test/src/lib.rs"
+  printf 'test source\n' >"${REPO}/native/guest-control-tests/src/lib.rs"
   cargo generate-lockfile --quiet --manifest-path "${REPO}/native/Cargo.toml"
 
   printf '%s\n' \
@@ -113,7 +113,7 @@ setup_repo() {
     '{"native/helper":"1.0.0","native/runner":"1.0.0","turbo/apps/app":"1.0.0","turbo/packages/ui":"0.0.0"}' \
     >"${REPO}/.release-please-manifest.json"
   printf '%s\n' \
-    '{"native/vsock-test":"Integration-test harness","turbo/packages/tool":"Development tool"}' \
+    '{"native/guest-control-tests":"Integration-test harness","turbo/packages/tool":"Development tool"}' \
     >"${REPO}/.github/release-please-workspace-exclusions.json"
 
   git -C "$REPO" init -q -b main
@@ -142,7 +142,7 @@ printf '%s\n' \
   'edition = "2024"' \
   >"${REPO}/native/new/Cargo.toml"
 printf 'new source\n' >"${REPO}/native/new/src/lib.rs"
-sed -i 's/"vsock-test"/"vsock-test", "new"/' "${REPO}/native/Cargo.toml"
+sed -i 's/"guest-control-tests"/"guest-control-tests", "new"/' "${REPO}/native/Cargo.toml"
 cargo generate-lockfile --quiet --manifest-path "${REPO}/native/Cargo.toml"
 expect_failure "$REPO" "unclassified workspace packages: native/new"
 
@@ -187,8 +187,8 @@ expect_failure "$REPO" \
 setup_repo "excluded-package-in-manifest"
 write_json \
   "${REPO}/.release-please-manifest.json" \
-  '.["native/vsock-test"] = "1.0.1"'
+  '.["native/guest-control-tests"] = "1.0.1"'
 expect_failure "$REPO" \
-  "Release Please manifest contains unconfigured packages: native/vsock-test"
+  "Release Please manifest contains unconfigured packages: native/guest-control-tests"
 
 echo "check-release-please-workspace-coverage-test: ok"

@@ -33,21 +33,6 @@ const state = {
   installFails: false,
 };
 
-function okouToken(orgId: string): string {
-  const payload = Buffer.from(
-    JSON.stringify({
-      userId: "user-presentation-screenshot",
-      runId: "run-presentation-screenshot",
-      orgId,
-      scope: "okou",
-      capabilities: [],
-      iat: 1,
-      exp: 4_102_444_800,
-    }),
-  ).toString("base64url");
-  return `vm0_sandbox_header.${payload}.signature`;
-}
-
 /** A 2x2 PNG is enough; only the IHDR dimensions are read back. */
 function png(width: number, height: number): Buffer {
   const ihdr = Buffer.alloc(13);
@@ -278,7 +263,6 @@ describe("okou presentation screenshot", () => {
     state.backgroundReady = true;
     state.settleFails = false;
     state.installFails = false;
-    vi.stubEnv("OKOU_TOKEN", okouToken("org_3ANttyrbWYJk6JKRSTRLEsbsDLe"));
     vi.stubEnv("XDG_CACHE_HOME", join(workDir, "cache"));
     logSpy.mockClear();
     errorSpy.mockClear();
@@ -515,18 +499,5 @@ describe("okou presentation screenshot", () => {
       run("--input", join(workDir, "notes.txt"), "--out", outDir),
     ).rejects.toThrow(/process\.exit/u);
     expect(stderr()).toContain("Unsupported input extension: .txt");
-  });
-
-  it("rejects execution while the rollout switch is off", async () => {
-    vi.stubEnv("OKOU_TOKEN", okouToken("org-external"));
-    writeFileSync(join(workDir, "deck.pdf"), "%PDF-1.4");
-
-    await expect(
-      run("--input", join(workDir, "deck.pdf"), "--out", outDir),
-    ).rejects.toThrow(/process\.exit/u);
-
-    expect(stderr()).toContain(
-      "Presentation screenshot is not enabled for this workspace",
-    );
   });
 });

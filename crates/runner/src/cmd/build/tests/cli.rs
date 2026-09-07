@@ -1,7 +1,9 @@
 use super::fixtures::*;
 use super::*;
 use clap::CommandFactory;
+use std::any::TypeId;
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 #[test]
 fn build_args_parse_warm_rootfs_cache_flag() {
@@ -61,8 +63,8 @@ fn guest_cli_flags_match_inventory() {
     let command = TestBuildCli::command();
     let actual: BTreeSet<_> = command
         .get_arguments()
+        .filter(|arg| arg.get_value_parser().type_id() == TypeId::of::<PathBuf>())
         .filter_map(|arg| arg.get_long())
-        .filter(|flag| flag.starts_with("guest-"))
         .map(str::to_owned)
         .collect();
     let expected: BTreeSet<_> = guest_definitions()

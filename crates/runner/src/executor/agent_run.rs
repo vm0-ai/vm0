@@ -1479,7 +1479,7 @@ async fn prepare_guest_storage(
                 let download_started = Instant::now();
                 let download_result = download_storages(sandbox, context, &guest_manifest).await;
                 telemetry.record(
-                    "runner_storage_manifest_guest_download",
+                    "runner_storage_manifest_guest_storage_apply",
                     download_started.elapsed(),
                     download_result.is_ok(),
                     download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
@@ -1512,7 +1512,7 @@ async fn prepare_guest_storage(
                 let download_started = Instant::now();
                 let download_result = download_storages(sandbox, context, &guest_manifest).await;
                 telemetry.record(
-                    "runner_storage_manifest_guest_download",
+                    "runner_storage_manifest_guest_storage_apply",
                     download_started.elapsed(),
                     download_result.is_ok(),
                     download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),

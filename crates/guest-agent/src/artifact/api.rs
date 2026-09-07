@@ -5,7 +5,7 @@ use crate::http::HttpClient;
 use api_contracts::generated::types::webhooks::agent::storages::{
     commit as storage_commit, prepare as storage_prepare,
 };
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 use serde::Serialize;
 
 const LOG_TAG: &str = "sandbox:guest-agent";

@@ -64,26 +64,26 @@ pub const SIGKILL_EXIT: i32 = 137;
 /// Normal clean exit. Reap should never fire on this path.
 pub const CLEAN_EXIT: i32 = 0;
 
-pub const MOCK_TERMINATION_READY_EVENT: &str = "guest_mock_termination_ready";
-pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".guest-mock-codex-turn-start-ready";
-pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "guest_mock_codex_turn_start_ready";
+pub const MOCK_TERMINATION_READY_EVENT: &str = "claude_mock_termination_ready";
+pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".codex-mock-turn-start-ready";
+pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "codex_mock_turn_start_ready";
 pub const MOCK_CODEX_TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE: &str =
-    ".guest-mock-codex-turn-complete-before-heartbeat-ready";
-pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".guest-mock-codex-session-history-ready";
-pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "guest_mock_codex_session_history_ready";
-pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".guest-mock-codex-turn-steer-ready";
-pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "guest_mock_codex_turn_steer_ready";
-pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".guest-mock-codex-turn-steer-release.sock";
+    ".codex-mock-turn-complete-before-heartbeat-ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".codex-mock-session-history-ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "codex_mock_session_history_ready";
+pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".codex-mock-turn-steer-ready";
+pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "codex_mock_turn_steer_ready";
+pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".codex-mock-turn-steer-release.sock";
 pub const MOCK_CODEX_EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str =
-    ".guest-mock-codex-event-delivery-large-release.sock";
-pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".guest-mock-codex-active-turn-ready";
-pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "guest_mock_codex_active_turn_ready";
-pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".guest-mock-codex-turn-interrupt-ready";
-pub const MOCK_CODEX_TURN_INTERRUPT_READY_EVENT: &str = "guest_mock_codex_turn_interrupt_ready";
-pub const MOCK_POST_RESULT_READY_EVENT: &str = "guest_mock_post_result_ready";
-pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "guest_mock_post_result_activity_1_ready";
-pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "guest_mock_post_result_activity_2_ready";
-pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "guest_mock_post_result_stale_deadline_survived";
+    ".codex-mock-event-delivery-large-release.sock";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".codex-mock-active-turn-ready";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "codex_mock_active_turn_ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".codex-mock-turn-interrupt-ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_EVENT: &str = "codex_mock_turn_interrupt_ready";
+pub const MOCK_POST_RESULT_READY_EVENT: &str = "claude_mock_post_result_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "claude_mock_post_result_activity_1_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "claude_mock_post_result_activity_2_ready";
+pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "claude_mock_post_result_stale_deadline_survived";
 pub const MOCK_POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 pub const MOCK_POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 
@@ -717,13 +717,13 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
 /// and under `cargo test --release`. We infer both from the currently-
 /// running test binary's path and forward them to the subprocess.
 pub fn build_and_locate_mock() -> Result<PathBuf, String> {
-    build_and_locate_mock_package("guest-mock-claude", "guest-mock-claude")
+    build_and_locate_mock_package("claude-mock", "claude-mock")
 }
 
 /// Build the mock Codex binary and resolve its filesystem path beside the
 /// current test profile.
 pub fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
-    build_and_locate_mock_package("guest-mock-codex", "guest-mock-codex")
+    build_and_locate_mock_package("codex-mock", "codex-mock")
 }
 
 pub struct PostOpenMockGate {
@@ -1264,10 +1264,10 @@ pub fn expected_codex_turn_usage() -> Value {
 /// binary. Must be called before building a `GuestRuntime` because runtime
 /// bootstrap captures the process env snapshot.
 ///
-/// `prompt` is interpreted by `guest-mock-claude`. See the module documentation
-/// in `crates/guest-mock-claude/src/main.rs` for the complete special-prefix
+/// `prompt` is interpreted by `claude-mock`. See the module documentation
+/// in `crates/claude-mock/src/main.rs` for the complete special-prefix
 /// catalog and `SCENARIO_RULES` in
-/// `crates/guest-mock-claude/src/scenario.rs` for authoritative matching
+/// `crates/claude-mock/src/scenario.rs` for authoritative matching
 /// behavior. Prompts that match no special rule use ordinary shell behavior.
 ///
 /// `sigterm_grace_secs` / `sigkill_grace_secs` control how long the

@@ -28,13 +28,13 @@ cat > "${TMPDIR}/manifest.json" <<'JSON'
   "runnerSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "guestSha256": {
     "guest-agent": "a",
-    "guest-download": "b",
+    "guest-storage-apply": "b",
     "guest-init": "c",
-    "guest-mock-claude": "d",
-    "guest-mock-codex": "e",
-    "guest-reseed": "f",
+    "claude-mock": "d",
+    "codex-mock": "e",
+    "guest-state-restore": "f",
     "guest-tool-exec": "h",
-    "guest-rpc": "i",
+    "runner-rpc-client": "i",
     "guest-write-file": "g"
   },
   "hosts": {

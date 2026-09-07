@@ -33,12 +33,12 @@ git -C "$SEED" config user.name Test
 mkdir -p \
   "${SEED}/.github/scripts" \
   "${SEED}/native/helper/src" \
-  "${SEED}/native/vsock-test/src" \
+  "${SEED}/native/guest-control-tests/src" \
   "${SEED}/turbo/apps/app/src" \
   "${SEED}/turbo/packages/tool"
 cp "$CHECK_COVERAGE" "${SEED}/.github/scripts/check-release-please-workspace-coverage.sh"
 printf '%s\n' \
-  '{"native/vsock-test":"Integration-test harness","turbo/packages/tool":"Development tool"}' \
+  '{"native/guest-control-tests":"Integration-test harness","turbo/packages/tool":"Development tool"}' \
   >"${SEED}/.github/release-please-workspace-exclusions.json"
 printf '%s\n' \
   'packages:' \
@@ -52,7 +52,7 @@ printf '%s\n' '{"name":"tool","private":true,"version":"0.0.0"}' \
 printf 'app source\n' >"${SEED}/turbo/apps/app/src/index.ts"
 printf '%s\n' \
   '[workspace]' \
-  'members = ["helper", "vsock-test"]' \
+  'members = ["helper", "guest-control-tests"]' \
   'resolver = "2"' \
   >"${SEED}/native/Cargo.toml"
 printf '%s\n' \
@@ -63,15 +63,15 @@ printf '%s\n' \
   >"${SEED}/native/helper/Cargo.toml"
 printf '%s\n' \
   '[package]' \
-  'name = "vsock-test"' \
+  'name = "guest-control-tests"' \
   'version = "1.0.0"' \
   'edition = "2021"' \
   '' \
   '[dependencies]' \
   'helper = { path = "../helper" }' \
-  >"${SEED}/native/vsock-test/Cargo.toml"
+  >"${SEED}/native/guest-control-tests/Cargo.toml"
 printf 'helper source\n' >"${SEED}/native/helper/src/lib.rs"
-printf 'test source\n' >"${SEED}/native/vsock-test/src/lib.rs"
+printf 'test source\n' >"${SEED}/native/guest-control-tests/src/lib.rs"
 cargo generate-lockfile --quiet --manifest-path "${SEED}/native/Cargo.toml"
 printf '%s\n' \
   '{"packages":{"native/helper":{"release-type":"rust"},"turbo/apps/app":{"release-type":"node"}},"plugins":[{"type":"cargo-workspace","cargoWorkspacePath":"native"}]}' \
@@ -88,14 +88,14 @@ git -C "$SEED" push -q -u origin main
 git --git-dir="$REMOTE" symbolic-ref HEAD refs/heads/main
 
 git -C "$SEED" switch -q -c release-invalid main
-jq -c '.["native/vsock-test"] = "1.0.1"' \
+jq -c '.["native/guest-control-tests"] = "1.0.1"' \
   "${SEED}/.release-please-manifest.json" \
   >"${SEED}/.release-please-manifest.next.json"
 mv \
   "${SEED}/.release-please-manifest.next.json" \
   "${SEED}/.release-please-manifest.json"
 sed -i 's/version = "1.0.0"/version = "1.0.1"/' \
-  "${SEED}/native/vsock-test/Cargo.toml"
+  "${SEED}/native/guest-control-tests/Cargo.toml"
 cargo generate-lockfile --quiet --manifest-path "${SEED}/native/Cargo.toml"
 git -C "$SEED" add --all
 git -C "$SEED" commit -qm "chore: release invalid"
@@ -167,7 +167,7 @@ if invalid_output=$(run_gates "$INVALID_HEAD" 2>&1); then
 fi
 assert_contains \
   "$invalid_output" \
-  "Release Please manifest contains unconfigured packages: native/vsock-test"
+  "Release Please manifest contains unconfigured packages: native/guest-control-tests"
 assert_contains \
   "$invalid_output" \
   "workspace coverage failed for exact head $INVALID_HEAD"
@@ -175,7 +175,7 @@ grep -Eq 'name=ci-gate-security .*conclusion=failure' "$GH_LOG" ||
   fail "the inconsistent release head should receive a failing security gate"
 [ "$(git -C "$CALLER" rev-parse HEAD)" = "$MAIN_HEAD" ] ||
   fail "exact-head validation changed the caller checkout"
-jq -e 'has("native/vsock-test") | not' \
+jq -e 'has("native/guest-control-tests") | not' \
   "${CALLER}/.release-please-manifest.json" >/dev/null ||
   fail "the caller main manifest should remain consistent"
 

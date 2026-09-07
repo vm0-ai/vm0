@@ -37,9 +37,9 @@ jq -e '
     "ably-subscriber-changed": "${{ steps.detect.outputs.ably-subscriber-changed }}",
     "api-contracts-changed": "${{ steps.detect.outputs.api-contracts-changed }}",
     "runner-changed": "${{ steps.detect.outputs.runner-changed }}",
-    "sandbox-fc-changed": "${{ steps.detect.outputs.sandbox-fc-changed }}",
+    "sandbox-firecracker-changed": "${{ steps.detect.outputs.sandbox-firecracker-changed }}",
     "nbd-cow-changed": "${{ steps.detect.outputs.nbd-cow-changed }}",
-    "vsock-test-changed": "${{ steps.detect.outputs.vsock-test-changed }}",
+    "guest-control-tests-changed": "${{ steps.detect.outputs.guest-control-tests-changed }}",
     "crates-runner-consumer-needed": "${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}",
     "metal-job-ref": "${{ steps.runner-job-ref.outputs.job-ref }}",
     "runner-image-job-ref": "${{ steps.runner-job-ref.outputs.image-job-ref }}"
@@ -76,7 +76,7 @@ jq -e '
   ] | sort) and
   ($host_cpu.if | contains("needs.runner-build.result")) and
   ($host_cpu.if | contains("needs.runner-behavior-lane-") | not) and
-  ($host_cpu.if | contains("needs.detect.outputs.sandbox-fc-changed")) and
+  ($host_cpu.if | contains("needs.detect.outputs.sandbox-firecracker-changed")) and
   ($host_cpu.if | contains("needs.detect.outputs.ci-changed")) and
   ([$lane_a, $lane_b, $lane_c, $lane_d] |
     all(.[]; .needs == ["runner-build"])) and

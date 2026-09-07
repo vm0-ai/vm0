@@ -7,6 +7,8 @@ import type {
   RealtimeChannel,
 } from "ably";
 import { delay } from "signal-timers";
+import type { SharedDatabaseBridge } from "../shared-database/bridge.ts";
+import type { SharedDatabaseRealtimeScope } from "../shared-database/protocol.ts";
 import { IN_VITEST } from "../env.ts";
 import { createAblyRealtime, type AblyRealtime } from "../lib/ably-realtime.ts";
 import { now } from "../lib/time.ts";
@@ -101,7 +103,12 @@ const notifyRealtimeDegraded$ = command(({ get, set }) => {
   get(realtimeDegradedNotifier$)?.();
 });
 
-type ChannelCallback = (message: InboundMessage) => void;
+interface RealtimeMessage {
+  readonly data: unknown;
+  readonly name: string | null;
+}
+
+type ChannelCallback = (message: RealtimeMessage) => void;
 
 interface StableRealtimeChannel {
   readonly state: () => RealtimeChannelState | null;
@@ -125,13 +132,78 @@ interface RealtimeSession {
   readonly close: () => void;
 }
 
-type RealtimeChannelScope = "user" | "org" | "credential";
+type RealtimeChannelScope = SharedDatabaseRealtimeScope;
 
 interface RealtimeSessionChannels {
   readonly credential: StableRealtimeChannel;
   readonly user: StableRealtimeChannel;
   readonly org: StableRealtimeChannel;
 }
+
+class SharedWorkerRealtimeChannel implements StableRealtimeChannel {
+  private readonly subscriptions = new Map<ChannelCallback, string>();
+
+  constructor(
+    private readonly bridge: SharedDatabaseBridge,
+    private readonly scope: RealtimeChannelScope,
+  ) {}
+
+  state(): RealtimeChannelState | null {
+    return null;
+  }
+
+  subscribe(topic: string | null, callback: ChannelCallback): Promise<unknown> {
+    if (topic === null) {
+      throw new Error("Shared Worker realtime subscriptions require a topic");
+    }
+    if (this.subscriptions.has(callback)) {
+      throw new Error("Shared Worker realtime callback already exists");
+    }
+    const subscriptionId = crypto.randomUUID();
+    this.subscriptions.set(callback, subscriptionId);
+    return this.bridge.subscribeRealtime(
+      subscriptionId,
+      this.scope,
+      topic,
+      callback,
+    );
+  }
+
+  unsubscribe(_topic: string | null, callback: ChannelCallback): void {
+    const subscriptionId = this.subscriptions.get(callback);
+    if (!subscriptionId) {
+      return;
+    }
+    this.subscriptions.delete(callback);
+    this.bridge.unsubscribeRealtime(subscriptionId);
+  }
+
+  pauseSubscriptions(): void {
+    // The SharedWorker owns this subscription independently of tab visibility.
+  }
+
+  resumeSubscriptions(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  suspend(): void {
+    // The SharedWorker owns this subscription independently of tab visibility.
+  }
+
+  replace(_channel: RealtimeChannel): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+const sharedWorkerRealtimeBridgeState$ = state<SharedDatabaseBridge | null>(
+  null,
+);
+
+export const setSharedWorkerRealtimeBridge$ = command(
+  ({ set }, bridge: SharedDatabaseBridge): void => {
+    set(sharedWorkerRealtimeBridgeState$, bridge);
+  },
+);
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 const realtimeStateRevision$ = state(0);
@@ -402,7 +474,7 @@ const runWithChannel$ = command(
       pokeLoop();
     };
 
-    const callback = (message: InboundMessage) => {
+    const callback = (message: RealtimeMessage) => {
       if (signal.aborted) {
         return;
       }
@@ -652,7 +724,7 @@ const runWithChannelPayload$ = command(
       pokeLoop();
     };
 
-    const callback = (message: InboundMessage) => {
+    const callback = (message: RealtimeMessage) => {
       if (signal.aborted) {
         return;
       }
@@ -701,6 +773,7 @@ const runWithChannelPayload$ = command(
 interface ActiveChannelSubscription {
   readonly topic: string | null;
   readonly callback: ChannelCallback;
+  readonly ablyCallback: (message: InboundMessage) => void;
   readonly channels: Set<RealtimeChannel>;
 }
 
@@ -709,9 +782,9 @@ function subscribeToRealtimeChannel(
   subscription: ActiveChannelSubscription,
 ): Promise<unknown> {
   if (subscription.topic === null) {
-    return channel.subscribe(subscription.callback);
+    return channel.subscribe(subscription.ablyCallback);
   }
-  return channel.subscribe(subscription.topic, subscription.callback);
+  return channel.subscribe(subscription.topic, subscription.ablyCallback);
 }
 
 function unsubscribeFromRealtimeChannel(
@@ -719,10 +792,10 @@ function unsubscribeFromRealtimeChannel(
   subscription: ActiveChannelSubscription,
 ): void {
   if (subscription.topic === null) {
-    channel.unsubscribe(subscription.callback);
+    channel.unsubscribe(subscription.ablyCallback);
     return;
   }
-  channel.unsubscribe(subscription.topic, subscription.callback);
+  channel.unsubscribe(subscription.topic, subscription.ablyCallback);
 }
 
 async function trackRealtimeSubscription(
@@ -826,6 +899,9 @@ async function subscribeStableRealtimeChannel(
   const subscription: ActiveChannelSubscription = {
     topic,
     callback,
+    ablyCallback: (message) => {
+      callback({ data: message.data, name: message.name ?? null });
+    },
     channels: new Set(),
   };
   state.subscriptions.set(callback, subscription);
@@ -1159,8 +1235,16 @@ const connectRealtimeClient$ = command(
 
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const sharedWorkerBridge = get(sharedWorkerRealtimeBridgeState$);
     const session = get(internalRealtimeSession$);
     const subscriberPokeTarget = get(subscriberPokeTarget$);
+    if (sharedWorkerBridge) {
+      L.debug("Shared Worker realtime foreground catch-up ready");
+      subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+      await set(runRealtimeReadyCatchUp$, signal);
+      signal.throwIfAborted();
+      return;
+    }
     if (!session) {
       publishConnectionDiagnostic({
         details: { skipReason: "no-realtime-session" },
@@ -1278,6 +1362,10 @@ const foregroundRealtimeCatchUp$ = command(
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    if (get(sharedWorkerRealtimeBridgeState$)) {
+      set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
+      return;
+    }
     const rejectPendingSubscriptions = (reason?: unknown) => {
       const pendingSubscriptions = get(pendingAblySubscriptions$);
       if (pendingSubscriptions.length === 0) {
@@ -1367,6 +1455,11 @@ const realtimeChannel$ = command(
   ): Promise<StableRealtimeChannel> => {
     signal.throwIfAborted();
 
+    const sharedWorkerBridge = get(sharedWorkerRealtimeBridgeState$);
+    if (sharedWorkerBridge) {
+      return new SharedWorkerRealtimeChannel(sharedWorkerBridge, scope);
+    }
+
     const session = get(internalRealtimeSession$);
     if (session) {
       return session.channels[scope];
@@ -1394,6 +1487,14 @@ const realtimeChannel$ = command(
     const connectedChannel = await channelDeferred.promise;
     signal.throwIfAborted();
     return connectedChannel;
+  },
+);
+
+export const notifySharedWorkerRealtimeReconnected$ = command(
+  ({ get, set }): void => {
+    if (get(sharedWorkerRealtimeBridgeState$)) {
+      set(requestForegroundCatchUp$);
+    }
   },
 );
 

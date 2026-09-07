@@ -1,4 +1,5 @@
 import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
   DriverMetadata,
@@ -28,6 +29,9 @@ interface Generation {
   startResult: Promise<CuaReadiness>;
   retirement: Promise<void> | null;
   probe: Promise<CuaProbeResult> | null;
+  readonly pending: Set<Promise<unknown>>;
+  session: Promise<string> | null;
+  sessionLabel: string | null;
 }
 
 interface CuaProbeResult {
@@ -87,6 +91,9 @@ export class CuaEmbeddedRuntime {
       exit: null,
       retirement: null,
       probe: null,
+      pending: new Set(),
+      session: null,
+      sessionLabel: null,
       initialization: Promise.resolve().then(() => this.initialize(context)),
       startResult: Promise.resolve().then(() => this.startGeneration(context)),
     };
@@ -205,15 +212,19 @@ export class CuaEmbeddedRuntime {
   }
 
   private async cleanup(context: Generation): Promise<void> {
-    // Cancel a native start immediately, while retaining its late result. Once
-    // connected, settle pending metadata before destroying its client.
-    const earlyStop =
-      context.host && !context.connection
-        ? context.host.stop()
-        : Promise.resolve();
+    // Embedded host stop has its own liveness/kill/reap channel. Start it before
+    // awaiting SDK callbacks: an aborted FFI promise is not termination proof.
+    const end = Promise.resolve().then(() =>
+      context.client && context.sessionLabel
+        ? context.client.endSession({ session: context.sessionLabel })
+        : undefined,
+    );
+    const earlyStop = Promise.resolve().then(() => context.host?.stop());
     const results = await Promise.allSettled([
       context.initialization,
       earlyStop,
+      end,
+      ...context.pending,
     ]);
     if (results[1]?.status === "rejected")
       throw new Error("CUA startup cancellation is unproven");
@@ -256,6 +267,44 @@ export class CuaEmbeddedRuntime {
   dispose(): Promise<void> {
     this.closed = true;
     return this.stop();
+  }
+
+  /** Host-owned adapter seam; no tool names or JSON enter from IPC. */
+  async useClient<T>(
+    operation: (
+      client: NonNullable<Generation["client"]>,
+      signal: AbortSignal,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const context = this.context;
+    if (!context || !context.client || this.phase !== "ready")
+      throw new Error("CUA client is unavailable");
+    this.assertCurrent(context);
+    const work = operation(context.client, context.abort.signal);
+    context.pending.add(work);
+    try {
+      const value = await work;
+      this.assertCurrent(context);
+      return value;
+    } finally {
+      context.pending.delete(work);
+    }
+  }
+
+  ensureSession(): Promise<string> {
+    const context = this.context;
+    if (!context)
+      return Promise.reject(new Error("CUA runtime is unavailable"));
+    this.assertCurrent(context);
+    context.session ??= this.useClient(async (client, signal) => {
+      const session = `okou-command-${context.id}-${randomUUID()}`;
+      context.sessionLabel = session;
+      const result = await client.startSession({ session }, { signal });
+      if (!result.active || result.state.session !== session)
+        throw new Error("CUA did not establish the owned session");
+      return session;
+    });
+    return context.session;
   }
 
   /** Fixed host-only verification surface; never forwarded to IPC or agents. */

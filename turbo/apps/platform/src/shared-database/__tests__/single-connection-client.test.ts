@@ -12,7 +12,11 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
-import type { SharedDatabaseConnectionStatus } from "../protocol.ts";
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseRealtimeMessage,
+  SharedDatabaseRealtimeScope,
+} from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 
 const axiomTelemetry = vi.hoisted(() => {
@@ -43,6 +47,17 @@ class FakeBridge implements SharedDatabaseBridge {
   registerTab(): Promise<void> {
     return Promise.resolve();
   }
+
+  subscribeRealtime(
+    _subscriptionId: string,
+    _scope: SharedDatabaseRealtimeScope,
+    _topic: string,
+    _listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  unsubscribeRealtime(_subscriptionId: string): void {}
 
   getComputed<TKey extends ComputedKey>(
     _computedKey: TKey,

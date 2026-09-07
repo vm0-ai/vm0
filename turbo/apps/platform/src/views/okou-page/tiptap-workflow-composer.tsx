@@ -25,6 +25,13 @@ import {
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
+import {
+  COMPOSER_CREATE_MODES,
+  composerCreateModeLabel,
+  composerCreatePlaceholder,
+  type ComposerCreateMode,
+} from "../../signals/okou-page/composer-create.ts";
+
 function isMacKeyboard(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 }
@@ -160,6 +167,7 @@ function WorkflowComposerPlaceholder({
   sending: boolean | undefined;
 }) {
   useTranslation();
+  const createMode = useGet(composer.create.mode$);
   const hasInput = useGet(composer.editor.hasInput$);
   const hasEditorContent = useEditorState({
     editor: composer.editor.editor,
@@ -180,7 +188,9 @@ function WorkflowComposerPlaceholder({
       }`}
       aria-hidden="true"
     >
-      {workflowComposerPlaceholder(sending)}
+      {createMode
+        ? composerCreatePlaceholder(createMode)
+        : workflowComposerPlaceholder(sending)}
     </div>
   );
 }
@@ -288,6 +298,8 @@ interface ComposerSuggestionMenuState {
   readonly selectedIndex: number;
   readonly close: () => void;
   readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly createModes: readonly ComposerCreateMode[];
+  readonly selectCreate: (mode: ComposerCreateMode) => void;
   readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
@@ -300,6 +312,30 @@ interface ComposerSuggestionMenuState {
   readonly handleKeyDown: (event: KeyboardEvent) => boolean;
 }
 
+function useComposerCreateSuggestions(
+  composer: ComposerSignals,
+  query: string | undefined,
+): readonly ComposerCreateMode[] {
+  useTranslation();
+  const enabled = useGet(composer.create.enabled$);
+  if (!enabled || query === undefined) {
+    return [];
+  }
+  return COMPOSER_CREATE_MODES.filter((mode) => {
+    if (
+      (mode === "image" && !composer.imageModel) ||
+      (mode === "video" && !composer.videoModel)
+    ) {
+      return false;
+    }
+    const normalized = query.toLowerCase().trim();
+    return (
+      `create ${mode}`.includes(normalized) ||
+      composerCreateModeLabel(mode).toLowerCase().includes(normalized)
+    );
+  });
+}
+
 function useComposerSuggestionMenu({
   composer,
   onKeyDown,
@@ -307,7 +343,9 @@ function useComposerSuggestionMenu({
   readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
+  const selectCreate = useSet(composer.create.setMode$);
   const slashRange = useGet(composer.suggestion.activeSlashRange$);
+  const createModes = useComposerCreateSuggestions(composer, slashRange?.query);
   const chatThreadRange = useGet(
     composer.suggestion.activeChatThreadSuggestionRange$,
   );
@@ -353,43 +391,39 @@ function useComposerSuggestionMenu({
       ? chatThreadRange
       : null;
   const suggestionCount = showWorkflows
-    ? workflowSuggestions.length
+    ? createModes.length + workflowSuggestions.length
     : agents.length + chatThreads.length;
-
-  function selectWorkflow(workflow: ComposerSlashWorkflow): void {
-    insertWorkflow(workflow);
-  }
-
-  function selectAgent(agent: ComposerAgentSuggestion): void {
-    insertAgent(agent);
-  }
-
-  function selectChatThread(chatThread: ComposerChatThreadSuggestion): void {
-    insertChatThread(chatThread);
-  }
 
   function selectSuggestion(index: number): void {
     if (showWorkflows) {
-      const workflow = workflowSuggestions[index];
+      const createMode = createModes[index];
+      if (createMode) {
+        selectCreate(createMode);
+        return;
+      }
+      const workflow = workflowSuggestions[index - createModes.length];
       if (workflow) {
-        selectWorkflow(workflow);
+        insertWorkflow(workflow);
       }
       return;
     }
     const agent = agents[index];
     if (agent) {
-      selectAgent(agent);
+      insertAgent(agent);
       return;
     }
     const chatThread = chatThreads[index - agents.length];
     if (chatThread) {
-      selectChatThread(chatThread);
+      insertChatThread(chatThread);
     }
   }
 
   function scrollSuggestionIntoView(index: number): void {
     if (showWorkflows) {
-      scrollSlashWorkflowIntoView(workflowSuggestions[index]);
+      const mode = createModes[index];
+      scrollSlashWorkflowIntoView(
+        mode ? { id: mode } : workflowSuggestions[index - createModes.length],
+      );
     }
   }
 
@@ -413,15 +447,17 @@ function useComposerSuggestionMenu({
     selectedIndex,
     close,
     workflows: workflowSuggestions,
+    createModes,
+    selectCreate,
     workflowQuery: slashRange?.query ?? "",
     workflowsLoading: workflowsLoadable.state === "loading",
     showWorkflows,
     agents,
     chatThreads,
     showMentions,
-    selectWorkflow,
-    selectAgent,
-    selectChatThread,
+    selectWorkflow: insertWorkflow,
+    selectAgent: insertAgent,
+    selectChatThread: insertChatThread,
     handleKeyDown,
   };
 }
@@ -530,6 +566,8 @@ export function TiptapWorkflowComposer({
       {suggestionMenu.showWorkflows && (
         <SlashWorkflowMenu
           workflows={suggestionMenu.workflows}
+          createModes={suggestionMenu.createModes}
+          onSelectCreate={suggestionMenu.selectCreate}
           query={suggestionMenu.workflowQuery}
           loading={suggestionMenu.workflowsLoading}
           selectedIndex={suggestionMenu.selectedIndex}

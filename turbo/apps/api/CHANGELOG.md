@@ -8,6 +8,71 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.564.0](https://github.com/vm0-ai/vm0/compare/api-v1.563.3...api-v1.564.0) (2026-09-07)
+
+
+### Features
+
+* **desktop:** add generation-owned cua command adapter ([#32360](https://github.com/vm0-ai/vm0/issues/32360)) ([b88375f](https://github.com/vm0-ai/vm0/commit/b88375f6c75f001e76dee446ada97ac1ad681e8b))
+
+
+### Bug Fixes
+
+* **pi-memory:** protect active maintenance from cleanup ([#32367](https://github.com/vm0-ai/vm0/issues/32367)) ([7e46f0c](https://github.com/vm0-ai/vm0/commit/7e46f0c9f2205853fe77ba7db67ea7acab2d9ab9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.632.0
+    * @okouai/db bumped to 1.245.6
+
+## [1.563.3](https://github.com/vm0-ai/vm0/compare/api-v1.563.2...api-v1.563.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **calendar:** persist watch action-required state ([#32332](https://github.com/vm0-ai/vm0/issues/32332)) ([59b0106](https://github.com/vm0-ai/vm0/commit/59b0106dbcc0510a944f8cf68fd54f4871719a56))
+* **pi:** recover api first-turn deadlines in sandbox ([#32329](https://github.com/vm0-ai/vm0/issues/32329)) ([b701bf8](https://github.com/vm0-ai/vm0/commit/b701bf888ce2c4ad62e9cbf2dabbb763dbca8a4e))
+
+
+### Refactoring
+
+* remove presentationScreenshot feature switch ([#32349](https://github.com/vm0-ai/vm0/issues/32349)) ([ef1d8b4](https://github.com/vm0-ai/vm0/commit/ef1d8b4619552158928230379383b8ce3e00f0d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.3
+    * @okouai/core bumped to 8.631.5
+    * @okouai/db bumped to 1.245.5
+    * @okouai/pi-agent-runtime bumped to 1.21.17
+
+## [1.563.2](https://github.com/vm0-ai/vm0/compare/api-v1.563.1...api-v1.563.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **api:** preserve mention context across chat integrations ([#32335](https://github.com/vm0-ai/vm0/issues/32335)) ([6158eb5](https://github.com/vm0-ai/vm0/commit/6158eb586bd781310547cc76c91174e68845a66c))
+
+
+### Refactoring
+
+* resolve connector diagnostics from active runtime state ([#32318](https://github.com/vm0-ai/vm0/issues/32318)) ([0445891](https://github.com/vm0-ai/vm0/commit/0445891e02f4bfd3e5db62a17e88fa877daa2cb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.2
+    * @okouai/core bumped to 8.631.4
+    * @okouai/db bumped to 1.245.4
+    * @okouai/pi-agent-runtime bumped to 1.21.16
+
 ## [1.563.1](https://github.com/vm0-ai/vm0/compare/api-v1.563.0...api-v1.563.1) (2026-09-07)
 
 

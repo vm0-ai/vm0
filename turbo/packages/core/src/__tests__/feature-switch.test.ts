@@ -22,6 +22,7 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.CodexFastMode).toBe("_fastModel");
     expect(FeatureSwitchKey.ChatPreference).toBe("chatPreference");
     expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
+    expect(FeatureSwitchKey.SharedWorkerRealtime).toBe("_sharedWorkerRealtime");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
     expect(FeatureSwitchKey.SshAccess).toBe("_sshAccess");
@@ -57,6 +58,9 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.SshAccess, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.SharedWorkerRealtime, {})).toBe(
+      false,
+    );
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.SshAccess]).toEqual({
       maintainer: "ethan@vm0.ai",
       description: "Enable standalone Runner-mediated SSH configuration",
@@ -208,6 +212,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -233,6 +238,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);

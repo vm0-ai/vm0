@@ -1,6 +1,8 @@
 import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { mockedClerk } from "./mock-auth.ts";
 import { queryAllByRoleFast, setupPage } from "./page-helper.ts";
@@ -77,6 +79,29 @@ test("Authentication is ready before Platform content becomes interactive", asyn
   ).resolves.toBeInTheDocument();
   expect(screen.queryByTestId("app-auth-v2")).not.toBeInTheDocument();
   expect(queryAllByRoleFast("link").length).toBeGreaterThan(0);
+});
+
+test("The SharedWorker owns realtime when its feature switch is enabled", async () => {
+  await setupPage({
+    context,
+    host: "app.vm0.ai",
+    path: "/agents",
+    featureSwitches: {
+      [FeatureSwitchKey.SharedWorkerRealtime]: true,
+    },
+    sharedWorkerTestTransport: "message-port",
+  });
+
+  await screen.findByRole("heading", { name: "Agents" });
+  await vi.waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(
+        "user:test-user-123",
+        "connectorPermissionUpdated",
+      ),
+    ).toBeTruthy();
+  });
+  expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
 });
 
 test("Authentication startup is reused without a duplicate load", async () => {

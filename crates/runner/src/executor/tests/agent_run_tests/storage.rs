@@ -34,7 +34,7 @@ async fn spawn_storage_archive_server(body: &[u8]) -> RawHttpTestServer {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization() {
+async fn run_in_sandbox_runs_guest_storage_apply_for_cached_instruction_normalization() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -80,12 +80,12 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
     assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
     assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
-    assert_successful_action_once(&ops, "runner_storage_manifest_guest_download");
+    assert_successful_action_once(&ops, "runner_storage_manifest_guest_storage_apply");
     assert_successful_action_once(&ops, "runner_storage_manifest_apply");
     assert!(
         ops.iter()
             .all(|(action, _, _)| action != "storage_download"),
-        "runner telemetry should not use the guest-download per-entry metric name: {ops:?}"
+        "runner telemetry should not use the guest-storage-apply per-entry metric name: {ops:?}"
     );
 }
 
@@ -159,7 +159,7 @@ async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
     assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
-    assert_successful_action_once(&ops, "runner_storage_manifest_guest_download");
+    assert_successful_action_once(&ops, "runner_storage_manifest_guest_storage_apply");
     assert_successful_action_once(&ops, "runner_storage_manifest_apply");
     assert_successful_action_once(&ops, "storage_cache_miss_passthrough");
     assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_count_1");
@@ -248,7 +248,7 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_agent_spawn_fails() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
+async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_storage_apply_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -295,7 +295,7 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
     assert_no_action(&ops, "runner_agent_start_process");
     assert_failed_action_error_once(
         &ops,
-        "runner_storage_manifest_guest_download",
+        "runner_storage_manifest_guest_storage_apply",
         "storage-download-failed",
     );
 
@@ -303,7 +303,7 @@ async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_download() {
+async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_storage_apply() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -348,11 +348,11 @@ async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_do
     assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
     assert_successful_action_once(&ops, "runner_storage_manifest_apply");
     assert_no_action(&ops, "runner_storage_manifest_cache_populate");
-    assert_no_action(&ops, "runner_storage_manifest_guest_download");
+    assert_no_action(&ops, "runner_storage_manifest_guest_storage_apply");
 }
 
 #[tokio::test]
-async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing() {
+async fn run_in_sandbox_records_storage_manifest_guest_storage_apply_failure_timing() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -395,7 +395,7 @@ async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing()
 
     assert!(
         result.is_err(),
-        "guest-download failure should still fail the storage manifest phase"
+        "guest-storage-apply failure should still fail the storage manifest phase"
     );
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
@@ -403,7 +403,7 @@ async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing()
     assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
     assert_failed_action_error_once(
         &ops,
-        "runner_storage_manifest_guest_download",
+        "runner_storage_manifest_guest_storage_apply",
         "storage-download-failed",
     );
     let apply_failures = ops
@@ -469,5 +469,5 @@ async fn run_in_sandbox_rejects_non_empty_artifact_without_archive_url() {
         "internal error: storage manifest artifact memory version version-2 is missing archiveUrl",
     );
     assert_no_action(&ops, "runner_storage_manifest_has_work");
-    assert_no_action(&ops, "runner_storage_manifest_guest_download");
+    assert_no_action(&ops, "runner_storage_manifest_guest_storage_apply");
 }

@@ -256,18 +256,22 @@ async fn main() -> ExitCode {
 
     let result = match cli.command {
         Command::Setup => cmd::run_setup().await.map(|()| ExitCode::SUCCESS),
-        Command::Build(args) => cmd::run_build(args, &sandbox_fc::FirecrackerSnapshotProvider)
-            .await
-            .map(|()| ExitCode::SUCCESS),
+        Command::Build(args) => {
+            cmd::run_build(args, &sandbox_firecracker::FirecrackerSnapshotProvider)
+                .await
+                .map(|()| ExitCode::SUCCESS)
+        }
         Command::Config(args) => cmd::run_config(args).await.map(|()| ExitCode::SUCCESS),
         Command::Benchmark(args) => {
-            cmd::run_benchmark(args, &sandbox_fc::FirecrackerRuntimeProvider).await
+            cmd::run_benchmark(args, &sandbox_firecracker::FirecrackerRuntimeProvider).await
         }
-        Command::Exec(args) => cmd::run_exec(args, &sandbox_fc::FirecrackerControl).await,
-        Command::Kill(args) => cmd::run_kill(args, &sandbox_fc::FirecrackerControl).await,
-        Command::Start(args) => cmd::run_start(*args, &sandbox_fc::FirecrackerRuntimeProvider)
-            .await
-            .map(|()| ExitCode::SUCCESS),
+        Command::Exec(args) => cmd::run_exec(args, &sandbox_firecracker::FirecrackerControl).await,
+        Command::Kill(args) => cmd::run_kill(args, &sandbox_firecracker::FirecrackerControl).await,
+        Command::Start(args) => {
+            cmd::run_start(*args, &sandbox_firecracker::FirecrackerRuntimeProvider)
+                .await
+                .map(|()| ExitCode::SUCCESS)
+        }
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
         Command::WorkspaceImageCache(args) => cmd::run_workspace_image_cache(args)

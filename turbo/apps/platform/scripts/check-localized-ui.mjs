@@ -119,6 +119,10 @@ function getInternalAllowedLiterals() {
       "internal run event payload; the rendered cancellation message uses typed i18n",
     ],
     [
+      "src/shared-database/protocol.ts\u0000Realtime subscription is not supported",
+      "SharedWorker protocol validation error, not user-visible UI copy",
+    ],
+    [
       "src/signals/shared-database-browser.ts\u0000okou_{…}_{…}{…}",
       "SharedWorker browser identifier, not user-visible UI copy",
     ],

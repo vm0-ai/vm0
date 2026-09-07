@@ -5,10 +5,11 @@ import {
   count,
   desc,
   eq,
-  exists,
   gt,
+  isNotNull,
   isNull,
   lt,
+  lte,
   notExists,
   or,
   sql,
@@ -35,10 +36,10 @@ interface SnapshotCompactionStats {
 type SnapshotRootDb = Pick<Db, "execute" | "select" | "transaction">;
 const CHAT_THREAD_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_CHAT_THREAD_SNAPSHOT_BATCH_SIZE = 500;
+const DEFAULT_CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE = 500;
 const CHAT_THREAD_SNAPSHOT_STALE_MS = 24 * 60 * 60 * 1000;
 const snapshot = alias(chatThreadSnapshots, "snapshot");
 const event = alias(chatThreadEvents, "event");
-const marker = alias(chatThreadEvents, "marker");
 const thread = alias(chatThreads, "thread");
 const agent = alias(agents, "agent");
 
@@ -51,6 +52,20 @@ function chatThreadSnapshotBatchSize(): number {
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(
       "CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE must be a positive integer",
+    );
+  }
+  return parsed;
+}
+
+function chatThreadEventPruneBatchSize(): number {
+  const raw = optionalEnv("CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE");
+  if (raw === undefined) {
+    return DEFAULT_CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      "CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE must be a positive integer",
     );
   }
   return parsed;
@@ -104,13 +119,17 @@ function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
         WHERE ${and(
           eq(event.userId, sql`scope.user_id`),
           eq(event.orgId, sql`scope.org_id`),
+          or(
+            isNull(snapshot.latestEventSeqId),
+            gt(event.seqId, snapshot.latestEventSeqId),
+          ),
         )}
         ORDER BY ${desc(event.seqId)}
         LIMIT 1
       ) latest_event ON true
       WHERE ${or(
         isNull(snapshot.userId),
-        sql`${snapshot.latestEventSeqId} IS DISTINCT FROM latest_event.seq_id`,
+        isNotNull(sql`latest_event.id`),
         lt(snapshot.updatedAt, staleCutoff),
       )}
       ORDER BY
@@ -129,10 +148,13 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
       SELECT
         scope.user_id,
         scope.org_id,
-        latest_event.id AS latest_event_id,
-        latest_event.seq_id AS latest_event_seq_id,
+        COALESCE(latest_event.id, snapshot.latest_event_id) AS latest_event_id,
+        COALESCE(
+          latest_event.seq_id,
+          snapshot.latest_event_seq_id
+        ) AS latest_event_seq_id,
         COALESCE(thread_projection.chat_threads, '[]'::jsonb) AS chat_threads,
-        events_after_marker.count AS events_applied,
+        events_after_snapshot.count AS events_applied,
         deleted_agent_threads.count AS removed_deleted_agent_threads
       FROM candidate_scopes scope
       LEFT JOIN ${chatThreadSnapshots} ${snapshot}
@@ -181,6 +203,10 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
         WHERE ${and(
           eq(event.userId, sql`scope.user_id`),
           eq(event.orgId, sql`scope.org_id`),
+          or(
+            isNull(snapshot.latestEventSeqId),
+            gt(event.seqId, snapshot.latestEventSeqId),
+          ),
         )}
         ORDER BY ${desc(event.seqId)}
         LIMIT 1
@@ -196,7 +222,7 @@ function rebuiltCte(db: Pick<Db, "select">): SQL {
             gt(event.seqId, snapshot.latestEventSeqId),
           ),
         )}
-      ) events_after_marker ON true
+      ) events_after_snapshot ON true
       LEFT JOIN LATERAL (
         SELECT ${count()}::int AS count
         FROM jsonb_array_elements(
@@ -241,8 +267,24 @@ function upsertedCte(updatedAt: Date): SQL {
       FROM rebuilt
       ON CONFLICT (user_id, org_id)
       DO UPDATE SET
-        latest_event_id = EXCLUDED.latest_event_id,
-        latest_event_seq_id = EXCLUDED.latest_event_seq_id,
+        latest_event_id = CASE
+          WHEN EXCLUDED.latest_event_seq_id IS NOT NULL
+            AND (
+              ${chatThreadSnapshots.latestEventSeqId} IS NULL
+              OR EXCLUDED.latest_event_seq_id > ${chatThreadSnapshots.latestEventSeqId}
+            )
+          THEN EXCLUDED.latest_event_id
+          ELSE ${chatThreadSnapshots.latestEventId}
+        END,
+        latest_event_seq_id = CASE
+          WHEN EXCLUDED.latest_event_seq_id IS NOT NULL
+            AND (
+              ${chatThreadSnapshots.latestEventSeqId} IS NULL
+              OR EXCLUDED.latest_event_seq_id > ${chatThreadSnapshots.latestEventSeqId}
+            )
+          THEN EXCLUDED.latest_event_seq_id
+          ELSE ${chatThreadSnapshots.latestEventSeqId}
+        END,
         chat_threads = EXCLUDED.chat_threads,
         updated_at = EXCLUDED.updated_at
       RETURNING user_id, org_id
@@ -276,6 +318,7 @@ function compactChatThreadSnapshotBatchSql(
 
 async function compactChatThreadSnapshotBatch(
   db: SnapshotRootDb,
+  batchSize: number,
 ): Promise<Omit<SnapshotCompactionStats, "eventsPruned">> {
   const updatedAt = nowDate();
   const staleCutoff = new Date(
@@ -286,7 +329,7 @@ async function compactChatThreadSnapshotBatch(
     compactChatThreadSnapshotBatchSql(db, {
       updatedAt,
       staleCutoff,
-      batchSize: chatThreadSnapshotBatchSize(),
+      batchSize,
     }),
     snapshotBatchRowSchema,
   );
@@ -302,9 +345,11 @@ async function compactChatThreadSnapshotsForAllScopes(
   db: SnapshotRootDb,
   signal?: AbortSignal,
 ): Promise<SnapshotCompactionStats> {
+  const snapshotBatchSize = chatThreadSnapshotBatchSize();
+  const eventPruneBatchSize = chatThreadEventPruneBatchSize();
   const compacted = await db.transaction(
     async (tx) => {
-      return await compactChatThreadSnapshotBatch(tx);
+      return await compactChatThreadSnapshotBatch(tx, snapshotBatchSize);
     },
     { isolationLevel: "repeatable read" },
   );
@@ -314,28 +359,32 @@ async function compactChatThreadSnapshotsForAllScopes(
   const pruned = await executeRawRows(
     db,
     sql`
-      WITH pruned AS (
-        DELETE FROM ${chatThreadEvents} ${event}
-        USING ${chatThreadSnapshots} ${snapshot}
-        INNER JOIN ${chatThreadEvents} ${marker}
+      WITH prune_candidates AS MATERIALIZED (
+        SELECT ${event.id}
+        FROM ${chatThreadEvents} ${event}
+        INNER JOIN ${chatThreadSnapshots} ${snapshot}
           ON ${and(
-            eq(marker.id, snapshot.latestEventId),
-            eq(marker.seqId, snapshot.latestEventSeqId),
-            eq(marker.userId, snapshot.userId),
-            eq(marker.orgId, snapshot.orgId),
+            eq(snapshot.userId, event.userId),
+            eq(snapshot.orgId, event.orgId),
           )}
         WHERE ${and(
-          eq(event.userId, snapshot.userId),
-          eq(event.orgId, snapshot.orgId),
-          exists(
-            db
-              .select({ id: agents.id })
-              .from(agents)
-              .where(eq(agents.id, event.agentId)),
-          ),
+          isNotNull(snapshot.latestEventSeqId),
           lt(event.createdAt, cutoff),
-          lt(event.seqId, marker.seqId),
+          lte(event.seqId, snapshot.latestEventSeqId),
         )}
+        ORDER BY
+          ${asc(event.createdAt)},
+          ${asc(event.userId)},
+          ${asc(event.orgId)},
+          ${asc(event.seqId)},
+          ${asc(event.id)}
+        LIMIT ${eventPruneBatchSize}
+        FOR UPDATE OF event SKIP LOCKED
+      ),
+      pruned AS (
+        DELETE FROM ${chatThreadEvents} ${event}
+        USING prune_candidates
+        WHERE ${eq(event.id, sql`prune_candidates.id`)}
         RETURNING 1
       )
       SELECT ${count()}::int AS "count"

@@ -78,34 +78,34 @@
         "crates/guest-contracts": {
             "release-type": "rust"
         },
-        "crates/guest-session-prune": {
+        "crates/session-history-selector": {
             "release-type": "rust"
         },
         "crates/guest-tool-exec": {
             "release-type": "rust"
         },
-        "crates/guest-rpc": {
+        "crates/runner-rpc-client": {
             "release-type": "rust"
         },
-        "crates/guest-rpc-proto": {
+        "crates/runner-rpc-proto": {
             "release-type": "rust"
         },
-        "crates/guest-common": {
+        "crates/guest-telemetry": {
             "release-type": "rust"
         },
-        "crates/guest-download": {
+        "crates/guest-storage-apply": {
             "release-type": "rust"
         },
         "crates/guest-init": {
             "release-type": "rust"
         },
-        "crates/guest-mock-claude": {
+        "crates/claude-mock": {
             "release-type": "rust"
         },
-        "crates/guest-mock-codex": {
+        "crates/codex-mock": {
             "release-type": "rust"
         },
-        "crates/guest-reseed": {
+        "crates/guest-state-restore": {
             "release-type": "rust"
         },
         "crates/guest-write-file": {
@@ -118,7 +118,7 @@
         "crates/sandbox": {
             "release-type": "rust"
         },
-        "crates/sandbox-fc": {
+        "crates/sandbox-firecracker": {
             "release-type": "rust"
         },
         "crates/sandbox-mock": {
@@ -133,16 +133,16 @@
             "release-type": "rust",
             "skip-changelog": true
         },
-        "crates/vsock-guest": {
+        "crates/guest-control-server": {
             "release-type": "rust"
         },
-        "crates/vsock-host": {
+        "crates/guest-control-client": {
             "release-type": "rust"
         },
-        "crates/vsock-proto": {
+        "crates/guest-control-proto": {
             "release-type": "rust"
         },
-        "crates/vsock-test": {
+        "crates/guest-control-tests": {
             "release-type": "rust"
         }
     },

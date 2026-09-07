@@ -3,7 +3,7 @@
 //! `SIGCHLD`, `SIGTERM`, and `SIGINT` are blocked before `fork()` so PID 1 can
 //! synchronously wait for them without a race between checking child state and
 //! going to sleep. The child restores the pre-existing mask before running
-//! `vsock-guest`.
+//! `guest-control-server`.
 
 use std::time::{Duration, Instant};
 
@@ -158,7 +158,7 @@ fn shutdown(
     child_pid: libc::pid_t,
     grace_period: Duration,
 ) -> Result<i32, Errno> {
-    eprintln!("[guest-init] Shutdown requested, sending SIGTERM to vsock-guest");
+    eprintln!("[guest-init] Shutdown requested, sending SIGTERM to guest-control-server");
     let deadline = Instant::now() + grace_period;
     send_signal(child_pid, Signal::SIGTERM)?;
 
@@ -189,7 +189,7 @@ fn shutdown(
         return Ok(exit_code);
     }
 
-    eprintln!("[guest-init] vsock-guest did not exit after SIGTERM, sending SIGKILL");
+    eprintln!("[guest-init] guest-control-server did not exit after SIGTERM, sending SIGKILL");
     send_signal(child_pid, Signal::SIGKILL)?;
     wait_blocking(child_pid)
 }

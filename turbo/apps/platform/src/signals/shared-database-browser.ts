@@ -28,6 +28,7 @@ import {
 } from "./chat-page/chat-event-signal-registry.ts";
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { reportForceUpgradeRequired } from "./force-upgrade.ts";
+import { notifySharedWorkerRealtimeReconnected$ } from "./realtime.ts";
 import {
   installSharedDatabaseBridge$,
   setBridgeConnected$,
@@ -135,6 +136,7 @@ const syncSharedDatabaseInvalidation$ = command(
 
 const syncSharedDatabaseReconnect$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
+    set(notifySharedWorkerRealtimeReconnected$);
     await Promise.all([
       set(syncAllActiveChatEvents$, signal),
       set(syncEventDrivenChatThreads$, signal),

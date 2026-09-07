@@ -260,7 +260,7 @@ import {
 } from "./pi-resource-snapshot.service";
 import { readMemorySummaryProjection } from "./memory-summary-projection.service";
 import {
-  PI_API_FIRST_TURN_TIMEOUT_MS,
+  PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
   PI_API_FIRST_TURN_URL_TTL_SECONDS,
   piApiFirstTurnObjectKey,
   requirePiApiFirstTurnExecutionContext,
@@ -7373,7 +7373,8 @@ function preparePiLaunchResources(
               ),
               manifestUrl,
               sessionUrl,
-              deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
+              deadlineAt:
+                args.apiStartTime + PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
               baseSession: piBaseSession(resumeSession, sessionId),
               sandboxEventSequenceStart: 1,
             },
