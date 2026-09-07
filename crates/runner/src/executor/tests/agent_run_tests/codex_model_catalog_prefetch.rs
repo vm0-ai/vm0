@@ -505,6 +505,10 @@ async fn assert_codex_catalog_prefetch_skipped(
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1, "{scenario}");
     assert!(
+        overrides.start_process_calls().is_empty(),
+        "{scenario}: ineligible runs must not start a prefetch process"
+    );
+    assert!(
         prefetch_ops(&telemetry).is_empty(),
         "{scenario}: ineligible runs must not record prefetch telemetry"
     );
