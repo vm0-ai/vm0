@@ -9,7 +9,7 @@ const c = initContract();
 
 const boundedNameSchema = z.string().min(1).max(255);
 
-export const connectorCheckUrlRequestSchema = z
+const connectorCheckUrlRequestSchema = z
   .object({
     mode: z.literal("url"),
     method: z.string().min(1).max(16),
