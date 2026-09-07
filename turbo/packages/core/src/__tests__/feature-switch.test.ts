@@ -42,6 +42,7 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.FollowUpOptimize, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.AvatarNeckSweater, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -362,6 +363,9 @@ describe("getFeatureSwitchMetadata", () => {
       metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
     ).toBe("released");
     expect(metadata[FeatureSwitchKey.FollowUpOptimize].rolloutStage).toBe(
+      "released",
+    );
+    expect(metadata[FeatureSwitchKey.AvatarNeckSweater].rolloutStage).toBe(
       "released",
     );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
