@@ -2017,17 +2017,7 @@
       "style": {
         "auto": "Let Okou choose",
         "autoDescription": "Match a visual direction to your prompt and material",
-        "browseGroups": "Browse style groups",
-        "description": "The style influences the visual template the agent uses — scenes, transitions, text overlays, and pacing will follow the style’s design system.",
-        "groups": {
-          "cinematic": "Film and photography",
-          "handmade": "Handmade and materials",
-          "iconic-artist": "Art and design",
-          "other": "Other styles",
-          "pop-culture": "Pop culture",
-          "print": "Print and publishing",
-          "retro-tech": "Retro tech and interfaces"
-        },
+        "description": "The style sets scenes, transitions, text overlays, and pacing.",
         "heading": "Choose a style reference",
         "label": "Style reference",
         "preview": "Preview {{title}}",

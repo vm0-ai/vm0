@@ -2049,17 +2049,7 @@
       "style": {
         "auto": "Deixar o Okou escolher",
         "autoDescription": "Adapte a direção visual às suas instruções e materiais",
-        "browseGroups": "Explorar grupos de estilos",
-        "description": "O estilo influencia o modelo visual usado pelo agente — cenas, transições, sobreposições de texto e ritmo seguem o sistema de design do estilo.",
-        "groups": {
-          "cinematic": "Cinema e fotografia",
-          "handmade": "Artesanato e materiais",
-          "iconic-artist": "Arte e design",
-          "other": "Outros estilos",
-          "pop-culture": "Cultura pop",
-          "print": "Impressão e publicação",
-          "retro-tech": "Tecnologia retrô e interfaces"
-        },
+        "description": "O estilo define cenas, transições, sobreposições de texto e ritmo.",
         "heading": "Escolha uma referência de estilo",
         "label": "Referência de estilo",
         "preview": "Prévia de {{title}}",

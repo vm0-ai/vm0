@@ -370,7 +370,7 @@ test("The whole upload area opens the file picker and still accepts drops", asyn
   expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
 });
 
-test("Style groups include every catalog page and exclude portrait references", async () => {
+test("The style catalog spans every page, orders by tag, and excludes portrait references", async () => {
   installIntroVideoFixture();
   const nextPage = createDeferredPromise<void>(context.signal);
   context.mocks.api(
@@ -431,56 +431,45 @@ test("Style groups include every catalog page and exclude portrait references", 
   });
   expect(within(picker).getByText("Let Okou choose")).toBeVisible();
   nextPage.resolve();
-  const cinematic = await within(picker).findByRole("region", {
-    name: "Film and photography",
-  });
-  const styleOrder = [
-    within(picker).getByText(/The style influences the visual template/),
+  await within(picker).findByText("New provider category");
+  const headerOrder = [
+    within(picker).getByText(/The style sets scenes/),
     within(picker).getByText("Let Okou choose"),
-    within(picker).getByRole("navigation", { name: "Browse style groups" }),
-    cinematic,
+    requiredButtonNamed("Select style Landscape film", picker),
   ];
-  for (const [index, node] of styleOrder.slice(1).entries()) {
+  for (const [index, node] of headerOrder.slice(1).entries()) {
     expect(
-      styleOrder[index]?.compareDocumentPosition(node) &
+      headerOrder[index]?.compareDocumentPosition(node) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   }
+  // Styles stay ordered by tag group so related references sit together.
   expect(
-    within(cinematic).getByRole("heading", {
-      name: "Film and photography · 2",
-    }),
-  ).toBeVisible();
+    queryAllByRoleFast("button", picker)
+      .map((card) => {
+        return card.getAttribute("aria-label");
+      })
+      .filter((label) => {
+        return label?.startsWith("Select style ");
+      }),
+  ).toStrictEqual([
+    "Select style Landscape film",
+    "Select style Second landscape film",
+    "Select style Paper craft",
+    "Select style Pixel screen",
+    "Select style Comic book",
+    "Select style Editorial",
+    "Select style Painting",
+    "Select style Untagged style",
+    "Select style New provider category",
+  ]);
   expect(
-    requiredButtonNamed("Select style Landscape film", cinematic),
-  ).toHaveTextContent("16:9");
-  expect(
-    requiredButtonNamed("Select style Second landscape film", cinematic),
+    requiredButtonNamed("Select style Landscape film", picker),
   ).toHaveTextContent("16:9");
   expect(
     within(picker).queryByLabelText("Select style Portrait film"),
   ).toBeNull();
-  for (const [group, style] of [
-    ["Handmade and materials", "Paper craft"],
-    ["Retro tech and interfaces", "Pixel screen"],
-    ["Pop culture", "Comic book"],
-    ["Print and publishing", "Editorial"],
-    ["Art and design", "Painting"],
-  ]) {
-    const section = within(picker).getByRole("region", { name: group });
-    expect(requiredButtonNamed(`Select style ${style}`, section)).toBeVisible();
-    expect(
-      within(section).getByRole("heading", { name: `${group} · 1` }),
-    ).toBeVisible();
-  }
-  const other = within(picker).getByRole("region", { name: "Other styles" });
-  expect(
-    requiredButtonNamed("Select style Untagged style", other),
-  ).toBeVisible();
-  expect(
-    requiredButtonNamed("Select style New provider category", other),
-  ).toBeVisible();
-  click(requiredButtonNamed("Select style Second landscape film", cinematic));
+  click(requiredButtonNamed("Select style Second landscape film", picker));
   expect(
     requiredButtonNamed("Style reference: Second landscape film"),
   ).toBeVisible();
@@ -543,7 +532,7 @@ test("A failed later style page can retry and show the complete catalog", async 
   await within(picker).findByText("Second style");
   expect(requiredButtonNamed("Select style First style", picker)).toBeVisible();
   expect(
-    within(picker).getByRole("heading", { name: "Film and photography · 2" }),
+    requiredButtonNamed("Select style Second style", picker),
   ).toBeVisible();
 });
 
@@ -810,11 +799,9 @@ test("Selecting a landscape style from a tag group preserves the explicit portra
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  const group = await within(picker).findByRole("region", {
-    name: "Film and photography",
-  });
+  await within(picker).findByText("Wide story");
   expect(
-    requiredButtonNamed("Select style Wide story", group),
+    requiredButtonNamed("Select style Wide story", picker),
   ).toHaveTextContent("16:9");
   expect(within(picker).queryByLabelText("Select style Tall story")).toBeNull();
   await user.click(within(picker).getByLabelText("Select style Wide story"));
