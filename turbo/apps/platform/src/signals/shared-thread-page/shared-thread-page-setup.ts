@@ -15,6 +15,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setPageSignal$ } from "../page-signal.ts";
+import { agentMessageMathEnabled$ } from "../external/feature-switch.ts";
 import { createSharedThreadRichContentSignals } from "./shared-thread-rich-content.ts";
 
 export const setupSharedThreadPage$ = command(
@@ -29,6 +30,7 @@ export const setupSharedThreadPage$ = command(
       signal,
     );
     let sharedThread: SharedDisplayThread | null = null;
+    const mathEnabled = get(agentMessageMathEnabled$);
     if (result.status === 200) {
       const messages: SharedDisplayThread["messages"][number][] = [];
       const richMessages: (typeof result.body.messages)[number][] = [];
@@ -38,7 +40,7 @@ export const setupSharedThreadPage$ = command(
           continue;
         }
         const tree = createPlainMarkdownTree(message.content, {
-          mathEnabled: false,
+          mathEnabled,
         });
         if (tree === null) {
           richMessages.push(message);
@@ -53,7 +55,11 @@ export const setupSharedThreadPage$ = command(
         richContent:
           richMessages.length === 0
             ? undefined
-            : createSharedThreadRichContentSignals(richMessages, signal),
+            : createSharedThreadRichContentSignals(
+                richMessages,
+                mathEnabled,
+                signal,
+              ),
       };
     }
     set(
