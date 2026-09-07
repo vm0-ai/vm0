@@ -10722,7 +10722,7 @@ function ComposerFooter({
 }) {
   const createMode = useGet(signals.create.mode$);
   const narrowVideoGap =
-    createMode === "video" ? "@max-[328px]/composer:gap-0" : undefined;
+    createMode === "video" ? "@max-[344px]/composer:gap-0" : undefined;
   const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
   const voiceDraft = useResolved(signals.voice.state$);
   const capture = useGet(signals.voice.capture$);
@@ -10741,7 +10741,7 @@ function ComposerFooter({
       className={cn(
         "flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2",
         narrowVideoGap,
-        createMode === "video" && "@max-[328px]/composer:px-3",
+        createMode === "video" && "@max-[344px]/composer:px-3",
       )}
     >
       {voiceInputV2Enabled &&
