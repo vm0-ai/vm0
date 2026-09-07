@@ -890,7 +890,7 @@ function createComposerSubmissionSignals(
           : await set(readVideoRunOptions$, signal);
       signal.throwIfAborted();
       const instruction = mode
-        ? `Create ${mode === "illustration" || mode === "image" ? "an" : "a"} ${mode}.`
+        ? `Create ${mode === "image" ? "an" : "a"} ${mode}.`
         : null;
       const document = submission.editorDocument.toEditorDocument();
       const editorDocument = instruction

@@ -138,10 +138,11 @@ test("Choose a video command with the keyboard and submit the selected video set
   expect(sent?.runOptions?.video).toMatchObject({ aspectRatio: "9:16" });
 });
 
-test("Image mode selects image models and exiting preserves the prompt", async () => {
+test("Image mode combines styles and image models while preserving the prompt", async () => {
   setupModels();
   const editor = await setupComposer();
   await chooseCommand(editor, "A quiet garden /create image", "Create image");
+  expect(button("Choose style")).toBeInTheDocument();
   const picker = await screen.findByRole("combobox", { name: "Image models" });
   click(picker);
   const model = PUBLIC_IMAGE_MODELS.find((candidate) => {
@@ -294,10 +295,18 @@ test("Presentation recognizes an existing template picked before entering create
   expect(composerInlineTemplates()).toHaveLength(1);
 });
 
-test("Illustration mode opens the style gallery directly", async () => {
+test("Create suggestions expose one image command that opens the style gallery", async () => {
   setupModels();
   const editor = await setupComposer();
-  await chooseCommand(editor, "/create illustration", "Create illustration");
+  await fill(editor, "/create");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  expect(
+    queryAllByRoleFast("button", menu).filter((item) => {
+      return item.textContent?.trim() === "Create image";
+    }),
+  ).toHaveLength(1);
+  expect(menu).not.toHaveTextContent("Create illustration");
+  click(button("Create image", menu));
   click(button("Choose style"));
   const dialog = await screen.findByRole("dialog");
   await waitFor(() => {

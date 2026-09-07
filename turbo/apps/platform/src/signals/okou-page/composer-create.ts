@@ -6,10 +6,9 @@ import type { WorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
 import type { ComposerUiSignalGroups } from "./chat-composer.ts";
 
 export const COMPOSER_CREATE_MODES = [
-  "image",
   "video",
   "presentation",
-  "illustration",
+  "image",
 ] as const;
 
 export type ComposerCreateMode = (typeof COMPOSER_CREATE_MODES)[number];
@@ -31,11 +30,6 @@ export function composerCreateModeLabel(mode: ComposerCreateMode): string {
         return $.chat.composer.create.presentation;
       });
     }
-    case "illustration": {
-      return i18n.t(($) => {
-        return $.chat.composer.create.illustration;
-      });
-    }
   }
 }
 
@@ -54,11 +48,6 @@ export function composerCreatePlaceholder(mode: ComposerCreateMode): string {
     case "presentation": {
       return i18n.t(($) => {
         return $.chat.composer.create.presentationPlaceholder;
-      });
-    }
-    case "illustration": {
-      return i18n.t(($) => {
-        return $.chat.composer.create.illustrationPlaceholder;
       });
     }
   }

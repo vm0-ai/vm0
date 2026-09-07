@@ -7,7 +7,6 @@ import {
   Image,
   Video,
   Presentation,
-  Palette,
 } from "lucide-react";
 import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
@@ -24,7 +23,6 @@ export const COMPOSER_CREATE_ICONS = {
   image: Image,
   video: Video,
   presentation: Presentation,
-  illustration: Palette,
 } as const;
 
 function slashWorkflowOptionId(workflowId: string): string {

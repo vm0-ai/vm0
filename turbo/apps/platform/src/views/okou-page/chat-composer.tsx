@@ -6753,9 +6753,11 @@ function TemplatePickerButton({
     },
   });
   const templateMode =
-    createMode === "presentation" || createMode === "illustration"
-      ? createMode
-      : null;
+    createMode === "presentation"
+      ? "presentation"
+      : createMode === "image"
+        ? "illustration"
+        : null;
   const singleTemplate =
     templateMode &&
     templates.length === 1 &&
