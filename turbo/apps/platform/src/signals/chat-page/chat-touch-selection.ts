@@ -4,8 +4,10 @@ import { timeout } from "signal-timers";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, resetSignal } from "../utils.ts";
 
-const ASSISTANT_REPLY_SELECTOR = '[data-role="assistant"]';
-const FEEDBACK_SOURCE_SELECTOR = "[data-feedback-source]";
+// Assistant messages and other agent-produced content, such as linked email
+// drafts, opt into the shared Copy / Quote interaction.
+export const FEEDBACK_SOURCE_SELECTOR =
+  ".okou-chat-bubble-assistant, [data-feedback-source]";
 const THREAD_SELECTOR = "[data-chat-thread-container-id]";
 const INTERACTIVE_SELECTOR =
   'a, button, input, textarea, select, [role="button"], [contenteditable]:not([contenteditable="false"])';
@@ -15,21 +17,6 @@ const SCROLL_SLOP_PX = 10;
 interface Point {
   readonly x: number;
   readonly y: number;
-}
-
-// The event group is the stable boundary for one assistant reply. Keep
-// data-feedback-source as a fallback for agent-produced content outside chat,
-// such as linked email drafts.
-export function closestChatSelectionScope(node: Node | null): Element | null {
-  if (!node) {
-    return null;
-  }
-  const element = node instanceof Element ? node : node.parentElement;
-  return (
-    element?.closest(ASSISTANT_REPLY_SELECTOR) ??
-    element?.closest(FEEDBACK_SOURCE_SELECTOR) ??
-    null
-  );
 }
 
 interface SelectionRect {
@@ -212,7 +199,9 @@ function handleGesture(
   ) {
     return null;
   }
-  const source = closestChatSelectionScope(range.startContainer);
+  const source = range.startContainer.parentElement?.closest(
+    FEEDBACK_SOURCE_SELECTOR,
+  );
   if (!source) {
     return null;
   }
@@ -292,7 +281,7 @@ function createStartPress(
       ) {
         set(options.close$);
       }
-      const source = closestChatSelectionScope(target);
+      const source = target.closest(FEEDBACK_SOURCE_SELECTOR);
       const container = source?.closest<HTMLElement>(THREAD_SELECTOR);
       if (
         !source ||
@@ -374,8 +363,9 @@ function preventTouchContextMenu(event: MouseEvent, threadId: string): void {
   if (!(target instanceof Element) || target.closest(INTERACTIVE_SELECTOR)) {
     return;
   }
-  const container =
-    closestChatSelectionScope(target)?.closest<HTMLElement>(THREAD_SELECTOR);
+  const container = target
+    .closest(FEEDBACK_SOURCE_SELECTOR)
+    ?.closest<HTMLElement>(THREAD_SELECTOR);
   if (
     container?.dataset.chatThreadContainerId === threadId &&
     container.dataset.chatSelectionMode === "touch"
@@ -482,7 +472,9 @@ export function createTouchSelectionOverlayRef({
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const range = get(range$);
-      const source = closestChatSelectionScope(range?.startContainer ?? null);
+      const source = range?.startContainer.parentElement?.closest(
+        FEEDBACK_SOURCE_SELECTOR,
+      );
       if (!source) {
         return;
       }

@@ -103,30 +103,6 @@ test("Offer passage actions only for a valid assistant selection", async () => {
   );
 });
 
-test("Offer passage actions outside the Markdown subtree of an AI reply", async () => {
-  installCapabilityChat({
-    events: completedConversation(FIRST_PASSAGE),
-  });
-
-  await setupPage({ context, path: RUN_PATH });
-
-  await readyChat();
-  const firstResponse = await screen.findByText(FIRST_PASSAGE);
-  const assistantReply = firstResponse.closest('[data-role="assistant"]');
-  if (!assistantReply) {
-    throw new Error("AI reply boundary was not rendered");
-  }
-  const renderedDetail = document.createElement("div");
-  renderedDetail.textContent = "A rendered detail outside Markdown.";
-  assistantReply.append(renderedDetail);
-
-  await selectPassage("rendered detail outside Markdown");
-
-  expect(queryToolbarButton("Copy")).toBeVisible();
-  expect(queryToolbarButton("Quote")).toBeVisible();
-  expect(queryToolbarButton("Forward")).toBeVisible();
-});
-
 test("Combine inline feedback with the rest of a message draft", async () => {
   const sends: CapturedChatSend[] = [];
   const file = new File(["review evidence"], "review-notes.txt", {
