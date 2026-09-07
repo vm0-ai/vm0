@@ -11,6 +11,7 @@ import {
 } from "./lib/api/sandbox-token.js";
 import { getOkouToken } from "./lib/okou-env.js";
 import { introVideoCatalogCommand } from "./commands/__intro-video-catalog.js";
+import { introVideoAgentCommand } from "./commands/__intro-video-agent.js";
 
 interface CommandDefinition {
   name: string;
@@ -109,8 +110,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     name: "__intro-video-agent",
     description: "Internal managed HeyGen Video Agent submission and status",
     load: async () => {
-      return (await import("./commands/__intro-video-agent"))
-        .introVideoAgentCommand;
+      return introVideoAgentCommand;
     },
   },
   {
