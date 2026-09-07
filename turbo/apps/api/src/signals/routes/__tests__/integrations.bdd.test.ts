@@ -1250,6 +1250,8 @@ async function expectSlackPiMemoryCandidate(args: {
   readonly runId: string;
   readonly outcome: "created" | "replaced";
 }) {
+  // Stage 1 candidates intentionally have no production read API. Observe the
+  // private identity only after real Slack ingress and completion own the run.
   const conversation = await readPiConversationIdentityFixture(args.runId);
   const run = await runs.readRun(args.scenario.actor, args.runId);
   if (!run.completedAt) {
