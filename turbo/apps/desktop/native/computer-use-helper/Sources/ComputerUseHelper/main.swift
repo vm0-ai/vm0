@@ -3246,6 +3246,13 @@ func automationPermissionDeniedMessage(_ message: String) -> Bool {
     return message.contains("-1743") || lowercased.contains("not authorized")
 }
 
+func browserAutomationAuthorization(_ bundleId: String) -> OSStatus {
+    let address = NSAppleEventDescriptor(bundleIdentifier: bundleId)
+    return AEDeterminePermissionToAutomateTarget(
+        address.aeDesc, typeWildCard, typeWildCard, false
+    )
+}
+
 func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [String: Any] {
     let targetKey = try requiredString(request, "target")
     guard let target = automationPermissionTarget(named: targetKey) else {
@@ -3269,23 +3276,36 @@ func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [Strin
         ]
     }
 
-    let script = "tell application id \(appleScriptStringLiteral(bundleId)) to get name"
-    let result = try runAppleScript(script, timeout: 3)
-    if !result.timedOut, result.status == 0 {
+    // AppleScript can resolve an application's name without sending it an
+    // event. Only TCC's authorization answer establishes Automation access.
+    var authorization = browserAutomationAuthorization(bundleId)
+    var requestResult: AppleScriptRunResult?
+    if authorization == errAEEventWouldRequireUserConsent {
+        // This is an explicit user probe. A real, read-only browser event asks
+        // for consent, without navigating or editing an existing tab.
+        let script = "tell application id \(appleScriptStringLiteral(bundleId)) to count windows"
+        requestResult = try runAppleScript(script, timeout: 3)
+        authorization = browserAutomationAuthorization(bundleId)
+    }
+    if authorization == noErr {
         return ["status": "granted"]
     }
-
-    let message = appleScriptFailureMessage(result: result)
-    if automationPermissionDeniedMessage(message) {
+    if authorization == errAEEventNotPermitted {
         return [
             "status": "denied",
-            "reason": message,
+            "reason": "macOS denied Automation access to this browser. Allow it in System Settings > Privacy & Security > Automation, then test again.",
         ]
     }
-
+    if authorization == errAEEventWouldRequireUserConsent {
+        return [
+            "status": "unknown",
+            "reason": "Approve the macOS browser Automation request, then test again.",
+        ]
+    }
     return [
         "status": "unknown",
-        "reason": message,
+        "reason": requestResult.map(appleScriptFailureMessage)
+            ?? "macOS could not determine browser Automation access (\(authorization)).",
     ]
 }
 

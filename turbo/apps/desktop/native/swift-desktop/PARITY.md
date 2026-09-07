@@ -18,6 +18,21 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The subsequent `d73ebb28` release passed 11 actual server requests across all
+nine command kinds with the same native app/helper processes, and retained the
+Chrome/Safari probe results in both UI and host. It also exposed a separate
+[false-positive Automation probe](https://cdn.vm0.io/artifacts/ki9ffq1e1v.json):
+Safari was reported as granted after an explicit reprobe while the matching
+current-code TCC record remained unapproved. AppleScript's `get name` can resolve
+an application without establishing permission to send it events.
+
+The helper now uses macOS's Apple Events authorization query. It requests consent
+with a read-only window-count event only when the system says consent is needed;
+an application-name lookup can no longer establish a grant. All 136 helper tests
+pass. Packaged probe/consent acceptance is still pending. Three separate Safari
+URL commands timed out without completing navigation; their timeout cause is
+not established and they are not counted among the successful nine-kind run.
+
 The unchanged `21246043` configured release exposed lost Browser Automation
 observations: clicking the Chrome test left the UI without a result and the
 actual host API at `unknown` with no timestamp, while the unchanged CI helper
