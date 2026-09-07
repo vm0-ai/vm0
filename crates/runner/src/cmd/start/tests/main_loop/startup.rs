@@ -202,7 +202,7 @@ fn scripted_dns_starter(
     String,
     NetworkLogManager,
 ) -> std::future::Ready<std::io::Result<crate::dns::DnsProxy>> {
-    let outcomes = Arc::new(Mutex::new(VecDeque::from(outcomes)));
+    let mut outcomes = VecDeque::from(outcomes);
     move |reservation, _interface_pattern, _network_log_manager| {
         let port = reservation.port();
         drop(reservation);
@@ -211,8 +211,6 @@ fn scripted_dns_starter(
             .unwrap_or_else(|e| e.into_inner())
             .push(DnsStartupEvent::DnsStarted { port });
         let outcome = outcomes
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
             .pop_front()
             .expect("DNS startup outcome should be scripted");
         std::future::ready(match outcome {
