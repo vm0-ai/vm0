@@ -9,6 +9,11 @@ import { cn } from "@okouai/ui";
 const THUMBNAIL_SIZE = {
   sm: "h-6 w-6",
   md: "h-8 w-8",
+  // Fills a `size="icon"` button edge to edge. The labeled navigation rail
+  // hangs its marks off such a button beside 36px nav chips: at any smaller
+  // step the button's hover background frames the mark in grey instead of the
+  // mark simply being the button.
+  "md+": "h-9 w-9",
   lg: "h-10 w-10",
   xl: "h-12 w-12",
 } as const;
@@ -19,6 +24,10 @@ const THUMBNAIL_SIZE = {
 const THUMBNAIL_RADIUS = {
   sm: "rounded-[6px]",
   md: "rounded-[8px]",
+  // The one step off the quarter ratio, which would ask for 9px here. `md+`
+  // covers a `rounded-lg` button exactly, and a radius larger than the
+  // button's leaves four grey slivers of it showing at the corners.
+  "md+": "rounded-[8px]",
   lg: "rounded-[10px]",
   xl: "rounded-[12px]",
 } as const;
@@ -26,6 +35,7 @@ const THUMBNAIL_RADIUS = {
 const THUMBNAIL_INITIAL_TEXT = {
   sm: "text-[11px]",
   md: "text-xs",
+  "md+": "text-[13px]",
   lg: "text-sm",
   xl: "text-base",
 } as const;

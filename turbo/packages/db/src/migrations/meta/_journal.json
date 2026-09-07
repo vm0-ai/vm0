@@ -64,6 +64,13 @@
       "when": 1788694542246,
       "tag": "1086_famous_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 1087,
+      "version": "7",
+      "when": 1788752411372,
+      "tag": "1087_run_connector_diagnostic_registration",
+      "breakpoints": true
     }
   ]
 }

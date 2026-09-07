@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 use tracing::warn;
 
 use crate::duration::duration_ms;
+use crate::error::RunnerError;
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::resource_budget::ResourceBudget;
@@ -739,9 +740,24 @@ async fn send_telemetry(
         Ok(resp) if !resp.status().is_success() => {
             warn!(run_id = %run_id, status = %resp.status(), "telemetry flush rejected");
         }
-        Err(e) => {
-            warn!(run_id = %run_id, error = %e, "telemetry flush failed");
-        }
+        Err(error) => match &error {
+            RunnerError::ApiTransport(api_error) => warn!(
+                run_id = %run_id,
+                error = %error,
+                endpoint = api_error.request.endpoint_label,
+                method = %api_error.request.method,
+                host = %api_error.request.host,
+                path = %api_error.request.path,
+                client_request_id = %api_error.request.client_request_id,
+                client_session_id = %api_error.request.client_session_id,
+                client_version = %api_error.request.client_version,
+                failure_kind = api_error.failure_kind.as_str(),
+                failure_cause = api_error.failure_cause.as_str(),
+                error_summary = %api_error.summary,
+                "telemetry flush failed"
+            ),
+            _ => warn!(run_id = %run_id, error = %error, "telemetry flush failed"),
+        },
         _ => {}
     }
 }
@@ -749,6 +765,10 @@ async fn send_telemetry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::{Level, instrument::WithSubscriber};
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::CapturedEvents;
+
     use crate::http::HttpClientConfig;
     use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, json_response};
     use crate::types::{
@@ -1315,6 +1335,52 @@ mod tests {
         assert!(request.contains(r#""action_type":"storage_cache_background_fill_filled""#));
         assert!(request.contains(r#""duration_ms":42"#));
         assert!(request.contains(r#""success":true"#));
+    }
+
+    #[tokio::test]
+    async fn transport_failure_logs_stable_cause_and_safe_request_context() {
+        let server = RawHttpTestServer::spawn(vec![RawHttpAction::Disconnect]).await;
+        let api_url = server.url();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        send_telemetry(
+            &http_client_for_api_url(&api_url),
+            RunId::nil(),
+            "telemetry-sensitive-token",
+            None,
+            vec![sandbox_op(
+                "telemetry-sensitive-action",
+                Duration::from_millis(1),
+                true,
+                None,
+                None,
+                None,
+            )],
+        )
+        .with_subscriber(subscriber)
+        .await;
+        server.assert_finished().await;
+
+        let event = captured
+            .entries()
+            .into_iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message == "telemetry flush failed")
+            })
+            .expect("telemetry transport failure should be logged");
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event.fields["endpoint"], "telemetry");
+        assert!(event.fields["error"].starts_with("api error: "));
+        assert_eq!(event.fields["failure_kind"], "request");
+        assert_eq!(event.fields["failure_cause"], "http_incomplete_message");
+        let event_debug = format!("{event:#?}");
+        assert!(!event_debug.contains("telemetry-sensitive-token"));
+        assert!(!event_debug.contains("telemetry-sensitive-action"));
+        assert!(!event_debug.contains(&api_url));
     }
 
     #[tokio::test]

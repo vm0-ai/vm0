@@ -457,6 +457,13 @@ function ExpandedFooter() {
 
 // --- Three-column (Slack-style) layout ---
 
+/* Everything in the rail is a 36px square, so centring it in the 72px column
+   leaves 18px down either side. The vertical padding matches that, which is
+   what puts the workspace logo and the account mark the same distance from
+   the corner they sit in as from the edge beside them. */
+const RAIL_FRAME =
+  "okou-nav okou-nav-rail hidden md:flex h-full w-[72px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 py-[18px]";
+
 function LabeledRailLink({
   id,
   navPath,
@@ -515,10 +522,10 @@ function LabeledRailLink({
       aria-label={label}
       aria-current={isActive ? "page" : undefined}
       title={caption}
-      className="group flex w-full flex-col items-center gap-1 no-underline"
+      className="group flex w-full flex-col items-center gap-0.5 no-underline"
     >
       <span
-        className={`relative inline-flex h-8 w-9 items-center justify-center rounded-lg transition-colors duration-200 ${
+        className={`relative inline-flex size-9 items-center justify-center rounded-lg transition-colors duration-200 ${
           isActive
             ? "bg-state-selected text-sidebar-foreground"
             : "text-sidebar-foreground hover:bg-state-hover group-hover:bg-state-hover"
@@ -542,7 +549,7 @@ function LabeledRailLink({
         )}
       </span>
       <span
-        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
+        className={`max-w-full truncate px-0.5 text-[10px] font-medium leading-[14px] ${
           isActive
             ? "okou-nav-copy text-sidebar-foreground"
             : "okou-nav-copy-muted text-sidebar-foreground/70"
@@ -631,10 +638,7 @@ function LabeledNavRail() {
     onNavSelect(id);
   };
   return (
-    <aside
-      data-testid="labeled-nav-rail"
-      className="okou-nav okou-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 pb-2 pt-3"
-    >
+    <aside data-testid="labeled-nav-rail" className={RAIL_FRAME}>
       <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
         <OrgSwitcherCompact />

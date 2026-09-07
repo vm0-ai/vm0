@@ -236,7 +236,7 @@ function renderAccountTrigger(
           imageUrl={display.imageUrl}
           name={display.name}
           initial={display.initial}
-          size="sm"
+          size="md+"
           shape={avatarShape}
         />
       </Button>

@@ -228,6 +228,23 @@ export default [
     },
   },
   {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/test/**",
+      "src/**/tests/**",
+      "src/**/test-fixtures/**",
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts",
+      "src/signals/routes/test-*.ts",
+      "src/signals/services/agent-run-metadata-write.service.ts",
+      "src/signals/services/agent-run-terminal-transition.service.ts",
+    ],
+    rules: {
+      "api/no-direct-agent-run-terminal-update": "error",
+    },
+  },
+  {
     files: ["src/signals/services/onboarding.service.ts"],
     rules: {
       "api/no-logger-info": [

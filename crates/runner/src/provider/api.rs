@@ -1107,6 +1107,7 @@ fn log_retryable_poll_failure(
             client_session_id = %request.client_session_id,
             client_version = %request.client_version,
             failure_kind = api_error.failure_kind.as_str(),
+            failure_cause = api_error.failure_cause.as_str(),
             error_summary = %api_error.summary,
             poll_reason,
             consecutive_failures = observation.consecutive_failures,
@@ -1127,6 +1128,7 @@ fn log_retryable_poll_failure(
         client_session_id = %request.client_session_id,
         client_version = %request.client_version,
         failure_kind = api_error.failure_kind.as_str(),
+        failure_cause = api_error.failure_cause.as_str(),
         error_summary = %api_error.summary,
         poll_reason,
         consecutive_failures = observation.consecutive_failures,
@@ -1151,6 +1153,7 @@ fn log_poll_failure(reason: PollReason, error: &RunnerError) {
                 client_session_id = %request.client_session_id,
                 client_version = %request.client_version,
                 failure_kind = api_error.failure_kind.as_str(),
+                failure_cause = api_error.failure_cause.as_str(),
                 error_summary = %api_error.summary,
                 poll_reason,
                 "poll failed"
@@ -1210,6 +1213,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             client_session_id = %request.client_session_id,
             client_version = %request.client_version,
             failure_kind = api_error.failure_kind.as_str(),
+            failure_cause = api_error.failure_cause.as_str(),
             error_summary = %api_error.summary,
             runner_id = %state.runner_id,
             runner_group = %state.group,
@@ -1273,6 +1277,7 @@ fn log_retryable_heartbeat_failure(
             client_session_id = %request.client_session_id,
             client_version = %request.client_version,
             failure_kind = api_error.failure_kind.as_str(),
+            failure_cause = api_error.failure_cause.as_str(),
             error_summary = %api_error.summary,
             runner_id = %state.runner_id,
             runner_group = %state.group,
@@ -1299,6 +1304,7 @@ fn log_retryable_heartbeat_failure(
         client_session_id = %request.client_session_id,
         client_version = %request.client_version,
         failure_kind = api_error.failure_kind.as_str(),
+        failure_cause = api_error.failure_cause.as_str(),
         error_summary = %api_error.summary,
         runner_id = %state.runner_id,
         runner_group = %state.group,
@@ -2429,6 +2435,14 @@ mod tests {
         )
     }
 
+    fn synthetic_transport_cause(failure_kind: ApiFailureKind) -> crate::error::ApiTransportCause {
+        match failure_kind {
+            ApiFailureKind::Timeout => crate::error::ApiTransportCause::Timeout,
+            ApiFailureKind::Connect => crate::error::ApiTransportCause::ConnectionRefused,
+            _ => crate::error::ApiTransportCause::Unknown,
+        }
+    }
+
     fn poll_transport_error(failure_kind: ApiFailureKind) -> RunnerError {
         RunnerError::ApiTransport(Box::new(ApiTransportError {
             request: crate::error::ApiRequestContext {
@@ -2441,6 +2455,7 @@ mod tests {
                 client_version: env!("CARGO_PKG_VERSION").to_string(),
             },
             failure_kind,
+            failure_cause: synthetic_transport_cause(failure_kind),
             summary: format!("synthetic {} failure", failure_kind.as_str()),
         }))
     }
@@ -2457,6 +2472,7 @@ mod tests {
                 client_version: env!("CARGO_PKG_VERSION").to_string(),
             },
             failure_kind,
+            failure_cause: synthetic_transport_cause(failure_kind),
             summary: format!("synthetic {} failure", failure_kind.as_str()),
         }))
     }
@@ -2547,6 +2563,10 @@ mod tests {
                 env!("CARGO_PKG_VERSION")
             );
             assert_eq!(event_field(event, "failure_kind"), failure_kind.as_str());
+            assert_eq!(
+                event_field(event, "failure_cause"),
+                synthetic_transport_cause(failure_kind).as_str()
+            );
             assert_eq!(event_field(event, "consecutive_failures"), "1");
             assert_eq!(event_field(event, "failure_elapsed_ms"), "0");
             assert_eq!(event_field(event, "will_retry"), "true");
@@ -2657,6 +2677,7 @@ mod tests {
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event_field(event, "mode"), "stopping");
         assert_eq!(event_field(event, "failure_kind"), "timeout");
+        assert_eq!(event_field(event, "failure_cause"), "timeout");
         assert!(!event.fields.contains_key("will_retry"));
         assert!(provider.heartbeat_failure_episode.lock().await.is_none());
     }
@@ -2869,6 +2890,10 @@ mod tests {
                     env!("CARGO_PKG_VERSION")
                 );
                 assert_eq!(event_field(event, "failure_kind"), failure_kind.as_str());
+                assert_eq!(
+                    event_field(event, "failure_cause"),
+                    synthetic_transport_cause(failure_kind).as_str()
+                );
                 assert_eq!(event_field(event, "poll_reason"), expected_reason);
                 assert_eq!(event_field(event, "consecutive_failures"), "1");
                 assert_eq!(event_field(event, "failure_elapsed_ms"), "0");

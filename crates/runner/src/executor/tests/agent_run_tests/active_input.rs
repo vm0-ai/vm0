@@ -631,13 +631,17 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
     let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
-        api_url,
+        api_url.clone(),
         run_id,
         &notifications,
         "active-input-lost-reserve-response-test",
     );
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
 
     let run_task = tokio::spawn(async move {
         run_in_sandbox(
@@ -667,6 +671,7 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
         .unwrap()
         .unwrap()
         .unwrap();
+    drop(guard);
     assert!(result.failure.is_none());
     let requests = server.assert_finished_with_requests().await;
     assert_eq!(requests.len(), 2);
@@ -678,6 +683,23 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
     let calls = overrides.process_control_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].message_id, DELIVERY_ID);
+    let event = captured
+        .entries()
+        .into_iter()
+        .find(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|message| message == "active-input source read failed; retrying")
+        })
+        .expect("active-input transport failure should be logged");
+    assert_eq!(event.fields["endpoint"], "reserve active inputs");
+    assert!(event.fields["error"].starts_with("api error: "));
+    assert_eq!(event.fields["failure_kind"], "request");
+    assert_eq!(event.fields["failure_cause"], "http_incomplete_message");
+    let event_debug = format!("{event:#?}");
+    assert!(!event_debug.contains("runner-token"));
+    assert!(!event_debug.contains(&api_url));
 }
 
 #[tokio::test]

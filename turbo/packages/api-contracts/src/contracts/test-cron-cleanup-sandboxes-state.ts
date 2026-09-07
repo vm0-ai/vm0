@@ -25,6 +25,8 @@ export const testCronCleanupSandboxesStateActionBodySchema = z
       "get-queue-entry",
       "get-queue-marker-revoker",
       "get-export-job",
+      "seed-connector-diagnostic-registration",
+      "get-connector-diagnostic-registration",
       "transition-run-terminal",
     ]),
   })

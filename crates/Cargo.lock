@@ -2655,6 +2655,7 @@ dependencies = [
  "hex",
  "http-body 1.1.0",
  "httpmock",
+ "hyper 1.11.1",
  "idna",
  "libc",
  "nbd-cow",

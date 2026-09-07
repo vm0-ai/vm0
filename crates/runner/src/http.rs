@@ -1,3 +1,4 @@
+use std::error::Error as _;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,7 +15,8 @@ use uuid::Uuid;
 
 use crate::config::normalize_api_base_url;
 use crate::error::{
-    ApiFailureKind, ApiRequestContext, ApiTransportError, RunnerError, RunnerResult,
+    ApiFailureKind, ApiRequestContext, ApiTransportCause, ApiTransportError, RunnerError,
+    RunnerResult,
 };
 
 /// Default timeout for API requests (covers large claim payloads).
@@ -338,10 +340,12 @@ fn request_context(
 
 fn api_transport_error(context: ApiRequestContext, error: reqwest::Error) -> RunnerError {
     let failure_kind = api_failure_kind(&error);
+    let failure_cause = api_transport_cause(&error);
     let summary = sanitize_api_error_summary(error.without_url().to_string());
     RunnerError::ApiTransport(Box::new(ApiTransportError {
         request: context,
         failure_kind,
+        failure_cause,
         summary,
     }))
 }
@@ -357,6 +361,74 @@ fn api_failure_kind(error: &reqwest::Error) -> ApiFailureKind {
         ApiFailureKind::Request
     } else {
         ApiFailureKind::Unknown
+    }
+}
+
+fn api_transport_cause(error: &reqwest::Error) -> ApiTransportCause {
+    if error.is_timeout() {
+        return ApiTransportCause::Timeout;
+    }
+
+    // A concrete operating-system cause is more actionable than its protocol
+    // wrapper. Keep the first typed Hyper cause only as a fallback while
+    // walking deeper sources; never inspect dependency-owned error text.
+    let mut source = error.source();
+    let mut hyper_cause = None;
+    let mut saw_io = false;
+    while let Some(error) = source {
+        if let Some(error) = error.downcast_ref::<std::io::Error>() {
+            if let Some(cause) = api_io_cause(error.kind()) {
+                return cause;
+            }
+            saw_io = true;
+        }
+        if let Some(error) = error.downcast_ref::<hyper::Error>() {
+            hyper_cause = hyper_cause.or_else(|| api_hyper_cause(error));
+        }
+        source = error.source();
+    }
+
+    if let Some(cause) = hyper_cause {
+        cause
+    } else if saw_io {
+        ApiTransportCause::Io
+    } else {
+        ApiTransportCause::Unknown
+    }
+}
+
+fn api_io_cause(kind: std::io::ErrorKind) -> Option<ApiTransportCause> {
+    match kind {
+        std::io::ErrorKind::TimedOut => Some(ApiTransportCause::Timeout),
+        std::io::ErrorKind::ConnectionRefused => Some(ApiTransportCause::ConnectionRefused),
+        std::io::ErrorKind::ConnectionReset => Some(ApiTransportCause::ConnectionReset),
+        std::io::ErrorKind::ConnectionAborted => Some(ApiTransportCause::ConnectionAborted),
+        std::io::ErrorKind::NetworkUnreachable => Some(ApiTransportCause::NetworkUnreachable),
+        std::io::ErrorKind::HostUnreachable => Some(ApiTransportCause::HostUnreachable),
+        std::io::ErrorKind::NotConnected => Some(ApiTransportCause::NotConnected),
+        std::io::ErrorKind::BrokenPipe => Some(ApiTransportCause::BrokenPipe),
+        std::io::ErrorKind::UnexpectedEof => Some(ApiTransportCause::UnexpectedEof),
+        _ => None,
+    }
+}
+
+fn api_hyper_cause(error: &hyper::Error) -> Option<ApiTransportCause> {
+    if error.is_timeout() {
+        Some(ApiTransportCause::Timeout)
+    } else if error.is_incomplete_message() {
+        Some(ApiTransportCause::HttpIncompleteMessage)
+    } else if error.is_canceled() {
+        Some(ApiTransportCause::HttpCanceled)
+    } else if error.is_closed() {
+        Some(ApiTransportCause::HttpClosed)
+    } else if error.is_parse() {
+        Some(ApiTransportCause::HttpParse)
+    } else if error.is_body_write_aborted() {
+        Some(ApiTransportCause::HttpBodyWriteAborted)
+    } else if error.is_shutdown() {
+        Some(ApiTransportCause::HttpShutdown)
+    } else {
+        None
     }
 }
 
@@ -395,9 +467,11 @@ fn sanitize_api_error_summary(summary: String) -> String {
 mod tests {
     use api_contracts::generated::routes;
     use reqwest::header::AUTHORIZATION;
-    use tokio::net::TcpListener;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpSocket};
 
     use super::*;
+    use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer};
 
     fn http_client(api_url: &str) -> HttpClient {
         HttpClient::new(HttpClientConfig {
@@ -664,6 +738,7 @@ mod tests {
         );
         assert_eq!(error.failure_kind, ApiFailureKind::Timeout);
         assert_eq!(error.failure_kind.as_str(), "timeout");
+        assert_eq!(error.failure_cause, ApiTransportCause::Timeout);
         assert!(
             !error.summary.contains(&api_url),
             "summary should not include full URL: {}",
@@ -674,6 +749,84 @@ mod tests {
             "summary should not include token or body: {}",
             error.summary
         );
+    }
+
+    #[tokio::test]
+    async fn send_connection_refused_exposes_stable_io_cause() {
+        let socket = TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let api_url = format!("http://{}", socket.local_addr().unwrap());
+
+        let error = http_client(&api_url)
+            .request_route(routes::runners::heartbeat::HEARTBEAT, "runner-token")
+            .send("heartbeat")
+            .await
+            .unwrap_err();
+        let error = api_transport_error(error);
+
+        assert_eq!(error.failure_kind, ApiFailureKind::Connect);
+        assert_eq!(error.failure_cause, ApiTransportCause::ConnectionRefused);
+        assert!(error.to_string().contains("cause=connection_refused"));
+    }
+
+    #[tokio::test]
+    async fn send_premature_http_disconnect_exposes_stable_protocol_cause() {
+        let server = RawHttpTestServer::spawn(vec![RawHttpAction::Disconnect]).await;
+
+        let error = http_client(&server.url())
+            .request_route(routes::runners::heartbeat::HEARTBEAT, "runner-token")
+            .json(&serde_json::json!({}))
+            .send("heartbeat")
+            .await
+            .unwrap_err();
+        server.assert_finished().await;
+        let error = api_transport_error(error);
+
+        assert_eq!(error.failure_kind, ApiFailureKind::Request);
+        assert_eq!(
+            error.failure_cause,
+            ApiTransportCause::HttpIncompleteMessage
+        );
+    }
+
+    #[tokio::test]
+    async fn send_invalid_tls_peer_does_not_infer_tls_from_error_text() {
+        const QUERY_SECRET: &str = "query-sensitive-value";
+        const BODY_SECRET: &str = "body-sensitive-value";
+        const BEARER_SECRET: &str = "bearer-sensitive-value";
+        const PEER_BYTES: &str = "peer-sensitive-value";
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!(
+            "https://{}/private?credential={QUERY_SECRET}",
+            listener.local_addr().unwrap()
+        );
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut first_client_byte = [0_u8; 1];
+            socket.read_exact(&mut first_client_byte).await.unwrap();
+            socket.write_all(PEER_BYTES.as_bytes()).await.unwrap();
+            socket.shutdown().await.unwrap();
+        });
+
+        let error = http_client("http://127.0.0.1")
+            .authenticated_request(reqwest::Method::POST, url, BEARER_SECRET)
+            .json(&serde_json::json!({"secret": BODY_SECRET}))
+            .send("tls diagnostic")
+            .await
+            .unwrap_err();
+        server_task.await.unwrap();
+        let error = api_transport_error(error);
+
+        assert_eq!(error.failure_cause, ApiTransportCause::Io);
+        assert_eq!(error.request.path, "/private");
+        let diagnostic = format!("{error:?} {error}");
+        for secret in [QUERY_SECRET, BODY_SECRET, BEARER_SECRET, PEER_BYTES] {
+            assert!(
+                !diagnostic.contains(secret),
+                "transport diagnostic should exclude sensitive request and peer data: {diagnostic}"
+            );
+        }
     }
 
     #[test]

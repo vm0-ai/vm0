@@ -18,6 +18,7 @@ use crate::active_input::{
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, ActiveInputBatch, ActiveInputSource,
     ApiActiveInputRecovery, local_active_input_delivery_id,
 };
+use crate::error::RunnerError;
 use crate::ids::RunId;
 
 const ACTIVE_INPUT_READ_RETRY_INTERVAL: Duration = Duration::from_millis(250);
@@ -200,7 +201,26 @@ async fn run_forwarder(
             },
             Err(error) => {
                 if !warned_source_read_failure {
-                    warn!(run_id = %run_id, error = %error, "active-input source read failed; retrying");
+                    match &error {
+                        RunnerError::ApiTransport(api_error) => warn!(
+                            run_id = %run_id,
+                            error = %error,
+                            endpoint = api_error.request.endpoint_label,
+                            method = %api_error.request.method,
+                            host = %api_error.request.host,
+                            path = %api_error.request.path,
+                            client_request_id = %api_error.request.client_request_id,
+                            client_session_id = %api_error.request.client_session_id,
+                            client_version = %api_error.request.client_version,
+                            failure_kind = api_error.failure_kind.as_str(),
+                            failure_cause = api_error.failure_cause.as_str(),
+                            error_summary = %api_error.summary,
+                            "active-input source read failed; retrying"
+                        ),
+                        _ => {
+                            warn!(run_id = %run_id, error = %error, "active-input source read failed; retrying")
+                        }
+                    }
                     warned_source_read_failure = true;
                 }
                 true

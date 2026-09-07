@@ -27,6 +27,7 @@ import {
   abortPiApiFirstTurnAfterCanonicalCancellation,
   lockPiApiFirstTurnLifecycle,
 } from "./pi-api-first-turn-lifecycle.service";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
 const L = logger("RunCancel");
 
@@ -148,16 +149,16 @@ export const cancelRun$ = command(
         );
       }
 
-      const [updated] = await tx
-        .update(agentRuns)
-        .set({
+      const [updated] = await transitionAgentRunsToTerminal(tx, {
+        values: {
           status: "cancelled",
           completedAt: new Date(apiStartTime),
-        })
-        .where(
-          and(eq(agentRuns.id, args.runId), eq(agentRuns.status, run.status)),
-        )
-        .returning({ id: agentRuns.id });
+        },
+        conditions: [
+          eq(agentRuns.id, args.runId),
+          eq(agentRuns.status, run.status),
+        ],
+      });
       if (!updated) {
         throw new Error("Locked cancellable run was not updated");
       }

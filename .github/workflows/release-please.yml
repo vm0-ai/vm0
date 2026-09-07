@@ -1356,6 +1356,50 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
+      - name: Reconcile production connector catalog (best effort)
+        shell: bash
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if ! response=$(vercel curl /api/cron/sync-connector-catalog \
+            --deployment "$API_DEPLOYMENT_URL" \
+            --token "$VERCEL_TOKEN" \
+            -- \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 120 \
+            --header "Authorization: Bearer ${CRON_SECRET}"); then
+            echo "::warning::Connector catalog reconcile request failed; the scheduled cron will retry"
+            exit 0
+          fi
+
+          if ! summary=$(jq -c '{
+            outcome,
+            hasActive: (.active != null),
+            lastAttemptOutcome: .lastAttempt.outcome,
+            filtering: {
+              stale: .filtering.stale,
+              filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)
+            }
+          }' <<< "$response"); then
+            echo "::warning::Connector catalog reconcile returned invalid JSON; the scheduled cron will retry"
+            exit 0
+          fi
+
+          echo "Connector catalog reconcile: ${summary}"
+          if ! jq -e '
+            .state == "current"
+            and .active != null
+            and .filtering.stale == false
+          ' <<< "$response" >/dev/null; then
+            echo "::warning::Connector catalog is not ready; the scheduled cron will retry"
+          fi
+
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}

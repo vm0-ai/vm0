@@ -60,6 +60,7 @@ import {
   type PiMemoryStage1Admission,
 } from "./pi-memory-stage1-candidate.service";
 import { isStandardTerraApiKeyPiProviderType } from "./pi-sandbox-config";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -492,9 +493,8 @@ async function applyTerminalCompletion(
     }
   }
 
-  const [updated] = await tx
-    .update(agentRuns)
-    .set({
+  const [updated] = await transitionAgentRunsToTerminal(tx, {
+    values: {
       status: prepared.status,
       completedAt,
       ...(prepared.error !== undefined ? { error: prepared.error } : {}),
@@ -503,15 +503,13 @@ async function applyTerminalCompletion(
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
       workspaceReuseResult: input.body.workspaceReuseResult,
-    })
-    .where(
-      and(
-        eq(agentRuns.id, input.body.runId),
-        eq(agentRuns.userId, input.auth.userId),
-        inArray(agentRuns.status, ["pending", "running"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
+    },
+    conditions: [
+      eq(agentRuns.id, input.body.runId),
+      eq(agentRuns.userId, input.auth.userId),
+      inArray(agentRuns.status, ["pending", "running"]),
+    ],
+  });
   if (!updated) {
     throw new Error("Locked agent run lost its terminal transition");
   }

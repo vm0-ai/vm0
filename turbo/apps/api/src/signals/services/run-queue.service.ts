@@ -44,6 +44,7 @@ import {
 } from "./pi-api-first-turn-config";
 import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { checkOrgCreditsForRunAdmissionInTransaction } from "./run-admission.service";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
 const L = logger("RunQueue");
 
@@ -344,19 +345,19 @@ async function failQueuedRunAdmission(
   lockedRun: LockedQueuedRun,
   error: string,
 ): Promise<PromotionResult> {
-  const [failed] = await tx
-    .update(agentRuns)
-    .set({
+  const [failed] = await transitionAgentRunsToTerminal(tx, {
+    values: {
       status: "failed",
       completedAt: nowDate(),
       creditAdmitted: false,
       error,
       failureReason: "insufficient_credits",
-    })
-    .where(
-      and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
-    )
-    .returning({ id: agentRuns.id });
+    },
+    conditions: [
+      eq(agentRuns.id, args.row.runId),
+      eq(agentRuns.status, "queued"),
+    ],
+  });
   if (!failed) {
     return { status: "lost" };
   }
@@ -706,24 +707,17 @@ export const cleanupExpiredQueueEntries$ = command(
       const timedOut =
         candidateRunIds.length === 0
           ? []
-          : await tx
-              .update(agentRuns)
-              .set({
+          : await transitionAgentRunsToTerminal(tx, {
+              values: {
                 status: "timeout",
                 completedAt: currentTime,
                 error: QUEUED_RUN_EXPIRED_REASON,
-              })
-              .where(
-                and(
-                  inArray(agentRuns.id, candidateRunIds),
-                  eq(agentRuns.status, "queued"),
-                ),
-              )
-              .returning({
-                runId: agentRuns.id,
-                orgId: agentRuns.orgId,
-                userId: agentRuns.userId,
-              });
+              },
+              conditions: [
+                inArray(agentRuns.id, candidateRunIds),
+                eq(agentRuns.status, "queued"),
+              ],
+            });
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
         timedOut,
@@ -821,30 +815,23 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
       // Queue persistence locks the run before inserting agent_run_queue. If
       // this transaction waited for that lock, re-check the queue table with a
       // fresh statement before timing out the run.
-      const timedOut = await tx
-        .update(agentRuns)
-        .set({
+      const timedOut = await transitionAgentRunsToTerminal(tx, {
+        values: {
           status: "timeout",
           completedAt: currentTime,
           error: QUEUED_RUN_LAUNCH_ORPHAN_REASON,
-        })
-        .where(
-          and(
-            eq(agentRuns.status, "queued"),
-            inArray(agentRuns.id, candidateRunIds),
-            notExists(
-              tx
-                .select({ runId: agentRunQueue.runId })
-                .from(agentRunQueue)
-                .where(eq(agentRunQueue.runId, agentRuns.id)),
-            ),
+        },
+        conditions: [
+          eq(agentRuns.status, "queued"),
+          inArray(agentRuns.id, candidateRunIds),
+          notExists(
+            tx
+              .select({ runId: agentRunQueue.runId })
+              .from(agentRunQueue)
+              .where(eq(agentRunQueue.runId, agentRuns.id)),
           ),
-        )
-        .returning({
-          runId: agentRuns.id,
-          orgId: agentRuns.orgId,
-          userId: agentRuns.userId,
-        });
+        ],
+      });
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
         timedOut,
