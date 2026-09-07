@@ -7,7 +7,10 @@ import {
   setupPage,
   startPage,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
+import {
+  platformOkouWordmarkDarkImg,
+  platformVm0LogoDarkImg,
+} from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -176,7 +179,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/svg\+xml,/u),
+    platformOkouWordmarkDarkImg,
   );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",

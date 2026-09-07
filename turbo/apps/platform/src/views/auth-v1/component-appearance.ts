@@ -36,10 +36,9 @@ const authV1IdentityPreviewEditClass = buttonVariants({
   variant: "quiet",
 });
 
-// Clerk always adds `crossorigin="anonymous"` to its logo image. The public
-// static asset hosts intentionally omit CORS headers, so render the real brand
-// asset through the supported logoBox slot and give Clerk a transparent,
-// self-contained image to preserve its accessible linked-logo structure.
+// Clerk always adds `crossorigin="anonymous"` to its logo image. Okou's
+// public static host explicitly allows app.okou.ai. Retain the VM0 fallback
+// until that dormant hosted surface is intentionally migrated.
 function transparentClerkLogoImageUrl(brandName: BrandName): string {
   const { width, height } =
     brandName === "Okou"
@@ -71,12 +70,15 @@ export function getAuthV1SignInAppearance(
   authBrand: AuthBrandContext,
 ): ClerkAppearance {
   const logoImageUrl = authV1LogoImageUrl(theme, authBrand.brandName);
+  const usesNativeLogoImage = authBrand.brandName === "Okou";
 
   return {
     theme: "simple",
     options: {
       elevation: "raised",
-      logoImageUrl: transparentClerkLogoImageUrl(authBrand.brandName),
+      logoImageUrl: usesNativeLogoImage
+        ? logoImageUrl
+        : transparentClerkLogoImageUrl(authBrand.brandName),
       logoLinkUrl: authBrand.homeUrl,
       logoPlacement: "inside",
       socialButtonsPlacement: "top",
@@ -87,18 +89,25 @@ export function getAuthV1SignInAppearance(
       cardBox: cn(cardClassName, "w-full shadow-none"),
       card: "w-full rounded-none border-0 bg-card px-10 py-8 shadow-none",
       header: "items-center p-0 text-center",
-      logoBox: {
-        alignSelf: "center",
-        backgroundImage: `url("${logoImageUrl}")`,
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        backgroundSize: "contain",
-        height: "calc(var(--spacing) * 5)",
-        marginBottom: "calc(var(--spacing) * 5)",
-        padding: 0,
-        width: "fit-content",
-      },
-      logoImage: "block h-full w-auto opacity-0",
+      ...(usesNativeLogoImage
+        ? {
+            logoBox: "mb-5 self-center",
+            logoImage: "block h-5 w-auto",
+          }
+        : {
+            logoBox: {
+              alignSelf: "center",
+              backgroundImage: `url("${logoImageUrl}")`,
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "contain",
+              height: "calc(var(--spacing) * 5)",
+              marginBottom: "calc(var(--spacing) * 5)",
+              padding: 0,
+              width: "fit-content",
+            },
+            logoImage: "block h-full w-auto opacity-0",
+          }),
       headerTitle: "text-lg font-medium leading-7 text-foreground",
       headerSubtitle: "mt-1 text-sm leading-5 text-muted-foreground",
       main: "m-0 gap-6",

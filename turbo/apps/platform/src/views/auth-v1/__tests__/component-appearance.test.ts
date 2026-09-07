@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   platformOkouWordmarkDarkImg,
   platformOkouWordmarkLightImg,
+  platformVm0LogoDarkImg,
 } from "../../../lib/static-assets.ts";
 import {
   getAuthV1LegacyComponentAppearance,
@@ -48,7 +49,7 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(appearance.theme).toBe("simple");
   expect(appearance.options).toMatchObject({
     elevation: "raised",
-    logoImageUrl: expect.stringMatching(/^data:image\/svg\+xml,/u),
+    logoImageUrl: platformOkouWordmarkDarkImg,
     logoLinkUrl: OKOU_AUTH_BRAND.homeUrl,
     logoPlacement: "inside",
     socialButtonsPlacement: "top",
@@ -67,9 +68,8 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(
     elementClasses(appearance, "lastAuthenticationStrategyBadge"),
   ).toContain("okou-auth-badge-text");
-  expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
-    platformOkouWordmarkDarkImg,
-  );
+  expect(elementClasses(appearance, "logoBox")).toContain("mb-5");
+  expect(elementClasses(appearance, "logoImage")).toContain("h-5");
   expect(elementClasses(appearance, "footerAction__signIn")).toContain(
     "text-brand-text",
   );
@@ -85,9 +85,20 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
 
 test("Hosted sign-in selects the theme-aware Okou logo", () => {
   expect(
-    elementStyles(getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND), "logoBox")
-      .backgroundImage,
-  ).toContain(platformOkouWordmarkLightImg);
+    getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND).options?.logoImageUrl,
+  ).toBe(platformOkouWordmarkLightImg);
+});
+
+test("The dormant VM0 brand retains the CORS-safe logo fallback", () => {
+  const appearance = getAuthV1SignInAppearance("light", {
+    brandName: "VM0",
+    homeUrl: "https://app.vm0.ai",
+  });
+
+  expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml,/u);
+  expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
+    platformVm0LogoDarkImg,
+  );
 });
 
 test("The sign-in provider exposes only design tokens below Tailwind utilities", () => {
