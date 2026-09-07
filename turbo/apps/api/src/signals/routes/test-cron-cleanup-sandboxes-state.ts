@@ -296,7 +296,7 @@ async function corruptConnectorDiagnosticRegistrationForAction(
   await db
     .update(agentRunConnectorDiagnosticRegistrations)
     .set({
-      payload: sql`jsonb_build_object('version', 999, 'targets', '[]'::jsonb)`,
+      payload: sql`'null'::jsonb`,
     })
     .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId));
   signal.throwIfAborted();

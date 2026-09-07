@@ -510,6 +510,7 @@ async function loadRunDiagnosticRegistration(
   const [row] = await db
     .select({
       agentId: agents.id,
+      registrationRunId: agentRunConnectorDiagnosticRegistrations.runId,
       payload: agentRunConnectorDiagnosticRegistrations.payload,
     })
     .from(agentRuns)
@@ -531,7 +532,7 @@ async function loadRunDiagnosticRegistration(
   if (!row) {
     return { kind: "not-found" };
   }
-  if (!row.payload) {
+  if (row.registrationRunId === null) {
     return { kind: "missing" };
   }
   const payload = agentRunConnectorDiagnosticRegistrationPayloadSchema.parse(
