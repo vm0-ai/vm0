@@ -2013,8 +2013,17 @@
       },
       "style": {
         "auto": "Biarkan Okou memilih",
-        "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
+        "browseGroups": "Jelajahi menurut gaya",
         "description": "Gaya menentukan adegan, transisi, teks overlay, dan tempo.",
+        "groups": {
+          "cinematic": "Film dan fotografi",
+          "handmade": "Kerajinan dan material",
+          "iconic-artist": "Seni dan desain",
+          "other": "Gaya lainnya",
+          "pop-culture": "Budaya pop",
+          "print": "Percetakan dan penerbitan",
+          "retro-tech": "Teknologi retro dan antarmuka"
+        },
         "heading": "Pilih referensi gaya",
         "label": "Referensi gaya",
         "preview": "Pratinjau {{title}}",

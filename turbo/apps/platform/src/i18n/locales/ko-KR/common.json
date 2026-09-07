@@ -2013,8 +2013,17 @@
       },
       "style": {
         "auto": "Okou에게 맡기기",
-        "autoDescription": "요청과 자료에 맞는 시각적 방향 선택",
+        "browseGroups": "스타일별로 찾기",
         "description": "스타일이 장면, 전환, 텍스트 오버레이, 진행 속도를 결정합니다.",
+        "groups": {
+          "cinematic": "영화와 사진",
+          "handmade": "수공예와 소재",
+          "iconic-artist": "예술과 디자인",
+          "other": "기타 스타일",
+          "pop-culture": "대중문화",
+          "print": "인쇄와 출판",
+          "retro-tech": "레트로 기술과 인터페이스"
+        },
         "heading": "참고할 스타일 선택",
         "label": "스타일 참고",
         "preview": "{{title}} 미리보기",

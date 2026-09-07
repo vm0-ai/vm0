@@ -59,7 +59,10 @@ import {
 } from "./avatar-template-picker.tsx";
 import { IntroVideoAvatarGroupCard } from "./intro-video-avatar-group-card.tsx";
 import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
-import { IntroVideoStyleGallery } from "./intro-video-style-gallery.tsx";
+import {
+  IntroVideoStyleGallery,
+  IntroVideoStyleGroupNav,
+} from "./intro-video-style-gallery.tsx";
 
 function formatBytes(size: number): string {
   if (size < 1024) {
@@ -306,14 +309,12 @@ function SettingTrigger({
 }
 
 function UtilityOption({
-  compact = false,
   description,
   icon,
   selected,
   title,
   onSelect,
 }: {
-  readonly compact?: boolean;
   readonly description: string;
   readonly icon: ReactNode;
   readonly selected: boolean;
@@ -325,45 +326,24 @@ function UtilityOption({
       type="button"
       aria-pressed={selected}
       className={cn(
-        "relative flex min-w-0 gap-3 rounded-xl border bg-card p-3 pr-10 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        compact ? "items-center" : "items-start",
+        "relative flex min-w-0 items-start gap-3 rounded-xl border bg-card p-3 pr-10 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected ? "border-primary" : "border-border",
       )}
       onClick={onSelect}
     >
-      <span
-        className={cn(
-          "grid shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text",
-          compact ? "size-8" : "size-9",
-        )}
-      >
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text">
         {icon}
       </span>
-      <span
-        className={cn(
-          "min-w-0",
-          compact ? "flex flex-col sm:flex-row sm:items-baseline sm:gap-2" : "",
-        )}
-      >
+      <span className="min-w-0">
         <strong className="block text-sm font-semibold text-foreground">
           {title}
         </strong>
-        <small
-          className={cn(
-            "block text-xs leading-5 text-muted-foreground",
-            compact ? "" : "mt-0.5",
-          )}
-        >
+        <small className="mt-0.5 block text-xs leading-5 text-muted-foreground">
           {description}
         </small>
       </span>
       {selected ? (
-        <span
-          className={cn(
-            "absolute right-3 grid size-5 place-items-center rounded-full bg-primary text-primary-foreground",
-            compact ? "top-1/2 -translate-y-1/2" : "top-3",
-          )}
-        >
+        <span className="absolute right-3 top-3 grid size-5 place-items-center rounded-full bg-primary text-primary-foreground">
           <Check size={12} />
         </span>
       ) : null}
@@ -409,28 +389,50 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
   );
 }
 
-function StylePickerHeader() {
+function StyleAutoOption() {
   const { t } = useTranslation();
   const selection = useGet(introVideoWizardSignals.style$);
   const setSelection = useSet(introVideoWizardSignals.setStyle$);
   const close = useSet(introVideoWizardSignals.setPicker$);
+  const selected = selection.kind === "auto";
   return (
-    <div className="grid shrink-0 px-3 pb-1 pt-3 sm:px-6 sm:pt-4">
-      <UtilityOption
-        compact
-        title={t(($) => {
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={cn(
+        "flex shrink-0 items-center gap-2.5 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:mb-2 sm:w-full",
+        selected ? "border-primary bg-primary/5" : "border-border",
+      )}
+      onClick={() => {
+        setSelection({ kind: "auto" });
+        close(null);
+      }}
+    >
+      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary/10 text-brand-text">
+        {selected ? <Check size={15} /> : <Sparkles size={15} />}
+      </span>
+      <strong className="truncate text-sm font-medium text-foreground">
+        {t(($) => {
           return $.chat.introVideo.style.auto;
         })}
-        description={t(($) => {
-          return $.chat.introVideo.style.autoDescription;
-        })}
-        icon={<Sparkles size={17} />}
-        selected={selection.kind === "auto"}
-        onSelect={() => {
-          setSelection({ kind: "auto" });
-          close(null);
-        }}
-      />
+      </strong>
+    </button>
+  );
+}
+
+function StylePickerBody() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+      <div className="flex shrink-0 flex-row gap-2 overflow-x-auto border-b border-border p-3 sm:w-60 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r">
+        <StyleAutoOption />
+        <IntroVideoStyleGroupNav />
+      </div>
+      <div
+        data-intro-video-catalog-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
+      >
+        <StylePicker />
+      </div>
     </div>
   );
 }
@@ -727,17 +729,19 @@ function PickerDialog({
             </p>
           ) : null}
         </DialogHeader>
-        {picker === "style" ? <StylePickerHeader /> : null}
-        <div
-          data-intro-video-catalog-scroll=""
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
-        >
-          {picker === "style" ? <StylePicker /> : null}
-          {picker === "avatar" ? <AvatarPicker /> : null}
-          {picker === "voice" ? (
-            <VoicePicker avatar={avatar} sources={sources} />
-          ) : null}
-        </div>
+        {picker === "style" ? (
+          <StylePickerBody />
+        ) : (
+          <div
+            data-intro-video-catalog-scroll=""
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
+          >
+            {picker === "avatar" ? <AvatarPicker /> : null}
+            {picker === "voice" ? (
+              <VoicePicker avatar={avatar} sources={sources} />
+            ) : null}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

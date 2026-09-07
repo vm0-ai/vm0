@@ -12,6 +12,7 @@ import { onRef } from "../utils.ts";
 function createIntroVideoStyleGallerySignals() {
   const internalReload$ = state(0);
   const internalPreviewId$ = state<string | null>(null);
+  const internalActiveGroup$ = state<string | null>(null);
   return {
     catalog$: computed(async (get) => {
       get(internalReload$);
@@ -61,12 +62,44 @@ function createIntroVideoStyleGallerySignals() {
     previewStyle$: command(({ set }, id: string) => {
       set(internalPreviewId$, id);
     }),
+    activeGroup$: computed((get) => {
+      return get(internalActiveGroup$);
+    }),
     setGalleryRef$: onRef<HTMLDivElement>(
-      command(({ set }, _node: HTMLDivElement, signal: AbortSignal) => {
+      command(({ set }, node: HTMLDivElement, signal: AbortSignal) => {
+        const scroll = node.closest<HTMLElement>(
+          "[data-intro-video-catalog-scroll]",
+        );
+        const sections = [
+          ...node.querySelectorAll<HTMLElement>(
+            "[data-intro-video-style-group]",
+          ),
+        ];
+        const syncActiveGroup = () => {
+          if (!scroll) {
+            return;
+          }
+          // The active group is the last heading that has reached the top edge.
+          const edge = scroll.getBoundingClientRect().top + 8;
+          const reached = sections.filter((section) => {
+            return section.getBoundingClientRect().top <= edge;
+          });
+          const active = reached.at(-1) ?? sections.at(0);
+          set(
+            internalActiveGroup$,
+            active?.dataset.introVideoStyleGroup ?? null,
+          );
+        };
+        scroll?.addEventListener("scroll", syncActiveGroup, {
+          passive: true,
+          signal,
+        });
+        syncActiveGroup();
         signal.addEventListener(
           "abort",
           () => {
             set(internalPreviewId$, null);
+            set(internalActiveGroup$, null);
           },
           { once: true },
         );

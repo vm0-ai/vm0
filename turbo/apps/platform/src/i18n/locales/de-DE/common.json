@@ -2016,8 +2016,17 @@
       },
       "style": {
         "auto": "Okou wählen lassen",
-        "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
+        "browseGroups": "Nach Stil durchsuchen",
         "description": "Der Stil bestimmt Szenen, Übergänge, Texteinblendungen und Tempo.",
+        "groups": {
+          "cinematic": "Film und Fotografie",
+          "handmade": "Handarbeit und Materialien",
+          "iconic-artist": "Kunst und Design",
+          "other": "Weitere Stile",
+          "pop-culture": "Popkultur",
+          "print": "Druck und Verlagswesen",
+          "retro-tech": "Retro-Technik und Oberflächen"
+        },
         "heading": "Stilreferenz wählen",
         "label": "Stilreferenz",
         "preview": "Vorschau von {{title}}",

@@ -2048,8 +2048,17 @@
       },
       "style": {
         "auto": "Lascia scegliere a Okou",
-        "autoDescription": "Adatta la direzione visiva alle tue istruzioni e ai tuoi materiali",
+        "browseGroups": "Esplora per stile",
         "description": "Lo stile definisce scene, transizioni, testi in sovrimpressione e ritmo.",
+        "groups": {
+          "cinematic": "Cinema e fotografia",
+          "handmade": "Artigianato e materiali",
+          "iconic-artist": "Arte e design",
+          "other": "Altri stili",
+          "pop-culture": "Cultura pop",
+          "print": "Stampa ed editoria",
+          "retro-tech": "Tecnologia rétro e interfacce"
+        },
         "heading": "Scegli un riferimento di stile",
         "label": "Riferimento di stile",
         "preview": "Anteprima di {{title}}",
