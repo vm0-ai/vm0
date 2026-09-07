@@ -1323,40 +1323,10 @@ export const RESIDUAL_BRAND_NAME_BASELINE = [
       workstream: "R3",
     },
   ),
-  ...baselineNames(
-    ["data-vm0-chat-message", "data-vm0-editable", "data-vm0-slide"],
-    {
-      ownerIssue: "#31801",
-      reason:
-        "data-vm0-* DOM attribute read by the platform, the app worker, or a test helper; R7 renames the attribute together with every reader.",
-      workstream: "R7",
-    },
-  ),
   ...baselineNames([], {
     ownerIssue: "#31801",
     reason:
       "Bare brand literals and stale prose in comments, documentation, and user-facing copy; #31856 classified all 32 names, so every remaining occurrence is either an approved boundary above or was rewritten because it described something that no longer exists.",
     workstream: "R9",
-  }),
-  ...baselineNames(
-    [
-      "data-vm0",
-      "data-vm0-edit-id",
-      "data-vm0-node-id",
-      "vm0EditId",
-      "vm0NodeId",
-    ],
-    {
-      ownerIssue: "#31824",
-      reason:
-        "Legacy data-vm0-* edit-protocol readers kept for deck HTML that was stored or externally generated before the okou rename; vm0EditId and vm0NodeId name the values read from those legacy attributes. #31824 drops the complete compatibility path once no such deck remains.",
-      workstream: "R7",
-    },
-  ),
-  ...baselineNames(["vm0-deck-metadata"], {
-    ownerIssue: "#31824",
-    reason:
-      "The legacy deck metadata script id the presentation preview still reads for deck HTML stored or externally generated before the okou rename; #31815 kept it deliberately and #31824 drops it together with the data-vm0-* readers beside it.",
-    workstream: "R7",
   }),
 ] as const satisfies readonly ResidualBrandNameBaselineEntry[];
