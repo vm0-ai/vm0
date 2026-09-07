@@ -10,31 +10,47 @@ import {
 } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import type { BrandName } from "../../signals/branding.ts";
-import { AUTH_LINK_ACTION_CLASS } from "../auth/auth-action-styles.ts";
+import {
+  AUTH_FIELD_INPUT_CLASS,
+  AUTH_LINK_ACTION_CLASS,
+  AUTH_SOCIAL_ACTION_CLASS,
+} from "../auth/auth-action-styles.ts";
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 
 const authV1OutlineActionClass = cn(
   buttonVariants({ size: "default", variant: "outline" }),
-  "w-full shadow-none",
+  "w-full py-0 shadow-none",
 );
-const authV1SocialActionClass = cn(authV1OutlineActionClass, "bg-transparent");
+const authV1SocialActionClass = cn(
+  authV1OutlineActionClass,
+  AUTH_SOCIAL_ACTION_CLASS,
+);
 const authV1PrimaryActionClass = cn(
   buttonVariants({ size: "default", variant: "default" }),
   "w-full okou-auth-action-text shadow-none",
 );
 const authV1OtpInputClass = cn(
   inputClassName,
-  "w-9 px-0 text-center text-base font-medium uppercase",
+  AUTH_FIELD_INPUT_CLASS,
+  "h-9 w-9 p-0 text-center text-base font-medium uppercase",
 );
 const authV1PasswordToggleClass = cn(
   buttonVariants({ size: "icon", variant: "ghost" }),
-  "text-foreground",
+  "p-0 text-foreground",
 );
-const authV1IdentityPreviewEditClass = buttonVariants({
-  size: "icon-2xs",
-  variant: "quiet",
-});
+const authV1IdentityPreviewEditClass = cn(
+  buttonVariants({ size: "icon-2xs", variant: "quiet" }),
+  "p-0",
+);
+const authV1BackLinkClass = cn(
+  "mx-auto h-auto w-fit p-0 text-sm leading-5",
+  AUTH_LINK_ACTION_CLASS,
+);
+const authV1ResendCodeLinkClass = cn(
+  "h-auto w-fit p-0 okou-auth-action-text",
+  AUTH_LINK_ACTION_CLASS,
+);
 
 // Clerk always adds `crossorigin="anonymous"` to its logo image. The public
 // static host only grants that native image path to app.okou.ai; previews and
@@ -89,11 +105,11 @@ export function getAuthV1SignInAppearance(
     elements: {
       rootBox: "mx-auto w-full max-w-[25rem]",
       cardBox: cn(cardClassName, "w-full shadow-none"),
-      card: "w-full rounded-none border-0 bg-card px-10 py-8 shadow-none",
-      header: "items-center p-0 text-center",
+      card: "m-0 w-full rounded-none border-0 bg-card px-10 py-8 shadow-none",
+      header: "grid w-full grid-cols-1 items-center gap-0 p-0 text-center",
       ...(usesNativeLogoImage
         ? {
-            logoBox: "mb-5 self-center",
+            logoBox: "mb-5 justify-self-center",
             logoImage: "block h-5 w-auto",
           }
         : {
@@ -110,8 +126,10 @@ export function getAuthV1SignInAppearance(
             },
             logoImage: "block h-full w-auto opacity-0",
           }),
-      headerTitle: "text-lg font-medium leading-7 text-foreground",
-      headerSubtitle: "mt-1 text-sm leading-5 text-muted-foreground",
+      headerTitle:
+        "w-full max-w-none text-lg font-medium leading-7 text-foreground",
+      headerSubtitle:
+        "w-full max-w-none text-sm leading-5 text-muted-foreground",
       main: "m-0 gap-6",
       socialButtonsRoot: "m-0",
       socialButtons: "grid grid-cols-1 gap-2 sm:grid-cols-2",
@@ -119,29 +137,30 @@ export function getAuthV1SignInAppearance(
       socialButtonsBlockButtonText: "text-foreground",
       lastAuthenticationStrategyBadge:
         "rounded-md border border-border bg-card px-1.5 py-0.5 okou-auth-badge-text font-medium text-muted-foreground shadow-sm",
-      dividerRow: "m-0 gap-4",
-      dividerLine: "bg-border",
-      dividerText: "text-sm text-muted-foreground",
+      dividerRow: "m-0 flex items-center gap-3",
+      dividerLine: "h-px flex-1 bg-border",
+      dividerText: "m-0 text-sm leading-5 text-muted-foreground",
       form: "gap-8",
       formFieldRow: "gap-2",
-      formField: "gap-2",
+      formField: "gap-0",
       formFieldLabel: "text-sm font-medium leading-5 text-foreground",
-      formFieldInput: cn(inputClassName, "shadow-none"),
+      formFieldInput: cn(inputClassName, AUTH_FIELD_INPUT_CLASS, "shadow-none"),
       formFieldInput__password:
         "font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal",
       formFieldInputShowPasswordButton: authV1PasswordToggleClass,
       formFieldInputShowPasswordIcon: "size-4",
       formButtonPrimary: authV1PrimaryActionClass,
       formButtonReset: AUTH_LINK_ACTION_CLASS,
-      formFieldErrorText: "text-sm text-destructive",
-      formFieldHintText: "text-sm text-muted-foreground",
-      formFieldInfoText: "text-sm text-muted-foreground",
-      formFieldSuccessText: "text-sm text-foreground",
-      alertText: "text-sm text-foreground",
-      identityPreview: "rounded-lg border border-border bg-muted/50",
-      identityPreviewText: "text-foreground",
+      formFieldErrorText: "mt-2 text-sm leading-5 text-destructive",
+      formFieldHintText: "mt-2 text-sm leading-5 text-muted-foreground",
+      formFieldInfoText: "mt-2 text-sm leading-5 text-muted-foreground",
+      formFieldSuccessText: "mt-2 text-sm leading-5 text-foreground",
+      alertText: "text-sm leading-5 text-foreground",
+      identityPreview:
+        "flex min-h-6 w-full items-center justify-center gap-2 text-sm leading-5 text-muted-foreground",
+      identityPreviewText: "min-w-0 flex-1 truncate text-center",
       identityPreviewEditButton: authV1IdentityPreviewEditClass,
-      formResendCodeLink: AUTH_LINK_ACTION_CLASS,
+      formResendCodeLink: authV1ResendCodeLinkClass,
       otpCodeFieldInputs: "gap-2",
       otpCodeFieldInput: authV1OtpInputClass,
       alternativeMethods: "gap-2",
@@ -150,16 +169,16 @@ export function getAuthV1SignInAppearance(
         "justify-between",
       ),
       alternativeMethodsBlockButtonText: "text-foreground",
-      backLink: AUTH_LINK_ACTION_CLASS,
+      backLink: authV1BackLinkClass,
       footer: "m-0 gap-0 bg-card p-0",
-      footerAction: "text-sm",
-      footerAction__signIn: cn(
-        "w-full justify-center border-t border-border px-10 py-4",
+      footerAction: "text-sm text-muted-foreground",
+      footerAction__signIn:
+        "flex w-full items-center justify-center border-t border-border px-10 py-4",
+      footerActionText: "text-inherit leading-5",
+      footerActionLink: cn(
+        "text-sm font-medium leading-5 underline underline-offset-4",
         AUTH_LINK_ACTION_CLASS,
       ),
-      footerActionText: "text-foreground",
-      footerActionLink:
-        "text-inherit no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       footerAction__usePasskey: authV1OutlineActionClass,
       footerPages: "border-t border-border bg-card",
       footerPagesLink: AUTH_LINK_ACTION_CLASS,

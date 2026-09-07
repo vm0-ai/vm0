@@ -176,7 +176,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/svg\+xml/u),
+    expect.stringMatching(/^data:image\/svg\+xml,/u),
   );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",

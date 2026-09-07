@@ -1,4 +1,4 @@
-import { buttonVariants, cardClassName, inputClassName } from "@okouai/ui";
+import { buttonVariants, cardClassName } from "@okouai/ui";
 import { expect, test } from "vitest";
 
 import {
@@ -6,6 +6,11 @@ import {
   platformOkouWordmarkLightImg,
   platformVm0LogoDarkImg,
 } from "../../../lib/static-assets.ts";
+import {
+  AUTH_FIELD_INPUT_CLASS,
+  AUTH_LINK_ACTION_CLASS,
+  AUTH_SOCIAL_ACTION_CLASS,
+} from "../../auth/auth-action-styles.ts";
 import {
   getAuthV1LegacyComponentAppearance,
   getAuthV1SignInAppearance,
@@ -60,8 +65,14 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
     socialButtonsVariant: "blockButton",
   });
   expect(elementClasses(appearance, "cardBox")).toContain(cardClassName);
+  expect(elementClasses(appearance, "card")).toContain("m-0");
+  expect(elementClasses(appearance, "formFieldInput")).toContain("h-9");
+  expect(elementClasses(appearance, "formFieldInput")).toContain("rounded-lg");
   expect(elementClasses(appearance, "formFieldInput")).toContain(
-    inputClassName,
+    AUTH_FIELD_INPUT_CLASS,
+  );
+  expect(elementClasses(appearance, "socialButtonsBlockButton")).toContain(
+    AUTH_SOCIAL_ACTION_CLASS,
   );
   expect(elementClasses(appearance, "formButtonPrimary")).toContain(
     buttonVariants({ size: "default", variant: "default" }),
@@ -72,11 +83,38 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(
     elementClasses(appearance, "lastAuthenticationStrategyBadge"),
   ).toContain("okou-auth-badge-text");
+  expect(elementClasses(appearance, "header")).toContain("grid");
+  expect(elementClasses(appearance, "header")).toContain("gap-0");
+  expect(elementClasses(appearance, "headerTitle")).toContain("w-full");
+  expect(elementClasses(appearance, "headerTitle")).toContain("max-w-none");
+  expect(elementClasses(appearance, "headerSubtitle")).toContain("w-full");
+  expect(elementClasses(appearance, "headerSubtitle")).toContain("max-w-none");
   expect(elementClasses(appearance, "logoBox")).toContain("mb-5");
-  expect(elementClasses(appearance, "logoImage")).toContain("h-5");
-  expect(elementClasses(appearance, "footerAction__signIn")).toContain(
-    "text-brand-text",
+  expect(elementClasses(appearance, "logoBox")).toContain(
+    "justify-self-center",
   );
+  expect(elementClasses(appearance, "logoImage")).toContain("h-5");
+  expect(elementClasses(appearance, "dividerRow")).toContain("gap-3");
+  expect(elementClasses(appearance, "dividerText")).toContain("m-0");
+  expect(elementClasses(appearance, "formField")).toContain("gap-0");
+  expect(elementClasses(appearance, "otpCodeFieldInput")).toContain(
+    AUTH_FIELD_INPUT_CLASS,
+  );
+  expect(elementClasses(appearance, "identityPreview")).toContain("min-h-6");
+  expect(elementClasses(appearance, "formResendCodeLink")).toContain(
+    "okou-auth-action-text",
+  );
+  expect(elementClasses(appearance, "backLink")).toContain("leading-5");
+  expect(elementClasses(appearance, "footerAction")).toContain(
+    "text-muted-foreground",
+  );
+  expect(elementClasses(appearance, "footerAction__signIn")).toContain(
+    "items-center",
+  );
+  expect(elementClasses(appearance, "footerActionLink")).toContain(
+    AUTH_LINK_ACTION_CLASS,
+  );
+  expect(elementClasses(appearance, "footerActionLink")).toContain("leading-5");
   expect(elementClasses(appearance, "footerAction__usePasskey")).toContain(
     "flex",
   );
@@ -101,7 +139,7 @@ test("Preview origins retain the CORS-safe logo fallback", () => {
     "https://pr-32278-app-okou-app-preview.vm0.workers.dev",
   );
 
-  expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml/u);
+  expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml,/u);
   expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
     platformOkouWordmarkDarkImg,
   );

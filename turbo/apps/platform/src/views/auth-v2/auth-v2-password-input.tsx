@@ -1,7 +1,8 @@
-import { Button, Input } from "@okouai/ui";
+import { Button, cn, Input } from "@okouai/ui";
 import { useGet, useSet } from "ccstate-react";
 import { Eye, EyeOff } from "lucide-react";
 
+import { AUTH_FIELD_INPUT_CLASS } from "../auth/auth-action-styles.ts";
 import {
   authV2RevealedPasswordFieldIds$,
   resetAuthV2PasswordFieldOnRef$,
@@ -46,7 +47,7 @@ export function AuthV2PasswordInput({
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid}
         autoComplete={autoComplete}
-        className="border border-border pr-10"
+        className={cn(AUTH_FIELD_INPUT_CLASS, "pr-10")}
         id={id}
         name={name}
         onChange={(event) => {

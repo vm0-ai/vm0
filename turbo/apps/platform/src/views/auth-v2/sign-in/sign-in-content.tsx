@@ -23,6 +23,10 @@ import {
 } from "../auth-v2-status-steps.tsx";
 import { UserAvatar } from "../../components/avatar.tsx";
 import {
+  AUTH_FIELD_INPUT_CLASS,
+  AUTH_SOCIAL_ACTION_CLASS,
+} from "../../auth/auth-action-styles.ts";
+import {
   AUTH_V2_LINK_ACTION_CLASS,
   AUTH_V2_PRIMARY_ACTION_CLASS,
 } from "../auth-v2-action-styles.ts";
@@ -91,7 +95,7 @@ function OAuthFactorButton({
     <Button
       aria-busy={busy}
       aria-label={actionLabel}
-      className="relative w-full border border-border bg-transparent text-sm hover:bg-muted"
+      className={AUTH_SOCIAL_ACTION_CLASS}
       disabled={disabled}
       type="button"
       variant="outline"
@@ -159,7 +163,7 @@ function TextField({
       <Input
         aria-describedby={invalid ? AUTH_V2_SIGN_IN_ERROR_ID : undefined}
         aria-invalid={invalid ? true : undefined}
-        className="border border-border"
+        className={AUTH_FIELD_INPUT_CLASS}
         id={id}
         name={name}
         autoComplete={autoComplete}
@@ -827,7 +831,7 @@ function SignInCodeInput({
           aria-invalid={invalid ? true : undefined}
           autoCapitalize="none"
           autoComplete="off"
-          className="border border-border"
+          className={AUTH_FIELD_INPUT_CLASS}
           id="auth-v2-code"
           name="code"
           onChange={(event) => {
