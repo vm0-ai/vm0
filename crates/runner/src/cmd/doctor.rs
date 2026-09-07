@@ -79,8 +79,8 @@ enum Warning {
         sandbox_id: String,
         base_dir: PathBuf,
     },
-    /// A firecracker process exists but its sandbox_id is not tracked in
-    /// either `active_runs` or `idle_sandboxes` for this runner.
+    /// A firecracker process exists but its sandbox_id is not tracked as
+    /// active, exact idle, or blank inventory for this runner.
     FirecrackerNotInStatus {
         pid: u32,
         sandbox_id: String,
