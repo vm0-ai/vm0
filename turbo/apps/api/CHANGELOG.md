@@ -8,6 +8,13 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.557.1](https://github.com/vm0-ai/vm0/compare/api-v1.557.0...api-v1.557.1) (2026-09-07)
+
+
+### Performance Improvements
+
+* **api:** avoid duplicate global chat queue sweeps ([#32054](https://github.com/vm0-ai/vm0/issues/32054)) ([6bbfbe8](https://github.com/vm0-ai/vm0/commit/6bbfbe864b1a0c09759359aa2030795a5ce2f013))
+
 ## [1.557.0](https://github.com/vm0-ai/vm0/compare/api-v1.556.0...api-v1.557.0) (2026-09-07)
 
 
