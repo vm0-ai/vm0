@@ -10,7 +10,9 @@
 //!
 //! Runner encodes borrowed delivery IDs and text through this module before
 //! process-control transport. Guest-agent decodes the bytes into owned,
-//! validated values before applying run-scoped queue and receipt policy.
+//! validated values before applying run-scoped queue and receipt policy. This
+//! module also owns the stable closed-lifecycle diagnostic that survives the
+//! generic process-control rejection boundary.
 
 use std::fmt;
 use std::io::{self, Write};
@@ -19,6 +21,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const ACTIVE_INPUT_TYPE: &str = "active-input";
+
+/// Stable diagnostic returned when Guest active-input admission has closed.
+///
+/// Runner uses this value to classify the expected close race separately from
+/// other application-level rejections.
+pub const ACTIVE_INPUT_CLOSED_DIAGNOSTIC: &str = "active input is closed";
 
 #[derive(Serialize)]
 struct ActiveInputEncodeWire<'a> {

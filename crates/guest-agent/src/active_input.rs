@@ -5,7 +5,9 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use guest_contracts::active_input::{ActiveInputDecodeError, decode_active_input};
+use guest_contracts::active_input::{
+    ACTIVE_INPUT_CLOSED_DIAGNOSTIC, ActiveInputDecodeError, decode_active_input,
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -549,7 +551,7 @@ impl ActiveInputController {
         }
         if state.lifecycle != Lifecycle::Open {
             return ActiveInputControlOutcome::Rejected {
-                diagnostic: "active input is closed",
+                diagnostic: ACTIVE_INPUT_CLOSED_DIAGNOSTIC,
             };
         }
         if state.deliveries_by_id.len() >= ACTIVE_INPUT_DELIVERY_ID_CAPACITY {
@@ -597,7 +599,7 @@ impl ActiveInputController {
                 state.deliveries_by_id.remove(frame.delivery_id());
                 state.lifecycle = Lifecycle::Closed;
                 ActiveInputControlOutcome::Rejected {
-                    diagnostic: "active input is closed",
+                    diagnostic: ACTIVE_INPUT_CLOSED_DIAGNOSTIC,
                 }
             }
         }

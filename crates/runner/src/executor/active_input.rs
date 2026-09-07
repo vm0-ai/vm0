@@ -6,13 +6,13 @@ use api_contracts::generated::types::runners::runs::active_inputs::{
     receipt::Response as ActiveInputReceiptResponse,
     reserve::{Response as ActiveInputReserveResponse, ResponseRejectedReason},
 };
-use guest_contracts::active_input::encode_active_input;
+use guest_contracts::active_input::{ACTIVE_INPUT_CLOSED_DIAGNOSTIC, encode_active_input};
 use sandbox::{
     GuestProcessControlHandle, ProcessControlFailureKind, ProcessControlGuestStatus,
     ProcessControlOutcome, ProcessControlWriteState, Sandbox,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::active_input::{
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, ActiveInputBatch, ActiveInputSource,
@@ -327,6 +327,15 @@ fn classify_control_outcome(
                 uncertain_disposition(mode)
             }
             ProcessControlGuestStatus::Inactive => ForwardDisposition::Stop,
+            ProcessControlGuestStatus::Rejected if diagnostic == ACTIVE_INPUT_CLOSED_DIAGNOSTIC => {
+                info!(
+                    run_id = %run_id,
+                    outcome = "closed",
+                    diagnostic = %diagnostic,
+                    "active-input control stopped"
+                );
+                ForwardDisposition::Stop
+            }
             ProcessControlGuestStatus::NonceMismatch
             | ProcessControlGuestStatus::Unsupported
             | ProcessControlGuestStatus::Rejected => {
