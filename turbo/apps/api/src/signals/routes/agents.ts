@@ -437,7 +437,7 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 201 as const, body: agentResponse(agent, publicBrand) };
 });
 
-export const agentListResponse$ = computed(
+const agentListResponse$ = computed(
   async (
     get,
   ): Promise<{ readonly status: 200; readonly body: AgentResponse[] }> => {
