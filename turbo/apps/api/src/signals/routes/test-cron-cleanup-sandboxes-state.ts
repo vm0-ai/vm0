@@ -42,6 +42,7 @@ import {
   normalizeRunMetadata,
   writeRunMetadata,
 } from "../services/agent-run-metadata-write.service";
+import { deleteRunConnectorDiagnosticRegistrations } from "../services/agent-run-connector-diagnostic-registration.service";
 import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
 import { insertChatEvent } from "../services/chat-event.service";
 import {
@@ -1022,6 +1023,10 @@ async function transitionRunTerminalForAction(
       ),
     )
     .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
+  if (updated) {
+    await deleteRunConnectorDiagnosticRegistrations(db, [updated.id]);
+  }
   signal.throwIfAborted();
   return updated ? actionOk() : actionBadRequest("active run not found");
 }

@@ -5212,6 +5212,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(completed.status).toBe("completed");
     expect(completed.completedAt).toBeDefined();
     expect(completed.result?.checkpointId).toBeDefined();
+    await expect(
+      readConnectorDiagnosticRegistration(created.runId),
+    ).resolves.toBeNull();
 
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);

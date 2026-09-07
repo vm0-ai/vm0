@@ -54,6 +54,7 @@ import {
   finalizeActiveInputDelivery,
   type FinalizeActiveInputDeliveryResult,
 } from "./active-input-delivery.service";
+import { deleteRunConnectorDiagnosticRegistrations } from "./agent-run-connector-diagnostic-registration.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -399,6 +400,8 @@ async function commitStaleRunTimeout(
           throw new Error("Locked stale run lost its timeout transition");
         }
 
+        await deleteRunConnectorDiagnosticRegistrations(tx, [updatedRun.id]);
+        signal.throwIfAborted();
         await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
         signal.throwIfAborted();
 

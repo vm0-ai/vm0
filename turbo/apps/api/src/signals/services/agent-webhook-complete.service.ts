@@ -60,6 +60,7 @@ import {
   type PiMemoryStage1Admission,
 } from "./pi-memory-stage1-candidate.service";
 import { isStandardTerraApiKeyPiProviderType } from "./pi-sandbox-config";
+import { deleteRunConnectorDiagnosticRegistrations } from "./agent-run-connector-diagnostic-registration.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -497,6 +498,7 @@ async function applyTerminalCompletion(
   if (!updated) {
     throw new Error("Locked agent run lost its terminal transition");
   }
+  await deleteRunConnectorDiagnosticRegistrations(tx, [updated.id]);
 }
 
 function noActiveInputFinalization(): FinalizeActiveInputDeliveryResult {

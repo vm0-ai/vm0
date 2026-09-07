@@ -71,13 +71,6 @@
       "when": 1788752411372,
       "tag": "1087_run_connector_diagnostic_registration",
       "breakpoints": true
-    },
-    {
-      "idx": 1088,
-      "version": "7",
-      "when": 1788752417093,
-      "tag": "1088_delete_terminal_connector_diagnostic_registration",
-      "breakpoints": true
     }
   ]
 }

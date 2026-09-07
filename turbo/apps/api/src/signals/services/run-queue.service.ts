@@ -44,6 +44,7 @@ import {
 } from "./pi-api-first-turn-config";
 import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { checkOrgCreditsForRunAdmissionInTransaction } from "./run-admission.service";
+import { deleteRunConnectorDiagnosticRegistrations } from "./agent-run-connector-diagnostic-registration.service";
 
 const L = logger("RunQueue");
 
@@ -360,6 +361,7 @@ async function failQueuedRunAdmission(
   if (!failed) {
     return { status: "lost" };
   }
+  await deleteRunConnectorDiagnosticRegistrations(tx, [failed.id]);
   await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.row.runId));
   const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
     runId: args.row.runId,
@@ -724,6 +726,12 @@ export const cleanupExpiredQueueEntries$ = command(
                 orgId: agentRuns.orgId,
                 userId: agentRuns.userId,
               });
+      await deleteRunConnectorDiagnosticRegistrations(
+        tx,
+        timedOut.map((run) => {
+          return run.runId;
+        }),
+      );
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
         timedOut,
@@ -845,6 +853,12 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
           orgId: agentRuns.orgId,
           userId: agentRuns.userId,
         });
+      await deleteRunConnectorDiagnosticRegistrations(
+        tx,
+        timedOut.map((run) => {
+          return run.runId;
+        }),
+      );
       const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
         tx,
         timedOut,

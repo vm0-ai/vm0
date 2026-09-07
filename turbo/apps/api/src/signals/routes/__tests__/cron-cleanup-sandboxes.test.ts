@@ -1205,6 +1205,7 @@ describe("sandbox cleanup", () => {
       }),
     );
     await insertRunnerJobEntry(fixture, farFuture());
+    await insertConnectorDiagnosticRegistration(fixture);
     context.mocks.ably.publish.mockClear();
 
     const response = await cleanupRegisteredFixtures();
@@ -1224,6 +1225,9 @@ describe("sandbox cleanup", () => {
       error: "Run timed out while pending (never started)",
     });
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+    await expect(
+      findConnectorDiagnosticRegistration(fixture.runId),
+    ).resolves.toBeNull();
     expect(
       context.mocks.ably.publish.mock.calls.filter(([channel]) => {
         return channel === "cancel";
@@ -1417,6 +1421,7 @@ describe("sandbox cleanup", () => {
       insertRunFixture({ status: "queued", createdAt: minutesAgo(130) }),
     );
     await insertQueueEntry(fixture, minutesAgo(1));
+    await insertConnectorDiagnosticRegistration(fixture);
 
     const response = await cleanupRegisteredFixtures();
 
@@ -1435,6 +1440,9 @@ describe("sandbox cleanup", () => {
       error: "Queued run expired (exceeded queue TTL)",
     });
     await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+    await expect(
+      findConnectorDiagnosticRegistration(fixture.runId),
+    ).resolves.toBeNull();
   });
 
   it("cleans up queued runs missing queue entries after the grace threshold", async () => {

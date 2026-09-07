@@ -27,6 +27,7 @@ import {
   abortPiApiFirstTurnAfterCanonicalCancellation,
   lockPiApiFirstTurnLifecycle,
 } from "./pi-api-first-turn-lifecycle.service";
+import { deleteRunConnectorDiagnosticRegistrations } from "./agent-run-connector-diagnostic-registration.service";
 
 const L = logger("RunCancel");
 
@@ -162,6 +163,7 @@ export const cancelRun$ = command(
         throw new Error("Locked cancellable run was not updated");
       }
 
+      await deleteRunConnectorDiagnosticRegistrations(tx, [updated.id]);
       await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.runId));
       await tx
         .delete(runnerJobQueue)

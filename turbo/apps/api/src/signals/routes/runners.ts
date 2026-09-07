@@ -87,6 +87,7 @@ import {
 } from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
+import { deleteRunConnectorDiagnosticRegistrations } from "../services/agent-run-connector-diagnostic-registration.service";
 import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
@@ -1228,6 +1229,9 @@ async function failPoisonQueuedJob(
     if (!updatedRun) {
       throw new Error("Locked pending run was not failed");
     }
+
+    await deleteRunConnectorDiagnosticRegistrations(tx, [updatedRun.id]);
+    signal.throwIfAborted();
 
     await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
     signal.throwIfAborted();
