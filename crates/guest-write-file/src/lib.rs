@@ -16,7 +16,12 @@ struct Args {
     path: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch [--private]";
+const USAGE: &str = concat!(
+    "usage: guest-write-file [--append] [--] <path>\n",
+    "       guest-write-file --create-parents [--] <path>\n",
+    "       guest-write-file --private [--append] [--] <path>\n",
+    "       guest-write-file --batch [--private]",
+);
 
 fn parse_args<I>(args: I) -> Result<Args, String>
 where
@@ -123,7 +128,8 @@ fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
 
 fn run_batch(mut stdin: impl Read, private: bool) -> io::Result<()> {
     let mut payload = Vec::new();
-    let max_payload_size = vsock_proto::MAX_MESSAGE_SIZE - vsock_proto::MIN_BODY_SIZE;
+    let max_payload_size =
+        guest_control_proto::MAX_MESSAGE_SIZE - guest_control_proto::MIN_BODY_SIZE;
     let mut limited = stdin.by_ref().take(max_payload_size as u64 + 1);
     limited.read_to_end(&mut payload)?;
     if payload.len() > max_payload_size {
@@ -132,7 +138,7 @@ fn run_batch(mut stdin: impl Read, private: bool) -> io::Result<()> {
             "write_files payload exceeds maximum protocol message size",
         ));
     }
-    let files = vsock_proto::decode_write_files(&payload)
+    let files = guest_control_proto::decode_write_files(&payload)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
 
     for file in files {
@@ -237,7 +243,9 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// matching `std::env::args().skip(1)`. The accepted syntax is:
 ///
 /// ```text
-/// guest-write-file [--private] [--append | --create-parents] [--] <path>
+/// guest-write-file [--append] [--] <path>
+/// guest-write-file --create-parents [--] <path>
+/// guest-write-file --private [--append] [--] <path>
 /// guest-write-file --batch [--private]
 /// ```
 ///
@@ -251,8 +259,12 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// private file helpers, ensuring parent directories are private, creating
 /// missing parent directories even with `--append`, and rejecting symlinked
 /// parent components.
+/// `--append` and `--create-parents` cannot be used together. `--private` and
+/// `--create-parents` cannot be used together because private mode already
+/// creates missing parent directories, including when combined with
+/// `--append`.
 ///
-/// `--batch` reads a `vsock-proto` `write_files` payload from stdin and writes
+/// `--batch` reads a `guest-control-proto` `write_files` payload from stdin and writes
 /// every entry with create-parent and truncate semantics. Combined with
 /// `--private`, every entry uses the private runtime-file behavior described
 /// above.

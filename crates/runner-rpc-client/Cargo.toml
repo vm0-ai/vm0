@@ -1,0 +1,17 @@
+[package]
+name = "runner-rpc-client"
+version = "0.2.1"
+edition.workspace = true
+
+[dependencies]
+libc.workspace = true
+runner-rpc-proto.workspace = true
+tokio = { workspace = true, features = ["rt", "io-util", "io-std", "net", "time"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "test-util"] }
+
+[lints]
+workspace = true

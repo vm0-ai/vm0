@@ -8,7 +8,7 @@ use super::super::support::{
 };
 
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
-use crate::paths::RunnerPaths;
+use crate::paths::{HomePaths, RunnerPaths};
 use crate::types::{
     HeartbeatState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
 };
@@ -213,15 +213,16 @@ async fn external_workspace_cache_publication_and_removal_trigger_immediate_hear
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn workspace_cache_change_while_draining_is_preserved_after_resume() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&gate),
-    ));
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
     let (mut config, env) = mock_run_config_with_overrides(profiles, 8, 32768, 4, overrides);
+    let (heartbeat_trigger, heartbeat_trigger_rx) = tokio::sync::mpsc::unbounded_channel();
+    config.test_hooks.manual_routine_heartbeat_rx = Some(heartbeat_trigger_rx);
     let status_path = env._temp_dir.path().join("status.json");
     let home = config.paths.home.clone();
     let group = config.runner.group.clone();
@@ -235,19 +236,9 @@ async fn workspace_cache_change_while_draining_is_preserved_after_resume() {
     tokio::fs::create_dir_all(publisher_paths.base_dir())
         .await
         .unwrap();
-    let publisher_cache = WorkspaceImageCache::shared(publisher_paths.clone(), &home, &group);
-    let run_handle = tokio::spawn(run(config));
-    wait_discover_entered(&env, Duration::from_secs(5)).await;
-
-    let run_id = RunId::new_v4();
-    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
-    let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
-    env.drain();
-    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
-
-    observer_cache.reset_held_state_root_scan_count();
-    let before_change = env.handle.heartbeat_count();
-    let watcher_cursor = env.start_observer.cursor();
+    let publisher_home = HomePaths::with_root(env._temp_dir.path().join("draining-publisher-home"));
+    let publisher_cache =
+        WorkspaceImageCache::shared(publisher_paths.clone(), &publisher_home, &group);
     let reuse_key = "thread:draining-watcher-change";
     seed_workspace_cache_state(
         &publisher_cache,
@@ -257,6 +248,38 @@ async fn workspace_cache_change_while_draining_is_preserved_after_resume() {
         16 * 1024 * 1024,
     )
     .await;
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        16 * 1024 * 1024,
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("active job should enter wait_process before draining");
+    env.drain();
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
+
+    observer_cache.reset_held_state_root_scan_count();
+    let before_change = env.handle.heartbeat_count();
+    let watcher_cursor = env.start_observer.cursor();
+    // Publish a complete entry in one watched operation. Creating the directory
+    // and committing metadata in place can be observed in separate batches,
+    // legitimately requesting two scans even though the snapshot is unchanged.
+    tokio::fs::rename(
+        publisher_home.workspace_image_cache_dir().join(&cache_key),
+        home.workspace_image_cache_dir().join(&cache_key),
+    )
+    .await
+    .unwrap();
     env.start_observer
         .wait_workspace_cache_change_observed_after(watcher_cursor, Duration::from_secs(5))
         .await;
@@ -281,7 +304,19 @@ async fn workspace_cache_change_while_draining_is_preserved_after_resume() {
     env.resume();
     wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
     let before_routine = env.handle.heartbeat_count();
-    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    let heartbeat_cursor = env.start_observer.cursor();
+    // Trigger only the routine heartbeat: advancing paused time can also fire
+    // periodic cache reconciliation and legitimately add another root scan.
+    heartbeat_trigger
+        .send(())
+        .expect("manual routine heartbeat receiver should remain open");
+    env.start_observer
+        .wait_routine_heartbeat_requested_after(
+            heartbeat_cursor,
+            RunnerMode::Running,
+            Duration::from_secs(5),
+        )
+        .await;
     assert!(
         wait_heartbeat_matching_after(
             &env.handle,
@@ -304,7 +339,7 @@ async fn workspace_cache_change_while_draining_is_preserved_after_resume() {
         "the post-resume routine heartbeat should reuse the refreshed snapshot",
     );
 
-    gate.notify_one();
+    wait_gate.release_one();
     assert!(
         env.handle
             .wait_completion(run_id, Duration::from_secs(5))

@@ -202,7 +202,7 @@
 //! failure.
 //!
 //! The fixed-role launcher is
-//! `crates/vsock-guest/src/agent_command.rs::spawn_codex_session_cleanup_with_pipes`.
+//! `crates/guest-control-server/src/agent_command.rs::spawn_codex_session_cleanup_with_pipes`.
 //! The runner invokes the operation only for an actually reused sandbox from
 //! `crates/runner/src/executor/session_restore/codex.rs::cleanup_existing_codex_session`
 //! before writing replacement history, and independently validates the output in
@@ -272,7 +272,7 @@ impl SandboxOpsTestGuard {
     }
 
     pub(crate) fn install_override(&mut self, path: &std::path::Path) {
-        guest_common::telemetry::set_sandbox_ops_log_file(path);
+        guest_telemetry::telemetry::set_sandbox_ops_log_file(path);
         self.override_installed = true;
     }
 }
@@ -281,7 +281,7 @@ impl SandboxOpsTestGuard {
 impl Drop for SandboxOpsTestGuard {
     fn drop(&mut self) {
         if self.override_installed {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
+            guest_telemetry::telemetry::clear_sandbox_ops_log_file();
         }
     }
 }

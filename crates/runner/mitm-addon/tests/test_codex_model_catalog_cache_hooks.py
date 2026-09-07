@@ -415,7 +415,7 @@ async def test_both_firewall_auth_paths_prepare_catalog_cache(
             }
         ),
     )
-    header_flow.metadata["_vm0_request_end_stream"] = True
+    header_flow.metadata["_request_end_stream"] = True
     with (
         mitm_ctx(registry_path=str(header_registry), api_url="https://api.vm0.ai"),
         fake_firewall_headers(headers=resolved_headers),
@@ -476,7 +476,7 @@ async def test_prefetch_marker_requires_one_exact_raw_value_across_request_hooks
         path="/backend-api/codex/models?client_version=0.145.0",
         request_headers=request_headers,
     )
-    flow.metadata["_vm0_request_end_stream"] = True
+    flow.metadata["_request_end_stream"] = True
 
     with (
         mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
@@ -552,7 +552,7 @@ async def test_catalog_wait_revalidates_only_provider_continuation(
         path="/backend-api/codex/models?client_version=0.145.0",
         request_headers=header_map(follower_headers),
     )
-    follower.metadata["_vm0_request_end_stream"] = True
+    follower.metadata["_request_end_stream"] = True
     mark_connected_tls_upstream(
         follower,
         sni="chatgpt.com",
@@ -666,7 +666,7 @@ async def test_cancelled_requestheaders_catalog_follower_releases_usage_tracking
             }
         ),
     )
-    follower.metadata["_vm0_request_end_stream"] = True
+    follower.metadata["_request_end_stream"] = True
     follower_task: asyncio.Task[None] | None = None
     try:
         with (

@@ -23,7 +23,7 @@ impl GuestRuntime {
     /// Call this exactly once, after the runner or test has finished configuring
     /// the process environment. The method captures owned configuration inputs,
     /// derives immutable run paths from those captured values, installs those
-    /// paths as the process-wide guest-common system-log and sandbox-ops sinks,
+    /// paths as the process-wide guest-telemetry system-log and sandbox-ops sinks,
     /// and builds the run-scoped HTTP client.
     ///
     /// After successful bootstrap, pass this runtime or its owned fields through
@@ -45,11 +45,11 @@ impl GuestRuntime {
         let raw = GuestConfigRaw::from_process_env_with_guest_runtime_dir(guest_runtime_dir)?;
         raw.require_run_payload_file()?;
         let paths = paths_from_raw(&raw)?;
-        guest_common::log::set_system_log_file(paths.system_log_file());
-        guest_common::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());
+        guest_telemetry::log::set_system_log_file(paths.system_log_file());
+        guest_telemetry::telemetry::set_sandbox_ops_log_file(paths.sandbox_ops_file());
         if let Some(containment) = &workload_containment {
             for (key, source) in containment.env_source_evidence() {
-                guest_common::log_info!(
+                guest_telemetry::log_info!(
                     LOG_TAG,
                     "cgroup_placement_env_source key={key} source={source}"
                 );

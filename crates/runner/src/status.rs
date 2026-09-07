@@ -13,6 +13,7 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::idle_pool::IdlePoolSnapshot;
 use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
 
@@ -91,6 +92,12 @@ pub struct IdleSandbox {
     pub sandbox_id: SandboxId,
 }
 
+/// One ready blank, without a tenant reuse key or run identity.
+#[derive(Debug, Clone, Serialize)]
+pub struct BlankSandbox {
+    pub sandbox_id: SandboxId,
+}
+
 #[derive(Debug, Serialize)]
 struct RunnerStatus {
     mode: RunnerMode,
@@ -98,6 +105,8 @@ struct RunnerStatus {
     active_runs: Vec<ActiveRun>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     idle_sandboxes: Vec<IdleSandbox>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    blank_sandboxes: Vec<BlankSandbox>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -357,13 +366,12 @@ struct MutableState {
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
     active_runs: BTreeMap<RunId, ActiveRunState>,
-    /// Monotonic idle pool mutation revision last reflected in `idle_sandboxes`.
+    /// Both parked inventories paired with their last applied pool mutation revision.
     ///
     /// Idle pool callers snapshot under the pool lock, drop it, then write
     /// status asynchronously. The revision prevents an older delayed snapshot
     /// from overwriting a newer drain/evict state.
-    idle_revision: u64,
-    idle_sandboxes: Vec<IdleSandbox>,
+    idle_snapshot: IdlePoolSnapshot,
 }
 
 impl StatusTracker {
@@ -391,8 +399,7 @@ impl StatusTracker {
                 generation: 0,
                 mode: RunnerMode::Starting,
                 active_runs: BTreeMap::new(),
-                idle_revision: 0,
-                idle_sandboxes: Vec::new(),
+                idle_snapshot: IdlePoolSnapshot::default(),
             }),
             persistence: Arc::new(PersistenceCoordinator::new()),
             #[cfg(test)]
@@ -504,51 +511,41 @@ impl StatusTracker {
         self.persist_snapshot(snapshot).await
     }
 
-    /// Register a running active run and replace the idle sandbox list in the same
+    /// Register a running active run and replace both parked inventories in the same
     /// status write if the idle snapshot is current.
-    pub async fn add_running_run_with_idle_info_at_revision(
+    pub async fn add_running_run_with_idle_snapshot(
         &self,
         run_id: RunId,
         sandbox_id: SandboxId,
-        revision: u64,
-        idle_sandboxes: Vec<IdleSandbox>,
+        idle_snapshot: IdlePoolSnapshot,
     ) -> StatusResult<bool> {
-        self.add_run_with_idle_info_at_revision(
-            run_id,
-            sandbox_id,
-            ActiveRunPhase::Running,
-            revision,
-            idle_sandboxes,
-        )
-        .await
+        self.add_run_with_idle_snapshot(run_id, sandbox_id, ActiveRunPhase::Running, idle_snapshot)
+            .await
     }
 
-    /// Register a preparing active run and replace the idle sandbox list in the
+    /// Register a preparing active run and replace both parked inventories in the
     /// same status write if the idle snapshot is current.
-    pub async fn add_preparing_run_with_idle_info_at_revision(
+    pub async fn add_preparing_run_with_idle_snapshot(
         &self,
         run_id: RunId,
         sandbox_id: SandboxId,
-        revision: u64,
-        idle_sandboxes: Vec<IdleSandbox>,
+        idle_snapshot: IdlePoolSnapshot,
     ) -> StatusResult<bool> {
-        self.add_run_with_idle_info_at_revision(
+        self.add_run_with_idle_snapshot(
             run_id,
             sandbox_id,
             ActiveRunPhase::Preparing,
-            revision,
-            idle_sandboxes,
+            idle_snapshot,
         )
         .await
     }
 
-    async fn add_run_with_idle_info_at_revision(
+    async fn add_run_with_idle_snapshot(
         &self,
         run_id: RunId,
         sandbox_id: SandboxId,
         phase: ActiveRunPhase,
-        revision: u64,
-        idle_sandboxes: Vec<IdleSandbox>,
+        idle_snapshot: IdlePoolSnapshot,
     ) -> StatusResult<bool> {
         let (applied, snapshot) = {
             let mut state = self.state.lock().await;
@@ -560,7 +557,7 @@ impl StatusTracker {
                     phase_started_at: Utc::now(),
                 },
             );
-            let applied = apply_idle_info_at_revision(&mut state, revision, idle_sandboxes);
+            let applied = apply_idle_snapshot(&mut state, idle_snapshot);
             let snapshot = self.capture_changed_snapshot(&mut state);
             (applied, snapshot)
         };
@@ -636,22 +633,18 @@ impl StatusTracker {
         self.persist_snapshot(snapshot).await
     }
 
-    /// Replace the idle sandbox list only if the snapshot is at least as new as the
+    /// Replace both parked inventories only if the snapshot is at least as new as the
     /// last applied idle-pool mutation revision.
     ///
     /// Returns `false` when a stale async writer lost the race to a newer
     /// snapshot and was intentionally ignored.
-    pub async fn set_idle_info_at_revision(
-        &self,
-        revision: u64,
-        idle_sandboxes: Vec<IdleSandbox>,
-    ) -> StatusResult<bool> {
+    pub async fn set_idle_snapshot(&self, idle_snapshot: IdlePoolSnapshot) -> StatusResult<bool> {
         #[cfg(test)]
         self.idle_info_update_requests
             .fetch_add(1, Ordering::Relaxed);
         let snapshot = {
             let mut state = self.state.lock().await;
-            let applied = apply_idle_info_at_revision(&mut state, revision, idle_sandboxes);
+            let applied = apply_idle_snapshot(&mut state, idle_snapshot);
             if !applied {
                 return Ok(false);
             }
@@ -687,7 +680,8 @@ impl StatusTracker {
             mode: state.mode,
             max_concurrent: self.max_concurrent,
             active_runs,
-            idle_sandboxes: state.idle_sandboxes.clone(),
+            idle_sandboxes: state.idle_snapshot.idle_sandboxes.clone(),
+            blank_sandboxes: state.idle_snapshot.blank_sandboxes.clone(),
             proxy_port: self.proxy_port,
             dns_port: self.dns_port,
             started_at: self.started_at,
@@ -830,16 +824,11 @@ pub async fn remove_stale_status_file(path: &Path) -> RunnerResult<()> {
     }
 }
 
-fn apply_idle_info_at_revision(
-    state: &mut MutableState,
-    revision: u64,
-    idle_sandboxes: Vec<IdleSandbox>,
-) -> bool {
-    if revision < state.idle_revision {
+fn apply_idle_snapshot(state: &mut MutableState, snapshot: IdlePoolSnapshot) -> bool {
+    if snapshot.revision < state.idle_snapshot.revision {
         return false;
     }
-    state.idle_revision = revision;
-    state.idle_sandboxes = idle_sandboxes;
+    state.idle_snapshot = snapshot;
     true
 }
 
@@ -1453,7 +1442,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_idle_info_at_revision_round_trip() {
+    async fn set_idle_snapshot_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
@@ -1467,9 +1456,9 @@ mod tests {
         let sb2 = SandboxId::new_v4();
         assert!(
             tracker
-                .set_idle_info_at_revision(
-                    1,
-                    vec![
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 1,
+                    idle_sandboxes: vec![
                         IdleSandbox {
                             reuse_key: "sess-1".into(),
                             sandbox_id: sb1,
@@ -1479,7 +1468,8 @@ mod tests {
                             sandbox_id: sb2,
                         },
                     ],
-                )
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
@@ -1504,25 +1494,27 @@ mod tests {
         tracker.write_initial().await.unwrap();
         assert!(
             tracker
-                .set_idle_info_at_revision(
-                    2,
-                    vec![IdleSandbox {
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 2,
+                    idle_sandboxes: vec![IdleSandbox {
                         reuse_key: "fresh".into(),
                         sandbox_id: fresh_id,
                     }],
-                )
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
         assert!(
             !tracker
-                .set_idle_info_at_revision(
-                    1,
-                    vec![IdleSandbox {
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 1,
+                    idle_sandboxes: vec![IdleSandbox {
                         reuse_key: "stale".into(),
                         sandbox_id: stale_id,
                     }],
-                )
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
@@ -1532,6 +1524,112 @@ mod tests {
         assert_eq!(sandboxes.len(), 1);
         assert_eq!(sandboxes[0]["reuse_key"], "fresh");
         assert_eq!(sandboxes[0]["sandbox_id"], fresh_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn blank_claim_restore_and_drain_publish_one_revisioned_inventory() {
+        use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
+        use crate::idle_pool::{
+            IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate, RestoreReservedIdleResult,
+        };
+        use crate::resource_budget::ResourceBudget;
+        use crate::status_file::{self, StatusForDoctor};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+        let budget = Arc::new(ResourceBudget::new(16, 32_768, 1.0, 0));
+        let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 2 });
+        let exact_id = SandboxId::new_v4();
+        let blank_id = SandboxId::new_v4();
+        assert!(matches!(
+            pool.park(
+                ParkedIdleCandidateBuilder::new(
+                    "thread:exact",
+                    ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap()
+                )
+                .with_sandbox_id(exact_id)
+                .build()
+            ),
+            ParkResult::Parked
+        ));
+        assert!(matches!(
+            pool.park(ParkedIdleCandidate::blank(
+                Box::new(sandbox_mock::MockSandbox::new(blank_id.to_string())),
+                Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
+                ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap(),
+                blank_id,
+                "vm0/default".into(),
+                None,
+            )),
+            ParkResult::Parked
+        ));
+
+        let ready = pool.status_snapshot();
+        tracker.set_idle_snapshot(ready.clone()).await.unwrap();
+        let wire = read_status(&path);
+        assert_eq!(
+            wire["idle_sandboxes"],
+            serde_json::json!([{
+                "reuse_key": "thread:exact", "sandbox_id": exact_id.to_string()
+            }])
+        );
+        assert_eq!(
+            wire["blank_sandboxes"],
+            serde_json::json!([{
+                "sandbox_id": blank_id.to_string()
+            }])
+        );
+        let doctor: StatusForDoctor = status_file::read_as(dir.path()).await.unwrap().unwrap();
+        assert_eq!(doctor.idle_sandboxes().len(), 1);
+        assert_eq!(doctor.blank_sandboxes[0].sandbox_id, blank_id.to_string());
+        assert!(doctor.active_runs.is_empty());
+
+        let reservation = pool.reserve_blank("vm0/default", &None).unwrap();
+        assert!(reservation.reuse_key().is_none());
+        let claimed = pool.status_snapshot();
+        let run_id = RunId::new_v4();
+        tracker
+            .add_preparing_run_with_idle_snapshot(run_id, blank_id, claimed.clone())
+            .await
+            .unwrap();
+        assert!(!tracker.set_idle_snapshot(ready).await.unwrap());
+        let wire = read_status(&path);
+        assert!(wire.get("blank_sandboxes").is_none());
+        assert_eq!(wire["idle_sandboxes"].as_array().unwrap().len(), 1);
+        assert_eq!(wire["active_runs"][0]["sandbox_id"], blank_id.to_string());
+        assert_eq!(wire["active_runs"][0]["phase"], "preparing");
+
+        assert!(matches!(
+            pool.restore_reserved(reservation),
+            RestoreReservedIdleResult::Restored
+        ));
+        let restored = pool.status_snapshot();
+        tracker.set_idle_snapshot(restored.clone()).await.unwrap();
+        tracker
+            .remove_run_if_matching(run_id, blank_id)
+            .await
+            .unwrap();
+        assert!(!tracker.set_idle_snapshot(claimed).await.unwrap());
+        let doctor: StatusForDoctor = status_file::read_as(dir.path()).await.unwrap().unwrap();
+        assert!(doctor.active_runs.is_empty());
+        assert_eq!(doctor.idle_sandboxes()[0].sandbox_id, exact_id.to_string());
+        assert_eq!(doctor.blank_sandboxes[0].sandbox_id, blank_id.to_string());
+        assert_eq!(budget.allocated().2, 2);
+
+        let cleanup = pool.drain();
+        tracker
+            .set_idle_snapshot(pool.status_snapshot())
+            .await
+            .unwrap();
+        assert!(!tracker.set_idle_snapshot(restored).await.unwrap());
+        let wire = read_status(&path);
+        assert!(wire.get("idle_sandboxes").is_none());
+        assert!(wire.get("blank_sandboxes").is_none());
+        for job in cleanup {
+            job.run().await;
+        }
+        assert_eq!(budget.allocated().2, 0);
     }
 
     #[tokio::test]
@@ -1545,13 +1643,14 @@ mod tests {
         tracker.write_initial().await.unwrap();
         assert!(
             tracker
-                .set_idle_info_at_revision(
-                    1,
-                    vec![IdleSandbox {
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 1,
+                    idle_sandboxes: vec![IdleSandbox {
                         reuse_key: "sess-replaced".into(),
                         sandbox_id: original_id,
                     }],
-                )
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
@@ -1564,20 +1663,25 @@ mod tests {
         // Meanwhile the same reuse key is parked again with a newer sandbox.
         assert!(
             tracker
-                .set_idle_info_at_revision(
-                    3,
-                    vec![IdleSandbox {
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 3,
+                    idle_sandboxes: vec![IdleSandbox {
                         reuse_key: "sess-replaced".into(),
                         sandbox_id: replacement_id,
                     }],
-                )
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
 
         assert!(
             !tracker
-                .set_idle_info_at_revision(delayed_cleanup_revision, delayed_cleanup_snapshot)
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: delayed_cleanup_revision,
+                    idle_sandboxes: delayed_cleanup_snapshot,
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
@@ -1602,26 +1706,30 @@ mod tests {
         tracker.write_initial().await.unwrap();
         assert!(
             tracker
-                .set_idle_info_at_revision(
-                    2,
-                    vec![IdleSandbox {
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 2,
+                    idle_sandboxes: vec![IdleSandbox {
                         reuse_key: "fresh".into(),
                         sandbox_id: idle_id,
                     }],
-                )
+                    ..Default::default()
+                })
                 .await
                 .unwrap()
         );
         assert!(
             !tracker
-                .add_running_run_with_idle_info_at_revision(
+                .add_running_run_with_idle_snapshot(
                     run_id,
                     active_id,
-                    1,
-                    vec![IdleSandbox {
-                        reuse_key: "stale".into(),
-                        sandbox_id: stale_id,
-                    }],
+                    IdlePoolSnapshot {
+                        revision: 1,
+                        idle_sandboxes: vec![IdleSandbox {
+                            reuse_key: "stale".into(),
+                            sandbox_id: stale_id,
+                        }],
+                        ..Default::default()
+                    }
                 )
                 .await
                 .unwrap()
@@ -1651,14 +1759,17 @@ mod tests {
         tracker.write_initial().await.unwrap();
         assert!(
             tracker
-                .add_preparing_run_with_idle_info_at_revision(
+                .add_preparing_run_with_idle_snapshot(
                     run_id,
                     active_id,
-                    1,
-                    vec![IdleSandbox {
-                        reuse_key: "fresh-create-after-reuse-miss".into(),
-                        sandbox_id: idle_id,
-                    }],
+                    IdlePoolSnapshot {
+                        revision: 1,
+                        idle_sandboxes: vec![IdleSandbox {
+                            reuse_key: "fresh-create-after-reuse-miss".into(),
+                            sandbox_id: idle_id,
+                        }],
+                        ..Default::default()
+                    }
                 )
                 .await
                 .unwrap()
@@ -1677,12 +1788,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_idle_info_at_revision_empty_omitted() {
+    async fn set_idle_snapshot_empty_omitted() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        assert!(tracker.set_idle_info_at_revision(1, vec![]).await.unwrap());
+        assert!(
+            tracker
+                .set_idle_snapshot(IdlePoolSnapshot {
+                    revision: 1,
+                    idle_sandboxes: vec![],
+                    ..Default::default()
+                })
+                .await
+                .unwrap()
+        );
 
         let status = read_status(&path);
         assert!(

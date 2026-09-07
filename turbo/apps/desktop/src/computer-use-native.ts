@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ComputerUseCommandBudget } from "./computer-use-command-budget";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   resolveNativeHelperPath,
@@ -6,6 +7,7 @@ import {
 } from "./native-helper-path";
 import type {
   AccessibilityAppStateSnapshot,
+  ComputerUseCommand,
   ComputerUseCommandFailure,
   ComputerUseCoordinateBounds,
   ComputerUseMouseButton,
@@ -68,6 +70,14 @@ export interface ComputerUseNativeAppRecord {
 }
 
 export interface ComputerUseNativeBackend {
+  readonly isCleanupPending?: () => boolean;
+  readonly getRuntimeVersion?: () => string | null;
+  readonly validateCommand?: (command: ComputerUseCommand) => void;
+  readonly setCommandBudget?: (budget: ComputerUseCommandBudget | null) => void;
+  readonly supportsWindowScroll?: boolean;
+  readonly isAvailable?: () => boolean;
+  readonly forceStop?: () => Promise<void>;
+  readonly discoveryNote?: string;
   readonly dispose: (reason?: ComputerUseNativeShutdownReason) => Promise<void>;
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
   readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
@@ -584,6 +594,8 @@ const DEFAULT_RUNTIME_SHUTDOWN_GRACE_MS = 1_000;
 
 class ComputerUseNativeRuntimeClient {
   private runtime: ComputerUseNativeRuntimeProcess | null = null;
+  private readonly retiringRuntimes =
+    new Set<ComputerUseNativeRuntimeProcess>();
   private requestCounter = 0;
   private state: ComputerUseNativeRuntimeClientState = "open";
   private readonly pending = new Map<string, PendingRuntimeRequest>();
@@ -608,8 +620,16 @@ class ComputerUseNativeRuntimeClient {
     // tracks completion only and swallows the outcome so a single rejected
     // request never poisons the chain for the requests queued behind it.
     this.queuedRequestCount += 1;
-    const run = this.queueTail.then(() => {
+    const run = this.queueTail.then(async () => {
       this.queuedRequestCount -= 1;
+      for (const runtime of this.retiringRuntimes) {
+        if (!(await this.waitForRuntimeClose(runtime))) {
+          throw new ComputerUseNativeHelperError(
+            "accessibility_unavailable",
+            "Previous native Computer Use runtime has not exited",
+          );
+        }
+      }
       // Disposal may start while this request is waiting behind another one.
       // Re-check at dispatch time so a queued request cannot respawn a helper
       // after shutdown has begun.
@@ -641,6 +661,7 @@ class ComputerUseNativeRuntimeClient {
         if (this.runtime === runtime) {
           this.runtime = null;
         }
+        this.retiringRuntimes.add(runtime);
         runtime.stopReason = "timeout_replace";
         runtime.terminalErrorReported = true;
         this.signalRuntime(runtime, "SIGKILL");
@@ -699,14 +720,18 @@ class ComputerUseNativeRuntimeClient {
     this.state = "closing";
     this.rejectAll(this.closedError());
     const runtime = this.runtime;
-    this.disposePromise = (
-      runtime ? this.stopRuntime(runtime, reason) : Promise.resolve()
-    ).finally(() => {
-      if (this.runtime === runtime) {
-        this.runtime = null;
-      }
-      this.state = "closed";
-    });
+    const runtimes = new Set(this.retiringRuntimes);
+    if (runtime) runtimes.add(runtime);
+    this.disposePromise = Promise.all(
+      [...runtimes].map((owned) => this.stopRuntime(owned, reason)),
+    )
+      .then(() => {})
+      .finally(() => {
+        if (this.runtime === runtime) {
+          this.runtime = null;
+        }
+        this.state = "closed";
+      });
     return this.disposePromise;
   }
 
@@ -896,19 +921,18 @@ class ComputerUseNativeRuntimeClient {
     }
 
     runtime.terminalErrorReported = true;
-    this.reportRuntimeError(
-      new ComputerUseNativeHelperError(
-        "accessibility_unavailable",
-        "Native Computer Use runtime did not exit after SIGKILL",
-      ),
-      {
-        mode: "serve",
-        requestKind: "runtime",
-        stage: "shutdown",
-        terminationReason: reason,
-        stderr: runtime.stderr.trim(),
-      },
+    const error = new ComputerUseNativeHelperError(
+      "accessibility_unavailable",
+      "Native Computer Use runtime did not exit after SIGKILL",
     );
+    this.reportRuntimeError(error, {
+      mode: "serve",
+      requestKind: "runtime",
+      stage: "shutdown",
+      terminationReason: reason,
+      stderr: runtime.stderr.trim(),
+    });
+    throw error;
   }
 
   private signalRuntime(
@@ -977,6 +1001,7 @@ class ComputerUseNativeRuntimeClient {
   }
 
   private markRuntimeClosed(runtime: ComputerUseNativeRuntimeProcess): void {
+    this.retiringRuntimes.delete(runtime);
     if (runtime.closed) {
       return;
     }

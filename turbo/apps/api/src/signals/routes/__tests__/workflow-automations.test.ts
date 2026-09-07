@@ -3688,11 +3688,17 @@ describe("okou workflow automations", () => {
           }
           const accessToken = authorization.replace("Bearer ", "");
           actions.push(`${accessToken}:resolve:${calendarId}`);
+          if (
+            accessToken === firstAccessToken &&
+            calendarId === legacyCalendarId
+          ) {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
           return HttpResponse.json({
-            id:
-              accessToken === firstAccessToken
-                ? "renamed-primary-resource"
-                : `${calendarId}-resource`,
+            id: `${calendarId}-resource`,
           });
         },
       ),
@@ -3723,7 +3729,11 @@ describe("okou workflow automations", () => {
           };
           return HttpResponse.json({
             id: body.id,
-            resourceId: `${accessToken}-resource-${call}`,
+            resourceId:
+              accessToken === firstAccessToken &&
+              (call === 1 || calendarId === "primary")
+                ? "renamed-primary-resource"
+                : `${accessToken}-resource-${call}`,
             resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
             expiration: String(now() + 60 * 60 * 1000),
           });
@@ -3825,7 +3835,10 @@ describe("okou workflow automations", () => {
     );
     await expect(
       wf.readAutomation(firstAutomation.body.id),
-    ).resolves.toMatchObject({ eventConfig: { calendarId: "primary" } });
+    ).resolves.toMatchObject({
+      enabled: true,
+      eventConfig: { calendarId: "primary" },
+    });
     mocks.clerk.session(
       second.fixture.userId,
       second.fixture.orgId,
@@ -3840,8 +3853,13 @@ describe("okou workflow automations", () => {
     const primaryWatchIndex = actions.indexOf(
       `${firstAccessToken}:watch:primary:3`,
     );
+    const primaryBaselineIndex = actions.indexOf(
+      `${firstAccessToken}:events:primary`,
+    );
     const legacyStopIndex = actions.indexOf(`${firstAccessToken}:stop`);
     expect(primaryWatchIndex).toBeGreaterThan(-1);
+    expect(primaryBaselineIndex).toBeGreaterThan(-1);
+    expect(primaryWatchIndex).toBeGreaterThan(primaryBaselineIndex);
     expect(legacyStopIndex).toBeGreaterThan(primaryWatchIndex);
     expect(
       actions.filter((action) => {
@@ -3876,22 +3894,30 @@ describe("okou workflow automations", () => {
     const accessToken = "shared-calendar-token";
     let watchCalls = 0;
     let primaryWatchCalls = 0;
-    let stopCalls = 0;
+    let eventListCalls = 0;
+    let legacyChannel:
+      | { readonly id: string; readonly token: string }
+      | undefined;
+    const stoppedResourceIds: string[] = [];
     server.use(
       http.get(
         "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
         () => {
+          eventListCalls += 1;
           return HttpResponse.json({ items: [], nextSyncToken: "shared-sync" });
         },
       ),
       http.get(
         "https://www.googleapis.com/calendar/v3/calendars/:calendarId",
         ({ params }) => {
+          if (params.calendarId === sharedCalendarId) {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
           return HttpResponse.json({
-            id:
-              params.calendarId === "primary"
-                ? "owner-primary-resource"
-                : "shared-resource",
+            id: "owner-primary-resource",
           });
         },
       ),
@@ -3908,19 +3934,34 @@ describe("okou workflow automations", () => {
               { status: 404 },
             );
           }
-          const body = (await request.json()) as { readonly id: string };
+          const body = (await request.json()) as {
+            readonly id: string;
+            readonly token: string;
+          };
+          if (params.calendarId !== "primary" && watchCalls === 1) {
+            legacyChannel = { id: body.id, token: body.token };
+          }
           return HttpResponse.json({
             id: body.id,
-            resourceId: "shared-channel-resource",
+            resourceId:
+              params.calendarId === "primary"
+                ? "owner-primary-resource"
+                : "shared-channel-resource",
             resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${String(params.calendarId)}/events`,
             expiration: String(now() + 60 * 60 * 1000),
           });
         },
       ),
-      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
-        stopCalls += 1;
-        return new HttpResponse(null, { status: 204 });
-      }),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/channels/stop",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            readonly resourceId: string;
+          };
+          stoppedResourceIds.push(body.resourceId);
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
     );
 
     const scenario = await setupFixture();
@@ -3961,10 +4002,35 @@ describe("okou workflow automations", () => {
       failed: 1,
     });
     await expect(wf.readAutomation(automation.body.id)).resolves.toMatchObject({
+      enabled: true,
       eventConfig: { calendarId: sharedCalendarId },
+      warning: "calendar_not_found",
     });
-    expect(primaryWatchCalls).toBe(0);
-    expect(stopCalls).toBe(0);
+    expect(primaryWatchCalls).toBe(1);
+    expect(stoppedResourceIds).toStrictEqual(["owner-primary-resource"]);
+    if (!legacyChannel) {
+      throw new Error("Expected the retained shared Calendar channel");
+    }
+    const eventListCallsBeforeWebhook = eventListCalls;
+    const lateNotification = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request("/api/webhooks/google-calendar", {
+      method: "POST",
+      headers: {
+        "x-goog-channel-id": legacyChannel.id,
+        "x-goog-channel-token": legacyChannel.token,
+        "x-goog-resource-id": "shared-channel-resource",
+        "x-goog-resource-state": "exists",
+        "x-goog-message-number": "2",
+      },
+    });
+    expect(lateNotification.status).toBe(200);
+    await expect(lateNotification.json()).resolves.toMatchObject({
+      success: true,
+      dispatched: 0,
+    });
+    expect(eventListCalls).toBe(eventListCallsBeforeWebhook);
 
     await accept(
       automationsClient().disable({
@@ -3973,7 +4039,362 @@ describe("okou workflow automations", () => {
       }),
       [200],
     );
-    expect(stopCalls).toBe(1);
+    expect(stoppedResourceIds).toStrictEqual([
+      "owner-primary-resource",
+      "shared-channel-resource",
+    ]);
+  });
+
+  it("suspends an unavailable primary Calendar once and recovers before resuming", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    const accessToken = "primary-action-required-token";
+    const accountEmail = "primary-action-required@example.com";
+    const resourceId = "primary-action-required-resource";
+    let targetAvailability: "available" | "missing" = "available";
+    let watchCalls = 0;
+    let baselineCalls = 0;
+    let incrementalCalls = 0;
+    let initialChannel:
+      | { readonly id: string; readonly token: string }
+      | undefined;
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        ({ request, params }) => {
+          expect(params.calendarId).toBe("primary");
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`,
+          );
+          const syncToken = new URL(request.url).searchParams.get("syncToken");
+          if (syncToken) {
+            incrementalCalls += 1;
+          } else {
+            baselineCalls += 1;
+          }
+          if (targetAvailability === "missing") {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
+          return HttpResponse.json({
+            items: [],
+            nextSyncToken: `primary-sync-${baselineCalls}`,
+          });
+        },
+      ),
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId",
+        ({ params }) => {
+          expect(params.calendarId).toBe("primary");
+          return targetAvailability === "missing"
+            ? HttpResponse.json(
+                { error: { status: "NOT_FOUND" } },
+                { status: 404 },
+              )
+            : HttpResponse.json({ id: "primary" });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request, params }) => {
+          expect(params.calendarId).toBe("primary");
+          watchCalls += 1;
+          if (targetAvailability === "missing") {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
+          const body = (await request.json()) as {
+            readonly id: string;
+            readonly token: string;
+          };
+          initialChannel ??= { id: body.id, token: body.token };
+          return HttpResponse.json({
+            id: body.id,
+            resourceId,
+            resourceUri:
+              "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            expiration: String(now() + 60 * 60 * 1000),
+          });
+        },
+      ),
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario, {
+      accessToken,
+      email: accountEmail,
+      subject: "primary-action-required-subject",
+    });
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    if (!initialChannel) {
+      throw new Error("Expected the initial Google Calendar watch channel");
+    }
+
+    targetAvailability = "missing";
+    const firstFailure = await accept(
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
+      }),
+      [200],
+    );
+    expect(firstFailure.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 1,
+    });
+    await expect(wf.readAutomation(automation.body.id)).resolves.toMatchObject({
+      enabled: true,
+      warning: "reconnect_required",
+    });
+
+    const repeatedFailure = await accept(
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
+      }),
+      [200],
+    );
+    expect(repeatedFailure.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 1,
+    });
+    const actionRequiredWarnings =
+      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+        return message === "Workflow watch requires user action";
+      });
+    expect(actionRequiredWarnings).toHaveLength(1);
+    const [, actionRequiredFields] = actionRequiredWarnings[0] ?? [];
+    expect(actionRequiredFields).toMatchObject({
+      provider: "google_calendar",
+      action: "suspend",
+      result: "action_required",
+      reason: "reconnect_required",
+      watchStateId: expect.any(String),
+      episodeStartedAt: expect.any(String),
+      targetType: "primary",
+    });
+
+    const lateNotification = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request("/api/webhooks/google-calendar", {
+      method: "POST",
+      headers: {
+        "x-goog-channel-id": initialChannel.id,
+        "x-goog-channel-token": initialChannel.token,
+        "x-goog-resource-id": resourceId,
+        "x-goog-resource-state": "exists",
+        "x-goog-message-number": "2",
+      },
+    });
+    expect(lateNotification.status).toBe(200);
+    await expect(lateNotification.json()).resolves.toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    expect(incrementalCalls).toBe(0);
+
+    targetAvailability = "available";
+    const recovered = await accept(
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
+      }),
+      [200],
+    );
+    expect(recovered.body).toStrictEqual({
+      success: true,
+      renewed: 1,
+      failed: 0,
+    });
+    const recoveredSummary = await wf.readAutomation(automation.body.id);
+    expect(recoveredSummary).toMatchObject({ enabled: true });
+    expect("warning" in recoveredSummary).toBeFalsy();
+    expect(baselineCalls).toBe(3);
+    expect(watchCalls).toBe(3);
+
+    await accept(
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
+      }),
+      [200],
+    );
+    const recoveryLogs = context.mocks.axiomLogging.debug.mock.calls.filter(
+      ([message]) => {
+        return message === "Workflow watch action-required episode recovered";
+      },
+    );
+    expect(recoveryLogs).toHaveLength(1);
+    const [, recoveryFields] = recoveryLogs[0] ?? [];
+    expect(recoveryFields).toMatchObject({
+      provider: "google_calendar",
+      action: "recover",
+      result: "ok",
+      reason: "reconnect_required",
+      watchStateId: isRecord(actionRequiredFields)
+        ? actionRequiredFields.watchStateId
+        : undefined,
+      episodeStartedAt: isRecord(actionRequiredFields)
+        ? actionRequiredFields.episodeStartedAt
+        : undefined,
+      targetType: "primary",
+    });
+    const transitionLogText = JSON.stringify([
+      actionRequiredWarnings[0],
+      recoveryLogs[0],
+    ]);
+    expect(transitionLogText).not.toContain(accessToken);
+    expect(transitionLogText).not.toContain(accountEmail);
+    expect(transitionLogText).not.toContain(initialChannel.token);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: automation.body.id },
+      }),
+      [200],
+    );
+  });
+
+  it("keeps transient Calendar renewal failures retryable", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    const accessToken = "transient-calendar-token";
+    let watchCalls = 0;
+    let exactTargetProbes = 0;
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        () => {
+          return HttpResponse.json({
+            items: [],
+            nextSyncToken: "transient-sync",
+          });
+        },
+      ),
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId",
+        () => {
+          exactTargetProbes += 1;
+          return HttpResponse.json({ id: "primary" });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request }) => {
+          watchCalls += 1;
+          if (watchCalls === 2) {
+            return HttpResponse.json(
+              { error: "rate limited" },
+              { status: 429 },
+            );
+          }
+          if (watchCalls === 3) {
+            return HttpResponse.json(
+              { error: "provider unavailable" },
+              { status: 500 },
+            );
+          }
+          if (watchCalls === 4) {
+            return HttpResponse.error();
+          }
+          if (watchCalls === 5) {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
+          const body = (await request.json()) as { readonly id: string };
+          return HttpResponse.json({
+            id: body.id,
+            resourceId: "transient-calendar-resource",
+            resourceUri:
+              "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            expiration: String(now() + 60 * 60 * 1000),
+          });
+        },
+      ),
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario, {
+      accessToken,
+      email: "transient-calendar@example.com",
+      subject: "transient-calendar-subject",
+    });
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: { kind: "event", eventType: "google-calendar-event-created" },
+      }),
+      [201],
+    );
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const result = await accept(
+        renewGoogleCalendarWatchScopeClient().renew({
+          body: {
+            org_id: scenario.fixture.orgId,
+            user_id: scenario.fixture.userId,
+          },
+        }),
+        [200],
+      );
+      expect(result.body).toStrictEqual({
+        success: true,
+        renewed: 0,
+        failed: 1,
+      });
+      const summary = await wf.readAutomation(automation.body.id);
+      expect(summary).toMatchObject({ enabled: true });
+      expect("warning" in summary).toBeFalsy();
+    }
+    expect(exactTargetProbes).toBe(1);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+        return message === "Workflow watch requires user action";
+      }),
+    ).toHaveLength(0);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: automation.body.id },
+      }),
+      [200],
+    );
   });
 
   it("leaves a Gmail automation disabled when watch setup fails", async () => {

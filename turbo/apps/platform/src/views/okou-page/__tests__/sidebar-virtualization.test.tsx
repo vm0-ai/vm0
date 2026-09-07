@@ -3,6 +3,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import {
   act,
@@ -84,6 +85,9 @@ function mockThreads(count: number): void {
       },
     });
   });
+  context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
 }
 
 function mockViewportHeight(height: () => number, threadCount = 120): void {
@@ -163,6 +167,26 @@ test("Wait for styles before mounting the virtual viewport", async () => {
   });
   expect(within(sidebar).getByText("History 25")).toBeInTheDocument();
   expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
+});
+
+test("Resize and navigate a loaded virtual viewport", async () => {
+  const threadCount = 6406;
+  mockThreads(threadCount);
+  let viewportHeight = 612;
+  mockViewportHeight(() => {
+    return viewportHeight;
+  }, threadCount);
+
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+  const sidebar = await screen.findByTestId("chat-list-column");
+  const rows = () => {
+    return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
+  };
+  await waitFor(() => {
+    expect(rows()).toHaveLength(25);
+  });
+  expect(within(sidebar).getByText("History 25")).toBeInTheDocument();
+  expect(within(sidebar).queryByText("History 26")).not.toBeInTheDocument();
 
   viewportHeight = 900;
   resizeWindow();
@@ -203,8 +227,24 @@ test("Keep the virtual viewport unmounted when the main stylesheet fails", async
   );
 });
 
+test("Use the fallback window before sidebar geometry is available", async () => {
+  mockThreads(120);
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+
+  const sidebar = screen.getByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(
+      within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row"),
+    ).toHaveLength(100);
+  });
+});
+
 test("Coalesce sidebar resize bursts and cancel pending measurements when hidden", async () => {
   mockThreads(120);
+  let viewportHeight = 612;
+  mockViewportHeight(() => {
+    return viewportHeight;
+  });
   await setupPage({
     context,
     path: `/chats/${threadId(0)}`,
@@ -215,11 +255,10 @@ test("Coalesce sidebar resize bursts and cancel pending measurements when hidden
     return within(sidebar).getAllByTestId("sidebar-chat-thread-virtual-row");
   };
   await waitFor(() => {
-    expect(rows()).toHaveLength(100);
+    expect(rows()).toHaveLength(25);
   });
 
   const viewport = within(sidebar).getByTestId("sidebar-scroll-area");
-  let viewportHeight = 120 * ROW_HEIGHT;
   let heightReads = 0;
   vi.spyOn(viewport, "clientHeight", "get").mockImplementation(() => {
     heightReads += 1;

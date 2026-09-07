@@ -19,7 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub use sandbox_fc::SnapshotOutputPaths as SnapshotPaths;
+pub use sandbox_firecracker::SnapshotOutputPaths as SnapshotPaths;
 use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;
@@ -103,7 +103,7 @@ pub fn touch_mtime(dir: &Path) {
 /// Guest paths (must match rootfs layout).
 pub mod guest {
     pub const STORAGE_MANIFEST: &str = guest_contracts::runtime_paths::STORAGE_MANIFEST_PATH;
-    pub const DOWNLOAD_BIN: &str = guest_contracts::guest_binary::DOWNLOAD_PATH;
+    pub const STORAGE_APPLY_BIN: &str = guest_contracts::guest_binary::STORAGE_APPLY_PATH;
     pub const RUN_AGENT: &str = guest_contracts::guest_binary::AGENT_PATH;
 }
 

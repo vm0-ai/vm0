@@ -44,7 +44,6 @@ import {
   resolveAgentPhoneUserLink,
   resolveOrgDefaultComposeId,
   storeOutboundAgentPhoneMessage,
-  stripAgentPhoneMention,
   touchAgentPhoneUserLink,
   type AgentPhoneChannel,
   type AgentPhoneUserLink,
@@ -964,12 +963,8 @@ function enrichAgentPhonePrompt(opts: {
   readonly prompt: string;
   readonly messageId: string;
   readonly mediaUrl: string | null;
-  readonly isGroup: boolean;
 }): string {
-  const promptText = opts.isGroup
-    ? stripAgentPhoneMention(opts.prompt)
-    : opts.prompt.trim();
-  const parts = [promptText];
+  const parts = [opts.prompt.trim()];
   if (opts.mediaUrl) {
     parts.push(
       formatAgentPhoneFileForContext({
@@ -1877,7 +1872,6 @@ export const handleAgentPhoneMessage$ = command(
       prompt: params.event.body,
       messageId: params.event.messageId,
       mediaUrl: params.event.mediaUrl,
-      isGroup,
     });
 
     const result = await set(

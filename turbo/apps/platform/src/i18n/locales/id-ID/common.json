@@ -1035,19 +1035,35 @@
       "continuation": {
         "activationErrorDescription": "Kami tidak dapat menyelesaikan proses masuk. Mulai lagi dan coba kembali.",
         "activationErrorTitle": "Proses masuk tidak dapat diselesaikan",
+        "backupDescription": "Simpan kode ini di tempat yang aman. Setiap kode dapat digunakan sekali jika Anda kehilangan akses ke ponsel.",
+        "backupTitle": "Simpan kode cadangan Anda",
         "chooseOrganizationDescription": "Pilih organisasi untuk melanjutkan ke {{brandName}}.",
         "chooseOrganizationTitle": "Pilih organisasi",
         "completeDescription": "Mengarahkan Anda ke {{brandName}}.",
         "completeTitle": "Proses masuk selesai",
+        "createOrganization": "Buat organisasi",
+        "invitationError": "Undangan ini tidak dapat diterima. Coba lagi, atau minta undangan baru jika tautan ini telah kedaluwarsa.",
+        "joinOrganization": "Bergabung dengan {{organizationName}}",
         "loadingDescription": "Memeriksa langkah berikutnya yang diperlukan akun Anda.",
         "loadingTitle": "Menyelesaikan proses masuk",
         "noOrganizationsDescription": "Akun ini tidak memiliki organisasi yang tersedia. Minta akses kepada administrator organisasi, lalu mulai lagi.",
         "noOrganizationsTitle": "Tidak ada organisasi yang tersedia",
+        "organizationName": "Nama organisasi",
+        "passwordTaskError": "Kata sandi Anda tidak dapat diperbarui. Pilih kata sandi yang lebih kuat dan coba lagi.",
+        "phoneNumberLabel": "Nomor telepon",
         "recoveryAction": "Mulai lagi",
+        "savedCodes": "Saya sudah menyimpan kode",
         "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "secondFactorTitle": "Verifikasi tambahan diperlukan",
+        "securityDescription": "Tambahkan cara kedua untuk memverifikasi identitas Anda.",
+        "securityTitle": "Siapkan verifikasi dua langkah",
         "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "sendCode": "Kirim kode",
+        "setupKey": "Kunci penyiapan",
+        "setupKeyDescription": "Tambahkan kunci penyiapan ini ke aplikasi autentikator, lalu masukkan kode yang dihasilkan.",
         "signedInAs": "Masuk sebagai {{identifier}}",
+        "taskComplete": "Pengaturan keamanan Anda tersimpan. Lanjutkan untuk menyelesaikan proses masuk.",
+        "taskError": "Langkah ini tidak dapat diselesaikan. Periksa detail Anda dan coba lagi.",
         "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "unsupportedTitle": "Langkah masuk tidak tersedia"
       },
@@ -1852,6 +1868,19 @@
     "composer": {
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
+      "create": {
+        "chooseStyle": "Pilih gaya",
+        "chooseTemplate": "Pilih templat",
+        "exit": "Keluar dari mode pembuatan",
+        "image": "Buat gambar",
+        "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
+        "presentation": "Buat presentasi",
+        "presentationPlaceholder": "Apa topik presentasi Anda?",
+        "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "title": "Buat",
+        "video": "Buat video",
+        "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
+      },
       "createWorkflow": "Buat alur kerja",
       "imageModelForThisChat": "Model gambar untuk chat ini",
       "message": "Pesan",
@@ -1909,7 +1938,6 @@
       "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",
       "addConnectors": "Tambahkan konektor",
-      "authorizationFailed": "{{connectorName}} terhubung tetapi tidak dapat diotorisasi untuk {{agentName}}",
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
@@ -2011,10 +2039,7 @@
       },
       "format": {
         "auto": "Otomatis",
-        "filter": "Filter referensi gaya berdasarkan format",
-        "landscape": "Lanskap · 16:9",
-        "output": "Format keluaran",
-        "portrait": "Potret · 9:16"
+        "output": "Format keluaran"
       },
       "heading": "Buat video intro Anda",
       "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
@@ -2028,8 +2053,17 @@
       },
       "style": {
         "auto": "Biarkan Okou memilih",
-        "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
-        "emptyFormat": "Tidak ada referensi gaya yang sesuai dengan format ini.",
+        "browseGroups": "Jelajahi menurut gaya",
+        "description": "Gaya menentukan adegan, transisi, teks overlay, dan tempo.",
+        "groups": {
+          "cinematic": "Film dan fotografi",
+          "handmade": "Kerajinan dan material",
+          "iconic-artist": "Seni dan desain",
+          "other": "Gaya lainnya",
+          "pop-culture": "Budaya pop",
+          "print": "Percetakan dan penerbitan",
+          "retro-tech": "Teknologi retro dan antarmuka"
+        },
         "heading": "Pilih referensi gaya",
         "label": "Referensi gaya",
         "preview": "Pratinjau {{title}}",
@@ -2161,6 +2195,7 @@
     "run": {
       "automatedRun": "Eksekusi otomatis",
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
+      "collapseHistoryMessage": "Ciutkan pesan riwayat: {{message}}",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {
@@ -4957,12 +4992,9 @@
         "loading": "Memuat model...",
         "menu": {
           "adjustSettings": "Sesuaikan pengaturan {{model}}",
-          "backToChatModels": "Kembali ke model chat",
           "backToModels": "Kembali ke model",
-          "cancel": "Batal",
           "changeModel": "Ubah model {{category}}, {{model}}",
-          "chatSettings": "Pengaturan chat",
-          "confirm": "Konfirmasi"
+          "chatSettings": "Pengaturan chat"
         },
         "models": "Model",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",

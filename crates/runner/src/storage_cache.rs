@@ -9,7 +9,7 @@
 //! agent process has spawned. Once guest staging succeeds, the plan's
 //! archive source is resolved to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
-//! so `guest-download` reads the guest-local staged archive instead of
+//! so `guest-storage-apply` reads the guest-local staged archive instead of
 //! re-fetching.
 //!
 //! Eligible fresh and reused sandbox attempts can assign bounded cold
@@ -29,7 +29,7 @@
 //! inconsistent URL to the guest.
 //!
 //! Runtime contract: `file://` URLs produced here point to guest-local archives
-//! staged under [`GUEST_STAGE_DIR`]. `guest-download` supports that scheme and
+//! staged under [`GUEST_STAGE_DIR`]. `guest-storage-apply` supports that scheme and
 //! treats missing local archives as a broken staging contract.
 
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
@@ -2103,7 +2103,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
 }
 
 /// Runner-owned archive delivery uses the shared bounded timeout and falls
-/// back to guest-download when its best-effort request cannot complete.
+/// back to guest-storage-apply when its best-effort request cannot complete.
 async fn fetch_fresh_archive(
     http: &Client,
     archive_url: &str,
@@ -7580,7 +7580,7 @@ mod tests {
 
         probe.assert_calls_async(OBJECT_DOWNLOAD_MAX_ATTEMPTS).await;
 
-        // archive_url untouched — guest-download will retry via the original URL.
+        // archive_url untouched — guest-storage-apply will retry via the original URL.
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert_background_op(
             &records,

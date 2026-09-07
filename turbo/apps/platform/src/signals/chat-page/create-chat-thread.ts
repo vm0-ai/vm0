@@ -6,7 +6,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { delay, timeout } from "signal-timers";
+import { timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
@@ -85,6 +85,7 @@ import type { ModelProviderSelection } from "../../views/okou-page/components/mo
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
@@ -140,6 +141,7 @@ import {
   embedMermaidSignals,
   type MermaidDiagramRegistry,
 } from "../mermaid-diagram.ts";
+import { embedMarkdownArtifacts$ } from "./markdown-artifacts.ts";
 import {
   createImageLoadRegistry,
   embedImageLoadSignals,
@@ -852,29 +854,25 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
   // change comes in or when the draft is cleared on send.
   const draftSyncReset$ = resetSignal();
 
-  const debouncedSyncDraft$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
-      signal.throwIfAborted();
-      if (get(optimisticCreateUnsettled$)) {
-        L.debug("draft sync skipped for unsettled optimistic thread create", {
-          threadId,
-        });
-        return;
-      }
+  const syncDraft$ = command(async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    if (get(optimisticCreateUnsettled$)) {
+      L.debug("draft sync skipped for unsettled optimistic thread create", {
+        threadId,
+      });
+      return;
+    }
 
-      const attachments = get(draft.attachments$);
+    const attachments = get(draft.attachments$);
 
-      const infos = await Promise.allSettled(
-        attachments.map((a) => {
-          return get(a.fileInfo$);
-        }),
-      );
-      signal.throwIfAborted();
-      const persisted = collectSuccessfulAttachmentInfos(
-        attachments,
-        infos,
-      ).map((r) => {
+    const infos = await Promise.allSettled(
+      attachments.map((a) => {
+        return get(a.fileInfo$);
+      }),
+    );
+    signal.throwIfAborted();
+    const persisted = collectSuccessfulAttachmentInfos(attachments, infos).map(
+      (r) => {
         const annotations = get(r.attachment.annotations$);
         const annotatedFileId = get(r.attachment.annotatedFileId$);
         return {
@@ -886,23 +884,28 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
           ...(annotatedFileId ? { annotatedFileId } : {}),
           ...(annotations ? { annotations } : {}),
         };
-      });
-      const payload = buildDraftPersistencePayload({
-        input: get(draft.input$),
-        editorDocument: set(draft.readEditorDocument$),
-        generationTemplate: get(draft.generationTemplate$),
-        attachments: persisted,
-      });
+      },
+    );
+    const payload = buildDraftPersistencePayload({
+      input: get(draft.input$),
+      editorDocument: set(draft.readEditorDocument$),
+      generationTemplate: get(draft.generationTemplate$),
+      attachments: persisted,
+    });
 
-      await set(
-        patchChatThreadDraft$,
-        {
-          threadId,
-          ...payload,
-        },
-        signal,
-      );
-    },
+    await set(
+      patchChatThreadDraft$,
+      {
+        threadId,
+        ...payload,
+      },
+      signal,
+    );
+  });
+
+  const debouncedSyncDraft$ = debounceCommand(
+    syncDraft$,
+    DRAFT_SYNC_DEBOUNCE_MS,
   );
 
   const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
@@ -1778,8 +1781,6 @@ interface EventTreeRegistries {
 }
 
 function createCardRefRegistrar({
-  chatActionContext,
-  artifactCardSignals,
   connectorCardSignals,
   connectorAccountActionCardSignals,
   permissionCardSignals,
@@ -1792,13 +1793,6 @@ function createCardRefRegistrar({
   return command(
     ({ set }, descriptor: CardDescriptorBlock): MarkdownCardRef => {
       switch (descriptor.type) {
-        case "artifact": {
-          return {
-            kind: descriptor.type,
-            signals: set(artifactCardSignals.register$, descriptor.descriptor),
-            threadId: chatActionContext.threadId,
-          };
-        }
         case "connector-action": {
           return {
             kind: descriptor.type,
@@ -1879,6 +1873,42 @@ interface RichEventTreePlan {
   readonly descriptors: readonly CardDescriptorBlock[];
 }
 
+function createEventTreeParser(registries: EventTreeRegistries) {
+  const {
+    chatActionContext,
+    mermaidDiagrams,
+    artifactCardSignals,
+    imageLoads,
+  } = registries;
+  const registerCardRef$ = createCardRefRegistrar(registries);
+  return command(({ set }, plan: RichEventTreePlan): Root => {
+    const cards = new Map<string, MarkdownCardRef>();
+    for (const descriptor of plan.descriptors) {
+      cards.set(
+        markdownCardKey(cardSlotUrl(descriptor)),
+        set(registerCardRef$, descriptor),
+      );
+    }
+    const tree = parseMarkdownTree(plan.treeSource, {
+      mermaid: true,
+      cards,
+    });
+    embedMermaidSignals(tree, (code) => {
+      return set(mermaidDiagrams.register$, code);
+    });
+    set(
+      embedMarkdownArtifacts$,
+      tree,
+      artifactCardSignals,
+      chatActionContext.threadId,
+    );
+    embedImageLoadSignals(tree, (url) => {
+      return set(imageLoads.register$, url);
+    });
+    return tree;
+  });
+}
+
 function planEventTreeUpdates(
   events: readonly ChatEvent[],
   current: ReadonlyMap<string, EventTree>,
@@ -1942,7 +1972,7 @@ function markPendingEventTreesFailed(
 }
 
 function createEventTreeSignals(registries: EventTreeRegistries) {
-  const { chatActionContext, mermaidDiagrams, imageLoads } = registries;
+  const { chatActionContext } = registries;
 
   const internalEventTrees$ = state<ReadonlyMap<string, EventTree>>(new Map());
   const eventTrees$ = computed((get): ReadonlyMap<string, Root> => {
@@ -1964,7 +1994,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
     return errors;
   });
 
-  const registerCardRef$ = createCardRefRegistrar(registries);
+  const parseEventTree$ = createEventTreeParser(registries);
   const parseRichEventTrees$ = command(
     async (
       { get, set },
@@ -1985,23 +2015,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         ) {
           continue;
         }
-        const cards = new Map<string, MarkdownCardRef>();
-        for (const descriptor of plan.descriptors) {
-          cards.set(
-            markdownCardKey(cardSlotUrl(descriptor)),
-            set(registerCardRef$, descriptor),
-          );
-        }
-        const tree = parseMarkdownTree(plan.treeSource, {
-          mermaid: true,
-          cards,
-        });
-        embedMermaidSignals(tree, (code) => {
-          return set(mermaidDiagrams.register$, code);
-        });
-        embedImageLoadSignals(tree, (url) => {
-          return set(imageLoads.register$, url);
-        });
+        const tree = set(parseEventTree$, plan);
         parsed ??= new Map(pending);
         parsed.set(plan.eventId, {
           content: plan.content,

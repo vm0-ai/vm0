@@ -5,6 +5,7 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
+import { setupKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import { openThreeColumnSearchDialog$ } from "./sidebar-state.ts";
@@ -106,6 +107,7 @@ function shouldHandleUniversalSearchShortcut(event: KeyboardEvent): boolean {
 export const setupGlobalKeyboardShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
     set(setupThreadNumberShortcuts$, signal);
+    set(setupKeyboardShortcutHints$, signal);
     setupGlobalShortcut(
       {
         [GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding]: {

@@ -2,7 +2,7 @@
 
 //! Local process-control IPC channel for a guest operation control sink.
 //!
-//! This crate defines the local, blocking protocol used after `vsock-guest`
+//! This crate defines the local, blocking protocol used after `guest-control-server`
 //! exposes an operation-control endpoint and `guest-agent` connects back to it.
 //! The control and companion placement channels use Linux abstract Unix stream
 //! sockets, so endpoint names are not filesystem paths. Root-owned placement
@@ -10,7 +10,7 @@
 //! sandbox-user launch chain.
 //!
 //! The endpoint is bootstrapped through [`CANONICAL_BOOTSTRAP_ENV`].
-//! `vsock-guest` creates the endpoint name with [`endpoint_name`], binds it with
+//! `guest-control-server` creates the endpoint name with [`endpoint_name`], binds it with
 //! [`bind_abstract_listener`], accepts a single control sink connection, and
 //! then drives request/response exchange. `guest-agent` resolves the endpoint
 //! name from the environment, connects with [`connect_abstract`], sends a hello
@@ -57,11 +57,11 @@
 //! ## Expected sequence
 //!
 //! ```text
-//! vsock-guest: bind_abstract_listener -> accept_with_timeout -> read_hello
+//! guest-control-server: bind_abstract_listener -> accept_with_timeout -> read_hello
 //! guest-agent:                         connect_abstract     -> write_hello
-//! vsock-guest: write_request
+//! guest-control-server: write_request
 //! guest-agent: read_request -> write_response
-//! vsock-guest: read_response
+//! guest-control-server: read_response
 //! ```
 //!
 //! The request and response exchange can repeat on the connected stream until
@@ -85,7 +85,7 @@ pub use transport::{
 
 /// Environment variable carrying the operation-control abstract socket name.
 ///
-/// `vsock-guest` sets this value to the output of [`endpoint_name`] when it
+/// `guest-control-server` sets this value to the output of [`endpoint_name`] when it
 /// starts a guest operation that supports a local control sink. `guest-agent`
 /// reads it during startup and connects to that abstract socket. Child agent
 /// CLI processes must not inherit this variable.
@@ -105,7 +105,7 @@ pub const MAX_CONTROL_PAYLOAD_BYTES: usize = 1024 * 1024;
 /// frame declares a diagnostic larger than this limit.
 pub const MAX_DIAGNOSTIC_BYTES: usize = 8 * 1024;
 
-/// Request forwarded from `vsock-guest` to the connected control sink.
+/// Request forwarded from `guest-control-server` to the connected control sink.
 ///
 /// The request payload is opaque to this crate. This crate only frames it,
 /// enforces the payload size limit, and preserves the message id used to match
@@ -126,7 +126,7 @@ pub struct ControlRequest {
 
 /// Response returned by the connected control sink.
 ///
-/// `vsock-guest` maps this local response into the outer host/guest
+/// `guest-control-server` maps this local response into the outer host/guest
 /// control-result protocol.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControlResponse {
@@ -147,25 +147,25 @@ pub struct ControlResponse {
 pub enum ControlResponseStatus {
     /// The control sink accepted and handled the request.
     ///
-    /// `vsock-guest` maps this to the outer delivered status.
+    /// `guest-control-server` maps this to the outer delivered status.
     Accepted,
 
     /// The control sink understood the request but declined it as an
     /// application-level outcome.
     ///
-    /// `vsock-guest` maps this to the outer rejected status without treating
+    /// `guest-control-server` maps this to the outer rejected status without treating
     /// the sink connection as broken.
     Rejected,
 
     /// The control sink is temporarily full and the caller may retry later.
     ///
-    /// `vsock-guest` maps this to the outer queue-full status without treating
+    /// `guest-control-server` maps this to the outer queue-full status without treating
     /// the sink connection as broken.
     QueueFull,
 
     /// The control sink failed while processing the request.
     ///
-    /// `vsock-guest` maps this to the outer sink-error status. This status is
+    /// `guest-control-server` maps this to the outer sink-error status. This status is
     /// distinct from local transport or frame parsing errors, which are
     /// returned as `io::Error` by the read/write helpers.
     Error,

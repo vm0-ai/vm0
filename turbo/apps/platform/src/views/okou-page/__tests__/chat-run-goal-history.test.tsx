@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
-import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
 import {
   queryMessageBody,
@@ -15,7 +15,6 @@ import {
   context,
   creditUsage,
   expectTextOrder,
-  findButton,
   installRunChat,
   promptEvent,
   readyChat,
@@ -65,12 +64,6 @@ function inRunGroup(
   runGroupId: string,
 ): MockChatEventInput {
   return { ...event, runGroupId };
-}
-
-function buttonsNamed(name: string): HTMLElement[] {
-  return queryAllByRoleFast("button").filter((button) => {
-    return button.getAttribute("aria-label") === name;
-  });
 }
 
 test("Review goal continuations as one work history", async () => {
@@ -197,8 +190,6 @@ test("Review goal continuations as one work history", async () => {
   expect(queryMessageBody("Validated the regional rollout")).toBeNull();
   expect(screen.queryByText("Keep checking launch readiness")).toBeNull();
   expect(screen.queryByText("Finish checking launch readiness")).toBeNull();
-
-  click(await findButton("Expand work history"));
 
   await expect(
     screen.findByText("Checked the initial launch evidence"),
@@ -450,8 +441,8 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
       return link.getAttribute("aria-label") === "View agent profile";
     }),
   ).toHaveLength(1);
-  expect(screen.queryByText("Model changed to GPT 5.6 Luna")).toBeNull();
-  expect(screen.queryByText("Model changed to GPT 5.6 Sol")).toBeNull();
+  expect(screen.getByText("Model changed to GPT 5.6 Luna")).toBeVisible();
+  expect(screen.getByText("Model changed to GPT 5.6 Sol")).toBeVisible();
   expect(
     screen.queryByText("Continue the deployment investigation with Luna"),
   ).toBeNull();
@@ -459,12 +450,6 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
     screen.queryByText("Continue the deployment investigation with Sol"),
   ).toBeNull();
 
-  click(await findButton("Expand work history"));
-
-  await expect(
-    screen.findByText("Model changed to GPT 5.6 Luna"),
-  ).resolves.toBeVisible();
-  expect(screen.getByText("Model changed to GPT 5.6 Sol")).toBeVisible();
   expect(screen.getByText("Checked the deployment logs")).toBeVisible();
   expectTextOrder(
     "Checked the deployment logs",
@@ -567,12 +552,12 @@ test("Start a fresh work history after interrupting a goal continuation", async 
   });
 
   await readyChat();
-  const workHistories = buttonsNamed("Expand work history");
+  const workHistories = document.querySelectorAll(
+    "[data-chat-run-work-history]",
+  );
   expect(workHistories).toHaveLength(2);
   expect(queryMessageBody("Checked the first rollout logs")).toBeNull();
   expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();
-
-  click(workHistories[0]!);
 
   await expect(
     screen.findByText("Checked the first rollout logs"),

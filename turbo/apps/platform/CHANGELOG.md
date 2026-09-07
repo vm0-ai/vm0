@@ -11,6 +11,134 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.860.0](https://github.com/vm0-ai/vm0/compare/app-v0.859.0...app-v0.860.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** refine chat work history ([#32369](https://github.com/vm0-ai/vm0/issues/32369)) ([12e41b0](https://github.com/vm0-ai/vm0/commit/12e41b0e8c7455c53e1e26906f47e7ce7b8eb012))
+* **platform:** route app realtime through shared worker ([#32366](https://github.com/vm0-ai/vm0/issues/32366)) ([02b8739](https://github.com/vm0-ai/vm0/commit/02b87392dba2e9d2c61ad34734ad3f091110d461))
+
+
+### Refactoring
+
+* **platform:** mount settings only while open ([#32374](https://github.com/vm0-ai/vm0/issues/32374)) ([b56cad8](https://github.com/vm0-ai/vm0/commit/b56cad81f87e15f42db67d44bdf7ec250fd2a846))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.4
+    * @okouai/core bumped to 8.633.0
+
+## [0.859.0](https://github.com/vm0-ai/vm0/compare/app-v0.858.3...app-v0.859.0) (2026-09-07)
+
+
+### Features
+
+* **app:** add create commands to the chat composer ([#32296](https://github.com/vm0-ai/vm0/issues/32296)) ([d821b1b](https://github.com/vm0-ai/vm0/commit/d821b1b1f56934f51a7a99adb45bfd1d813d32d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.632.0
+
+## [0.858.3](https://github.com/vm0-ai/vm0/compare/app-v0.858.2...app-v0.858.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **platform:** expand desktop selection within ai replies ([#32338](https://github.com/vm0-ai/vm0/issues/32338)) ([c9f6e05](https://github.com/vm0-ai/vm0/commit/c9f6e05544a950b9df4e7734a32f7335cd210512))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.3
+    * @okouai/core bumped to 8.631.5
+
+## [0.858.2](https://github.com/vm0-ai/vm0/compare/app-v0.858.1...app-v0.858.2) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.2
+    * @okouai/core bumped to 8.631.4
+
+## [0.858.1](https://github.com/vm0-ai/vm0/compare/app-v0.858.0...app-v0.858.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **auth:** complete invitations and required session tasks ([#32301](https://github.com/vm0-ai/vm0/issues/32301)) ([9e2c887](https://github.com/vm0-ai/vm0/commit/9e2c88767508d1a41c6bf8b7d7ed13f4c3f8bc60))
+* **intro-video:** support managed native video agent generation ([#32305](https://github.com/vm0-ai/vm0/issues/32305)) ([f6c13bf](https://github.com/vm0-ai/vm0/commit/f6c13bf47c6995bd8c65f753741488231c6ae980))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.1
+    * @okouai/connectors bumped to 3.8.1
+    * @okouai/core bumped to 8.631.3
+
+## [0.858.0](https://github.com/vm0-ai/vm0/compare/app-v0.857.0...app-v0.858.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** add recent and all work history views ([#32250](https://github.com/vm0-ai/vm0/issues/32250)) ([bbecb35](https://github.com/vm0-ai/vm0/commit/bbecb355397440b13e3f00aa7fcde510ff54c2e6))
+* **platform:** group intro video styles by heygen tags ([#32209](https://github.com/vm0-ai/vm0/issues/32209)) ([e888e8d](https://github.com/vm0-ai/vm0/commit/e888e8dd852aac537f3a03b1a818f72c0b4da00b))
+
+
+### Bug Fixes
+
+* **app:** prevent microphone dimming when switching chat threads ([#32265](https://github.com/vm0-ai/vm0/issues/32265)) ([3e09554](https://github.com/vm0-ai/vm0/commit/3e09554e775fa577bb0e8e1e64e297e969b41b5b))
+* **platform:** keep the microphone button stable when switching conversations ([#32284](https://github.com/vm0-ai/vm0/issues/32284)) ([d0f1333](https://github.com/vm0-ai/vm0/commit/d0f1333ecaadd89b82f7100241315e8cf9877998)), closes [#32255](https://github.com/vm0-ai/vm0/issues/32255)
+* **platform:** reveal thread shortcuts on modifier hold ([#32262](https://github.com/vm0-ai/vm0/issues/32262)) ([e068f45](https://github.com/vm0-ai/vm0/commit/e068f4512ba61b694f5651676eedb43170f58374))
+* **platform:** simplify model picker settings and focus ([#32238](https://github.com/vm0-ai/vm0/issues/32238)) ([c365403](https://github.com/vm0-ai/vm0/commit/c3654039e0eb81100f4a040c259fc45c08235e43))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.0
+    * @okouai/connectors bumped to 3.8.0
+    * @okouai/core bumped to 8.631.2
+
+## [0.857.0](https://github.com/vm0-ai/vm0/compare/app-v0.856.0...app-v0.857.0) (2026-09-07)
+
+
+### Features
+
+* **voice:** transcribe overlapping audio segments with resumable progress ([#32059](https://github.com/vm0-ai/vm0/issues/32059)) ([77a06e4](https://github.com/vm0-ai/vm0/commit/77a06e48dc6dbed124f690305b7f075350dd42a7))
+
+
+### Bug Fixes
+
+* **platform:** preserve markdown artifact link presentation ([#32236](https://github.com/vm0-ai/vm0/issues/32236)) ([e26bf23](https://github.com/vm0-ai/vm0/commit/e26bf239d93ad89a64b8deabd8434728c9d54e50))
+* share debounce and throttle command scheduling ([#32086](https://github.com/vm0-ai/vm0/issues/32086)) ([22f9b37](https://github.com/vm0-ai/vm0/commit/22f9b377b6201d539d5645dfcfa906d333ad05f7))
+
+
+### Refactoring
+
+* **platform:** rename remaining internal brand identifiers ([#32247](https://github.com/vm0-ai/vm0/issues/32247)) ([8aec76c](https://github.com/vm0-ai/vm0/commit/8aec76c897feed2f412467cef2b61a0bc4884f9d)), closes [#32240](https://github.com/vm0-ai/vm0/issues/32240)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.411.0
+    * @okouai/core bumped to 8.631.1
+
 ## [0.856.0](https://github.com/vm0-ai/vm0/compare/app-v0.855.1...app-v0.856.0) (2026-09-07)
 
 

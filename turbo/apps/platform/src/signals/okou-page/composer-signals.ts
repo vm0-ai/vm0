@@ -30,7 +30,14 @@ import {
   semanticChatEventsFromChatEvents,
   type ChatRunModelSelection,
 } from "../chat-page/chat-event-state.ts";
-import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
+import {
+  createEditorDocumentSnapshot,
+  messageDocumentToDisplayText,
+} from "./user-message-document-codec.ts";
+import {
+  createComposerCreateSignals,
+  type ComposerCreateSignals,
+} from "./composer-create.ts";
 import {
   createWorkflowComposerSignals,
   type WorkflowComposerSignals,
@@ -250,6 +257,7 @@ interface ComposerTemplateSignals
 }
 
 export interface ComposerSignals {
+  readonly create: ComposerCreateSignals;
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
@@ -542,6 +550,7 @@ export function createComposerSignals(
     },
     feedback,
   );
+  const create = createComposerCreateSignals(workflowComposer, ui);
   const voice = createComposerVoiceInput(
     options,
     workflowComposer,
@@ -552,7 +561,7 @@ export function createComposerSignals(
     eventSignals,
     workflowComposer,
     ui.videoOptions,
-    voice,
+    { voice, create },
   );
   const fileInput = createComposerFileInputSignals();
   const workflowPrompt = createComposerWorkflowPromptSignals(
@@ -590,6 +599,7 @@ export function createComposerSignals(
 
   return {
     agentId: options.agentId,
+    create,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,
@@ -816,7 +826,10 @@ function createComposerSubmissionSignals(
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
-  voice: ComposerVoiceInputSignals,
+  {
+    voice,
+    create,
+  }: { voice: ComposerVoiceInputSignals; create: ComposerCreateSignals },
 ) {
   const { state$: voiceState$, owner$ } = voice;
   const draft = options.draft.signals;
@@ -870,14 +883,39 @@ function createComposerSubmissionSignals(
       if (!get(draft.attachmentUploadsReady$)) {
         return false;
       }
-      const videoRunOptions = await set(readVideoRunOptions$, signal);
+      const mode = get(create.mode$);
+      const videoRunOptions =
+        mode !== null && mode !== "video"
+          ? undefined
+          : await set(readVideoRunOptions$, signal);
+      signal.throwIfAborted();
+      const instruction = mode
+        ? `Create ${mode === "image" ? "an" : "a"} ${mode}.`
+        : null;
+      const document = submission.editorDocument.toEditorDocument();
+      const editorDocument = instruction
+        ? createEditorDocumentSnapshot(
+            workflowComposer.editor.schema.nodeFromJSON({
+              ...document,
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: instruction }],
+                },
+                ...(document.content ?? []),
+              ],
+            }),
+          )
+        : submission.editorDocument;
       return await set(
         options.submitMessage$,
         action,
         {
-          prompt: visiblePrompt,
+          prompt: instruction
+            ? `${instruction}\n\n${visiblePrompt}`
+            : visiblePrompt,
           generationTemplate: get(draft.generationTemplate$),
-          editorDocument: submission.editorDocument,
+          editorDocument,
           videoRunOptions,
         },
         signal,

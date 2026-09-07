@@ -64,6 +64,17 @@ pub enum SandboxError {
         timeout_ms: u64,
     },
 
+    /// An ordinary guarded request-frame write failed, independently of its deadline.
+    #[error("sandbox {operation} failed ({stage}): {source}")]
+    OperationWrite {
+        /// Operation whose request could not be written.
+        operation: SandboxOperation,
+        /// Host-observed byte-emission boundary of the failed write.
+        stage: SandboxOperationWriteStage,
+        /// Original transport failure, including its I/O kind and cause.
+        source: std::io::Error,
+    },
+
     /// Parking or unparking an idle sandbox failed.
     #[error("sandbox {transition} failed: {message}")]
     IdleTransition {
@@ -185,6 +196,24 @@ impl fmt::Display for SandboxOperationTimeoutStage {
             Self::BeforeFrameWrite => f.write_str("before frame write"),
             Self::FrameWrite => f.write_str("during frame write"),
             Self::AwaitingTerminalResponse => f.write_str("awaiting terminal response"),
+        }
+    }
+}
+
+/// Byte-emission boundary for an ordinary sandbox request-write failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SandboxOperationWriteStage {
+    /// This frame emitted no bytes; this does not assert connection health.
+    BeforeFrameWrite,
+    /// The frame write failed after admission and may be partial; retire the sandbox.
+    FrameWrite,
+}
+
+impl fmt::Display for SandboxOperationWriteStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BeforeFrameWrite => f.write_str("before frame write"),
+            Self::FrameWrite => f.write_str("during frame write"),
         }
     }
 }

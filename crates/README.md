@@ -1,56 +1,99 @@
 # Rust Crates
 
-This workspace contains Rust crates for the vm0 sandbox runtime — sandbox orchestration, guest execution, vsock communication, and supporting services.
+This workspace contains 28 Rust crates for sandbox orchestration, guest execution,
+control and RPC services, shared contracts, and developer/test support.
 
 ## Crates
 
-| Crate                 | Description                                                                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **runner**            | Sandbox orchestrator — polls for jobs (API or local queue), manages sandbox lifecycle, proxy, service install, and bridges to sandbox-fc |
-| **sandbox**           | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult`                               |
-| **sandbox-fc**        | Firecracker sandbox implementation — VM lifecycle, network namespace pool, NBD COW, snapshot restore                                     |
-| **nbd-cow**           | Userspace NBD COW device — block-level copy-on-write via Linux NBD, bitmap tracking, no dm-snapshot/loop devices                         |
-| **vsock-proto**       | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages                                               |
-| **vsock-host**        | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets                                                         |
-| **vsock-guest**       | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2                                                  |
-| **vsock-test**        | Integration tests for vsock — real host + real guest over Unix sockets                                                                   |
-| **guest-init**        | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest                      |
-| **guest-agent**       | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM                                   |
-| **guest-contracts**   | Runner/guest contracts — bootstrap environment variables, runtime path layout, and private runtime file helpers                          |
-| **guest-tool-exec**   | Explicit shell-tool launcher and runtime hook adapter for per-tool cgroup placement                                                      |
-| **guest-common**      | Guest-only shared utilities — logging macros and telemetry recording                                                                     |
-| **guest-download**    | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic                           |
-| **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL                                                 |
-| **guest-mock-codex**  | Mock Codex app-server for testing — speaks JSON-RPC over stdio and persists session artifacts                                            |
-| **guest-reseed**      | Entropy reseed after snapshot restore — mixes stdin entropy into /dev/urandom and forces CRNG reseed via RNDRESEEDCRNG                   |
-| **guest-write-file**  | Direct file writer for vsock `write_file` — writes stdin to guest files without shell startup overhead                                   |
-| **ably-subscriber**   | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection                  |
+| Crate                    | Responsibility                                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| runner                   | Host-side run orchestration, sandbox lifecycle, proxy, images and operational CLI                     |
+| sandbox                  | Provider-neutral sandbox interfaces and shared lifecycle/control types                                |
+| sandbox-firecracker      | Firecracker provider: VM lifecycle, networking, NBD COW and snapshot restore                          |
+| sandbox-mock             | Test implementation of the sandbox interfaces                                                         |
+| nbd-cow                  | Userspace Linux NBD block devices with copy-on-write storage                                          |
+| guest-control-proto      | Wire messages and codecs for controlling guest operations                                             |
+| guest-control-client     | Runner-side guest-control caller, response dispatch and operation tracking                            |
+| guest-control-server     | Guest control service embedded by guest-init in its child process                                     |
+| guest-control-tests      | Real client/server integration tests over Unix sockets and executable fixtures                        |
+| runner-rpc-proto         | Bounded framing and stream contracts for calls to Runner services                                     |
+| runner-rpc-client        | Guest-side Runner RPC caller/helper, without business-method dispatch                                 |
+| process-control-ipc      | Guest-local process control, Unix transport and descriptor handoff                                    |
+| guest-init               | Guest PID 1 initialization, signal supervision and child reaping                                      |
+| guest-agent              | Agent CLI lifecycle, heartbeat, events, checkpoints and session management                            |
+| guest-tool-exec          | Tool hook adaptation and placement-before-exec launcher                                               |
+| guest-storage-apply      | Storage/artifact manifest application: cleanup, preparation, extraction and instruction normalization |
+| guest-state-restore      | Entropy/clock restoration and timezone configuration, including timezone-only mode                    |
+| guest-write-file         | Direct stdin-to-file writes, including private and batch modes                                        |
+| session-history-selector | Selects retained native history candidates without rewriting live sessions                            |
+| claude-mock              | Claude test double, currently emitting CLI JSONL and session artifacts                                |
+| codex-mock               | Codex test double, currently implementing app-server JSON-RPC and session artifacts                   |
+| guest-contracts          | Shared Runner/guest runtime agreements, paths and filesystem helpers                                  |
+| api-contracts            | TypeScript-owned API bindings and shared decoding/route helpers                                       |
+| guest-telemetry          | Structured guest logging and operation telemetry                                                      |
+| ably-subscriber          | Subscribe-only Ably client with authentication and connection recovery                                |
+| shell-quote              | POSIX shell argument quoting                                                                          |
+| tracing-test-support     | Structured tracing capture for tests                                                                  |
+| xtask                    | Workspace developer checks, invoked through the cargo xtask alias                                     |
 
-## Architecture
+## Architecture and naming
 
+```text
+Runner -> guest-control-client -> guest-control-server (guest-init child)
+Guest  -> runner-rpc-client    -> Runner service endpoint
+Guest  -> process-control-ipc  -> guest-local process control / placement
 ```
-┌──────────────────────────────────────────┐
-│              Firecracker VM              │
-│                                          │
-│   guest-agent ── guest-download          │
-│       │                                  │
-│   guest-init (PID 1) + vsock-guest       │
-│                  │                       │
-│             vsock (CID=2, port=1000)     │
-└──────────────────┼───────────────────────┘
-                   │
-┌──────────────────┼───────────────────────┐
-│  Host            │                       │
-│                  │                       │
-│  runner ── sandbox-fc ── vsock-host      │
-│    │             │                       │
-│    │        sandbox (trait)              │
-│    │        nbd-cow (NBD COW)             │
-│    │                                     │
-│    ├── ably-subscriber (job polling)     │
-│    └── mitmproxy (HTTPS interception)    │
-└──────────────────────────────────────────┘
-```
+
+Client/server names describe application calling roles, not socket initiation.
+The guest opens the guest-control connection; Runner accepts it and calls guest
+operations. The transport remains vsock forwarded through Firecracker Unix
+sockets (or direct Unix sockets in integration tests). These services do not
+implement a generic vsock protocol. Runner uses sandbox-firecracker through the
+sandbox interfaces; guest-init remains PID 1 and embeds the control service in
+its child. No new daemon or crate boundary is implied by these names.
+
+A `guest-` package prefix is not an artifact inventory. The authoritative
+[guest binary inventory](runner/guest-binaries.json) separately records each
+package, binary, build environment key and installed path.
+
+### Source, executable and release identities
+
+Cargo package/directory/import names describe source responsibilities. Executable
+packages use the same name for their binary and runner build flag; their build
+environment variables use the uppercase underscore form. For example,
+`cargo build -p runner-rpc-client` produces `runner-rpc-client`, installed at
+`/usr/local/bin/runner-rpc-client`, with build flag `--runner-rpc-client` and
+build environment key `RUNNER_RPC_CLIENT_PATH`.
+
+The inventory records all installation directories and build environment keys.
+Privileged helpers keep their `/sbin` placement; other helpers stay under
+`/usr/local/bin`. API-owned mock selection settings such as
+`OKOU_MOCK_CLAUDE_PATH` remain separate from these build-time identities.
+
+Release configuration and workflow output keys use the new directory paths.
+Renamed crates use their new
+Cargo names as default release components and future tag prefixes, without
+old-name component overrides. Manifest path keys move with unchanged numeric
+versions; Release Please continues from those versions when new-name tags do not
+yet exist. Historical tags and changelog entries are unchanged. The first release
+under a new name may have a comparison link to a nonexistent new-name prior tag.
+Existing unrelated component overrides (such as runner-rs and api-contracts-rs)
+remain unchanged.
+
+Component-specific log tags, operation labels and test fixtures use the current
+component names. Guest-control worker threads use `gctl-` plus their task, with
+names limited to 15 bytes for Linux thread-name visibility. Rust tracing targets
+use their underscore form.
+External log/metric queries and local tracing filters must use the new identifiers.
+No old-name aliases or duplicate telemetry are emitted.
+
+Runner and its bundled guest helpers are built together. Local rootfs hashes
+include binary installation destinations and contents, and snapshot hashes include
+the rootfs hash. Binary cache digests include the source tree and guest inventory.
+Changing executable identities therefore creates distinct artifacts; existing
+instances drain on their existing artifacts while new builds use the new paths.
+Shared templates do not contain the injected helpers. Build scripts and explicit
+binary overrides must use flags and environment keys matching the runner revision.
 
 ## Runner Operations
 
@@ -91,12 +134,12 @@ for local diagnostics that are acceptable to miss in production logs.
 
 ## TLS in Guest Binaries
 
-Guest crates (`guest-agent`, `guest-download`) **must** use system certificate roots, not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures.
+Guest crates (`guest-agent`, `guest-storage-apply`) **must** use system certificate roots, not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures.
 
 Both HTTP clients in the workspace use `rustls-platform-verifier` to read from the system certificate store:
 
 - **`reqwest`** (async) — used by `guest-agent`, `runner`, `ably-subscriber` with the `rustls` feature (aws-lc-rs crypto provider auto-installed).
-- **`ureq`** (sync, no tokio) — used by `guest-download` with the `platform-verifier` feature. Uses `ring` by default.
+- **`ureq`** (sync, no tokio) — used by `guest-storage-apply` with the `platform-verifier` feature. Uses `ring` by default.
 
 ## Building
 
@@ -113,18 +156,19 @@ TARGET_TRIPLE=aarch64-unknown-linux-musl
 
 # Step 1: build guest binaries
 cargo build --target "$TARGET_TRIPLE" \
-  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-tool-exec -p guest-write-file \
+  -p guest-agent -p guest-storage-apply -p guest-init -p claude-mock -p codex-mock -p guest-state-restore -p guest-tool-exec -p guest-write-file -p runner-rpc-client \
   --profile ci
 
 # Step 2: build runner with embedded guests
 GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
-GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
+GUEST_STORAGE_APPLY_PATH="target/$TARGET_TRIPLE/ci/guest-storage-apply" \
 GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
-GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
-GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
-GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
+CLAUDE_MOCK_PATH="target/$TARGET_TRIPLE/ci/claude-mock" \
+CODEX_MOCK_PATH="target/$TARGET_TRIPLE/ci/codex-mock" \
+GUEST_STATE_RESTORE_PATH="target/$TARGET_TRIPLE/ci/guest-state-restore" \
 GUEST_TOOL_EXEC_PATH="target/$TARGET_TRIPLE/ci/guest-tool-exec" \
 GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
+RUNNER_RPC_CLIENT_PATH="target/$TARGET_TRIPLE/ci/runner-rpc-client" \
 cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```
 

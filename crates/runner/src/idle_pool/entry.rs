@@ -20,17 +20,44 @@ use crate::workspace_promotion::{
     abandon_unpublished_workspace_promotion, prepare_workspace_image_from_parked_sandbox,
 };
 
-const BLANK_REUSE_KEY_PREFIX: &str = "__vm0_blank__:";
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IdleSandboxKind {
     Exact,
     Blank,
 }
 
+/// Exact inventory belongs to a reuse identity; a ready blank belongs only to its sandbox.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum IdleSandboxIdentity {
+    Exact(String),
+    Blank(SandboxId),
+}
+
+impl IdleSandboxIdentity {
+    pub(crate) fn kind(&self) -> IdleSandboxKind {
+        match self {
+            Self::Exact(_) => IdleSandboxKind::Exact,
+            Self::Blank(_) => IdleSandboxKind::Blank,
+        }
+    }
+
+    pub(crate) fn reuse_key(&self) -> Option<&str> {
+        match self {
+            Self::Exact(reuse_key) => Some(reuse_key),
+            Self::Blank(_) => None,
+        }
+    }
+
+    fn into_reuse_key(self) -> Option<String> {
+        match self {
+            Self::Exact(reuse_key) => Some(reuse_key),
+            Self::Blank(_) => None,
+        }
+    }
+}
+
 pub(super) struct IdleSandboxMetadata {
-    pub(super) kind: IdleSandboxKind,
-    pub(super) reuse_key: String,
+    pub(super) identity: IdleSandboxIdentity,
     /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
     /// differs, but `sandbox_id` stays the same) and is the join key for
     /// doctor / kill / workspace-dir naming.
@@ -54,18 +81,18 @@ pub(super) struct IdleSandboxMetadata {
 }
 
 impl IdleSandboxMetadata {
-    pub(super) fn reuse_key(&self) -> &str {
-        &self.reuse_key
+    pub(super) fn reuse_key(&self) -> Option<&str> {
+        self.identity.reuse_key()
     }
 
     fn with_last_completed_at(mut self, last_completed_at: String) -> Self {
-        debug_assert_eq!(self.kind, IdleSandboxKind::Exact);
+        debug_assert_eq!(self.identity.kind(), IdleSandboxKind::Exact);
         self.last_completed_at = Some(last_completed_at);
         self
     }
 
     fn is_blank(&self) -> bool {
-        self.kind == IdleSandboxKind::Blank
+        self.identity.kind() == IdleSandboxKind::Blank
     }
 }
 
@@ -133,7 +160,8 @@ pub(crate) struct FinalizingHandoffCandidate {
 }
 
 impl ParkedIdleCandidate {
-    pub(crate) fn reuse_key(&self) -> &str {
+    #[cfg(test)]
+    pub(crate) fn reuse_key(&self) -> Option<&str> {
         self.metadata.reuse_key()
     }
 
@@ -163,8 +191,7 @@ impl ParkedIdleCandidate {
                 workspace_promotion: None,
             },
             metadata: IdleSandboxMetadata {
-                kind: IdleSandboxKind::Blank,
-                reuse_key: format!("{BLANK_REUSE_KEY_PREFIX}{sandbox_id}"),
+                identity: IdleSandboxIdentity::Blank(sandbox_id),
                 sandbox_id,
                 profile_name,
                 device_rate_limits,
@@ -363,8 +390,7 @@ pub struct ReusableIdleSandbox {
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
-    pub kind: IdleSandboxKind,
-    pub reuse_key: String,
+    pub identity: IdleSandboxIdentity,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
     pub restored_session_identity: Option<RestoredSessionIdentity>,
@@ -397,7 +423,7 @@ impl ReusableIdleSandbox {
     }
 
     pub(crate) fn kind(&self) -> IdleSandboxKind {
-        self.metadata.kind
+        self.metadata.identity.kind()
     }
 
     pub fn into_parts(self) -> ReusableIdleSandboxParts {
@@ -408,8 +434,7 @@ impl ReusableIdleSandbox {
             guest_state_prepared,
         } = self;
         let IdleSandboxMetadata {
-            kind,
-            reuse_key,
+            identity,
             sandbox_id: _,
             profile_name: _,
             device_rate_limits: _,
@@ -423,8 +448,7 @@ impl ReusableIdleSandbox {
 
         ReusableIdleSandboxParts {
             sandbox,
-            kind,
-            reuse_key,
+            identity,
             source_ip,
             storage_fingerprints,
             restored_session_identity,
@@ -446,7 +470,7 @@ impl ReusableIdleSandbox {
             guest_state_prepared: _,
         } = self;
         let IdleSandboxMetadata {
-            reuse_key,
+            identity,
             profile_name,
             ..
         } = metadata;
@@ -458,7 +482,7 @@ impl ReusableIdleSandbox {
             }
             .into_destroy_payload(WorkspacePromotionPolicy::AbandonUnpublished(reason)),
             budget_lease,
-            reuse_key,
+            reuse_key: identity.into_reuse_key(),
             profile_name,
         }
     }
@@ -482,7 +506,7 @@ pub(crate) struct RetainedIdleDestroyResult {
 }
 
 impl IdleDestroyPayload {
-    /// Stop the sandbox and destroy it via its factory.
+    /// Finalize the idle sandbox and destroy it via its factory.
     #[cfg(test)]
     pub(crate) async fn stop_and_destroy(self) -> DestroyOutcome {
         self.finalize_workspace_and_destroy("idle_destroy")
@@ -499,37 +523,56 @@ impl IdleDestroyPayload {
             factory,
             workspace_promotion,
         } = self.resources;
-        let prepared_promotion = match self.workspace_promotion_policy {
-            WorkspacePromotionPolicy::Promote => {
-                prepare_workspace_image_from_parked_sandbox(
-                    sandbox.as_mut(),
-                    workspace_promotion,
-                    context,
-                )
-                .await
+        // Waiting reclamation jobs must remain parked. The export-only gate is
+        // too late to bound resumed guests and their memory recovery work.
+        let mut reclamation_permit = None;
+        let prepared_promotion = match (self.workspace_promotion_policy, workspace_promotion) {
+            (WorkspacePromotionPolicy::Promote, Some(promotion)) => {
+                match promotion.acquire_idle_workspace_reclamation_permit().await {
+                    Ok(permit) => {
+                        reclamation_permit = Some(permit);
+                        prepare_workspace_image_from_parked_sandbox(
+                            sandbox.as_mut(),
+                            Some(promotion),
+                            context,
+                        )
+                        .await
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "idle workspace reclamation admission failed");
+                        abandon_unpublished_workspace_promotion(Some(promotion), context).await;
+                        None
+                    }
+                }
             }
-            WorkspacePromotionPolicy::AbandonUnpublished(reason) => {
-                abandon_unpublished_workspace_promotion(workspace_promotion, reason).await;
+            (WorkspacePromotionPolicy::Promote, None) => None,
+            (WorkspacePromotionPolicy::AbandonUnpublished(reason), promotion) => {
+                abandon_unpublished_workspace_promotion(promotion, reason).await;
                 None
             }
         };
         let mut uncertain = false;
-        let stopped = match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+        let terminated = match AssertUnwindSafe(sandbox.kill()).catch_unwind().await {
             Ok(Ok(())) => true,
             Ok(Err(e)) => {
-                tracing::warn!(error = %e, "failed to stop idle sandbox");
+                tracing::warn!(error = %e, "failed to kill idle sandbox");
                 false
             }
             Err(_) => {
-                tracing::warn!("idle sandbox stop panicked");
+                tracing::warn!("idle sandbox kill panicked");
                 uncertain = true;
                 false
             }
         };
-        let workspace_cache_promoted = match (prepared_promotion, stopped) {
+        if terminated {
+            // The guest is no longer running; host publication and destruction
+            // need not hold up the next parked sandbox's reclamation.
+            drop(reclamation_permit.take());
+        }
+        let workspace_cache_promoted = match (prepared_promotion, terminated) {
             (Some(promotion), true) => promotion.publish().await,
             (Some(promotion), false) => {
-                promotion.abandon("idle_sandbox_stop_failed").await;
+                promotion.abandon("idle_sandbox_kill_failed").await;
                 false
             }
             (None, _) => false,
@@ -542,6 +585,8 @@ impl IdleDestroyPayload {
             tracing::warn!("idle sandbox destroy panicked");
             uncertain = true;
         }
+        // A failed kill may leave the guest running until factory destruction.
+        drop(reclamation_permit);
         if uncertain {
             IdleDestroyResult {
                 outcome: DestroyOutcome::Uncertain,
@@ -562,7 +607,7 @@ impl IdleDestroyPayload {
 pub struct IdleDestroyJob {
     pub(super) payload: IdleDestroyPayload,
     pub(super) budget_lease: BudgetLease,
-    pub(super) reuse_key: String,
+    pub(super) reuse_key: Option<String>,
     pub(super) profile_name: String,
 }
 
@@ -606,8 +651,8 @@ impl IdleDestroyJob {
         (payload, budget_lease)
     }
 
-    pub fn reuse_key(&self) -> &str {
-        &self.reuse_key
+    pub fn reuse_key(&self) -> Option<&str> {
+        self.reuse_key.as_deref()
     }
 
     pub fn profile_name(&self) -> &str {
@@ -662,11 +707,7 @@ enum IdleActivationFailure {
 }
 
 impl IdleEntry {
-    pub(super) fn kind(&self) -> IdleSandboxKind {
-        self.metadata.kind
-    }
-
-    pub(super) fn reuse_key(&self) -> &str {
+    pub(super) fn reuse_key(&self) -> Option<&str> {
         self.metadata.reuse_key()
     }
 
@@ -770,12 +811,16 @@ impl IdleEntry {
         let Some(promotion) = self.resources.workspace_promotion.as_ref() else {
             return Ok(());
         };
+        let reuse_key = self
+            .metadata
+            .reuse_key()
+            .ok_or(WorkspaceImagePromotionIdentityMismatch::ReuseKey)?;
         promotion.validate_expected_identity(
             cache,
             WorkspaceImagePromotionIdentityRequest {
                 sandbox_id: self.metadata.sandbox_id,
                 profile_name: &self.metadata.profile_name,
-                reuse_key: self.metadata.reuse_key(),
+                reuse_key,
                 working_dir,
                 image_size_bytes,
             },
@@ -802,7 +847,7 @@ impl IdleEntry {
             ..
         } = self;
         let IdleSandboxMetadata {
-            reuse_key,
+            identity,
             profile_name,
             ..
         } = metadata;
@@ -810,7 +855,7 @@ impl IdleEntry {
         IdleDestroyJob {
             payload: resources.into_destroy_payload(workspace_promotion_policy),
             budget_lease,
-            reuse_key,
+            reuse_key: identity.into_reuse_key(),
             profile_name,
         }
     }
@@ -822,10 +867,10 @@ impl ReservedIdleSandbox {
     }
 
     pub(crate) fn kind(&self) -> IdleSandboxKind {
-        self.entry.metadata.kind
+        self.entry.metadata.identity.kind()
     }
 
-    pub fn reuse_key(&self) -> &str {
+    pub fn reuse_key(&self) -> Option<&str> {
         self.entry.reuse_key()
     }
 
@@ -896,7 +941,7 @@ impl SpeculativeIdleSandbox {
         self.entry.resources.sandbox.as_ref()
     }
 
-    pub(crate) fn reuse_key(&self) -> &str {
+    pub(crate) fn reuse_key(&self) -> Option<&str> {
         self.entry.reuse_key()
     }
 

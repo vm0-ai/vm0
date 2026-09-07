@@ -15,6 +15,7 @@ import {
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_MODEL_ENV,
@@ -185,7 +186,7 @@ import {
   holdAgentRunPiExecutionSnapshotFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
-  acquireBddVm0ApiKey,
+  acquireBddBuiltInModelKey,
   completeRunWithoutCallbacksFixture,
   deletePiApiFirstTurnUsageEventsFixture,
   holdAgentRunRowLockFixture,
@@ -203,7 +204,7 @@ import {
   readRunOutputLegacyPiEventsFixture,
   readRunOutputMaterializationFixture,
   readRunUsageEventsFixture,
-  releaseBddVm0ApiKey,
+  releaseBddBuiltInModelKey,
   removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
   replacePiSessionHistoryJsonlFixture,
@@ -255,8 +256,16 @@ const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
+const API_FIRST_TURN_OWNERSHIP_BUDGET_MS = 45_000;
+const API_FIRST_TURN_COORDINATION_BUDGET_MS = 55_000;
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";
+const PI_API_FIRST_TURN_BASE_USAGE_CATEGORIES = [
+  "tokens.input",
+  "tokens.output",
+  "tokens.cache_read",
+  "tokens.cache_creation",
+] as const;
 const STANDARD_TERRA_API_KEY_BDD_ROUTES = [
   {
     name: "OpenAI",
@@ -329,6 +338,10 @@ const TERRA_USAGE_PRICING = [
     unitSize: 1_000_000,
   };
 });
+type PiApiFirstTurnUsageProvider =
+  | "deepseek-v4-flash"
+  | "deepseek-v4-pro"
+  | "gpt-5.6-terra";
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
 An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
@@ -608,9 +621,10 @@ function totalChargedCredits(
   }, 0);
 }
 
-async function expectTerraApiFirstTurnUsage(
+async function expectPiApiFirstTurnUsage(
   runId: string,
   sessionBytes: Buffer,
+  provider: PiApiFirstTurnUsageProvider,
 ): Promise<void> {
   const firstSession = MemoryPiSession.fromJsonl(sessionBytes.toString("utf8"));
   const firstAssistant = [...firstSession.buildSessionContext().messages]
@@ -626,7 +640,7 @@ async function expectTerraApiFirstTurnUsage(
     cacheRead: 3,
     cacheWrite: 2,
   });
-  await expectTerraApiUsage(runId, "", {
+  await expectPiApiUsage(runId, provider, "", {
     input: 5,
     output: 3,
     cacheRead: 3,
@@ -634,7 +648,7 @@ async function expectTerraApiFirstTurnUsage(
   });
 }
 
-function terraApiFirstTurnUsageEvents(
+function piApiFirstTurnUsageEvents(
   runId: string,
   responseSourceId: string,
 ): readonly {
@@ -658,8 +672,9 @@ function terraApiFirstTurnUsageEvents(
   });
 }
 
-async function expectTerraApiUsage(
+async function expectPiApiUsage(
   runId: string,
+  provider: PiApiFirstTurnUsageProvider,
   suffix: "" | ".fast" | ".long_context" | ".long_context.fast",
   expected: {
     readonly input: number;
@@ -680,7 +695,7 @@ async function expectTerraApiUsage(
     })
     .map(([category, quantity]) => {
       return expect.objectContaining({
-        provider: "gpt-5.6-terra",
+        provider,
         category: `${category}${suffix}`,
         quantity,
         status: "processed",
@@ -690,6 +705,19 @@ async function expectTerraApiUsage(
     });
   expect(usageRows).toStrictEqual(expectedRows);
   expect(totalChargedCredits(usageRows)).toBeGreaterThan(0);
+}
+
+async function expectTerraApiUsage(
+  runId: string,
+  suffix: "" | ".fast" | ".long_context" | ".long_context.fast",
+  expected: {
+    readonly input: number;
+    readonly output: number;
+    readonly cacheRead: number;
+    readonly cacheCreation: number;
+  },
+): Promise<void> {
+  await expectPiApiUsage(runId, "gpt-5.6-terra", suffix, expected);
 }
 
 async function expectTerraApiFollowUpUsage(
@@ -716,6 +744,27 @@ async function createTerraUsagePricingResolution(): Promise<
 > {
   const pricing = await createUsagePricingFixture({
     configured: TERRA_USAGE_PRICING,
+  });
+  onTestFinished(pricing.cleanup);
+  return pricing.resolution;
+}
+
+async function createPiApiFirstTurnUsagePricingResolution(
+  provider: PiApiFirstTurnUsageProvider,
+): Promise<UsagePricingFixture["resolution"]> {
+  if (provider === "gpt-5.6-terra") {
+    return await createTerraUsagePricingResolution();
+  }
+  const pricing = await createUsagePricingFixture({
+    configured: PI_API_FIRST_TURN_BASE_USAGE_CATEGORIES.map((category) => {
+      return {
+        kind: "model",
+        provider,
+        category,
+        unitPrice: 1,
+        unitSize: 1_000_000,
+      };
+    }),
   });
   onTestFinished(pricing.cleanup);
   return pricing.resolution;
@@ -1554,11 +1603,17 @@ interface SelectedThreadConnectorFixture extends EntitledChatActor {
 async function selectedThreadConnectorFixture(
   title: string,
 ): Promise<SelectedThreadConnectorFixture> {
-  const entitled = await entitledChatActor();
+  // A unique version still shares the active source with other test files.
+  // Own the source so their catalog setup cannot invalidate this projection.
+  mockEnv(
+    "R2_USER_STORAGES_BUCKET_NAME",
+    `test-thread-runtime-context-${randomUUID()}`,
+  );
   await installApiTestConnectorCatalog({
     catalogVersion: `api-test-thread-runtime-overlap-${randomUUID()}`,
     runtimeProjection: true,
   });
+  const entitled = await entitledChatActor();
   const connection = await connectors.connectManualGrant(
     entitled.actor,
     "openai",
@@ -5772,6 +5827,104 @@ function mockPiResourceArchiveDownloads(unavailable = false): void {
   );
 }
 
+function warningCallsForRun(runId: string): readonly unknown[] {
+  return context.mocks.axiomLogging.warn.mock.calls.filter((call) => {
+    return (
+      call[0] !== "Run summary generation returned null (API key missing?)" &&
+      JSON.stringify(call).includes(runId)
+    );
+  });
+}
+
+async function completeSandboxFirstPiRun(args: {
+  readonly actor: ApiTestUser;
+  readonly answer: string;
+  readonly checkpointObjects: Map<string, Buffer>;
+  readonly claim: Awaited<ReturnType<typeof claimChatRun>>;
+  readonly prompt: string;
+  readonly run: { readonly runId: string; readonly threadId: string };
+  readonly usagePricingResolution: UsagePricingFixture["resolution"];
+}): Promise<void> {
+  const sessionKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${args.run.runId}/session.jsonl`;
+  const h0 = args.checkpointObjects.get(sessionKey);
+  if (!h0) {
+    throw new Error("Expected authoritative sandbox-first H0");
+  }
+  const session = MemoryPiSession.fromJsonl(h0.toString("utf8"));
+  session.appendMessage({
+    role: "user",
+    content: args.prompt,
+    timestamp: 1,
+  });
+  session.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: args.answer }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "gpt-5.6-terra",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: 2,
+  });
+  const h2 = session.toJsonl();
+  const h2Hash = createHash("sha256").update(h2).digest("hex");
+  await webhooks.requestAgentCheckpointPrepareHistory(
+    {
+      runId: args.run.runId,
+      hash: h2Hash,
+      rawSize: Buffer.byteLength(h2),
+      encodedSize: Buffer.byteLength(h2),
+      encoding: "identity",
+    },
+    args.claim.sandboxHeaders,
+    [200],
+  );
+  args.checkpointObjects.set(
+    `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
+    Buffer.from(h2, "utf8"),
+  );
+  await webhooks.requestAgentEvents(
+    {
+      runId: args.run.runId,
+      events: [
+        {
+          type: "assistant",
+          sequenceNumber: 1,
+          message: { content: [{ type: "text", text: args.answer }] },
+        },
+        { type: "result", sequenceNumber: 2, result: args.answer },
+      ],
+    },
+    args.claim.sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    {
+      runId: args.run.runId,
+      exitCode: 0,
+      lastEventSequence: 2,
+      checkpoint: {
+        cliAgentType: "pi",
+        cliAgentSessionId: args.run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+    },
+    args.claim.sandboxHeaders,
+    [200],
+    undefined,
+    args.usagePricingResolution,
+  );
+  await waitForRunStatus(args.actor, args.run.runId, "completed", 5000);
+  await flushWaitUntilForTest();
+}
+
 async function queueCapabilityProvenPiRun(args: {
   readonly actor: ApiTestUser;
   readonly agentId: string;
@@ -5779,6 +5932,7 @@ async function queueCapabilityProvenPiRun(args: {
   readonly prompt: string;
   readonly codexServiceTier?: "fast";
   readonly terraRoute?: "openai" | "openrouter";
+  readonly selectedModel?: PiApiFirstTurnUsageProvider;
 }): Promise<{
   readonly anchor: { readonly runId: string; readonly threadId: string };
   readonly anchorClaim: Awaited<ReturnType<typeof claimChatRun>>;
@@ -5803,16 +5957,17 @@ async function queueCapabilityProvenPiRun(args: {
     );
   }
   const anchorClaim = await claimChatRun(args.runnerGroup, anchor.runId);
+  const selectedModel = args.selectedModel ?? "gpt-5.6-terra";
   let withModelRoute = async <T>(work: () => Promise<T>): Promise<T> => {
     return await work();
   };
   if (args.terraRoute === "openrouter") {
     withModelRoute = await configureBuiltInPiModelOnOpenRouter(
       args.actor,
-      "gpt-5.6-terra",
+      selectedModel,
     );
   } else {
-    await configureBuiltInPiModel(args.actor, "gpt-5.6-terra");
+    await configureBuiltInPiModel(args.actor, selectedModel);
   }
   await updateFeatureSwitchesForUser(
     context,
@@ -5824,14 +5979,15 @@ async function queueCapabilityProvenPiRun(args: {
         : {}),
     },
   );
-  const usagePricingResolution = await createTerraUsagePricingResolution();
+  const usagePricingResolution =
+    await createPiApiFirstTurnUsagePricingResolution(selectedModel);
   const run = await withModelRoute(async () => {
     return await sendChatRun(
       args.actor,
       {
         agentId: args.agentId,
         prompt: args.prompt,
-        model: "gpt-5.6-terra",
+        model: selectedModel,
         ...(args.codexServiceTier === undefined
           ? {}
           : { runOptions: { codexServiceTier: args.codexServiceTier } }),
@@ -5974,7 +6130,8 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const orgId = requireOrgId(actor);
-    // External model admission depends on plan capabilities, not VM0 credits.
+    // External model admission depends on plan capabilities, not built-in
+    // model credit admission.
     await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
@@ -6082,28 +6239,28 @@ describe("CHAT-02: model-first provider policies", () => {
     // Restore spendable credits before exercising the built-in branch.
     await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
 
-    // A vm0 provider pin in an entitled org passes the spendable-credits
+    // A built-in provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
-    // database: 503 when no vm0 execution key exists (no public provisioning
+    // database: 503 when no built-in model key exists (no public provisioning
     // surface), 201 when another suite's alive legacy test has seeded a
-    // global vm0 key. Both prove the credits-ok admission arm.
+    // global built-in model key. Both prove the credits-ok admission arm.
     await setOrgModelPolicyProviderTypeFixture({
       orgId,
       model: "claude-sonnet-5",
       defaultProviderType: "built-in",
     });
-    const vm0Prompt = "vm0-backed admission with spendable credits";
-    const vm0Send = await requestSendEventRaw(actor, {
+    const builtInPrompt = "built-in admission with spendable credits";
+    const builtInSend = await requestSendEventRaw(actor, {
       agentId,
-      prompt: vm0Prompt,
+      prompt: builtInPrompt,
       userMessage: {
         version: 1,
-        parts: [{ type: "text", text: vm0Prompt }],
+        parts: [{ type: "text", text: builtInPrompt }],
       },
       model: "claude-sonnet-5",
       hasTextContent: true,
     });
-    expect([201, 503]).toContain(vm0Send.status);
+    expect([201, 503]).toContain(builtInSend.status);
     type BuiltInAdmissionObservation =
       | {
           readonly outcome: "route-unavailable";
@@ -6121,15 +6278,15 @@ describe("CHAT-02: model-first provider policies", () => {
           };
           readonly cleanup: { readonly status: number } | null;
         };
-    let vm0Observation: BuiltInAdmissionObservation;
+    let builtInObservation: BuiltInAdmissionObservation;
     let expectedBuiltInObservation: BuiltInAdmissionObservation;
-    if (vm0Send.status === 503) {
-      expectApiError(vm0Send.body);
-      vm0Observation = {
+    if (builtInSend.status === 503) {
+      expectApiError(builtInSend.body);
+      builtInObservation = {
         outcome: "route-unavailable",
         response: {
           status: 503,
-          errorMessage: vm0Send.body.error.message,
+          errorMessage: builtInSend.body.error.message,
         },
         cleanup: null,
       };
@@ -6143,21 +6300,22 @@ describe("CHAT-02: model-first provider policies", () => {
         cleanup: null,
       };
     } else {
-      if (vm0Send.status !== 201) {
+      if (builtInSend.status !== 201) {
         throw new Error("Expected a legal built-in admission outcome");
       }
       if (
-        typeof vm0Send.body !== "object" ||
-        vm0Send.body === null ||
-        !("runId" in vm0Send.body) ||
-        (vm0Send.body.runId !== null && typeof vm0Send.body.runId !== "string")
+        typeof builtInSend.body !== "object" ||
+        builtInSend.body === null ||
+        !("runId" in builtInSend.body) ||
+        (builtInSend.body.runId !== null &&
+          typeof builtInSend.body.runId !== "string")
       ) {
         throw new Error("Expected a built-in admission response body");
       }
-      const runId = vm0Send.body.runId;
+      const runId = builtInSend.body.runId;
       const cancellation =
         runId === null ? null : await api.requestCancelRun(actor, runId, [200]);
-      vm0Observation = {
+      builtInObservation = {
         outcome: "run-created",
         response: { status: 201, runId },
         cleanup: cancellation === null ? null : { status: cancellation.status },
@@ -6168,7 +6326,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cleanup: runId === null ? null : { status: 200 },
       };
     }
-    expect(vm0Observation).toStrictEqual(expectedBuiltInObservation);
+    expect(builtInObservation).toStrictEqual(expectedBuiltInObservation);
   }, 90_000);
 
   it("preserves persisted external model plan-state outcomes", async () => {
@@ -7633,7 +7791,8 @@ describe("CHAT-02: model-first provider policies", () => {
     "runs the Pi API first turn once for %s and resumes canonical JSONL",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const usagePricingResolution = await createTerraUsagePricingResolution();
+      const usagePricingResolution =
+        await createPiApiFirstTurnUsagePricingResolution(selectedModel);
       const orgId = actor.orgId;
       if (!orgId) {
         throw new Error("Expected entitled chat actor to have an org");
@@ -7671,7 +7830,7 @@ describe("CHAT-02: model-first provider policies", () => {
             );
           }
           const usage =
-            selectedModel === "gpt-5.6-terra" && sequence === 0
+            sequence === 0
               ? {
                   input_tokens: 10,
                   output_tokens: 3,
@@ -7735,9 +7894,11 @@ describe("CHAT-02: model-first provider policies", () => {
       if (!firstSessionBytes) {
         throw new Error("Expected the first Pi run to persist native H1");
       }
-      if (selectedModel === "gpt-5.6-terra") {
-        await expectTerraApiFirstTurnUsage(first.runId, firstSessionBytes);
-      }
+      await expectPiApiFirstTurnUsage(
+        first.runId,
+        firstSessionBytes,
+        selectedModel,
+      );
       const firstSessionHash = createHash("sha256")
         .update(firstSessionBytes)
         .digest("hex");
@@ -7777,9 +7938,12 @@ describe("CHAT-02: model-first provider policies", () => {
       await waitForRunStatus(actor, second.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(2);
-      if (selectedModel === "gpt-5.6-terra") {
-        await expectTerraApiFollowUpUsage(second.runId);
-      }
+      await expectPiApiUsage(second.runId, selectedModel, "", {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
       const secondModelInput = JSON.stringify(modelRequests[1]?.body);
       expect(occurrences(secondModelInput, firstPrompt)).toBe(1);
       expect(occurrences(secondModelInput, modelAnswers[0] ?? "")).toBe(1);
@@ -7825,7 +7989,7 @@ describe("CHAT-02: model-first provider policies", () => {
       upstreamModel: "company-terra-production",
     },
   ] as const)(
-    "runs custom Responses gateway $selectedModel through Pi without vm0 model billing",
+    "runs custom Responses gateway $selectedModel through Pi without built-in model billing",
     async ({ selectedModel, upstreamModel }) => {
       const { actor, agentId } = await entitledChatActor();
       const orgId = requireOrgId(actor);
@@ -7941,6 +8105,8 @@ describe("CHAT-02: model-first provider policies", () => {
     async (selectedModel) => {
       const { actor, agentId } = await entitledChatActor();
       const orgId = requireOrgId(actor);
+      const usagePricingResolution =
+        await createPiApiFirstTurnUsagePricingResolution(selectedModel);
       const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
         actor,
         selectedModel,
@@ -7970,11 +8136,16 @@ describe("CHAT-02: model-first provider policies", () => {
       );
 
       const run = await withOpenRouterRoute(async () => {
-        return await sendChatRun(actor, {
-          agentId,
-          prompt: `run ${selectedModel} on its managed fallback`,
-          model: selectedModel,
-        });
+        return await sendChatRun(
+          actor,
+          {
+            agentId,
+            prompt: `run ${selectedModel} on its managed fallback`,
+            model: selectedModel,
+          },
+          "vm0",
+          usagePricingResolution,
+        );
       });
       await waitForRunStatus(actor, run.runId, "completed", 10_000);
       await flushWaitUntilForTest();
@@ -7989,196 +8160,233 @@ describe("CHAT-02: model-first provider policies", () => {
       await expect(
         readRunLaunchSnapshotFixture(context, run.runId),
       ).resolves.toMatchObject({ launch_snapshot: { framework: "pi" } });
+      await expectPiApiUsage(run.runId, selectedModel, "", {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
       const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
       expect(claim.status).toBe(404);
     },
     90_000,
   );
 
-  it("keeps Terra first-turn billing idempotent for matching usage identities", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    mockPiResourceArchiveDownloads();
-    mockPiCheckpointObjectStore();
+  it.each([
+    {
+      name: "Terra",
+      selectedModel: "gpt-5.6-terra",
+      providerUrl: "https://api.openai.com/v1/responses",
+    },
+    {
+      name: "DeepSeek Flash",
+      selectedModel: "deepseek-v4-flash",
+      providerUrl: "https://api.deepseek.com/responses",
+    },
+  ] as const)(
+    "keeps $name first-turn billing idempotent for matching usage identities",
+    async ({ selectedModel, providerUrl }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution =
+        await createPiApiFirstTurnUsagePricingResolution(selectedModel);
+      await configureBuiltInPiModel(actor, selectedModel);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
 
-    const providerEntered = createDeferredPromise<void>(context.signal);
-    const releaseProvider = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseProvider.settled()) {
-        releaseProvider.resolve(undefined);
-      }
-    });
-    let modelCalls = 0;
-    server.use(
-      http.post("https://api.openai.com/v1/responses", async () => {
-        modelCalls += 1;
-        if (!providerEntered.settled()) {
-          providerEntered.resolve(undefined);
+      const providerEntered = createDeferredPromise<void>(context.signal);
+      const releaseProvider = createDeferredPromise<void>(context.signal);
+      onTestFinished(() => {
+        if (!releaseProvider.settled()) {
+          releaseProvider.resolve(undefined);
         }
-        await releaseProvider.promise;
-        return new HttpResponse(
-          piResponsesTextSse("idempotent Terra billing", 0, {
-            input_tokens: 10,
-            output_tokens: 3,
-            total_tokens: 13,
-            input_tokens_details: {
-              cached_tokens: 3,
-              cache_write_tokens: 2,
-            },
-          }),
-          { headers: { "content-type": "text/event-stream" } },
-        );
-      }),
-    );
-
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "reuse matching Terra billing identities",
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
-    await providerEntered.promise;
-    const usageEvents = terraApiFirstTurnUsageEvents(
-      run.runId,
-      "resp_pi_api_0",
-    );
-    const idempotencyKeys = usageEvents.map((event) => {
-      return event.idempotencyKey;
-    });
-    onTestFinished(async () => {
-      await deletePiApiFirstTurnUsageEventsFixture(idempotencyKeys);
-    });
-    // No production API can preseed first-turn billing identities before the
-    // provider responds. This run-owned fixture creates the otherwise
-    // unreachable retry state while the public chat API remains under test.
-    await insertPiApiFirstTurnUsageEventsFixture({
-      runId: run.runId,
-      orgId,
-      userId: actor.userId,
-      events: usageEvents,
-    });
-
-    releaseProvider.resolve(undefined);
-    await waitForRunStatus(actor, run.runId, "completed");
-    await flushWaitUntilForTest();
-
-    expect(modelCalls).toBe(1);
-    await expectTerraApiUsage(run.runId, "", {
-      input: 5,
-      output: 3,
-      cacheRead: 3,
-      cacheCreation: 2,
-    });
-  }, 90_000);
-
-  it("fails Terra first-turn billing on a conflicting usage identity", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    mockPiResourceArchiveDownloads();
-    mockPiCheckpointObjectStore();
-
-    const providerEntered = createDeferredPromise<void>(context.signal);
-    const releaseProvider = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseProvider.settled()) {
-        releaseProvider.resolve(undefined);
-      }
-    });
-    let modelCalls = 0;
-    server.use(
-      http.post("https://api.openai.com/v1/responses", async () => {
-        modelCalls += 1;
-        if (!providerEntered.settled()) {
-          providerEntered.resolve(undefined);
-        }
-        await releaseProvider.promise;
-        return new HttpResponse(
-          piResponsesTextSse("conflicting Terra billing", 0, {
-            input_tokens: 10,
-            output_tokens: 3,
-            total_tokens: 13,
-            input_tokens_details: {
-              cached_tokens: 3,
-              cache_write_tokens: 2,
-            },
-          }),
-          { headers: { "content-type": "text/event-stream" } },
-        );
-      }),
-    );
-
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "reject a conflicting Terra billing identity",
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
-    await providerEntered.promise;
-    const usageEvents = terraApiFirstTurnUsageEvents(
-      run.runId,
-      "resp_pi_api_0",
-    );
-    const [expectedEvent] = usageEvents;
-    if (!expectedEvent) {
-      throw new Error("Expected a Terra billing identity fixture");
-    }
-    onTestFinished(async () => {
-      await deletePiApiFirstTurnUsageEventsFixture(
-        usageEvents.map((event) => {
-          return event.idempotencyKey;
+      });
+      let modelCalls = 0;
+      server.use(
+        http.post(providerUrl, async () => {
+          modelCalls += 1;
+          if (!providerEntered.settled()) {
+            providerEntered.resolve(undefined);
+          }
+          await releaseProvider.promise;
+          return new HttpResponse(
+            piResponsesTextSse(`idempotent ${selectedModel} billing`, 0, {
+              input_tokens: 10,
+              output_tokens: 3,
+              total_tokens: 13,
+              input_tokens_details: {
+                cached_tokens: 3,
+                cache_write_tokens: 2,
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
         }),
       );
-    });
-    // No production API can preseed a conflicting first-turn billing identity
-    // before the provider responds. This run-owned fixture creates that
-    // otherwise unreachable state while the public chat API remains under test.
-    await insertPiApiFirstTurnUsageEventsFixture({
-      runId: run.runId,
-      orgId,
-      userId: actor.userId,
-      events: [{ ...expectedEvent, quantity: expectedEvent.quantity + 1 }],
-    });
 
-    releaseProvider.resolve(undefined);
-    await waitForRunStatus(actor, run.runId, "failed");
-    await flushWaitUntilForTest();
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `reuse matching ${selectedModel} billing identities`,
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await providerEntered.promise;
+      const usageEvents = piApiFirstTurnUsageEvents(run.runId, "resp_pi_api_0");
+      const idempotencyKeys = usageEvents.map((event) => {
+        return event.idempotencyKey;
+      });
+      onTestFinished(async () => {
+        await deletePiApiFirstTurnUsageEventsFixture(idempotencyKeys);
+      });
+      // No production API can preseed first-turn billing identities before the
+      // provider responds. This run-owned fixture creates the otherwise
+      // unreachable retry state while the public chat API remains under test.
+      await insertPiApiFirstTurnUsageEventsFixture({
+        runId: run.runId,
+        orgId,
+        userId: actor.userId,
+        provider: selectedModel,
+        events: usageEvents,
+      });
 
-    expect(modelCalls).toBe(1);
-    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-      status: "failed",
-      error: expect.stringContaining("[PI_API_MODEL_FAILED]"),
-    });
-    // Public usage summaries omit unprocessed rows. Inspect this run's unique
-    // rows only to prove the failed transaction added no partial billing data.
-    await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual([
-      expect.objectContaining({
-        category: expectedEvent.category,
-        quantity: expectedEvent.quantity + 1,
-      }),
-    ]);
-  }, 90_000);
+      releaseProvider.resolve(undefined);
+      await waitForRunStatus(actor, run.runId, "completed");
+      await flushWaitUntilForTest();
+
+      expect(modelCalls).toBe(1);
+      await expectPiApiUsage(run.runId, selectedModel, "", {
+        input: 5,
+        output: 3,
+        cacheRead: 3,
+        cacheCreation: 2,
+      });
+    },
+    90_000,
+  );
+
+  it.each([
+    {
+      name: "Terra",
+      selectedModel: "gpt-5.6-terra",
+      providerUrl: "https://api.openai.com/v1/responses",
+    },
+    {
+      name: "DeepSeek Pro",
+      selectedModel: "deepseek-v4-pro",
+      providerUrl: "https://api.deepseek.com/responses",
+    },
+  ] as const)(
+    "fails $name first-turn billing on a conflicting usage identity",
+    async ({ selectedModel, providerUrl }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution =
+        await createPiApiFirstTurnUsagePricingResolution(selectedModel);
+      await configureBuiltInPiModel(actor, selectedModel);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+
+      const providerEntered = createDeferredPromise<void>(context.signal);
+      const releaseProvider = createDeferredPromise<void>(context.signal);
+      onTestFinished(() => {
+        if (!releaseProvider.settled()) {
+          releaseProvider.resolve(undefined);
+        }
+      });
+      let modelCalls = 0;
+      server.use(
+        http.post(providerUrl, async () => {
+          modelCalls += 1;
+          if (!providerEntered.settled()) {
+            providerEntered.resolve(undefined);
+          }
+          await releaseProvider.promise;
+          return new HttpResponse(
+            piResponsesTextSse(`conflicting ${selectedModel} billing`, 0, {
+              input_tokens: 10,
+              output_tokens: 3,
+              total_tokens: 13,
+              input_tokens_details: {
+                cached_tokens: 3,
+                cache_write_tokens: 2,
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        }),
+      );
+
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `reject a conflicting ${selectedModel} billing identity`,
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await providerEntered.promise;
+      const usageEvents = piApiFirstTurnUsageEvents(run.runId, "resp_pi_api_0");
+      const [expectedEvent] = usageEvents;
+      if (!expectedEvent) {
+        throw new Error(`Expected a ${selectedModel} billing identity fixture`);
+      }
+      onTestFinished(async () => {
+        await deletePiApiFirstTurnUsageEventsFixture(
+          usageEvents.map((event) => {
+            return event.idempotencyKey;
+          }),
+        );
+      });
+      // No production API can preseed a conflicting first-turn billing identity
+      // before the provider responds. This run-owned fixture creates that
+      // otherwise unreachable state while the public chat API remains under test.
+      await insertPiApiFirstTurnUsageEventsFixture({
+        runId: run.runId,
+        orgId,
+        userId: actor.userId,
+        provider: selectedModel,
+        events: [{ ...expectedEvent, quantity: expectedEvent.quantity + 1 }],
+      });
+
+      releaseProvider.resolve(undefined);
+      await waitForRunStatus(actor, run.runId, "failed");
+      await flushWaitUntilForTest();
+
+      expect(modelCalls).toBe(1);
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "failed",
+        error: expect.stringContaining("[PI_API_MODEL_FAILED]"),
+      });
+      // Public usage summaries omit unprocessed rows. Inspect this run's unique
+      // rows only to prove the failed transaction added no partial billing data.
+      await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual(
+        [
+          expect.objectContaining({
+            category: expectedEvent.category,
+            provider: selectedModel,
+            quantity: expectedEvent.quantity + 1,
+          }),
+        ],
+      );
+    },
+    90_000,
+  );
 
   it("resumes pre-migration OpenRouter Chat JSONL through API-first Responses", async () => {
     const { actor, agentId } = await entitledChatActor();
@@ -8353,10 +8561,15 @@ describe("CHAT-02: model-first provider policies", () => {
     ).toBeFalsy();
   }, 90_000);
 
-  it("reuses one OpenRouter Responses Pi session across standard, fast, and standard Terra turns", async () => {
+  it("reuses one OpenRouter Responses Pi session across standard, fast, and long-context Terra turns", async () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
+    const longContextInputTokens =
+      MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS["gpt-5.6-terra"];
+    if (longContextInputTokens === undefined) {
+      throw new Error("Expected the Terra long-context pricing threshold");
+    }
     const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
       actor,
       "gpt-5.6-terra",
@@ -8374,12 +8587,12 @@ describe("CHAT-02: model-first provider policies", () => {
     const prompts = [
       "start standard Terra in the canonical Pi session",
       "continue fast Terra in the same Pi session",
-      "return to standard Terra in the same Pi session",
+      "continue long-context Terra in the same Pi session",
     ] as const;
     const answers = [
       "first standard Terra answer",
       "fast Terra answer",
-      "second standard Terra answer",
+      "long-context Terra answer",
     ] as const;
     const modelRequests: unknown[] = [];
     const observedTiers = ["default", "priority", "flex"] as const;
@@ -8400,15 +8613,21 @@ describe("CHAT-02: model-first provider policies", () => {
             piResponsesTextSse(
               answer,
               requestIndex,
-              {
-                input_tokens: 10,
-                output_tokens: 3,
-                total_tokens: 13,
-                input_tokens_details: {
-                  cached_tokens: 3,
-                  cache_write_tokens: 2,
-                },
-              },
+              requestIndex === 2
+                ? {
+                    input_tokens: longContextInputTokens,
+                    output_tokens: 3,
+                    total_tokens: longContextInputTokens + 3,
+                  }
+                : {
+                    input_tokens: 10,
+                    output_tokens: 3,
+                    total_tokens: 13,
+                    input_tokens_details: {
+                      cached_tokens: 3,
+                      cache_write_tokens: 2,
+                    },
+                  },
               observedTiers[requestIndex],
             ),
             { headers: { "content-type": "text/event-stream" } },
@@ -8547,11 +8766,11 @@ describe("CHAT-02: model-first provider policies", () => {
       cacheRead: 3,
       cacheCreation: 2,
     });
-    await expectTerraApiUsage(returned.runId, "", {
-      input: 5,
+    await expectTerraApiUsage(returned.runId, ".long_context", {
+      input: longContextInputTokens,
       output: 3,
-      cacheRead: 3,
-      cacheCreation: 2,
+      cacheRead: 0,
+      cacheCreation: 0,
     });
 
     const visibleTurns = [
@@ -9882,6 +10101,464 @@ describe("CHAT-02: model-first provider policies", () => {
     await expectNoPrivatePublicOutput();
   }, 90_000);
 
+  it("transfers authoritative H0 when API ownership expires before provider transport", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const resourceEntered = createDeferredPromise<void>(context.signal);
+    const releaseResource = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, async ({ request }) => {
+        if (!resourceEntered.settled()) {
+          resourceEntered.resolve(undefined);
+        }
+        await releaseResource.promise;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected Pi resource archive object identity");
+        }
+        return new HttpResponse(piS3Object(objectKey), {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return nativeCodexSseResponse(
+          piResponsesTextSse("must not become H1", modelCalls),
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const prompt = "replay the original pre-provider prompt in Sandbox";
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt,
+      });
+    const apiStartedAt = now();
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await resourceEntered.promise;
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    const activeInputEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: "deliver this input once after deadline transfer",
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      run.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected deadline-bound active input to be reserved");
+    }
+
+    mockNow(apiStartedAt + API_FIRST_TURN_OWNERSHIP_BUDGET_MS);
+    releaseResource.resolve(undefined);
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+
+    expect(modelCalls).toBe(0);
+    const manifest = piApiFirstTurnManifestSchema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "sandbox-first",
+      baseSession: { sessionId: run.threadId, sha256: null },
+      sandboxEventSequenceStart: 1,
+    });
+    const h0 = checkpointObjects.get(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+    );
+    if (!h0) {
+      throw new Error("Expected pre-provider deadline H0");
+    }
+    expect(
+      MemoryPiSession.fromJsonl(h0.toString("utf8")).buildSessionContext()
+        .messages,
+    ).toHaveLength(0);
+    expect(claimed.claim.prompt).toBe(prompt);
+    expect(claimed.claim.piLaunchConfig?.apiFirstTurn.deadlineAt).toBe(
+      apiStartedAt + API_FIRST_TURN_COORDINATION_BUDGET_MS,
+    );
+    await expect(
+      api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, run.runId),
+    ).resolves.toStrictEqual(reserved);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    const activeInputEvents = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      activeInputEvents.events.filter((event) => {
+        return event.revokesEventId === activeInputEventId;
+      }),
+    ).toHaveLength(1);
+    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
+  it("discards a late API success and completes once from sandbox-first H0", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    const lateApiAnswer = "late API answer must remain usage-only";
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        modelCalls += 1;
+        providerEntered.resolve(undefined);
+        await releaseProvider.promise;
+        return nativeCodexSseResponse(
+          piResponsesTextSse(lateApiAnswer, modelCalls),
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const prompt = "complete the timed-out prompt once in Sandbox";
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt,
+      });
+    const apiStartedAt = now();
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await providerEntered.promise;
+
+    mockNow(apiStartedAt + API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 2000);
+    releaseProvider.resolve(undefined);
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+
+    expect(modelCalls).toBe(1);
+    const manifest = piApiFirstTurnManifestSchema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "sandbox-first",
+      baseSession: { sessionId: run.threadId, sha256: null },
+      sandboxEventSequenceStart: 1,
+    });
+    const beforeSandbox = eventBackedContents(
+      (await chat.listThreadEvents(actor, run.threadId)).events,
+      run.runId,
+    );
+    expect(beforeSandbox).toStrictEqual([]);
+    await flushWaitUntilForTest();
+    // Pending late-attempt usage is intentionally absent from public usage
+    // summaries, so inspect this run's uniquely owned ledger rows directly.
+    await expect(readRunUsageEventsFixture(run.runId)).resolves.toMatchObject([
+      { category: "tokens.input", quantity: 5, status: "pending" },
+      { category: "tokens.output", quantity: 3, status: "pending" },
+    ]);
+
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(claimed.claim.prompt).toBe(prompt);
+    const sandboxAnswer = "Sandbox owns the only visible answer";
+    await completeSandboxFirstPiRun({
+      actor,
+      answer: sandboxAnswer,
+      checkpointObjects,
+      claim: claimed,
+      prompt,
+      run,
+      usagePricingResolution,
+    });
+    await expectTerraApiFollowUpUsage(run.runId);
+
+    const completedEvents = (await chat.listThreadEvents(actor, run.threadId))
+      .events;
+    expect(
+      eventBackedContents(completedEvents, run.runId).filter((message) => {
+        return message.content === sandboxAnswer;
+      }),
+    ).toHaveLength(1);
+    expect(JSON.stringify(completedEvents)).not.toContain(lateApiAnswer);
+    expect(
+      completedEvents.filter((event) => {
+        return (
+          event.runId === run.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      }),
+    ).toMatchObject([{ eventType: "run.completed" }]);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "discarded_late_provider_result",
+        reason: "api_attempt_timed_out",
+      }),
+    );
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        handoffOwner: "sandbox",
+        outcome: "sandbox_retry_started",
+      }),
+    );
+    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
+  }, 90_000);
+
+  it("lets canonical cancellation win the deadline ownership boundary", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        modelCalls += 1;
+        providerEntered.resolve(undefined);
+        await releaseProvider.promise;
+        return nativeCodexSseResponse(
+          piResponsesTextSse("cancelled late API result", modelCalls),
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "cancel at the timeout transfer boundary",
+      });
+    const apiStartedAt = now();
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await providerEntered.promise;
+
+    mockNow(apiStartedAt + API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 2000);
+    await cancelBeforeLatePiResult(
+      actor,
+      run.runId,
+      () => {
+        releaseProvider.resolve(undefined);
+      },
+      usagePricingResolution,
+    );
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ),
+    ).toStrictEqual([]);
+    await expectTerraApiFollowUpUsage(run.runId);
+    await api.requestClaimRunnerJob(true, run.runId, [404], {
+      capabilities: { piModelConfigGenerations: [1, 2, 3] },
+    });
+    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
+  }, 90_000);
+
+  it("fails once when deadline handoff cannot settle by the coordination cap", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        modelCalls += 1;
+        providerEntered.resolve(undefined);
+        await releaseProvider.promise;
+        return nativeCodexSseResponse(
+          piResponsesTextSse("late result before handoff expiry", modelCalls),
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "expire the bounded handoff publication",
+      });
+    const apiStartedAt = now();
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await providerEntered.promise;
+    // No public API can deterministically hold this lifecycle transaction
+    // across the coordination cap; this run-owned fixture isolates that race.
+    const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
+      runId: run.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      lifecycleLock.release();
+      await lifecycleLock.done;
+    });
+
+    mockNow(apiStartedAt + API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 2000);
+    releaseProvider.resolve(undefined);
+    await expect.poll(lifecycleLock.waiterCount).toBe(1);
+    mockNow(apiStartedAt + API_FIRST_TURN_COORDINATION_BUDGET_MS);
+    lifecycleLock.release();
+    await lifecycleLock.done;
+    await waitForRunStatus(actor, run.runId, "failed", 5000);
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
+    await expectTerraApiFollowUpUsage(run.runId);
+    expect(warningCallsForRun(run.runId)).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "terminal_failure",
+        recoveryReason: "api_attempt_timed_out",
+      }),
+    );
+    const events = (await chat.listThreadEvents(actor, run.threadId)).events;
+    expect(
+      events.filter((event) => {
+        return (
+          event.runId === run.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      }),
+    ).toMatchObject([{ eventType: "run.failed" }]);
+  }, 90_000);
+
+  it("emits one canonical warning when the sandbox retry fails", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        modelCalls += 1;
+        providerEntered.resolve(undefined);
+        await releaseProvider.promise;
+        return nativeCodexSseResponse(
+          piResponsesTextSse("discarded before Sandbox failure", modelCalls),
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "let the single Sandbox recovery fail",
+      });
+    const apiStartedAt = now();
+    mockNow(apiStartedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await providerEntered.promise;
+    mockNow(apiStartedAt + API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 2000);
+    releaseProvider.resolve(undefined);
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "Sandbox retry failed",
+      },
+      claimed.sandboxHeaders,
+      [200],
+      undefined,
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, run.runId, "failed", 5000);
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    await expectTerraApiFollowUpUsage(run.runId);
+    expect(warningCallsForRun(run.runId)).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Run failed",
+      expect.objectContaining({
+        runId: run.runId,
+        error: "Sandbox retry failed",
+      }),
+    );
+    const events = (await chat.listThreadEvents(actor, run.threadId)).events;
+    expect(
+      events.filter((event) => {
+        return (
+          event.runId === run.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      }),
+    ).toMatchObject([{ eventType: "run.failed" }]);
+  }, 90_000);
+
   it("transfers pre-provider active input through one stable sandbox-first delivery", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const resourceEntered = createDeferredPromise<void>(context.signal);
@@ -10524,17 +11201,46 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("bills one late OpenRouter result from its observed tier after cancellation wins", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    mockPiResourceArchiveDownloads();
-    const providerEntered = createDeferredPromise<void>(context.signal);
-    const releaseProvider = createDeferredPromise<void>(context.signal);
-    let modelCalls = 0;
-    const modelRequests: unknown[] = [];
-    server.use(
-      http.post(
-        "https://openrouter.ai/api/v1/responses",
-        async ({ request }) => {
+  it.each([
+    {
+      name: "OpenRouter Terra",
+      selectedModel: "gpt-5.6-terra",
+      providerUrl: "https://openrouter.ai/api/v1/responses",
+      observedServiceTier: "default",
+      codexServiceTier: "fast",
+      terraRoute: "openrouter",
+      inputTokens: 10,
+      expectedInput: 5,
+    },
+    {
+      name: "built-in DeepSeek Flash",
+      selectedModel: "deepseek-v4-flash",
+      providerUrl: "https://api.deepseek.com/responses",
+      observedServiceTier: "priority",
+      codexServiceTier: undefined,
+      terraRoute: undefined,
+      inputTokens: 300_000,
+      expectedInput: 299_995,
+    },
+  ] as const)(
+    "bills one late $name result exactly once after cancellation wins",
+    async ({
+      selectedModel,
+      providerUrl,
+      observedServiceTier,
+      codexServiceTier,
+      terraRoute,
+      inputTokens,
+      expectedInput,
+    }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockPiResourceArchiveDownloads();
+      const providerEntered = createDeferredPromise<void>(context.signal);
+      const releaseProvider = createDeferredPromise<void>(context.signal);
+      let modelCalls = 0;
+      const modelRequests: unknown[] = [];
+      server.use(
+        http.post(providerUrl, async ({ request }) => {
           modelCalls += 1;
           modelRequests.push(await request.json());
           if (!providerEntered.settled()) {
@@ -10546,89 +11252,95 @@ describe("CHAT-02: model-first provider policies", () => {
               "result blocked before publication",
               modelCalls,
               {
-                input_tokens: 10,
+                input_tokens: inputTokens,
                 output_tokens: 3,
-                total_tokens: 13,
+                total_tokens: inputTokens + 3,
                 input_tokens_details: {
                   cached_tokens: 3,
                   cache_write_tokens: 2,
                 },
               },
-              "default",
+              observedServiceTier,
             ),
             { headers: { "content-type": "text/event-stream" } },
           );
-        },
-      ),
-    );
-    const checkpointObjects = mockPiCheckpointObjectStore();
-    const { anchor, anchorClaim, run, usagePricingResolution } =
-      await queueCapabilityProvenPiRun({
-        actor,
-        agentId,
-        runnerGroup,
-        prompt: "let cancellation commit before API publication",
-        codexServiceTier: "fast",
-        terraRoute: "openrouter",
+        }),
+      );
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      const { anchor, anchorClaim, run, usagePricingResolution } =
+        await queueCapabilityProvenPiRun({
+          actor,
+          agentId,
+          runnerGroup,
+          prompt: "let cancellation commit before API publication",
+          ...(codexServiceTier === undefined ? {} : { codexServiceTier }),
+          ...(terraRoute === undefined ? {} : { terraRoute }),
+          selectedModel,
+        });
+      await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+      await providerEntered.promise;
+      const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
+        runId: run.runId,
+        signal: context.signal,
       });
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await providerEntered.promise;
-    const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
-      runId: run.runId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
+      onTestFinished(async () => {
+        lifecycleLock.release();
+        await lifecycleLock.done;
+      });
+
+      const cancellation = api.requestCancelRun(
+        actor,
+        run.runId,
+        [200],
+        usagePricingResolution,
+      );
+      await expect.poll(lifecycleLock.waiterCount).toBe(1);
+      releaseProvider.resolve(undefined);
+      await expect.poll(lifecycleLock.waiterCount).toBe(2);
       lifecycleLock.release();
       await lifecycleLock.done;
-    });
+      await cancellation;
+      await flushWaitUntilForTest();
 
-    const cancellation = api.requestCancelRun(
-      actor,
-      run.runId,
-      [200],
-      usagePricingResolution,
-    );
-    await expect.poll(lifecycleLock.waiterCount).toBe(1);
-    releaseProvider.resolve(undefined);
-    await expect.poll(lifecycleLock.waiterCount).toBe(2);
-    lifecycleLock.release();
-    await lifecycleLock.done;
-    await cancellation;
-    await flushWaitUntilForTest();
-
-    expect(modelCalls).toBe(1);
-    expect(
-      z
-        .object({ service_tier: z.literal("priority") })
-        .passthrough()
-        .parse(modelRequests[0]).service_tier,
-    ).toBe("priority");
-    await expectTerraApiUsage(run.runId, "", {
-      input: 5,
-      output: 3,
-      cacheRead: 3,
-      cacheCreation: 2,
-    });
-    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-      status: "cancelled",
-    });
-    expect(
-      checkpointObjects.has(
-        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
-      ),
-    ).toBeFalsy();
-    expect(
-      checkpointObjects.has(
-        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
-      ),
-    ).toBeFalsy();
-    expect(
-      eventBackedContents(
-        (await chat.listThreadEvents(actor, run.threadId)).events,
-        run.runId,
-      ),
-    ).toHaveLength(0);
-  }, 90_000);
+      expect(modelCalls).toBe(1);
+      if (selectedModel === "gpt-5.6-terra") {
+        expect(
+          z
+            .object({ service_tier: z.literal("priority") })
+            .passthrough()
+            .parse(modelRequests[0]).service_tier,
+        ).toBe("priority");
+      } else {
+        expect(modelRequests[0]).not.toHaveProperty("service_tier");
+      }
+      await expectPiApiUsage(run.runId, selectedModel, "", {
+        input: expectedInput,
+        output: 3,
+        cacheRead: 3,
+        cacheCreation: 2,
+      });
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "cancelled",
+      });
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+        ),
+      ).toBeFalsy();
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+        ),
+      ).toBeFalsy();
+      expect(
+        eventBackedContents(
+          (await chat.listThreadEvents(actor, run.threadId)).events,
+          run.runId,
+        ),
+      ).toHaveLength(0);
+    },
+    90_000,
+  );
 
   it("keeps API completion terminal when it wins the lifecycle lock before cancellation", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -11889,6 +12601,131 @@ describe("CHAT-02: model-first provider policies", () => {
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(2);
   }, 150_000);
+
+  it("keeps DeepSeek API-first and Sandbox usage as separate billable rows", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const selectedModel = "deepseek-v4-flash";
+    const usagePricingResolution =
+      await createPiApiFirstTurnUsagePricingResolution(selectedModel);
+    await configureBuiltInPiModel(actor, selectedModel);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          piResponsesContentSse({
+            blocks: [
+              {
+                type: "toolCall",
+                callId: "call_deepseek_sandbox",
+                name: "bash",
+                arguments: { command: "true" },
+              },
+            ],
+            sequence: modelCalls,
+            usage: {
+              input_tokens: 10,
+              output_tokens: 3,
+              total_tokens: 13,
+              input_tokens_details: {
+                cached_tokens: 3,
+                cache_write_tokens: 2,
+              },
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const run = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "hand a built-in DeepSeek tool response to Sandbox",
+        model: selectedModel,
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(manifestKey);
+      })
+      .toBe(true);
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    expect(claimed.claim.piModelConfig).toMatchObject({
+      provider: "deepseek",
+      api: "openai-responses",
+    });
+    expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
+    const sandboxUsageEvent = {
+      idempotencyKey: randomUUID(),
+      kind: "model" as const,
+      provider: selectedModel,
+      category: "tokens.output",
+      quantity: 2,
+    };
+    const sandboxUsageReceipts = await Promise.all([
+      webhooks.requestAgentUsageEvent(
+        { runId: run.runId, events: [sandboxUsageEvent] },
+        claimed.sandboxHeaders,
+        [200],
+        usagePricingResolution,
+      ),
+      webhooks.requestAgentUsageEvent(
+        { runId: run.runId, events: [sandboxUsageEvent] },
+        claimed.sandboxHeaders,
+        [200],
+        usagePricingResolution,
+      ),
+    ]);
+    expect(
+      sandboxUsageReceipts.map((receipt) => {
+        return receipt.body;
+      }),
+    ).toStrictEqual([{ success: true }, { success: true }]);
+    await api.requestCancelRun(actor, run.runId, [200], usagePricingResolution);
+    await waitForRunStatus(actor, run.runId, "cancelled");
+    await failChatRun(run.runId, claimed.sandboxHeaders, "Run cancelled");
+    await flushWaitUntilForTest();
+    const combinedUsage = await readRunUsageEventsFixture(run.runId);
+    expect(
+      combinedUsage.filter((row) => {
+        return row.category === "tokens.output" && row.quantity === 3;
+      }),
+    ).toHaveLength(1);
+    expect(
+      combinedUsage.filter((row) => {
+        return row.category === "tokens.output" && row.quantity === 2;
+      }),
+    ).toHaveLength(1);
+    expect(combinedUsage).toHaveLength(5);
+    expect(
+      combinedUsage.every((row) => {
+        return (
+          row.provider === selectedModel &&
+          row.status === "processed" &&
+          row.billingError === null &&
+          !row.category.includes(".fast") &&
+          !row.category.includes(".long_context")
+        );
+      }),
+    ).toBeTruthy();
+    expect(totalChargedCredits(combinedUsage)).toBeGreaterThan(0);
+  }, 90_000);
 
   it("publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes", async () => {
     if (await runInIsolatedProcess(import.meta.url)) {
@@ -14424,15 +15261,17 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("runs vm0 DeepSeek through the native Pi API credential", async () => {
+  it("runs built-in DeepSeek through the native Pi API credential", async () => {
     const { actor, agentId } = await entitledChatActor();
+    const usagePricingResolution =
+      await createPiApiFirstTurnUsagePricingResolution("deepseek-v4-flash");
     const keyFixtureId = randomUUID();
-    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    const requestedApiKey = `built-in-key-bdd-dev-seed-${keyFixtureId}`;
 
     // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
     await seedBuiltInModelKey("deepseek-v4-flash");
-    const selectedApiKey = await acquireBddVm0ApiKey({
+    const selectedApiKey = await acquireBddBuiltInModelKey({
       fixtureId: keyFixtureId,
       vendor: "deepseek",
       apiKey: requestedApiKey,
@@ -14447,11 +15286,11 @@ describe("CHAT-02: model-first provider policies", () => {
         }
       }
     };
-    const releaseVm0DeepSeekKey = async () => {
-      await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
+    const releaseBuiltInDeepSeekKey = async () => {
+      await releaseBddBuiltInModelKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseBuiltInDeepSeekKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
@@ -14487,17 +15326,25 @@ describe("CHAT-02: model-first provider policies", () => {
             body: await request.json(),
           });
           return new HttpResponse(
-            piResponsesTextSse("vm0 Pi API response", modelRequests.length),
+            piResponsesTextSse(
+              "built-in Pi API response",
+              modelRequests.length,
+            ),
             { headers: { "content-type": "text/event-stream" } },
           );
         }),
       );
 
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "run with the selected vm0 DeepSeek provider",
-        model: "deepseek-v4-flash",
-      });
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "run with the selected built-in DeepSeek provider",
+          model: "deepseek-v4-flash",
+        },
+        "vm0",
+        usagePricingResolution,
+      );
       runId = run.runId;
       await waitForRunStatus(actor, run.runId, "completed");
       await flushWaitUntilForTest();
@@ -14506,6 +15353,12 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(modelRequests[0]?.body).toMatchObject({
         model: "deepseek-v4-flash",
         stream: true,
+      });
+      await expectPiApiUsage(run.runId, "deepseek-v4-flash", "", {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
       });
       const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
       expect(claim.status).toBe(404);
@@ -14520,19 +15373,19 @@ describe("CHAT-02: model-first provider policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
-    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    const requestedApiKey = `built-in-key-bdd-dev-seed-${keyFixtureId}`;
     await seedBuiltInModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
     onTestFinished(async () => {
       await Promise.all([
-        releaseBddVm0ApiKey({ fixtureId: keyFixtureId }),
+        releaseBddBuiltInModelKey({ fixtureId: keyFixtureId }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
 
-    const acquiredApiKey = await acquireBddVm0ApiKey({
+    const acquiredApiKey = await acquireBddBuiltInModelKey({
       fixtureId: keyFixtureId,
       vendor: "anthropic",
       apiKey: requestedApiKey,
@@ -14559,7 +15412,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "run with the selected vm0 provider",
+      prompt: "run with the selected built-in provider",
       model: "claude-opus-4-8",
     });
     runId = run.runId;
@@ -14581,7 +15434,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
 
     if (!claim.encryptedSecrets) {
-      throw new Error("Expected vm0 claim to carry encrypted secrets");
+      throw new Error("Expected the built-in claim to carry encrypted secrets");
     }
     const resolved = await fw.requestFirewallAuth(
       sandboxHeaders,
@@ -14594,7 +15447,7 @@ describe("CHAT-02: model-first provider policies", () => {
       [200],
     );
     if (resolved.status !== 200) {
-      throw new Error("Expected vm0 firewall auth to resolve");
+      throw new Error("Expected built-in firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
     expect(authorization?.startsWith("Bearer ")).toBeTruthy();
@@ -14801,7 +15654,7 @@ describe("CHAT-02: run-level model overrides", () => {
     { name: "Fast", tier: "fast", generation: 3, outcome: "failed" },
     { name: "Fast", tier: "fast", generation: 3, outcome: "cancelled" },
   ] as const)(
-    "hands native $name subscription Terra tools to a generation-$generation Sandbox with $outcome outcome and no VM0 billing",
+    "hands native $name subscription Terra tools to a generation-$generation Sandbox with $outcome outcome and no built-in billing",
     async ({ tier, generation, outcome }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const firewall = createFirewallApi(context);
@@ -16959,7 +17812,7 @@ describe("CHAT-02: run-level model overrides", () => {
       actor,
       {
         agentId: agent.agentId,
-        prompt: "use an unsupported vm0 model",
+        prompt: "use an unsupported model",
         clientThreadId: invalidModelThreadId,
         model: "codex" as never,
       },
@@ -22747,7 +23600,7 @@ describe("CHAT-02: run image model snapshot", () => {
 
     const globalDefault = await sendChatRun(actor, {
       agentId,
-      prompt: "image model comes from the vm0 global default",
+      prompt: "image model comes from the global default",
     });
     await expect(
       readRunImageModelSnapshotFixture(globalDefault.runId),
@@ -22871,7 +23724,7 @@ describe("CHAT-02: run image model snapshot", () => {
     const retiredEverywhere = await sendChatRun(actor, {
       agentId,
       threadId: anchor.threadId,
-      prompt: "retired image defaults fall through to the vm0 default",
+      prompt: "retired image defaults fall through to the global default",
     });
     await expect(
       readRunImageModelSnapshotFixture(retiredEverywhere.runId),

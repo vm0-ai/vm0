@@ -33,10 +33,7 @@ import { setTimeout as delay } from "timers/promises";
 import { pathToFileURL } from "url";
 
 import { Command, InvalidArgumentError } from "commander";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const DEFAULT_WIDTH = 1600;
@@ -145,14 +142,6 @@ function descendantPath(
   return names.reduce((parent, name) => {
     return childPath(parent, name);
   }, directory);
-}
-
-function presentationScreenshotEnabled(): boolean {
-  const payload = decodeSandboxTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.PresentationScreenshot, {
-    userId: payload?.userId,
-    orgId: payload?.orgId,
-  });
 }
 
 function run(
@@ -872,11 +861,6 @@ export const presentationScreenshotCommand = new Command()
   .option("--json", "Print the result as JSON")
   .action(
     withErrorHandler(async (options: Options) => {
-      if (!presentationScreenshotEnabled()) {
-        throw new Error(
-          "Presentation screenshot is not enabled for this workspace",
-        );
-      }
       const outDir = operatorPath(options.out);
       const resolved: Options = {
         ...options,

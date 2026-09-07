@@ -1055,19 +1055,35 @@
       "continuation": {
         "activationErrorDescription": "Não foi possível concluir seu login. Comece novamente e tente outra vez.",
         "activationErrorTitle": "Não foi possível concluir o login",
+        "backupDescription": "Guarde estes códigos em um local seguro. Você pode usar cada código uma vez se perder o acesso ao telefone.",
+        "backupTitle": "Salve seus códigos de backup",
         "chooseOrganizationDescription": "Escolha uma organização para continuar no {{brandName}}.",
         "chooseOrganizationTitle": "Escolha uma organização",
         "completeDescription": "Levando você ao {{brandName}}.",
         "completeTitle": "Login concluído",
+        "createOrganization": "Criar organização",
+        "invitationError": "Não foi possível aceitar este convite. Tente novamente ou solicite um novo convite se o link tiver expirado.",
+        "joinOrganization": "Entrar em {{organizationName}}",
         "loadingDescription": "Verificando o que sua conta precisa fazer a seguir.",
         "loadingTitle": "Finalizando o login",
         "noOrganizationsDescription": "Esta conta não tem uma organização disponível. Peça acesso a um administrador da organização e comece novamente.",
         "noOrganizationsTitle": "Nenhuma organização disponível",
+        "organizationName": "Nome da organização",
+        "passwordTaskError": "Não foi possível atualizar sua senha. Escolha uma senha mais forte e tente novamente.",
+        "phoneNumberLabel": "Número de telefone",
         "recoveryAction": "Começar novamente",
+        "savedCodes": "Salvei meus códigos",
         "secondFactorDescription": "Este login exige uma etapa adicional de verificação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "secondFactorTitle": "Verificação adicional necessária",
+        "securityDescription": "Adicione uma segunda forma de verificar sua identidade.",
+        "securityTitle": "Configure a verificação em duas etapas",
         "selectOrganization": "Continuar com {{organizationName}}",
+        "sendCode": "Enviar código",
+        "setupKey": "Chave de configuração",
+        "setupKeyDescription": "Adicione esta chave de configuração ao seu aplicativo autenticador e insira o código gerado.",
         "signedInAs": "Conectado como {{identifier}}",
+        "taskComplete": "Suas configurações de segurança foram salvas. Continue para concluir o login.",
+        "taskError": "Não foi possível concluir esta etapa. Confira seus dados e tente novamente.",
         "unsupportedDescription": "Sua conta retornou uma etapa de autenticação que esta página não oferece. Comece novamente para tentar outro método de login.",
         "unsupportedTitle": "Etapa de login indisponível"
       },
@@ -1884,6 +1900,19 @@
     "composer": {
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
+      "create": {
+        "chooseStyle": "Escolher estilo",
+        "chooseTemplate": "Escolher modelo",
+        "exit": "Sair do modo de criação",
+        "image": "Criar imagem",
+        "imagePlaceholder": "Descreva a imagem que você quer criar…",
+        "presentation": "Criar apresentação",
+        "presentationPlaceholder": "Qual é o tema da sua apresentação?",
+        "settingsAdjusted": "Algumas configurações de vídeo foram ajustadas para este modelo",
+        "title": "Criar",
+        "video": "Criar vídeo",
+        "videoPlaceholder": "Descreva o vídeo que você quer criar…"
+      },
       "createWorkflow": "Criar fluxo de trabalho",
       "imageModelForThisChat": "Modelo de imagem para este chat",
       "message": "Mensagem",
@@ -1941,7 +1970,6 @@
       "accountForThread": "Conta para esta conversa",
       "add": "Adicionar {{connectorName}}",
       "addConnectors": "Adicionar conectores",
-      "authorizationFailed": "{{connectorName}} foi conectado, mas não pôde ser autorizado para {{agentName}}",
       "authorized": "{{connectorName}} foi conectado e autorizado para {{agentName}}",
       "available_one": "Conectores disponíveis para conectar ({{count}})",
       "available_many": "Conectores disponíveis para conectar ({{count}})",
@@ -2046,10 +2074,7 @@
       },
       "format": {
         "auto": "Automático",
-        "filter": "Filtrar referências de estilo por formato",
-        "landscape": "Horizontal · 16:9",
-        "output": "Formato de saída",
-        "portrait": "Vertical · 9:16"
+        "output": "Formato de saída"
       },
       "heading": "Crie seu vídeo de introdução",
       "help": "Adicione materiais, descreva o que deseja ou faça as duas coisas. O Okou cuida do resto.",
@@ -2063,8 +2088,17 @@
       },
       "style": {
         "auto": "Deixar o Okou escolher",
-        "autoDescription": "Adapte a direção visual às suas instruções e materiais",
-        "emptyFormat": "Nenhuma referência de estilo corresponde a este formato.",
+        "browseGroups": "Explorar por estilo",
+        "description": "O estilo define cenas, transições, sobreposições de texto e ritmo.",
+        "groups": {
+          "cinematic": "Cinema e fotografia",
+          "handmade": "Artesanato e materiais",
+          "iconic-artist": "Arte e design",
+          "other": "Outros estilos",
+          "pop-culture": "Cultura pop",
+          "print": "Impressão e publicação",
+          "retro-tech": "Tecnologia retrô e interfaces"
+        },
         "heading": "Escolha uma referência de estilo",
         "label": "Referência de estilo",
         "preview": "Prévia de {{title}}",
@@ -2200,6 +2234,7 @@
     "run": {
       "automatedRun": "Execução automatizada",
       "collapseGroupedHistory": "Recolher histórico de execuções agrupadas",
+      "collapseHistoryMessage": "Recolher mensagem do histórico: {{message}}",
       "collapseWorkHistory": "Recolher histórico de trabalho",
       "creditUsage": "Uso de créditos",
       "done": {
@@ -5019,12 +5054,9 @@
         "loading": "Carregando modelos...",
         "menu": {
           "adjustSettings": "Ajustar configurações de {{model}}",
-          "backToChatModels": "Voltar aos modelos de chat",
           "backToModels": "Voltar aos modelos",
-          "cancel": "Cancelar",
           "changeModel": "Alterar modelo de {{category}}, {{model}}",
-          "chatSettings": "Configurações de chat",
-          "confirm": "Confirmar"
+          "chatSettings": "Configurações de chat"
         },
         "models": "Modelos",
         "noConfiguredModels": "Nenhum modelo configurado",

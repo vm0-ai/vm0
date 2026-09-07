@@ -1,3 +1,5 @@
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
+
 export function buildAgentPhonePrompt(
   opts: {
     readonly sharedNumber: string;
@@ -30,5 +32,7 @@ export function buildAgentPhonePrompt(
   if (opts.messageId) {
     headerParts.push(`Message ID: ${opts.messageId}`);
   }
-  return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
+  return [CONVERSATION_GUIDANCE, headerParts.join("\n"), threadContext]
+    .filter(Boolean)
+    .join("\n\n");
 }

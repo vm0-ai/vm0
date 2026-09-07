@@ -22,7 +22,7 @@ const RESPONSE_QUEUE_FULL: u8 = 0x03;
 /// Write the required hello frame to a connected stream.
 ///
 /// The hello frame has kind `0x01` and an empty payload. `guest-agent` writes
-/// this immediately after connecting, and `vsock-guest` reads it before marking
+/// this immediately after connecting, and `guest-control-server` reads it before marking
 /// the sink connected.
 ///
 /// # Errors

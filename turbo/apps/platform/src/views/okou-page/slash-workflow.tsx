@@ -1,12 +1,29 @@
 // Slash-workflow domain helpers and the suggestion menu, shared by the chat
 // composer. Kept in its own module so the textarea composer and the TipTap
 // workflow composer can both reuse them without an import cycle.
-import { ChevronRight, FileText } from "lucide-react";
+import {
+  ChevronRight,
+  FileText,
+  Image,
+  Video,
+  Presentation,
+} from "lucide-react";
 import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import type { ComposerSlashWorkflow } from "../../signals/okou-page/workflow-composer-domain.ts";
+
+import {
+  composerCreateModeLabel,
+  type ComposerCreateMode,
+} from "../../signals/okou-page/composer-create.ts";
+
+export const COMPOSER_CREATE_ICONS = {
+  image: Image,
+  video: Video,
+  presentation: Presentation,
+} as const;
 
 function slashWorkflowOptionId(workflowId: string): string {
   return `slash-workflow-option-${workflowId}`;
@@ -40,7 +57,7 @@ export function composerSuggestionCollisionPadding():
 }
 
 export function scrollSlashWorkflowIntoView(
-  workflow: ComposerSlashWorkflow | undefined,
+  workflow: Pick<ComposerSlashWorkflow, "id"> | undefined,
 ): void {
   if (!workflow) {
     return;
@@ -54,8 +71,59 @@ export function scrollSlashWorkflowIntoView(
   });
 }
 
+function SlashCreateGroup({
+  modes,
+  selectedIndex,
+  onSelect,
+}: {
+  readonly modes: readonly ComposerCreateMode[];
+  readonly selectedIndex: number;
+  readonly onSelect: (mode: ComposerCreateMode) => void;
+}) {
+  const { t } = useTranslation();
+  if (modes.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      <div className="px-2.5 py-2 text-xs font-medium text-muted-foreground">
+        {t(($) => {
+          return $.chat.composer.create.title;
+        })}
+      </div>
+      <div className="px-1.5 pb-1.5">
+        {modes.map((mode, index) => {
+          const Icon = COMPOSER_CREATE_ICONS[mode];
+          return (
+            <button
+              key={mode}
+              id={slashWorkflowOptionId(mode)}
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors",
+                index === selectedIndex ? "bg-accent" : "hover:bg-state-hover",
+              )}
+              onPointerDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={() => {
+                onSelect(mode);
+              }}
+            >
+              <Icon size={16} aria-hidden />
+              {composerCreateModeLabel(mode)}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 export function SlashWorkflowMenu({
   workflows,
+  createModes,
+  onSelectCreate,
   query,
   loading,
   selectedIndex,
@@ -63,6 +131,8 @@ export function SlashWorkflowMenu({
   onSelect,
 }: {
   readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly createModes: readonly ComposerCreateMode[];
+  readonly onSelectCreate: (mode: ComposerCreateMode) => void;
   readonly query: string;
   readonly loading: boolean;
   readonly selectedIndex: number;
@@ -85,65 +155,72 @@ export function SlashWorkflowMenu({
       className="flex h-[min(16rem,var(--available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="slash-workflow-menu"
     >
-      <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.chat.composer.workflows.title;
-        })}
-      </div>
-      {loading ? (
-        <div className="px-2.5 py-2 text-sm text-muted-foreground">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <SlashCreateGroup
+          modes={createModes}
+          selectedIndex={selectedIndex}
+          onSelect={onSelectCreate}
+        />
+        <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">
           {t(($) => {
-            return $.chat.composer.workflows.loading;
+            return $.chat.composer.workflows.title;
           })}
         </div>
-      ) : workflows.length > 0 ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
-          {workflows.map((workflow, index) => {
-            const selected = index === selectedIndex;
-            const matchStart = workflow.name
-              .toLowerCase()
-              .indexOf(query.toLowerCase());
-            const matchEnd = matchStart + query.length;
-            return (
-              <button
-                id={slashWorkflowOptionId(workflow.id)}
-                key={workflow.id}
-                type="button"
-                className={cn(
-                  "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",
-                  selected ? "bg-accent" : "hover:bg-state-hover",
-                )}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onSelect(workflow);
-                }}
-              >
-                <span className="w-full truncate font-mono text-sm text-foreground">
-                  <span className="text-brand-text">/</span>
-                  {workflow.name.slice(0, matchStart)}
-                  {query && matchStart !== -1 && (
-                    <span className="text-brand-text/60">
-                      {workflow.name.slice(matchStart, matchEnd)}
+        {loading ? (
+          <div className="px-2.5 py-2 text-sm text-muted-foreground">
+            {t(($) => {
+              return $.chat.composer.workflows.loading;
+            })}
+          </div>
+        ) : workflows.length > 0 ? (
+          <div className="px-1.5 pb-1.5">
+            {workflows.map((workflow, index) => {
+              const selected = index + createModes.length === selectedIndex;
+              const matchStart = workflow.name
+                .toLowerCase()
+                .indexOf(query.toLowerCase());
+              const matchEnd = matchStart + query.length;
+              return (
+                <button
+                  id={slashWorkflowOptionId(workflow.id)}
+                  key={workflow.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",
+                    selected ? "bg-accent" : "hover:bg-state-hover",
+                  )}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    onSelect(workflow);
+                  }}
+                >
+                  <span className="w-full truncate font-mono text-sm text-foreground">
+                    <span className="text-brand-text">/</span>
+                    {workflow.name.slice(0, matchStart)}
+                    {query && matchStart !== -1 && (
+                      <span className="text-brand-text/60">
+                        {workflow.name.slice(matchStart, matchEnd)}
+                      </span>
+                    )}
+                    {workflow.name.slice(query ? matchEnd : 0)}
+                  </span>
+                  {workflow.description && (
+                    <span className="w-full truncate text-xs text-muted-foreground/70">
+                      {workflow.description}
                     </span>
                   )}
-                  {workflow.name.slice(query ? matchEnd : 0)}
-                </span>
-                {workflow.description && (
-                  <span className="w-full truncate text-xs text-muted-foreground/70">
-                    {workflow.description}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
-          {t(($) => {
-            return $.chat.composer.workflows.empty;
-          })}
-        </div>
-      )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
+            {t(($) => {
+              return $.chat.composer.workflows.empty;
+            })}
+          </div>
+        )}
+      </div>
       {showWorkflowsPageLink && (
         <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1">
           <Link

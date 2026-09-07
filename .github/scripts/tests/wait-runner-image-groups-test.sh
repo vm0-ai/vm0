@@ -133,13 +133,13 @@ make_manifest() {
       runnerSha256: $runner_sha,
       guestSha256: {
         "guest-agent": "guest-agent-sha",
-        "guest-download": "guest-download-sha",
+        "guest-storage-apply": "guest-storage-apply-sha",
         "guest-init": "guest-init-sha",
-        "guest-mock-claude": "guest-mock-claude-sha",
-        "guest-mock-codex": "guest-mock-codex-sha",
-        "guest-reseed": "guest-reseed-sha",
+        "claude-mock": "claude-mock-sha",
+        "codex-mock": "codex-mock-sha",
+        "guest-state-restore": "guest-state-restore-sha",
         "guest-tool-exec": "guest-tool-exec-sha",
-        "guest-rpc": "guest-rpc-sha",
+        "runner-rpc-client": "runner-rpc-client-sha",
         "guest-write-file": "guest-write-file-sha"
       },
       hosts: $hosts

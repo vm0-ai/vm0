@@ -16,7 +16,9 @@ import { connectorCatalogContract } from "../connector-catalog";
 import { connectorAccountsContract } from "../connector-accounts";
 import {
   connectorCheckDiagnosticResultSchema,
+  connectorCheckRequestBodySchema,
   connectorCheckRequestSchema,
+  connectorCheckResponseBodySchema,
 } from "../connector-check";
 import { connectorsSearchContract } from "../connectors";
 import {
@@ -458,6 +460,85 @@ describe("connector client request contracts", () => {
       }),
     ).toStrictEqual({ ...base, connectorSlug: "github" });
     expect(connectorCheckRequestSchema.parse(base)).toStrictEqual(base);
+  });
+
+  it("separates legacy and target-aware connector check requests", () => {
+    const base = {
+      mode: "url" as const,
+      method: "GET",
+      url: "https://api.example.test/v1/items",
+    };
+    const automatic = { ...base, includeCustomConnectors: true as const };
+    const selected = {
+      ...base,
+      target: {
+        kind: "custom" as const,
+        customConnectorId: "00000000-0000-4000-a000-000000000005",
+      },
+    };
+
+    expect(connectorCheckRequestBodySchema.parse(automatic)).toStrictEqual(
+      automatic,
+    );
+    expect(connectorCheckRequestBodySchema.parse(selected)).toStrictEqual(
+      selected,
+    );
+    expect(() => {
+      connectorCheckRequestSchema.parse(automatic);
+    }).toThrow();
+    expect(() => {
+      connectorCheckRequestBodySchema.parse({
+        ...selected,
+        connectorSlug: "github",
+      });
+    }).toThrow();
+  });
+
+  it("accepts target-aware connector check responses separately", () => {
+    const target = {
+      kind: "custom" as const,
+      customConnectorId: "00000000-0000-4000-a000-000000000005",
+    };
+    const resolved = {
+      outcome: "resolved" as const,
+      mode: "url" as const,
+      connector: {
+        target,
+        label: "Example",
+        visibility: "available" as const,
+        credentialResolution: "network-boundary" as const,
+      },
+      environmentNames: null,
+      run: {
+        status: "configured" as const,
+        bases: ["https://api.example.test/v1"],
+      },
+      method: "GET",
+      base: "https://api.example.test/v1",
+      relativePath: "/items",
+      permission: {
+        kind: "unknown-endpoint" as const,
+        policy: { outcome: "allow" as const, basis: "unknown-policy" as const },
+      },
+    };
+
+    expect(connectorCheckResponseBodySchema.parse(resolved)).toStrictEqual(
+      resolved,
+    );
+    expect(() => {
+      connectorCheckDiagnosticResultSchema.parse(resolved);
+    }).toThrow();
+    expect(
+      connectorCheckResponseBodySchema.parse({
+        outcome: "target-unavailable",
+        target,
+        reason: "not-admitted",
+      }),
+    ).toStrictEqual({
+      outcome: "target-unavailable",
+      target,
+      reason: "not-admitted",
+    });
   });
 
   it("accepts canonical user connector updates", () => {

@@ -155,30 +155,30 @@ jobs:
               ${{ toJSON(steps.release.outputs['crates/ably-subscriber--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/api-contracts--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-agent--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-common--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-telemetry--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-contracts--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-download--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-storage-apply--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-init--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-reseed--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-rpc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/claude-mock--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/codex-mock--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-state-restore--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/session-history-selector--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-client--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-write-file--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/nbd-cow--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/process-control-ipc--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/runner--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-firecracker--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox-mock--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/shell-quote--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-rpc-proto--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-proto--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/tracing-test-support--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-guest--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-host--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-proto--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-test--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-server--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-client--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-proto--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-tests--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/api--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/cli--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
@@ -232,30 +232,30 @@ jobs:
               ${{ toJSON(steps.release.outputs['crates/ably-subscriber--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/api-contracts--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-agent--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-common--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-telemetry--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-contracts--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-download--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-storage-apply--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-init--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-reseed--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-rpc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/claude-mock--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/codex-mock--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-state-restore--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/session-history-selector--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-client--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-write-file--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/nbd-cow--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/process-control-ipc--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/runner--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-firecracker--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox-mock--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/shell-quote--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-rpc-proto--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-proto--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/tracing-test-support--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-guest--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-host--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-proto--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-test--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-server--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-client--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-proto--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-tests--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/api--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/cli--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--tag_name']) }},
@@ -1611,7 +1611,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.okou.ai' }}
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
         run: |
@@ -1731,32 +1730,29 @@ jobs:
             --message "app artifact ${ARTIFACT_SHA}"
           cd ..
 
-          for mapping in \
-            "https://app.vm0.ai|https://api.vm0.ai" \
-            "https://app.okou.ai|https://api.okou.ai"; do
-            IFS='|' read -r app_origin api_origin <<< "$mapping"
-            cors_result="$(
-              curl -fsS \
-                --connect-timeout 10 \
-                --max-time 30 \
-                --retry 12 \
-                --retry-delay 5 \
-                --retry-all-errors \
-                --request OPTIONS \
-                --header "Origin: ${app_origin}" \
-                --header "Access-Control-Request-Method: GET" \
-                --output /dev/null \
-                --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
-                "${api_origin}/api/__brand-smoke__"
-            )"
-            mapfile -t cors_values <<< "$cors_result"
-            if [[ "${cors_values[0]:-}" != "204" ||
-                  "${cors_values[1]:-}" != "$app_origin" ||
-                  "${cors_values[2]:-}" != "true" ]]; then
-              echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
-              exit 1
-            fi
-          done
+          app_origin="https://app.okou.ai"
+          api_origin="https://api.okou.ai"
+          cors_result="$(
+            curl -fsS \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --retry 12 \
+              --retry-delay 5 \
+              --retry-all-errors \
+              --request OPTIONS \
+              --header "Origin: ${app_origin}" \
+              --header "Access-Control-Request-Method: GET" \
+              --output /dev/null \
+              --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
+              "${api_origin}/api/__brand-smoke__"
+          )"
+          mapfile -t cors_values <<< "$cors_result"
+          if [[ "${cors_values[0]:-}" != "204" ||
+                "${cors_values[1]:-}" != "$app_origin" ||
+                "${cors_values[2]:-}" != "true" ]]; then
+            echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
+            exit 1
+          fi
 
       - name: Finish GitHub Deployment
         if: always()
@@ -1766,7 +1762,7 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: https://app.okou.ai
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Report App Worker URLs
@@ -1777,7 +1773,6 @@ jobs:
             echo
             echo "### Live"
             echo "- https://app.okou.ai"
-            echo "- https://app.vm0.ai"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Calculate duration
@@ -1805,7 +1800,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
+                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.okou.ai|Okou App>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}

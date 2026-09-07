@@ -22,8 +22,8 @@ _COMMON_WILDCARD_ARRAY_COUNT_PATHS = {("includes", "*")}
 _COMMON_OBJECT_PRESENCE_PATHS = {(), ("data",)}
 _WILDCARD_INTERNAL_MARKER_KEYS = frozenset(
     (
-        "\0__vm0_json_unknown_key__",
-        "\0__vm0_json_array_element__",
+        "\0__json_selective_unknown_key__",
+        "\0__json_selective_array_element__",
     )
 )
 
@@ -123,9 +123,9 @@ def test_common_extraction_matches_json_loads_across_chunk_sizes():
             b'"meta":{"total_tweet_count":9}}'
         ),
         (
-            b'{"includes":{"\\u0000__vm0_json_unknown_key__":[{"id":"internal-1"}],'
-            b'"\\u0000__vm0_json_array_element__":[{"id":"internal-2"}],'
-            b'"\\u0000__vm0_json_custom":[{"id":"custom-1"},{"id":"custom-2"}]}}'
+            b'{"includes":{"\\u0000__json_selective_unknown_key__":[{"id":"internal-1"}],'
+            b'"\\u0000__json_selective_array_element__":[{"id":"internal-2"}],'
+            b'"\\u0000__json_selective_custom":[{"id":"custom-1"},{"id":"custom-2"}]}}'
         ),
     ]
 
@@ -336,7 +336,7 @@ def test_first_array_element_marker_cannot_match_an_object_key():
     extractor = JsonSelectiveExtractor(scalar_fields={prompt_tokens_path: ScalarField("int")})
 
     extractor.feed(
-        b'{"choices":{"\\u0000__vm0_json_array_element__":{"usage":{"prompt_tokens":99}}}}'
+        b'{"choices":{"\\u0000__json_selective_array_element__":{"usage":{"prompt_tokens":99}}}}'
     )
     result = extractor.finish()
 

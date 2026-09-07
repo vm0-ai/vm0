@@ -1,5 +1,4 @@
 import { PI_MEMORY_ROOT } from "@okouai/api-contracts/contracts/runners";
-import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { command } from "ccstate";
@@ -12,7 +11,6 @@ import { settle } from "../utils";
 import { createAgentRun$ } from "./agent-run-create.service";
 import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { resolveBuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
-import { DEFAULT_AGENT_NAME } from "./default-agent-profile";
 import {
   claimPiMemoryPhase2Job,
   failPiMemoryPhase2Job,
@@ -172,17 +170,6 @@ const dispatchClaim$ = command(
     signal: AbortSignal,
   ): Promise<PiMemoryPhase2WorkerResult> => {
     const { db, claim } = input;
-    const [agent] = await db
-      .select({ id: agents.id })
-      .from(agents)
-      .where(
-        and(eq(agents.orgId, claim.orgId), eq(agents.name, DEFAULT_AGENT_NAME)),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (!agent) {
-      return await failClaim(db, claim, nowDate(), "maintenance_agent_missing");
-    }
     const route = await resolveBuiltInModelRuntimeRoute(
       db,
       PI_MEMORY_PHASE2_MODEL,
@@ -213,7 +200,6 @@ const dispatchClaim$ = command(
         userId: claim.userId,
         orgId: claim.orgId,
         body: {
-          agentId: agent.id,
           prompt: "Run first-party Pi memory maintenance.",
           triggerSource: "agent",
           artifacts: [
@@ -251,10 +237,11 @@ const dispatchClaim$ = command(
         ],
         includeOkouTokenSecret: false,
         productAgentExecutionPlan: {
+          identity: "pi-memory-phase2-maintenance",
           content: {
             version: "1",
-            // Pi is the sandbox execution overlay; the canonical Agent
-            // definition still needs a supported base framework.
+            // Pi is the sandbox execution overlay; run preparation still
+            // needs a supported base framework.
             agent: { framework: "claude-code" },
           },
         },

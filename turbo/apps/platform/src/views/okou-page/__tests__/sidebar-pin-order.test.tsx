@@ -16,17 +16,18 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
+  cachedChatListEvents,
   chatListAuth,
   chatListEvent,
   chatListThread,
   installChatListAgent,
   installChatListStream,
-  seedChatListCache,
   sidebarThreadLinks,
   sidebarThreadTitles,
 } from "./chat-list-test-helpers.ts";
 
 const context = testContext();
+
 async function prepare(caseId: number, enabled = true, tied = false) {
   const auth = chatListAuth(caseId);
   const pinnedAt = "2026-09-01T00:00:00Z";
@@ -42,23 +43,22 @@ async function prepare(caseId: number, enabled = true, tied = false) {
     }),
     chatListThread(4, "Regular thread"),
   ];
-  await seedChatListCache(caseId, auth, snapshot);
   installChatListAgent(context);
   const stream = installChatListStream(context, { caseId, snapshot });
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(caseId, snapshot),
     featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: enabled },
   });
-  await waitFor(() => {
-    return expect(sidebarThreadTitles()).toStrictEqual([
-      "First pin",
-      "Second pin",
-      "Last pin",
-      "Regular thread",
-    ]);
-  });
+  await screen.findByText("First pin");
+  expect(sidebarThreadTitles()).toStrictEqual([
+    "First pin",
+    "Second pin",
+    "Last pin",
+    "Regular thread",
+  ]);
   return { stream, snapshot };
 }
 function handle(title: string) {
@@ -297,7 +297,6 @@ test("keyboard reorder follows visual tab order and survives the matching persis
     }),
   ]);
   changeChatThreadList();
-  await stream.eventsServed;
   await waitFor(() => {
     return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",

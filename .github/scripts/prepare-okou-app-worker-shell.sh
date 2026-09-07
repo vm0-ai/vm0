@@ -8,15 +8,6 @@ fi
 
 canonical_dist="$1"
 worker_shell="$2"
-production_primary_app_domain="${CLERK_PRODUCTION_PRIMARY_APP_DOMAIN:-app.okou.ai}"
-
-case "$production_primary_app_domain" in
-  app.vm0.ai | app.okou.ai) ;;
-  *)
-    echo "invalid Clerk production primary app domain: ${production_primary_app_domain}" >&2
-    exit 1
-    ;;
-esac
 
 required_files=(
   index.html
@@ -61,6 +52,6 @@ cp "${worker_shell}/icons/icon-512-maskable.png" \
 clerk_primary_app_domain_marker="__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__"
 if grep -Fq "$clerk_primary_app_domain_marker" "${worker_shell}/index.html"; then
   sed -i \
-    "s|${clerk_primary_app_domain_marker}|${production_primary_app_domain}|g" \
+    "s|${clerk_primary_app_domain_marker}|app.okou.ai|g" \
     "${worker_shell}/index.html"
 fi

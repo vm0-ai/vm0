@@ -78,6 +78,53 @@ function matchesAccessibleName(element: HTMLElement, name: string): boolean {
   );
 }
 
+function workHistoryToggleButtons(container: ParentNode): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>("[data-chat-run-work-range]"),
+  );
+}
+
+export function queryWorkHistoryToggles(
+  state: "collapsed" | "expanded",
+  container: ParentNode = document.body,
+): HTMLElement[] {
+  const expanded = state === "expanded";
+  return workHistoryToggleButtons(container).filter((control) => {
+    return control.getAttribute("aria-expanded") === String(expanded);
+  });
+}
+
+export function queryWorkHistoryToggle(
+  state: "collapsed" | "expanded",
+  container: ParentNode = document.body,
+): HTMLElement | null {
+  const options = queryWorkHistoryToggles(state, container);
+  if (options.length > 1) {
+    throw new Error(`Found multiple ${state} work history toggles`);
+  }
+  return options[0] ?? null;
+}
+
+export function getWorkHistoryToggle(
+  state: "collapsed" | "expanded",
+  container: ParentNode = document.body,
+): HTMLElement {
+  const option = queryWorkHistoryToggle(state, container);
+  if (!option) {
+    throw new Error(`${state} work history toggle was not visible`);
+  }
+  return option;
+}
+
+export function findWorkHistoryToggle(
+  state: "collapsed" | "expanded",
+  container: ParentNode = document.body,
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    return getWorkHistoryToggle(state, container);
+  });
+}
+
 export function queryButton(
   name: string,
   container: ParentNode = document.body,

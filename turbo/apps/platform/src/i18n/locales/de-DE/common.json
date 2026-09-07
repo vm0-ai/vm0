@@ -1036,19 +1036,35 @@
       "continuation": {
         "activationErrorDescription": "Die Anmeldung konnte nicht abgeschlossen werden. Starte erneut und versuche es noch einmal.",
         "activationErrorTitle": "Anmeldung konnte nicht abgeschlossen werden",
+        "backupDescription": "Bewahre diese Codes sicher auf. Du kannst jeden Code einmal verwenden, wenn du keinen Zugriff mehr auf dein Telefon hast.",
+        "backupTitle": "Sicherungscodes speichern",
         "chooseOrganizationDescription": "Wähle eine Organisation aus, um mit {{brandName}} fortzufahren.",
         "chooseOrganizationTitle": "Organisation auswählen",
         "completeDescription": "Du wirst zu {{brandName}} weitergeleitet.",
         "completeTitle": "Anmeldung abgeschlossen",
+        "createOrganization": "Organisation erstellen",
+        "invitationError": "Diese Einladung konnte nicht angenommen werden. Versuche es erneut oder bitte um eine neue Einladung, wenn der Link abgelaufen ist.",
+        "joinOrganization": "{{organizationName}} beitreten",
         "loadingDescription": "Es wird geprüft, welcher Schritt für dein Konto als Nächstes erforderlich ist.",
         "loadingTitle": "Anmeldung wird abgeschlossen",
         "noOrganizationsDescription": "Für dieses Konto ist keine Organisation verfügbar. Bitte einen Organisationsadministrator um Zugriff und starte dann erneut.",
         "noOrganizationsTitle": "Keine Organisation verfügbar",
+        "organizationName": "Name der Organisation",
+        "passwordTaskError": "Dein Passwort konnte nicht aktualisiert werden. Wähle ein stärkeres Passwort und versuche es erneut.",
+        "phoneNumberLabel": "Telefonnummer",
         "recoveryAction": "Neu starten",
+        "savedCodes": "Codes gespeichert",
         "secondFactorDescription": "Diese Anmeldung erfordert einen zusätzlichen Bestätigungsschritt, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "secondFactorTitle": "Zusätzliche Bestätigung erforderlich",
+        "securityDescription": "Füge eine zweite Möglichkeit hinzu, deine Identität zu bestätigen.",
+        "securityTitle": "Bestätigung in zwei Schritten einrichten",
         "selectOrganization": "Mit {{organizationName}} fortfahren",
+        "sendCode": "Code senden",
+        "setupKey": "Einrichtungsschlüssel",
+        "setupKeyDescription": "Füge diesen Einrichtungsschlüssel zu deiner Authenticator-App hinzu und gib dann den erzeugten Code ein.",
         "signedInAs": "Angemeldet als {{identifier}}",
+        "taskComplete": "Deine Sicherheitseinstellungen wurden gespeichert. Fahre fort, um die Anmeldung abzuschließen.",
+        "taskError": "Dieser Schritt konnte nicht abgeschlossen werden. Prüfe deine Angaben und versuche es erneut.",
         "unsupportedDescription": "Dein Konto hat einen Authentifizierungsschritt zurückgegeben, den diese Seite nicht unterstützt. Starte erneut, um eine andere Anmeldemethode zu verwenden.",
         "unsupportedTitle": "Anmeldeschritt nicht verfügbar"
       },
@@ -1855,6 +1871,19 @@
     "composer": {
       "agentSuggestions": "Agenten",
       "configureModel": "Modell konfigurieren",
+      "create": {
+        "chooseStyle": "Stil wählen",
+        "chooseTemplate": "Vorlage wählen",
+        "exit": "Erstellungsmodus verlassen",
+        "image": "Bild erstellen",
+        "imagePlaceholder": "Beschreibe das gewünschte Bild…",
+        "presentation": "Präsentation erstellen",
+        "presentationPlaceholder": "Worum geht es in deiner Präsentation?",
+        "settingsAdjusted": "Einige Videoeinstellungen wurden an dieses Modell angepasst",
+        "title": "Erstellen",
+        "video": "Video erstellen",
+        "videoPlaceholder": "Beschreibe das gewünschte Video…"
+      },
       "createWorkflow": "Workflow erstellen",
       "imageModelForThisChat": "Bildmodell für diesen Chat",
       "message": "Nachricht",
@@ -1912,7 +1941,6 @@
       "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",
       "addConnectors": "Integrationen hinzufügen",
-      "authorizationFailed": "{{connectorName}} verbunden, konnte aber nicht für {{agentName}} autorisiert werden",
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",
@@ -2014,10 +2042,7 @@
       },
       "format": {
         "auto": "Automatisch",
-        "filter": "Stilreferenzen nach Format filtern",
-        "landscape": "Querformat · 16:9",
-        "output": "Ausgabeformat",
-        "portrait": "Hochformat · 9:16"
+        "output": "Ausgabeformat"
       },
       "heading": "Erstelle dein Intro-Video",
       "help": "Füge Materialien hinzu, beschreibe dein Ziel oder mache beides. Okou erledigt den Rest.",
@@ -2031,8 +2056,17 @@
       },
       "style": {
         "auto": "Okou wählen lassen",
-        "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
-        "emptyFormat": "Keine Stilreferenzen für dieses Format.",
+        "browseGroups": "Nach Stil durchsuchen",
+        "description": "Der Stil bestimmt Szenen, Übergänge, Texteinblendungen und Tempo.",
+        "groups": {
+          "cinematic": "Film und Fotografie",
+          "handmade": "Handarbeit und Materialien",
+          "iconic-artist": "Kunst und Design",
+          "other": "Weitere Stile",
+          "pop-culture": "Popkultur",
+          "print": "Druck und Verlagswesen",
+          "retro-tech": "Retro-Technik und Oberflächen"
+        },
         "heading": "Stilreferenz wählen",
         "label": "Stilreferenz",
         "preview": "Vorschau von {{title}}",
@@ -2164,6 +2198,7 @@
     "run": {
       "automatedRun": "Automatisierte Ausführung",
       "collapseGroupedHistory": "Gruppierten Ausführungsverlauf einklappen",
+      "collapseHistoryMessage": "Nachricht im Arbeitsverlauf einklappen: {{message}}",
       "collapseWorkHistory": "Arbeitsverlauf einklappen",
       "creditUsage": "Credit-Nutzung",
       "done": {
@@ -4965,12 +5000,9 @@
         "loading": "Modelle werden geladen...",
         "menu": {
           "adjustSettings": "Einstellungen für {{model}} anpassen",
-          "backToChatModels": "Zurück zu Chatmodellen",
           "backToModels": "Zurück zu Modellen",
-          "cancel": "Abbrechen",
           "changeModel": "{{category}}-Modell ändern, {{model}}",
-          "chatSettings": "Chateinstellungen",
-          "confirm": "Bestätigen"
+          "chatSettings": "Chateinstellungen"
         },
         "models": "Modelle",
         "noConfiguredModels": "Keine konfigurierten Modelle",

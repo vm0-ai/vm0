@@ -20,8 +20,8 @@ from unittest.mock import patch
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
@@ -315,21 +315,63 @@ async def _trickle_until_peer_disconnect(
     peer_closed.set()
 
 
-def _create_tls_contexts(tmp_path: Path) -> tuple[ssl.SSLContext, ssl.SSLContext]:
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+def _create_tls_server(
+    tmp_path: Path,
+    *,
+    hostname: str = "localhost",
+) -> tuple[ssl.SSLContext, Path]:
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Firewall auth test CA")])
     now = datetime.datetime.now(datetime.UTC)
+    ca_certificate = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False
+        )
+        .sign(ca_key, hashes.SHA256())
+    )
+    ca_path = tmp_path / "ca.pem"
+    ca_path.write_bytes(ca_certificate.public_bytes(serialization.Encoding.PEM))
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, hostname)])
     certificate = (
         x509.CertificateBuilder()
         .subject_name(name)
-        .issuer_name(name)
+        .issuer_name(ca_name)
         .public_key(private_key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(minutes=1))
+        .not_valid_before(now - datetime.timedelta(days=1))
         .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        .sign(private_key, hashes.SHA256())
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
+        .sign(ca_key, hashes.SHA256())
     )
     certificate_path = tmp_path / "localhost-cert.pem"
     private_key_path = tmp_path / "localhost-key.pem"
@@ -344,9 +386,11 @@ def _create_tls_contexts(tmp_path: Path) -> tuple[ssl.SSLContext, ssl.SSLContext
 
     server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     server_context.load_cert_chain(certificate_path, private_key_path)
-    client_context = ssl.create_default_context(cafile=str(certificate_path))
-    client_context.set_alpn_protocols(["http/1.1"])
-    return server_context, client_context
+    return server_context, ca_path
+
+
+def _tls_trust_environment(ca_path: Path) -> dict[str, str]:
+    return {"SSL_CERT_FILE": str(ca_path), "SSL_CERT_DIR": "", "SSLKEYLOGFILE": ""}
 
 
 class TestFetchFirewallHeaders:
@@ -1273,6 +1317,97 @@ class TestFirewallAuthSuccessParser:
 
 
 class TestFirewallAuthAsyncTransport:
+    async def test_https_trusted_matching_certificate_sends_and_caches_auth(
+        self, mitm_ctx, tmp_path: Path
+    ):
+        server_context, ca_path = _create_tls_server(tmp_path)
+        requests: list[_RawHttpRequest] = []
+        cache_key = auth_cache_key()
+        request = firewall_auth_request(
+            auth_headers={"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        )
+        expected_headers = {"Authorization": "Bearer resolved-test-token"}
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer, headers=expected_headers)
+
+        async with _run_test_server(handle_client, ssl_context=server_context) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT | _tls_trust_environment(ca_path)),
+                patch.object(
+                    auth_client,
+                    "_dns_resolver",
+                    _OrderedResolver(expected_host="localhost", addresses=("127.0.0.1",)),
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"https://localhost:{port}"),
+            ):
+                result = await auth_cache.get_firewall_headers(cache_key, request)
+                cached = await auth_cache.get_firewall_headers(cache_key, request)
+
+        assert result["headers"] == expected_headers
+        assert result["cache_hit"] is False
+        assert cached["headers"] == expected_headers
+        assert cached["cache_hit"] is True
+        assert len(requests) == 1
+        assert requests[0].method == "POST"
+        assert requests[0].target == "/api/webhooks/agent/firewall/auth"
+        assert requests[0].headers["authorization"] == "Bearer tok-xyz"
+        assert requests[0].body == request.to_bytes()
+
+    @pytest.mark.parametrize(
+        ("hostname", "trusted", "error_message"),
+        [
+            pytest.param("localhost", False, "unable to get local issuer", id="untrusted-issuer"),
+            pytest.param("wrong.example", True, "Hostname mismatch", id="wrong-hostname"),
+        ],
+    )
+    async def test_https_rejects_invalid_peer_without_sending_or_caching_auth(
+        self, mitm_ctx, tmp_path: Path, hostname: str, trusted: bool, error_message: str
+    ):
+        server_context, ca_path = _create_tls_server(tmp_path, hostname=hostname)
+        if not trusted:
+            unrelated_ca_dir = tmp_path / "unrelated"
+            unrelated_ca_dir.mkdir()
+            _, ca_path = _create_tls_server(unrelated_ca_dir)
+        requests: list[_RawHttpRequest] = []
+        socket_factory = _LifecycleSocketFactory()
+        cache_key = auth_cache_key()
+        request = firewall_auth_request(
+            auth_headers={"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        )
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer, headers={"Authorization": "Bearer forged-token"})
+
+        async with _run_test_server(handle_client, ssl_context=server_context) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT | _tls_trust_environment(ca_path)),
+                patch.object(
+                    auth_client,
+                    "_dns_resolver",
+                    _OrderedResolver(expected_host="localhost", addresses=("127.0.0.1",)),
+                ),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"https://localhost:{port}"),
+            ):
+                for attempt in range(2):
+                    with pytest.raises(ssl.SSLCertVerificationError, match=error_message):
+                        await auth_cache.get_firewall_headers(cache_key, request)
+                    assert cached_headers(cache_key) is None
+                    assert requests == []
+                    assert len(socket_factory.sockets) == attempt + 1
+                    assert all(sock.fileno() == -1 for sock in socket_factory.sockets)
+
     @pytest.mark.parametrize(
         "framing",
         [
@@ -2360,7 +2495,7 @@ class TestFirewallAuthAsyncTransport:
         mitm_ctx,
         tmp_path: Path,
     ):
-        server_context, client_context = _create_tls_contexts(tmp_path)
+        server_context, ca_path = _create_tls_server(tmp_path)
         origin_requests: list[_RawHttpRequest] = []
         proxy_requests: list[_RawHttpRequest] = []
 
@@ -2399,8 +2534,10 @@ class TestFirewallAuthAsyncTransport:
             async with _run_test_server(handle_proxy) as proxy_port:
                 proxy_url = f"http://proxy-user:proxy-password@127.0.0.1:{proxy_port}"
                 with (
-                    patch.dict(os.environ, _https_proxy_environment(proxy_url)),
-                    patch.object(auth_client, "_https_context", client_context),
+                    patch.dict(
+                        os.environ,
+                        _https_proxy_environment(proxy_url) | _tls_trust_environment(ca_path),
+                    ),
                     patch.object(platform_api, "VERCEL_BYPASS", ""),
                     mitm_ctx(api_url=f"https://localhost:{origin_port}"),
                 ):
@@ -2424,7 +2561,7 @@ class TestFirewallAuthAsyncTransport:
         mitm_ctx,
         tmp_path: Path,
     ):
-        server_context, client_context = _create_tls_contexts(tmp_path)
+        server_context, ca_path = _create_tls_server(tmp_path)
         origin_requests: list[_RawHttpRequest] = []
         proxy_requests: list[_RawHttpRequest] = []
         proxy_peer_closed = asyncio.Event()
@@ -2474,9 +2611,9 @@ class TestFirewallAuthAsyncTransport:
                 with (
                     patch.dict(
                         os.environ,
-                        _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                        _https_proxy_environment(f"http://127.0.0.1:{proxy_port}")
+                        | _tls_trust_environment(ca_path),
                     ),
-                    patch.object(auth_client, "_https_context", client_context),
                     patch.object(platform_api, "VERCEL_BYPASS", ""),
                     mitm_ctx(api_url=f"https://localhost:{origin_port}"),
                     pytest.raises(

@@ -1,23 +1,23 @@
 <!doctype html>
-<html lang="en-US" translate="no" data-app-brand-name="VM0">
+<html lang="en-US" translate="no" data-app-brand-name="Okou">
   <head>
     <script>
       window.__appBootstrapStart = performance.now();
     </script>
-    <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
+    <title>AI Teammate for Real Work — More Done, Same Team | Okou</title>
     <meta charset="UTF-8" />
     <link
       rel="icon"
       type="image/svg+xml"
       sizes="any"
-      href="https://static.vm0.io/public/okou-favicon-adaptive-b4eda9221bb7.svg"
+      href="https://static.okou.io/public/okou-favicon-adaptive-b4eda9221bb7.svg"
       integrity="sha384-vU35VFLSr/2zzsz0Lr2pvWhbXirYsiACGl2G+3/kIjyS4AWK414dwftOZhU78ida"
     />
     <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
     <link
       rel="apple-touch-icon"
       sizes="180x180"
-      href="https://static.vm0.io/platform/okou-pwa-be0be646-180.png"
+      href="https://static.okou.io/platform/okou-pwa-be0be646-180.png"
       integrity="sha384-A8vPZ6XPjFyg4cOXSE+wWCFl2m5p5SX8KPRw9CVJS2B1UJJ/pyTz2U6M8z0q5q+d"
     />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -26,41 +26,47 @@
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
-    <meta name="application-name" content="VM0" />
-    <meta name="apple-mobile-web-app-title" content="VM0" />
+    <meta name="application-name" content="Okou" />
+    <meta name="apple-mobile-web-app-title" content="Okou" />
     <meta
       name="description"
-      content="VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web."
+      content="An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="VM0" />
-    <meta property="og:title" content="VM0 - Your Trustworthy AI Teammate" />
+    <meta property="og:site_name" content="Okou" />
+    <meta
+      property="og:title"
+      content="AI Teammate for Real Work — More Done, Same Team | Okou"
+    />
     <meta
       property="og:description"
-      content="VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web."
+      content="An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context."
     />
     <meta
       property="og:image"
-      content="https://static.vm0.io/web/og-image.png"
+      content="https://static.okou.io/web/okou-og-image-373c892e.png"
     />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="VM0 - Your Trustworthy AI Teammate"
+      content="AI Teammate for Real Work — More Done, Same Team | Okou"
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@okou_ai" />
     <meta name="twitter:creator" content="@okou_ai" />
-    <meta name="twitter:title" content="VM0 - Your Trustworthy AI Teammate" />
+    <meta
+      name="twitter:title"
+      content="AI Teammate for Real Work — More Done, Same Team | Okou"
+    />
     <meta
       name="twitter:description"
-      content="VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web."
+      content="An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context."
     />
     <meta
       name="twitter:image"
-      content="https://static.vm0.io/web/og-image.png"
+      content="https://static.okou.io/web/okou-og-image-373c892e.png"
     />
     <meta name="google" content="notranslate" />
     <meta
@@ -81,19 +87,6 @@
       // Inline theme detection — mirrors signals/theme.ts resolveTheme() + applyTheme()
       (function () {
         var root = document.documentElement;
-        var isOkou = root.dataset.appBrandName === "Okou";
-        if (!isOkou) {
-          var themePreference = localStorage.getItem("theme");
-          var theme =
-            themePreference === "dark" || themePreference === "light"
-              ? themePreference
-              : window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
-          root.dataset.theme = theme;
-          if (theme === "dark") root.classList.add("dark");
-          return;
-        }
         var p = null;
         try {
           var prefix = "__Secure-okou-theme=";

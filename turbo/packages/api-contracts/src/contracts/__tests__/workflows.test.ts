@@ -159,6 +159,38 @@ describe("Google Calendar event-created workflow automation contract", () => {
       },
     });
   });
+
+  it("accepts only typed action-required warnings in summaries", () => {
+    const summary = {
+      id: "11111111-1111-4111-8111-111111111111",
+      ownerUserId: "user_calendar",
+      enabled: true,
+      chatThreadId: null,
+      nextRunAt: null,
+      lastRunAt: null,
+      official: null,
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "primary",
+      },
+      schedule: null,
+      scheduleSummary: null,
+      warning: "reconnect_required",
+    } as const;
+
+    expect(workflowAutomationSummarySchema.parse(summary)).toStrictEqual(
+      summary,
+    );
+    expect(
+      workflowAutomationSummarySchema.safeParse({
+        ...summary,
+        warning: "provider_error",
+      }).success,
+    ).toBeFalsy();
+  });
 });
 
 describe("Google Calendar event-updated workflow automation contract", () => {

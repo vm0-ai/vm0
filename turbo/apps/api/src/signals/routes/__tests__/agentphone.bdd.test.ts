@@ -992,7 +992,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(conversationId.length).toBeLessThanOrEqual(255);
     expect(`group:${conversationId}`.length).toBeGreaterThan(255);
 
-    // A mentioned group message strips the mention and carries provider
+    // A mentioned group message preserves the mention and carries provider
     // history into the group run context.
     const groupMessageId = await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
@@ -1013,7 +1013,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     const admittedGroup = await findAgentphoneChatEventByPromptFixture({
       userId: actor.userId,
-      prompt: "summarize this thread",
+      prompt: "@Zero summarize this thread",
     });
     expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });
     if (!admittedGroup) {
@@ -1024,7 +1024,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     );
     expect(groupLaunchContext).toMatchObject({
       contextType: "agentphone",
-      agentphoneMessageText: "summarize this thread",
+      agentphoneMessageText: "@Zero summarize this thread",
       agentphoneThreadContext: expect.stringContaining("Earlier group context"),
       agentphoneMessageId: groupMessageId,
       agentphoneConversationId: conversationId,
@@ -1037,7 +1037,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       agentphoneAgentId: AGENTPHONE_BDD_AGENT_ID,
     });
     const run1 = await claimDispatchedRun(runnerGroup);
-    expect(run1.prompt).toBe("summarize this thread");
+    expect(run1.prompt).toBe("@Zero summarize this thread");
     const groupThreadContext = groupLaunchContext?.agentphoneThreadContext;
     if (!groupThreadContext) {
       throw new Error("Expected AgentPhone group launch thread context");
@@ -1202,7 +1202,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(coldCutoverIdle.body.job).toBeNull();
   });
 
-  it("wakes iMessage groups on the canonical @okou handle and strips it from the prompt", async () => {
+  it("preserves a mention-only iMessage prompt with the preceding task", async () => {
     const runs = createRunsApi(context);
     const ap = createAgentPhoneBddApi(context);
     // The VM0 brand still presents the assistant as "Zero", so serving this
@@ -1211,19 +1211,30 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const { phone, runnerGroup, sends } = await entitledLinkedActor("vm0");
     const conversationId = uniqueConversationId();
 
-    // Body text addressing the canonical handle wakes the agent, and only the
-    // addressing handle is removed — a bare "okou" stays in the task.
+    // A standalone mention carries the earlier task into the agent input.
     const beforeMention = sends.messages.length;
     await ap.postAgentPhoneInboundMessage({
       channel: "imessage",
       from: phone,
-      body: "@okou draft the okou launch note",
+      body: "@okou",
+      recentHistory: [
+        {
+          messageId: "prior-article-report",
+          content: "Check the broken article at https://example.com/article",
+          direction: "inbound",
+          channel: "imessage",
+          from: phone,
+          at: "2026-09-07T09:00:00.000Z",
+        },
+      ],
       conversationId,
       isGroup: true,
     });
     const mentionRun = await claimDispatchedRun(runnerGroup);
-    expect(mentionRun.prompt).toBe("draft the okou launch note");
-    expect(mentionRun.prompt).not.toContain("@okou");
+    expect(mentionRun.prompt).toBe("@okou");
+    expect(mentionRun.appendSystemPrompt).toContain(
+      "https://example.com/article",
+    );
     await completeSandboxRun(mentionRun.sandboxToken, mentionRun.runId, 0);
     await waitForSendCount(sends, beforeMention + 1);
 

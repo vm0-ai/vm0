@@ -1,5 +1,4 @@
 import { command, computed, state, type Command } from "ccstate";
-import { delay } from "signal-timers";
 import {
   agentDraftContract,
   agentDraftResponseSchema,
@@ -10,6 +9,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
 import { resetSignal } from "../utils.ts";
 import {
@@ -83,43 +83,45 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
     },
   );
 
-  const debouncedSyncDraft$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
-      signal.throwIfAborted();
+  const syncDraft$ = command(async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
 
-      const draftAttachments = get(draft.attachments$);
-      const infos = await Promise.allSettled(
-        draftAttachments.map((attachment) => {
-          return get(attachment.fileInfo$);
-        }),
-      );
-      signal.throwIfAborted();
-      const attachments = collectSuccessfulAttachmentInfos(
-        draftAttachments,
-        infos,
-      ).map((result) => {
-        const annotations = get(result.attachment.annotations$);
-        const annotatedFileId = get(result.attachment.annotatedFileId$);
-        return {
-          id: result.info.id,
-          url: result.info.url,
-          filename: result.attachment.filename,
-          contentType: result.info.contentType,
-          size: result.attachment.size,
-          ...(annotatedFileId ? { annotatedFileId } : {}),
-          ...(annotations ? { annotations } : {}),
-        };
-      });
-      const payload = buildDraftPersistencePayload({
-        input: get(draft.input$),
-        editorDocument: set(draft.readEditorDocument$),
-        generationTemplate: get(draft.generationTemplate$),
-        attachments,
-      });
+    const draftAttachments = get(draft.attachments$);
+    const infos = await Promise.allSettled(
+      draftAttachments.map((attachment) => {
+        return get(attachment.fileInfo$);
+      }),
+    );
+    signal.throwIfAborted();
+    const attachments = collectSuccessfulAttachmentInfos(
+      draftAttachments,
+      infos,
+    ).map((result) => {
+      const annotations = get(result.attachment.annotations$);
+      const annotatedFileId = get(result.attachment.annotatedFileId$);
+      return {
+        id: result.info.id,
+        url: result.info.url,
+        filename: result.attachment.filename,
+        contentType: result.info.contentType,
+        size: result.attachment.size,
+        ...(annotatedFileId ? { annotatedFileId } : {}),
+        ...(annotations ? { annotations } : {}),
+      };
+    });
+    const payload = buildDraftPersistencePayload({
+      input: get(draft.input$),
+      editorDocument: set(draft.readEditorDocument$),
+      generationTemplate: get(draft.generationTemplate$),
+      attachments,
+    });
 
-      await set(patchDraft$, payload, signal);
-    },
+    await set(patchDraft$, payload, signal);
+  });
+
+  const debouncedSyncDraft$ = debounceCommand(
+    syncDraft$,
+    DRAFT_SYNC_DEBOUNCE_MS,
   );
 
   const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {

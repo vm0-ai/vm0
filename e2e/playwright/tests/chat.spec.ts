@@ -16,6 +16,49 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test.describe("dark theme", () => {
+  test.use({ colorScheme: "dark" });
+
+  test("focused composer does not cast a dark veil", async ({ page }) => {
+    await page.route("**/api/user-preferences", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+
+      const response = await route.fetch();
+      const preferences: unknown = await response.json();
+      if (
+        typeof preferences !== "object" ||
+        preferences === null ||
+        Array.isArray(preferences)
+      ) {
+        throw new Error("Expected user preferences to be an object");
+      }
+      await route.fulfill({
+        response,
+        json: { ...preferences, theme: "system" },
+      });
+    });
+
+    await page.goto(appUrl);
+    await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+    const composer = page.locator(".okou-composer");
+    const editor = composer.getByRole("textbox", { name: "Message" });
+    await editor.focus();
+    await expect(editor).toBeFocused();
+    await expect
+      .poll(async () => {
+        return composer.evaluate((element) => {
+          return getComputedStyle(element, "::after").boxShadow;
+        });
+      })
+      .toBe("none");
+  });
+});
+
 test("mobile pages assign the bottom safe area to content and controls", async ({
   page,
 }) => {

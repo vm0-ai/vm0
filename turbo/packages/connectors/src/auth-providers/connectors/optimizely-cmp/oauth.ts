@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
+import { ProviderResponseError } from "../../provider-error";
+import { parseProviderTokenResponse } from "../../token-response";
 
 const OPTIMIZELY_CMP_AUTHORIZATION_URL =
   "https://accounts.cmp.optimizely.com/o/oauth2/v1/auth";
@@ -65,7 +67,11 @@ async function requestToken(
     await throwOAuthError("Optimizely CMP", operation, response);
   }
 
-  const data = tokenResponseSchema.parse(await response.json());
+  const data = await parseProviderTokenResponse(
+    response,
+    tokenResponseSchema,
+    "Invalid Optimizely CMP token response",
+  );
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
   }
@@ -110,10 +116,14 @@ export async function exchangeOptimizelyCmpCode(
   );
 
   if (!data.access_token) {
-    throw new Error("No access token in Optimizely CMP response");
+    throw new ProviderResponseError(
+      "No access token in Optimizely CMP response",
+    );
   }
   if (!data.refresh_token) {
-    throw new Error("No refresh token in Optimizely CMP response");
+    throw new ProviderResponseError(
+      "No refresh token in Optimizely CMP response",
+    );
   }
 
   return {
@@ -144,10 +154,12 @@ export async function refreshOptimizelyCmpToken(
   );
 
   if (!data.access_token) {
-    throw new Error("No access token in Optimizely CMP refresh response");
+    throw new ProviderResponseError(
+      "No access token in Optimizely CMP refresh response",
+    );
   }
   if (!data.refresh_token) {
-    throw new Error(
+    throw new ProviderResponseError(
       "No rotated refresh token in Optimizely CMP refresh response",
     );
   }

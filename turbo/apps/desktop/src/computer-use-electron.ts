@@ -1,4 +1,4 @@
-import type { IpcMainInvokeEvent } from "electron";
+import type { IpcMainInvokeEvent, WebContents, WebFrameMain } from "electron";
 import { BrowserWindow, ipcMain, shell } from "electron";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { isDesktopComputerUsePageUrl } from "./computer-use-page-url";
@@ -7,13 +7,29 @@ import {
   COMPUTER_USE_AUTOMATION_PERMISSION_TARGETS,
   type ComputerUseAutomationPermissionTarget,
   type DesktopComputerUseState,
+  type ComputerUseDriverId,
 } from "./computer-use-types";
 
 interface ComputerUseIpcOptions {
   readonly rendererUrl: string;
+  readonly getMainWindow: () => {
+    isDestroyed(): boolean;
+    readonly webContents: Pick<WebContents, "isDestroyed"> & {
+      readonly mainFrame: Pick<
+        WebFrameMain,
+        "url" | "detached" | "isDestroyed"
+      >;
+    };
+  } | null;
 }
 
 interface ComputerUseNativeApi {
+  readonly setExperimentalCuaEnabled: (
+    enabled: boolean,
+  ) => Promise<DesktopComputerUseState>;
+  readonly selectDriver: (
+    driver: ComputerUseDriverId,
+  ) => Promise<DesktopComputerUseState>;
   readonly getState: () => DesktopComputerUseState;
   readonly refreshPermissions: () => Promise<DesktopComputerUseState>;
   readonly start: (options: {
@@ -73,7 +89,17 @@ export function installComputerUseIpc(
   options: ComputerUseIpcOptions,
 ): void {
   const assertComputerUsePage = (event: IpcMainInvokeEvent): void => {
+    const window = options.getMainWindow();
+    const frame = event.senderFrame;
     if (
+      !window ||
+      window.isDestroyed() ||
+      window.webContents.isDestroyed() ||
+      event.sender !== window.webContents ||
+      frame !== window.webContents.mainFrame ||
+      !frame ||
+      frame.isDestroyed() ||
+      frame.detached ||
       !isDesktopComputerUsePageUrl(
         event.senderFrame?.url ?? "",
         options.rendererUrl,
@@ -85,11 +111,37 @@ export function installComputerUseIpc(
   const startOptions = (
     value: unknown,
   ): { readonly userInitiated: boolean } => {
+    if (
+      value !== undefined &&
+      (!isComputerUseStartOptions(value) ||
+        typeof value.userInitiated !== "boolean" ||
+        Object.keys(value).some((key) => key !== "userInitiated"))
+    )
+      throw new Error("Invalid Computer Use start options");
     return {
       userInitiated:
         isComputerUseStartOptions(value) && value.userInitiated === true,
     };
   };
+
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.setExperimentalCuaEnabled,
+    (event, enabled: unknown) => {
+      assertComputerUsePage(event);
+      if (typeof enabled !== "boolean")
+        throw new Error("Experimental CUA enabled state must be a boolean");
+      return api.setExperimentalCuaEnabled(enabled);
+    },
+  );
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.selectDriver,
+    (event, driver: unknown) => {
+      assertComputerUsePage(event);
+      if (driver !== "okou" && driver !== "cua")
+        throw new Error("Unknown Computer Use driver");
+      return api.selectDriver(driver);
+    },
+  );
 
   ipcMain.handle(COMPUTER_USE_CHANNELS.getState, (event) => {
     assertComputerUsePage(event);

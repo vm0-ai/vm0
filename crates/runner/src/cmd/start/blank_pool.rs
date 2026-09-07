@@ -801,7 +801,8 @@ mod tests {
 
         let mut pool = idle_pool.lock().await;
         assert_eq!(pool.blank_len(), 1);
-        assert_eq!(pool.status_snapshot().idle_sandboxes.len(), 1);
+        assert!(pool.status_snapshot().idle_sandboxes.is_empty());
+        assert_eq!(pool.status_snapshot().blank_sandboxes.len(), 1);
         assert!(pool.held_sandbox_states().is_empty());
         let destroy = pool.drain();
         drop(pool);

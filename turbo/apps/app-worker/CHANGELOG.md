@@ -1,5 +1,73 @@
 # Changelog
 
+## [1.4.36](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.35...app-worker-v1.4.36) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.633.0
+
+## [1.4.35](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.34...app-worker-v1.4.35) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.632.0
+
+## [1.4.34](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.33...app-worker-v1.4.34) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.631.5
+
+## [1.4.33](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.32...app-worker-v1.4.33) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.631.4
+
+## [1.4.32](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.31...app-worker-v1.4.32) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.631.3
+
+## [1.4.31](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.30...app-worker-v1.4.31) (2026-09-07)
+
+
+### Bug Fixes
+
+* **app:** align Okou metadata with website ([#32303](https://github.com/vm0-ai/vm0/issues/32303)) ([d97683e](https://github.com/vm0-ai/vm0/commit/d97683ee47534fbb9924951b734a07842fecd4ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.631.2
+
+## [1.4.30](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.29...app-worker-v1.4.30) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.631.1
+
 ## [1.4.29](https://github.com/vm0-ai/vm0/compare/app-worker-v1.4.28...app-worker-v1.4.29) (2026-09-07)
 
 

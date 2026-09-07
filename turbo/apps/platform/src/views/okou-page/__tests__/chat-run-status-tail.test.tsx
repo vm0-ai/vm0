@@ -53,7 +53,7 @@ function resultEvents(): MockChatEventInput[] {
       id: "supporting-artifact",
       runId: RUN_A,
       seqId: 2,
-      text: "https://cdn.vm7.io/artifacts/status-tail/evidence/report.pdf",
+      text: "![Report](https://cdn.vm7.io/artifacts/status-tail/evidence/report.pdf)",
     }),
     assistantEvent({
       id: "first-result",

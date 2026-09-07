@@ -1090,6 +1090,68 @@ describe("FILE-03 desktop computer-use runtime", () => {
     );
   });
 
+  it("withdraws native create and claim admission with non-empty plugin-only capabilities", async () => {
+    const actor = bdd.user();
+    await enableComputerUseDesktopPlugins(actor);
+    const pluginCapabilities = filesystemToolCapabilities("read_text_file");
+    const host = await api.startComputerUseHost(actor, {
+      supportedCapabilities: ["apps.list", ...pluginCapabilities],
+    });
+    await api.createComputerUseReadCommand(actor, { kind: "apps.list" });
+    const withdrawn = await api.claimNextComputerUseCommand(
+      host.hostToken,
+      pluginCapabilities,
+    );
+    expect(withdrawn.status).toBe("idle");
+    await api.heartbeatComputerUseHost(host.hostToken, {
+      supportedCapabilities: pluginCapabilities,
+      permissions: { accessibility: false, screenRecording: false },
+    });
+    const native = await api.requestCreateComputerUseReadCommand(
+      actor,
+      { kind: "apps.list" },
+      [409],
+    );
+    expectApiError(native.body);
+    const plugin = await api.createComputerUsePluginCommand(actor, {
+      plugin: "filesystem",
+      tool: "read_text_file",
+      arguments: { path: "/tmp/notes.txt" },
+    });
+    // Empty claim updates retain the last non-empty capability set. They must
+    // not restore native support after a plugin-only withdrawal.
+    const claimed = await api.claimNextComputerUseCommand(host.hostToken, []);
+    expect(claimed).toMatchObject({
+      status: "command",
+      command: {
+        id: plugin.commandId,
+        kind: "plugin.call",
+        timeoutMs: 60_000,
+      },
+    });
+  });
+
+  it("preserves native create and claim for legacy capability-empty hosts", async () => {
+    const actor = bdd.user();
+    const host = await api.startComputerUseHost(actor, {
+      supportedCapabilities: [],
+    });
+    const created = await api.createComputerUseReadCommand(actor, {
+      kind: "apps.list",
+    });
+    const claimed = await api.claimNextComputerUseCommand(host.hostToken, []);
+    expect(claimed).toMatchObject({
+      status: "command",
+      command: {
+        id: created.commandId,
+        kind: "apps.list",
+        timeoutMs: 60_000,
+        createdAt: expect.any(String),
+        claimedAt: expect.any(String),
+      },
+    });
+  });
+
   it("gates plugin commands by feature switch and routes them by tool capability", async () => {
     const actor = bdd.user();
 

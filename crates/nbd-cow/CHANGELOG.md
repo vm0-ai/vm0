@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.85](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.84...nbd-cow-v0.4.85) (2026-09-07)
+
+
+### Documentation
+
+* **nbd-cow:** document error variant semantics ([#32245](https://github.com/vm0-ai/vm0/issues/32245)) ([d51935d](https://github.com/vm0-ai/vm0/commit/d51935dd66488b269f866ecbe5d3e09b15451ac0))
+
 ## [0.4.84](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.83...nbd-cow-v0.4.84) (2026-09-03)
 
 

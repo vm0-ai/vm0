@@ -38,7 +38,7 @@ fn main() {
     generate_guest_binaries(&guests);
 
     // Build scripts run with cwd=CARGO_MANIFEST_DIR (crates/runner/), but
-    // GUEST_*_PATH values are relative to the workspace root (crates/).
+    // Guest binary path environment values are relative to the workspace root (crates/).
     // Resolve relative paths against the workspace root so canonicalize works.
     let workspace_root: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -50,7 +50,7 @@ fn main() {
         println!("cargo::rerun-if-env-changed={}", guest.path_env);
     }
 
-    // All-or-nothing: either all GUEST_*_PATH vars are set, or none.
+    // All-or-nothing: either all inventory path environment variables are set, or none.
     let paths: Vec<_> = guests
         .iter()
         .filter_map(|guest| {
@@ -71,7 +71,7 @@ fn main() {
             .map(|guest| guest.path_env.as_str())
             .collect();
         panic!(
-            "partial GUEST_*_PATH env vars: set={set:?}, missing={missing:?} — must set all or none"
+            "partial guest binary path env vars: set={set:?}, missing={missing:?} — must set all or none"
         );
     }
 

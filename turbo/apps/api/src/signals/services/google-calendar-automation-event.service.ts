@@ -6,6 +6,7 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  type GoogleCalendarWatchActionRequiredReason,
 } from "@okouai/api-contracts/contracts/workflows";
 import {
   googleCalendarEventSnapshots,
@@ -91,6 +92,16 @@ type GoogleCalendarWatchReconcileResult =
   | { readonly kind: "renewed" }
   | { readonly kind: "stopped" }
   | { readonly kind: "failed" };
+
+type GoogleCalendarWatchTargetType =
+  | "primary"
+  | "explicit_calendar"
+  | "verified_legacy_primary_alias";
+
+interface GoogleCalendarWatchActionRequiredEpisode {
+  readonly reason: GoogleCalendarWatchActionRequiredReason;
+  readonly startedAt: Date;
+}
 
 interface GoogleCalendarFetchOk<T> {
   readonly kind: "ok";
@@ -639,34 +650,23 @@ async function watchCalendarEvents(
   );
 }
 
-async function calendarTargetsResolveToSameResource(
-  args: {
-    readonly accessToken: string;
-    readonly firstCalendarId: string;
-    readonly secondCalendarId: string;
-  },
+async function probeExactCalendarTarget(
+  args: { readonly accessToken: string; readonly calendarId: string },
   signal: AbortSignal,
-): Promise<boolean> {
-  const first = await googleCalendarFetchJson(
+): Promise<"readable" | "missing" | "retryable"> {
+  const result = await googleCalendarFetchJson(
     calendarResourceSchema,
     args.accessToken,
-    calendarApiUrl(`/calendars/${encodeURIComponent(args.firstCalendarId)}`),
+    calendarApiUrl(`/calendars/${encodeURIComponent(args.calendarId)}`),
     { method: "GET" },
     signal,
   );
   signal.throwIfAborted();
-  if (first.kind !== "ok") {
-    return false;
-  }
-  const second = await googleCalendarFetchJson(
-    calendarResourceSchema,
-    args.accessToken,
-    calendarApiUrl(`/calendars/${encodeURIComponent(args.secondCalendarId)}`),
-    { method: "GET" },
-    signal,
-  );
-  signal.throwIfAborted();
-  return second.kind === "ok" && first.value.id === second.value.id;
+  return result.kind === "ok"
+    ? "readable"
+    : result.status === 404
+      ? "missing"
+      : "retryable";
 }
 
 async function stopCalendarChannel(
@@ -1144,7 +1144,13 @@ async function baselineCalendarWatchState(
       needsRewatch: false,
       updatedAt: currentTime,
     })
-    .where(eq(googleCalendarWatchStates.id, args.state.id));
+    .where(
+      and(
+        eq(googleCalendarWatchStates.id, args.state.id),
+        isNull(googleCalendarWatchStates.actionRequiredReason),
+        isNull(googleCalendarWatchStates.actionRequiredAt),
+      ),
+    );
   signal.throwIfAborted();
 
   return { kind: "ok" };
@@ -1175,16 +1181,61 @@ async function loadCalendarWatchState(
 function watchNeedsRefresh(
   state: Pick<
     GoogleCalendarWatchStateRow,
-    "needsRewatch" | "syncToken" | "watchExpirationAt"
+    "needsRewatch" | "syncToken" | "watchExpirationAt" | "actionRequiredReason"
   >,
   currentTime: Date,
 ): boolean {
   return (
+    state.actionRequiredReason !== null ||
     state.needsRewatch ||
     state.syncToken === null ||
     state.watchExpirationAt.getTime() <=
       currentTime.getTime() + WATCH_RENEWAL_WINDOW_MS
   );
+}
+
+function calendarWatchActionRequiredEpisode(
+  state: Pick<
+    GoogleCalendarWatchStateRow,
+    "actionRequiredReason" | "actionRequiredAt"
+  >,
+): GoogleCalendarWatchActionRequiredEpisode | null {
+  if (
+    (state.actionRequiredReason === null) !==
+    (state.actionRequiredAt === null)
+  ) {
+    throw new Error("Incomplete Google Calendar action-required episode");
+  }
+  return state.actionRequiredReason === null
+    ? null
+    : {
+        reason: state.actionRequiredReason,
+        startedAt: state.actionRequiredAt!,
+      };
+}
+
+function googleCalendarWatchTargetType(
+  calendarId: string,
+): GoogleCalendarWatchTargetType {
+  return calendarId === GOOGLE_CALENDAR_PRIMARY_ID
+    ? "primary"
+    : "explicit_calendar";
+}
+
+function logCalendarWatchActionRequiredRecovery(args: {
+  readonly watchStateId: string;
+  readonly episode: GoogleCalendarWatchActionRequiredEpisode;
+  readonly targetType: GoogleCalendarWatchTargetType;
+}): void {
+  log.debug("Workflow watch action-required episode recovered", {
+    provider: "google_calendar",
+    action: "recover",
+    result: "ok",
+    reason: args.episode.reason,
+    watchStateId: args.watchStateId,
+    episodeStartedAt: args.episode.startedAt.toISOString(),
+    targetType: args.targetType,
+  });
 }
 
 function googleCalendarLifecycleLockKey(
@@ -1241,6 +1292,102 @@ export async function hasEnabledGoogleCalendarConsumer(
       args.calendarId
     );
   });
+}
+
+async function transitionCalendarWatchToActionRequired(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly reason: GoogleCalendarWatchActionRequiredReason;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const transition = await args.db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      target: { kind: "builtin", connectorSlug: "google-calendar" },
+    });
+    await lockGoogleCalendarLifecycle(
+      tx,
+      args.state.connectorId,
+      args.state.calendarId,
+    );
+    const current = await loadCalendarWatchState(
+      {
+        db: tx,
+        connectorId: args.state.connectorId,
+        calendarId: args.state.calendarId,
+      },
+      signal,
+    );
+    if (!current || current.id !== args.state.id) {
+      return { kind: "superseded" } as const;
+    }
+    const currentEpisode = calendarWatchActionRequiredEpisode(current);
+    const hasConsumer = await hasEnabledGoogleCalendarConsumer(
+      {
+        db: tx,
+        orgId: current.orgId,
+        userId: current.userId,
+        connectorId: current.connectorId,
+        calendarId: current.calendarId,
+      },
+      signal,
+    );
+    if (!hasConsumer) {
+      return { kind: "superseded" } as const;
+    }
+    if (currentEpisode?.reason === args.reason) {
+      return {
+        kind: "unchanged",
+        state: current,
+        episode: currentEpisode,
+      } as const;
+    }
+    const currentTime = nowDate();
+    const [updated] = await tx
+      .update(googleCalendarWatchStates)
+      .set({
+        actionRequiredReason: args.reason,
+        actionRequiredAt: currentTime,
+        needsRewatch: true,
+        updatedAt: currentTime,
+      })
+      .where(eq(googleCalendarWatchStates.id, current.id))
+      .returning();
+    if (!updated) {
+      throw new Error(
+        "Failed to persist Google Calendar action-required state",
+      );
+    }
+    return {
+      kind: "started",
+      state: updated,
+      episode: {
+        reason: args.reason,
+        startedAt: currentTime,
+      },
+    } as const;
+  });
+  signal.throwIfAborted();
+  if (transition.kind === "superseded") {
+    return;
+  }
+  const fields = {
+    provider: "google_calendar",
+    action: "suspend",
+    result: transition.kind === "started" ? "action_required" : "unchanged",
+    reason: transition.episode.reason,
+    watchStateId: transition.state.id,
+    episodeStartedAt: transition.episode.startedAt.toISOString(),
+    targetType: googleCalendarWatchTargetType(transition.state.calendarId),
+  };
+  if (transition.kind === "started") {
+    log.warn("Workflow watch requires user action", fields);
+  } else {
+    log.debug("Workflow watch action-required episode unchanged", fields);
+  }
 }
 
 async function prepareCalendarWatch(
@@ -1622,7 +1769,11 @@ async function finalizePreparedCalendarWatch(args: {
   readonly watch: z.infer<typeof calendarWatchResponseSchema>;
   readonly allowStagedOfficialTarget?: boolean;
 }): Promise<
-  | { readonly kind: "active"; readonly state: GoogleCalendarWatchStateRow }
+  | {
+      readonly kind: "active";
+      readonly state: GoogleCalendarWatchStateRow;
+      readonly recoveredEpisode: GoogleCalendarWatchActionRequiredEpisode | null;
+    }
   | { readonly kind: "inactive" }
 > {
   const lifecycleSignal = AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS);
@@ -1648,6 +1799,7 @@ async function finalizePreparedCalendarWatch(args: {
     ) {
       throw new Error("Failed to load pending Google Calendar watch state");
     }
+    const recoveredEpisode = calendarWatchActionRequiredEpisode(current);
     const hasConsumer = await hasEnabledGoogleCalendarConsumer(
       {
         db: tx,
@@ -1672,6 +1824,8 @@ async function finalizePreparedCalendarWatch(args: {
         ),
         lastWatchRenewedAt: currentTime,
         needsRewatch: false,
+        actionRequiredReason: null,
+        actionRequiredAt: null,
         updatedAt: currentTime,
       })
       .where(
@@ -1695,7 +1849,7 @@ async function finalizePreparedCalendarWatch(args: {
     if (!finalized) {
       throw new Error("Failed to load finalized Google Calendar watch state");
     }
-    return { kind: "active", state: finalized };
+    return { kind: "active", state: finalized, recoveredEpisode };
   });
 }
 
@@ -1765,6 +1919,13 @@ async function activatePreparedCalendarWatch(args: {
   }
 
   const state = finalization.state;
+  if (finalization.recoveredEpisode) {
+    logCalendarWatchActionRequiredRecovery({
+      watchStateId: state.id,
+      episode: finalization.recoveredEpisode,
+      targetType: googleCalendarWatchTargetType(state.calendarId),
+    });
+  }
   const previous = previousCalendarChannel(state);
   if (previous) {
     const stopped = await stopCalendarChannelWithLifecycleOwnership({
@@ -1795,6 +1956,7 @@ export async function ensureGoogleCalendarWatchForUser(
     readonly calendarId?: string;
     readonly forceRefresh?: boolean;
     readonly allowStagedOfficialTarget?: boolean;
+    readonly reportProviderFailure?: boolean;
   },
   signal: AbortSignal,
 ): Promise<EnsureGoogleCalendarWatchResult> {
@@ -1869,7 +2031,8 @@ export async function ensureGoogleCalendarWatchForUser(
         resetBaseline:
           existing === null ||
           args.forceRefresh === true ||
-          existing.syncToken === null,
+          existing.syncToken === null ||
+          existing.actionRequiredReason !== null,
       },
       signal,
     );
@@ -1897,7 +2060,10 @@ export async function ensureGoogleCalendarWatchForUser(
       action: "ensure",
       result: "ok",
     });
-  } else if (registered.providerFailure) {
+  } else if (
+    registered.providerFailure &&
+    args.reportProviderFailure !== false
+  ) {
     logCalendarWatchProviderFailure("ensure", registered.providerFailure);
   }
   return registered.kind === "ok"
@@ -1960,8 +2126,19 @@ async function persistLegacyPrimaryCalendarMigration(
     if (
       !legacyState ||
       !primaryState ||
+      legacyState.orgId !== args.orgId ||
+      legacyState.userId !== args.userId ||
+      primaryState.orgId !== args.orgId ||
+      primaryState.userId !== args.userId ||
       legacyState.resourceId.length === 0 ||
       primaryState.resourceId.length === 0 ||
+      // Google defines resourceId as the stable opaque identity of the watched
+      // resource. A successful primary registration alone is not migration
+      // proof because the unavailable target may be a shared calendar.
+      legacyState.resourceId !== primaryState.resourceId ||
+      primaryState.syncToken === null ||
+      primaryState.needsRewatch ||
+      calendarWatchActionRequiredEpisode(primaryState) !== null ||
       previousCalendarChannel(primaryState)
     ) {
       return null;
@@ -1983,6 +2160,8 @@ async function persistLegacyPrimaryCalendarMigration(
     const migrated = await migrateGoogleCalendarAutomationTargets(
       tx,
       {
+        orgId: args.orgId,
+        userId: args.userId,
         connectorId: args.access.connectorId,
         fromCalendarId: args.legacyCalendarId,
         toCalendarId: GOOGLE_CALENDAR_PRIMARY_ID,
@@ -2025,18 +2204,6 @@ async function migrateLegacyPrimaryCalendarWatch(
   args: LegacyPrimaryCalendarMigrationArgs,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const sameResource = await calendarTargetsResolveToSameResource(
-    {
-      accessToken: args.access.accessToken,
-      firstCalendarId: args.legacyCalendarId,
-      secondCalendarId: GOOGLE_CALENDAR_PRIMARY_ID,
-    },
-    signal,
-  );
-  if (!sameResource) {
-    return false;
-  }
-
   const ensured = await ensureGoogleCalendarWatchForUser(
     {
       db: args.db,
@@ -2044,7 +2211,9 @@ async function migrateLegacyPrimaryCalendarWatch(
       userId: args.userId,
       connectorId: args.access.connectorId,
       calendarId: GOOGLE_CALENDAR_PRIMARY_ID,
+      forceRefresh: true,
       allowStagedOfficialTarget: true,
+      reportProviderFailure: false,
     },
     signal,
   );
@@ -2093,6 +2262,12 @@ async function migrateLegacyPrimaryCalendarWatch(
 type GoogleCalendarWatchReconcileDecision =
   | GoogleCalendarWatchReconcileResult
   | {
+      readonly kind: "action_required";
+      readonly access: GoogleCalendarAccess;
+      readonly state: GoogleCalendarWatchStateRow;
+      readonly episode: GoogleCalendarWatchActionRequiredEpisode;
+    }
+  | {
       readonly kind: "prepared";
       readonly access: GoogleCalendarAccess;
       readonly prepared: PreparedGoogleCalendarWatch;
@@ -2107,7 +2282,8 @@ function calendarWatchRenewalDue(args: {
   return (
     args.hasConsumer &&
     args.renewBefore !== undefined &&
-    (args.state.needsRewatch ||
+    (args.state.actionRequiredReason !== null ||
+      args.state.needsRewatch ||
       args.state.watchExpirationAt.getTime() <= args.renewBefore.getTime())
   );
 }
@@ -2180,16 +2356,31 @@ async function prepareCalendarWatchRenewal(
       access: args.access,
       calendarId: args.state.calendarId,
       previousState: args.state,
-      resetBaseline: args.state.syncToken === null,
+      resetBaseline:
+        args.state.syncToken === null ||
+        args.state.actionRequiredReason !== null,
     },
     signal,
   );
   if (prepared.kind !== "prepared") {
-    log.warn("Workflow watch lifecycle reconciliation failed", {
-      provider: "google_calendar",
-      action: "renew",
-      result: "provider_error",
-    });
+    const episode = calendarWatchActionRequiredEpisode(args.state);
+    if (episode) {
+      log.debug("Workflow watch action-required retry failed", {
+        provider: "google_calendar",
+        action: "renew",
+        result: "provider_error",
+        reason: episode.reason,
+        watchStateId: args.state.id,
+        episodeStartedAt: episode.startedAt.toISOString(),
+        targetType: googleCalendarWatchTargetType(args.state.calendarId),
+      });
+    } else {
+      log.warn("Workflow watch lifecycle reconciliation failed", {
+        provider: "google_calendar",
+        action: "renew",
+        result: "provider_error",
+      });
+    }
     return { kind: "failed" };
   }
   return {
@@ -2329,6 +2520,21 @@ async function decideGoogleCalendarWatchReconciliation(
     currentState = cleanup.state;
   }
 
+  const actionRequiredEpisode =
+    calendarWatchActionRequiredEpisode(currentState);
+  if (
+    hasConsumer &&
+    actionRequiredEpisode &&
+    currentState.calendarId !== GOOGLE_CALENDAR_PRIMARY_ID
+  ) {
+    return {
+      kind: "action_required",
+      access: access.access,
+      state: currentState,
+      episode: actionRequiredEpisode,
+    };
+  }
+
   return hasConsumer
     ? await prepareCalendarWatchRenewal(
         {
@@ -2343,6 +2549,151 @@ async function decideGoogleCalendarWatchReconciliation(
         state: currentState,
         accessToken: access.access.accessToken,
       });
+}
+
+function logCalendarWatchActionRequiredRetry(args: {
+  readonly state: GoogleCalendarWatchStateRow;
+  readonly episode: GoogleCalendarWatchActionRequiredEpisode;
+  readonly result: "provider_error" | "target_missing";
+}): void {
+  log.debug("Workflow watch action-required retry did not recover", {
+    provider: "google_calendar",
+    action: "renew",
+    result: args.result,
+    reason: args.episode.reason,
+    watchStateId: args.state.id,
+    episodeStartedAt: args.episode.startedAt.toISOString(),
+    targetType: googleCalendarWatchTargetType(args.state.calendarId),
+  });
+}
+
+async function reconcileActionRequiredNonPrimaryCalendarWatch(
+  args: {
+    readonly db: Db;
+    readonly access: GoogleCalendarAccess;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly episode: GoogleCalendarWatchActionRequiredEpisode;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchReconcileResult> {
+  const exactTarget = await probeExactCalendarTarget(
+    {
+      accessToken: args.access.accessToken,
+      calendarId: args.state.calendarId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (exactTarget === "readable") {
+    const ensured = await ensureGoogleCalendarWatchForUser(
+      {
+        db: args.db,
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        connectorId: args.state.connectorId,
+        calendarId: args.state.calendarId,
+        forceRefresh: true,
+        reportProviderFailure: false,
+      },
+      signal,
+    );
+    if (ensured.kind === "ok") {
+      return { kind: "renewed" };
+    }
+    logCalendarWatchActionRequiredRetry({
+      state: args.state,
+      episode: args.episode,
+      result: "provider_error",
+    });
+    return { kind: "failed" };
+  }
+  if (exactTarget === "retryable") {
+    logCalendarWatchActionRequiredRetry({
+      state: args.state,
+      episode: args.episode,
+      result: "provider_error",
+    });
+    return { kind: "failed" };
+  }
+
+  const migrated = await migrateLegacyPrimaryCalendarWatch(
+    {
+      db: args.db,
+      access: args.access,
+      legacyCalendarId: args.state.calendarId,
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (migrated) {
+    logCalendarWatchActionRequiredRecovery({
+      watchStateId: args.state.id,
+      episode: args.episode,
+      targetType: "verified_legacy_primary_alias",
+    });
+    return { kind: "renewed" };
+  }
+  await transitionCalendarWatchToActionRequired(
+    { db: args.db, state: args.state, reason: "calendar_not_found" },
+    signal,
+  );
+  logCalendarWatchActionRequiredRetry({
+    state: args.state,
+    episode: args.episode,
+    result: "target_missing",
+  });
+  return { kind: "failed" };
+}
+
+async function reconcileConfirmedMissingCalendarWatch(
+  args: {
+    readonly db: Db;
+    readonly access: GoogleCalendarAccess;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly providerFailure: GoogleCalendarProviderFailure;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchReconcileResult> {
+  if (args.state.calendarId !== GOOGLE_CALENDAR_PRIMARY_ID) {
+    const migrated = await migrateLegacyPrimaryCalendarWatch(
+      {
+        db: args.db,
+        access: args.access,
+        legacyCalendarId: args.state.calendarId,
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (migrated) {
+      log.debug("Workflow watch legacy primary alias recovered", {
+        provider: "google_calendar",
+        action: "migrate_primary",
+        result: "ok",
+        stage: args.providerFailure.stage,
+        status: args.providerFailure.status,
+        reason: args.providerFailure.reason,
+        watchStateId: args.state.id,
+        targetType: "verified_legacy_primary_alias",
+      });
+      return { kind: "renewed" };
+    }
+  }
+  await transitionCalendarWatchToActionRequired(
+    {
+      db: args.db,
+      state: args.state,
+      reason:
+        args.state.calendarId === GOOGLE_CALENDAR_PRIMARY_ID
+          ? "reconnect_required"
+          : "calendar_not_found",
+    },
+    signal,
+  );
+  return { kind: "failed" };
 }
 
 async function reconcileGoogleCalendarWatchState(
@@ -2364,6 +2715,17 @@ async function reconcileGoogleCalendarWatchState(
       signal,
     );
   });
+  if (decision.kind === "action_required") {
+    return await reconcileActionRequiredNonPrimaryCalendarWatch(
+      {
+        db: args.db,
+        access: decision.access,
+        state: decision.state,
+        episode: decision.episode,
+      },
+      signal,
+    );
+  }
   if (decision.kind !== "prepared") {
     return decision;
   }
@@ -2375,34 +2737,37 @@ async function reconcileGoogleCalendarWatchState(
     prepared: decision.prepared,
   });
   if (registered.kind !== "ok") {
-    if (
-      registered.providerFailure?.status === 404 &&
-      args.calendarId !== GOOGLE_CALENDAR_PRIMARY_ID
-    ) {
-      const migrated = await migrateLegacyPrimaryCalendarWatch(
+    if (registered.providerFailure?.status === 404) {
+      const exactTarget = await probeExactCalendarTarget(
         {
-          db: args.db,
-          access: decision.access,
-          legacyCalendarId: args.calendarId,
-          orgId: decision.state.orgId,
-          userId: decision.state.userId,
+          accessToken: decision.access.accessToken,
+          calendarId: args.calendarId,
         },
         signal,
       );
       signal.throwIfAborted();
-      if (migrated) {
-        log.debug("Workflow watch lifecycle reconciled", {
-          provider: "google_calendar",
-          action: "migrate_primary",
-          result: "ok",
-          stage: registered.providerFailure.stage,
-          status: registered.providerFailure.status,
-          reason: registered.providerFailure.reason,
-        });
-        return { kind: "renewed" };
+      if (exactTarget === "missing") {
+        return await reconcileConfirmedMissingCalendarWatch(
+          {
+            db: args.db,
+            access: decision.access,
+            state: decision.state,
+            providerFailure: registered.providerFailure,
+          },
+          signal,
+        );
       }
     }
-    if (registered.providerFailure) {
+    const actionRequiredEpisode = calendarWatchActionRequiredEpisode(
+      decision.state,
+    );
+    if (actionRequiredEpisode) {
+      logCalendarWatchActionRequiredRetry({
+        state: decision.state,
+        episode: actionRequiredEpisode,
+        result: "provider_error",
+      });
+    } else if (registered.providerFailure) {
       logCalendarWatchProviderFailure("renew", registered.providerFailure);
     } else {
       log.warn("Workflow watch lifecycle reconciliation failed", {
@@ -2489,6 +2854,7 @@ async function repairAndEnsureGoogleCalendarWatchesForOwner(
     .select({
       connectorId: googleCalendarWatchStates.connectorId,
       calendarId: googleCalendarWatchStates.calendarId,
+      actionRequiredReason: googleCalendarWatchStates.actionRequiredReason,
       needsRewatch: googleCalendarWatchStates.needsRewatch,
       syncToken: googleCalendarWatchStates.syncToken,
       watchExpirationAt: googleCalendarWatchStates.watchExpirationAt,
@@ -3090,6 +3456,8 @@ async function persistCurrentGoogleCalendarAutomationSource(
         eq(googleCalendarWatchStates.userId, args.userId),
         eq(googleCalendarWatchStates.connectorId, args.connectorSourceId),
         eq(googleCalendarWatchStates.calendarId, args.calendarId),
+        isNull(googleCalendarWatchStates.actionRequiredReason),
+        isNull(googleCalendarWatchStates.actionRequiredAt),
       ),
     )
     .for("key share")
@@ -3437,7 +3805,13 @@ async function dispatchGoogleCalendarChanges(
       needsRewatch: false,
       updatedAt: currentTime,
     })
-    .where(eq(googleCalendarWatchStates.id, args.state.id));
+    .where(
+      and(
+        eq(googleCalendarWatchStates.id, args.state.id),
+        isNull(googleCalendarWatchStates.actionRequiredReason),
+        isNull(googleCalendarWatchStates.actionRequiredAt),
+      ),
+    );
   signal.throwIfAborted();
 
   return result;
@@ -3453,6 +3827,19 @@ async function dispatchGoogleCalendarWatchState(
   },
   signal: AbortSignal,
 ): Promise<GoogleCalendarDispatchStateResult> {
+  const actionRequiredEpisode = calendarWatchActionRequiredEpisode(args.state);
+  if (actionRequiredEpisode) {
+    log.debug("Workflow watch dispatch skipped", {
+      provider: "google_calendar",
+      action: "dispatch",
+      result: "action_required",
+      reason: actionRequiredEpisode.reason,
+      watchStateId: args.state.id,
+      episodeStartedAt: actionRequiredEpisode.startedAt.toISOString(),
+      targetType: googleCalendarWatchTargetType(args.state.calendarId),
+    });
+    return { kind: "ok", dispatched: 0, duplicates: 0 };
+  }
   const hasConsumer = await hasCurrentGoogleCalendarWatchConsumer(args, signal);
   if (!hasConsumer) {
     log.debug("Workflow watch dispatch skipped", {

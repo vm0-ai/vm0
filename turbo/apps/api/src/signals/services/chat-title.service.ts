@@ -50,7 +50,7 @@ import {
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
 
-const log = logger("api:zero:chat-title");
+const log = logger("api:chat-title");
 const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;

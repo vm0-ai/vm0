@@ -388,7 +388,7 @@ async function restoreSession(args: {
   return sessionFile;
 }
 
-/** Poll one shared deadline and restore the validated H1 checkpoint. */
+/** Poll the wire coordination deadline and restore the validated checkpoint. */
 export async function resolvePiApiFirstTurnHandoff(args: {
   readonly config: PiApiFirstTurnConfig;
   readonly sessionDir: string;

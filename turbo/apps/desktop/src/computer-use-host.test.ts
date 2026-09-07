@@ -113,12 +113,18 @@ function createRuntime(
     getPermissions() {
       return { accessibility: true, screenRecording: false };
     },
-    async executeCommand(command, permissions) {
-      if (options.executeCommand) {
-        return options.executeCommand(command, permissions);
-      }
-      return { status: "succeeded", result: {} };
-    },
+    acquireCommand: () => ({
+      getPermissions: async () => ({
+        accessibility: true,
+        screenRecording: false,
+      }),
+      async executeCommand(command, permissions) {
+        if (options.executeCommand)
+          return options.executeCommand(command, permissions);
+        return { status: "succeeded", result: {} };
+      },
+      release() {},
+    }),
     ...(options.onCommandFailure
       ? { onCommandFailure: options.onCommandFailure }
       : {}),
@@ -400,6 +406,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({
           status: "command",
           command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: null,
             id: "cmd-1",
             kind: "app.state",
             payload: { app: "Safari" },
@@ -445,6 +454,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({
           status: "claimed",
           command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: null,
             id: "cmd-1",
             kind: "app.state",
             payload: { app: "Things" },
@@ -510,6 +522,9 @@ describe("ComputerUseHostRuntime", () => {
     });
     expect(executeCommand).toHaveBeenCalledWith(
       {
+        timeoutMs: 60_000,
+        createdAt: expect.any(String),
+        claimedAt: null,
         id: "cmd-1",
         kind: "app.state",
         payload: { app: "Things" },
@@ -557,6 +572,9 @@ describe("ComputerUseHostRuntime", () => {
         return jsonResponse({
           status: "command",
           command: {
+            timeoutMs: 60_000,
+            createdAt: new Date().toISOString(),
+            claimedAt: null,
             id: `cmd-${nextCommandId.toString()}`,
             kind: "keyboard.press_key",
             payload: { app: "Terminal", key: "Enter" },
@@ -587,6 +605,9 @@ describe("ComputerUseHostRuntime", () => {
   it("notifies command failures without moving the runtime offline", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
+      timeoutMs: 60_000,
+      createdAt: new Date().toISOString(),
+      claimedAt: null,
       id: "cmd-1",
       kind: "element.set_value",
       payload: { app: "com.google.Chrome", value: "https://example.com" },
@@ -654,6 +675,9 @@ describe("ComputerUseHostRuntime", () => {
   it("keeps heartbeats running while a command is executing", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
+      timeoutMs: 60_000,
+      createdAt: new Date().toISOString(),
+      claimedAt: null,
       id: "cmd-1",
       kind: "keyboard.type_text",
       payload: { app: "Chrome", text: "https://mail.google.com/" },
@@ -712,6 +736,9 @@ describe("ComputerUseHostRuntime", () => {
   it("drains an active command before stopping without claiming more work", async () => {
     vi.useFakeTimers();
     const command: ComputerUseCommand = {
+      timeoutMs: 60_000,
+      createdAt: new Date().toISOString(),
+      claimedAt: null,
       id: "cmd-1",
       kind: "keyboard.type_text",
       payload: { app: "Chrome", text: "okou" },
@@ -783,6 +810,9 @@ describe("ComputerUseHostRuntime", () => {
           ? jsonResponse({
               status: "command",
               command: {
+                timeoutMs: 60_000,
+                createdAt: new Date().toISOString(),
+                claimedAt: null,
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -830,6 +860,9 @@ describe("ComputerUseHostRuntime", () => {
           ? jsonResponse({
               status: "command",
               command: {
+                timeoutMs: 60_000,
+                createdAt: new Date().toISOString(),
+                claimedAt: null,
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -885,6 +918,9 @@ describe("ComputerUseHostRuntime", () => {
           return jsonResponse({
             status: "command",
             command: {
+              timeoutMs: 60_000,
+              createdAt: new Date().toISOString(),
+              claimedAt: null,
               id: "cmd-1",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -896,6 +932,9 @@ describe("ComputerUseHostRuntime", () => {
           return jsonResponse({
             status: "command",
             command: {
+              timeoutMs: 60_000,
+              createdAt: new Date().toISOString(),
+              claimedAt: null,
               id: "cmd-2",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -976,6 +1015,9 @@ describe("ComputerUseHostRuntime", () => {
           ? jsonResponse({
               status: "command",
               command: {
+                timeoutMs: 120_000,
+                createdAt: new Date().toISOString(),
+                claimedAt: null,
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -1218,6 +1260,9 @@ describe("ComputerUseHostRuntime", () => {
           return jsonResponse({
             status: "command",
             command: {
+              timeoutMs: 60_000,
+              createdAt: new Date().toISOString(),
+              claimedAt: null,
               id: "cmd-1",
               kind: "app.state",
               payload: { app: "Chrome" },

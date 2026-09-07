@@ -128,7 +128,7 @@ fn check_system_dependencies() -> Vec<&'static str> {
 }
 
 fn start_system_dependencies() -> Vec<&'static str> {
-    let mut dependencies = sandbox_fc::runtime_required_commands();
+    let mut dependencies = sandbox_firecracker::runtime_required_commands();
     dependencies.extend(RUNNER_START_SYSTEM_DEPENDENCIES);
     dependencies
 }
@@ -1064,7 +1064,7 @@ mod tests {
     #[test]
     fn start_dependencies_include_sandbox_runtime_commands() {
         let start_dependencies = start_system_dependencies();
-        for dependency in sandbox_fc::runtime_required_commands() {
+        for dependency in sandbox_firecracker::runtime_required_commands() {
             assert!(start_dependencies.contains(&dependency));
         }
         assert!(start_dependencies.contains(&"conntrack"));

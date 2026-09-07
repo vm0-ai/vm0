@@ -86,7 +86,7 @@ async fn idle_park_request_success_returns_parked_candidate() {
     };
 
     assert_eq!(overrides.park_call_count(), 1);
-    assert_eq!(candidate.reuse_key(), "session-1");
+    assert_eq!(candidate.reuse_key(), Some("session-1"));
 }
 
 #[tokio::test]
@@ -309,7 +309,7 @@ async fn idle_park_request_success_preserves_reuse_metadata() {
     };
 
     assert_eq!(overrides.park_call_count(), 1);
-    assert_eq!(candidate.reuse_key(), reuse_key);
+    assert_eq!(candidate.reuse_key(), Some(reuse_key));
     assert_eq!(candidate.sandbox_id(), sandbox_id);
     assert_eq!(candidate.metadata.profile_name, profile_name);
     assert_eq!(
@@ -410,7 +410,7 @@ async fn speculative_repark_preserves_original_idle_age_and_metadata() {
     };
 
     assert_eq!(restored.entry.parked_at, original_parked_at);
-    assert_eq!(restored.entry.reuse_key(), reuse_key);
+    assert_eq!(restored.entry.reuse_key(), Some(reuse_key));
     assert_eq!(restored.entry.profile_name(), profile_name);
     assert_eq!(
         restored.entry.device_rate_limits(),

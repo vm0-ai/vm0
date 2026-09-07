@@ -1,7 +1,7 @@
 import type { Plugin } from "vite";
 
-const MAIN_STYLESHEET_ID = "vm0-main-stylesheet";
-const MAIN_STYLESHEET_LOADER_SCRIPT_ID = "vm0-main-stylesheet-loader";
+const MAIN_STYLESHEET_ID = "okou-main-stylesheet";
+const MAIN_STYLESHEET_LOADER_SCRIPT_ID = "okou-main-stylesheet-loader";
 
 function matchingTags(
   htmlSource: string,

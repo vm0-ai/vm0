@@ -65,6 +65,7 @@ import {
   type WorkspaceSearchChatThread,
 } from "../../signals/okou-page/workspace-chat-search.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   threadNumberShortcutsEnabled$,
   threadNumberShortcutIndex$,
@@ -523,8 +524,7 @@ function SpotlightRowMeta({
  * own margin, so the tighter box padding lands the avatar's ink on the same
  * rail as the filter row and the search field's left border.
  */
-const SPOTLIGHT_ROW_CLASS =
-  "group group/shortcut w-full gap-3.5 py-2 pl-1 pr-2";
+const SPOTLIGHT_ROW_CLASS = "group w-full gap-3.5 py-2 pl-1 pr-2";
 
 const SPOTLIGHT_AVATAR_CLASS =
   "h-8 w-8 shrink-0 rounded-lg object-cover object-top";
@@ -1197,6 +1197,7 @@ export function ThreeColumnSearchDialog({
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const signal = useGet(pageSignal$);
   const filter = useGet(threeColumnSearchFilter$);
   const setFilter = useSet(setThreeColumnSearchFilter$);
   const threadLoadable = useLoadable(threeColumnSearchChatThreads$);
@@ -1346,7 +1347,9 @@ export function ThreeColumnSearchDialog({
         shouldFilter: false,
         loop: true,
         value: query,
-        onValueChange: setQuery,
+        onValueChange: (value) => {
+          detach(setQuery(value, signal), Reason.DomCallback);
+        },
       }}
     >
       <div

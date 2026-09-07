@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use guest_common::telemetry::record_sandbox_op;
+use guest_telemetry::telemetry::record_sandbox_op;
 
 /// Records the complete Codex setup-to-turn-readiness boundary once.
 pub struct CodexStartupTiming {

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.86.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.11...guest-agent-v0.86.12) (2026-09-07)
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid per-character citation matching allocations ([#32348](https://github.com/vm0-ai/vm0/issues/32348)) ([7de3573](https://github.com/vm0-ai/vm0/commit/7de357333016948afe1c3452aa8a2fda2f03d964))
+
+## [0.86.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.10...guest-agent-v0.86.11) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
+## [0.86.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.9...guest-agent-v0.86.10) (2026-09-07)
+
+## [0.86.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.8...guest-agent-v0.86.9) (2026-09-07)
+
+## [0.86.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.7...guest-agent-v0.86.8) (2026-09-07)
+
+
+### Refactoring
+
+* **runtime:** neutralize private test markers ([#32270](https://github.com/vm0-ai/vm0/issues/32270)) ([b1a3e6f](https://github.com/vm0-ai/vm0/commit/b1a3e6f80100113525c2b38c3a9dd1583d03cfe5))
+
+## [0.86.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.6...guest-agent-v0.86.7) (2026-09-07)
+
 ## [0.86.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.5...guest-agent-v0.86.6) (2026-09-07)
 
 ## [0.86.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.4...guest-agent-v0.86.5) (2026-09-07)

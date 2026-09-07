@@ -5,29 +5,29 @@ members = [
     "api-contracts",
     "guest-agent",
     "guest-contracts",
-    "guest-session-prune",
-    "guest-rpc",
+    "session-history-selector",
+    "runner-rpc-client",
     "guest-tool-exec",
     "process-control-ipc",
-    "guest-common",
-    "guest-download",
+    "guest-telemetry",
+    "guest-storage-apply",
     "guest-init",
-    "guest-mock-claude",
-    "guest-mock-codex",
-    "guest-reseed",
+    "claude-mock",
+    "codex-mock",
+    "guest-state-restore",
     "guest-write-file",
     "nbd-cow",
     "runner",
     "sandbox",
-    "sandbox-fc",
+    "sandbox-firecracker",
     "sandbox-mock",
     "shell-quote",
-    "guest-rpc-proto",
+    "runner-rpc-proto",
     "tracing-test-support",
-    "vsock-guest",
-    "vsock-host",
-    "vsock-proto",
-    "vsock-test",
+    "guest-control-server",
+    "guest-control-client",
+    "guest-control-proto",
+    "guest-control-tests",
     "xtask",
 ]
 
@@ -40,27 +40,27 @@ ably-subscriber = { path = "ably-subscriber" }
 api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
 guest-contracts = { path = "guest-contracts" }
-guest-session-prune = { path = "guest-session-prune" }
-guest-rpc = { path = "guest-rpc" }
+session-history-selector = { path = "session-history-selector" }
+runner-rpc-client = { path = "runner-rpc-client" }
 guest-tool-exec = { path = "guest-tool-exec" }
 process-control-ipc = { path = "process-control-ipc" }
-guest-common = { path = "guest-common" }
-guest-download = { path = "guest-download" }
+guest-telemetry = { path = "guest-telemetry" }
+guest-storage-apply = { path = "guest-storage-apply" }
 guest-init = { path = "guest-init" }
-guest-mock-claude = { path = "guest-mock-claude" }
-guest-mock-codex = { path = "guest-mock-codex" }
-guest-reseed = { path = "guest-reseed" }
+claude-mock = { path = "claude-mock" }
+codex-mock = { path = "codex-mock" }
+guest-state-restore = { path = "guest-state-restore" }
 guest-write-file = { path = "guest-write-file" }
 nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }
-sandbox-fc = { path = "sandbox-fc" }
+sandbox-firecracker = { path = "sandbox-firecracker" }
 sandbox-mock = { path = "sandbox-mock" }
 shell-quote = { path = "shell-quote" }
-guest-rpc-proto = { path = "guest-rpc-proto" }
+runner-rpc-proto = { path = "runner-rpc-proto" }
 tracing-test-support = { path = "tracing-test-support" }
-vsock-guest = { path = "vsock-guest" }
-vsock-host = { path = "vsock-host" }
-vsock-proto = { path = "vsock-proto" }
+guest-control-server = { path = "guest-control-server" }
+guest-control-client = { path = "guest-control-client" }
+guest-control-proto = { path = "guest-control-proto" }
 
 # External dependencies
 aho-corasick = "1"

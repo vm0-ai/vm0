@@ -197,7 +197,7 @@ test.each([402, 429])(
       return respond(200, { allowed: true, count: 0, limit: 60 });
     });
     let exhausted = true;
-    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
       if (exhausted) {
         return HttpResponse.json(
           {

@@ -232,7 +232,11 @@ export interface WorkflowComposerSignals {
 
 export type OpenComposerTemplatePickerIntent =
   | { readonly kind: "insert"; readonly category: string }
-  | { readonly kind: "edit-selected"; readonly category: string }
+  | {
+      readonly kind: "edit-selected";
+      readonly category: string;
+      readonly position: number;
+    }
   | { readonly kind: "edit-legacy"; readonly category: string };
 
 export type ComposerTemplateAttachmentType =
@@ -1576,28 +1580,21 @@ function createInlineTemplateNode(
       return `Select ${attachment.title} ${attachment.type} template`;
     },
     addNodeView() {
-      return ({ node, getPos, editor }) => {
-        const selectSelf = (): boolean => {
+      return ({ node, getPos }) => {
+        const openTemplate = (category: string): void => {
           const position = getPos();
           if (typeof position !== "number") {
-            return false;
+            return;
           }
-          editor.view.dispatch(
-            editor.state.tr.setSelection(
-              NodeSelection.create(editor.state.doc, position),
-            ),
-          );
-          return true;
+          runtime.openTemplate({
+            kind: "edit-selected",
+            category,
+            position,
+          });
         };
         return createInlineTemplateNodeView(
           node,
-          {
-            openTemplate: (category) => {
-              if (selectSelf()) {
-                runtime.openTemplate({ kind: "edit-selected", category });
-              }
-            },
-          },
+          { openTemplate },
           runtime.localizedUi,
         );
       };
@@ -2464,6 +2461,7 @@ function createTemplateCommands(
       set(legacyReplacementPending$, intent.kind === "edit-legacy");
       let referenceValue: GenerationTemplateRequest | null = null;
       if (intent.kind === "edit-selected") {
+        editor.commands.setNodeSelection(intent.position);
         referenceValue = set(readSelectedTemplate$) ?? null;
       } else if (intent.kind === "edit-legacy") {
         referenceValue = get(draft.generationTemplate$) ?? null;

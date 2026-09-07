@@ -68,8 +68,8 @@ fn apply_input(input: EnvInput) {
 
 fn configure_case(root: &Path, name: &str, canonical: EnvInput) -> Result<PathBuf, String> {
     let runtime_dir = root.join(format!("{name}-runtime"));
-    guest_common::log::clear_system_log_file();
-    guest_common::telemetry::clear_sandbox_ops_log_file();
+    guest_telemetry::log::clear_system_log_file();
+    guest_telemetry::telemetry::clear_sandbox_ops_log_file();
     // SAFETY: the integration binary contains one test and has not started
     // threads while configuring the next startup snapshot.
     unsafe {

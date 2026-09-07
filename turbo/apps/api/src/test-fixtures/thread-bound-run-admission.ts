@@ -92,6 +92,7 @@ export async function createUnassociatedThreadBoundAgentRunFixture(
       },
       apiStartTime: now(),
       productAgentExecutionPlan: {
+        identity: "agent",
         content: buildAgentExecutionConfig("thread-run-invariant-agent"),
       },
       piExecution: false,

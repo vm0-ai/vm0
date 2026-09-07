@@ -1430,11 +1430,7 @@ async fn exact_speculative_preparation(
 ) -> PreferencePreparation {
     let sandbox_id = reservation.sandbox_id();
     let (reservation, idle_snapshot) = reservation.into_parts();
-    if let Err(error) = ctx
-        .status
-        .set_idle_info_at_revision(idle_snapshot.revision, idle_snapshot.idle_sandboxes.clone())
-        .await
-    {
+    if let Err(error) = ctx.status.set_idle_snapshot(idle_snapshot.clone()).await {
         warn!(%error, "failed to persist exact speculation idle reservation");
         rollback_reserved_idle_for_spawn(
             ReservedIdleActivation::new(reservation, idle_snapshot),
@@ -1939,13 +1935,13 @@ async fn activate_speculated_exact(
         }
     };
 
-    let reserved_reuse_key = sandbox.reuse_key().to_owned();
+    let reserved_reuse_key = sandbox.reuse_key().map(str::to_owned);
     let requested_reuse_key = context.reuse_key();
-    if requested_reuse_key != Some(reserved_reuse_key.as_str()) {
+    if requested_reuse_key != reserved_reuse_key.as_deref() {
         warn!(
             run_id = %run_id,
-            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
-            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            reuse_key_fingerprint = reserved_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+            reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
             "claimed reuse key does not match speculatively prepared idle sandbox"
         );
         return cleanup_claimed_speculation_for_fresh_fallback(
@@ -1978,8 +1974,8 @@ async fn activate_speculated_exact(
         if let Err(mismatch) = validation {
             warn!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
-                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                reuse_key_fingerprint = reserved_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
                 profile = %profile_name,
                 mismatch = mismatch.as_str(),
                 "workspace promotion identity mismatch after speculative preparation"
@@ -2104,12 +2100,12 @@ async fn finish_exact_activation(
                 };
             }
 
-            let reuse_key = sandbox.reuse_key().to_owned();
+            let reuse_key = sandbox.reuse_key().map(str::to_owned);
             let (reuse_entry, active_lease) = sandbox.commit(guest_state_prepared);
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                reuse_key_kind = reuse_key_kind(&reuse_key),
+                reuse_key_fingerprint = reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = reuse_key.as_deref().map(reuse_key_kind),
                 "committing speculatively prepared exact-reuse sandbox"
             );
             ExactActivation::Ready {
@@ -2209,7 +2205,7 @@ pub(super) async fn activate_reserved_idle(
         (IdleSandboxKind::Exact | IdleSandboxKind::Blank, _) => (reservation, idle_snapshot),
     };
     let reservation_kind = reservation.kind();
-    let reserved_reuse_key = reservation.reuse_key().to_owned();
+    let reserved_reuse_key = reservation.reuse_key().map(str::to_owned);
     let miss_result = if requested_reuse_key.is_some() {
         SandboxReuseResult::PoolMiss
     } else {
@@ -2256,11 +2252,13 @@ pub(super) async fn activate_reserved_idle(
     if reservation.profile_name() != profile_name
         || reservation.device_rate_limits() != device_rate_limits
     {
-        let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reserved_reuse_key);
+        let reuse_key_fingerprint = reserved_reuse_key
+            .as_deref()
+            .map(diagnostic_reuse_key_fingerprint);
         warn!(
             run_id = %run_id,
-            reuse_key_fingerprint = %reuse_key_fingerprint,
-            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            reuse_key_fingerprint,
+            reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
             profile = %profile_name,
             "reserved idle sandbox configuration does not match claimed job, destroying before fresh fallback"
         );
@@ -2275,13 +2273,15 @@ pub(super) async fn activate_reserved_idle(
     }
 
     if reservation_kind == IdleSandboxKind::Exact
-        && requested_reuse_key != Some(reserved_reuse_key.as_str())
+        && requested_reuse_key != reserved_reuse_key.as_deref()
     {
-        let reuse_key_fingerprint = diagnostic_reuse_key_fingerprint(&reserved_reuse_key);
+        let reuse_key_fingerprint = reserved_reuse_key
+            .as_deref()
+            .map(diagnostic_reuse_key_fingerprint);
         warn!(
             run_id = %run_id,
-            reuse_key_fingerprint = %reuse_key_fingerprint,
-            reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+            reuse_key_fingerprint,
+            reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
             "claimed reuse key does not match reserved idle sandbox, destroying before fresh fallback"
         );
         return cleanup_reserved_for_fresh_fallback(
@@ -2308,8 +2308,8 @@ pub(super) async fn activate_reserved_idle(
         if let Err(mismatch) = validation {
             warn!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
-                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                reuse_key_fingerprint = reserved_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
                 profile = %profile_name,
                 mismatch = mismatch.as_str(),
                 "workspace promotion identity mismatch, destroying reserved idle sandbox before fresh fallback"
@@ -2380,8 +2380,8 @@ pub(super) async fn activate_reserved_idle(
             info!(
                 run_id = %run_id,
                 idle_kind = ?reservation_kind,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
-                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                reuse_key_fingerprint = reserved_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
                 "activating pre-claim reserved idle sandbox"
             );
             ReservedActivation::Ready {
@@ -2394,8 +2394,8 @@ pub(super) async fn activate_reserved_idle(
         IdleUnparkResult::Failed { destroy_job, error } => {
             warn!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reserved_reuse_key),
-                reuse_key_kind = reuse_key_kind(&reserved_reuse_key),
+                reuse_key_fingerprint = reserved_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = reserved_reuse_key.as_deref().map(reuse_key_kind),
                 error = %error,
                 "reserved idle sandbox unpark failed, destroying before fresh fallback"
             );
@@ -2646,7 +2646,7 @@ async fn try_reuse_from_pool(
                 && entry.device_rate_limits() == device_rate_limits =>
         {
             let entry_kind = entry.kind();
-            let entry_reuse_key = entry.reuse_key().to_owned();
+            let entry_reuse_key = entry.reuse_key().map(str::to_owned);
             let activation_reuse_result = match entry_kind {
                 IdleSandboxKind::Exact => SandboxReuseResult::Reused,
                 IdleSandboxKind::Blank => miss_result,
@@ -2673,8 +2673,8 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
-                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
+                        reuse_key_fingerprint = entry_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                        reuse_key_kind = entry_reuse_key.as_deref().map(reuse_key_kind),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle sandbox and falling through to fresh create"
@@ -2765,8 +2765,8 @@ async fn try_reuse_from_pool(
                     info!(
                         run_id = %run_id,
                         idle_kind = ?entry_kind,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
-                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
+                        reuse_key_fingerprint = entry_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                        reuse_key_kind = entry_reuse_key.as_deref().map(reuse_key_kind),
                         "activating idle sandbox"
                     );
                     // Idle entry already holds budget. Drop the speculative
@@ -2786,8 +2786,8 @@ async fn try_reuse_from_pool(
                     warn!(
                         run_id = %run_id,
                         idle_kind = ?entry_kind,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&entry_reuse_key),
-                        reuse_key_kind = reuse_key_kind(&entry_reuse_key),
+                        reuse_key_fingerprint = entry_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                        reuse_key_kind = entry_reuse_key.as_deref().map(reuse_key_kind),
                         error = %error,
                         "unpark failed, destroying idle sandbox and falling through to fresh create"
                     );
@@ -2829,11 +2829,11 @@ async fn try_reuse_from_pool(
             }
         }
         Some((stale, snapshot)) if stale.profile_name() == profile_name => {
-            let stale_reuse_key = stale.reuse_key().to_owned();
+            let stale_reuse_key = stale.reuse_key().map(str::to_owned);
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&stale_reuse_key),
-                reuse_key_kind = reuse_key_kind(&stale_reuse_key),
+                reuse_key_fingerprint = stale_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = stale_reuse_key.as_deref().map(reuse_key_kind),
                 profile = %profile_name,
                 "idle sandbox device rate limiter mismatch, destroying"
             );
@@ -2852,11 +2852,11 @@ async fn try_reuse_from_pool(
             ))
         }
         Some((stale, snapshot)) => {
-            let stale_reuse_key = stale.reuse_key().to_owned();
+            let stale_reuse_key = stale.reuse_key().map(str::to_owned);
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&stale_reuse_key),
-                reuse_key_kind = reuse_key_kind(&stale_reuse_key),
+                reuse_key_fingerprint = stale_reuse_key.as_deref().map(diagnostic_reuse_key_fingerprint),
+                reuse_key_kind = stale_reuse_key.as_deref().map(reuse_key_kind),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle sandbox profile mismatch, destroying"
@@ -2916,6 +2916,7 @@ mod tests {
     fn idle_snapshot() -> IdlePoolSnapshot {
         IdlePoolSnapshot {
             revision: 1,
+            blank_sandboxes: vec![],
             idle_sandboxes: vec![IdleSandbox {
                 reuse_key: "sess-removed-from-pool".into(),
                 sandbox_id: SandboxId::new_v4(),

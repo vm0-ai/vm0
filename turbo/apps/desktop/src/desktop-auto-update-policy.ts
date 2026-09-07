@@ -22,7 +22,10 @@ export function shouldDeferDesktopUpdate(
   hostState: ComputerUseHostRuntimeState,
   nowMs = Date.now(),
 ): boolean {
-  if (isRecentTimestamp(hostState.lastCommandAt, nowMs)) {
+  if (
+    hostState.driverTransitioning ||
+    isRecentTimestamp(hostState.lastCommandAt, nowMs)
+  ) {
     return true;
   }
 

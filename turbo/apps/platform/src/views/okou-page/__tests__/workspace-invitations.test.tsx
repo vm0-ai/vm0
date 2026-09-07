@@ -97,6 +97,7 @@ test("An invitation accepted for another account offers account switching", asyn
     "Invitation accepted for another account",
   );
   expect(acceptedNotice).toBeVisible();
+  expect(location.hash).toBe("#private-agents");
 
   click(actionByName("button", "Switch account"));
 
@@ -108,7 +109,7 @@ test("An invitation accepted for another account offers account switching", asyn
   expect(emailAddress).toHaveValue("");
 });
 
-test("An unfinished invitation remains with authentication", async () => {
+test("An invitation requiring a password continues without exposing the ticket", async () => {
   const ticket = invitationTicket("org_invited");
   const params = new URLSearchParams([
     ["utm_campaign", "workspace-invite"],
@@ -119,6 +120,7 @@ test("An unfinished invitation remains with authentication", async () => {
   mockedClerk.clientSignInCreate.mockImplementation(() => {
     mockSignInResource({
       status: "needs_first_factor",
+      identifier: "invitee@example.com",
       supportedFirstFactors: [{ strategy: "password" }],
     });
     return Promise.resolve(mockedClerk.client.signIn);
@@ -130,17 +132,32 @@ test("An unfinished invitation remains with authentication", async () => {
     auth: null,
   });
 
-  const emailAddress = await screen.findByLabelText("Email address");
-  await fill(emailAddress, "invitee@example.com");
-  fireEvent.submit(containingForm(emailAddress));
-
+  await screen.findByRole("heading", { name: "Use another method" });
+  click(actionByName("button", "Sign in with your password"));
   const password = await screen.findByLabelText("Password");
   expect(password).toBeVisible();
   const remainingParams = new URLSearchParams(search());
-  expect(remainingParams.get("__clerk_status")).toBe("sign_in");
-  expect(remainingParams.get("__clerk_ticket")).toBe(ticket);
+  expect(remainingParams.get("__clerk_status")).toBeNull();
+  expect(remainingParams.get("__clerk_ticket")).toBeNull();
+  expect(mockedClerk.clientSignInCreate).toHaveBeenCalledExactlyOnceWith({
+    strategy: "ticket",
+    ticket,
+  });
   expect(remainingParams.get("utm_campaign")).toBe("workspace-invite");
   expect(
     screen.queryByText(/^Invitation accepted(?: for)?/u),
   ).not.toBeInTheDocument();
+  mockedClerk.signInAttemptFirstFactor.mockImplementation(() => {
+    mockSignInResource({
+      status: "complete",
+      createdSessionId: "session_invited",
+    });
+    return Promise.resolve(mockedClerk.client.signIn);
+  });
+  await fill(password, "A good password 123!");
+  fireEvent.submit(containingForm(password));
+  await screen.findByRole("heading", { name: "Sign-in complete" });
+  expect(mockedClerk.setActive).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ session: "session_invited" }),
+  );
 });

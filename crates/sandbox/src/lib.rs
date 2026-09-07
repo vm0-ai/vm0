@@ -38,7 +38,7 @@ pub use control::{
 pub use error::{
     Result, SandboxError, SandboxGuestDnsReadinessReason, SandboxIdleTransition,
     SandboxInitializationPhase, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SandboxOperationTimeoutStage,
+    SandboxOperationReason, SandboxOperationTimeoutStage, SandboxOperationWriteStage,
 };
 pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,
@@ -57,12 +57,12 @@ pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
 pub use types::{
-    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB,
-    EXEC_OUTPUT_LIMIT_7_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult,
-    ExecTermination, GuestAgentProcessHandle, GuestAgentStartTiming, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessControlOutcomeFuture, GuestProcessHandle,
-    GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
-    ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,
+    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, DEFAULT_PROCESS_START_TIMEOUT,
+    EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits,
+    ExecRequest, ExecResult, ExecTermination, GuestAgentProcessHandle, GuestAgentStartTiming,
+    GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessControlOutcomeFuture,
+    GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone,
+    ProcessControlAck, ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,
     ProcessControlWriteState, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
     ProcessOutputReceiver, SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
     StartProcessRequest, StorageManifestRequest, WriteFileEntry,

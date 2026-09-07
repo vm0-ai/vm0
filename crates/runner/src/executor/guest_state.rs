@@ -66,7 +66,7 @@ pub(crate) fn is_shell_safe_guest_timezone_name(tz: &str) -> bool {
 fn timezone_sync_command(tz: &str) -> String {
     format!(
         "{} {TIMEZONE_SYNC_MODE_ARG} {tz}",
-        guest_contracts::guest_binary::RESEED_PATH
+        guest_contracts::guest_binary::STATE_RESTORE_PATH
     )
 }
 

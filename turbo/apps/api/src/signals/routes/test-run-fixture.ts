@@ -20,7 +20,7 @@ const c = initContract();
 export const runFixtureContract = c.router({
   create: {
     method: "POST",
-    path: "/api/test/zero-run-fixture",
+    path: "/api/test/agent-run-fixture",
     headers: authHeadersSchema,
     body: runCreateBodySchema,
     responses: {

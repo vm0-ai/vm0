@@ -64,8 +64,6 @@ fi
 
 if [[ "$write_out" == '%{redirect_url}' ]]; then
   case "$url" in
-    https://api.vm0.ai/sign-in) redirect=https://app.vm0.ai/sign-in ;;
-    https://api.vm0.ai/sign-up) redirect=https://app.vm0.ai/sign-up ;;
     https://api.okou.ai/sign-in) redirect=https://app.okou.ai/sign-in ;;
     https://api.okou.ai/sign-up) redirect=https://app.okou.ai/sign-up ;;
     *)
@@ -80,8 +78,7 @@ fi
 
 if [[ "$request" == "OPTIONS" ]]; then
   case "$url:$origin" in
-    https://api.vm0.ai/api/__brand-smoke__:https://app.vm0.ai | \
-      https://api.okou.ai/api/__brand-smoke__:https://app.okou.ai) ;;
+    https://api.okou.ai/api/__brand-smoke__:https://app.okou.ai) ;;
     *)
       echo "unexpected CORS request: $url from $origin" >&2
       exit 1
@@ -99,13 +96,9 @@ chmod +x "${fake_bin}/curl"
 
 expected_log() {
   printf '%s\n' \
-    $'serve\thttps://app.vm0.ai' \
     $'serve\thttps://app.okou.ai' \
-    $'auth\thttps://api.vm0.ai/sign-in\thttps://app.vm0.ai/sign-in' \
-    $'auth\thttps://api.vm0.ai/sign-up\thttps://app.vm0.ai/sign-up' \
     $'auth\thttps://api.okou.ai/sign-in\thttps://app.okou.ai/sign-in' \
     $'auth\thttps://api.okou.ai/sign-up\thttps://app.okou.ai/sign-up' \
-    $'cors\thttps://api.vm0.ai/api/__brand-smoke__\thttps://app.vm0.ai' \
     $'cors\thttps://api.okou.ai/api/__brand-smoke__\thttps://app.okou.ai'
 }
 
@@ -121,7 +114,7 @@ verify_run() {
 
   expected_log > "$expected"
   if ! diff -u "$expected" "$curl_log"; then
-    fail "$name run did not verify both brand auth redirects and CORS pairs"
+    fail "$name run did not verify the Okou auth redirects and CORS pair"
   fi
 }
 

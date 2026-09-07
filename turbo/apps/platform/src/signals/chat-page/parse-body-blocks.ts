@@ -26,10 +26,7 @@ import {
   parsePlanUpgradeUrl,
   type PlanUpgradeDescriptor,
 } from "./plan-upgrade-block.ts";
-import type {
-  ArtifactDescriptor,
-  ArtifactKind,
-} from "./artifact-card-signals.ts";
+import type { ArtifactKind } from "./artifact-card-signals.ts";
 import { parseMailDraftUrl, type MailDraftDescriptor } from "./mail-draft.ts";
 import {
   parseBrowserSessionUrl,
@@ -56,11 +53,6 @@ export interface ParsedMarkdownBlock {
 
 export type ParsedBodyBlock =
   | ParsedMarkdownBlock
-  | {
-      type: "artifact";
-      resourceKey: string;
-      descriptor: ArtifactDescriptor;
-    }
   | {
       type: "connector-action";
       resourceKey: string;
@@ -115,16 +107,9 @@ interface ChatAttachmentDescriptor {
   contentType?: string;
 }
 
-type ExtractedPreviewUrl = {
-  url: string;
-  source: "markdown-link" | "bare-url" | "preview-url-line";
-  title?: string;
-};
-
 type OpenMarkdownFence = {
   marker: "`" | "~";
   length: number;
-  lines: string[];
 };
 
 interface ParseBodyBlocksOptions {
@@ -314,21 +299,6 @@ function filenameFromUrl(url: string): string {
     return "file";
   }
   return last;
-}
-
-function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
-  return (
-    kind === "image" ||
-    kind === "video" ||
-    kind === "audio" ||
-    kind === "markdown" ||
-    kind === "text" ||
-    kind === "json" ||
-    kind === "csv" ||
-    kind === "pdf" ||
-    kind === "html" ||
-    kind === "file"
-  );
 }
 
 export function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
@@ -521,7 +491,7 @@ function hostedSiteAttachment(
   };
 }
 
-function isPreviewableChatUrl(url: string): boolean {
+export function isPreviewableChatUrl(url: string): boolean {
   return isPlatformFileUrl(url) || isHostedSiteUrl(url);
 }
 
@@ -542,157 +512,21 @@ export function previewAttachmentFromUrl(
   return { filename, url };
 }
 
-function markdownImageLine(url: string, alt: string): string {
-  const escapedAlt = alt
-    .replace(/\\/g, String.raw`\\`)
-    .replace(/\]/g, String.raw`\]`);
-  return `![${escapedAlt}](${url})`;
-}
-
-type ExtractedPreviewLineRender =
-  | {
-      renderKind: "markdown";
-      line: string;
-    }
-  | {
-      renderKind: "preview";
-      preview: {
-        filename: string;
-        url: string;
-        kind: BodyPreviewKind;
-      };
-    };
-
-function renderExtractedPreviewLine(
-  extracted: ExtractedPreviewUrl,
-  line: string,
-): ExtractedPreviewLineRender {
-  const { title, url } = extracted;
-  const attachment = previewAttachmentFromUrl(url, title);
-  const kind = classifyChatAttachment(attachment);
-  const previewable = isPreviewableChatUrl(url);
-
-  if (
-    extracted.source === "markdown-link" &&
-    (kind === "image" || (kind === "video" && !previewable))
-  ) {
-    return { renderKind: "markdown", line };
-  }
-
-  if (kind === "image" && previewable) {
-    return {
-      renderKind: "markdown",
-      line: markdownImageLine(url, attachment.filename),
-    };
-  }
-
-  if (isBodyPreviewKind(kind) && previewable) {
-    return {
-      renderKind: "preview",
-      preview: { filename: attachment.filename, url, kind },
-    };
-  }
-
-  return { renderKind: "markdown", line };
-}
-
-function renderFencedHostedSitePreview(
-  contentLines: readonly string[],
-): ExtractedPreviewLineRender | null {
-  const nonEmptyLines = contentLines.filter((line) => {
-    return line.trim().length > 0;
-  });
-  if (nonEmptyLines.length !== 1) {
-    return null;
-  }
-
-  const line = nonEmptyLines[0]!;
-  const extracted = extractPreviewUrlFromLine(line);
-  if (!extracted || !isHostedSiteUrl(extracted.url)) {
-    return null;
-  }
-
-  const rendered = renderExtractedPreviewLine(extracted, line);
-  return rendered.renderKind === "preview" && rendered.preview.kind === "html"
-    ? rendered
-    : null;
-}
-
-type MarkdownFenceLineResult =
-  | {
-      kind: "pending";
-      openFence: OpenMarkdownFence | null;
-    }
-  | {
-      kind: "markdown";
-      openFence: null;
-      lines: readonly string[];
-    }
-  | {
-      kind: "preview";
-      openFence: null;
-      preview: {
-        filename: string;
-        url: string;
-        kind: BodyPreviewKind;
-      };
-    };
-
-function renderOpenMarkdownFence(
-  openFence: OpenMarkdownFence,
-  previews: boolean,
-): MarkdownFenceLineResult {
-  const renderedFence = previews
-    ? renderFencedHostedSitePreview(openFence.lines.slice(1))
-    : null;
-
-  if (renderedFence?.renderKind === "preview") {
-    return {
-      kind: "preview",
-      openFence: null,
-      preview: renderedFence.preview,
-    };
-  }
-
-  return { kind: "markdown", openFence: null, lines: openFence.lines };
-}
-
-function parseMarkdownFenceLine(
+function nextMarkdownFence(
   line: string,
   openFence: OpenMarkdownFence | null,
-  previews: boolean,
-): MarkdownFenceLineResult | null {
-  const trimmedLine = line.trim();
-  const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
-  if (!fenceMatch) {
-    if (!openFence) {
-      return null;
-    }
-
-    openFence.lines.push(line);
-    return { kind: "pending", openFence };
+): OpenMarkdownFence | null {
+  const fence = line.trim().match(/^(`{3,}|~{3,})/)?.[1];
+  if (!fence) {
+    return openFence;
   }
-
-  const fence = fenceMatch[1]!;
   const marker = fence.startsWith("`") ? "`" : "~";
   if (!openFence) {
-    return {
-      kind: "pending",
-      openFence: { marker, length: fence.length, lines: [line] },
-    };
+    return { marker, length: fence.length };
   }
-
-  if (openFence.marker !== marker || fence.length < openFence.length) {
-    openFence.lines.push(line);
-    return { kind: "pending", openFence };
-  }
-
-  const result = renderOpenMarkdownFence(openFence, previews);
-  if (result.kind === "markdown") {
-    return { ...result, lines: [...openFence.lines, line] };
-  }
-
-  return result;
+  return openFence.marker === marker && fence.length >= openFence.length
+    ? null
+    : openFence;
 }
 
 function stripMarkdownLineDecorations(value: string): string {
@@ -764,38 +598,6 @@ function extractUrlTokens(value: string): string[] {
   ).filter((url, index, list) => {
     return url.length > 0 && list.indexOf(url) === index;
   });
-}
-
-function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
-  const candidate = stripMarkdownLineDecorations(line);
-  const markdownLinkMatch = candidate.match(
-    new RegExp(String.raw`^\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)$`),
-  );
-  const bareUrlMatch = candidate.match(new RegExp(`^(${URL_TOKEN_PATTERN})$`));
-  if (markdownLinkMatch?.[2]) {
-    return {
-      url: trimPreviewUrl(markdownLinkMatch[2]),
-      source: "markdown-link",
-      title: markdownLinkMatch[1]?.trim(),
-    };
-  }
-  if (bareUrlMatch?.[1]) {
-    return {
-      url: trimPreviewUrl(bareUrlMatch[1]),
-      source: "bare-url",
-    };
-  }
-
-  const urls = extractUrlTokens(candidate);
-
-  if (urls.length === 1 && isPreviewableChatUrl(urls[0]!)) {
-    return {
-      url: urls[0]!,
-      source: "preview-url-line",
-    };
-  }
-
-  return null;
 }
 
 function extractActionUrlFromLine(line: string): string | null {
@@ -1095,32 +897,11 @@ function parseBodyBlocks(
     keptLines.push(...nextLines);
   };
 
-  const pushPreviewBlock = (
-    preview: Extract<MarkdownFenceLineResult, { kind: "preview" }>["preview"],
-  ) => {
-    flushMarkdownBuffer();
-    blocks.push({
-      type: "artifact",
-      resourceKey: preview.url,
-      descriptor: preview,
-    });
-  };
-
-  const applyFenceLineResult = (result: MarkdownFenceLineResult) => {
-    openFence = result.openFence;
-    if (result.kind === "markdown") {
-      pushMarkdownLines(result.lines);
-      return;
-    }
-    if (result.kind === "preview") {
-      pushPreviewBlock(result.preview);
-    }
-  };
-
   for (const [lineIndex, line] of lines.entries()) {
-    const fenceResult = parseMarkdownFenceLine(line, openFence, previews);
-    if (fenceResult) {
-      applyFenceLineResult(fenceResult);
+    const nextFence = nextMarkdownFence(line, openFence);
+    if (openFence !== null || nextFence !== null) {
+      openFence = nextFence;
+      pushMarkdownLines([line]);
       continue;
     }
 
@@ -1148,31 +929,9 @@ function parseBodyBlocks(
       continue;
     }
 
-    const extracted = previews ? extractPreviewUrlFromLine(line) : null;
-    if (!extracted) {
-      markdownBuffer.push(line);
-      keptLines.push(line);
-      continue;
-    }
-
-    const renderedLine = renderExtractedPreviewLine(extracted, line);
-    if (renderedLine.renderKind === "markdown") {
-      markdownBuffer.push(renderedLine.line);
-      keptLines.push(renderedLine.line);
-      continue;
-    }
-
-    flushMarkdownBuffer();
-    blocks.push({
-      type: "artifact",
-      resourceKey: renderedLine.preview.url,
-      descriptor: renderedLine.preview,
-    });
+    pushMarkdownLines([line]);
   }
 
-  if (openFence) {
-    applyFenceLineResult(renderOpenMarkdownFence(openFence, previews));
-  }
   flushMarkdownBuffer();
 
   const cleanContent = keptLines.join("\n").trim();
@@ -1192,9 +951,6 @@ export type CardDescriptorBlock = Exclude<ParsedBodyBlock, ParsedMarkdownBlock>;
 /** The URL a card's slot stands on, and the key its signals are looked up by. */
 export function cardSlotUrl(block: CardDescriptorBlock): string {
   switch (block.type) {
-    case "artifact": {
-      return block.descriptor.url;
-    }
     case "connector-action": {
       return block.descriptor.originalUrl;
     }
@@ -1246,9 +1002,8 @@ interface EventBodyPlan {
 
 /**
  * Plans one event body. The line scanner in `parseBodyBlocks` stays the sole
- * authority on which URLs become cards — fences, tables and inline labels
- * behave exactly as before — and this only re-joins its output into a single
- * document instead of a block list.
+ * authority on action-card slots. Artifact links and images stay in the
+ * original Markdown; their resources are registered on the parsed nodes.
  */
 export function eventBodyPlan(
   content: string,

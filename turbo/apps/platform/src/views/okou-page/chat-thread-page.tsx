@@ -1,4 +1,4 @@
-import { RunWorkMessagePreview } from "./run-work-message-preview.tsx";
+import { RunWorkMessage } from "./run-work-message.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -18,7 +18,7 @@ import {
 import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
 import { useTranslation } from "react-i18next";
-import { formatChatTimestamp } from "../../i18n/format.ts";
+import { formatAppNumber, formatChatTimestamp } from "../../i18n/format.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { hideAppSkeletonOnContentReadyRef$ } from "../../signals/app-skeleton.ts";
 import {
@@ -123,7 +123,6 @@ import {
   CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS,
   ChatImagePreviewLink,
   ChatVideoPreviewButton,
-  MarkdownCardView,
 } from "./chat-body-cards.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ChatConversationLocator } from "./chat-conversation-locator.tsx";
@@ -3825,12 +3824,14 @@ function CompletedWorkFoldRow({
 function RunWorkSectionRow({
   startTime,
   endTime,
+  stepCount,
   collapsible,
   expanded,
   onToggle,
 }: {
   startTime: number;
   endTime?: number;
+  stepCount: number;
   collapsible: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -3838,37 +3839,48 @@ function RunWorkSectionRow({
   const { t } = useTranslation();
   const content = (
     <>
-      <Hourglass aria-hidden size={14} className="shrink-0" />
-      <ElapsedTime
-        startTime={startTime}
-        endTime={endTime}
-        className="text-[13px]"
-      >
-        {(elapsedTime) => {
-          const duration = formatCompactDuration(
-            Math.max(1, Math.round(elapsedTime / 1000)),
-          );
-          return endTime === undefined
-            ? t(
-                ($) => {
-                  return $.chat.run.workingFor;
-                },
-                { duration },
-              )
-            : t(
-                ($) => {
-                  return $.chat.run.workedFor;
-                },
-                { duration },
-              );
-        }}
-      </ElapsedTime>
+      <span className="flex w-7 shrink-0 items-center justify-center">
+        <Hourglass aria-hidden />
+      </span>
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <ElapsedTime startTime={startTime} endTime={endTime}>
+          {(elapsedTime) => {
+            const duration = formatCompactDuration(
+              Math.max(1, Math.round(elapsedTime / 1000)),
+            );
+            return endTime === undefined
+              ? t(
+                  ($) => {
+                    return $.chat.run.workingFor;
+                  },
+                  { duration },
+                )
+              : t(
+                  ($) => {
+                    return $.chat.run.workedFor;
+                  },
+                  { duration },
+                );
+          }}
+        </ElapsedTime>
+        <span aria-hidden>·</span>
+        <span>
+          {t(
+            ($) => {
+              return $.activity.events.steps;
+            },
+            {
+              count: stepCount,
+              formattedCount: formatAppNumber(stepCount),
+            },
+          )}
+        </span>
+      </span>
       {collapsible ? (
         <ChevronRight
           aria-hidden
-          size={14}
           className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform",
+            "ml-1 shrink-0 text-muted-foreground/70 transition-transform",
             expanded && "rotate-90",
           )}
         />
@@ -3876,29 +3888,28 @@ function RunWorkSectionRow({
     </>
   );
   const className = cn(
-    "inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground",
+    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal text-muted-foreground [&_svg]:size-3.5",
     CHAT_THREAD_RESPONSE_LINE_CLASS,
   );
   return (
-    <div data-chat-run-work className="-mx-2">
+    <div data-chat-run-work className="flex min-h-9 items-center">
       {collapsible ? (
-        <button
+        <Button
           type="button"
+          variant="quiet"
+          size="xs"
           aria-expanded={expanded}
-          aria-label={
-            expanded
-              ? t(($) => {
-                  return $.chat.run.collapseWorkHistory;
-                })
-              : t(($) => {
-                  return $.chat.run.expandWorkHistory;
-                })
-          }
+          aria-label={t(($) => {
+            return expanded
+              ? $.chat.run.collapseWorkHistory
+              : $.chat.run.expandWorkHistory;
+          })}
           onClick={onToggle}
-          className={cn(className, "transition-colors hover:bg-state-hover")}
+          data-chat-run-work-range
+          className={cn(className, "h-auto p-0 pr-1")}
         >
           {content}
-        </button>
+        </Button>
       ) : (
         <div className={className}>{content}</div>
       )}
@@ -7485,7 +7496,7 @@ type PagedAssistantHistoryItem =
       readonly change: RunModelChange;
     }
   | {
-      readonly kind: "run-work-preview";
+      readonly kind: "run-work-message";
       readonly event: EnrichedChatEvent;
     };
 
@@ -7525,7 +7536,7 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "assistant", event }]
+        ? [{ kind: "run-work-message", event }]
         : [];
     });
   });
@@ -7565,7 +7576,8 @@ function buildPagedAssistantTimeline({
   }
 
   const historyItems: PagedAssistantHistoryItem[] = [];
-  if (runWorkSection.expanded) {
+  const showAllHistory = runWorkSection.expanded || !runWorkSection.collapsible;
+  if (showAllHistory) {
     historyItems.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
     );
@@ -7573,7 +7585,7 @@ function buildPagedAssistantTimeline({
     historyItems.push(
       ...runWorkSection.previewMessages.map(
         (event): PagedAssistantHistoryItem => {
-          return { kind: "run-work-preview", event };
+          return { kind: "run-work-message", event };
         },
       ),
     );
@@ -7590,7 +7602,7 @@ function buildPagedAssistantTimeline({
       artifactCards: runWorkSection.remainingArtifactCards,
     });
   }
-  if (runWorkSection.expanded) {
+  if (showAllHistory) {
     items.push(
       ...foldedRunWorkTimelineItems(
         runWorkSection.hiddenGroupsAfterAnchor,
@@ -7636,16 +7648,36 @@ function PagedAssistantTimeline({
           <RunWorkSectionRow
             startTime={item.control.startTime}
             endTime={item.control.endTime}
+            stepCount={item.control.stepCount}
             collapsible={item.control.collapsible}
             expanded={item.control.expanded}
             onToggle={item.control.onToggle}
           />
-          <PagedAssistantTimeline items={item.historyItems} thread={thread} />
+          {item.historyItems.length === 0 ? null : (
+            <div
+              data-chat-run-work-history-list
+              className={cn(
+                "ml-3.5 w-[calc(100%-0.875rem)] border-l border-border/70 pl-[13px]",
+                CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
+              )}
+            >
+              <PagedAssistantTimeline
+                items={item.historyItems}
+                thread={thread}
+              />
+            </div>
+          )}
         </div>
       );
     }
-    if (item.kind === "run-work-preview") {
-      return <RunWorkMessagePreview key={item.event.id} event={item.event} />;
+    if (item.kind === "run-work-message") {
+      return (
+        <PagedRunWorkMessage
+          key={item.event.id}
+          event={item.event}
+          thread={thread}
+        />
+      );
     }
     if (item.kind === "run-work-main") {
       return (
@@ -7663,7 +7695,7 @@ function PagedAssistantTimeline({
               {item.artifactCards.map((card) => {
                 return (
                   <div key={card.signals.url} className="okou-markdown-card">
-                    <MarkdownCardView card={card} />
+                    <MarkdownEventBody tree={card.tree} mediaPreview />
                   </div>
                 );
               })}
@@ -7681,6 +7713,29 @@ function PagedAssistantTimeline({
       />
     );
   });
+}
+
+function PagedRunWorkMessage({
+  event,
+  thread,
+}: {
+  event: EnrichedChatEvent;
+  thread: ChatPanelSignals;
+}) {
+  const expandedIds = useGet(thread.timelineExpandedIds$);
+  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
+  const expanded = expandedIds.has(event.id);
+  return (
+    <RunWorkMessage
+      event={event}
+      expanded={expanded}
+      onToggle={() => {
+        toggleExpanded(event.id);
+      }}
+    >
+      <PagedAssistantEventItem event={event} thread={thread} compact />
+    </RunWorkMessage>
+  );
 }
 
 function PagedRunWorkAssistantContent({
@@ -7863,9 +7918,11 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
+  compact = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  compact?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7873,6 +7930,7 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
+        className={compact ? "py-1 text-[13px] leading-5" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7891,7 +7949,11 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
+        className={
+          compact
+            ? "py-1 text-[13px] leading-5"
+            : CHAT_THREAD_RESPONSE_LINE_CLASS
+        }
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >

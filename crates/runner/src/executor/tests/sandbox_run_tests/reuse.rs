@@ -633,12 +633,12 @@ async fn execute_job_reuse_reseed_failure_returns_sandbox() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
 
-    // The combined guest state restore reports a guest-reseed failure.
+    // The combined guest state restore reports a guest-state-restore failure.
     let sandbox = MockSandbox::new("reuse-reseed-fail");
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         Vec::new(),
-        b"guest-reseed failed\nreseed timeout".to_vec(),
+        b"guest-state-restore failed\nreseed timeout".to_vec(),
     )));
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -654,7 +654,12 @@ async fn execute_job_reuse_reseed_failure_returns_sandbox() {
     .await;
 
     assert_eq!(outcome.exit_code(), 1);
-    assert!(outcome.error().unwrap().contains("guest-reseed failed"));
+    assert!(
+        outcome
+            .error()
+            .unwrap()
+            .contains("guest-state-restore failed")
+    );
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned on reseed failure"

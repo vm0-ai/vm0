@@ -39,6 +39,7 @@ export interface RunWorkSection {
   readonly runIds: readonly string[];
   readonly anchorEventId: string;
   readonly collapsible: boolean;
+  readonly stepCount: number;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
   readonly previewMessages: readonly EnrichedChatEvent[];
@@ -50,7 +51,7 @@ export interface RunWorkSection {
 type RunWorkArtifactCard = Extract<
   MarkdownCardRef,
   { readonly kind: "artifact" }
->;
+> & { readonly tree: Root };
 
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
@@ -116,7 +117,11 @@ function artifactCardsInTree(
   const cards: RunWorkArtifactCard[] = [];
   const visit = (node: Root | Element): void => {
     if (node.type === "element" && node.data?.card?.kind === "artifact") {
-      cards.push(node.data.card);
+      cards.push({
+        ...node.data.card,
+        tree: { type: "root", children: [node] },
+      });
+      return;
     }
     for (const child of node.children) {
       if (child.type === "element") {
@@ -592,6 +597,7 @@ function foldRunWorkGroup(
       statusTail,
     };
   }
+  const stepCount = outputMessages.length - 1;
 
   const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
     return (
@@ -616,7 +622,8 @@ function foldRunWorkGroup(
       runGroupId: unit.runGroupId,
       runIds: unit.runIds,
       anchorEventId: anchorEvent.id,
-      collapsible: outputMessages.length > 1,
+      collapsible: stepCount > 3,
+      stepCount,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
       previewMessages: outputMessages.slice(-4, -1),

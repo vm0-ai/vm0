@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
-use guest_common::telemetry::record_sandbox_op;
 use guest_contracts::runtime_paths::{self, PrivateFileReplacementTarget};
+use guest_telemetry::telemetry::record_sandbox_op;
 
 use crate::error::AgentError;
 

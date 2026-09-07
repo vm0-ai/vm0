@@ -593,7 +593,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "routes vm0 built-in model %s directly through DeepSeek",
+    "routes built-in model %s directly through DeepSeek",
     (model) => {
       expect(getBuiltInConcreteProviderType(model)).toBe("deepseek");
       expect(getBuiltInVendor(model)).toBe("deepseek");
@@ -609,7 +609,7 @@ describe("model-first canonical catalog", () => {
     "claude-sonnet-5",
     "claude-sonnet-4-6",
   ] as const)(
-    "routes vm0 built-in model %s directly through Anthropic",
+    "routes built-in model %s directly through Anthropic",
     (model) => {
       expect(getBuiltInConcreteProviderType(model)).toBe("anthropic-api-key");
       expect(getBuiltInVendor(model)).toBe("anthropic");
@@ -725,7 +725,7 @@ describe("model-first canonical catalog", () => {
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
-  it("exposes VM0 price tiers for built-in reasoning models", () => {
+  it("exposes price tiers for built-in reasoning models", () => {
     expect(BUILT_IN_MODEL_PRICE_TIER).toEqual(
       expect.objectContaining({
         "claude-fable-5-1": "$$$$",
@@ -849,7 +849,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
 });
 
 describe("getBuiltInVisibleModels", () => {
-  it("returns only active VM0 built-in models", () => {
+  it("returns only active built-in models", () => {
     const models = getBuiltInVisibleModels();
     expect(models).toEqual(ACTIVE_RUN_MODELS);
     expect(models).toContain("gpt-5.5");

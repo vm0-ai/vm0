@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use bitvec::prelude::*;
@@ -20,6 +20,34 @@ const BITMAP_WORDS_PER_CHUNK: usize = BITMAP_CHUNK_BYTES / 8;
 /// Format: `[u64 num_blocks LE] [u64 words as LE bytes]`.
 /// Uses u64 words for portability (not platform-dependent usize).
 pub(super) fn save_bitmap(dirty: &BitVec, path: &Path) -> Result<()> {
+    save_bitmap_with_io(dirty, path, &mut FileSystem)
+}
+
+// Keep fault injection at filesystem operations, sharing the transaction and
+// serializer between production and tests without ambient fault state.
+trait BitmapIo {
+    fn write_all(&mut self, file: &mut File, bytes: &[u8]) -> io::Result<()>;
+    fn sync_all(&mut self, file: &File) -> io::Result<()>;
+    fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
+}
+
+struct FileSystem;
+
+impl BitmapIo for FileSystem {
+    fn write_all(&mut self, file: &mut File, bytes: &[u8]) -> io::Result<()> {
+        file.write_all(bytes)
+    }
+
+    fn sync_all(&mut self, file: &File) -> io::Result<()> {
+        file.sync_all()
+    }
+
+    fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+        std::fs::rename(from, to)
+    }
+}
+
+fn save_bitmap_with_io(dirty: &BitVec, path: &Path, io: &mut impl BitmapIo) -> Result<()> {
     let num_blocks = dirty.len() as u64;
     let raw = dirty.as_raw_slice();
     // Crash-safe bitmap swap: write tmp → fsync(tmp) → rename → fsync(dir).
@@ -56,23 +84,23 @@ pub(super) fn save_bitmap(dirty: &BitVec, path: &Path) -> Result<()> {
         .create_new(true)
         .open(&tmp_path)
         .and_then(|mut f| {
-            f.write_all(&num_blocks.to_le_bytes())?;
-            write_bitmap_words(&mut f, raw)?;
-            f.sync_all()
+            io.write_all(&mut f, &num_blocks.to_le_bytes())?;
+            write_bitmap_words(&mut f, raw, io)?;
+            io.sync_all(&f)
         })
     {
         let _ = std::fs::remove_file(&tmp_path);
         return Err(e.into());
     }
-    if let Err(e) = std::fs::rename(&tmp_path, path) {
+    if let Err(e) = io.rename(&tmp_path, path) {
         let _ = std::fs::remove_file(&tmp_path);
         return Err(e.into());
     }
-    dir_fd.sync_all()?;
+    io.sync_all(&dir_fd)?;
     Ok(())
 }
 
-fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Result<()> {
+fn write_bitmap_words(file: &mut File, raw: &[usize], io: &mut impl BitmapIo) -> io::Result<()> {
     if raw.is_empty() {
         return Ok(());
     }
@@ -85,11 +113,14 @@ fn write_bitmap_words<W: Write>(writer: &mut W, raw: &[usize]) -> std::io::Resul
         for word in words {
             chunk.extend_from_slice(&(*word as u64).to_le_bytes());
         }
-        writer.write_all(&chunk)?;
+        io.write_all(file, &chunk)?;
     }
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Load a dirty bitmap from a file.
 ///

@@ -62,14 +62,15 @@ function SidebarNavContent() {
   // ...renders nav content
 }
 
-export function Sidebar() {
-  // Zero async subscriptions — renders exactly once on page load
+export function Sidebar({ isDesktop }: { isDesktop: boolean }) {
+  // No async subscriptions at this level
   return (
-    <VM0ClerkProvider>
-      <SidebarNavContent />
-      <ManagePinnedAgentsDialogContainer />
-      <BillingDialog />
-    </VM0ClerkProvider>
+    <>
+      {isDesktop ? <ThreeColumnNav /> : <ExpandedSidebar />}
+      <ThreeColumnSearchDialogContainer />
+      <PinAgentDialogContainer />
+      <ChatThreadDialogs />
+    </>
   );
 }
 ```

@@ -28,18 +28,46 @@ import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
 import { ROUTES } from "./route-paths.ts";
 
+import {
+  authV2Invitation$,
+  navigateInvitationToPrimary$,
+  redeemAuthV2Invitation$,
+} from "./auth-v2/invitation.ts";
+
+import type { AuthV2Navigation } from "./auth-v2/navigation.ts";
+
+const navigateAuthEntry$ = command(
+  async (
+    { set },
+    mode: AuthV2PageMode,
+    navigation: AuthV2Navigation,
+    signal: AbortSignal,
+  ) => {
+    return (
+      (await set(navigateInvitationToPrimary$, navigation, signal)) ||
+      (await set(navigateSatelliteAuthRoute$, mode, signal))
+    );
+  },
+);
+
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
-    if (await set(navigateSatelliteAuthRoute$, mode, signal)) {
+    const platformContext = resolveAuthV2PlatformContext(mode);
+    if (
+      await set(navigateAuthEntry$, mode, platformContext.navigation, signal)
+    ) {
       return;
     }
 
-    const platformContext = resolveAuthV2PlatformContext(mode);
+    const invitation = get(authV2Invitation$);
+    const invitationTicket =
+      invitation?.mode === mode ? invitation.ticket : undefined;
     const diagnostics = createAuthV2Diagnostics(
       mode,
       captureAuthV2DiagnosticEvent,
     );
     const continuationController = createAuthV2ContinuationSignals({
+      isInvitationEntry: !!invitationTicket,
       isContinuationRoute: isAuthV2ContinuationLocation(
         location.pathname,
         location.hash,
@@ -54,6 +82,17 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     let signInSignals: AuthV2SignInSignals | null = null;
     let initializedSignInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
+    const retryInvitation$ = command(
+      async ({ set }, retrySignal: AbortSignal) => {
+        if (await set(redeemAuthV2Invitation$, retrySignal)) {
+          if (signInSignals) {
+            await set(signInSignals.initialize$, retrySignal);
+          } else if (signUpSignals) {
+            await set(signUpSignals.initialize$, retrySignal);
+          }
+        }
+      },
+    );
     if (mode === "sign-in") {
       const isBaseRoute = location.pathname === ROUTES.signIn;
       const isOAuthCallbackRoute =
@@ -77,6 +116,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
           mode,
           continuationSignals,
           platformContext,
+          retryInvitation$,
           signInSignals,
         }),
       );
@@ -101,6 +141,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
           mode,
           continuationSignals,
           platformContext,
+          retryInvitation$,
           signUpSignals,
         }),
       );
@@ -118,7 +159,9 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     );
     await set(continuationSignals.initialize$, signal);
     signal.throwIfAborted();
-    if (get(continuationSignals.state$).status === "inactive") {
+    if (invitationTicket) {
+      await set(retryInvitation$, signal);
+    } else if (get(continuationSignals.state$).status === "inactive") {
       if (signInSignals) {
         await set(signInSignals.initialize$, signal);
         initializedSignInSignals = signInSignals;

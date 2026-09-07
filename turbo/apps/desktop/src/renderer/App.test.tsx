@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { stoppedOkouDriverState } from "../test/desktop-driver-state";
 import {
   cleanup,
   fireEvent,
@@ -15,6 +16,7 @@ import {
   type ComputerUsePermissionState,
   type DesktopComputerUsePluginsState,
   type DesktopComputerUseState,
+  type DesktopComputerUseDriverState,
   type DesktopKeepAwakeState,
 } from "../computer-use-types";
 import type {
@@ -25,6 +27,7 @@ import type {
   DesktopDeveloperToolsState,
 } from "../desktop-bridge";
 import { App } from "./App";
+import { settleDesktopActions } from "./async-action";
 
 const signedInAuthState: DesktopAuthState = {
   status: "signed_in",
@@ -81,6 +84,7 @@ function createComputerUseState({
   readonly status?: ComputerUseHostRuntimeStatus;
 } = {}): DesktopComputerUseState {
   return {
+    driver: stoppedOkouDriverState,
     platform: "darwin",
     supported: true,
     deviceName,
@@ -229,6 +233,22 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     };
   });
   const api: DesktopComputerUseApi = {
+    setExperimentalCuaEnabled: async (enabled) => {
+      if (currentState.driver)
+        currentState = {
+          ...currentState,
+          driver: { ...currentState.driver, experimentalCuaEnabled: enabled },
+        };
+      return currentState;
+    },
+    selectDriver: async (selectedDriver) => {
+      if (currentState.driver)
+        currentState = {
+          ...currentState,
+          driver: { ...currentState.driver, selectedDriver },
+        };
+      return currentState;
+    },
     getState,
     refreshPermissions,
     start,
@@ -415,7 +435,8 @@ function renderDesktopApp(): void {
   );
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await settleDesktopActions();
   cleanup();
   delete window.vm0DesktopAuth;
   delete window.vm0DesktopComputerUse;
@@ -425,6 +446,114 @@ afterEach(() => {
 });
 
 describe("Desktop renderer bridge integration", () => {
+  it.each(["stopped", "starting", "switching", "blocked", "error"] as const)(
+    "keeps driver recovery reachable with missing permissions and %s state",
+    async (phase) => {
+      const driver: DesktopComputerUseDriverState = {
+        experimentalCuaEnabled: true,
+        selectedDriver: "cua",
+        developerAvailability: "available",
+        actual: null,
+        phase,
+        lifecycleElapsedMs: 123,
+        cleanupPending: phase === "switching",
+        expectedCuaVersion: "0.23.2",
+        error: phase === "error" ? "Driver startup failed." : null,
+        canRetry: phase === "stopped" || phase === "error",
+      };
+      const state = {
+        ...createComputerUseState({
+          permissions: { accessibility: false, screenRecording: false },
+        }),
+        driver,
+      };
+      const { computerUse } = installDesktopBridges({
+        computerUseState: state,
+      });
+      const select = vi.spyOn(computerUse.api, "selectDriver");
+      renderDesktopApp();
+      const selector = await screen.findByRole("combobox", {
+        name: "Computer Use driver",
+      });
+      expect(
+        screen.getByText(/Actual: No native driver/).textContent,
+      ).toContain(phase);
+      expect(
+        screen.getByRole("button", { name: "Retry" }).hasAttribute("disabled"),
+      ).toBe(!driver.canRetry);
+      expect(screen.queryByRole("heading", { name: "Runtime" })).toBeNull();
+      fireEvent.change(selector, { target: { value: "okou" } });
+      await waitFor(() => expect(select).toHaveBeenCalledWith("okou"));
+      expect(computerUse.start).not.toHaveBeenCalled();
+    },
+  );
+
+  it("hides a disabled selector while retaining actual CUA cleanup and explicit recovery", async () => {
+    const state: DesktopComputerUseState = {
+      ...createComputerUseState(),
+      driver: {
+        experimentalCuaEnabled: false,
+        selectedDriver: "okou",
+        developerAvailability: "unavailable",
+        actual: { id: "cua", generation: 7, version: null },
+        phase: "retiring",
+        lifecycleElapsedMs: 500,
+        cleanupPending: true,
+        expectedCuaVersion: "0.23.2",
+        error: null,
+        canRetry: false,
+      },
+    };
+    const { computerUse } = installDesktopBridges({ computerUseState: state });
+    const select = vi.spyOn(computerUse.api, "selectDriver");
+    renderDesktopApp();
+    expect(await screen.findByText(/Actual: CUA/)).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText(/Cleanup is still pending/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use Okou" }));
+    await waitFor(() => expect(select).toHaveBeenCalledWith("okou"));
+    expect(computerUse.start).not.toHaveBeenCalled();
+  });
+
+  it("makes Retry an explicit start and disables the selector while a selection is pending", async () => {
+    const state: DesktopComputerUseState = {
+      ...createComputerUseState(),
+      driver: {
+        experimentalCuaEnabled: true,
+        selectedDriver: "cua",
+        developerAvailability: "available",
+        actual: null,
+        phase: "error",
+        lifecycleElapsedMs: 1,
+        cleanupPending: false,
+        expectedCuaVersion: "0.23.2",
+        error: "Driver startup failed.",
+        canRetry: true,
+      },
+    };
+    const { computerUse } = installDesktopBridges({ computerUseState: state });
+    computerUse.start.mockResolvedValue(state);
+    let complete!: (state: DesktopComputerUseState) => void;
+    vi.spyOn(computerUse.api, "selectDriver").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    renderDesktopApp();
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(computerUse.start).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(computerUse.start).toHaveBeenCalledWith({ userInitiated: true }),
+    );
+    const selector = screen.getByRole("combobox");
+    fireEvent.change(selector, { target: { value: "okou" } });
+    await waitFor(() => expect(selector.hasAttribute("disabled")).toBe(true));
+    complete(state);
+    await waitFor(() => expect(selector.hasAttribute("disabled")).toBe(false));
+  });
+
   it("shows Okou identity and fresh permission guidance", async () => {
     window.vm0DesktopIdentity = {
       product: "okou",

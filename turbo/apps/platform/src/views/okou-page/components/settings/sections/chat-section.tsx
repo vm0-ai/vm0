@@ -1,4 +1,5 @@
 import { useGet, useLastResolved, useLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Cpu, Globe, Keyboard, Loader2 } from "lucide-react";
 import { cn } from "@okouai/ui";
@@ -13,22 +14,33 @@ import { sendMode$ } from "../../../../../signals/send-mode.ts";
 import { cloudBrowserEnabledByDefault$ } from "../../../../../signals/cloud-browser-preference.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
 import { resolveModelFirstStoredUserSelection } from "../../../../../signals/okou-page/model-default-selection.ts";
+import {
+  defaultModelSubmission$,
+  updateDefaultModelPreference$,
+} from "../../../../../signals/okou-page/settings/default-model-preference.ts";
+import {
+  submittedCloudBrowserEnabledByDefault$,
+  updateCloudBrowserEnabledByDefault$,
+} from "../../../../../signals/okou-page/settings/cloud-browser-preference.ts";
+import {
+  submittedSendMode$,
+  updateSendMode$,
+} from "../../../../../signals/okou-page/settings/send-mode-preference.ts";
 import { ModelProviderPicker } from "../../model-provider-picker.tsx";
-import type { ChatPreferenceActions } from "../chat-preference-actions.ts";
 import { PreferenceCardRow } from "../preference-card-row.tsx";
 
 const SEND_OPTIONS: readonly SendMode[] = ["enter", "cmd-enter"];
 
-function DefaultModelPreference({
-  action,
-}: {
-  action: ChatPreferenceActions["model"];
-}) {
+function DefaultModelPreference() {
   const { t } = useTranslation();
   const userPreference = useLastResolved(userModelPreference$);
   const policies = useLastResolved(orgModelPolicies$);
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const { submission, update: updatePreference } = action;
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateDefaultModelPreference$,
+  );
+  const submitted = useGet(defaultModelSubmission$);
+  const submission = updateLoadable.state === "loading" ? submitted : null;
   const pageSignal = useGet(pageSignal$);
   const current = resolveModelFirstStoredUserSelection({
     userPreference,
@@ -66,16 +78,16 @@ function DefaultModelPreference({
   );
 }
 
-function CloudBrowserDefaultPreference({
-  action,
-}: {
-  action: ChatPreferenceActions["cloudBrowser"];
-}) {
+function CloudBrowserDefaultPreference() {
   const { t } = useTranslation();
   const preferenceLoadable = useLoadable(cloudBrowserEnabledByDefault$);
   const current =
     preferenceLoadable.state === "hasData" ? preferenceLoadable.data : true;
-  const { submission, update: updatePreference } = action;
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateCloudBrowserEnabledByDefault$,
+  );
+  const submitted = useGet(submittedCloudBrowserEnabledByDefault$);
+  const submission = updateLoadable.state === "loading" ? submitted : null;
   const pageSignal = useGet(pageSignal$);
   const mutating = submission !== null;
   const effective = submission ?? current;
@@ -106,16 +118,14 @@ function CloudBrowserDefaultPreference({
   );
 }
 
-export function SendModePreference({
-  action,
-}: {
-  action: ChatPreferenceActions["sendMode"];
-}) {
+export function SendModePreference() {
   const { t } = useTranslation();
   const prefsLoadable = useLoadable(sendMode$);
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
-  const { submission: saving, update: saveSendMode } = action;
+  const [saveLoadable, saveSendMode] = useLoadableSet(updateSendMode$);
+  const submitted = useGet(submittedSendMode$);
+  const saving = saveLoadable.state === "loading" ? submitted : null;
   const pageSignal = useGet(pageSignal$);
 
   const handleChange = (value: SendMode) => {
@@ -181,12 +191,12 @@ export function SendModePreference({
   );
 }
 
-export function ChatSection({ actions }: { actions: ChatPreferenceActions }) {
+export function ChatSection() {
   return (
     <div className="flex flex-col gap-3">
-      <DefaultModelPreference action={actions.model} />
-      <CloudBrowserDefaultPreference action={actions.cloudBrowser} />
-      <SendModePreference action={actions.sendMode} />
+      <DefaultModelPreference />
+      <CloudBrowserDefaultPreference />
+      <SendModePreference />
     </div>
   );
 }

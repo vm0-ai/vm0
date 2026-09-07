@@ -29,7 +29,7 @@ class TestReleaseResponseStreamState:
         response_streaming.release_response_stream_state(flow)
 
         assert flow.response.stream is external_stream
-        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "_response_stream_callback" not in flow.metadata
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
@@ -157,7 +157,7 @@ class TestReleaseResponseStreamState:
         response_streaming.release_response_stream_state(flow)
 
         assert flow.response.stream is False
-        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "_response_stream_callback" not in flow.metadata
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
@@ -180,7 +180,7 @@ class TestReleaseResponseStreamState:
         response_streaming.release_response_stream_state(flow)
 
         assert flow.response is None
-        assert "_vm0_response_stream_callback" not in flow.metadata
+        assert "_response_stream_callback" not in flow.metadata
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata

@@ -156,16 +156,29 @@ impl NetworkLogTestComponent {
             Self::Dns => install_controllable_dns(config).await,
         }
     }
+
+    fn set_reap_gate(self, config: &mut RunConfig, gate: crate::child_cleanup::ReapGate) {
+        match self {
+            Self::Kmsg => config.shutdown.kmsg_handle.set_reap_gate(gate),
+            Self::Dns => config.shutdown.dns_handle.set_reap_gate(gate),
+        }
+    }
 }
 
 async fn assert_network_log_eof_stops_runner(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let (stdin, pid, starttime) = component.install(&mut config).await;
+    let reap_gate = crate::child_cleanup::ReapGate::new();
+    component.set_reap_gate(&mut config, reap_gate.clone());
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
     drop(stdin);
+
+    tokio::time::timeout(Duration::from_secs(2), reap_gate.entered.notified())
+        .await
+        .expect("EOF should start child cleanup");
 
     assert!(
         env.handle
@@ -178,26 +191,35 @@ async fn assert_network_log_eof_stops_runner(component: NetworkLogTestComponent)
         !run_handle.is_finished(),
         "blocked final heartbeat should hold teardown open",
     );
-    wait_for_child_cleanup(component.label(), pid, starttime).await;
     assert!(
         env.cancel.is_cancelled(),
         "{} EOF should stop discovery",
         component.label(),
     );
 
+    // Teardown can start while child cleanup is pending. Only run() joining
+    // the cleanup task guarantees that the process has been reaped.
+    reap_gate.release.add_permits(1);
     env.handle.unblock_heartbeats();
     assert_run_error_contains(run_handle, component.eof_error_prefix()).await;
+    assert_child_reaped(component.label(), pid, starttime).await;
 }
 
 async fn assert_network_log_read_error_stops_runner(component: NetworkLogTestComponent) {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let (mut stdin, pid, starttime) = component.install(&mut config).await;
+    let reap_gate = crate::child_cleanup::ReapGate::new();
+    component.set_reap_gate(&mut config, reap_gate.clone());
     env.handle.block_heartbeats();
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
     stdin.write_all(&[0xff, b'\n']).await.unwrap();
     stdin.flush().await.unwrap();
+
+    tokio::time::timeout(Duration::from_secs(2), reap_gate.entered.notified())
+        .await
+        .expect("read error should start child cleanup");
 
     assert!(
         env.handle
@@ -206,15 +228,16 @@ async fn assert_network_log_read_error_stops_runner(component: NetworkLogTestCom
         "{} read error should drive runner teardown",
         component.label(),
     );
-    wait_for_child_cleanup(component.label(), pid, starttime).await;
     assert!(
         env.cancel.is_cancelled(),
         "{} read error should stop discovery",
         component.label(),
     );
 
+    reap_gate.release.add_permits(1);
     env.handle.unblock_heartbeats();
     assert_run_error_contains(run_handle, "ReadError").await;
+    assert_child_reaped(component.label(), pid, starttime).await;
 }
 
 async fn assert_normal_shutdown_reaps_network_log_child(component: NetworkLogTestComponent) {
@@ -234,7 +257,7 @@ async fn assert_normal_shutdown_reaps_network_log_child(component: NetworkLogTes
 }
 
 #[tokio::test]
-async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_teardown() {
+async fn kmsg_stdout_eof_stops_runner_and_reaps_child_before_exit() {
     assert_network_log_eof_stops_runner(NetworkLogTestComponent::Kmsg).await;
 }
 
@@ -249,7 +272,7 @@ async fn normal_shutdown_cancels_kmsg_and_reaps_child_without_error() {
 }
 
 #[tokio::test]
-async fn dns_stderr_eof_stops_runner_and_reaps_child_before_teardown() {
+async fn dns_stderr_eof_stops_runner_and_reaps_child_before_exit() {
     assert_network_log_eof_stops_runner(NetworkLogTestComponent::Dns).await;
 }
 
@@ -344,12 +367,7 @@ async fn required_monitor_failure_publishes_stopping_before_delayed_child_reap()
         let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let (mut stdin, pid, starttime) = component.install(&mut config).await;
         let gate = crate::child_cleanup::ReapGate::new();
-        match component {
-            NetworkLogTestComponent::Dns => config.shutdown.dns_handle.set_reap_gate(gate.clone()),
-            NetworkLogTestComponent::Kmsg => {
-                config.shutdown.kmsg_handle.set_reap_gate(gate.clone())
-            }
-        }
+        component.set_reap_gate(&mut config, gate.clone());
         let status_path = env._temp_dir.path().join("status.json");
         let run_handle = tokio::spawn(run(config));
         wait_discover_entered(&env, Duration::from_secs(2)).await;

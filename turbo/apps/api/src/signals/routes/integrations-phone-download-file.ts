@@ -14,7 +14,7 @@ import { agentPhoneFilenameFromMediaUrl } from "../services/agentphone.service";
 import type { RouteEntry } from "../route-entry";
 import { tapError } from "../utils";
 
-const log = logger("api:zero:integrations:phone:download-file");
+const log = logger("api:integrations:phone:download-file");
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 function jsonResponse(status: number, message: string, code: string): Response {

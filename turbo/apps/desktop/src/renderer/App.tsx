@@ -17,6 +17,7 @@ import {
 } from "./computer-use-state";
 import { DesktopBrandMark, Panel } from "./components";
 import { ReadyExperience } from "./hero";
+import { ComputerUseDriverControls } from "./computer-use-driver";
 import { currentDesktopIdentity } from "./desktop-identity";
 import okouWordmarkUrl from "./assets/okou-wordmark-dark.svg";
 import {
@@ -128,12 +129,15 @@ function ComputerUsePage() {
     }
 
     return (
-      <ComputerUseContent
-        authLoading={authLoading}
-        authState={authState}
-        developerToolsEnabled={developerToolsEnabled}
-        state={loadable.data}
-      />
+      <>
+        <ComputerUseDriverControls state={loadable.data.driver} />
+        <ComputerUseContent
+          authLoading={authLoading}
+          authState={authState}
+          developerToolsEnabled={developerToolsEnabled}
+          state={loadable.data}
+        />
+      </>
     );
   }
 

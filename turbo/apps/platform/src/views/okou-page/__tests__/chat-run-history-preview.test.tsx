@@ -9,6 +9,7 @@ import {
   completedEvent,
   context,
   findButton,
+  findWorkHistoryToggle,
   installRunChat,
   promptEvent,
   publishRunUpdate,
@@ -19,53 +20,59 @@ import {
 
 const RUN_ID = "a0000000-0000-4000-a000-000000000294";
 
-test.each([
-  { count: 0, expected: [] },
-  { count: 1, expected: [] },
-  { count: 2, expected: ["•Step 1"] },
-  { count: 3, expected: ["•Step 1", "•Step 2"] },
-  { count: 4, expected: ["•Step 1", "•Step 2", "•Step 3"] },
-  { count: 6, expected: ["•Step 3", "•Step 4", "•Step 5"] },
-])(
-  "Preview up to three messages immediately before the main result with $count outputs",
-  async ({ count, expected }) => {
-    installRunChat({
-      activeRunIds: [RUN_ID],
-      chatEvents: [
-        promptEvent({
-          id: "preview-input",
-          runId: RUN_ID,
-          seqId: 1,
-          text: "Check every step",
-        }),
-        ...Array.from({ length: count }, (_, index) => {
-          return assistantEvent({
-            id: `preview-${index}`,
-            runId: RUN_ID,
-            seqId: index + 2,
-            text: `Step ${index + 1}`,
-          });
-        }),
-      ],
-    });
-    await setupPage({
-      context,
-      path: RUN_PATH,
-      featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
-    });
-    await readyChat();
-
-    const previews = Array.from(
-      document.querySelectorAll("[data-chat-run-work-preview]"),
-    );
-    expect(
-      previews.map((element) => {
-        return element.textContent;
+async function setupRunWithOutputCount(count: number): Promise<void> {
+  installRunChat({
+    activeRunIds: [RUN_ID],
+    chatEvents: [
+      promptEvent({
+        id: "preview-input",
+        runId: RUN_ID,
+        seqId: 1,
+        text: "Check every step",
       }),
-    ).toStrictEqual(expected);
-    if (count === 0) {
-      return;
-    }
+      ...Array.from({ length: count }, (_, index) => {
+        return assistantEvent({
+          id: `preview-${String(index)}`,
+          runId: RUN_ID,
+          seqId: index + 2,
+          text: `Step ${String(index + 1)}`,
+        });
+      }),
+    ],
+  });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await readyChat();
+}
+
+function workPreviewTexts(): (string | null)[] {
+  return Array.from(
+    document.querySelectorAll("[data-chat-run-work-preview]"),
+  ).map((element) => {
+    return element.textContent;
+  });
+}
+
+test("Show no history messages without assistant output", async () => {
+  await setupRunWithOutputCount(0);
+
+  expect(workPreviewTexts()).toStrictEqual([]);
+});
+
+test.each([
+  { count: 1, expected: [] },
+  { count: 2, expected: ["Step 1"] },
+  { count: 3, expected: ["Step 1", "Step 2"] },
+  { count: 4, expected: ["Step 1", "Step 2", "Step 3"] },
+])(
+  "Show every history message without a group toggle with $count outputs",
+  async ({ count, expected }) => {
+    await setupRunWithOutputCount(count);
+
+    expect(workPreviewTexts()).toStrictEqual(expected);
     const main = screen
       .getByText(`Step ${count}`)
       .closest("[data-chat-run-work-main]");
@@ -73,12 +80,37 @@ test.each([
       throw new Error("Expected the main result container");
     }
     expect(queryButton("Copy message", main)).toBeVisible();
-    if (count < 2) {
-      return;
+    expect(queryButton("Expand work history")).toBeNull();
+  },
+);
+
+test.each([
+  { count: 5, expected: ["Step 2", "Step 3", "Step 4"] },
+  { count: 6, expected: ["Step 3", "Step 4", "Step 5"] },
+])(
+  "Show three recent messages and expand every history message with $count outputs",
+  async ({ count, expected }) => {
+    await setupRunWithOutputCount(count);
+
+    expect(workPreviewTexts()).toStrictEqual(expected);
+    const main = screen
+      .getByText(`Step ${count}`)
+      .closest("[data-chat-run-work-main]");
+    if (!main) {
+      throw new Error("Expected the main result container");
     }
-    click(await findButton("Expand work history"));
-    await findButton("Collapse work history");
-    expect(document.querySelector("[data-chat-run-work-preview]")).toBeNull();
+    expect(queryButton("Copy message", main)).toBeVisible();
+    const showAll = await findWorkHistoryToggle("collapsed");
+    expect(showAll).toHaveAttribute("aria-expanded", "false");
+    click(showAll);
+    const showRecent = await findWorkHistoryToggle("expanded");
+    expect(showRecent).toHaveAttribute("aria-expanded", "true");
+    expect(
+      document.querySelectorAll("[data-chat-run-work-message]"),
+    ).toHaveLength(count - 1);
+    expect(
+      document.querySelectorAll("[data-chat-run-work-preview]"),
+    ).toHaveLength(count - 1);
     expect(screen.getByText("Step 1")).toBeVisible();
     expect(screen.getByText(`Step ${count}`)).toBeVisible();
     expect(queryButton("Copy message", main)).toBeVisible();
@@ -88,7 +120,7 @@ test.each([
       ),
     ).toBeVisible();
 
-    click(await findButton("Collapse work history"));
+    click(showRecent);
     await waitFor(() => {
       expect(
         document.querySelectorAll("[data-chat-run-work-preview]"),
@@ -103,6 +135,102 @@ test.each([
     ).toBeVisible();
   },
 );
+
+test("Show the history step count in the work summary", async () => {
+  installRunChat({
+    activeRunIds: [RUN_ID],
+    chatEvents: [
+      promptEvent({
+        id: "step-count-input",
+        runId: RUN_ID,
+        seqId: 1,
+        text: "Count the work history",
+      }),
+      ...Array.from({ length: 5 }, (_, index) => {
+        return assistantEvent({
+          id: `step-count-${String(index)}`,
+          runId: RUN_ID,
+          seqId: index + 2,
+          text: `Step ${String(index + 1)}`,
+        });
+      }),
+    ],
+  });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await readyChat();
+
+  expect(document.querySelector("[data-chat-run-work]")).toHaveTextContent(
+    "4 steps",
+  );
+});
+
+test("Expand history messages independently and preserve them across history changes", async () => {
+  installRunChat({
+    activeRunIds: [RUN_ID],
+    chatEvents: [
+      promptEvent({
+        id: "message-expansion-input",
+        runId: RUN_ID,
+        seqId: 1,
+        text: "Check every step",
+      }),
+      ...Array.from({ length: 5 }, (_, index) => {
+        return assistantEvent({
+          id: `message-expansion-${index}`,
+          runId: RUN_ID,
+          seqId: index + 2,
+          text: `Step ${index + 1}`,
+        });
+      }),
+    ],
+  });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await readyChat();
+
+  const stepTwo = await findButton("Step 2");
+  stepTwo.focus();
+  click(stepTwo);
+  await waitFor(() => {
+    expect(stepTwo).toHaveAccessibleName("Collapse history message: Step 2");
+    expect(stepTwo).toHaveFocus();
+  });
+  click(await findButton("Step 3"));
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(2);
+
+  click(await findWorkHistoryToggle("collapsed"));
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message]"),
+  ).toHaveLength(4);
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(2);
+
+  click(await findButton("Step 1"));
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(3);
+  click(await findWorkHistoryToggle("expanded"));
+  expect(screen.queryByText("Step 1")).toBeNull();
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(2);
+
+  click(await findWorkHistoryToggle("collapsed"));
+  expect(screen.getByText("Step 1")).toBeVisible();
+  expect(
+    document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+  ).toHaveLength(3);
+});
 
 test("Keep work history open and keyboard focus in place when another output arrives", async () => {
   const events = [
@@ -124,6 +252,24 @@ test("Keep work history open and keyboard focus in place when another output arr
       seqId: 3,
       text: "Checked the boundaries",
     }),
+    assistantEvent({
+      id: "focused-history-third",
+      runId: RUN_ID,
+      seqId: 4,
+      text: "Checked the interactions",
+    }),
+    assistantEvent({
+      id: "focused-history-fourth",
+      runId: RUN_ID,
+      seqId: 5,
+      text: "Checked the responsive layout",
+    }),
+    assistantEvent({
+      id: "focused-history-fifth",
+      runId: RUN_ID,
+      seqId: 6,
+      text: "Checked the final details",
+    }),
   ];
   installRunChat({ chatEvents: events, activeRunIds: [RUN_ID] });
   await setupPage({
@@ -132,15 +278,15 @@ test("Keep work history open and keyboard focus in place when another output arr
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
-  click(await findButton("Expand work history"));
-  const collapse = await findButton("Collapse work history");
-  collapse.focus();
+  const showAll = await findWorkHistoryToggle("collapsed");
+  click(showAll);
+  showAll.focus();
 
   events.push(
     assistantEvent({
-      id: "focused-history-third",
+      id: "focused-history-sixth",
       runId: RUN_ID,
-      seqId: 4,
+      seqId: 7,
       text: "The checks are complete",
     }),
   );
@@ -151,7 +297,7 @@ test("Keep work history open and keyboard focus in place when another output arr
   ).resolves.toBeVisible();
   expect(screen.getByText("Checked the dependencies")).toBeVisible();
   expect(screen.getByText("Checked the boundaries")).toBeVisible();
-  await expect(findButton("Collapse work history")).resolves.toHaveFocus();
+  await expect(findWorkHistoryToggle("expanded")).resolves.toHaveFocus();
 });
 
 test("Keep a card-only output in the collapsed history preview", async () => {
@@ -194,7 +340,7 @@ test("Keep a card-only output in the collapsed history preview", async () => {
   ).toHaveTextContent("Message");
   expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
 
-  click(await findButton("Expand work history"));
+  click(await findButton("Message"));
 
   await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
 });
@@ -227,7 +373,7 @@ test.each(["completed", "failed", "cancelled"] as const)(
         ...[
           "## Review\n\nChecked **dependencies** and `tests`.",
           "![Dependency chart](https://example.com/dependencies.png)",
-          "https://cdn.vm7.io/artifacts/history-preview/report/report.pdf",
+          "![report.pdf](https://cdn.vm7.io/artifacts/history-preview/report/report.pdf)",
           "The review is ready",
         ].map((text, index) => {
           return assistantEvent({
@@ -254,18 +400,23 @@ test.each(["completed", "failed", "cancelled"] as const)(
         },
       ),
     ).toStrictEqual([
-      "•Review Checked dependencies and tests.",
-      "•Dependency chart",
-      "•report.pdf",
+      "Review Checked dependencies and tests.",
+      "Dependency chart",
+      "report.pdf",
     ]);
     expect(screen.queryByAltText("Dependency chart")).toBeNull();
     expect(screen.getByText("The review is ready")).toBeVisible();
 
-    click(await findButton("Expand work history"));
+    click(await findButton("Dependency chart"));
 
     await expect(
       screen.findByAltText("Dependency chart"),
     ).resolves.toBeVisible();
-    expect(document.querySelector("[data-chat-run-work-preview]")).toBeNull();
+    expect(
+      document.querySelectorAll("[data-chat-run-work-preview]"),
+    ).toHaveLength(2);
+    expect(
+      document.querySelectorAll("[data-chat-run-work-message-expanded]"),
+    ).toHaveLength(1);
   },
 );

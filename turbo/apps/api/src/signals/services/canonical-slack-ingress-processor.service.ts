@@ -100,10 +100,6 @@ function slackPhysicalThreadTs(event: SlackAgentEvent): string {
   return event.thread_ts ?? event.ts;
 }
 
-function stripBotMention(text: string, botUserId: string): string {
-  return text.replaceAll(`<@${botUserId}>`, "").trim();
-}
-
 async function claimIngress(db: Db, ingressId: string, currentTime: Date) {
   const staleBefore = new Date(
     currentTime.getTime() - PROCESSING_STALE_AFTER_MS,
@@ -439,7 +435,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
     });
     signal.throwIfAborted();
     const userInfoResolver = client.createUserInfoResolver();
-    const messageContent = stripBotMention(event.text, ingress.botUserId);
+    const messageContent = event.text.trim();
     const canonicalAssets = await set(
       materializeCanonicalSlackInputAssets$,
       {

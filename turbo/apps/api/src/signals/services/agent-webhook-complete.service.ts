@@ -72,6 +72,7 @@ interface CompleteAgentRunInput {
   readonly body: WebhookCompleteBody;
   readonly allowCheckpointlessSuccess?: boolean;
   readonly executionOwner?: "api-first";
+  readonly suppressFailureLog?: boolean;
 }
 
 export interface TerminalSideEffectsInput {
@@ -173,13 +174,13 @@ const L = logger("webhook:complete");
 function logStandardTerraApiKeyPiSandboxOutcome(
   input: CompleteAgentRunInput,
   commit: CompletionCommit,
-): void {
+): boolean {
   if (
     input.executionOwner === "api-first" ||
     commit.run.launchSnapshot?.framework !== "pi" ||
     !isStandardTerraApiKeyPiProviderType(commit.run.modelProvider)
   ) {
-    return;
+    return false;
   }
   const details = {
     runId: input.body.runId,
@@ -199,9 +200,10 @@ function logStandardTerraApiKeyPiSandboxOutcome(
   } as const;
   if (commit.responseStatus === "completed") {
     L.debug("Pi API first-turn outcome", details);
-    return;
+    return false;
   }
   L.warn("Pi API first-turn outcome", details);
+  return true;
 }
 
 function shouldSuppressKnownFailureLog(
@@ -236,6 +238,36 @@ function shouldSuppressKnownFailureLog(
     case "unsupported_model": {
       return false;
     }
+  }
+}
+
+function logAgentRunCompletionOutcome(
+  input: CompleteAgentRunInput,
+  commit: CompletionCommit,
+): void {
+  const loggedPiSandboxFailure = logStandardTerraApiKeyPiSandboxOutcome(
+    input,
+    commit,
+  );
+  if (commit.responseStatus === "completed") {
+    L.debug("Run completed successfully", { runId: input.body.runId });
+    return;
+  }
+  if (loggedPiSandboxFailure) {
+    return;
+  }
+  if (commit.transitionFailureKind === "missing-checkpoint") {
+    L.warn("Run failed because checkpoint was not found", {
+      runId: input.body.runId,
+      error: commit.transitionError,
+    });
+    return;
+  }
+  if (
+    !input.suppressFailureLog &&
+    !shouldSuppressFailureLog(commit.run, commit.transitionFailureReason)
+  ) {
+    logRunFailure(input, commit);
   }
 }
 
@@ -998,19 +1030,7 @@ export const completeAgentRun$ = command(
             : {}),
         },
       });
-      logStandardTerraApiKeyPiSandboxOutcome(input, commit);
-      if (commit.responseStatus === "completed") {
-        L.debug("Run completed successfully", { runId: input.body.runId });
-      } else if (commit.transitionFailureKind === "missing-checkpoint") {
-        L.warn("Run failed because checkpoint was not found", {
-          runId: input.body.runId,
-          error: commit.transitionError,
-        });
-      } else if (
-        !shouldSuppressFailureLog(commit.run, commit.transitionFailureReason)
-      ) {
-        logRunFailure(input, commit);
-      }
+      logAgentRunCompletionOutcome(input, commit);
     } else if (
       commit.run.status === "completed" ||
       commit.run.status === "failed"

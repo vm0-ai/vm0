@@ -1,18 +1,48 @@
-const { spawn } = require("node:child_process");
+const { spawn, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const path = require("node:path");
 
 const { packagedAppPaths } = require("./packaged-app-paths");
 
-const READY_MARKER = "[smoke-test] desktop main ready";
+const cuaProbe = process.argv.includes("--cua-probe");
+const READY_MARKER = cuaProbe
+  ? "[cua-probe] "
+  : "[smoke-test] desktop main ready";
 const LAUNCH_TIMEOUT_MS = 60_000;
 
 if (process.platform !== "darwin") {
   throw new Error("Packaged desktop smoke tests are only supported on macOS.");
 }
 
-const { executablePath, mainBundlePath, mcpBundlePath } = packagedAppPaths({
+const {
+  executablePath,
+  mainBundlePath,
+  mcpBundlePath,
+  cuaRuntimePath,
+  appBundlePath,
+} = packagedAppPaths({
   appBundlePath: process.env.OKOU_DESKTOP_SMOKE_APP_PATH,
 });
+
+if (cuaProbe) {
+  if (process.argv.includes("--signed")) {
+    execFileSync(
+      "codesign",
+      ["--verify", "--deep", "--strict", appBundlePath],
+      { stdio: "inherit" },
+    );
+  }
+  execFileSync(
+    "python3",
+    [
+      path.join(__dirname, "stage-cua-runtime.py"),
+      "--verify",
+      cuaRuntimePath,
+      ...(process.argv.includes("--signed") ? ["--signed"] : []),
+    ],
+    { stdio: "inherit" },
+  );
+}
 
 if (!fs.existsSync(executablePath)) {
   throw new Error(`Packaged app executable was not found at ${executablePath}`);
@@ -86,7 +116,12 @@ console.log(
 );
 
 const child = spawn(executablePath, [], {
-  env: { ...process.env, OKOU_DESKTOP_SMOKE_TEST: "1" },
+  env: {
+    ...process.env,
+    OKOU_DESKTOP_SMOKE_TEST: "1",
+    OKOU_DESKTOP_CUA_PROBE: cuaProbe ? "1" : "0",
+    OKOU_DESKTOP_CUA_CAPTURE: "0",
+  },
   stdio: ["ignore", "pipe", "pipe"],
 });
 
@@ -108,8 +143,14 @@ const timeout = setTimeout(() => {
 child.on("close", (code, signal) => {
   clearTimeout(timeout);
 
-  const succeeded = code === 0 && stdout.includes(READY_MARKER);
+  const succeeded =
+    code === 0 &&
+    stdout.includes(READY_MARKER) &&
+    (cuaProbe
+      ? stdout.includes('"cleanup":"confirmed"')
+      : stdout.includes("[smoke-test] cua dormant"));
   if (succeeded) {
+    if (cuaProbe) console.log(stdout.trim());
     console.log(`Packaged app launched and reported ready: ${executablePath}`);
     return;
   }

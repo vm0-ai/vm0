@@ -1,7 +1,7 @@
 //! Monitor kernel log for iptables LOG entries from non-TCP VM traffic
 //! and write matching entries to per-run network JSONL files.
 //!
-//! The iptables rule added by `sandbox-fc` logs non-TCP packets with prefix
+//! The iptables rule added by `sandbox-firecracker` logs non-TCP packets with prefix
 //! `VM0:<peer_ip>:`. This module tails `dmesg -w`, parses those entries,
 //! and submits JSON rows through `NetworkLogManager` for per-run attribution
 //! and flushable file writes.

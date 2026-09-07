@@ -3,15 +3,11 @@ import { useGet, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
-import {
-  closeSettingsModal$,
-  settingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { Link } from "../router/link.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
-import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
+import { SettingsDialogMount } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -21,8 +17,6 @@ import {
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleAccountAction$);
-  const dialogOpen = useGet(settingsDialogOpen$);
-  const closeSettingsModal = useSet(closeSettingsModal$);
   const colorTheme = useGet(colorTheme$);
   const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
@@ -36,14 +30,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
-      <SettingsDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeSettingsModal();
-          }
-        }}
-      />
+      <SettingsDialogMount />
       <CreditPurchaseConfirmDialog />
       <SubscriptionPurchaseConfirmDialog />
       <aside className="okou-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">

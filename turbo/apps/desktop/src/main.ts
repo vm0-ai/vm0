@@ -17,15 +17,7 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
-import {
-  ComputerUseSnapshotStore,
-  SUPPORTED_COMPUTER_USE_CAPABILITIES,
-  executeComputerUseCommand,
-} from "./computer-use-accessibility";
-import {
-  COMPUTER_USE_PLUGIN_CALL_KIND,
-  isComputerUseMcpPluginCallPayload,
-} from "@okouai/api-contracts/contracts/computer-use-plugins";
+import { isComputerUseMcpPluginCallPayload } from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,
@@ -43,6 +35,7 @@ import {
   hasRequiredComputerUsePermissions,
   type ComputerUseAutomationPermissionTarget,
   type DesktopComputerUseState,
+  type ComputerUseDriverId,
 } from "./computer-use-types";
 import { isComputerUseSetupRequired } from "./computer-use-startup-gate";
 import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
@@ -61,19 +54,19 @@ import type {
 } from "./desktop-recorder-types";
 import { buildWindowOptions } from "./desktop-recorder-window-options";
 import { areaToGlobal } from "./desktop-recorder-overlay-geometry";
+import { createDesktopComputerUsePermissions } from "./desktop-computer-use-permissions";
 import {
-  getComputerUsePermissionState,
-  probeComputerUseAutomationPermission,
-  refreshComputerUsePermissionState,
-  recordComputerUseAutomationPermissionDenied,
-  requestComputerUseAccessibilityPermission,
-  requestComputerUseScreenRecordingPermission,
-  setComputerUsePermissionNativeBackend,
-} from "./computer-use-permissions";
-import {
-  createComputerUseNativeBackend,
-  type ComputerUseNativeShutdownReason,
-} from "./computer-use-native";
+  ComputerUseDriverController,
+  type ComputerUseDriver,
+} from "./computer-use-driver";
+import { createCuaComputerUseDriver } from "./computer-use-cua";
+import { createComputerUseHostPermissions } from "./computer-use-host-permissions";
+import { DesktopComputerUseDriverPreferences } from "./desktop-computer-use-driver-preferences";
+import { DesktopComputerUseDriverSelection } from "./desktop-computer-use-driver-selection";
+import { CuaEmbeddedRuntime } from "./cua-runtime";
+import { assertCuaDormant } from "./cua-runtime-files";
+import { runCuaHostProbe } from "./cua-host-probe";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import desktopBrandAssets from "./desktop-brand-assets.json";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
@@ -164,10 +157,9 @@ const MAC_SCREEN_RECORDING_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
-let computerUseNativeBackendDisposed = false;
-let computerUseNativeBackendDisposePromise: Promise<void> | null = null;
 let computerUseQuitPreparationPromise: Promise<void> | null = null;
 let computerUseQuitPreparationComplete = false;
+let cuaProbeRuntime: CuaEmbeddedRuntime | null = null;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
 
@@ -184,11 +176,48 @@ let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let mcpPluginManager: DesktopMcpPluginManager | null = null;
 let desktopAutoUpdates: DesktopAutoUpdatesController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
-const computerUseSnapshotStore = new ComputerUseSnapshotStore();
-const computerUseNativeBackend = createComputerUseNativeBackend({
-  onRuntimeError: captureDesktopNativeHelperError,
+const driverPreferences = new DesktopComputerUseDriverPreferences(
+  desktopPreferencesPath,
+);
+const hostPermissions = createComputerUseHostPermissions();
+const okouDriver: ComputerUseDriver = {
+  id: "okou",
+  buildVersion: app.getVersion(),
+  createBackend: () =>
+    createComputerUseNativeBackend({
+      onRuntimeError: captureDesktopNativeHelperError,
+    }),
+};
+const cuaDriver: ComputerUseDriver = {
+  ...createCuaComputerUseDriver({
+    runtimeRoot: app.isPackaged
+      ? path.join(process.resourcesPath, "cua")
+      : path.join(__dirname, "..", "native", "dist", "cua"),
+    hostBundleId: config.identity.bundleId,
+  }),
+  getAuthorization: () => developerTools.getAuthorization(),
+};
+const computerUseDriver = new ComputerUseDriverController(
+  okouDriver,
+  process.platform,
+  notifyComputerUseChanged,
+);
+const {
+  getComputerUsePermissionState,
+  resetComputerUsePermissionState,
+  prepareNative,
+  refreshReady,
+  refreshComputerUsePermissionState,
+  requestComputerUseAccessibilityPermission,
+  requestComputerUseScreenRecordingPermission,
+  probeComputerUseAutomationPermission,
+  recordComputerUseAutomationPermissionDenied,
+} = createDesktopComputerUsePermissions({
+  driver: computerUseDriver,
+  requestedDriver: () => driverPreferences.getState().selectedDriver,
+  transitioning: () => computerUseController.isTransitioning(),
+  host: hostPermissions,
 });
-setComputerUsePermissionNativeBackend(computerUseNativeBackend);
 const automationPermissionPrompt = createAutomationPermissionDeniedPrompt({
   sourceLabel: config.identity.displayName,
   showDialog: async (options) => {
@@ -295,6 +324,7 @@ const screenRecorder = new DesktopRecorderController({
 });
 let screenRecordingPollTimer: NodeJS.Timeout | null = null;
 const developerTools = new DeveloperToolsController({
+  getSessionAuthority: () => authSession?.getAuthority() ?? null,
   fetchFeatureSwitches: () =>
     getAuthSession().fetchWithSessionAuth(
       new URL(ZERO_FEATURE_SWITCHES_PATH, desktopApiBaseUrl),
@@ -312,8 +342,18 @@ const developerTools = new DeveloperToolsController({
   },
 });
 const computerUseController = new ComputerUseRuntimeController({
+  driver: computerUseDriver,
   createRuntime: createComputerUseHostRuntime,
   refreshPermissions: refreshComputerUsePermissionState,
+  nativeBlockReason: (driver) => driverSelection.blockReason(driver),
+  prepareNative,
+  getPluginCapabilities: supportedPluginCapabilities,
+  preparePlugins: async () => {
+    await Promise.all([
+      ensureFilesystemPluginManager().prepareForHost(),
+      ensureMcpPluginManager().prepareForHost(),
+    ]);
+  },
   getAuthState: () => getAuthSession().getAuthState(),
   setHostRuntimeOnline: (online) => {
     filesystemPluginManager?.setHostRuntimeOnline(online);
@@ -321,6 +361,31 @@ const computerUseController = new ComputerUseRuntimeController({
   },
   onChange: notifyComputerUseChanged,
 });
+
+const driverSelection = new DesktopComputerUseDriverSelection({
+  preferences: driverPreferences,
+  developer: developerTools,
+  runtime: computerUseController,
+  drivers: { okou: okouDriver, cua: cuaDriver },
+  onChange: () => {
+    notifyComputerUseChanged();
+    if (app.isReady()) applyApplicationMenu();
+  },
+});
+
+async function setExperimentalCuaEnabled(
+  enabled: boolean,
+): Promise<DesktopComputerUseState> {
+  await driverSelection.setExperiment(enabled);
+  return getComputerUseBridgeState();
+}
+
+async function selectComputerUseDriver(
+  driver: ComputerUseDriverId,
+): Promise<DesktopComputerUseState> {
+  await driverSelection.select(driver);
+  return getComputerUseBridgeState();
+}
 
 function refreshDesktopTray(): void {
   desktopTray?.refresh();
@@ -407,24 +472,47 @@ function refreshDesktopTrayAuth(): void {
 
 function notifyComputerUseChanged(): void {
   filesystemPluginManager?.setHostRuntimeOnline(
-    computerUseController.isRuntimeOnline(),
+    computerUseController.pluginsMayRun(),
   );
-  mcpPluginManager?.setHostRuntimeOnline(
-    computerUseController.isRuntimeOnline(),
-  );
+  mcpPluginManager?.setHostRuntimeOnline(computerUseController.pluginsMayRun());
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
   computerUseAutoStart.restartRecoverableRuntimeState();
 }
 
+let lastSessionAuthority: object | null = null;
 function notifyAuthChanged(): void {
+  const authority = authSession?.getAuthority() ?? null;
+  if (lastSessionAuthority !== authority) {
+    lastSessionAuthority = authority;
+    resetComputerUsePermissionState();
+    if (
+      driverSelection.requestedDriver().id === "cua" ||
+      computerUseDriver.selectedDriver.id === "cua"
+    ) {
+      void computerUseController.stopForAuthChange().catch(() => {
+        console.warn("Computer Use session cleanup remains unproven");
+      });
+    }
+  }
   notifyDesktopAuthChanged();
   refreshDesktopTrayAuth();
   developerTools.requestRefresh();
 }
 
+let lastCuaAuthorization: object | null = null;
 function notifyDeveloperToolsChanged(): void {
+  const authorization = developerTools.getAuthorization();
+  if (lastCuaAuthorization !== authorization) {
+    lastCuaAuthorization = authorization;
+    void computerUseController.refreshDriverAuthorization().catch(() => {
+      console.warn(
+        "Computer Use driver authorization cleanup remains unproven",
+      );
+    });
+  }
   notifyDesktopDeveloperToolsChanged();
+  notifyDesktopComputerUseChanged();
   if (app.isReady()) {
     applyApplicationMenu();
   }
@@ -578,6 +666,7 @@ function friendlyDeviceName(): string | null {
 
 function getComputerUseBridgeState(): DesktopComputerUseState {
   return {
+    driver: driverSelection.getState(),
     platform: process.platform,
     supported: process.platform === "darwin",
     deviceName: friendlyDeviceName(),
@@ -611,7 +700,7 @@ function installKeepAwake(): void {
     blocker: powerSaveBlocker,
     onChange: notifyComputerUseChanged,
   });
-  keepAwakeController.load();
+  if (!driverPreferences.getState().preferenceError) keepAwakeController.load();
 }
 
 function setKeepAwakeEnabled(enabled: boolean): DesktopComputerUseState {
@@ -632,7 +721,8 @@ function ensureFilesystemPluginManager(): DesktopFilesystemPluginManager {
       preferencesPath: desktopPreferencesPath(),
       onChange: notifyComputerUseChanged,
     });
-    filesystemPluginManager.load();
+    if (!driverPreferences.getState().preferenceError)
+      filesystemPluginManager.load();
   }
   return filesystemPluginManager;
 }
@@ -643,14 +733,20 @@ function ensureMcpPluginManager(): DesktopMcpPluginManager {
       preferencesPath: desktopPreferencesPath(),
       onChange: notifyComputerUseChanged,
     });
-    mcpPluginManager.load();
+    if (!driverPreferences.getState().preferenceError) mcpPluginManager.load();
   }
   return mcpPluginManager;
 }
 
 function supportedComputerUseCapabilities(): readonly string[] {
   return [
-    ...SUPPORTED_COMPUTER_USE_CAPABILITIES,
+    ...computerUseDriver.getCapabilities(),
+    ...supportedPluginCapabilities(),
+  ];
+}
+
+function supportedPluginCapabilities(): readonly string[] {
+  return [
     ...(filesystemPluginManager?.getCapabilities() ?? []),
     ...(mcpPluginManager?.getCapabilities() ?? []),
   ];
@@ -671,19 +767,14 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
         return fetch(input, init);
       },
       addClientHeaders: addDesktopClientHeaders,
-      getPermissions: refreshComputerUsePermissionState,
+      getPermissions: refreshReady,
       getSupportedCapabilities: supportedComputerUseCapabilities,
-      executeCommand: (command, permissions) => {
-        if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
-          if (isComputerUseMcpPluginCallPayload(command.payload)) {
-            return ensureMcpPluginManager().execute(command);
-          }
-          return ensureFilesystemPluginManager().execute(command);
+      driver: computerUseDriver,
+      executePluginCommand: (command) => {
+        if (isComputerUseMcpPluginCallPayload(command.payload)) {
+          return ensureMcpPluginManager().execute(command);
         }
-        return executeComputerUseCommand(command, permissions, {
-          nativeBackend: computerUseNativeBackend,
-          snapshotStore: computerUseSnapshotStore,
-        });
+        return ensureFilesystemPluginManager().execute(command);
       },
       onCommandFailure: automationPermissionPrompt,
       onChange: notifyComputerUseChanged,
@@ -699,12 +790,22 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
-  await computerUseController.start(options);
+  try {
+    await computerUseController.start(options);
+  } catch {
+    throw new Error(
+      "Computer Use could not start. Check driver status and cleanup.",
+    );
+  }
   return getComputerUseBridgeState();
 }
 
 async function stopComputerUseRuntime(): Promise<DesktopComputerUseState> {
-  await computerUseController.stop();
+  try {
+    await computerUseController.stop();
+  } catch {
+    throw new Error("Computer Use cleanup is still pending.");
+  }
   return getComputerUseBridgeState();
 }
 
@@ -790,6 +891,8 @@ function installComputerUse(): void {
   installComputerUseIpc(
     {
       getState: getComputerUseBridgeState,
+      setExperimentalCuaEnabled,
+      selectDriver: selectComputerUseDriver,
       refreshPermissions: refreshComputerUsePermissions,
       start: startComputerUseRuntime,
       stop: stopComputerUseRuntime,
@@ -804,7 +907,7 @@ function installComputerUse(): void {
       setMcpPluginServerEnabled,
       removeMcpPluginServer,
     },
-    { rendererUrl: localRendererUrl },
+    { rendererUrl: localRendererUrl, getMainWindow: () => mainWindow },
   );
 }
 
@@ -961,28 +1064,11 @@ function refreshComputerUsePermissionsForState(): void {
     });
 }
 
-function disposeComputerUseNativeBackend(
-  reason: ComputerUseNativeShutdownReason,
-): Promise<void> {
-  if (computerUseNativeBackendDisposed) {
-    return Promise.resolve();
-  }
-  if (!computerUseNativeBackendDisposePromise) {
-    computerUseNativeBackendDisposePromise = computerUseNativeBackend
-      .dispose(reason)
-      .finally(() => {
-        computerUseNativeBackendDisposed = true;
-      });
-  }
-  return computerUseNativeBackendDisposePromise;
-}
-
 async function prepareForQuitAndInstall(): Promise<void> {
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
   releaseKeepAwake();
-  await computerUseController.stopForQuit();
-  await disposeComputerUseNativeBackend("update_relaunch");
+  await computerUseController.stopForQuit("update_relaunch");
 }
 
 // Bootstrap contract: the auto-updater is owned by bootstrap.ts so it keeps
@@ -1113,6 +1199,18 @@ function applyApplicationMenu(): void {
   ];
   const developerToolsState = developerTools.getState();
   if (developerToolsState.available) {
+    appSubmenu.push({
+      label: "Enable experimental CUA driver",
+      type: "checkbox",
+      checked: driverPreferences.getState().experimentalCuaEnabled,
+      click: () => {
+        void setExperimentalCuaEnabled(
+          !driverPreferences.getState().experimentalCuaEnabled,
+        ).catch(() => {
+          console.warn("Computer Use driver preference was not saved");
+        });
+      },
+    });
     appSubmenu.push({
       label: "Developer Tools",
       type: "checkbox",
@@ -1415,15 +1513,10 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
 async function maybeStartComputerUseAfterAuth(
   signal: AbortSignal,
 ): Promise<void> {
-  await computerUseController.stopForAuthChange();
+  await computerUseController.startForAuthChange(signal);
   signal.throwIfAborted();
-  notifyAuthChanged();
-  const permissions = await refreshComputerUsePermissionState();
-  signal.throwIfAborted();
+  notifyDesktopAuthChanged();
   notifyComputerUseChanged();
-  if (hasRequiredComputerUsePermissions(permissions)) {
-    await computerUseController.start({ userInitiated: true });
-  }
 }
 
 async function shouldOpenComputerUseSetupWindowOnLaunch(): Promise<boolean> {
@@ -1523,21 +1616,18 @@ if (!hasSingleInstanceLock) {
     appIsQuitting = true;
     releaseKeepAwake();
     globalShortcut.unregisterAll();
-    if (
-      computerUseQuitPreparationComplete ||
-      (computerUseNativeBackendDisposed &&
-        !computerUseController.quitStopRequired())
-    ) {
+    if (computerUseQuitPreparationComplete) {
       return;
     }
     event.preventDefault();
     if (!computerUseQuitPreparationPromise) {
       computerUseQuitPreparationPromise = (async () => {
         try {
-          if (computerUseController.quitStopRequired()) {
+          try {
             await computerUseController.stopForQuit();
+          } finally {
+            await cuaProbeRuntime?.dispose();
           }
-          await disposeComputerUseNativeBackend("app_quit");
         } catch (error) {
           console.error("Unable to prepare Computer Use for app quit", error);
         } finally {
@@ -1549,7 +1639,45 @@ if (!hasSingleInstanceLock) {
   });
 
   void app.whenReady().then(async () => {
+    if (process.env.OKOU_DESKTOP_CUA_PROBE === "1") {
+      if (
+        !app.isPackaged ||
+        process.platform !== "darwin" ||
+        process.arch !== "arm64"
+      ) {
+        writeSync(
+          2,
+          "[cua-probe] unsupported: packaged macOS arm64 host required\n",
+        );
+        app.exit(1);
+        return;
+      }
+      cuaProbeRuntime = new CuaEmbeddedRuntime({
+        runtimeRoot: path.join(process.resourcesPath, "cua"),
+        hostBundleId: config.identity.bundleId,
+      });
+      try {
+        const result = await runCuaHostProbe(
+          cuaProbeRuntime,
+          process.env.OKOU_DESKTOP_CUA_CAPTURE === "1",
+          app.getPath("userData"),
+        );
+        writeSync(1, `[cua-probe] ${JSON.stringify(result)}\n`);
+        app.exit(0);
+      } catch {
+        writeSync(
+          2,
+          `[cua-probe] ${JSON.stringify(cuaProbeRuntime.getState())}\n`,
+        );
+        app.exit(1);
+      }
+      return;
+    }
     applyDockIcon();
+    driverPreferences.load();
+    await computerUseController.transitionDriver(
+      driverSelection.requestedDriver(),
+    );
     hideDockForInactiveMainWindow();
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
@@ -1566,6 +1694,7 @@ if (!hasSingleInstanceLock) {
     queueDesktopAuthCallbackArgv(process.argv);
 
     if (isDesktopSmokeTestEnabled(process.env)) {
+      assertCuaDormant();
       desktopAuthSession.signOut();
       try {
         await verifyDesktopSmokeBridge();
@@ -1575,6 +1704,7 @@ if (!hasSingleInstanceLock) {
         return;
       }
       writeSync(1, `${DESKTOP_SMOKE_TEST_READY_MARKER}\n`);
+      writeSync(1, "[smoke-test] cua dormant\n");
       process.exit(0);
     }
 

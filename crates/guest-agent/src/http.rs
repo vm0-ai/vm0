@@ -10,7 +10,7 @@ use api_contracts::generated::constants::client::headers::{
 use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
 use api_contracts::generated::types::runners::runs::active_inputs::receipt::Response as ActiveInputReceiptResponse;
 use bytes::{Bytes, BytesMut};
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
 use reqwest::header::CONTENT_TYPE;

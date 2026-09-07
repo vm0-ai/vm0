@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
+import { parseProviderTokenResponse } from "../../token-response";
 
 const RECKON_TOKEN_URL = "https://identity.reckon.com/connect/token";
 
@@ -39,33 +40,28 @@ export async function refreshReckonAccessToken(
     );
   }
 
-  const parsed = z
-    .object({
+  const data = await parseProviderTokenResponse(
+    response,
+    z.object({
       access_token: z.string().min(1).optional(),
       refresh_token: z.string().min(1).optional(),
       expires_in: z.number().positive().optional(),
       error: z.string().min(1).optional(),
       error_description: z.string().min(1).optional(),
-    })
-    .safeParse(await response.json());
-  if (!parsed.success) {
-    throw new ProviderResponseError("Invalid Reckon token response");
+    }),
+    "Invalid Reckon token response",
+  );
+  if (data.error !== undefined) {
+    throw new ProviderResponseError(data.error_description ?? data.error);
   }
-  if (parsed.data.error !== undefined) {
-    throw new ProviderResponseError(
-      parsed.data.error_description ?? parsed.data.error,
-    );
-  }
-  if (parsed.data.access_token === undefined) {
+  if (data.access_token === undefined) {
     throw new ProviderResponseError("No access token in Reckon token response");
   }
   return {
-    accessToken: parsed.data.access_token,
-    ...(parsed.data.refresh_token === undefined
+    accessToken: data.access_token,
+    ...(data.refresh_token === undefined
       ? {}
-      : { refreshToken: parsed.data.refresh_token }),
-    ...(parsed.data.expires_in === undefined
-      ? {}
-      : { expiresIn: parsed.data.expires_in }),
+      : { refreshToken: data.refresh_token }),
+    ...(data.expires_in === undefined ? {} : { expiresIn: data.expires_in }),
   };
 }

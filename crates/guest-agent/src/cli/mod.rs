@@ -60,13 +60,13 @@ use crate::session_metadata::{SessionHistoryLaunchSource, SessionMetadataStore};
 use crate::timing;
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use event_delivery::{EventDeliveryReport, EventDeliveryRuntime, EventDeliverySender};
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
     FailureDetailSource, FailureReason, HeartbeatFailureDiagnostic,
 };
 use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_info, log_warn};
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -2270,14 +2270,14 @@ mod tests {
 
     impl SystemLogOverrideGuard {
         fn set(path: &Path) -> Self {
-            guest_common::log::set_system_log_file(path);
+            guest_telemetry::log::set_system_log_file(path);
             Self
         }
     }
 
     impl Drop for SystemLogOverrideGuard {
         fn drop(&mut self) {
-            guest_common::log::clear_system_log_file();
+            guest_telemetry::log::clear_system_log_file();
         }
     }
 

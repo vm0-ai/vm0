@@ -1,0 +1,21 @@
+[package]
+name = "guest-storage-apply"
+version = "0.23.66"
+edition.workspace = true
+
+[dependencies]
+flate2.workspace = true
+guest-contracts.workspace = true
+libc.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tar.workspace = true
+ureq = { workspace = true, features = ["platform-verifier"] }
+guest-telemetry.workspace = true
+
+[dev-dependencies]
+httpmock.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-readonly UNSHARE_SENTINEL="--__vm0_unshared__"
+readonly UNSHARE_SENTINEL="--__runner_unshared__"
 if [[ "${1:-}" != "$UNSHARE_SENTINEL" ]]; then
   for cmd in sudo unshare; do
     if ! command -v "$cmd" &>/dev/null; then
@@ -299,7 +299,7 @@ install_host_file "$ca_cert" "/${CA_ROOTFS_DEST}" 644
 # /etc/environment is read by PAM for all login sessions.
 # [sync:etc-environment] Keep in sync with:
 # - .github/scripts/runner-behavior-exec.sh (Test 10)
-# - crates/vsock-guest/src/user.rs
+# - crates/guest-control-server/src/user.rs
 printf '%s\n' \
   "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   "LANG=C.UTF-8" \

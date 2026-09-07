@@ -8,6 +8,160 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.564.1](https://github.com/vm0-ai/vm0/compare/api-v1.564.0...api-v1.564.1) (2026-09-07)
+
+
+### Refactoring
+
+* **image-recognition:** remove legacy recognize compatibility ([#32381](https://github.com/vm0-ai/vm0/issues/32381)) ([82bfb2c](https://github.com/vm0-ai/vm0/commit/82bfb2c81b7c49442b4a9ed3f654a8b7de2f28be)), closes [#32371](https://github.com/vm0-ai/vm0/issues/32371)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.4
+    * @okouai/core bumped to 8.633.0
+    * @okouai/db bumped to 1.245.7
+    * @okouai/pi-agent-runtime bumped to 1.21.18
+
+## [1.564.0](https://github.com/vm0-ai/vm0/compare/api-v1.563.3...api-v1.564.0) (2026-09-07)
+
+
+### Features
+
+* **desktop:** add generation-owned cua command adapter ([#32360](https://github.com/vm0-ai/vm0/issues/32360)) ([b88375f](https://github.com/vm0-ai/vm0/commit/b88375f6c75f001e76dee446ada97ac1ad681e8b))
+
+
+### Bug Fixes
+
+* **pi-memory:** protect active maintenance from cleanup ([#32367](https://github.com/vm0-ai/vm0/issues/32367)) ([7e46f0c](https://github.com/vm0-ai/vm0/commit/7e46f0c9f2205853fe77ba7db67ea7acab2d9ab9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.632.0
+    * @okouai/db bumped to 1.245.6
+
+## [1.563.3](https://github.com/vm0-ai/vm0/compare/api-v1.563.2...api-v1.563.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **calendar:** persist watch action-required state ([#32332](https://github.com/vm0-ai/vm0/issues/32332)) ([59b0106](https://github.com/vm0-ai/vm0/commit/59b0106dbcc0510a944f8cf68fd54f4871719a56))
+* **pi:** recover api first-turn deadlines in sandbox ([#32329](https://github.com/vm0-ai/vm0/issues/32329)) ([b701bf8](https://github.com/vm0-ai/vm0/commit/b701bf888ce2c4ad62e9cbf2dabbb763dbca8a4e))
+
+
+### Refactoring
+
+* remove presentationScreenshot feature switch ([#32349](https://github.com/vm0-ai/vm0/issues/32349)) ([ef1d8b4](https://github.com/vm0-ai/vm0/commit/ef1d8b4619552158928230379383b8ce3e00f0d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.3
+    * @okouai/core bumped to 8.631.5
+    * @okouai/db bumped to 1.245.5
+    * @okouai/pi-agent-runtime bumped to 1.21.17
+
+## [1.563.2](https://github.com/vm0-ai/vm0/compare/api-v1.563.1...api-v1.563.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **api:** preserve mention context across chat integrations ([#32335](https://github.com/vm0-ai/vm0/issues/32335)) ([6158eb5](https://github.com/vm0-ai/vm0/commit/6158eb586bd781310547cc76c91174e68845a66c))
+
+
+### Refactoring
+
+* resolve connector diagnostics from active runtime state ([#32318](https://github.com/vm0-ai/vm0/issues/32318)) ([0445891](https://github.com/vm0-ai/vm0/commit/0445891e02f4bfd3e5db62a17e88fa877daa2cb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.2
+    * @okouai/core bumped to 8.631.4
+    * @okouai/db bumped to 1.245.4
+    * @okouai/pi-agent-runtime bumped to 1.21.16
+
+## [1.563.1](https://github.com/vm0-ai/vm0/compare/api-v1.563.0...api-v1.563.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **api:** retain sanitized Fal webhook failure diagnostics ([#32322](https://github.com/vm0-ai/vm0/issues/32322)) ([216faf6](https://github.com/vm0-ai/vm0/commit/216faf6f93990752eae36e29c32dc67c3233ca46))
+* **intro-video:** support managed native video agent generation ([#32305](https://github.com/vm0-ai/vm0/issues/32305)) ([f6c13bf](https://github.com/vm0-ai/vm0/commit/f6c13bf47c6995bd8c65f753741488231c6ae980))
+
+
+### Refactoring
+
+* **api:** rename residual observability values ([#32328](https://github.com/vm0-ai/vm0/issues/32328)) ([30dd5da](https://github.com/vm0-ai/vm0/commit/30dd5da77c569d6305fca05811fbf6d7a330a1bc)), closes [#32242](https://github.com/vm0-ai/vm0/issues/32242)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.1
+    * @okouai/connectors bumped to 3.8.1
+    * @okouai/core bumped to 8.631.3
+    * @okouai/db bumped to 1.245.3
+    * @okouai/pi-agent-runtime bumped to 1.21.15
+
+## [1.563.0](https://github.com/vm0-ai/vm0/compare/api-v1.562.0...api-v1.563.0) (2026-09-07)
+
+
+### Features
+
+* add noyo client credentials provider ([#32095](https://github.com/vm0-ai/vm0/issues/32095)) ([f6f3d83](https://github.com/vm0-ai/vm0/commit/f6f3d83ad092a5144576d30a5955bfdff307b929))
+* **api:** force app.vm0.ai clients to upgrade to v0.857.0 ([#32297](https://github.com/vm0-ai/vm0/issues/32297)) ([7949605](https://github.com/vm0-ai/vm0/commit/7949605c72b83863469b7ce8081caf650b15c686))
+* **voice:** allow 60-minute voice input recordings ([#32316](https://github.com/vm0-ai/vm0/issues/32316)) ([9d8cce2](https://github.com/vm0-ai/vm0/commit/9d8cce23c35dd6bb9da84099a13a79949cfdc8d7))
+
+
+### Bug Fixes
+
+* **chat:** validate snapshot watermark cursors ([#32295](https://github.com/vm0-ai/vm0/issues/32295)) ([bcac973](https://github.com/vm0-ai/vm0/commit/bcac9738bf3975c857857c645b4f51d8cc2b659d))
+* **video:** reject conflicting byteplus frame and reference inputs ([#32313](https://github.com/vm0-ai/vm0/issues/32313)) ([36bb143](https://github.com/vm0-ai/vm0/commit/36bb14328767cbb03c2b507be86d880d2dae7611))
+
+
+### Refactoring
+
+* **api:** neutralize built-in model test vocabulary ([#32273](https://github.com/vm0-ai/vm0/issues/32273)) ([fe8a5fc](https://github.com/vm0-ai/vm0/commit/fe8a5fc5287772f31e78ff1622fb4f8064152e3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.0
+    * @okouai/connectors bumped to 3.8.0
+    * @okouai/core bumped to 8.631.2
+    * @okouai/db bumped to 1.245.2
+    * @okouai/pi-agent-runtime bumped to 1.21.14
+
+## [1.562.0](https://github.com/vm0-ai/vm0/compare/api-v1.561.0...api-v1.562.0) (2026-09-07)
+
+
+### Features
+
+* **voice:** transcribe overlapping audio segments with resumable progress ([#32059](https://github.com/vm0-ai/vm0/issues/32059)) ([77a06e4](https://github.com/vm0-ai/vm0/commit/77a06e48dc6dbed124f690305b7f075350dd42a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.411.0
+    * @okouai/core bumped to 8.631.1
+    * @okouai/db bumped to 1.245.1
+    * @okouai/pi-agent-runtime bumped to 1.21.13
+
 ## [1.561.0](https://github.com/vm0-ai/vm0/compare/api-v1.560.1...api-v1.561.0) (2026-09-07)
 
 

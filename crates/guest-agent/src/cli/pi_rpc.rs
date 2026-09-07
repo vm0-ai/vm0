@@ -116,10 +116,9 @@
 //! cancellable stdin write itself, that write returns an interruption error
 //! before an abort can be written; this is a distinct early-write failure path.
 //! The final guest control result records `Run cancelled by user` and the
-//! `UserCancellation` termination reason. Current Pi tool-result events do not
-//! carry a `vm0_user_cancelled` field: that marker was removed with Chat Tool
-//! Activity in #30215. Claude-only replay filtering is enabled outside this
-//! module; Pi does not set `replay_user_messages`.
+//! `UserCancellation` termination reason. Pi tool-result events remain ordinary
+//! tool results. Claude-only replay filtering is enabled outside this module;
+//! Pi does not set `replay_user_messages`.
 //!
 //! ## Record admission and projection
 //!
@@ -207,8 +206,7 @@
 //! Tool-result text blocks retain their text. Image blocks become base64 image
 //! sources with `mimeType` mapped to `media_type` and `data` mapped to
 //! `data`; unsupported result content blocks are omitted. The resulting `user`
-//! event is a tool result, not a replayable prompt, and has no
-//! `vm0_user_cancelled` field.
+//! event is classified as a tool result rather than a replayable prompt.
 //!
 //! ## Terminal result and failure ownership
 //!

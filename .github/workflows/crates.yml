@@ -72,9 +72,9 @@ jobs:
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
-      sandbox-fc-changed: ${{ steps.detect.outputs.sandbox-fc-changed }}
+      sandbox-firecracker-changed: ${{ steps.detect.outputs.sandbox-firecracker-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
-      vsock-test-changed: ${{ steps.detect.outputs.vsock-test-changed }}
+      guest-control-tests-changed: ${{ steps.detect.outputs.guest-control-tests-changed }}
       crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
       metal-job-ref: ${{ steps.runner-job-ref.outputs.job-ref }}
       runner-image-job-ref: ${{ steps.runner-job-ref.outputs.image-job-ref }}
@@ -115,9 +115,9 @@ jobs:
           check_crate ably-subscriber
           check_crate api-contracts
           check_crate runner
-          check_crate sandbox-fc
+          check_crate sandbox-firecracker
           check_crate nbd-cow
-          check_crate vsock-test
+          check_crate guest-control-tests
           check_crate xtask
 
           # Aggregate: true if any crate or CI config changed
@@ -329,13 +329,13 @@ jobs:
           cd crates
           cargo clippy --all-targets --all-features
 
-      - name: Lint vsock-guest production configuration
+      - name: Lint guest-control-server production configuration
         if: |
-          needs.detect.outputs.vsock-test-changed == 'true' ||
+          needs.detect.outputs.guest-control-tests-changed == 'true' ||
           needs.detect.outputs.ci-changed == 'true'
         run: |
           cd crates
-          cargo clippy -p vsock-guest --release --no-default-features --all-targets
+          cargo clippy -p guest-control-server --release --no-default-features --all-targets
 
       - name: Build documentation
         run: |
@@ -352,9 +352,9 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
-      - name: Run vsock-guest production configuration tests
+      - name: Run guest-control-server production configuration tests
         if: |
-          needs.detect.outputs.vsock-test-changed == 'true' ||
+          needs.detect.outputs.guest-control-tests-changed == 'true' ||
           needs.detect.outputs.ci-changed == 'true'
         run: |
           test "$(id -u)" -eq 0
@@ -385,24 +385,24 @@ jobs:
             --shell /bin/sh user
           install -d -m 0755 -o user -g vm0-identity-primary /home/user
           install -m 0755 \
-            crates/vsock-guest/tests/fixtures/guest-write-file-identity-probe.sh \
+            crates/guest-control-server/tests/fixtures/guest-write-file-identity-probe.sh \
             /sbin/guest-write-file
 
           cd crates
-          cargo test -p vsock-guest --release --no-default-features \
+          cargo test -p guest-control-server --release --no-default-features \
             --lib \
             exec_operation::tests::stdout_drain_spawn_failure_returns_wait_failed_and_cleans_registry -- \
             --exact
           HOME=/root USER=root LOGNAME=root \
-            cargo test -p vsock-guest --release --no-default-features \
+            cargo test -p guest-control-server --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_write_file_identity_matches_sudo_policy
           HOME=/root USER=root LOGNAME=root \
-            cargo test -p vsock-guest --release --no-default-features \
+            cargo test -p guest-control-server --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_exec_identity_matches_sandbox_user
           HOME=/root USER=root LOGNAME=root \
-            cargo test -p vsock-guest --release --no-default-features \
+            cargo test -p guest-control-server --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_env_script_remains_until_operation_cleanup
 
@@ -923,7 +923,7 @@ jobs:
     if: |
       !cancelled() &&
       needs.runner-build.result == 'success' && (
-        needs.detect.outputs.sandbox-fc-changed == 'true' ||
+        needs.detect.outputs.sandbox-firecracker-changed == 'true' ||
         needs.detect.outputs.ci-changed == 'true'
       )
     timeout-minutes: 15
@@ -946,7 +946,7 @@ jobs:
         run: |
           cd crates
           cargo test --no-run --release --target "$TARGET_TRIPLE" \
-            -p sandbox-fc --test host_cpu_fairness
+            -p sandbox-firecracker --test host_cpu_fairness
           TEST_BIN=$(find "target/$TARGET_TRIPLE/release/deps" \
             -name 'host_cpu_fairness-*' -executable -type f | head -1)
           if [ -z "$TEST_BIN" ]; then

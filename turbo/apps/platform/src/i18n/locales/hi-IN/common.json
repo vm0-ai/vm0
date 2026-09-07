@@ -1036,19 +1036,35 @@
       "continuation": {
         "activationErrorDescription": "हम आपका साइन-इन पूरा नहीं कर सके। फिर से शुरू करके दोबारा कोशिश करें।",
         "activationErrorTitle": "साइन-इन पूरा नहीं हो सका",
+        "backupDescription": "इन कोड को सुरक्षित रखें। फ़ोन का ऐक्सेस खोने पर हर कोड का एक बार उपयोग कर सकते हैं।",
+        "backupTitle": "अपने बैकअप कोड सहेजें",
         "chooseOrganizationDescription": "{{brandName}} पर जारी रखने के लिए कोई संगठन चुनें।",
         "chooseOrganizationTitle": "कोई संगठन चुनें",
         "completeDescription": "आपको {{brandName}} पर ले जाया जा रहा है।",
         "completeTitle": "साइन-इन पूरा हुआ",
+        "createOrganization": "संगठन बनाएँ",
+        "invitationError": "यह आमंत्रण स्वीकार नहीं किया जा सका। फिर कोशिश करें, या लिंक की समय-सीमा समाप्त होने पर नया आमंत्रण माँगें।",
+        "joinOrganization": "{{organizationName}} से जुड़ें",
         "loadingDescription": "जाँचा जा रहा है कि आपके खाते के लिए आगे क्या आवश्यक है।",
         "loadingTitle": "साइन-इन पूरा किया जा रहा है",
         "noOrganizationsDescription": "इस खाते के लिए कोई संगठन उपलब्ध नहीं है। संगठन व्यवस्थापक से पहुँच माँगें, फिर दोबारा शुरू करें।",
         "noOrganizationsTitle": "कोई संगठन उपलब्ध नहीं है",
+        "organizationName": "संगठन का नाम",
+        "passwordTaskError": "आपका पासवर्ड अपडेट नहीं हो सका। अधिक मज़बूत पासवर्ड चुनें और फिर कोशिश करें।",
+        "phoneNumberLabel": "फ़ोन नंबर",
         "recoveryAction": "फिर से शुरू करें",
+        "savedCodes": "मैंने अपने कोड सहेज लिए हैं",
         "secondFactorDescription": "इस साइन-इन के लिए एक अतिरिक्त सत्यापन चरण आवश्यक है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "secondFactorTitle": "अतिरिक्त सत्यापन आवश्यक है",
+        "securityDescription": "अपनी पहचान सत्यापित करने का दूसरा तरीका जोड़ें।",
+        "securityTitle": "दो-चरणीय सत्यापन सेट करें",
         "selectOrganization": "{{organizationName}} के साथ जारी रखें",
+        "sendCode": "कोड भेजें",
+        "setupKey": "सेटअप कुंजी",
+        "setupKeyDescription": "इस सेटअप कुंजी को अपने ऑथेंटिकेटर ऐप में जोड़ें, फिर उससे बना कोड दर्ज करें।",
         "signedInAs": "{{identifier}} के रूप में साइन इन किया गया",
+        "taskComplete": "आपकी सुरक्षा सेटिंग सहेज दी गई हैं। साइन इन पूरा करने के लिए जारी रखें।",
+        "taskError": "यह चरण पूरा नहीं हो सका। अपनी जानकारी जाँचें और फिर कोशिश करें।",
         "unsupportedDescription": "आपके खाते ने ऐसा प्रमाणीकरण चरण लौटाया है, जिसका यह पेज समर्थन नहीं करता। कोई दूसरी साइन-इन विधि आज़माने के लिए फिर से शुरू करें।",
         "unsupportedTitle": "साइन-इन चरण उपलब्ध नहीं है"
       },
@@ -1855,6 +1871,19 @@
     "composer": {
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
+      "create": {
+        "chooseStyle": "शैली चुनें",
+        "chooseTemplate": "टेम्पलेट चुनें",
+        "exit": "बनाने के मोड से बाहर निकलें",
+        "image": "छवि बनाएँ",
+        "imagePlaceholder": "आप जो छवि बनाना चाहते हैं उसका वर्णन करें…",
+        "presentation": "प्रस्तुति बनाएँ",
+        "presentationPlaceholder": "आपकी प्रस्तुति का विषय क्या है?",
+        "settingsAdjusted": "इस मॉडल के लिए कुछ वीडियो सेटिंग समायोजित की गई हैं",
+        "title": "बनाएँ",
+        "video": "वीडियो बनाएँ",
+        "videoPlaceholder": "आप जो वीडियो बनाना चाहते हैं उसका वर्णन करें…"
+      },
       "createWorkflow": "वर्कफ़्लो बनाएँ",
       "imageModelForThisChat": "इस चैट के लिए इमेज मॉडल",
       "message": "संदेश",
@@ -1912,7 +1941,6 @@
       "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
       "addConnectors": "कनेक्टर्स जोड़ें",
-      "authorizationFailed": "{{connectorName}} कनेक्ट हुआ लेकिन {{agentName}} के लिए अधिकृत नहीं किया जा सका",
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
@@ -2014,10 +2042,7 @@
       },
       "format": {
         "auto": "स्वचालित",
-        "filter": "फ़ॉर्मैट के अनुसार शैली संदर्भ फ़िल्टर करें",
-        "landscape": "लैंडस्केप · 16:9",
-        "output": "आउटपुट फ़ॉर्मैट",
-        "portrait": "पोर्ट्रेट · 9:16"
+        "output": "आउटपुट फ़ॉर्मैट"
       },
       "heading": "अपना इंट्रो वीडियो बनाएँ",
       "help": "सामग्री जोड़ें, अपनी ज़रूरत बताएँ या दोनों करें। बाकी काम Okou संभालेगा।",
@@ -2031,8 +2056,17 @@
       },
       "style": {
         "auto": "Okou को चुनने दें",
-        "autoDescription": "अपने निर्देशों और सामग्री के अनुसार दृश्य शैली चुनें",
-        "emptyFormat": "इस फ़ॉर्मैट से मेल खाने वाले शैली संदर्भ नहीं हैं।",
+        "browseGroups": "शैली के अनुसार देखें",
+        "description": "शैली दृश्य, ट्रांज़िशन, टेक्स्ट ओवरले और गति तय करती है।",
+        "groups": {
+          "cinematic": "फ़िल्म और फ़ोटोग्राफ़ी",
+          "handmade": "हस्तकला और सामग्री",
+          "iconic-artist": "कला और डिज़ाइन",
+          "other": "अन्य शैलियाँ",
+          "pop-culture": "पॉप संस्कृति",
+          "print": "मुद्रण और प्रकाशन",
+          "retro-tech": "रेट्रो तकनीक और इंटरफ़ेस"
+        },
         "heading": "शैली संदर्भ चुनें",
         "label": "शैली संदर्भ",
         "preview": "{{title}} का पूर्वावलोकन",
@@ -2164,6 +2198,7 @@
     "run": {
       "automatedRun": "स्वचालित रन",
       "collapseGroupedHistory": "समूहीकृत रन इतिहास को संक्षिप्त करें",
+      "collapseHistoryMessage": "इतिहास संदेश संक्षिप्त करें: {{message}}",
       "collapseWorkHistory": "कार्य इतिहास संक्षिप्त करें",
       "creditUsage": "क्रेडिट उपयोग",
       "done": {
@@ -4965,12 +5000,9 @@
         "loading": "मॉडल लोड हो रहे हैं...",
         "menu": {
           "adjustSettings": "{{model}} की सेटिंग समायोजित करें",
-          "backToChatModels": "चैट मॉडल पर वापस जाएँ",
           "backToModels": "मॉडल पर वापस जाएँ",
-          "cancel": "रद्द करें",
           "changeModel": "{{category}} मॉडल बदलें, {{model}}",
-          "chatSettings": "चैट सेटिंग",
-          "confirm": "पुष्टि करें"
+          "chatSettings": "चैट सेटिंग"
         },
         "models": "मॉडल",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",

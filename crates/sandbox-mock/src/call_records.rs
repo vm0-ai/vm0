@@ -141,6 +141,8 @@ pub struct StartProcessCall {
     pub cmd: String,
     /// Timeout passed to `StartProcessRequest.timeout`.
     pub timeout: Duration,
+    /// Start acknowledgement deadline passed to `StartProcessRequest.start_timeout`.
+    pub start_timeout: Duration,
     /// Environment variable names and values from `StartProcessRequest.env`.
     pub env: Vec<(String, String)>,
     /// Whether the process request was made with sudo privileges.

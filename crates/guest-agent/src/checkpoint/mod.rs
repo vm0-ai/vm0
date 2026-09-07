@@ -10,8 +10,8 @@ use crate::run_context::GuestRuntime;
 use crate::session_metadata::CapturedSessionMetadata;
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use api_contracts::generated::types::webhooks::agent::{checkpoints, complete};
-use guest_common::log_info;
-use guest_common::telemetry::record_sandbox_op;
+use guest_telemetry::log_info;
+use guest_telemetry::telemetry::record_sandbox_op;
 use std::borrow::Cow;
 use std::time::{Duration, Instant};
 

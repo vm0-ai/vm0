@@ -2,7 +2,7 @@
 
 ## Overview
 
-Most chat cards turn a specially recognized link inside a `ChatEvent` into a
+Action cards turn a specially recognized link inside a `ChatEvent` into a
 rich, interactive React surface. The message remains the transport: an agent or
 another producer can emit a normal URL, Markdown link, or relative platform
 path, and the platform upgrades that link into a typed card when its path
@@ -23,7 +23,9 @@ ChatEvent content
 
 This design keeps message content portable while allowing the platform to add
 loading states, live data, actions, and other rich interaction without putting
-state creation inside React render.
+state creation inside React render. Artifact resources use the same registration
+boundary while preserving the Markdown link or image syntax that chooses their
+presentation.
 
 ## Failure Recovery Classification
 
@@ -81,11 +83,28 @@ Current link-backed card patterns include:
 - `/mail/drafts/:mailDraftId`
 - `/browsers/:threadId`
 - platform artifact URLs such as legacy `/f/...` and `/artifacts/.../.../...`
-  paths, plus hosted site URLs that support an inline preview. Flat V2 artifact
+  paths, plus hosted site URLs that support a preview. Flat V2 artifact
   paths such as `/artifacts/97ngzkxdyn.mp4` require a complete URL with an
   allowed VM0 origin.
 
 Recognized billing-plan links render as rich upgrade cards.
+
+Artifact recognition does not choose its presentation. After Markdown parsing,
+each supported artifact `<a>` or `<img>` node registers its URL in the owning
+thread's artifact registry and receives the same `ArtifactSignals` object as
+other occurrences of that URL. Its original tag and label remain on the node:
+
+- `[label](url)` and bare URLs parsed as links remain text links. A normal click
+  opens the artifact's existing lightbox or active split view; modified clicks
+  retain native link navigation.
+- `![label](url)` renders an image or the resource's corresponding preview card.
+- URLs inside code remain code. Artifact recognition does not rewrite source
+  lines, discard surrounding prose, or turn fenced hosted-site URLs into cards.
+
+Resource state does not contain a link/card presentation flag. The same image
+can appear as a link and a preview in one event while sharing its resource URL
+and load state. Artifacts carried out of folded work history retain their
+original nodes, so folding does not change links into cards.
 
 A path such as `/chats/:threadId` can use the same design when a chat-thread
 card is introduced: add an exact parser for the path, derive a canonical
@@ -113,7 +132,9 @@ closed, and the parser must not infer missing authorization or target data.
 
 `chatEventTreePlan` extracts renderable content from a `ChatEvent` and passes it
 to `eventBodyPlan`. The parser separates normal Markdown from recognized cards.
-The current thread ID and server-derived primary agent ID are supplied as
+Artifact occurrences are recognized on the parsed Markdown tree instead of
+being converted to action slots by this scanner. The current thread ID and
+server-derived primary agent ID are supplied as
 immutable planning context. Parsing is synchronous and does not query an API or
 database.
 
@@ -199,10 +220,11 @@ registry and resource model.
 ### 5. Render the matching React component
 
 `MarkdownCardView` in
-`turbo/apps/platform/src/views/okou-page/chat-body-cards.tsx` is the single
-dispatch the markdown renderer uses for `data.card` nodes. It selects the
-component by the card's discriminated `kind` and passes the signals object
-directly:
+`turbo/apps/platform/src/views/okou-page/chat-body-cards.tsx` renders action
+slots and explicit artifact preview cards. Artifact links and image tiles use
+their original Markdown renderers and read the same signals. For a card,
+the renderer selects the component by its discriminated `kind` and passes the
+signals object directly:
 
 ```tsx
 case "permission-action": {
@@ -465,6 +487,7 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/parse-body-blocks.ts`
 - `turbo/apps/platform/src/signals/chat-page/create-chat-thread.ts`
 - `turbo/apps/platform/src/signals/chat-page/artifact-card-signals.ts`
+- `turbo/apps/platform/src/signals/chat-page/markdown-artifacts.ts`
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/connector-account-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-action-block.ts`

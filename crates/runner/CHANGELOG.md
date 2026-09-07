@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.188.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.3...runner-rs-v0.188.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire codex prefetch sandboxes after partial writes ([#32358](https://github.com/vm0-ai/vm0/issues/32358)) ([dd0454e](https://github.com/vm0-ai/vm0/commit/dd0454e8707ecb068cf839c76d04c315427d6783))
+
+## [0.188.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.2...runner-rs-v0.188.3) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
+## [0.188.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.1...runner-rs-v0.188.2) (2026-09-07)
+
+## [0.188.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.0...runner-rs-v0.188.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire sandbox after prefetch start timeout ([#32308](https://github.com/vm0-ai/vm0/issues/32308)) ([984a47b](https://github.com/vm0-ai/vm0/commit/984a47b8744fea46ceb63c03d43fcd19970ef31d))
+
+## [0.188.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.187.1...runner-rs-v0.188.0) (2026-09-07)
+
+
+### Features
+
+* **runner:** publish explicit blank sandbox inventory ([#32269](https://github.com/vm0-ai/vm0/issues/32269)) ([bd9cddc](https://github.com/vm0-ai/vm0/commit/bd9cddcf6719c90848ed4ec497baca8cfd3191ea))
+
+
+### Bug Fixes
+
+* **pi:** enable thread active input forwarding ([#32298](https://github.com/vm0-ai/vm0/issues/32298)) ([bb0b432](https://github.com/vm0-ai/vm0/commit/bb0b432f4a226344b390412f56306101471b5e8f))
+
+
+### Refactoring
+
+* **runner:** share api degradation episode transitions ([#32248](https://github.com/vm0-ai/vm0/issues/32248)) ([818bce5](https://github.com/vm0-ai/vm0/commit/818bce52538a5598347edcd9d1ced997e9624a20))
+* **runtime:** neutralize private test markers ([#32270](https://github.com/vm0-ai/vm0/issues/32270)) ([b1a3e6f](https://github.com/vm0-ai/vm0/commit/b1a3e6f80100113525c2b38c3a9dd1583d03cfe5))
+
+## [0.187.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.187.0...runner-rs-v0.187.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** bound resumed idle workspace reclamation ([#32232](https://github.com/vm0-ai/vm0/issues/32232)) ([f6b6134](https://github.com/vm0-ai/vm0/commit/f6b613497178855d93a23f4727809a722adc4947))
+
 ## [0.187.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.15...runner-rs-v0.187.0) (2026-09-07)
 
 

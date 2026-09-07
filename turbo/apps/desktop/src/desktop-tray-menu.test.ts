@@ -1,3 +1,4 @@
+import { stoppedOkouDriverState } from "./test/desktop-driver-state";
 import type { DesktopAuthState } from "./desktop-bridge";
 import type {
   ComputerUseHostRuntimeState,
@@ -71,6 +72,7 @@ function computerUseState(
   },
 ): DesktopComputerUseState {
   return {
+    driver: stoppedOkouDriverState,
     platform: "darwin",
     supported: true,
     permissions,

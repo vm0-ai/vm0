@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
@@ -17,9 +17,11 @@ import {
   expectTextOrder,
   findButton,
   findLink,
+  findWorkHistoryToggle,
   installRunChat,
   promptEvent,
   queryButton,
+  queryWorkHistoryToggles,
   readyChat,
   RUN_PATH,
   thinkingEvent,
@@ -209,17 +211,11 @@ test("Browse completed work by conversation phase", async () => {
   expect(
     queryMessageBody("Checked launch dependencies"),
   ).not.toBeInTheDocument();
-  const firstExpand = buttonsNamed("Expand work history")[0];
-  if (!firstExpand) {
-    throw new Error("First work-history summary not found");
-  }
-
-  click(firstExpand);
-
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   await expect(
     screen.findByText("Collected requirements"),
   ).resolves.toBeVisible();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
+  expect(screen.getByText("Compared rollback options")).toBeVisible();
   expectTextOrder(
     "Plan phase one",
     "Collected requirements",
@@ -231,17 +227,6 @@ test("Browse completed work by conversation phase", async () => {
     queryMessageBody("Checked launch dependencies"),
   ).not.toBeInTheDocument();
 
-  click(await findButton("Collapse work history"));
-  await waitFor(() => {
-    expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  });
-
-  const secondRunExpand = buttonsNamed("Expand work history").at(-1);
-  if (!secondRunExpand) {
-    throw new Error("Second run work-history summary not found");
-  }
-  click(secondRunExpand);
-
   await expect(
     screen.findByText("Checked launch dependencies"),
   ).resolves.toBeVisible();
@@ -249,13 +234,6 @@ test("Browse completed work by conversation phase", async () => {
   expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
   expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
 
-  click(await findButton("Collapse work history"));
-
-  await waitFor(() => {
-    expect(
-      queryMessageBody("Checked launch dependencies"),
-    ).not.toBeInTheDocument();
-  });
   expect(screen.getByText("Plan phase two")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
   expect(screen.getByText("Plan phase one")).toBeVisible();
@@ -277,7 +255,7 @@ test.each([
   },
   {
     label: "multiple output messages",
-    messageCount: 3,
+    messageCount: 5,
     showsHistoryStatus: true,
     canExpandHistory: true,
   },
@@ -303,7 +281,7 @@ test.each([
     expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(
       showsHistoryStatus ? 1 : 0,
     );
-    expect(buttonsNamed("Expand work history")).toHaveLength(
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(
       canExpandHistory ? 1 : 0,
     );
 
@@ -323,7 +301,7 @@ test.each([
       return;
     }
 
-    click(await findButton("Expand work history"));
+    click(await findWorkHistoryToggle("collapsed"));
     const firstHistoryMessage = await screen.findByText(workMessage(0));
     const secondHistoryMessage = screen.getByText(workMessage(1));
     expect(assistantGroupFor(firstHistoryMessage)).toBe(
@@ -364,7 +342,7 @@ test("Do not create history before the first output.message", async () => {
 
   await readyChat();
   expect(screen.queryByText(/^Working(?: for)? /u)).toBeNull();
-  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
 });
 
@@ -387,7 +365,7 @@ test("Count one output.message once when Markdown renders multiple child blocks"
         text: [
           "Final package",
           "![Package chart](https://example.com/package-chart.png)",
-          artifactUrl,
+          `![Package](${artifactUrl})`,
           "[Compare plans](/?settings=billing&billingView=plans)",
         ].join("\n\n"),
       }),
@@ -407,7 +385,7 @@ test("Count one output.message once when Markdown renders multiple child blocks"
     findLink("Open pdf preview for package.pdf"),
   ).resolves.toBeVisible();
   await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
-  expect(buttonsNamed("Expand work history")).toHaveLength(0);
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(1);
   expect(viewAgentProfileLinks()).toHaveLength(1);
 });
@@ -420,7 +398,7 @@ test.each([
   },
   {
     label: "multiple output messages",
-    messageCount: 3,
+    messageCount: 5,
     canExpandHistory: true,
   },
 ])(
@@ -448,7 +426,7 @@ test.each([
     expect(screen.getByText(workMessage(messageCount - 1))).toBeVisible();
     expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     expect(screen.queryAllByText(/^Worked(?: for)? /u)).toHaveLength(1);
-    expect(buttonsNamed("Expand work history")).toHaveLength(
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(
       canExpandHistory ? 1 : 0,
     );
     for (let index = 0; index < messageCount - 1; index += 1) {
@@ -483,7 +461,8 @@ const finalOutputDocuments = [
   },
   {
     label: "an artifact card",
-    content: "https://cdn.vm7.io/artifacts/tests/run-folding/final-report.pdf",
+    content:
+      "![Report](https://cdn.vm7.io/artifacts/tests/run-folding/final-report.pdf)",
     find: () => {
       return findLink("Open pdf preview for final-report.pdf");
     },
@@ -538,7 +517,7 @@ test.each(finalOutputDocuments)(
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
     expect(queryMessageBody("Earlier output belongs in history")).toBeNull();
-    expect(buttonsNamed("Expand work history")).toHaveLength(1);
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
     );

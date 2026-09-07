@@ -24,6 +24,12 @@ case "${1:-}" in
   merge-base)
     if [ "${3:-}" = "c093e0ffdab988d2a8a071809f90d87fa3e79f20" ]; then
       [ "${MOCK_READER_FLOOR_VALID:-1}" = "1" ]
+    elif [ "${3:-}" = "febec8a3399be74b0f14a89cb9f42e39dd5ce69f" ]; then
+      if [ "${4:-}" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ]; then
+        [ "${MOCK_BLANK_RUNNER_FLOOR_VALID:-1}" = "1" ]
+      else
+        [ "${MOCK_BLANK_TARGET_FLOOR_VALID:-1}" = "1" ]
+      fi
     else
       [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
     fi
@@ -153,6 +159,22 @@ assert_failure \
 [ ! -s "${tmp_dir}/reader-floor.output" ] || fail "incompatible reader target must not publish outputs"
 if grep -qE '^(curl|aws) ' "${tmp_dir}/boundaries.log"; then
   fail "reader-floor rejection must happen before artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Target commit predates the blank sandbox status reader" \
+  run_resolver "${tmp_dir}/blank-target-floor.output" MOCK_BLANK_TARGET_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/blank-target-floor.output" ] || fail "old blank reader target must not publish outputs"
+if grep -q '^curl ' "${tmp_dir}/boundaries.log"; then
+  fail "blank reader target rejection must precede artifact resolution"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Runner release runner-rs-v1.2.3 predates the blank sandbox status reader" \
+  run_resolver "${tmp_dir}/blank-runner-floor.output" MOCK_BLANK_RUNNER_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/blank-runner-floor.output" ] || fail "old Runner artifact must not publish outputs"
+if grep -q 'api.github.com/repos/.*/releases/tags/' "${tmp_dir}/boundaries.log"; then
+  fail "blank reader artifact rejection must precede asset resolution"
 fi
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
@@ -332,7 +354,10 @@ assert_failure \
   bash "$release_tags_script"
 [ ! -s "$duplicate_release_tags_output" ] || fail "duplicate release tags must not publish an output"
 
-ruby -e '
+ruby - \
+  "${repo_root}/.github/workflows/rollback-production.yml" \
+  "${repo_root}/.github/workflows/release-please.yml" \
+  "${repo_root}/.github/workflows/turbo.yml" <<'RUBY'
   require "yaml"
   rollback_config = YAML.safe_load(File.read(ARGV[0]), aliases: true)
   release_config = YAML.safe_load(File.read(ARGV[1]), aliases: true)
@@ -441,9 +466,6 @@ ruby -e '
   artifact_upload_run = artifact_upload_step.fetch("run")
   raise "deploy-app must upload the archived App artifact" unless artifact_upload_run.include?("/dist.tar.gz")
   raise "deploy-app must not upload per-file App artifacts" if artifact_upload_run.include?("aws s3 cp turbo/apps/platform/dist")
-' \
-  "${repo_root}/.github/workflows/rollback-production.yml" \
-  "${repo_root}/.github/workflows/release-please.yml" \
-  "${repo_root}/.github/workflows/turbo.yml"
+RUBY
 
 echo "resolve-production-rollback-target tests passed"

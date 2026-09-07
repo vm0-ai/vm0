@@ -271,14 +271,14 @@ const builtIndexTemplate = indexTemplate
     "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
     productionClerkPublishableKey,
   )
-  .replaceAll("__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
+  .replaceAll("__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.okou.ai")
   .replaceAll("__OKOU_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl)
   .replaceAll("__OKOU_CLERK_UI_SCRIPT_URL__", clerkUiScriptUrl);
 const embeddedIndexTemplate = builtIndexTemplate
   .replace(
     "</head>",
     [
-      '<link id="vm0-main-stylesheet" rel="preload" as="style" href="https://static.okou.io/okou-app/assets/index-Test1234.css" />',
+      '<link id="okou-main-stylesheet" rel="preload" as="style" href="https://static.okou.io/okou-app/assets/index-Test1234.css" />',
       '<link rel="modulepreload" href="https://static.okou.io/okou-app/assets/vendor-Test1234.js" />',
       "</head>",
     ].join("\n"),
@@ -300,18 +300,16 @@ const embeddedWorker = workerModule.createWorker(embeddedShell);
 const worker = embeddedWorker;
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
-const vm0Description =
-  "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+const okouTitle = "AI Teammate for Real Work — More Done, Same Team | Okou";
 const okouDescription =
-  "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+  "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.";
 
 function publishableKey(environment, host) {
   return `pk_${environment}_${Buffer.from(`${host}$`).toString("base64")}`;
 }
 
-function assetEnvironment(publicBrand) {
+function assetEnvironment() {
   return {
-    ...(publicBrand ? { PUBLIC_BRAND: publicBrand } : {}),
     STATIC_ASSETS_BUCKET: {
       get(key, options) {
         observedR2Key = key;
@@ -430,7 +428,7 @@ function assertNoClerkSecrets(snapshot) {
     "sk_test_secret-must-not-render",
     "sk_live_secret-must-not-render",
     "session-token-must-not-render",
-    "sess_must-not-render",
+    "org_must-not-render",
     "claim-must-not-render",
     "handshake-cookie-must-not-render",
     "refreshed-cookie-must-not-render",
@@ -475,72 +473,50 @@ function assertBootstrapAvatar(html) {
   assert.doesNotMatch(html, /assets\/avatar-svg\//u);
 }
 
-async function requestAppPage(origin, publicBrand) {
+async function requestAppPage(origin) {
   const response = await worker.fetch(
     new Request(`${origin}/settings/profile`),
-    assetEnvironment(publicBrand),
+    assetEnvironment(),
   );
   const html = await response.text();
   return { html, response };
 }
 
-const vm0Page = await requestAppPage("https://app.vm0.ai");
-assert.equal(vm0Page.response.status, 200);
-assert.equal(vm0Page.response.headers.get("x-robots-tag"), "noindex, nofollow");
-assert.equal(vm0Page.response.headers.get("content-encoding"), null);
-assert.equal(vm0Page.response.headers.get("etag"), null);
-assert.equal(vm0Page.response.headers.get("x-frame-options"), "DENY");
+const okouPage = await requestAppPage("https://app.okou.ai");
+assert.equal(okouPage.response.status, 200);
 assert.equal(
-  vm0Page.response.headers.get("permissions-policy"),
+  okouPage.response.headers.get("x-robots-tag"),
+  "noindex, nofollow",
+);
+assert.equal(okouPage.response.headers.get("content-encoding"), null);
+assert.equal(okouPage.response.headers.get("etag"), null);
+assert.equal(okouPage.response.headers.get("x-frame-options"), "DENY");
+assert.equal(
+  okouPage.response.headers.get("permissions-policy"),
   "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(self), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)",
 );
-assert.equal(
-  documentTitle(vm0Page.html),
-  "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
-);
-assert.equal(htmlAttribute(vm0Page.html, "data-app-brand-name"), "VM0");
-assert.equal(metaContent(vm0Page.html, "name", "application-name"), "VM0");
-assert.equal(metaContent(vm0Page.html, "name", "description"), vm0Description);
-assert.equal(metaContent(vm0Page.html, "property", "og:site_name"), "VM0");
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:image"),
-  "https://static.vm0.io/web/og-image.png",
-);
-assert.equal(
-  metaContent(vm0Page.html, "name", "twitter:image"),
-  "https://static.vm0.io/web/og-image.png",
-);
-assert.equal(metaContent(vm0Page.html, "name", "twitter:site"), "@okou_ai");
-assert.equal(metaContent(vm0Page.html, "name", "twitter:creator"), "@okou_ai");
-assert.equal(metaContent(vm0Page.html, "name", "robots"), "noindex, nofollow");
-assert.equal(
-  tagAttribute(vm0Page.html, "link", "rel", "canonical", "href"),
-  "https://app.vm0.ai/",
-);
-assert.ok(
-  tagAttributeValues(vm0Page.html, "link", "href").includes(
-    "https://static.vm0.io/public/okou-favicon-adaptive-b4eda9221bb7.svg",
-  ),
-);
-assert.equal(
-  tagAttribute(vm0Page.html, "link", "rel", "apple-touch-icon", "href"),
-  "https://static.vm0.io/platform/okou-pwa-be0be646-180.png",
-);
-assertBootstrapAvatar(vm0Page.html);
-assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
-assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
-
-const okouPage = await requestAppPage("https://app.okou.ai");
-assert.equal(
-  documentTitle(okouPage.html),
-  "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
-);
+assert.equal(documentTitle(okouPage.html), okouTitle);
 assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
+assert.equal(
+  metaContent(okouPage.html, "name", "description"),
+  okouDescription,
+);
 assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
+assert.equal(metaContent(okouPage.html, "property", "og:title"), okouTitle);
+assert.equal(
+  metaContent(okouPage.html, "property", "og:description"),
+  okouDescription,
+);
+assert.equal(metaContent(okouPage.html, "property", "og:image:alt"), okouTitle);
 assert.equal(
   metaContent(okouPage.html, "property", "og:image"),
   "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(metaContent(okouPage.html, "name", "twitter:title"), okouTitle);
+assert.equal(
+  metaContent(okouPage.html, "name", "twitter:description"),
+  okouDescription,
 );
 assert.equal(
   metaContent(okouPage.html, "name", "twitter:image"),
@@ -571,7 +547,6 @@ assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
 const okouPreview = await requestAppPage(
   "https://pr-25304-app-okou-app-preview.vm0.workers.dev",
-  "okou",
 );
 assert.equal(htmlAttribute(okouPreview.html, "data-app-brand-name"), "Okou");
 assert.equal(
@@ -587,7 +562,7 @@ assert.equal(okouPreview.html.includes("__OKOU_CLERK_UI_SCRIPT_URL__"), false);
 
 const serviceWorker = await worker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
-  assetEnvironment("okou"),
+  assetEnvironment(),
 );
 assert.equal(
   serviceWorker.headers.get("cache-control"),
@@ -600,7 +575,7 @@ const embeddedPage = await embeddedWorker.fetch(
   new Request(
     "https://pr-25304-app-okou-app-preview.vm0.workers.dev/settings/profile",
   ),
-  { PUBLIC_BRAND: "okou" },
+  {},
 );
 const embeddedHtml = await embeddedPage.text();
 assert.equal(embeddedPage.status, 200);
@@ -624,7 +599,7 @@ assert.doesNotMatch(
 
 const embeddedProductionPage = await embeddedWorker.fetch(
   new Request("https://app.okou.ai/settings/profile"),
-  { PUBLIC_BRAND: "okou" },
+  {},
 );
 const embeddedProductionHtml = await embeddedProductionPage.text();
 assert.match(
@@ -636,44 +611,31 @@ assert.doesNotMatch(
   /https:\/\/app\.okou\.ai\/okou-app\/assets\/index-Test1234\.js/u,
 );
 
-const edgeDebugOrigin = "https://pr-25304-app-okou-app-preview.vm0.workers.dev";
-const edgeDebugUrl = `${edgeDebugOrigin}/settings/profile`;
-const edgeDebugEnvironment = {
-  CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: edgeDebugOrigin,
+const edgePreviewOrigin =
+  "https://pr-25304-app-okou-app-preview.vm0.workers.dev";
+const edgePreviewUrl = `${edgePreviewOrigin}/settings/profile`;
+const edgePreviewEnvironment = {
+  CLERK_EDGE_AUTHORIZED_PARTY: edgePreviewOrigin,
   CLERK_PUBLISHABLE_KEY: previewClerkPublishableKey,
   CLERK_SECRET_KEY: "sk_test_secret-must-not-render",
-  PUBLIC_BRAND: "okou",
 };
-let unexpectedClerkClientFactoryCalls = 0;
-const unexpectedClerkClientFactory = () => {
-  unexpectedClerkClientFactoryCalls += 1;
-  throw new Error("Clerk must not run for this request");
+let failingClerkClientFactoryCalls = 0;
+const failingClerkClientFactory = () => {
+  failingClerkClientFactoryCalls += 1;
+  throw new Error("Clerk client factory failure");
 };
 const guardedEdgeWorker = workerModule.createWorker(
   embeddedShell,
-  unexpectedClerkClientFactory,
+  failingClerkClientFactory,
 );
-const edgeDebugBaseline = await responseSnapshot(
+const edgePreviewBaseline = await responseSnapshot(
   guardedEdgeWorker,
-  edgeDebugUrl,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
-assert.doesNotMatch(edgeDebugBaseline.body, /okou-clerk-edge-session/u);
-assertNoClerkSecrets(edgeDebugBaseline);
-
-const retiredDebugFlag = await responseSnapshot(
-  guardedEdgeWorker,
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
-  edgeDebugEnvironment,
-);
-assert.deepEqual(retiredDebugFlag, edgeDebugBaseline);
-
-const duplicateFlag = await responseSnapshot(
-  guardedEdgeWorker,
-  `${edgeDebugUrl}?__bootstrap=1&__bootstrap=1`,
-  edgeDebugEnvironment,
-);
-assert.deepEqual(duplicateFlag, edgeDebugBaseline);
+assert.doesNotMatch(edgePreviewBaseline.body, /okou-clerk-edge-session/u);
+assertNoClerkSecrets(edgePreviewBaseline);
+assert.equal(failingClerkClientFactoryCalls, 1);
 
 for (const ineligibleOrigin of [
   "http://app.okou.ai",
@@ -683,38 +645,33 @@ for (const ineligibleOrigin of [
 ]) {
   const ineligibleUrl = `${ineligibleOrigin}/settings/profile`;
   const ineligibleEnvironment = {
-    ...edgeDebugEnvironment,
-    CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: ineligibleOrigin,
+    ...edgePreviewEnvironment,
+    CLERK_EDGE_AUTHORIZED_PARTY: ineligibleOrigin,
   };
   const baseline = await responseSnapshot(
     guardedEdgeWorker,
     ineligibleUrl,
     ineligibleEnvironment,
   );
-  const flagged = await responseSnapshot(
-    guardedEdgeWorker,
-    `${ineligibleUrl}?__bootstrap=1`,
-    ineligibleEnvironment,
-  );
-  assert.deepEqual(flagged, baseline);
-  assertNoClerkSecrets(flagged);
+  assert.doesNotMatch(baseline.body, /okou-clerk-edge-session/u);
+  assertNoClerkSecrets(baseline);
 }
+assert.equal(failingClerkClientFactoryCalls, 1);
 
 const missingConfig = await responseSnapshot(
   guardedEdgeWorker,
-  `${edgeDebugUrl}?__bootstrap=1`,
+  edgePreviewUrl,
   {
-    CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: edgeDebugOrigin,
-    PUBLIC_BRAND: "okou",
+    CLERK_EDGE_AUTHORIZED_PARTY: edgePreviewOrigin,
   },
 );
-assert.equal(missingConfig.body, edgeDebugBaseline.body);
-assert.equal(missingConfig.status, edgeDebugBaseline.status);
+assert.equal(missingConfig.body, edgePreviewBaseline.body);
+assert.equal(missingConfig.status, edgePreviewBaseline.status);
 assert.equal(
   new Headers(missingConfig.headers).get("Cache-Control"),
   "private, no-store",
 );
-assert.equal(unexpectedClerkClientFactoryCalls, 0);
+assert.equal(failingClerkClientFactoryCalls, 1);
 
 function clerkClientReturning(requestState) {
   return () => ({
@@ -732,8 +689,8 @@ const anonymous = await responseSnapshot(
       isAuthenticated: false,
     }),
   ),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 
 const handshake = await responseSnapshot(
@@ -747,8 +704,8 @@ const handshake = await responseSnapshot(
       isAuthenticated: false,
     }),
   ),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 
 const refresh = await responseSnapshot(
@@ -764,8 +721,8 @@ const refresh = await responseSnapshot(
       },
     }),
   ),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 
 const thrown = await responseSnapshot(
@@ -774,16 +731,16 @@ const thrown = await responseSnapshot(
       return Promise.reject(new Error("Clerk network failure"));
     },
   })),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 
 const constructorThrown = await responseSnapshot(
   workerModule.createWorker(embeddedShell, () => {
     throw new Error("Clerk SDK failure");
   }),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 
 const timedOut = await responseSnapshot(
@@ -792,8 +749,8 @@ const timedOut = await responseSnapshot(
       return new Promise(() => {});
     },
   })),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 
 for (const unchanged of [
@@ -804,8 +761,8 @@ for (const unchanged of [
   constructorThrown,
   timedOut,
 ]) {
-  assert.equal(unchanged.body, edgeDebugBaseline.body);
-  assert.equal(unchanged.status, edgeDebugBaseline.status);
+  assert.equal(unchanged.body, edgePreviewBaseline.body);
+  assert.equal(unchanged.status, edgePreviewBaseline.status);
   assert.equal(
     new Headers(unchanged.headers).get("Cache-Control"),
     "private, no-store",
@@ -816,7 +773,7 @@ for (const unchanged of [
 }
 
 const currentUserId = "user_current</script><script>alert(1)</script>";
-const currentOrgId = "org_current";
+const currentSessionId = "sess_current";
 const emptyBootstrapFetcher = () => {
   return Promise.resolve(Response.json({ responses: [] }));
 };
@@ -833,10 +790,10 @@ const authenticatedWorker = workerModule.createWorker(
     return {
       authenticateRequest(request, options) {
         if (
-          request.url !== `${edgeDebugUrl}?__bootstrap=1` ||
+          request.url !== edgePreviewUrl ||
           options.acceptsToken !== "session_token" ||
           options.authorizedParties.length !== 1 ||
-          options.authorizedParties[0] !== edgeDebugOrigin
+          options.authorizedParties[0] !== edgePreviewOrigin
         ) {
           return Promise.reject(new Error("Unexpected Clerk request options"));
         }
@@ -846,9 +803,9 @@ const authenticatedWorker = workerModule.createWorker(
           token: "session-token-must-not-render",
           toAuth() {
             return {
-              orgId: currentOrgId,
+              orgId: "org_must-not-render",
               sessionClaims: { private: "claim-must-not-render" },
-              sessionId: "sess_must-not-render",
+              sessionId: currentSessionId,
               userId: currentUserId,
             };
           },
@@ -860,8 +817,8 @@ const authenticatedWorker = workerModule.createWorker(
 );
 const authenticated = await responseSnapshot(
   authenticatedWorker,
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
 assert.equal(authenticated.status, 200);
 assert.equal(
@@ -875,104 +832,91 @@ assert.match(authenticated.body, /\\u003c\/script>/u);
 assert.doesNotMatch(authenticated.body, /<script>alert\(1\)<\/script>/u);
 assert.deepEqual(clerkEdgeSessionJson(authenticated.body), {
   userId: currentUserId,
-  orgId: currentOrgId,
+  sessionId: currentSessionId,
 });
 assert.deepEqual(Object.keys(clerkEdgeSessionJson(authenticated.body)).sort(), [
-  "orgId",
+  "sessionId",
   "userId",
 ]);
 assertNoClerkSecrets(authenticated);
 
-for (const [productionOrigin, publicBrand] of [
-  ["https://app.okou.ai", "okou"],
-  ["https://app.vm0.ai", "vm0"],
-]) {
-  const productionEdgeUrl = `${productionOrigin}/settings/profile`;
-  const productionEdgeEnvironment = {
-    CLERK_PUBLISHABLE_KEY: productionClerkPublishableKey,
-    CLERK_SECRET_KEY: "sk_live_secret-must-not-render",
-    PUBLIC_BRAND: publicBrand,
-  };
-  let clerkClientFactoryCalls = 0;
-  const productionEdgeWorker = workerModule.createWorker(
-    embeddedShell,
-    ({ publishableKey, secretKey, telemetry }) => {
-      clerkClientFactoryCalls += 1;
-      assert.equal(publishableKey, productionClerkPublishableKey);
-      assert.equal(secretKey, "sk_live_secret-must-not-render");
-      assert.equal(telemetry?.disabled, true);
-      return {
-        authenticateRequest(request, options) {
-          assert.equal(request.url, `${productionEdgeUrl}?__bootstrap=1`);
-          assert.equal(options.acceptsToken, "session_token");
-          assert.deepEqual(options.authorizedParties, [productionOrigin]);
-          return Promise.resolve({
-            headers: new Headers(),
-            isAuthenticated: true,
-            toAuth() {
-              return {
-                orgId: "org_production",
-                userId: "user_production",
-              };
-            },
-          });
-        },
-      };
-    },
-    emptyBootstrapFetcher,
-  );
-  const productionBaseline = await responseSnapshot(
-    productionEdgeWorker,
-    productionEdgeUrl,
-    productionEdgeEnvironment,
-  );
-  assert.equal(clerkClientFactoryCalls, 0);
-  assert.doesNotMatch(productionBaseline.body, /okou-clerk-edge-session/u);
+const productionOrigin = "https://app.okou.ai";
+const productionEdgeUrl = `${productionOrigin}/settings/profile`;
+const productionEdgeEnvironment = {
+  CLERK_PUBLISHABLE_KEY: productionClerkPublishableKey,
+  CLERK_SECRET_KEY: "sk_live_secret-must-not-render",
+};
+let clerkClientFactoryCalls = 0;
+const productionEdgeWorker = workerModule.createWorker(
+  embeddedShell,
+  ({ publishableKey, secretKey, telemetry }) => {
+    clerkClientFactoryCalls += 1;
+    assert.equal(publishableKey, productionClerkPublishableKey);
+    assert.equal(secretKey, "sk_live_secret-must-not-render");
+    assert.equal(telemetry?.disabled, true);
+    return {
+      authenticateRequest(request, options) {
+        assert.equal(request.url, productionEdgeUrl);
+        assert.equal(options.acceptsToken, "session_token");
+        assert.deepEqual(options.authorizedParties, [productionOrigin]);
+        return Promise.resolve({
+          headers: new Headers(),
+          isAuthenticated: true,
+          toAuth() {
+            return {
+              sessionId: "sess_production",
+              userId: "user_production",
+            };
+          },
+        });
+      },
+    };
+  },
+  emptyBootstrapFetcher,
+);
+const productionAuthenticated = await responseSnapshot(
+  productionEdgeWorker,
+  productionEdgeUrl,
+  productionEdgeEnvironment,
+);
+assert.equal(clerkClientFactoryCalls, 1);
+assert.deepEqual(clerkEdgeSessionJson(productionAuthenticated.body), {
+  userId: "user_production",
+  sessionId: "sess_production",
+});
+assert.equal(
+  new Headers(productionAuthenticated.headers).get("Cache-Control"),
+  "private, no-store",
+);
+assertNoClerkSecrets(productionAuthenticated);
 
-  const productionAuthenticated = await responseSnapshot(
-    productionEdgeWorker,
-    `${productionEdgeUrl}?__bootstrap=1`,
-    productionEdgeEnvironment,
-  );
-  assert.equal(clerkClientFactoryCalls, 1);
-  assert.deepEqual(clerkEdgeSessionJson(productionAuthenticated.body), {
-    userId: "user_production",
-    orgId: "org_production",
-  });
-  assert.equal(
-    new Headers(productionAuthenticated.headers).get("Cache-Control"),
-    "private, no-store",
-  );
-  assertNoClerkSecrets(productionAuthenticated);
-}
-
-const authenticatedWithoutOrganization = await responseSnapshot(
+const authenticatedWithoutSession = await responseSnapshot(
   workerModule.createWorker(
     embeddedShell,
     clerkClientReturning({
       headers: new Headers(),
       isAuthenticated: true,
       toAuth() {
-        return { userId: "user_without_organization", orgId: null };
+        return { userId: "user_without_session", sessionId: null };
       },
     }),
     emptyBootstrapFetcher,
   ),
-  `${edgeDebugUrl}?__bootstrap=1`,
-  edgeDebugEnvironment,
+  edgePreviewUrl,
+  edgePreviewEnvironment,
 );
-assert.deepEqual(clerkEdgeSessionJson(authenticatedWithoutOrganization.body), {
-  userId: "user_without_organization",
-  orgId: null,
-});
+assert.doesNotMatch(
+  authenticatedWithoutSession.body,
+  /okou-clerk-edge-session/u,
+);
 assert.equal(
-  new Headers(authenticatedWithoutOrganization.headers).get("Cache-Control"),
+  new Headers(authenticatedWithoutSession.headers).get("Cache-Control"),
   "private, no-store",
 );
-assertNoClerkSecrets(authenticatedWithoutOrganization);
+assertNoClerkSecrets(authenticatedWithoutSession);
 
 const bootstrapPagePath =
-  "/agents/agent-1/chat?__bootstrap=1&x-vercel-protection-bypass=query-secret&keep=value";
+  "/agents/agent-1/chat?x-vercel-protection-bypass=query-secret&keep=value";
 let observedBootstrapRequest = null;
 const bootstrapWorker = workerModule.createWorker(
   embeddedShell,
@@ -980,7 +924,7 @@ const bootstrapWorker = workerModule.createWorker(
     headers: new Headers(),
     isAuthenticated: true,
     toAuth() {
-      return { userId: "user_bootstrap", orgId: "org_bootstrap" };
+      return { userId: "user_bootstrap", sessionId: "sess_bootstrap" };
     },
   }),
   (input, init) => {
@@ -1007,8 +951,8 @@ const bootstrapWorker = workerModule.createWorker(
 );
 const bootstrapped = await responseSnapshot(
   bootstrapWorker,
-  `${edgeDebugOrigin}${bootstrapPagePath}`,
-  edgeDebugEnvironment,
+  `${edgePreviewOrigin}${bootstrapPagePath}`,
+  edgePreviewEnvironment,
 );
 assert.equal(observedBootstrapRequest?.url.origin, previewOrigin);
 assert.equal(observedBootstrapRequest?.url.pathname, "/api/bootstrap");
@@ -1016,7 +960,10 @@ assert.equal(
   observedBootstrapRequest?.url.searchParams.get("path"),
   bootstrapPagePath,
 );
-assert.equal(observedBootstrapRequest?.headers.get("Origin"), edgeDebugOrigin);
+assert.equal(
+  observedBootstrapRequest?.headers.get("Origin"),
+  edgePreviewOrigin,
+);
 assert.equal(
   observedBootstrapRequest?.headers.get("Cookie"),
   "__session=jwt-cookie-must-not-render; __clerk_db_jwt=dev-browser-jwt-must-not-render",
@@ -1038,7 +985,7 @@ assert.ok(
 
 const embeddedServiceWorker = await embeddedWorker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
-  { PUBLIC_BRAND: "okou" },
+  {},
 );
 assert.equal(
   await embeddedServiceWorker.text(),
@@ -1054,34 +1001,26 @@ const embeddedIcon = await embeddedWorker.fetch(
   new Request(
     "https://pr-25304-app-okou-app-preview.vm0.workers.dev/icons/icon-192.png",
   ),
-  { PUBLIC_BRAND: "okou" },
+  {},
 );
 assert.equal(embeddedIcon.headers.get("content-type"), "image/png");
 assert.equal(await embeddedIcon.text(), "icon-192");
 
-const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
-assert.equal(htmlAttribute(untrustedSuffix.html, "data-app-brand-name"), "VM0");
-
-for (const [origin, brandName, description] of [
-  ["https://app.vm0.ai", "VM0", vm0Description],
-  ["https://app.okou.ai", "Okou", okouDescription],
-]) {
-  const response = await worker.fetch(
-    new Request(`${origin}/manifest.webmanifest`),
-    assetEnvironment(),
-  );
-  const manifest = await response.json();
-  assert.equal(response.headers.get("content-encoding"), null);
-  assert.equal(response.headers.get("etag"), null);
-  assert.equal(
-    response.headers.get("content-type"),
-    "application/manifest+json; charset=UTF-8",
-  );
-  assert.equal(manifest.name, brandName);
-  assert.equal(manifest.short_name, brandName);
-  assert.equal(manifest.description, description);
-  assert.equal(manifest.icons.length, 3);
-}
+const manifestResponse = await worker.fetch(
+  new Request("https://app.okou.ai/manifest.webmanifest"),
+  assetEnvironment(),
+);
+const manifest = await manifestResponse.json();
+assert.equal(manifestResponse.headers.get("content-encoding"), null);
+assert.equal(manifestResponse.headers.get("etag"), null);
+assert.equal(
+  manifestResponse.headers.get("content-type"),
+  "application/manifest+json; charset=UTF-8",
+);
+assert.equal(manifest.name, "Okou");
+assert.equal(manifest.short_name, "Okou");
+assert.equal(manifest.description, okouDescription);
+assert.equal(manifest.icons.length, 3);
 
 let observedR2Key = null;
 let observedR2Options = null;
@@ -1226,40 +1165,9 @@ assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),
   null,
 );
-const productionHtml = await production.response.text();
-
-const vm0SharedOnOkouHost = await requestSharedPage({
-  appOrigin: "https://app.okou.ai",
-  metaResponse() {
-    return Response.json({
-      title: "Legacy conversation",
-      publicBrand: "vm0",
-    });
-  },
-});
-assert.equal(vm0SharedOnOkouHost.response.status, 200);
-const vm0SharedHtml = await vm0SharedOnOkouHost.response.text();
-assert.equal(documentTitle(vm0SharedHtml), "Legacy conversation | VM0");
-assert.equal(htmlAttribute(vm0SharedHtml, "data-app-brand-name"), "VM0");
-assert.equal(
-  metaContent(vm0SharedHtml, "property", "og:url"),
-  `https://app.vm0.ai/share/threads/${sharedThreadId}`,
-);
-assert.equal(
-  metaContent(vm0SharedHtml, "property", "og:image"),
-  "https://static.vm0.io/web/og-image.png",
-);
-
-const missingBrandSharedPage = await requestSharedPage({
-  appOrigin: "https://app.okou.ai",
-  metaResponse() {
-    return Response.json({ title: "Missing-brand conversation" });
-  },
-});
-assert.equal(missingBrandSharedPage.response.status, 502);
 
 const missing = await requestSharedPage({
-  appOrigin: "https://app.vm0.ai",
+  appOrigin: "https://app.okou.ai",
   metaResponse() {
     return Response.json(
       { error: { code: "NOT_FOUND", message: "Not found" } },
@@ -1270,7 +1178,7 @@ const missing = await requestSharedPage({
 assert.equal(missing.response.status, 404);
 assert.equal(
   missing.observedUrl,
-  `https://api.vm0.ai/api/shared-threads/${sharedThreadId}/meta`,
+  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   missing.response.headers.get("cache-control"),
@@ -1278,7 +1186,10 @@ assert.equal(
 );
 assert.equal(missing.response.headers.get("x-robots-tag"), "noindex, nofollow");
 const missingHtml = await missing.response.text();
-assert.equal(documentTitle(missingHtml), "Shared conversation not found | VM0");
+assert.equal(
+  documentTitle(missingHtml),
+  "Shared conversation not found | Okou",
+);
 assert.equal(metaContent(missingHtml, "property", "og:title"), null);
 assert.equal(metaContent(missingHtml, "name", "twitter:title"), null);
 

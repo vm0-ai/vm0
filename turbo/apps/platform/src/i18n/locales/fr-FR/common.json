@@ -1055,19 +1055,35 @@
       "continuation": {
         "activationErrorDescription": "Nous n'avons pas pu terminer la connexion. Recommencez et réessayez.",
         "activationErrorTitle": "La connexion n'a pas pu être terminée",
+        "backupDescription": "Conservez ces codes en lieu sûr. Chaque code peut être utilisé une fois si vous perdez l’accès à votre téléphone.",
+        "backupTitle": "Enregistrez vos codes de secours",
         "chooseOrganizationDescription": "Choisissez une organisation pour continuer vers {{brandName}}.",
         "chooseOrganizationTitle": "Choisir une organisation",
         "completeDescription": "Redirection vers {{brandName}}.",
         "completeTitle": "Connexion terminée",
+        "createOrganization": "Créer une organisation",
+        "invitationError": "Cette invitation n’a pas pu être acceptée. Réessayez ou demandez une nouvelle invitation si ce lien a expiré.",
+        "joinOrganization": "Rejoindre {{organizationName}}",
         "loadingDescription": "Vérification de la prochaine étape requise pour votre compte.",
         "loadingTitle": "Finalisation de la connexion",
         "noOrganizationsDescription": "Aucune organisation n'est disponible pour ce compte. Demandez l'accès à un administrateur de l'organisation, puis recommencez.",
         "noOrganizationsTitle": "Aucune organisation disponible",
+        "organizationName": "Nom de l’organisation",
+        "passwordTaskError": "Votre mot de passe n’a pas pu être mis à jour. Choisissez un mot de passe plus fort et réessayez.",
+        "phoneNumberLabel": "Numéro de téléphone",
         "recoveryAction": "Recommencer",
+        "savedCodes": "J’ai enregistré mes codes",
         "secondFactorDescription": "Cette connexion nécessite une étape de vérification supplémentaire que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "secondFactorTitle": "Vérification supplémentaire requise",
+        "securityDescription": "Ajoutez un deuxième moyen de vérifier votre identité.",
+        "securityTitle": "Configurer la validation en deux étapes",
         "selectOrganization": "Continuer avec {{organizationName}}",
+        "sendCode": "Envoyer le code",
+        "setupKey": "Clé de configuration",
+        "setupKeyDescription": "Ajoutez cette clé de configuration à votre application d’authentification, puis saisissez le code généré.",
         "signedInAs": "Connecté en tant que {{identifier}}",
+        "taskComplete": "Vos paramètres de sécurité sont enregistrés. Continuez pour terminer la connexion.",
+        "taskError": "Cette étape n’a pas pu être terminée. Vérifiez vos informations et réessayez.",
         "unsupportedDescription": "Votre compte a renvoyé une étape d'authentification que cette page ne prend pas en charge. Recommencez pour essayer une autre méthode de connexion.",
         "unsupportedTitle": "Étape de connexion indisponible"
       },
@@ -1884,6 +1900,19 @@
     "composer": {
       "agentSuggestions": "Agents",
       "configureModel": "Configurer le modèle",
+      "create": {
+        "chooseStyle": "Choisir un style",
+        "chooseTemplate": "Choisir un modèle",
+        "exit": "Quitter le mode création",
+        "image": "Créer une image",
+        "imagePlaceholder": "Décrivez l’image à créer…",
+        "presentation": "Créer une présentation",
+        "presentationPlaceholder": "Quel est le sujet de votre présentation ?",
+        "settingsAdjusted": "Certains paramètres vidéo ont été adaptés à ce modèle",
+        "title": "Créer",
+        "video": "Créer une vidéo",
+        "videoPlaceholder": "Décrivez la vidéo à créer…"
+      },
       "createWorkflow": "Créer un workflow",
       "imageModelForThisChat": "Modèle d’image pour cette discussion",
       "message": "Message",
@@ -1941,7 +1970,6 @@
       "accountForThread": "Compte pour ce fil",
       "add": "Ajouter {{connectorName}}",
       "addConnectors": "Ajouter des connecteurs",
-      "authorizationFailed": "{{connectorName}} connecté mais n'a pas pu être autorisé pour {{agentName}}",
       "authorized": "{{connectorName}} connecté et autorisé pour {{agentName}}",
       "available_one": "Connecteurs disponibles à connecter ({{count}})",
       "available_many": "Connecteurs disponibles à connecter ({{count}})",
@@ -2046,10 +2074,7 @@
       },
       "format": {
         "auto": "Automatique",
-        "filter": "Filtrer les références de style par format",
-        "landscape": "Paysage · 16:9",
-        "output": "Format de sortie",
-        "portrait": "Portrait · 9:16"
+        "output": "Format de sortie"
       },
       "heading": "Créez votre vidéo d’introduction",
       "help": "Ajoutez des contenus, décrivez votre objectif ou faites les deux. Okou s’occupe du reste.",
@@ -2063,8 +2088,17 @@
       },
       "style": {
         "auto": "Laisser Okou choisir",
-        "autoDescription": "Adapter la direction visuelle à vos consignes et contenus",
-        "emptyFormat": "Aucune référence de style ne correspond à ce format.",
+        "browseGroups": "Parcourir par style",
+        "description": "Le style définit les scènes, les transitions, les textes superposés et le rythme.",
+        "groups": {
+          "cinematic": "Cinéma et photographie",
+          "handmade": "Artisanat et matières",
+          "iconic-artist": "Art et design",
+          "other": "Autres styles",
+          "pop-culture": "Culture pop",
+          "print": "Impression et édition",
+          "retro-tech": "Technologie rétro et interfaces"
+        },
         "heading": "Choisir une référence de style",
         "label": "Référence de style",
         "preview": "Aperçu de {{title}}",
@@ -2200,6 +2234,7 @@
     "run": {
       "automatedRun": "Exécution automatisée",
       "collapseGroupedHistory": "Réduire l'historique des exécutions groupées",
+      "collapseHistoryMessage": "Réduire le message de l'historique : {{message}}",
       "collapseWorkHistory": "Réduire l'historique du travail",
       "creditUsage": "Utilisation du crédit",
       "done": {
@@ -5019,12 +5054,9 @@
         "loading": "Chargement des modèles...",
         "menu": {
           "adjustSettings": "Ajuster les paramètres de {{model}}",
-          "backToChatModels": "Retour aux modèles de chat",
           "backToModels": "Retour aux modèles",
-          "cancel": "Annuler",
           "changeModel": "Changer le modèle {{category}}, {{model}}",
-          "chatSettings": "Paramètres du chat",
-          "confirm": "Confirmer"
+          "chatSettings": "Paramètres du chat"
         },
         "models": "Modèles",
         "noConfiguredModels": "Aucun modèle configuré",

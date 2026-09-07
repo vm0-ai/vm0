@@ -39,10 +39,8 @@ import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import {
-  introVideoAvatarPickerSignals,
-  introVideoStylePickerSignals,
-} from "../../signals/okou-page/intro-video-catalog-picker.ts";
+import { introVideoAvatarPickerSignals } from "../../signals/okou-page/intro-video-catalog-picker.ts";
+import { introVideoStyleGallerySignals } from "../../signals/okou-page/intro-video-style-gallery.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import { groupIntroVideoAvatars } from "../../signals/okou-page/intro-video-avatar-groups.ts";
 import {
@@ -61,7 +59,10 @@ import {
 } from "./avatar-template-picker.tsx";
 import { IntroVideoAvatarGroupCard } from "./intro-video-avatar-group-card.tsx";
 import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
-import { IntroVideoStyleGallery } from "./intro-video-style-gallery.tsx";
+import {
+  IntroVideoStyleGallery,
+  IntroVideoStyleGroupNav,
+} from "./intro-video-style-gallery.tsx";
 
 function formatBytes(size: number): string {
   if (size < 1024) {
@@ -388,56 +389,68 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
   );
 }
 
+function StyleAutoOption() {
+  const { t } = useTranslation();
+  const selection = useGet(introVideoWizardSignals.style$);
+  const setSelection = useSet(introVideoWizardSignals.setStyle$);
+  const close = useSet(introVideoWizardSignals.setPicker$);
+  const selected = selection.kind === "auto";
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={cn(
+        "flex shrink-0 items-center gap-2.5 rounded-lg border bg-card p-2.5 text-left transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:mb-2 sm:w-full",
+        selected ? "border-primary bg-primary/5" : "border-border",
+      )}
+      onClick={() => {
+        setSelection({ kind: "auto" });
+        close(null);
+      }}
+    >
+      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary/10 text-brand-text">
+        {selected ? <Check size={15} /> : <Sparkles size={15} />}
+      </span>
+      <strong className="truncate text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.chat.introVideo.style.auto;
+        })}
+      </strong>
+    </button>
+  );
+}
+
+function StylePickerBody() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+      <div className="flex shrink-0 flex-row gap-2 overflow-x-auto border-b border-border p-3 sm:w-60 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r">
+        <StyleAutoOption />
+        <IntroVideoStyleGroupNav />
+      </div>
+      <div
+        data-intro-video-catalog-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
+      >
+        <StylePicker />
+      </div>
+    </div>
+  );
+}
+
 function StylePicker() {
   const { t } = useTranslation();
   const selection = useGet(introVideoWizardSignals.style$);
   const setSelection = useSet(introVideoWizardSignals.setStyle$);
   const close = useSet(introVideoWizardSignals.setPicker$);
-  const catalog = useLoadable(introVideoStylePickerSignals.catalogPage$);
-  const lastCatalog = useLastResolved(
-    introVideoStylePickerSignals.catalogPage$,
-  );
-  const generation = useGet(introVideoStylePickerSignals.generation$);
-  const loadMoreState = useLoadable(introVideoStylePickerSignals.paging$);
-  const loadMore = useSet(introVideoStylePickerSignals.loadMore$);
-  const setSentinelRef = useSet(introVideoStylePickerSignals.setSentinelRef$);
-  const reload = useSet(introVideoStylePickerSignals.reload$);
-  const pageSignal = useGet(pageSignal$);
-  const handleLoadMore = () => {
-    detach(loadMore(pageSignal), Reason.DomCallback, "load more HeyGen styles");
-  };
-  const visible =
-    catalog.state === "hasData"
-      ? catalog.data
-      : lastCatalog?.generation === generation
-        ? lastCatalog
-        : undefined;
-  const choose = (next: IntroVideoStyleSelection) => {
-    setSelection(next);
-    close(null);
-  };
+  const catalog = useLoadable(introVideoStyleGallerySignals.catalog$);
+  const reload = useSet(introVideoStyleGallerySignals.reload$);
   return (
     <div className="grid gap-3">
-      <div className="grid gap-2">
-        <UtilityOption
-          title={t(($) => {
-            return $.chat.introVideo.style.auto;
-          })}
-          description={t(($) => {
-            return $.chat.introVideo.style.autoDescription;
-          })}
-          icon={<Sparkles size={17} />}
-          selected={selection.kind === "auto"}
-          onSelect={() => {
-            choose({ kind: "auto" });
-          }}
-        />
-      </div>
       {catalog.state === "hasError" ? (
         <CatalogError onRetry={reload} />
-      ) : visible === undefined ? (
+      ) : catalog.state === "loading" ? (
         <CatalogSkeleton />
-      ) : visible.items.length === 0 ? (
+      ) : catalog.data.length === 0 ? (
         <CatalogMessage>
           {t(($) => {
             return $.chat.introVideo.catalog.empty;
@@ -445,24 +458,16 @@ function StylePicker() {
         </CatalogMessage>
       ) : (
         <IntroVideoStyleGallery
-          styles={visible.items}
-          hasNext={visible.hasNext}
+          styles={catalog.data}
           selectedStyleId={
             selection.kind === "catalog" ? selection.style.id : undefined
           }
           onSelect={(style) => {
-            choose({ kind: "catalog", style });
+            setSelection({ kind: "catalog", style });
+            close(null);
           }}
         />
       )}
-      <IntroVideoCatalogPagination
-        hasNext={visible?.hasNext ?? false}
-        loading={loadMoreState.state === "loading"}
-        error={loadMoreState.state === "hasError" ? loadMoreState.error : null}
-        onLoadMore={handleLoadMore}
-        onReload={reload}
-        onSentinelRef={setSentinelRef}
-      />
     </div>
   );
 }
@@ -716,17 +721,27 @@ function PickerDialog({
           <DialogTitle className="text-base font-semibold">
             {pickerTitle(t, picker)}
           </DialogTitle>
-        </DialogHeader>
-        <div
-          data-intro-video-catalog-scroll=""
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
-        >
-          {picker === "style" ? <StylePicker /> : null}
-          {picker === "avatar" ? <AvatarPicker /> : null}
-          {picker === "voice" ? (
-            <VoicePicker avatar={avatar} sources={sources} />
+          {picker === "style" ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t(($) => {
+                return $.chat.introVideo.style.description;
+              })}
+            </p>
           ) : null}
-        </div>
+        </DialogHeader>
+        {picker === "style" ? (
+          <StylePickerBody />
+        ) : (
+          <div
+            data-intro-video-catalog-scroll=""
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6"
+          >
+            {picker === "avatar" ? <AvatarPicker /> : null}
+            {picker === "voice" ? (
+              <VoicePicker avatar={avatar} sources={sources} />
+            ) : null}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

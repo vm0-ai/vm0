@@ -188,8 +188,8 @@ fn materialize_config(
         .map_err(|error| format!("write run payload: {error}"))?;
 
     let log_path = tmp.join(format!("{}-{}.log", key.name, case.name));
-    guest_common::log::clear_system_log_file();
-    guest_common::log::set_system_log_file(&log_path);
+    guest_telemetry::log::clear_system_log_file();
+    guest_telemetry::log::set_system_log_file(&log_path);
     let config = GuestConfig::from_raw(GuestConfigRaw {
         run_id: format!("guest-agent-canonical-tuning-{}-{}", key.name, case.name),
         home: Some(tmp.to_string_lossy().into_owned()),
@@ -197,7 +197,7 @@ fn materialize_config(
         run_payload_file: payload_path.to_string_lossy().into_owned(),
         ..raw
     });
-    guest_common::log::clear_system_log_file();
+    guest_telemetry::log::clear_system_log_file();
     let config = config?;
     let log = match std::fs::read_to_string(log_path) {
         Ok(log) => log,
@@ -278,6 +278,6 @@ fn process_env_reads_only_canonical_guest_agent_tuning_keys() -> TestResult {
     }
 
     clear_tuning_env();
-    guest_common::log::clear_system_log_file();
+    guest_telemetry::log::clear_system_log_file();
     Ok(())
 }

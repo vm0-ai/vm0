@@ -456,10 +456,10 @@ body {
   --okou-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* A grey veil is invisible on a dark page, so the dark theme casts the same
-   shape in black instead. The border step carries the state either way. */
+/* A wide black shadow reads as a page gradient on dark surfaces. The border
+   step carries the focus state without adding another layer behind the card. */
 :where([data-theme="dark"]) .okou-app {
-  --okou-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+  --okou-composer-focus-veil: none;
 }
 
 .okou-app[data-gradient-color-themes] {
@@ -471,7 +471,7 @@ body {
 }
 
 :where([data-theme="dark"]) .okou-app[data-gradient-color-themes] {
-  --okou-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+  --okou-composer-focus-veil: none;
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
@@ -614,6 +614,77 @@ body {
 }
 :where([data-theme="dark"]) .okou-nav {
   --color-sidebar: hsl(var(--sidebar));
+}
+
+/* Sidebar thread titles.
+
+   A title that does not fit fades out instead of ending in an ellipsis, and
+   hovering or focusing its row scrolls the text to its end and stops there.
+
+   `--okou-nav-title-overflow` is the only measured input; the mask and the
+   travel are both derived from it, which is what makes an edge fade exactly
+   when content is cut off at it: at rest only the right edge is masked, at the
+   end of the travel only the left one, and a title that fits gets neither.
+   `sidebarThreadTitleOverflowRef$` writes it together with the duration. */
+@property --okou-nav-title-shift {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.okou-nav-title {
+  --okou-nav-title-overflow: 0px;
+  --okou-nav-title-duration: 780ms;
+  --okou-nav-title-fade: 24px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000
+      clamp(
+        0px,
+        calc(-1 * var(--okou-nav-title-shift)),
+        var(--okou-nav-title-fade)
+      ),
+    #000
+      calc(
+        100% -
+          clamp(
+            0px,
+            calc(var(--okou-nav-title-overflow) + var(--okou-nav-title-shift)),
+            var(--okou-nav-title-fade)
+          )
+      ),
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  transition: --okou-nav-title-shift 660ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.okou-nav-title > span {
+  display: block;
+  width: max-content;
+  white-space: nowrap;
+  transform: translateX(var(--okou-nav-title-shift));
+}
+
+/* The delay keeps a pointer sweeping down the list from setting every row in
+   motion; leaving has none, so the title snaps back under the next row. */
+.okou-nav-title-row:hover .okou-nav-title,
+.okou-nav-title-row:focus-visible .okou-nav-title {
+  --okou-nav-title-shift: calc(-1 * var(--okou-nav-title-overflow));
+  transition: --okou-nav-title-shift var(--okou-nav-title-duration)
+    cubic-bezier(0.33, 0, 0.2, 1) 750ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .okou-nav-title-row:hover .okou-nav-title,
+  .okou-nav-title-row:focus-visible .okou-nav-title {
+    --okou-nav-title-shift: 0px;
+  }
 }
 
 /* Morandi outline buttons */
@@ -1694,7 +1765,7 @@ details > summary {
   width: 82px;
 }
 
-.owf-diagram-node-zero {
+.owf-diagram-node-okou {
   top: 45px;
   left: 277px;
   width: 72px;

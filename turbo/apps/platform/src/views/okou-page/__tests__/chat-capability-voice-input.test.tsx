@@ -192,7 +192,7 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
   const response = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", async () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", async () => {
     requested.resolve();
     await response.promise;
     return HttpResponse.json({
@@ -267,27 +267,30 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   context.mocks.browser.voiceInput({ rms: 0.12 });
   vi.stubGlobal("MediaRecorder", undefined);
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
-    const body = await request.formData();
-    expect(body.get("lastAssistantMessage")).toBe(
-      "Use LaunchPad for the rollout.",
-    );
-    expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
-      before: "Opening  closing",
-      selected: "",
-      after: "",
-    });
-    const files = body.getAll("file");
-    expect(files).toHaveLength(1);
-    expect(files[0]).toMatchObject({ type: "audio/wav", size: 32_044 });
-    transcriptionStarted.resolve(undefined);
-    await transcriptionReady.promise;
-    return HttpResponse.json({
-      transcript: "um send the launch update tomorrow",
-      polishedText: "Send the launch update tomorrow.",
-      language: "en-US",
-    });
-  });
+  context.mocks.http.post(
+    "*/api/voice-io/transcribe/segment",
+    async ({ request }) => {
+      const body = await request.formData();
+      expect(body.get("lastAssistantMessage")).toBe(
+        "Use LaunchPad for the rollout.",
+      );
+      expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+        before: "Opening  closing",
+        selected: "",
+        after: "",
+      });
+      const files = body.getAll("file");
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({ type: "audio/wav", size: 32_044 });
+      transcriptionStarted.resolve(undefined);
+      await transcriptionReady.promise;
+      return HttpResponse.json({
+        transcript: "um send the launch update tomorrow",
+        polishedText: "Send the launch update tomorrow.",
+        language: "en-US",
+      });
+    },
+  );
   installRunChat({
     chatEvents: [
       assistantEvent({
@@ -350,7 +353,7 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     context.mocks.browser.voiceInput({ rms: 0.12 });
     installAvailableVoiceQuota();
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         const body = await request.formData();
         expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
@@ -388,19 +391,22 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
 test("Keep paragraph boundaries and readable mention names in voice context", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
-    const body = await request.formData();
-    expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
-      before: "First paragraph\n\nAsk @Run Agent ",
-      selected: "old",
-      after: " about @Run conversation\nLast paragraph",
-    });
-    return HttpResponse.json({
-      transcript: "new",
-      polishedText: "new",
-      language: "en-US",
-    });
-  });
+  context.mocks.http.post(
+    "*/api/voice-io/transcribe/segment",
+    async ({ request }) => {
+      const body = await request.formData();
+      expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+        before: "First paragraph\n\nAsk @Run Agent ",
+        selected: "old",
+        after: " about @Run conversation\nLast paragraph",
+      });
+      return HttpResponse.json({
+        transcript: "new",
+        polishedText: "new",
+        language: "en-US",
+      });
+    },
+  );
   installRunChat();
   context.mocks.api(agentDraftContract.get, ({ respond }) => {
     return respond(200, {
@@ -448,19 +454,22 @@ test("Bound editor context around the selection without trimming its whitespace"
   const draft = before + selected + after;
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
-    const body = await request.formData();
-    expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
-      before: `${"a".repeat(991)} leading `,
-      selected: "s".repeat(1000),
-      after: ` trailing ${"z".repeat(990)}`,
-    });
-    return HttpResponse.json({
-      transcript: "replacement",
-      polishedText: "replacement",
-      language: "en-US",
-    });
-  });
+  context.mocks.http.post(
+    "*/api/voice-io/transcribe/segment",
+    async ({ request }) => {
+      const body = await request.formData();
+      expect(JSON.parse(String(body.get("editorContext")))).toStrictEqual({
+        before: `${"a".repeat(991)} leading `,
+        selected: "s".repeat(1000),
+        after: ` trailing ${"z".repeat(990)}`,
+      });
+      return HttpResponse.json({
+        transcript: "replacement",
+        polishedText: "replacement",
+        language: "en-US",
+      });
+    },
+  );
   installRunChat();
   await setupPage({
     context,
@@ -546,7 +555,7 @@ test("Keep a silent voice draft recording until the user stops it", async () => 
     },
   });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     multimodalCalls += 1;
     return HttpResponse.json({
       transcript: "Extended voice draft",
@@ -635,37 +644,40 @@ test.each([
   const recordings: ArrayBuffer[] = [];
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", async ({ request }) => {
-    const body = await request.formData();
-    const file = body.get("file");
-    if (!(file instanceof File)) {
-      throw new Error("Expected the original voice recording");
-    }
-    recordings.push(await file.arrayBuffer());
-    transcriptionAttempts += 1;
-    if (transcriptionAttempts <= 2) {
-      if (transcriptionAttempts === 1) {
-        transcriptionFailed.resolve(undefined);
-      } else {
-        retryRequest.resolve();
-        await retryResponse.promise;
+  context.mocks.http.post(
+    "*/api/voice-io/transcribe/segment",
+    async ({ request }) => {
+      const body = await request.formData();
+      const file = body.get("file");
+      if (!(file instanceof File)) {
+        throw new Error("Expected the original voice recording");
       }
-      return HttpResponse.json(
-        {
-          error: {
-            code: failure.code,
-            message: failure.message,
+      recordings.push(await file.arrayBuffer());
+      transcriptionAttempts += 1;
+      if (transcriptionAttempts <= 2) {
+        if (transcriptionAttempts === 1) {
+          transcriptionFailed.resolve(undefined);
+        } else {
+          retryRequest.resolve();
+          await retryResponse.promise;
+        }
+        return HttpResponse.json(
+          {
+            error: {
+              code: failure.code,
+              message: failure.message,
+            },
           },
-        },
-        { status: failure.status },
-      );
-    }
-    return HttpResponse.json({
-      transcript: "raw launch update",
-      polishedText: "Polished launch update.",
-      language: "en-US",
-    });
-  });
+          { status: failure.status },
+        );
+      }
+      return HttpResponse.json({
+        transcript: "raw launch update",
+        polishedText: "Polished launch update.",
+        language: "en-US",
+      });
+    },
+  );
   installRunChat();
 
   await setupPage({
@@ -733,7 +745,7 @@ test.each([
     context.mocks.browser.voiceInput({ rms: 0.12 });
     installAvailableVoiceQuota();
     context.mocks.http.post(
-      "*/api/voice-io/transcribe",
+      "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
         const body = await request.formData();
         const file = body.get("file");
@@ -802,7 +814,7 @@ test.each([
 test("Keep a saved voice recording isolated from another signed-in user", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json(
       {
         error: {
@@ -840,7 +852,7 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
 test("Discard a failed recording without removing typed notes", async () => {
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json(
       {
         error: {
@@ -936,7 +948,7 @@ test("Release the microphone and allow retry when PCM startup fails", async () =
     rms: 0.12,
   });
   installAvailableVoiceQuota();
-  context.mocks.http.post("*/api/voice-io/transcribe", () => {
+  context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
     return HttpResponse.json({
       transcript: "new voice note",
       polishedText: "New voice note.",
@@ -998,9 +1010,12 @@ test.each(["", "Keep the existing draft"])(
     context.mocks.browser.voiceInput({ rms: 0 });
     installAvailableVoiceQuota();
     installRunChat();
-    context.mocks.http.post(`*${voiceIoTranscribeContract.post.path}`, () => {
-      return new HttpResponse(null, { status: 204 });
-    });
+    context.mocks.http.post(
+      `*${voiceIoTranscribeContract.segment.path}`,
+      () => {
+        return new HttpResponse(null, { status: 204 });
+      },
+    );
 
     await setupPage({
       context,

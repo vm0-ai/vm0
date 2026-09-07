@@ -65,14 +65,14 @@ struct SandboxOpsOverrideGuard;
 
 impl SandboxOpsOverrideGuard {
     fn set(path: &str) -> Self {
-        guest_common::telemetry::set_sandbox_ops_log_file(path);
+        guest_telemetry::telemetry::set_sandbox_ops_log_file(path);
         Self
     }
 }
 
 impl Drop for SandboxOpsOverrideGuard {
     fn drop(&mut self) {
-        guest_common::telemetry::clear_sandbox_ops_log_file();
+        guest_telemetry::telemetry::clear_sandbox_ops_log_file();
     }
 }
 

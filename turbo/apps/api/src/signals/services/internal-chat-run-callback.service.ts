@@ -5119,10 +5119,8 @@ const createQueuedRunForChatCallback$ = command(
     const runResult = settledRunResult.value;
     if (isQueueFirstRunClaimLost(runResult)) {
       signal.throwIfAborted();
-      log.warn("Auto-send lost the queued-message launch claim", {
-        threadId: input.runInput.threadId,
-        userMessageId: input.runInput.queuedMessage.id,
-      });
+      // Claim loss is expected exactly-one-winner arbitration; structured
+      // queue-first timing telemetry remains the diagnostic source.
       return null;
     }
     if (

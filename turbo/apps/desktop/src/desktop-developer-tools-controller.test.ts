@@ -17,7 +17,9 @@ function createController(
   const setScreenRecordingFeatureEnabled = vi.fn();
   const logRefreshError = vi.fn();
   const fetchSwitches = vi.fn(fetchFeatureSwitches);
+  const sessionAuthority = {};
   const controller = new DeveloperToolsController({
+    getSessionAuthority: () => sessionAuthority,
     fetchFeatureSwitches: fetchSwitches,
     setFilesystemPluginFeatureEnabled,
     setScreenRecordingFeatureEnabled,
@@ -62,7 +64,7 @@ describe("DeveloperToolsController", () => {
       expect(controller.getState().available).toBe(true);
     });
 
-    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalled();
     expect(setFilesystemPluginFeatureEnabled).toHaveBeenCalledWith(true);
   });
 

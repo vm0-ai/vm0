@@ -327,8 +327,7 @@ impl IdleParkRequest {
         } = self.parts;
 
         let metadata = IdleSandboxMetadata {
-            kind: super::entry::IdleSandboxKind::Exact,
-            reuse_key,
+            identity: super::entry::IdleSandboxIdentity::Exact(reuse_key),
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -394,13 +393,17 @@ async fn park_idle_transition(
         .map(|verification| verification.runtime_dir.to_owned());
 
     if let Some(promotion) = workspace_promotion.as_ref()
-        && let Err(mismatch) =
-            promotion.validate_stored_cache_identity(WorkspaceImagePromotionIdentityRequest {
-                sandbox_id: metadata.sandbox_id,
-                profile_name: &metadata.profile_name,
-                reuse_key: metadata.reuse_key(),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: workspace_image_size_bytes,
+        && let Err(mismatch) = metadata
+            .reuse_key()
+            .ok_or(crate::workspace_image_cache::WorkspaceImagePromotionIdentityMismatch::ReuseKey)
+            .and_then(|reuse_key| {
+                promotion.validate_stored_cache_identity(WorkspaceImagePromotionIdentityRequest {
+                    sandbox_id: metadata.sandbox_id,
+                    profile_name: &metadata.profile_name,
+                    reuse_key,
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: workspace_image_size_bytes,
+                })
             })
     {
         tracing::warn!(
@@ -588,7 +591,7 @@ impl SpeculativeIdleSandbox {
             budget_lease,
             parked_at,
         } = entry;
-        let reuse_key = metadata.reuse_key.clone();
+        let reuse_key = metadata.reuse_key().map(str::to_owned);
         let profile_name = metadata.profile_name.clone();
         match park_idle_transition(
             IdleParkTransitionInput {
@@ -701,7 +704,7 @@ impl IdleParkFailure {
     /// the resources cannot be cleaned up twice.
     fn into_speculative_destroy_job(
         self,
-        reuse_key: String,
+        reuse_key: Option<String>,
         profile_name: String,
     ) -> (IdleDestroyJob, &'static str, String, bool) {
         let Self {

@@ -566,7 +566,7 @@ def test_wildcard_count_skips_internal_marker_key():
     extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("includes", "*")})
 
     extractor.feed(
-        b'{"includes":{"\\u0000__vm0_json_array_element__":[{"id":"internal"}],'
+        b'{"includes":{"\\u0000__json_selective_array_element__":[{"id":"internal"}],'
         b'"users":[{"id":"u1"}]}}'
     )
     result = extractor.finish()
@@ -579,7 +579,7 @@ def test_wildcard_count_skips_unknown_internal_marker_key():
     extractor = JsonSelectiveExtractor(wildcard_array_count_paths={("includes", "*")})
 
     extractor.feed(
-        b'{"includes":{"\\u0000__vm0_json_unknown_key__":[{"id":"internal"}],'
+        b'{"includes":{"\\u0000__json_selective_unknown_key__":[{"id":"internal"}],'
         b'"users":[{"id":"u1"}]}}'
     )
     result = extractor.finish()

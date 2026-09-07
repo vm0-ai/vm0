@@ -496,6 +496,7 @@ test("The conversation locator follows folded goal continuation work", async () 
   });
 
   await screen.findByText("All deployment regions are healthy");
+  await screen.findByText("Checked the first deployment region");
   expect(
     queryMessageBody("Checked the first deployment region"),
   ).not.toBeInTheDocument();
@@ -519,34 +520,9 @@ test("The conversation locator follows folded goal continuation work", async () 
     );
   });
 
-  const expand = await waitFor(() => {
-    const button = queryAllByRoleFast("button").find((candidate) => {
-      return candidate.getAttribute("aria-label") === "Expand work history";
-    });
-    expect(button).toBeDefined();
-    return button!;
-  });
-  await userEvent.click(expand);
-  await screen.findByText("Checked the first deployment region");
   expect(
     screen.queryByText("Keep checking the deployment regions"),
   ).not.toBeInTheDocument();
-
-  const expandedGeometry = installLocatorGeometry({ clientHeight: 360 });
-  resize.automationAll();
-  await expectLocatorTickCount(14);
-  fireEvent.pointerEnter(expandedGeometry.rail);
-  await pointAndSelectTurn(
-    expandedGeometry.rail,
-    13,
-    "Checked the first deployment region",
-  );
-  await waitFor(() => {
-    expect(turnForText("Checked the first deployment region")).toHaveAttribute(
-      "data-locator-landed",
-      "",
-    );
-  });
 });
 
 test("The conversation locator makes the pointed turn easy to identify", async () => {

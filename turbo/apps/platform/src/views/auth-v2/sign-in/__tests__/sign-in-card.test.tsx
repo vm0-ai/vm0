@@ -1965,3 +1965,25 @@ test("Invalid sign-in states fail closed with an explicit recovery path", async 
   ).resolves.toBeVisible();
   expect(roleElement("link", "Sign up")).toBeUndefined();
 });
+
+test("An unsupported first factor does not block an available password method", async () => {
+  mockedClerk.signInAttemptFirstFactor.mockImplementation(() => {
+    return moveSignInToAsync({
+      status: "complete",
+      createdSessionId: "session_mixed",
+    });
+  });
+  await setupSignInPage({
+    status: "needs_first_factor",
+    identifier: "member@example.com",
+    supportedFirstFactors: [{ strategy: "future_strategy" }, passwordFactor()],
+  });
+  click(await waitForRoleElement("button", "Sign in with your password"));
+  await fill(await screen.findByLabelText("Password"), "My password 123!");
+  click(await waitForRoleElement("button", "Continue"));
+  await screen.findByRole("heading", { name: "Sign-in complete" });
+  expect(mockedClerk.signInAttemptFirstFactor).toHaveBeenCalledWith({
+    strategy: "password",
+    password: "My password 123!",
+  });
+});

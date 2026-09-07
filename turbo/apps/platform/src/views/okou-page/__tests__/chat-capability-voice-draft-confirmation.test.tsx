@@ -110,7 +110,7 @@ test.each([false, true])(
       return respond(200, { allowed: true, count: 0, limit: 60 });
     });
     let transcriptionRequests = 0;
-    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
       transcriptionRequests += 1;
       if (transcriptionRequests === 1) {
         return HttpResponse.json(

@@ -93,10 +93,7 @@ export function IntroVideoStyleCard({
         selected ? "border-primary" : "border-border",
       )}
     >
-      <div
-        className="relative overflow-hidden bg-muted"
-        style={{ aspectRatio: style.aspectRatio?.replace(":", "/") }}
-      >
+      <div className="relative aspect-video overflow-hidden bg-muted">
         <StylePreviewMedia style={style} />
       </div>
       <button
@@ -114,6 +111,11 @@ export function IntroVideoStyleCard({
         <strong className="min-w-0 flex-1 text-sm font-medium text-foreground">
           {style.name}
         </strong>
+        {style.aspectRatio ? (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {style.aspectRatio}
+          </span>
+        ) : null}
         {selected ? (
           <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
             <Check size={12} />

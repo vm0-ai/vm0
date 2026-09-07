@@ -34,10 +34,10 @@ pre-commit:
             fail_text: "Knip found unused code. Run 'cd turbo && pnpm knip' to see details."
             timeout: "60s"
           - name: check-types
-            run: pnpm check-types
+            run: TSC_CHECKERS=2 pnpm check-types
             root: turbo/
             glob: "turbo/**/*.{ts,tsx}"
-            fail_text: "TypeScript errors found. Run 'cd turbo && pnpm check-types' to see details."
+            fail_text: "TypeScript errors found. Run 'cd turbo && TSC_CHECKERS=2 pnpm check-types' to see details."
             timeout: "300s"
     - name: crates
       group:

@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   chatSearchContract,
@@ -20,6 +20,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import {
   agentsByIdContract,
   type AgentResponse,
@@ -227,8 +228,7 @@ function mockChatThreadSnapshot(
     return [];
   },
   targetContext = context,
-): { readonly responseReturned: Promise<void> } {
-  const responseReturned = targetContext.mocks.deferred<void>();
+): void {
   targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
     const response = respond(200, {
@@ -255,7 +255,6 @@ function mockChatThreadSnapshot(
       latestEventId: null,
       latestSeqId: null,
     });
-    responseReturned.resolve();
     return response;
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -271,7 +270,17 @@ function mockChatThreadSnapshot(
       ),
     });
   });
-  return { responseReturned: responseReturned.promise };
+  targetContext.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+  targetContext.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
 }
 
 function mockUnreadAgents(
@@ -439,6 +448,72 @@ function createDataTransferStub(
   } as unknown as DataTransfer;
 }
 
+const SIDEBAR_TITLE_BOX_WIDTH = 160;
+const SIDEBAR_TITLE_CHARACTER_WIDTH = 9;
+
+function restoreElementProperty(
+  name: string,
+  descriptor: PropertyDescriptor | undefined,
+): void {
+  if (descriptor) {
+    Object.defineProperty(HTMLElement.prototype, name, descriptor);
+    return;
+  }
+  Reflect.deleteProperty(HTMLElement.prototype, name);
+}
+
+/**
+ * Gives the title box a fixed width and its text a width per character, so one
+ * title overflows the box and the other fits inside it.
+ */
+function stubSidebarTitleLayout(): void {
+  const clientWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  const scrollWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "scrollWidth",
+  );
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get(this: HTMLElement): number {
+      return this.classList.contains("okou-nav-title")
+        ? SIDEBAR_TITLE_BOX_WIDTH
+        : 0;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+    configurable: true,
+    get(this: HTMLElement): number {
+      if (!this.classList.contains("okou-nav-title")) {
+        return 0;
+      }
+      return Math.max(
+        SIDEBAR_TITLE_BOX_WIDTH,
+        (this.textContent?.length ?? 0) * SIDEBAR_TITLE_CHARACTER_WIDTH,
+      );
+    },
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      restoreElementProperty("clientWidth", clientWidth);
+      restoreElementProperty("scrollWidth", scrollWidth);
+    },
+    { once: true },
+  );
+}
+
+/** The clipping box a title is faded and scrolled inside. */
+function titleFadeBox(title: string): HTMLElement {
+  const box = within(sidebar()).getByText(title).parentElement;
+  if (!box) {
+    throw new Error(`${title} title fade box not found`);
+  }
+  return box;
+}
+
 function threadRowByTitle(
   title: string,
   container: HTMLElement = sidebar(),
@@ -500,18 +575,28 @@ function chatListNewChatButton(): HTMLElement {
   return within(actions).getByLabelText("New chat");
 }
 
+function mockSidebarViewport(height: number, scrollHeight: number): void {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function (this: HTMLElement): number {
+      return this.dataset.testid === "sidebar-scroll-area" ? height : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function (this: HTMLElement): number {
+      return this.dataset.testid === "sidebar-scroll-area" ? scrollHeight : 0;
+    },
+  );
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
   activeThreadIds: readonly string[] = [],
   targetContext = context,
-): {
-  threads: SidebarThread[];
-  snapshotResponseReturned: Promise<void>;
-} {
+): { threads: SidebarThread[] } {
   let threads = [...firstPageThreads];
 
-  const { responseReturned: snapshotResponseReturned } = mockChatThreadSnapshot(
+  mockChatThreadSnapshot(
     () => {
       return [...threads, ...extraThreads];
     },
@@ -569,10 +654,10 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads, snapshotResponseReturned };
+  return { threads };
 }
 
-test("Browse a long sidebar chat history", async () => {
+function mockLongSidebarHistory(): void {
   prepareDefaultAgent();
   const overflowThreads = Array.from({ length: 23 }, (_, index) => {
     return createThread(
@@ -587,12 +672,9 @@ test("Browse a long sidebar chat history", async () => {
     ],
     [...overflowThreads, createThread(ARCHIVED_THREAD_ID, "Archived context")],
   );
+}
 
-  await setupSidebarPage({
-    context,
-    path: `/chats/${EXISTING_THREAD_ID}`,
-  });
-
+async function scrollToArchivedContext(): Promise<HTMLElement> {
   await waitFor(() => {
     expect(
       within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
@@ -600,11 +682,7 @@ test("Browse a long sidebar chat history", async () => {
   });
 
   const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-  Object.defineProperties(scrollArea, {
-    clientHeight: { configurable: true, value: 200 },
-    scrollHeight: { configurable: true, value: 1000 },
-    scrollTop: { configurable: true, value: 780, writable: true },
-  });
+  scrollArea.scrollTop = 780;
   fireEvent.scroll(scrollArea);
 
   await waitFor(() => {
@@ -612,7 +690,32 @@ test("Browse a long sidebar chat history", async () => {
   });
   expect(within(sidebar()).queryByText("Release plan")).toBeNull();
   expect(within(sidebar()).queryByText("Load more")).not.toBeInTheDocument();
+  return scrollArea;
+}
 
+test("Browse a long sidebar chat history", async () => {
+  mockLongSidebarHistory();
+  mockSidebarViewport(200, 1000);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  const scrollArea = await scrollToArchivedContext();
+  expect(scrollArea).toBeInTheDocument();
+});
+
+test("Refresh a long sidebar after deleting an offscreen chat", async () => {
+  mockLongSidebarHistory();
+  mockSidebarViewport(200, 1000);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const scrollArea = await scrollToArchivedContext();
   openThreadMenu("Archived context");
   click(menuItemByText("Delete chat"));
   const dialog = await screen.findByRole("dialog", {
@@ -715,6 +818,51 @@ test("Delete a chat after reviewing the impact", async () => {
     ).not.toBeInTheDocument();
     expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
   });
+});
+
+/**
+ * Deliberate exception to `docs/testing/testing-external-behavior.md`. The fade
+ * and the hover travel are a mask and a transform derived from measured text
+ * width, and happy-dom has no layout engine: it reports every box as
+ * zero-width and paints nothing, so neither the state nor the result exists on
+ * the page surface here. The measured distance is the only place the behavior
+ * is observable, and it is worth pinning because both the fade and the travel
+ * are derived from it — a wrong distance fades a title that fits, or stops the
+ * scroll before the end.
+ */
+test("Fade a clipped chat title and pace its scroll by the hidden distance", async () => {
+  stubSidebarTitleLayout();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    // 26 characters, so 234px of text in a 160px box.
+    createThread(EXISTING_THREAD_ID, "Quarterly launch narrative"),
+    createThread(AUTOMATION_THREAD_ID, "Release plan"),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  await expect(
+    within(sidebar()).findByText("Release plan"),
+  ).resolves.toBeInTheDocument();
+
+  const clipped = titleFadeBox("Quarterly launch narrative");
+  expect(clipped.style.getPropertyValue("--okou-nav-title-overflow")).toBe(
+    "74px",
+  );
+  expect(clipped.style.getPropertyValue("--okou-nav-title-duration")).toBe(
+    "2000ms",
+  );
+
+  const fitting = titleFadeBox("Release plan");
+  expect(fitting.style.getPropertyValue("--okou-nav-title-overflow")).toBe(
+    "0px",
+  );
+  expect(fitting.style.getPropertyValue("--okou-nav-title-duration")).toBe(
+    "780ms",
+  );
 });
 
 test("Filter the chat list to unread conversations", async () => {
@@ -926,15 +1074,10 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponse = context.mocks.deferred<void>();
   const draftRequestStarted = context.mocks.deferred<void>();
   const draftResponseReturned = context.mocks.deferred<void>();
-  const indicatorRequestStarted = context.mocks.deferred<void>();
-
-  const { snapshotResponseReturned } = mockSidebarThreadStory([
+  mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
-    if (!indicatorRequestStarted.settled()) {
-      indicatorRequestStarted.resolve();
-    }
     await indicatorResponse.promise;
     return respond(200, { agents: {}, threads: {} });
   });
@@ -952,10 +1095,6 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   });
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-  await Promise.all([
-    snapshotResponseReturned,
-    indicatorRequestStarted.promise,
-  ]);
 
   await waitFor(() => {
     expect(

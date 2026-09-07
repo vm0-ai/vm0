@@ -260,7 +260,7 @@ import {
 } from "./pi-resource-snapshot.service";
 import { readMemorySummaryProjection } from "./memory-summary-projection.service";
 import {
-  PI_API_FIRST_TURN_TIMEOUT_MS,
+  PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
   PI_API_FIRST_TURN_URL_TTL_SECONDS,
   piApiFirstTurnObjectKey,
   requirePiApiFirstTurnExecutionContext,
@@ -406,7 +406,7 @@ type DbTransaction = Tx;
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
-  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
+  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou image-recognition --file <image-path> --prompt "<instruction>"`.';
 const RESTRICTED_EXPLICIT_CONTENT_PROMPT = [
   "# Restricted Explicit Content",
   "",
@@ -602,7 +602,20 @@ interface ResolvedAgentExecution {
   readonly resumeSessionIdentity?: SessionExecutionIdentity;
 }
 
+interface ResolvedPrivateMaintenanceExecution extends Omit<
+  ResolvedAgentExecution,
+  "agentId" | "agentName"
+> {
+  readonly agentId: null;
+  readonly agentName?: never;
+}
+
+type ResolvedRunExecution =
+  | ResolvedAgentExecution
+  | ResolvedPrivateMaintenanceExecution;
+
 interface ProductAgentExecutionPlan {
+  readonly identity: "agent" | "pi-memory-phase2-maintenance";
   readonly content: AgentExecutionConfig;
 }
 
@@ -1476,12 +1489,12 @@ function frameworkForProviderSelection(
   if (!isBuiltInModelProviderType(providerType)) {
     return getFrameworkForType(providerType);
   }
-  const vm0Model =
+  const builtInModel =
     selectedModel ?? MODEL_PROVIDER_TYPES["built-in"].defaultModel;
-  if (!vm0Model) {
+  if (!builtInModel) {
     return null;
   }
-  return getFrameworkForType(getBuiltInConcreteProviderType(vm0Model));
+  return getFrameworkForType(getBuiltInConcreteProviderType(builtInModel));
 }
 
 async function resolveRequestedRunFramework(
@@ -1703,7 +1716,7 @@ function withPinnedPiContinuationMemory(
 }
 
 function artifactsForRun(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly framework: SupportedFramework;
   readonly piSandbox: PiModelConfig | undefined;
   readonly includeAutoMemory: boolean;
@@ -2434,7 +2447,7 @@ async function multiAuthModelProviderEnvironment(
   };
 }
 
-async function vm0ModelProviderEnvironment(
+async function builtInModelProviderEnvironment(
   db: Db,
   selectedModel: string,
   resolvedRoute?: BuiltInModelRuntimeRoute,
@@ -2842,7 +2855,7 @@ async function resolveCandidateModelProviderEnvironment(
       args.selectedModelOverride ??
       row.selectedModel ??
       MODEL_PROVIDER_TYPES["built-in"].defaultModel;
-    const provider = await vm0ModelProviderEnvironment(
+    const provider = await builtInModelProviderEnvironment(
       db,
       selectedModel,
       args.builtInModelRuntimeRoute,
@@ -2913,7 +2926,7 @@ async function resolveModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (isBuiltInModelProviderType(args.modelProviderType)) {
-    const provider = await vm0ModelProviderEnvironment(
+    const provider = await builtInModelProviderEnvironment(
       db,
       args.selectedModelOverride ??
         MODEL_PROVIDER_TYPES["built-in"].defaultModel,
@@ -5800,7 +5813,7 @@ async function checkFinalRunAdmission(
 ): Promise<CreateRunErrorResult | null> {
   if (args.enforceBuiltInCredits) {
     return await args.timing.measure(
-      "api_dispatch_check_vm0_credits",
+      "api_dispatch_check_built_in_credits",
       "nested",
       async () => {
         const availability = await resolveOrgCreditAvailability({
@@ -6097,9 +6110,9 @@ function resolveAgentExecution(
   userId: string,
   orgId: string,
   options: ResolveAgentExecutionOptions,
-): Computed<Promise<ResolvedAgentExecution | CreateRunErrorResult>> {
+): Computed<Promise<ResolvedRunExecution | CreateRunErrorResult>> {
   return computed(
-    async (get): Promise<ResolvedAgentExecution | CreateRunErrorResult> => {
+    async (get): Promise<ResolvedRunExecution | CreateRunErrorResult> => {
       const testOnlyResolver = options.testOnlyResolveDirectRun;
       if (testOnlyResolver) {
         if (!body.sessionId && !body.agentId) {
@@ -6136,6 +6149,17 @@ function resolveAgentExecution(
         throw new Error(
           "Product Agent execution plan is required for canonical resolution",
         );
+      }
+      if (
+        productAgentExecutionPlan.identity === "pi-memory-phase2-maintenance"
+      ) {
+        return {
+          agentId: null,
+          ownerUserId: userId,
+          orgId,
+          content: productAgentExecutionPlan.content,
+          artifacts: [],
+        };
       }
       if (body.sessionId) {
         const sessionId = body.sessionId;
@@ -6281,7 +6305,7 @@ function agentRunModelProviderValues(
 }
 
 function prepareLaunchRunIdentity(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
 }): LaunchRunIdentity {
   return {
     runId: randomUUID(),
@@ -6360,7 +6384,7 @@ interface LaunchRunRowsArgs {
   readonly orgId: string;
   readonly identity: LaunchRunIdentity;
   readonly status: LaunchRunStatus;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
@@ -6385,7 +6409,7 @@ interface LaunchSessionValues {
   readonly id: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentId: string;
+  readonly agentId: string | null;
   readonly storageMounts: PersistedStorageMount[] | null;
   readonly conversationId: null;
 }
@@ -6554,7 +6578,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly chatThreadId: string | undefined;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly framework: SupportedFramework;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -7032,7 +7056,7 @@ interface BuildRunnerJobPayloadInput {
   readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
   readonly userId: string;
   readonly orgId: string;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
@@ -7349,7 +7373,8 @@ function preparePiLaunchResources(
               ),
               manifestUrl,
               sessionUrl,
-              deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
+              deadlineAt:
+                args.apiStartTime + PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
               baseSession: piBaseSession(resumeSession, sessionId),
               sandboxEventSequenceStart: 1,
             },
@@ -8667,7 +8692,7 @@ export const BEFORE_DISPATCH_CANCELLED_ERROR =
 
 interface PreparedRunContext {
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly framework: SupportedFramework;
   readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -8915,7 +8940,7 @@ async function loadRunConnectorContexts(
 async function buildResolvedRunBody(
   args: {
     readonly initialBody: CreateRunBody;
-    readonly resolved: ResolvedAgentExecution;
+    readonly resolved: ResolvedRunExecution;
     readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly canonicalOkouRuntime: boolean;
@@ -8960,7 +8985,7 @@ async function buildResolvedRunBody(
 }
 
 function validateRunEnvironmentReferences(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
@@ -9037,7 +9062,7 @@ function preparedRunAdditionalVolumes(args: {
   readonly skillsRoot: string;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): PreparedAdditionalVolumes {
   const bodyAdditionalVolumes = args.body.additionalVolumes;
@@ -9074,7 +9099,7 @@ function preparedRunAdditionalVolumes(args: {
 
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly requestedFramework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -9180,6 +9205,27 @@ function agentRunResolutionOptions(
   ) {
     throw new Error(
       "Agent run preparation cannot mix product and direct-run resolution",
+    );
+  }
+  const privateMaintenanceIdentity =
+    productAgentExecutionPlan?.identity === "pi-memory-phase2-maintenance";
+  if (
+    privateMaintenanceIdentity !==
+    (args.piMemoryPhase2Maintenance !== undefined)
+  ) {
+    throw new Error(
+      "Pi memory maintenance payload and execution identity must match",
+    );
+  }
+  if (
+    privateMaintenanceIdentity &&
+    (args.body.agentId !== undefined ||
+      args.body.sessionId !== undefined ||
+      args.chatThreadId !== undefined ||
+      args.piExecution !== true)
+  ) {
+    throw new Error(
+      "Pi memory maintenance runs must use a private threadless identity",
     );
   }
   return {
@@ -9665,7 +9711,7 @@ function prepareRunOutputMetadata(args: {
   readonly piSandbox: PiModelConfig | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): {
   readonly artifacts: readonly ContextArtifact[];
@@ -9777,9 +9823,9 @@ function prepareRunContexts(
 }
 
 function resolveCompatibleDirectResumeSession(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly next: SessionExecutionIdentity;
-}): ResolvedAgentExecution {
+}): ResolvedRunExecution {
   const previous = args.resolved.resumeSessionIdentity;
   return previous && canReuseSession(previous, args.next)
     ? args.resolved

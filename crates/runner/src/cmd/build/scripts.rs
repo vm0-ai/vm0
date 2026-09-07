@@ -1017,7 +1017,7 @@ assert_check_error \
             ("verify-rootfs.sh", VERIFY_SCRIPT),
         ] {
             assert!(
-                script.contains(r#"UNSHARE_SENTINEL="--__vm0_unshared__""#),
+                script.contains(r#"UNSHARE_SENTINEL="--__runner_unshared__""#),
                 "{name} should use a sentinel so sudo does not need to preserve env vars"
             );
             assert!(

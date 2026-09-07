@@ -6,6 +6,8 @@ import { replaceSearchParams$, searchParams$ } from "./route.ts";
 import { jsonParseOr, onDomEventFn } from "./utils.ts";
 import { i18n } from "../i18n/index.ts";
 
+import { captureAuthV2Invitation$ } from "./auth-v2/invitation.ts";
+
 const CLERK_STATUS_PARAM = "__clerk_status";
 const CLERK_TICKET_PARAM = "__clerk_ticket";
 const INVITATION_ACTION_CLASS_NAMES = {
@@ -67,13 +69,14 @@ function organizationIdFromTicket(ticket: string): string | null {
 export const captureInvitationRedirect$ = command(({ get, set }) => {
   const searchParams = new URLSearchParams(get(searchParams$));
   if (searchParams.get(CLERK_STATUS_PARAM) !== "complete") {
+    set(captureAuthV2Invitation$);
     return;
   }
 
   const ticket = searchParams.get(CLERK_TICKET_PARAM);
   searchParams.delete(CLERK_STATUS_PARAM);
   searchParams.delete(CLERK_TICKET_PARAM);
-  set(replaceSearchParams$, searchParams);
+  set(replaceSearchParams$, searchParams, {}, location.hash);
 
   if (!ticket) {
     return;

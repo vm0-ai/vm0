@@ -15,8 +15,8 @@ import websocket_framing
 # another version.
 _SUPPORTED_MITMPROXY_VERSION = "12.2.3"
 _SUPPORTED_WSPROTO_VERSION = "1.3.2"
-_BRIDGE_MARKER_ATTRIBUTE = "_vm0_request_end_stream_bridge"
-_REQUEST_END_STREAM_METADATA = "_vm0_request_end_stream"
+_BRIDGE_MARKER_ATTRIBUTE = "_request_end_stream_bridge"
+_REQUEST_END_STREAM_METADATA = "_request_end_stream"
 
 
 def install_runtime_compatibility() -> None:

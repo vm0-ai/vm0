@@ -2,6 +2,7 @@ import type {
   ChatSlackMessageAssets,
   ChatSlackMessageFile,
 } from "@okouai/db/jsonb-contracts/chat-slack-context";
+import { CONVERSATION_GUIDANCE } from "./conversation-guidance";
 
 import {
   formatSenderBlock,
@@ -318,9 +319,6 @@ function formatMessageWithMetadata(
 const CONTEXT_PREAMBLE = [
   "The messages below are from a Slack conversation. When responding:",
   "- Messages closer to RELATIVE_INDEX 0 are more recent \u2014 prioritize them.",
-  "- Match the tone of the conversation \u2014 casual messages deserve casual replies.",
-  "- Only provide technical analysis when explicitly asked a technical question.",
-  "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
 
 function formatContextForAgent(
@@ -416,6 +414,8 @@ export function buildSlackSystemPrompt(args: {
         ? "Group direct message"
         : "Channel";
   return [
+    CONVERSATION_GUIDANCE,
+    "",
     "# Current Integration",
     "You are currently running inside: Slack",
     `Your bot user ID: ${args.botUserId}`,

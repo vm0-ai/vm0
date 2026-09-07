@@ -43,7 +43,7 @@ function resultEvents(): MockChatEventInput[] {
       id: "review-artifact",
       runId: RUN_A,
       seqId: 2,
-      text: "https://cdn.vm7.io/artifacts/steer/review/report.pdf",
+      text: "![Report](https://cdn.vm7.io/artifacts/steer/review/report.pdf)",
       createdAt: createdAt(1),
     }),
     assistantEvent({
@@ -236,7 +236,7 @@ test("Keep separate history previews, artifacts and actions on both sides of a s
         id: "history-artifact",
         runId: RUN_A,
         seqId: 2,
-        text: "https://cdn.vm7.io/artifacts/steer/review/report.pdf",
+        text: "![Report](https://cdn.vm7.io/artifacts/steer/review/report.pdf)",
         createdAt: createdAt(1),
       }),
       ...oldHistory.map((text, index) => {

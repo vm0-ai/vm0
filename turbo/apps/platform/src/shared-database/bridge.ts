@@ -6,11 +6,20 @@ import type {
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import type {
   SharedDatabaseConnectionStatus,
+  SharedDatabaseRealtimeMessage,
+  SharedDatabaseRealtimeScope,
   SharedDatabaseWorkerUnavailableReason,
 } from "./protocol.ts";
 
 export interface SharedDatabaseBridge {
   registerTab(signal: AbortSignal): Promise<void>;
+  subscribeRealtime(
+    subscriptionId: string,
+    scope: SharedDatabaseRealtimeScope,
+    topic: string,
+    listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void>;
+  unsubscribeRealtime(subscriptionId: string): void;
   getComputed<TKey extends ComputedKey>(
     computedKey: TKey,
   ): Promise<ComputedValue<TKey>>;

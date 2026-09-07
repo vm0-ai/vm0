@@ -13,6 +13,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import type { ChatTranslationLanguage } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
@@ -20,7 +21,7 @@ import type {
   FeedbackSource,
 } from "../okou-page/chat-feedback.ts";
 import { writeToClipboard } from "../okou-page/clipboard.ts";
-import { setChatListQuery$ } from "../okou-page/sidebar-state.ts";
+import { clearChatListQuery$ } from "../okou-page/sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
   ChatForwardTarget,
@@ -38,6 +39,7 @@ import {
 const FEEDBACK_SOURCE_SELECTOR =
   ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
@@ -149,7 +151,34 @@ function closestFeedbackSource(node: Node | null): Element | null {
   return element?.closest(FEEDBACK_SOURCE_SELECTOR) ?? null;
 }
 
-function resolveSelectionSource(range: Range): Element | null {
+function closestExpandedFeedbackSource(node: Node | null): Element | null {
+  if (!node) {
+    return null;
+  }
+  const element = node instanceof Element ? node : node.parentElement;
+  return (
+    element?.closest(ASSISTANT_GROUP_SELECTOR) ??
+    element?.closest("[data-feedback-source]") ??
+    null
+  );
+}
+
+function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
+  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
+}
+
+function resolveSelectionSource(
+  range: Range,
+  expandToAssistantReply: boolean,
+): Element | null {
+  if (expandToAssistantReply) {
+    const startSource = closestExpandedFeedbackSource(range.startContainer);
+    const endSource = closestExpandedFeedbackSource(range.endContainer);
+    return startSource !== null && startSource === endSource
+      ? startSource
+      : null;
+  }
+
   const commonSource = closestFeedbackSource(range.commonAncestorContainer);
   if (commonSource) {
     return commonSource;
@@ -290,7 +319,9 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function readFeedbackSelection(): CapturedFeedbackSelection | null {
+function readFeedbackSelection(
+  expandToAssistantReply: boolean,
+): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
@@ -300,7 +331,7 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     return null;
   }
   const range = selection.getRangeAt(0);
-  const sourceElement = resolveSelectionSource(range);
+  const sourceElement = resolveSelectionSource(range, expandToAssistantReply);
   if (!sourceElement) {
     return null;
   }
@@ -366,8 +397,13 @@ function createSelectionState(threadId: string) {
     set(internalTranslationPromise$, null);
     set(internalTranslationResult$, null);
   });
-  const capture$ = command(({ get, set }) => {
-    const selection = readFeedbackSelection();
+  const capture$ = command(({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+    );
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -389,7 +425,11 @@ function createSelectionState(threadId: string) {
     if (!currentSelection) {
       return;
     }
-    const selection = readFeedbackSelection();
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+    );
     if (
       !selection ||
       selection.threadId !== threadId ||
@@ -609,14 +649,14 @@ function createForwardState(closeSelection$: Command<void, []>) {
   );
   const openForward$ = command(
     ({ set }, selection: ChatForwardSelection): void => {
-      set(setChatListQuery$, "");
+      set(clearChatListQuery$);
       set(internalForwardSelection$, selection);
       set(resetForwardTarget$);
       set(closeSelection$);
     },
   );
   const closeForward$ = command(({ set }): void => {
-    set(setChatListQuery$, "");
+    set(clearChatListQuery$);
     set(internalForwardSelection$, null);
     set(resetForwardTarget$);
   });
@@ -729,21 +769,17 @@ function createListenersRef({
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
-  capture$: Command<void, []>;
+  capture$: Command<void, [AbortSignal]>;
   reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
-  const deferredCaptureSignal$ = resetSignal();
+  const debouncedCapture$ = debounceCommand(capture$, 0);
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const doc = el.ownerDocument;
       let mouseSelectionInProgress = false;
       let selectionInteractionInProgress = false;
       let scrollReconciliationScheduled = false;
-      const captureDeferred = async () => {
-        await delay(0, { signal: set(deferredCaptureSignal$, signal) });
-        set(capture$);
-      };
       doc.addEventListener(
         "pointerdown",
         (event) => {
@@ -783,7 +819,11 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            closestFeedbackSource(event.target) !== null;
+            (shouldExpandSelectionToAssistantReply(
+              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+            )
+              ? closestExpandedFeedbackSource(event.target)
+              : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;
           if (
             mouseSelectionInProgress &&
@@ -797,21 +837,22 @@ function createListenersRef({
       );
       doc.addEventListener(
         "mouseup",
-        onDomEventFn(async () => {
+        onDomEventFn(() => {
           if (!mouseSelectionInProgress) {
             return;
           }
           mouseSelectionInProgress = false;
-          await captureDeferred();
+          return set(debouncedCapture$, signal);
         }),
         { signal },
       );
       doc.addEventListener(
         "selectionchange",
-        onDomEventFn(async () => {
-          if (!mouseSelectionInProgress && !selectionInteractionInProgress) {
-            await captureDeferred();
+        onDomEventFn(() => {
+          if (mouseSelectionInProgress || selectionInteractionInProgress) {
+            return;
           }
+          return set(debouncedCapture$, signal);
         }),
         { signal },
       );
