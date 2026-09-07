@@ -475,12 +475,12 @@ fn create_numbered_storages(
     })
 }
 
-struct GuestDownloadExecution {
+struct GuestStorageApplyExecution {
     child: ChildExecution,
     _runtime: BinaryLoggingFixture,
 }
 
-impl GuestDownloadExecution {
+impl GuestStorageApplyExecution {
     #[cfg(unix)]
     fn id(&self) -> std::io::Result<u32> {
         self.child.id()
@@ -519,7 +519,7 @@ fn spawn_guest_storage_apply(
     scenario: &str,
     dir: &tempfile::TempDir,
     storages: &[(String, String)],
-) -> std::io::Result<GuestDownloadExecution> {
+) -> std::io::Result<GuestStorageApplyExecution> {
     let storage_refs: Vec<(&str, Option<&str>)> = storages
         .iter()
         .map(|(mount, url)| (mount.as_str(), Some(url.as_str())))
@@ -528,7 +528,7 @@ fn spawn_guest_storage_apply(
     let manifest_path = path_to_string(&manifest)?;
     let runtime = BinaryLoggingFixture::new(scenario)?;
     let child = ChildExecution::spawn(runtime.command().arg(manifest_path))?;
-    Ok(GuestDownloadExecution {
+    Ok(GuestStorageApplyExecution {
         child,
         _runtime: runtime,
     })

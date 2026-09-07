@@ -15,7 +15,7 @@ use guest_control_client::{
 };
 use guest_control_proto::{
     ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
-    GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone,
+    GuestStateRestoreTimezone as ProtoGuestStateRestoreTimezone,
 };
 use sandbox::{
     CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, DEFAULT_PROCESS_START_TIMEOUT,
@@ -2681,12 +2681,12 @@ impl Sandbox for FirecrackerSandbox {
         let operation = SandboxOperation::Exec;
         let timeout_ms = request.timeout_ms();
         let timezone = match request.timezone {
-            GuestStateRestoreTimezone::None => VsockGuestStateRestoreTimezone::None,
+            GuestStateRestoreTimezone::None => ProtoGuestStateRestoreTimezone::None,
             GuestStateRestoreTimezone::BestEffort(timezone) => {
-                VsockGuestStateRestoreTimezone::BestEffort(timezone)
+                ProtoGuestStateRestoreTimezone::BestEffort(timezone)
             }
             GuestStateRestoreTimezone::Required(timezone) => {
-                VsockGuestStateRestoreTimezone::Required(timezone)
+                ProtoGuestStateRestoreTimezone::Required(timezone)
             }
         };
 
