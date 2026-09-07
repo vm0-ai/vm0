@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.46.35](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.34...desktop-v0.46.35) (2026-09-07)
+
+
+### Bug Fixes
+
+* **desktop:** remove preparing symbol background ([#32237](https://github.com/vm0-ai/vm0/issues/32237)) ([bbe236c](https://github.com/vm0-ai/vm0/commit/bbe236ca52d05d0db5e59ede1ec5cff5f2b8daa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.410.0
+
 ## [0.46.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.33...desktop-v0.46.34) (2026-09-07)
 
 

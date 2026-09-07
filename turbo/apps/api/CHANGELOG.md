@@ -8,6 +8,32 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.561.0](https://github.com/vm0-ai/vm0/compare/api-v1.560.1...api-v1.561.0) (2026-09-07)
+
+
+### Features
+
+* **api:** admit connector chat threads to pi ([#32222](https://github.com/vm0-ai/vm0/issues/32222)) ([b1e5195](https://github.com/vm0-ai/vm0/commit/b1e5195ab36f6735a9f3f431be8654dddb78fba9))
+* persist active run connector diagnostic registrations ([#32181](https://github.com/vm0-ai/vm0/issues/32181)) ([87b3fef](https://github.com/vm0-ai/vm0/commit/87b3feff14b5b081ca642072142c97117792eead))
+
+
+### Bug Fixes
+
+* **billing:** reconcile already-refunded usage pack charges ([#32220](https://github.com/vm0-ai/vm0/issues/32220)) ([32217bf](https://github.com/vm0-ai/vm0/commit/32217bfb88413edc5aea54b24820410026df12bd))
+* **ci:** sync catalog after production api deploy ([#32225](https://github.com/vm0-ai/vm0/issues/32225)) ([af108fe](https://github.com/vm0-ai/vm0/commit/af108fe9f4a4f306a64856b19708f1eac3adc947))
+* **firewall:** attribute auth fetch deadlines ([#32195](https://github.com/vm0-ai/vm0/issues/32195)) ([c3c8778](https://github.com/vm0-ai/vm0/commit/c3c8778e1352786e8c21d868531656f79a9624a7))
+* **workflows:** preserve recurring schedules across insufficient credits ([#32228](https://github.com/vm0-ai/vm0/issues/32228)) ([8ae8a3b](https://github.com/vm0-ai/vm0/commit/8ae8a3b0979cc331b43bbbd9a116e9c5b07a40b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.410.0
+    * @okouai/core bumped to 8.631.0
+    * @okouai/db bumped to 1.245.0
+    * @okouai/pi-agent-runtime bumped to 1.21.12
+
 ## [1.560.1](https://github.com/vm0-ai/vm0/compare/api-v1.560.0...api-v1.560.1) (2026-09-07)
 
 
