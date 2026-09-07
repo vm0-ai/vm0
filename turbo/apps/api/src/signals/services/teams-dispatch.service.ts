@@ -1002,9 +1002,6 @@ function formatTeamsContextMessage(
 const TEAMS_CONTEXT_PREAMBLE = [
   "The messages below are from a Microsoft Teams conversation. When responding:",
   "- Messages closer to RELATIVE_INDEX 0 are more recent; prioritize them.",
-  "- Match the tone of the conversation; casual messages deserve casual replies.",
-  "- Only provide technical analysis when explicitly asked a technical question.",
-  "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
 
 function formatTeamsThreadContext(
@@ -2279,6 +2276,14 @@ const runResolvedTeamsAgentForActivity$ = command(
   },
 );
 
+function teamsAgentPrompt(activity: TeamsMessageActivity): string {
+  const recipientMention =
+    activity.mentionsRecipient && activity.recipient
+      ? `@${activity.recipient.name ?? activity.recipient.id}`
+      : "";
+  return [recipientMention, activity.text.trim()].filter(Boolean).join(" ");
+}
+
 export const dispatchTeamsMessageToAgent$ = command(
   async (
     { set },
@@ -2297,9 +2302,10 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const cardAction = teamsCardAction(activity.value);
-    const prompt = activity.text.trim();
-    const command = cardAction ? null : parseTeamsBotCommand(prompt);
-    const isGreeting = !cardAction && isTeamsBotGreeting(prompt);
+    const commandText = activity.text.trim();
+    const prompt = teamsAgentPrompt(activity);
+    const command = cardAction ? null : parseTeamsBotCommand(commandText);
+    const isGreeting = !cardAction && isTeamsBotGreeting(commandText);
     if (!cardAction && !shouldDispatchTeamsMessage(activity)) {
       return (
         teamsValidationFallbackNotice({

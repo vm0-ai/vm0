@@ -1790,8 +1790,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     const botUsername = `bot_${fixture.telegramBotId}`;
     const chatId = -77_201;
     const messageThreadId = 9201;
-    const firstPrompt = "start canonical chain";
-    const firstInput = `@${botUsername} ${firstPrompt}`;
+    const firstPrompt = `@${botUsername} start canonical chain`;
 
     expect(
       (
@@ -1810,7 +1809,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
                 username: "alice",
                 first_name: "Alice",
               },
-              text: firstInput,
+              text: firstPrompt,
               entities: [mentionEntity(botUsername)],
             },
           },
@@ -2023,8 +2022,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       }),
     ]);
 
-    const freshPrompt = "start another chain";
-    const freshInput = `@${botUsername} ${freshPrompt}`;
+    const freshPrompt = `@${botUsername} start another chain`;
     expect(
       (
         await postWebhook({
@@ -2041,7 +2039,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
                 username: "alice",
                 first_name: "Alice",
               },
-              text: freshInput,
+              text: freshPrompt,
               entities: [mentionEntity(botUsername)],
             },
           },
@@ -2160,12 +2158,27 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(messages[0]?.text).toBe("following up");
   });
 
-  it("creates an agent run for a linked custom-bot supergroup mention", async () => {
+  it("preserves a mention-only Telegram request with the preceding group task", async () => {
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const botUsername = `bot_${fixture.telegramBotId}`;
     telegramApiMocks();
+
+    await postWebhook({
+      telegramBotId: fixture.telegramBotId,
+      secret: fixture.webhookSecret,
+      body: {
+        update_id: 2,
+        message: {
+          message_id: 100,
+          chat: { id: -10_099_002, type: "supergroup" },
+          from: { id: Number(fixture.telegramUserId), first_name: "Alice" },
+          text: "Check https://example.com/broken-article",
+        },
+      },
+    });
+    await flushWaitUntilForTest();
 
     const response = await postWebhook({
       telegramBotId: fixture.telegramBotId,
@@ -2180,7 +2193,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
             username: "alice",
             first_name: "Alice",
           },
-          text: `@${botUsername} summarize this thread`,
+          text: `@${botUsername}`,
           entities: [mentionEntity(botUsername)],
         },
       },
@@ -2190,8 +2203,11 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
-    expect(run?.prompt).toBe("summarize this thread");
+    expect(run?.prompt).toBe(`@${botUsername}`);
     expect(run?.appendSystemPrompt).toContain("Chat type: supergroup");
+    expect(run?.appendSystemPrompt).toContain(
+      "https://example.com/broken-article",
+    );
     expectExactSystemPromptFragment(
       run?.appendSystemPrompt,
       [
@@ -2206,7 +2222,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     const admitted = await findTelegramChatEventByPromptFixture({
       userId: fixture.userId,
-      prompt: "summarize this thread",
+      prompt: `@${botUsername}`,
     });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
@@ -2219,8 +2235,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       telegramChatId: "-10099002",
       telegramMessageId: "101",
       telegramMessageThreadId: null,
-      telegramMessageText: "summarize this thread",
-      telegramThreadContext: "",
+      telegramMessageText: `@${botUsername}`,
+      telegramThreadContext: expect.stringContaining(
+        "https://example.com/broken-article",
+      ),
       telegramRootMessageId: null,
       telegramUserLinkKind: "custom",
       telegramChatType: "supergroup",
@@ -2338,7 +2356,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
 
     const run = await latestRunForFixture(fixture);
-    expect(run?.prompt).toBe("help from a group");
+    expect(run?.prompt).toBe(`@${OFFICIAL_BOT_USERNAME} help from a group`);
     expect(run?.appendSystemPrompt).toContain(
       "Bot username: @official_okou_bot",
     );

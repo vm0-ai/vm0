@@ -77,6 +77,7 @@ const feishuInboundMessageSchema = z.object({
   threadId: z.string().nullable(),
   openId: z.string(),
   text: z.string(),
+  promptText: z.string(),
   file: feishuPromptFileSchema.nullable(),
 });
 
@@ -296,7 +297,7 @@ function canonicalFeishuLaunchContext(args: {
 }): CanonicalFeishuLaunchContext {
   return {
     conversationHistory: args.conversationHistory,
-    messageText: args.message.text,
+    messageText: args.message.promptText,
     messageFiles: [
       ...(args.message.file ? [args.message.file] : []),
       ...args.files,
@@ -330,7 +331,7 @@ function feishuInboundUserMessage(
   chatOpenUrl: string,
 ) {
   return createUserMessageDocument({
-    text: message.file ? null : message.text,
+    text: message.file ? null : message.promptText,
     files: (message.file ? [message.file] : []).map((file) => {
       return {
         id: file.fileId,
