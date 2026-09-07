@@ -106,6 +106,14 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
+    name: "__intro-video-agent",
+    description: "Internal managed HeyGen Video Agent submission and status",
+    load: async () => {
+      return (await import("./commands/__intro-video-agent"))
+        .introVideoAgentCommand;
+    },
+  },
+  {
     name: "__intro-video-presenter",
     description: "Internal Intro Video presenter renderer",
     load: async () => {

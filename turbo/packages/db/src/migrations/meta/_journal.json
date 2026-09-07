@@ -71,6 +71,13 @@
       "when": 1788752411372,
       "tag": "1087_run_connector_diagnostic_registration",
       "breakpoints": true
+    },
+    {
+      "idx": 1088,
+      "version": "7",
+      "when": 1788768664992,
+      "tag": "1088_heygen_video_agent_pricing",
+      "breakpoints": true
     }
   ]
 }

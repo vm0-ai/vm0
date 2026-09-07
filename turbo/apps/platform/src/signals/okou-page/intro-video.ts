@@ -102,7 +102,7 @@ function localSource(file: File): LocalIntroVideoSource {
 function serializeStyleSelection(selection: IntroVideoStyleSelection): string {
   switch (selection.kind) {
     case "auto": {
-      return "Auto — choose the best visual direction";
+      return "Let Okou choose";
     }
     case "catalog": {
       return `${selection.style.name} (${selection.style.id})`;
@@ -115,7 +115,7 @@ function serializeAvatarSelection(
 ): string {
   switch (selection.kind) {
     case "auto": {
-      return "Auto — choose a suitable public HeyGen avatar when useful";
+      return "Auto — let Okou choose";
     }
     case "none": {
       return "No avatar";
@@ -136,7 +136,7 @@ function serializeVoiceSelection(
         return `Default — follow ${avatar.avatar.name} (${avatar.avatar.defaultVoiceId})`;
       }
       return avatar.kind === "none"
-        ? "Auto — choose a suitable public HeyGen voice"
+        ? "Let Okou choose"
         : "Default — follow the chosen avatar";
     }
     case "catalog": {
@@ -162,16 +162,17 @@ function buildIntroVideoPrompt(args: {
   const request = args.instructions.trim();
   const sourceLines =
     args.sources.length === 0
-      ? ["- Sources: none; research or create supporting material as needed"]
+      ? ["- Sources: none"]
       : args.sources.map((source) => {
           return `- Source: ${source.name} (${source.kind})`;
         });
-  const styleReference =
+  const styleMetadata =
     args.style.kind === "catalog"
       ? [
+          `- HeyGen style ID: ${args.style.style.id}`,
           ...(args.style.style.aspectRatio
             ? [
-                `- HeyGen style reference aspect ratio: ${args.style.style.aspectRatio}`,
+                `- HeyGen style preview aspect ratio: ${args.style.style.aspectRatio}`,
               ]
             : []),
           ...(args.style.style.thumbnailUrl
@@ -185,9 +186,10 @@ function buildIntroVideoPrompt(args: {
             : []),
         ]
       : [];
-  const avatarReference =
+  const avatarMetadata =
     args.avatar.kind === "catalog"
       ? [
+          `- HeyGen avatar look ID: ${args.avatar.avatar.id}`,
           `- HeyGen avatar group ID: ${args.avatar.avatar.groupId}`,
           `- HeyGen avatar default voice ID: ${args.avatar.avatar.defaultVoiceId}`,
           ...(args.avatar.avatar.previewImageUrl
@@ -206,14 +208,12 @@ function buildIntroVideoPrompt(args: {
     "Use the $intro-video skill to create one polished intro video.",
     "",
     "Configuration:",
-    `- Aspect ratio: ${args.aspectRatio === "auto" ? "Auto — infer from the user request, source material, and destination" : args.aspectRatio}`,
+    `- Aspect ratio: ${args.aspectRatio === "auto" ? "Auto — let Okou choose" : args.aspectRatio}`,
     `- HeyGen style: ${serializeStyleSelection(args.style)}`,
     `- Avatar: ${serializeAvatarSelection(args.avatar)}`,
     `- Voice: ${serializeVoiceSelection(args.voice, args.avatar)}`,
-    ...styleReference,
-    ...avatarReference,
-    "- Treat the selected style as a visual reference for the managed composition route, not a native HeyGen template or an executed style_id.",
-    "- An explicit output aspect ratio is independent of the style reference. If it conflicts with an explicit user request, clarify before rendering.",
+    ...styleMetadata,
+    ...avatarMetadata,
     "",
     "Source attachments:",
     ...sourceLines,

@@ -1822,6 +1822,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     ).toContain(`/home/user/.claude/skills/${INTRO_VIDEO_SKILL_NAME}`);
 
+    await api.createOrgModelProvider(actor, {
+      type: "openai-api-key",
+      secret: "intro-video-codex-key",
+    });
+    const enabledCodex = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "openai-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const enabledCodexClaim = await api.claimRunnerJob(enabledCodex.runId);
+    expect(enabledCodexClaim.cliAgentType).toBe("codex");
+    expect(enabledCodexClaim.appendSystemPrompt ?? "").toContain(skillHint);
+    expect(
+      expectCanonicalStorageManifest(
+        enabledCodexClaim.storageManifest,
+      )?.storageMounts.map((mount) => {
+        return mount.mountPath;
+      }),
+    ).toContain(`/home/user/.codex/skills/${INTRO_VIDEO_SKILL_NAME}`);
+    await api.requestCancelRun(actor, enabledCodex.runId, [200]);
+
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.IntroVideo]: false,
     });

@@ -70,8 +70,14 @@ import {
   downloadHeyGenAvatarVideo,
   getHeyGenAvatarVideoStatus,
   isHeyGenErrorResponse,
+  parseHeyGenVideoAgentCallback,
   type HeyGenAvatarVideoStatus,
 } from "../services/heygen.service";
+import {
+  reconcileIntroVideoAgentJob$,
+  loadIntroVideoAgentJob$,
+  recordIntroVideoAgentIdentity$,
+} from "../services/intro-video-agent.service";
 import {
   introVideoPresenterPricing$,
   isIntroVideoPresenterErrorResponse,
@@ -1803,6 +1809,53 @@ const postJoggAiBuiltInGenerationWebhook$ = command(
   },
 );
 
+const handleHeyGenIntroVideoAgentWebhook$ = command(
+  async (
+    { get, set },
+    job: BuiltInGenerationWebhookJob,
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
+    const internal = readBuiltInGenerationRequestInternal(job.request);
+    if (!internal.providerSessionId || !internal.providerJobId) {
+      const rawBody = await get(request$).text();
+      signal.throwIfAborted();
+      const hints = parseHeyGenVideoAgentCallback(
+        safeJsonParse(rawBody),
+        job.id,
+      );
+      if (hints) {
+        if (
+          (internal.providerSessionId &&
+            hints.sessionId &&
+            internal.providerSessionId !== hints.sessionId) ||
+          (internal.providerJobId &&
+            hints.videoId &&
+            internal.providerJobId !== hints.videoId)
+        ) {
+          return jsonError("Video Agent callback identity mismatch", 400);
+        }
+        const recorded = await set(
+          recordIntroVideoAgentIdentity$,
+          {
+            generationId: job.id,
+            ...(hints.sessionId ? { sessionId: hints.sessionId } : {}),
+            ...(hints.videoId ? { videoId: hints.videoId } : {}),
+          },
+          signal,
+        );
+        if (!recorded) {
+          return jsonError("Video Agent callback identity mismatch", 400);
+        }
+      }
+    }
+    await set(reconcileIntroVideoAgentJob$, job.id, signal);
+    const updated = await set(loadIntroVideoAgentJob$, job.id, signal);
+    return updated?.status === "completed" || updated?.status === "failed"
+      ? okResponse()
+      : jsonError("Video Agent generation is still pending", 503);
+  },
+);
+
 const postHeyGenBuiltInGenerationWebhook$ = command(
   async (
     { get, set },
@@ -1836,6 +1889,12 @@ const postHeyGenBuiltInGenerationWebhook$ = command(
       return okResponse();
     }
     const internal = readBuiltInGenerationRequestInternal(job.request);
+    if (
+      internal.provider === "heygen" &&
+      internal.providerTask === "intro-video-agent"
+    ) {
+      return await set(handleHeyGenIntroVideoAgentWebhook$, job, signal);
+    }
     if (
       internal.provider !== "heygen" ||
       internal.providerTask !== "intro-video-presenter" ||

@@ -187,6 +187,7 @@ import { userPreferencesRoutes } from "./routes/user-preferences";
 import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { avatarVideoRoutes } from "./routes/avatar-video";
+import { introVideoAgentRoutes } from "./routes/intro-video-agent";
 import { introVideoPresenterRoutes } from "./routes/intro-video-presenter";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
 import { voiceIoPolishRoutes } from "./routes/voice-io-polish";
@@ -298,6 +299,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...imageIoGenerateRoutes,
   ...avatarVideoRoutes,
   ...introVideoPresenterRoutes,
+  ...introVideoAgentRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
   ...mailRoutes,

@@ -753,20 +753,22 @@ test("A prompt alone creates an Intro Video chat", async () => {
       "Use the $intro-video skill to create one polished intro video.",
     );
   });
-  expect(submittedPrompt).toContain(
-    "- Sources: none; research or create supporting material as needed",
-  );
-  expect(submittedPrompt).toContain(
-    "Create a concise launch video for non-technical business users.",
-  );
-  expect(submittedPrompt).toContain(
-    "- HeyGen style: Auto — choose the best visual direction",
-  );
-  expect(submittedPrompt).toContain(
-    "- Voice: Default — follow the chosen avatar",
-  );
-  expect(submittedPrompt).toContain(
-    "- Aspect ratio: Auto — infer from the user request, source material, and destination",
+  expect(submittedPrompt).toBe(
+    [
+      "Use the $intro-video skill to create one polished intro video.",
+      "",
+      "Configuration:",
+      "- Aspect ratio: Auto — let Okou choose",
+      "- HeyGen style: Let Okou choose",
+      "- Avatar: Auto — let Okou choose",
+      "- Voice: Default — follow the chosen avatar",
+      "",
+      "Source attachments:",
+      "- Sources: none",
+      "",
+      "User request:",
+      "Create a concise launch video for non-technical business users.",
+    ].join("\n"),
   );
   await waitFor(() => {
     expect(dialog).not.toBeInTheDocument();
@@ -828,9 +830,11 @@ test("Selecting a landscape style from a tag group preserves the explicit portra
     expect(submittedPrompt).toContain("- Aspect ratio: 9:16");
   });
   expect(submittedPrompt).toContain(
-    "- HeyGen style reference aspect ratio: 16:9",
+    "- HeyGen style preview aspect ratio: 16:9",
   );
-  expect(submittedPrompt).toContain("not a native HeyGen template");
+  expect(submittedPrompt).toContain("- HeyGen style ID: wide");
+  expect(submittedPrompt).not.toContain("composition route");
+  expect(submittedPrompt).not.toContain("not a native HeyGen template");
 });
 
 test("An expired catalog cursor reloads the catalog instead of retrying that cursor", async () => {
@@ -1015,9 +1019,31 @@ test.each(["source.mp4", "source.wav"])(
   },
 );
 
-test("The form accepts multiple unrelated source types", async () => {
+test("Uploaded presentations and recordings submit as sources without choosing a route", async () => {
   const user = userEvent.setup({ delay: null });
-  installIntroVideoFixture();
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  context.mocks.api(uploadsContract.prepare, ({ body, respond }) => {
+    return respond(200, {
+      id: crypto.randomUUID(),
+      filename: body.filename,
+      contentType: body.contentType,
+      size: body.size,
+      url: `https://files.example.test/${body.filename}`,
+      uploadUrl: "https://mock-upload.r2.test/intro-video-sources",
+      uploadHeaders: {},
+    });
+  });
+  context.mocks.http.put(
+    "https://mock-upload.r2.test/intro-video-sources",
+    () => {
+      return new HttpResponse(null, { status: 200 });
+    },
+  );
   await setupIntroVideoPage();
   const dialog = await openIntroVideoDialog();
   const input = dialog.querySelector<HTMLInputElement>(
@@ -1029,14 +1055,25 @@ test("The form accepts multiple unrelated source types", async () => {
 
   await user.upload(input, [
     new File(["deck"], "launch.pptx"),
+    new File(["pdf"], "launch.pdf", { type: "application/pdf" }),
     new File(["notes"], "notes.docx"),
     new File(["video"], "walkthrough.mp4", { type: "video/mp4" }),
   ]);
 
   expect(within(dialog).getByText("launch.pptx")).toBeVisible();
+  expect(within(dialog).getByText("launch.pdf")).toBeVisible();
   expect(within(dialog).getByText("notes.docx")).toBeVisible();
   expect(within(dialog).getByText("walkthrough.mp4")).toBeVisible();
   expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
+  click(requiredButtonNamed("Create video", dialog));
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("- Source: walkthrough.mp4 (video)");
+  });
+  expect(submittedPrompt).toContain("- Source: launch.pptx (presentation)");
+  expect(submittedPrompt).toContain("- Source: launch.pdf (presentation)");
+  expect(submittedPrompt).toContain("- Source: notes.docx (file)");
+  expect(submittedPrompt).toContain("- HeyGen style: Let Okou choose");
+  expect(submittedPrompt).not.toMatch(/composition|HyperFrames|TTS|presenter/u);
 });
 
 test("An in-flight Intro Video submission keeps its files and settings intact", async () => {
@@ -1277,6 +1314,10 @@ test("A selected public avatar uses its HeyGen default voice", async () => {
     );
   });
   expect(submittedPrompt).toContain(
+    "- HeyGen style ID: 349d91e1ad2444eabab2672a9057f298",
+  );
+  expect(submittedPrompt).toContain("- HeyGen avatar look ID: Daphne_public_1");
+  expect(submittedPrompt).toContain(
     "- HeyGen avatar group ID: c1926d821b4d43d6a5f07f2985bb5cd1",
   );
   expect(submittedPrompt).toContain(
@@ -1401,6 +1442,7 @@ test("Avatar looks share a person card across pages and only Use commits a look"
     expect(submittedPrompt).toContain("Daphne_public_2");
   });
   expect(submittedPrompt).toContain("- HeyGen avatar group ID: daphne-group");
+  expect(submittedPrompt).toContain("- HeyGen avatar look ID: Daphne_public_2");
   expect(submittedPrompt).toContain(
     "- HeyGen avatar default voice ID: daphne-white-default-voice",
   );
@@ -1443,9 +1485,7 @@ test("No avatar gives the voice an independent Okou choice", async () => {
   await waitFor(() => {
     expect(submittedPrompt).toContain("- Avatar: No avatar");
   });
-  expect(submittedPrompt).toContain(
-    "- Voice: Auto — choose a suitable public HeyGen voice",
-  );
+  expect(submittedPrompt).toContain("- Voice: Let Okou choose");
 });
 
 test("A public HeyGen voice overrides the avatar default", async () => {
