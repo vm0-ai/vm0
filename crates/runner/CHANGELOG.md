@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.187.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.187.0...runner-rs-v0.187.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** bound resumed idle workspace reclamation ([#32232](https://github.com/vm0-ai/vm0/issues/32232)) ([f6b6134](https://github.com/vm0-ai/vm0/commit/f6b613497178855d93a23f4727809a722adc4947))
+
 ## [0.187.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.15...runner-rs-v0.187.0) (2026-09-07)
 
 
