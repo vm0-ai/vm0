@@ -68,7 +68,6 @@ export enum FeatureSwitchKey {
   SshAccess = "_sshAccess",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
-  PresentationScreenshot = "presentationScreenshot",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",

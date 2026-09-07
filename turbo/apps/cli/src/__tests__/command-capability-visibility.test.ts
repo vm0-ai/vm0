@@ -177,24 +177,7 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(prog)).toContain("browser");
   });
 
-  it("should show presentation screenshots to staff workspaces", () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildOkouToken({
-        userId: "user-staff",
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-        scope: "okou",
-        capabilities: [],
-      }),
-    );
-    const prog = new Command();
-
-    registerCommands(prog, [new Command("presentation")]);
-
-    expect(visibleCommandNames(prog)).toContain("presentation");
-  });
-
-  it("should hide presentation screenshots while their rollout is off", () => {
+  it("should show presentation screenshots to external workspaces", () => {
     vi.stubEnv(
       "OKOU_TOKEN",
       buildOkouToken({
@@ -208,7 +191,7 @@ describe("registerCommands", () => {
 
     registerCommands(prog, [new Command("presentation")]);
 
-    expect(hiddenCommandNames(prog)).toContain("presentation");
+    expect(visibleCommandNames(prog)).toContain("presentation");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {

@@ -299,13 +299,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationScreenshot]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable local presentation rendering to ordered page screenshots.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
