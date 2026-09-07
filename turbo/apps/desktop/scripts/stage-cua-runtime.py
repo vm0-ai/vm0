@@ -3,11 +3,11 @@
 
 import argparse
 import hashlib
-import http.client
 import json
 import platform
 import shutil
 import struct
+import subprocess
 import tarfile
 import tempfile
 from urllib.parse import urljoin, urlsplit
@@ -19,29 +19,33 @@ def digest(data):
 
 
 def fetch_archive(url):
-    # HTTPSConnection cannot open file:// or other local-resource schemes.
+    # curl verifies TLS using the macOS/system trust store. Restrict its protocol
+    # explicitly and handle redirects here rather than enabling --location.
     # Validate each redirect as well as the manifest URL, including its authority.
     authorities = {"github.com", "release-assets.githubusercontent.com", "registry.npmjs.org"}
     for _ in range(6):
         parsed = urlsplit(url)
         if parsed.scheme != "https" or parsed.netloc not in authorities:
             raise ValueError("CUA download URL must use an official HTTPS host")
-        connection = http.client.HTTPSConnection(parsed.netloc, timeout=60)
-        try:
-            target = parsed.path + ("?" + parsed.query if parsed.query else "")
-            connection.request("GET", target)
-            response = connection.getresponse()
-            if response.status in {301, 302, 303, 307, 308}:
-                location = response.getheader("Location")
+        with tempfile.TemporaryDirectory(prefix="cua-download-") as temporary:
+            archive = Path(temporary) / "archive"
+            response = subprocess.run([
+                "curl", "--silent", "--show-error", "--proto", "=https",
+                "--max-time", "60", "--output", str(archive),
+                "--write-out", "%{json}", url,
+            ], capture_output=True, text=True)
+            if response.returncode != 0:
+                raise ValueError("CUA HTTPS download failed")
+            metadata = json.loads(response.stdout)
+            if metadata["http_code"] in {301, 302, 303, 307, 308}:
+                location = metadata["redirect_url"]
                 if not location:
                     raise ValueError("CUA download redirect has no location")
                 url = urljoin(url, location)
                 continue
-            if response.status != 200:
-                raise ValueError(f"CUA download failed: HTTP {response.status}")
-            return response.read()
-        finally:
-            connection.close()
+            if metadata["http_code"] != 200:
+                raise ValueError(f"CUA download failed: HTTP {metadata['http_code']}")
+            return archive.read_bytes()
     raise ValueError("CUA download exceeded the redirect limit")
 
 

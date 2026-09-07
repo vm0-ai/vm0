@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tarfile
@@ -12,25 +13,17 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("stage-cua-runtime.py")
 
-# Replace only the external HTTPS transport in a fresh CLI process. Archive
+# Replace only the external curl executable in a fresh CLI process. Archive
 # verification, extraction, cache writes, and output publication stay real.
 HTTPS_FIXTURE = """
-import http.client, runpy, sys
+import json, os, sys
 from pathlib import Path
-from types import SimpleNamespace
-data = Path(sys.argv.pop(1)).read_bytes()
-class FixtureConnection:
-    def __init__(self, host, timeout):
-        assert host == 'github.com'
-    def request(self, method, target):
-        assert method == 'GET'
-    def getresponse(self):
-        return SimpleNamespace(status=200, read=lambda: data)
-    def close(self):
-        pass
-http.client.HTTPSConnection = FixtureConnection
-sys.argv.pop(0)
-runpy.run_path(sys.argv[0], run_name='__main__')
+assert sys.argv[sys.argv.index('--proto') + 1] == '=https'
+assert '--insecure' not in sys.argv and '-k' not in sys.argv
+assert '--location' not in sys.argv
+Path(sys.argv[sys.argv.index('--output') + 1]).write_bytes(Path(os.environ['CUA_TEST_DOWNLOAD']).read_bytes())
+redirect = os.environ.get('CUA_TEST_REDIRECT', '')
+print(json.dumps({'http_code': 302 if redirect else 200, 'redirect_url': redirect}))
 """
 
 
@@ -72,13 +65,20 @@ class DistributionTest(unittest.TestCase):
         self.cache.mkdir(exist_ok=True)
         (self.cache / self.manifest["artifacts"][0]["sha256"]).write_bytes(self.archive.read_bytes())
 
-    def run_stage(self, fixture_transport=False):
-        program = [sys.executable]
+    def run_stage(self, fixture_transport=False, redirect=None):
+        environment = dict(os.environ)
         if fixture_transport:
-            program.extend(["-c", HTTPS_FIXTURE, str(self.archive)])
-        return subprocess.run([*program, str(SCRIPT), "--target", "darwin-arm64",
+            binary = self.root / "bin/curl"
+            binary.parent.mkdir(exist_ok=True)
+            binary.write_text(f"#!{sys.executable}\n" + HTTPS_FIXTURE)
+            binary.chmod(0o755)
+            environment["PATH"] = str(binary.parent) + os.pathsep + environment["PATH"]
+            environment["CUA_TEST_DOWNLOAD"] = str(self.archive)
+            if redirect is not None:
+                environment["CUA_TEST_REDIRECT"] = redirect
+        return subprocess.run([sys.executable, str(SCRIPT), "--target", "darwin-arm64",
             "--manifest", str(self.manifest_path), "--out", str(self.output),
-            "--cache", str(self.cache)], capture_output=True, text=True)
+            "--cache", str(self.cache)], capture_output=True, text=True, env=environment)
 
     def verify(self, signed=False):
         return subprocess.run([sys.executable, str(SCRIPT), "--verify", str(self.output),
@@ -125,6 +125,16 @@ class DistributionTest(unittest.TestCase):
                 artifact["url"] = url
                 self.manifest_path.write_text(json.dumps(self.manifest))
                 result = self.run_stage()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("official HTTPS host", result.stderr)
+                self.assertFalse(self.output.exists())
+
+    def test_download_rejects_local_insecure_and_untrusted_redirects(self):
+        for url in [self.archive.as_uri(), "http://github.com/input.tgz", "https://untrusted.invalid/input.tgz"]:
+            with self.subTest(url=url):
+                self.prepare()
+                (self.cache / self.manifest["artifacts"][0]["sha256"]).unlink()
+                result = self.run_stage(fixture_transport=True, redirect=url)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("official HTTPS host", result.stderr)
                 self.assertFalse(self.output.exists())
