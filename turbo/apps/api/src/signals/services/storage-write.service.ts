@@ -37,7 +37,6 @@ import {
 } from "./pi-memory-phase2-maintenance.service";
 import {
   findPiMemoryPhase2Checkpoint,
-  piMemoryPhase2CheckpointSchemaReady,
   recordPiMemoryPhase2Checkpoint,
 } from "./pi-memory-phase2-checkpoint.service";
 
@@ -354,9 +353,6 @@ async function guardPiMemoryPhase2MaintenancePublication(args: {
     return notFound("Active Pi memory maintenance publication not found");
   }
 
-  if (!(await piMemoryPhase2CheckpointSchemaReady(args.db))) {
-    return notFound("Pi memory maintenance checkpoint schema is not ready");
-  }
   const receipt = await findPiMemoryPhase2Checkpoint(args.db, {
     ...payload.data,
     runId: args.auth.runId,
