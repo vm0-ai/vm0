@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.23](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.22...guest-mock-codex-v0.10.23) (2026-09-07)
+
+
+### Refactoring
+
+* **runtime:** neutralize private test markers ([#32270](https://github.com/vm0-ai/vm0/issues/32270)) ([b1a3e6f](https://github.com/vm0-ai/vm0/commit/b1a3e6f80100113525c2b38c3a9dd1583d03cfe5))
+
 ## [0.10.22](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.21...guest-mock-codex-v0.10.22) (2026-09-07)
 
 ## [0.10.21](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.20...guest-mock-codex-v0.10.21) (2026-09-05)

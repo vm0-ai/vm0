@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.133](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.132...guest-mock-claude-v0.21.133) (2026-09-07)
+
+
+### Refactoring
+
+* **runtime:** neutralize private test markers ([#32270](https://github.com/vm0-ai/vm0/issues/32270)) ([b1a3e6f](https://github.com/vm0-ai/vm0/commit/b1a3e6f80100113525c2b38c3a9dd1583d03cfe5))
+
 ## [0.21.132](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.131...guest-mock-claude-v0.21.132) (2026-09-07)
 
 ## [0.21.131](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.130...guest-mock-claude-v0.21.131) (2026-09-05)

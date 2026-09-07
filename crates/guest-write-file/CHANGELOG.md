@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.138](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.137...guest-write-file-v0.1.138) (2026-09-07)
+
+
+### Documentation
+
+* **guest-write-file:** correct private-mode usage syntax ([#32315](https://github.com/vm0-ai/vm0/issues/32315)) ([35076cc](https://github.com/vm0-ai/vm0/commit/35076cc86acdd535ba2b5c6143edc173c1d66c94))
+
 ## [0.1.137](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.136...guest-write-file-v0.1.137) (2026-09-07)
 
 ## [0.1.136](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.135...guest-write-file-v0.1.136) (2026-09-07)

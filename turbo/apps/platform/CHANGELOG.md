@@ -11,6 +11,31 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.858.0](https://github.com/vm0-ai/vm0/compare/app-v0.857.0...app-v0.858.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** add recent and all work history views ([#32250](https://github.com/vm0-ai/vm0/issues/32250)) ([bbecb35](https://github.com/vm0-ai/vm0/commit/bbecb355397440b13e3f00aa7fcde510ff54c2e6))
+* **platform:** group intro video styles by heygen tags ([#32209](https://github.com/vm0-ai/vm0/issues/32209)) ([e888e8d](https://github.com/vm0-ai/vm0/commit/e888e8dd852aac537f3a03b1a818f72c0b4da00b))
+
+
+### Bug Fixes
+
+* **app:** prevent microphone dimming when switching chat threads ([#32265](https://github.com/vm0-ai/vm0/issues/32265)) ([3e09554](https://github.com/vm0-ai/vm0/commit/3e09554e775fa577bb0e8e1e64e297e969b41b5b))
+* **platform:** keep the microphone button stable when switching conversations ([#32284](https://github.com/vm0-ai/vm0/issues/32284)) ([d0f1333](https://github.com/vm0-ai/vm0/commit/d0f1333ecaadd89b82f7100241315e8cf9877998)), closes [#32255](https://github.com/vm0-ai/vm0/issues/32255)
+* **platform:** reveal thread shortcuts on modifier hold ([#32262](https://github.com/vm0-ai/vm0/issues/32262)) ([e068f45](https://github.com/vm0-ai/vm0/commit/e068f4512ba61b694f5651676eedb43170f58374))
+* **platform:** simplify model picker settings and focus ([#32238](https://github.com/vm0-ai/vm0/issues/32238)) ([c365403](https://github.com/vm0-ai/vm0/commit/c3654039e0eb81100f4a040c259fc45c08235e43))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.0
+    * @okouai/connectors bumped to 3.8.0
+    * @okouai/core bumped to 8.631.2
+
 ## [0.857.0](https://github.com/vm0-ai/vm0/compare/app-v0.856.0...app-v0.857.0) (2026-09-07)
 
 

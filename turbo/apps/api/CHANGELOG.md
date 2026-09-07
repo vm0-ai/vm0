@@ -8,6 +8,37 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.563.0](https://github.com/vm0-ai/vm0/compare/api-v1.562.0...api-v1.563.0) (2026-09-07)
+
+
+### Features
+
+* add noyo client credentials provider ([#32095](https://github.com/vm0-ai/vm0/issues/32095)) ([f6f3d83](https://github.com/vm0-ai/vm0/commit/f6f3d83ad092a5144576d30a5955bfdff307b929))
+* **api:** force app.vm0.ai clients to upgrade to v0.857.0 ([#32297](https://github.com/vm0-ai/vm0/issues/32297)) ([7949605](https://github.com/vm0-ai/vm0/commit/7949605c72b83863469b7ce8081caf650b15c686))
+* **voice:** allow 60-minute voice input recordings ([#32316](https://github.com/vm0-ai/vm0/issues/32316)) ([9d8cce2](https://github.com/vm0-ai/vm0/commit/9d8cce23c35dd6bb9da84099a13a79949cfdc8d7))
+
+
+### Bug Fixes
+
+* **chat:** validate snapshot watermark cursors ([#32295](https://github.com/vm0-ai/vm0/issues/32295)) ([bcac973](https://github.com/vm0-ai/vm0/commit/bcac9738bf3975c857857c645b4f51d8cc2b659d))
+* **video:** reject conflicting byteplus frame and reference inputs ([#32313](https://github.com/vm0-ai/vm0/issues/32313)) ([36bb143](https://github.com/vm0-ai/vm0/commit/36bb14328767cbb03c2b507be86d880d2dae7611))
+
+
+### Refactoring
+
+* **api:** neutralize built-in model test vocabulary ([#32273](https://github.com/vm0-ai/vm0/issues/32273)) ([fe8a5fc](https://github.com/vm0-ai/vm0/commit/fe8a5fc5287772f31e78ff1622fb4f8064152e3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.0
+    * @okouai/connectors bumped to 3.8.0
+    * @okouai/core bumped to 8.631.2
+    * @okouai/db bumped to 1.245.2
+    * @okouai/pi-agent-runtime bumped to 1.21.14
+
 ## [1.562.0](https://github.com/vm0-ai/vm0/compare/api-v1.561.0...api-v1.562.0) (2026-09-07)
 
 

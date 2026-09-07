@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.315.9](https://github.com/vm0-ai/vm0/compare/cli-v9.315.8...cli-v9.315.9) (2026-09-07)
+
+
+### Bug Fixes
+
+* **video:** reject conflicting byteplus frame and reference inputs ([#32313](https://github.com/vm0-ai/vm0/issues/32313)) ([36bb143](https://github.com/vm0-ai/vm0/commit/36bb14328767cbb03c2b507be86d880d2dae7611))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.412.0
+    * @okouai/connectors bumped to 3.8.0
+    * @okouai/core bumped to 8.631.2
+    * @okouai/pi-agent-runtime bumped to 1.21.14
+
 ## [9.315.8](https://github.com/vm0-ai/vm0/compare/cli-v9.315.7...cli-v9.315.8) (2026-09-07)
 
 
