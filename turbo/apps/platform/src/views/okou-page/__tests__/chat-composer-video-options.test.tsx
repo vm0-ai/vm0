@@ -324,10 +324,17 @@ test("Configure and submit a video directly from task entries on mobile", async 
       "9:16",
     );
   });
+  click(screen.getByRole("switch", { name: "Generate audio" }));
+  await waitFor(() => {
+    expect(
+      screen.getByRole("switch", { name: "Generate audio" }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
   await sendCurrent(editor, "A ceramic cup in the morning light.");
   await waitFor(() => {
     expect(submissions).toHaveLength(1);
     expect(submissions[0]?.runOptions?.video?.aspectRatio).toBe("9:16");
+    expect(submissions[0]?.runOptions?.video?.generateAudio).toBeFalsy();
     expect(submissions[0]?.userMessage?.parts).toContainEqual({
       type: "text",
       text: "Generate a video for the following request.\nA ceramic cup in the morning light.",

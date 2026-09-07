@@ -566,7 +566,7 @@ export function ComposerInlineVideoOptions({
         }}
       />
       {config.supportsGenerateAudio && (
-        <label className="flex h-8 items-center gap-2 px-1 text-xs text-muted-foreground">
+        <div className="flex h-8 items-center gap-2 px-1 text-xs text-muted-foreground">
           <Switch
             size="compact"
             checked={resolved.generateAudio}
@@ -580,7 +580,7 @@ export function ComposerInlineVideoOptions({
           {t(($) => {
             return $.chat.templates.videoOptionsAudio;
           })}
-        </label>
+        </div>
       )}
     </div>
   );
