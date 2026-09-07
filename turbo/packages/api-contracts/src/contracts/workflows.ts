@@ -505,6 +505,14 @@ export type GoogleCalendarAutomationEventConfig =
   | GoogleCalendarEventUpdatedEventConfig
   | GoogleCalendarEventCancelledEventConfig;
 
+export const googleCalendarWatchActionRequiredReasonSchema = z.enum([
+  "calendar_not_found",
+  "reconnect_required",
+]);
+export type GoogleCalendarWatchActionRequiredReason = z.infer<
+  typeof googleCalendarWatchActionRequiredReasonSchema
+>;
+
 export const googleMeetTranscriptGeneratedEventConfigSchema = z
   .object({
     provider: z.literal("google-meet"),
@@ -875,6 +883,7 @@ export const workflowGoogleCalendarEventCreatedAutomationSummarySchema =
     eventConfig: googleCalendarEventCreatedEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
+    warning: googleCalendarWatchActionRequiredReasonSchema.optional(),
   });
 
 export const workflowGoogleCalendarEventUpdatedAutomationSummarySchema =
@@ -884,6 +893,7 @@ export const workflowGoogleCalendarEventUpdatedAutomationSummarySchema =
     eventConfig: googleCalendarEventUpdatedEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
+    warning: googleCalendarWatchActionRequiredReasonSchema.optional(),
   });
 
 export const workflowGoogleCalendarEventCancelledAutomationSummarySchema =
@@ -893,6 +903,7 @@ export const workflowGoogleCalendarEventCancelledAutomationSummarySchema =
     eventConfig: googleCalendarEventCancelledEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
+    warning: googleCalendarWatchActionRequiredReasonSchema.optional(),
   });
 
 export const workflowGoogleFormsResponseSubmittedAutomationSummarySchema =
