@@ -54,7 +54,7 @@ import {
   finalizeActiveInputDelivery,
   type FinalizeActiveInputDeliveryResult,
 } from "./active-input-delivery.service";
-import { deleteRunConnectorDiagnosticRegistrations } from "./agent-run-connector-diagnostic-registration.service";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -381,27 +381,22 @@ async function commitStaleRunTimeout(
             : { finalized: false, chatEventsAppended: false };
         signal.throwIfAborted();
 
-        const [updatedRun] = await tx
-          .update(agentRuns)
-          .set({
+        const [updatedRun] = await transitionAgentRunsToTerminal(tx, {
+          values: {
             status: "timeout",
             completedAt: nowDate(),
             error: timeoutReason,
-          })
-          .where(
-            and(
-              eq(agentRuns.id, run.id),
-              eq(agentRuns.status, lockedRun.status),
-            ),
-          )
-          .returning({ id: agentRuns.id });
+          },
+          conditions: [
+            eq(agentRuns.id, run.id),
+            eq(agentRuns.status, lockedRun.status),
+          ],
+        });
         signal.throwIfAborted();
         if (!updatedRun) {
           throw new Error("Locked stale run lost its timeout transition");
         }
 
-        await deleteRunConnectorDiagnosticRegistrations(tx, [updatedRun.id]);
-        signal.throwIfAborted();
         await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
         signal.throwIfAborted();
 

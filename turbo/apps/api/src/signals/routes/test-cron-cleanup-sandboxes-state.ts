@@ -42,7 +42,7 @@ import {
   normalizeRunMetadata,
   writeRunMetadata,
 } from "../services/agent-run-metadata-write.service";
-import { deleteRunConnectorDiagnosticRegistrations } from "../services/agent-run-connector-diagnostic-registration.service";
+import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
 import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
 import { insertChatEvent } from "../services/chat-event.service";
 import {
@@ -1006,27 +1006,23 @@ async function transitionRunTerminalForAction(
   if (!terminalStatus) {
     return actionBadRequest("terminal status is required");
   }
-  const [updated] = await db
-    .update(agentRuns)
-    .set({
-      status: terminalStatus,
-      completedAt: nowDate(),
-      error:
-        terminalStatus === "completed"
-          ? null
-          : `Run entered ${terminalStatus} in endpoint integration fixture`,
-    })
-    .where(
-      and(
+  const updated = await db.transaction(async (tx) => {
+    const [run] = await transitionAgentRunsToTerminal(tx, {
+      values: {
+        status: terminalStatus,
+        completedAt: nowDate(),
+        error:
+          terminalStatus === "completed"
+            ? null
+            : `Run entered ${terminalStatus} in endpoint integration fixture`,
+      },
+      conditions: [
         eq(agentRuns.id, runId),
         inArray(agentRuns.status, ["pending", "running"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
-  signal.throwIfAborted();
-  if (updated) {
-    await deleteRunConnectorDiagnosticRegistrations(db, [updated.id]);
-  }
+      ],
+    });
+    return run;
+  });
   signal.throwIfAborted();
   return updated ? actionOk() : actionBadRequest("active run not found");
 }

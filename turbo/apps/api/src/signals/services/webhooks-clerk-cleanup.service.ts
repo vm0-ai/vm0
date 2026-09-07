@@ -76,7 +76,7 @@ import {
   deleteClerkAgentLifecycleData,
 } from "./agent-lifecycle.service";
 import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
-import { deleteRunConnectorDiagnosticRegistrations } from "./agent-run-connector-diagnostic-registration.service";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
@@ -102,28 +102,19 @@ async function publishCancelBestEffort(
 
 async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
   const cancelled = await db.transaction(async (tx) => {
-    const rows = await tx
-      .update(agentRuns)
-      .set({ status: "cancelled", completedAt: nowDate() })
-      .where(
-        and(
-          eq(agentRuns.orgId, orgId),
-          inArray(agentRuns.status, ["queued", "pending", "running"]),
-        ),
-      )
-      .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
-    await deleteRunConnectorDiagnosticRegistrations(
-      tx,
-      rows.map((run) => {
-        return run.id;
-      }),
-    );
+    const rows = await transitionAgentRunsToTerminal(tx, {
+      values: { status: "cancelled", completedAt: nowDate() },
+      conditions: [
+        eq(agentRuns.orgId, orgId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ],
+    });
     await tx.delete(agentRunQueue).where(eq(agentRunQueue.orgId, orgId));
     return rows;
   });
   await Promise.all(
     cancelled.map((run) => {
-      return publishCancelBestEffort(run.runnerGroup, run.id);
+      return publishCancelBestEffort(run.runnerGroup, run.runId);
     }),
   );
 }
@@ -173,28 +164,19 @@ async function cancelLastAdminOrgsStripeSubscriptions(
 
 async function cancelUserRuns(db: Db, userId: string): Promise<void> {
   const cancelled = await db.transaction(async (tx) => {
-    const rows = await tx
-      .update(agentRuns)
-      .set({ status: "cancelled", completedAt: nowDate() })
-      .where(
-        and(
-          eq(agentRuns.userId, userId),
-          inArray(agentRuns.status, ["queued", "pending", "running"]),
-        ),
-      )
-      .returning({ id: agentRuns.id, runnerGroup: agentRuns.runnerGroup });
-    await deleteRunConnectorDiagnosticRegistrations(
-      tx,
-      rows.map((run) => {
-        return run.id;
-      }),
-    );
+    const rows = await transitionAgentRunsToTerminal(tx, {
+      values: { status: "cancelled", completedAt: nowDate() },
+      conditions: [
+        eq(agentRuns.userId, userId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ],
+    });
     await tx.delete(agentRunQueue).where(eq(agentRunQueue.userId, userId));
     return rows;
   });
   await Promise.all(
     cancelled.map((run) => {
-      return publishCancelBestEffort(run.runnerGroup, run.id);
+      return publishCancelBestEffort(run.runnerGroup, run.runId);
     }),
   );
 }

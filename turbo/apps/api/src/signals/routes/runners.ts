@@ -87,7 +87,7 @@ import {
 } from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
-import { deleteRunConnectorDiagnosticRegistrations } from "../services/agent-run-connector-diagnostic-registration.service";
+import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
 import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
@@ -1216,22 +1216,18 @@ async function failPoisonQueuedJob(
     }
 
     const failedAt = nowDate();
-    const [updatedRun] = await tx
-      .update(agentRuns)
-      .set({
+    const [updatedRun] = await transitionAgentRunsToTerminal(tx, {
+      values: {
         status: "failed",
         completedAt: failedAt,
         error: errorMessage,
-      })
-      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
-      .returning({ id: agentRuns.id });
+      },
+      conditions: [eq(agentRuns.id, runId), eq(agentRuns.status, "pending")],
+    });
     signal.throwIfAborted();
     if (!updatedRun) {
       throw new Error("Locked pending run was not failed");
     }
-
-    await deleteRunConnectorDiagnosticRegistrations(tx, [updatedRun.id]);
-    signal.throwIfAborted();
 
     await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
     signal.throwIfAborted();
