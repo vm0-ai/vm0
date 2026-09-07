@@ -3,13 +3,14 @@
 
 import argparse
 import hashlib
+import http.client
 import json
 import platform
 import shutil
 import struct
 import tarfile
 import tempfile
-import urllib.request
+from urllib.parse import urljoin, urlsplit
 from pathlib import Path, PurePosixPath
 
 
@@ -17,13 +18,39 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def fetch_archive(url):
+    # HTTPSConnection cannot open file:// or other local-resource schemes.
+    # Validate each redirect as well as the manifest URL, including its authority.
+    authorities = {"github.com", "release-assets.githubusercontent.com", "registry.npmjs.org"}
+    for _ in range(6):
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or parsed.netloc not in authorities:
+            raise ValueError("CUA download URL must use an official HTTPS host")
+        connection = http.client.HTTPSConnection(parsed.netloc, timeout=60)
+        try:
+            target = parsed.path + ("?" + parsed.query if parsed.query else "")
+            connection.request("GET", target)
+            response = connection.getresponse()
+            if response.status in {301, 302, 303, 307, 308}:
+                location = response.getheader("Location")
+                if not location:
+                    raise ValueError("CUA download redirect has no location")
+                url = urljoin(url, location)
+                continue
+            if response.status != 200:
+                raise ValueError(f"CUA download failed: HTTP {response.status}")
+            return response.read()
+        finally:
+            connection.close()
+    raise ValueError("CUA download exceeded the redirect limit")
+
+
 def download(artifact, cache):
     cached = cache / artifact["sha256"]
     if cached.exists():
         data = cached.read_bytes()
     else:
-        with urllib.request.urlopen(artifact["url"], timeout=60) as response:
-            data = response.read()
+        data = fetch_archive(artifact["url"])
     if digest(data) != artifact["sha256"]:
         raise ValueError(f"CUA integrity mismatch: {artifact['id']}")
     # A cache hit is verified just like a fresh download. Never cache extracted code.

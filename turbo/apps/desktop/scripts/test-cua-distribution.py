@@ -12,6 +12,27 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("stage-cua-runtime.py")
 
+# Replace only the external HTTPS transport in a fresh CLI process. Archive
+# verification, extraction, cache writes, and output publication stay real.
+HTTPS_FIXTURE = """
+import http.client, runpy, sys
+from pathlib import Path
+from types import SimpleNamespace
+data = Path(sys.argv.pop(1)).read_bytes()
+class FixtureConnection:
+    def __init__(self, host, timeout):
+        assert host == 'github.com'
+    def request(self, method, target):
+        assert method == 'GET'
+    def getresponse(self):
+        return SimpleNamespace(status=200, read=lambda: data)
+    def close(self):
+        pass
+http.client.HTTPSConnection = FixtureConnection
+sys.argv.pop(0)
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+
 
 class DistributionTest(unittest.TestCase):
     def setUp(self):
@@ -40,16 +61,22 @@ class DistributionTest(unittest.TestCase):
             "driverVersion": "0.23.2", "target": "darwin-arm64",
             "nativeCode": ["cua-driver"],
             "artifacts": [{
-                "id": "fixture", "url": self.archive.as_uri(),
+                "id": "fixture", "url": "https://github.com/trycua/cua/releases/download/test/input.tgz",
                 "sha256": hashlib.sha256(self.archive.read_bytes()).hexdigest(),
                 "destination": ".", "files": list(files),
                 "package": "@trycua/cua-driver", "version": "0.23.2",
             }],
         }
         self.manifest_path.write_text(json.dumps(self.manifest))
+        # Fixture bytes enter through the real content-addressed archive cache.
+        self.cache.mkdir(exist_ok=True)
+        (self.cache / self.manifest["artifacts"][0]["sha256"]).write_bytes(self.archive.read_bytes())
 
-    def run_stage(self):
-        return subprocess.run([sys.executable, str(SCRIPT), "--target", "darwin-arm64",
+    def run_stage(self, fixture_transport=False):
+        program = [sys.executable]
+        if fixture_transport:
+            program.extend(["-c", HTTPS_FIXTURE, str(self.archive)])
+        return subprocess.run([*program, str(SCRIPT), "--target", "darwin-arm64",
             "--manifest", str(self.manifest_path), "--out", str(self.output),
             "--cache", str(self.cache)], capture_output=True, text=True)
 
@@ -83,7 +110,24 @@ class DistributionTest(unittest.TestCase):
         self.assertEqual((self.output / "payload.json").read_bytes(), expected)
         cached.unlink()
         self.archive.write_bytes(b"corrupt download")
-        self.assertNotEqual(self.run_stage().returncode, 0)
+        result = self.run_stage(fixture_transport=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("integrity mismatch", result.stderr)
+        self.assertFalse(cached.exists())
+        self.assertEqual((self.output / "payload.json").read_bytes(), expected)
+
+    def test_download_rejects_local_insecure_and_untrusted_urls(self):
+        for url in [self.archive.as_uri(), "http://github.com/input.tgz", "https://untrusted.invalid/input.tgz"]:
+            with self.subTest(url=url):
+                self.prepare()
+                artifact = self.manifest["artifacts"][0]
+                (self.cache / artifact["sha256"]).unlink()
+                artifact["url"] = url
+                self.manifest_path.write_text(json.dumps(self.manifest))
+                result = self.run_stage()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("official HTTPS host", result.stderr)
+                self.assertFalse(self.output.exists())
 
     def test_wrong_version_and_architecture_fail(self):
         for options in [{"version": "0.23.1"}, {"architecture": b"\x07\x00\x00\x01"}]:

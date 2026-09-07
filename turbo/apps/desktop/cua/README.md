@@ -35,7 +35,8 @@ Other platform packages, source trees, standalone `CuaDriver.app`, and the
 unused `@ubjs/node` native runtime are not shipped.
 
 `pnpm build:cua` uses Python 3's standard library to verify archives before
-extraction, reject unsafe entries/links, check package versions and arm64
+extraction, restrict downloads and redirects to official HTTPS hosts, reject
+unsafe entries/links, check package versions and arm64
 Mach-O headers, and stage `native/dist/cua`. This directory survives tsup's
 `dist` cleanup and Forge copies it to `Contents/Resources/cua`, while still
 excluding root `node_modules`. Cache entries are original archives keyed by
