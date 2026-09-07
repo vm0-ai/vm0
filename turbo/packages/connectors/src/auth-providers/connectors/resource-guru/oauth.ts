@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
+import { ProviderResponseError } from "../../provider-error";
+import { parseProviderTokenResponse } from "../../token-response";
 
 const RESOURCE_GURU_TOKEN_URL = "https://api.resourceguruapp.com/oauth/token";
 
@@ -86,12 +88,18 @@ export async function exchangeResourceGuruCode(
     await throwOAuthError("Resource Guru", "exchange", response);
   }
 
-  const data = tokenResponseSchema.parse(await response.json());
+  const data = await parseProviderTokenResponse(
+    response,
+    tokenResponseSchema,
+    "Invalid Resource Guru token response",
+  );
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
   }
   if (!data.access_token) {
-    throw new Error("No access token in Resource Guru response");
+    throw new ProviderResponseError(
+      "No access token in Resource Guru response",
+    );
   }
 
   return {
@@ -128,12 +136,18 @@ export async function refreshResourceGuruToken(
     await throwOAuthError("Resource Guru", "refresh", response);
   }
 
-  const data = tokenResponseSchema.parse(await response.json());
+  const data = await parseProviderTokenResponse(
+    response,
+    tokenResponseSchema,
+    "Invalid Resource Guru token response",
+  );
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
   }
   if (!data.access_token) {
-    throw new Error("No access token in Resource Guru refresh response");
+    throw new ProviderResponseError(
+      "No access token in Resource Guru refresh response",
+    );
   }
 
   return {
