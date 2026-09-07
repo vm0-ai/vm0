@@ -23,8 +23,8 @@ ruby -e '
 
   canonical_signing_identity = "OKOU_DESKTOP_SIGNING_IDENTITY"
   canonical_writer_counts = {
-    "OKOU_DESKTOP_PRODUCT" => [6, 2],
-    "OKOU_DESKTOP_PLATFORM_URL" => [9, 2],
+    "OKOU_DESKTOP_PRODUCT" => [7, 2],
+    "OKOU_DESKTOP_PLATFORM_URL" => [11, 2],
     canonical_signing_identity => [0, 5],
   }
   canonical_writer_counts.each do |name, expected_counts|
@@ -34,6 +34,12 @@ ruby -e '
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
+  ["default-configuration", "Okou production", "PR preview"].each do |variant|
+    smoke = build.fetch("steps").find { |step| step["name"] == "Smoke test #{variant} artifact launch" }
+    probe = build.fetch("steps").find { |step| step["name"] == "Probe embedded CUA in #{variant} artifact" }
+    raise "Each packaged variant must run the real CUA probe" unless probe && probe.fetch("run").include?("--cua-probe --signed")
+    raise "CUA probe must use the same canonical environment and conditions as ordinary smoke" unless probe["env"] == smoke["env"] && probe["if"] == smoke["if"]
+  end
   deploy = desktop.fetch("deploy-desktop")
   raise "deploy-desktop must depend on version detection" unless deploy.fetch("needs") == "detect-desktop-version"
   raise "deploy-desktop must not use a GitHub environment" if deploy.key?("environment")

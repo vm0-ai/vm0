@@ -6,7 +6,7 @@
   "main": "dist/bootstrap.js",
   "scripts": {
     "assets:generate": "node scripts/generate-brand-assets.mjs",
-    "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",
+    "build": "pnpm build:native && pnpm build:cua && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",
     "build:electron": "tsup --config tsup.electron.config.js && node scripts/check-bootstrap-bundle.mjs",
     "build:mcp-filesystem": "tsup --config tsup.mcp-filesystem.config.js",
     "build:native": "node scripts/build-native-helper.js",
@@ -20,7 +20,8 @@
     "start": "electron-forge start",
     "test": "vitest run",
     "test:native": "node scripts/test-native-helper.js",
-    "upload:sentry": "node scripts/upload-sentry-artifacts.js"
+    "upload:sentry": "node scripts/upload-sentry-artifacts.js",
+    "build:cua": "python3 scripts/stage-cua-runtime.py"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -56,6 +57,7 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "^8.0.16",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "@trycua/cua-driver": "0.23.2"
   }
 }

@@ -281,7 +281,7 @@ function preparePackagedApp(
   mkdirSync(join(appBundlePath, "Contents", "MacOS"), { recursive: true });
   writeFileSync(
     executablePath,
-    `#!${process.execPath}\nrequire("node:fs").appendFileSync(process.env.TEST_TRACE_PATH, "${marker}\\n");\nconsole.log("[smoke-test] desktop main ready");\n`,
+    `#!${process.execPath}\nrequire("node:fs").appendFileSync(process.env.TEST_TRACE_PATH, "${marker}\\n");\nconsole.log("[smoke-test] desktop main ready\\n[smoke-test] cua dormant");\n`,
   );
   chmodSync(executablePath, 0o755);
   writeFileSync(join(resourcesPath, "app", "dist", "main.js"), "");

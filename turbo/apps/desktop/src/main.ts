@@ -56,6 +56,9 @@ import { buildWindowOptions } from "./desktop-recorder-window-options";
 import { areaToGlobal } from "./desktop-recorder-overlay-geometry";
 import { createComputerUsePermissions } from "./computer-use-permissions";
 import { ComputerUseDriverController } from "./computer-use-driver";
+import { CuaEmbeddedRuntime } from "./cua-runtime";
+import { assertCuaDormant } from "./cua-runtime-files";
+import { runCuaHostProbe } from "./cua-host-probe";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import desktopBrandAssets from "./desktop-brand-assets.json";
@@ -149,6 +152,7 @@ let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
 let computerUseQuitPreparationPromise: Promise<void> | null = null;
 let computerUseQuitPreparationComplete = false;
+let cuaProbeRuntime: CuaEmbeddedRuntime | null = null;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
 
@@ -1497,7 +1501,11 @@ if (!hasSingleInstanceLock) {
     if (!computerUseQuitPreparationPromise) {
       computerUseQuitPreparationPromise = (async () => {
         try {
-          await computerUseController.stopForQuit();
+          try {
+            await computerUseController.stopForQuit();
+          } finally {
+            await cuaProbeRuntime?.dispose();
+          }
         } catch (error) {
           console.error("Unable to prepare Computer Use for app quit", error);
         } finally {
@@ -1509,6 +1517,40 @@ if (!hasSingleInstanceLock) {
   });
 
   void app.whenReady().then(async () => {
+    if (process.env.OKOU_DESKTOP_CUA_PROBE === "1") {
+      if (
+        !app.isPackaged ||
+        process.platform !== "darwin" ||
+        process.arch !== "arm64"
+      ) {
+        writeSync(
+          2,
+          "[cua-probe] unsupported: packaged macOS arm64 host required\n",
+        );
+        app.exit(1);
+        return;
+      }
+      cuaProbeRuntime = new CuaEmbeddedRuntime({
+        runtimeRoot: path.join(process.resourcesPath, "cua"),
+        hostBundleId: config.identity.bundleId,
+      });
+      try {
+        const result = await runCuaHostProbe(
+          cuaProbeRuntime,
+          process.env.OKOU_DESKTOP_CUA_CAPTURE === "1",
+          app.getPath("userData"),
+        );
+        writeSync(1, `[cua-probe] ${JSON.stringify(result)}\n`);
+        app.exit(0);
+      } catch {
+        writeSync(
+          2,
+          `[cua-probe] ${JSON.stringify(cuaProbeRuntime.getState())}\n`,
+        );
+        app.exit(1);
+      }
+      return;
+    }
     applyDockIcon();
     hideDockForInactiveMainWindow();
     registerDesktopAuthProtocol();
@@ -1526,6 +1568,7 @@ if (!hasSingleInstanceLock) {
     queueDesktopAuthCallbackArgv(process.argv);
 
     if (isDesktopSmokeTestEnabled(process.env)) {
+      assertCuaDormant();
       desktopAuthSession.signOut();
       try {
         await verifyDesktopSmokeBridge();
@@ -1535,6 +1578,7 @@ if (!hasSingleInstanceLock) {
         return;
       }
       writeSync(1, `${DESKTOP_SMOKE_TEST_READY_MARKER}\n`);
+      writeSync(1, "[smoke-test] cua dormant\n");
       process.exit(0);
     }
 
