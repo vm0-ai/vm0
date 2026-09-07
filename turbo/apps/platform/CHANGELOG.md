@@ -11,6 +11,22 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.854.1](https://github.com/vm0-ai/vm0/compare/app-v0.854.0...app-v0.854.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **platform:** wait for skeleton before page readiness ([#32175](https://github.com/vm0-ai/vm0/issues/32175)) ([f68a10c](https://github.com/vm0-ai/vm0/commit/f68a10cf2ee61699911aba45781deb2b5c4dc194))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.3
+    * @okouai/connectors bumped to 3.6.0
+    * @okouai/core bumped to 8.629.1
+
 ## [0.854.0](https://github.com/vm0-ai/vm0/compare/app-v0.853.0...app-v0.854.0) (2026-09-07)
 
 

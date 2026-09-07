@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.86.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.2...guest-agent-v0.86.3) (2026-09-07)
+
+
+### Documentation
+
+* **rust:** correct HeartbeatStatus summary ([#32129](https://github.com/vm0-ai/vm0/issues/32129)) ([4777169](https://github.com/vm0-ai/vm0/commit/477716997ffd789b1cf19b370759445ef4f2bd34))
+* **rust:** update stale guest-agent CLI entrypoint references ([#32159](https://github.com/vm0-ai/vm0/issues/32159)) ([1c29468](https://github.com/vm0-ai/vm0/commit/1c29468fc6c57c90555052aee734a0dd5027962d))
+
+
+### Performance Improvements
+
+* **guest-agent:** reuse maintenance content hash ([#32093](https://github.com/vm0-ai/vm0/issues/32093)) ([9774746](https://github.com/vm0-ai/vm0/commit/97747462008167a2a494bdfeeb4dbcd9ba83fadc))
+
 ## [0.86.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.1...guest-agent-v0.86.2) (2026-09-06)
 
 

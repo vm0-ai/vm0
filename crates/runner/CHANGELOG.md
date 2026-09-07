@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.186.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.12...runner-rs-v0.186.13) (2026-09-07)
+
+
+### Bug Fixes
+
+* **python:** reject non-utf-8 catalog response headers ([#32135](https://github.com/vm0-ai/vm0/issues/32135)) ([f154925](https://github.com/vm0-ai/vm0/commit/f154925669183ea8a6c5679256122d5da4e81657))
+
+
+### Performance Improvements
+
+* **mitm-addon:** bulk-validate discarded utf-8 strings ([#32166](https://github.com/vm0-ai/vm0/issues/32166)) ([c0137f0](https://github.com/vm0-ai/vm0/commit/c0137f0ed0e1d6613929c604e71f28fe156f594d))
+
 ## [0.186.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.11...runner-rs-v0.186.12) (2026-09-07)
 
 

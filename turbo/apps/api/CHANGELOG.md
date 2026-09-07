@@ -8,6 +8,25 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.559.0](https://github.com/vm0-ai/vm0/compare/api-v1.558.0...api-v1.559.0) (2026-09-07)
+
+
+### Features
+
+* **connectors:** add oto auth provider ([#32087](https://github.com/vm0-ai/vm0/issues/32087)) ([13fac04](https://github.com/vm0-ai/vm0/commit/13fac0448e15095aa9f13649cbee96ea2d92be14))
+* **pi:** learn memory from agent chat threads ([#32177](https://github.com/vm0-ai/vm0/issues/32177)) ([6a0fedf](https://github.com/vm0-ai/vm0/commit/6a0fedf3804833fddfbe407e73d62189f790fb18))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.3
+    * @okouai/connectors bumped to 3.6.0
+    * @okouai/core bumped to 8.629.1
+    * @okouai/db bumped to 1.244.4
+    * @okouai/pi-agent-runtime bumped to 1.21.8
+
 ## [1.558.0](https://github.com/vm0-ai/vm0/compare/api-v1.557.1...api-v1.558.0) (2026-09-07)
 
 

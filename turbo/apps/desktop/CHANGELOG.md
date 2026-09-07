@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.46.31](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.30...desktop-v0.46.31) (2026-09-07)
+
+
+### Bug Fixes
+
+* **desktop:** serialize update checks ([#32158](https://github.com/vm0-ai/vm0/issues/32158)) ([a0ad48e](https://github.com/vm0-ai/vm0/commit/a0ad48e446cedf6ca08737f3d096334e980fb178))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.3
+
 ## [0.46.30](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.29...desktop-v0.46.30) (2026-09-07)
 
 
