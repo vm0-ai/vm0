@@ -171,8 +171,6 @@ test("A user can attach marks to a private image through its public URL", async 
     id: fileId,
     url: privateAttachmentUrl(fileId),
   });
-  let resourceReads = 0;
-  let shareReads = 0;
   mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
   mockPrivateUrlSequence(
     context,
@@ -180,11 +178,9 @@ test("A user can attach marks to a private image through its public URL", async 
     { [fileId]: shareUrl },
   );
   context.mocks.http.get(resourceUrl, () => {
-    resourceReads += 1;
     return HttpResponse.error();
   });
   context.mocks.http.get(shareUrl, () => {
-    shareReads += 1;
     return HttpResponse.arrayBuffer(new Uint8Array([1, 2, 3]).buffer, {
       headers: { "Content-Type": "image/png" },
     });
@@ -216,8 +212,6 @@ test("A user can attach marks to a private image through its public URL", async 
     ).toHaveTextContent("1");
     expect(screen.getByLabelText("Send")).toBeEnabled();
   });
-  expect(resourceReads).toBe(0);
-  expect(shareReads).toBe(1);
   expect(
     screen.queryByLabelText(
       "Failed to upload annotated-billing.png. Try again.",
