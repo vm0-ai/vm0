@@ -53,8 +53,10 @@ export function AuthV2Shell({
   return (
     <div
       className={cn(
-        "max-w-[25rem] shrink-0 space-y-4",
-        surface === "dialog" ? "w-full" : "w-[calc(100%+0.5rem)]",
+        "max-w-[var(--okou-auth-card-max-width)] shrink-0 space-y-4",
+        surface === "dialog"
+          ? "w-full"
+          : "w-[var(--okou-auth-card-page-width)]",
       )}
     >
       <Card
@@ -70,17 +72,23 @@ export function AuthV2Shell({
         <div
           className={cn(
             "flex flex-col",
-            choiceLayout ? "" : "gap-8 px-10 py-8",
+            choiceLayout
+              ? ""
+              : "gap-8 px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)]",
           )}
         >
           <CardHeader
             className={cn(
               "items-center space-y-0 bg-transparent p-0 text-center",
-              choiceLayout && "px-10 py-8",
+              choiceLayout &&
+                "px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)]",
             )}
           >
             {authBrand.brandName === "Okou" ? (
-              <span className="mb-5" data-testid="auth-v2-brand-logo">
+              <span
+                className="mb-[var(--okou-auth-card-logo-gap)]"
+                data-testid="auth-v2-brand-logo"
+              >
                 <ProductBrandMark
                   brandName={authBrand.brandName}
                   decorative
@@ -91,7 +99,7 @@ export function AuthV2Shell({
               <img
                 alt=""
                 aria-hidden="true"
-                className="mb-5 h-5 w-auto"
+                className="mb-[var(--okou-auth-card-logo-gap)] h-[var(--okou-auth-card-logo-height)] w-auto"
                 crossOrigin="anonymous"
                 data-testid="auth-v2-brand-logo"
                 height={20}
@@ -129,7 +137,7 @@ export function AuthV2Shell({
           </CardContent>
         </div>
         {cardFooter ? (
-          <CardFooter className="justify-center border-t border-border px-10 py-4">
+          <CardFooter className="justify-center border-t border-border px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-footer-padding-block)]">
             {cardFooter}
           </CardFooter>
         ) : null}

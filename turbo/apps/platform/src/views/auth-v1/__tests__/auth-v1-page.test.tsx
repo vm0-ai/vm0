@@ -41,8 +41,8 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   expect(signIn).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
   expect(signIn).toHaveAttribute("data-clerk-sign-up-url", "/v1/sign-up");
   expect(screen.getByTestId("app-sign-in")).toHaveClass(
-    "w-[calc(100%+0.5rem)]",
-    "max-w-[25rem]",
+    "w-[var(--okou-auth-card-page-width)]",
+    "max-w-[var(--okou-auth-card-max-width)]",
     "shrink-0",
   );
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "inside");
@@ -98,6 +98,16 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
   expect(signUp).toHaveTextContent("/v1/sign-up");
   expect(signUp).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
   expect(signUp).not.toHaveAttribute("data-clerk-sign-up-url");
+  expect(screen.getByTestId("app-sign-up")).toHaveClass(
+    "w-[var(--okou-auth-card-page-width)]",
+    "max-w-[var(--okou-auth-card-max-width)]",
+    "shrink-0",
+  );
+  expect(signUp).toHaveAttribute("data-clerk-logo-placement", "inside");
+  expect(signUp).toHaveAttribute(
+    "data-clerk-logo-image-url",
+    expect.stringMatching(/^data:image\/svg\+xml,/u),
+  );
   expect(signUp).toHaveAttribute(
     "data-clerk-fallback-redirect-url",
     redirectUrl,
@@ -123,7 +133,7 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
   );
   expect(
     document.querySelector("[data-auth-v1-legacy-clerk-css]"),
-  ).toBeInTheDocument();
+  ).not.toBeInTheDocument();
 });
 
 test("The hosted form waits behind the skeleton until Clerk mounts it", async () => {

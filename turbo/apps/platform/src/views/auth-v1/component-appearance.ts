@@ -76,12 +76,12 @@ function authV1LogoImageUrl(
 }
 
 /**
- * Sign-in is the first hosted Clerk surface migrated to the supported
- * customization stack: a simple base theme, layout options, semantic tokens,
- * and public appearance element keys. Tailwind utilities win through the
- * provider-level Clerk CSS layer instead of specificity overrides.
+ * Hosted authentication uses Clerk's supported customization stack: a simple
+ * base theme, layout options, semantic tokens, and public appearance element
+ * keys. Tailwind utilities win through the provider-level Clerk CSS layer
+ * instead of specificity overrides.
  */
-export function getAuthV1SignInAppearance(
+export function getAuthV1ComponentAppearance(
   theme: "light" | "dark",
   authBrand: AuthBrandContext,
   currentOrigin: string,
@@ -103,14 +103,14 @@ export function getAuthV1SignInAppearance(
       socialButtonsVariant: "blockButton",
     },
     elements: {
-      rootBox: "mx-auto w-full max-w-[25rem]",
+      rootBox: "mx-auto w-full max-w-[var(--okou-auth-card-max-width)]",
       cardBox: cn(cardClassName, "w-full shadow-none"),
-      card: "m-0 w-full rounded-none border-0 bg-card px-10 py-8 shadow-none",
+      card: "m-0 w-full rounded-none border-0 bg-card px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)] shadow-none",
       header: "grid w-full grid-cols-1 items-center gap-0 p-0 text-center",
       ...(usesNativeLogoImage
         ? {
-            logoBox: "mb-5 justify-self-center",
-            logoImage: "block h-5 w-auto",
+            logoBox: "mb-[var(--okou-auth-card-logo-gap)] justify-self-center",
+            logoImage: "block h-[var(--okou-auth-card-logo-height)] w-auto",
           }
         : {
             logoBox: {
@@ -119,8 +119,8 @@ export function getAuthV1SignInAppearance(
               backgroundPosition: "center",
               backgroundRepeat: "no-repeat",
               backgroundSize: "contain",
-              height: "calc(var(--spacing) * 5)",
-              marginBottom: "calc(var(--spacing) * 5)",
+              height: "var(--okou-auth-card-logo-height)",
+              marginBottom: "var(--okou-auth-card-logo-gap)",
               padding: 0,
               width: "fit-content",
             },
@@ -173,7 +173,9 @@ export function getAuthV1SignInAppearance(
       footer: "m-0 gap-0 bg-card p-0",
       footerAction: "text-sm text-muted-foreground",
       footerAction__signIn:
-        "flex w-full items-center justify-center border-t border-border px-10 py-4",
+        "flex w-full items-center justify-center border-t border-border px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-footer-padding-block)]",
+      footerAction__signUp:
+        "flex w-full items-center justify-center border-t border-border px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-footer-padding-block)]",
       footerActionText: "text-inherit leading-5",
       footerActionLink: cn(
         "text-sm font-medium leading-5 underline underline-offset-4",
@@ -184,77 +186,8 @@ export function getAuthV1SignInAppearance(
       footerPagesLink: AUTH_LINK_ACTION_CLASS,
       passkeyIcon__firstFactor: "size-4",
       formFieldCheckboxInput:
-        "size-4 shrink-0 rounded-md border border-border bg-input shadow-none accent-primary",
-      formFieldCheckboxLabel: "text-sm text-foreground",
-    },
-  };
-}
-
-/**
- * Sign-up still uses the restored v1 presentation while it is migrated in a
- * later slice. Keeping this configuration separate prevents the sign-in
- * experiment from silently restyling the neighboring route.
- */
-export function getAuthV1LegacyComponentAppearance(
-  theme: "light" | "dark",
-  brandName: BrandName,
-): ClerkAppearance {
-  return {
-    options:
-      brandName === "Okou"
-        ? { logoPlacement: "none" }
-        : {
-            logoImageUrl:
-              theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg,
-            logoPlacement: "inside",
-          },
-    variables: {
-      colorBackground: "hsl(var(--card))",
-      colorForeground: "hsl(var(--card-foreground))",
-      colorNeutral: "hsl(var(--foreground))",
-      colorPrimary: "hsl(var(--primary))",
-      colorPrimaryForeground: "hsl(var(--primary-foreground))",
-      colorMuted: "hsl(var(--muted))",
-      colorMutedForeground: "hsl(var(--muted-foreground))",
-      colorInput: "hsl(var(--input))",
-      colorInputForeground: "hsl(var(--foreground))",
-      colorDanger: "hsl(var(--destructive))",
-      colorRing: "hsl(var(--ring))",
-    },
-    elements: {
-      rootBox: {
-        margin: "0 auto",
-      },
-      card: {
-        backgroundColor: "hsl(var(--card))",
-        border: "1px solid hsl(var(--border))",
-        borderRadius: "0.75rem",
-        boxShadow: "none",
-      },
-      headerTitle: "text-foreground font-medium",
-      headerSubtitle: "text-muted-foreground",
-      socialButtonsBlockButton:
-        "h-9 bg-transparent border border-border rounded-lg text-foreground flex items-center justify-center gap-2",
-      socialButtonsBlockButtonText: "text-foreground",
-      formButtonPrimary:
-        "bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium h-9 rounded-md",
-      formFieldInput: "text-foreground rounded-lg transition-colors",
-      formFieldLabel: "text-foreground",
-      footerActionLink: "text-primary hover:text-primary/90",
-      identityPreviewText: "text-foreground",
-      identityPreviewEditButton: "text-muted-foreground",
-      formFieldInputShowPasswordButton: {
-        color: "hsl(var(--muted-foreground))",
-        border: "none",
-        boxShadow: "none",
-        background: "transparent",
-      },
-      otpCodeFieldInput:
-        "h-9 w-9 bg-input border border-border rounded-lg text-center text-base font-medium uppercase text-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
-      formResendCodeLink: "text-primary",
-      footer: "hidden",
-      organizationListCreateOrganizationActionButton: "!hidden",
-      taskChooseOrganizationCreateOrganizationActionButton: "!hidden",
+        "size-4 shrink-0 rounded-md border border-border bg-input shadow-none accent-primary focus-visible:ring-2 focus-visible:ring-ring",
+      formFieldCheckboxLabel: "text-sm font-medium leading-5 text-foreground",
     },
   };
 }

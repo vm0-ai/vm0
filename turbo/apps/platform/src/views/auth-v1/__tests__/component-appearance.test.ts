@@ -11,10 +11,7 @@ import {
   AUTH_LINK_ACTION_CLASS,
   AUTH_SOCIAL_ACTION_CLASS,
 } from "../../auth/auth-action-styles.ts";
-import {
-  getAuthV1LegacyComponentAppearance,
-  getAuthV1SignInAppearance,
-} from "../component-appearance.ts";
+import { getAuthV1ComponentAppearance } from "../component-appearance.ts";
 import { getAuthV1ProviderAppearance } from "../provider-appearance.ts";
 
 const OKOU_AUTH_BRAND = {
@@ -23,7 +20,7 @@ const OKOU_AUTH_BRAND = {
 } as const;
 
 function elementClasses(
-  appearance: ReturnType<typeof getAuthV1SignInAppearance>,
+  appearance: ReturnType<typeof getAuthV1ComponentAppearance>,
   key: string,
 ): string {
   const element = (
@@ -36,7 +33,7 @@ function elementClasses(
 }
 
 function elementStyles(
-  appearance: ReturnType<typeof getAuthV1SignInAppearance>,
+  appearance: ReturnType<typeof getAuthV1ComponentAppearance>,
   key: string,
 ): Record<string, unknown> {
   const element = (
@@ -48,8 +45,8 @@ function elementStyles(
   return element as Record<string, unknown>;
 }
 
-test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () => {
-  const appearance = getAuthV1SignInAppearance(
+test("Hosted auth uses Clerk's supported Tailwind customization surface", () => {
+  const appearance = getAuthV1ComponentAppearance(
     "light",
     OKOU_AUTH_BRAND,
     "https://app.okou.ai",
@@ -89,11 +86,15 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(elementClasses(appearance, "headerTitle")).toContain("max-w-none");
   expect(elementClasses(appearance, "headerSubtitle")).toContain("w-full");
   expect(elementClasses(appearance, "headerSubtitle")).toContain("max-w-none");
-  expect(elementClasses(appearance, "logoBox")).toContain("mb-5");
+  expect(elementClasses(appearance, "logoBox")).toContain(
+    "mb-[var(--okou-auth-card-logo-gap)]",
+  );
   expect(elementClasses(appearance, "logoBox")).toContain(
     "justify-self-center",
   );
-  expect(elementClasses(appearance, "logoImage")).toContain("h-5");
+  expect(elementClasses(appearance, "logoImage")).toContain(
+    "h-[var(--okou-auth-card-logo-height)]",
+  );
   expect(elementClasses(appearance, "dividerRow")).toContain("gap-3");
   expect(elementClasses(appearance, "dividerText")).toContain("m-0");
   expect(elementClasses(appearance, "formField")).toContain("gap-0");
@@ -111,12 +112,21 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(elementClasses(appearance, "footerAction__signIn")).toContain(
     "items-center",
   );
+  expect(elementClasses(appearance, "footerAction__signUp")).toContain(
+    "items-center",
+  );
   expect(elementClasses(appearance, "footerActionLink")).toContain(
     AUTH_LINK_ACTION_CLASS,
   );
   expect(elementClasses(appearance, "footerActionLink")).toContain("leading-5");
   expect(elementClasses(appearance, "footerAction__usePasskey")).toContain(
     "flex",
+  );
+  expect(elementClasses(appearance, "formFieldCheckboxInput")).toContain(
+    "focus-visible:ring-2",
+  );
+  expect(elementClasses(appearance, "formFieldCheckboxLabel")).toContain(
+    "leading-5",
   );
 
   const serializedAppearance = JSON.stringify(appearance);
@@ -125,15 +135,15 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(serializedAppearance).not.toContain("cl-internal-");
 });
 
-test("Hosted sign-in selects the theme-aware Okou logo", () => {
+test("Hosted auth selects the theme-aware Okou logo", () => {
   expect(
-    getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND, "https://app.okou.ai")
+    getAuthV1ComponentAppearance("dark", OKOU_AUTH_BRAND, "https://app.okou.ai")
       .options?.logoImageUrl,
   ).toBe(platformOkouWordmarkLightImg);
 });
 
 test("Preview origins retain the CORS-safe logo fallback", () => {
-  const appearance = getAuthV1SignInAppearance(
+  const appearance = getAuthV1ComponentAppearance(
     "light",
     OKOU_AUTH_BRAND,
     "https://pr-32278-app-okou-app-preview.vm0.workers.dev",
@@ -146,7 +156,7 @@ test("Preview origins retain the CORS-safe logo fallback", () => {
 });
 
 test("The dormant VM0 brand retains the CORS-safe logo fallback", () => {
-  const appearance = getAuthV1SignInAppearance(
+  const appearance = getAuthV1ComponentAppearance(
     "light",
     {
       brandName: "VM0",
@@ -161,7 +171,7 @@ test("The dormant VM0 brand retains the CORS-safe logo fallback", () => {
   );
 });
 
-test("The sign-in provider exposes only design tokens below Tailwind utilities", () => {
+test("The hosted auth provider exposes only design tokens below Tailwind utilities", () => {
   const appearance = getAuthV1ProviderAppearance();
 
   expect(appearance.cssLayerName).toBe("clerk");
@@ -173,10 +183,8 @@ test("The sign-in provider exposes only design tokens below Tailwind utilities",
     fontFamily: "var(--font-family-sans)",
     fontSize: "var(--text-sm)",
   });
-});
-
-test("Sign-up remains on the legacy appearance during the sign-in migration", () => {
-  expect(
-    getAuthV1LegacyComponentAppearance("light", "Okou").options?.logoPlacement,
-  ).toBe("none");
+  const serializedAppearance = JSON.stringify(appearance);
+  expect(serializedAppearance).not.toContain("!important");
+  expect(serializedAppearance).not.toContain("[class*=");
+  expect(serializedAppearance).not.toContain("cl-internal-");
 });

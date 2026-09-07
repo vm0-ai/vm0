@@ -421,7 +421,7 @@ function ChooseSessionStep({
   };
   return (
     <div>
-      <div className="empty:hidden px-10 pt-6">
+      <div className="empty:hidden px-[var(--okou-auth-card-padding-inline)] pt-6">
         <FlowErrorAlert copy={copy} signals={signals} />
       </div>
       <div className="divide-y divide-border">
@@ -457,7 +457,7 @@ function ChooseSessionStep({
           );
         })}
       </div>
-      <div className="flex justify-center border-t border-border px-10 py-4">
+      <div className="flex justify-center border-t border-border px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-footer-padding-block)]">
         <Button
           className={cn(
             "h-auto w-fit p-0 text-sm leading-5",

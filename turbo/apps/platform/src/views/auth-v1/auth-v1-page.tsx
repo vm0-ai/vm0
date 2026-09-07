@@ -13,10 +13,7 @@ import { authV1PageMountRef$ } from "../../signals/auth-v1-page-mount.ts";
 import { theme$ } from "../../signals/theme.ts";
 import { AuthV1Layout } from "./auth-v1-layout.tsx";
 import { AuthV1ClerkProvider } from "./clerk-provider.tsx";
-import {
-  getAuthV1LegacyComponentAppearance,
-  getAuthV1SignInAppearance,
-} from "./component-appearance.ts";
+import { getAuthV1ComponentAppearance } from "./component-appearance.ts";
 
 export type AuthV1PageMode = "sign-in" | "sign-up";
 
@@ -64,14 +61,14 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
             signUpForceRedirectUrl={redirectUrl}
           />
         )}
-        <AuthV1Layout authBrand={authBrand} includeLegacyClerkStyles={false}>
+        <AuthV1Layout authBrand={authBrand}>
           <div
-            className="relative z-10 flex w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 flex-col gap-3"
+            className="relative z-10 flex w-[var(--okou-auth-card-page-width)] max-w-[var(--okou-auth-card-max-width)] shrink-0 flex-col gap-3"
             data-testid="app-sign-in"
             ref={authPageMountRef}
           >
             <SignIn
-              appearance={getAuthV1SignInAppearance(
+              appearance={getAuthV1ComponentAppearance(
                 theme,
                 authBrand,
                 location.origin,
@@ -97,12 +94,17 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
   );
 
   return (
-    <AuthV1Layout authBrand={authBrand} includeLegacyClerkStyles>
-      <div data-testid="app-sign-up" ref={authPageMountRef}>
+    <AuthV1Layout authBrand={authBrand}>
+      <div
+        className="relative z-10 flex w-[var(--okou-auth-card-page-width)] max-w-[var(--okou-auth-card-max-width)] shrink-0 flex-col gap-3"
+        data-testid="app-sign-up"
+        ref={authPageMountRef}
+      >
         <SignUp
-          appearance={getAuthV1LegacyComponentAppearance(
+          appearance={getAuthV1ComponentAppearance(
             theme,
-            authBrand.brandName,
+            authBrand,
+            location.origin,
           )}
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
@@ -118,7 +120,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
 
 export function AuthV1Page({ clerk, mode }: AuthV1PageProps) {
   return (
-    <AuthV1ClerkProvider clerk={clerk} mode={mode}>
+    <AuthV1ClerkProvider clerk={clerk}>
       <AuthV1PageContent mode={mode} />
     </AuthV1ClerkProvider>
   );

@@ -440,6 +440,15 @@ body {
 
 /* Zero app: inherits global neutral tokens; only card-specific tokens defined here */
 .okou-app {
+  /* Hosted Clerk auth and AuthV2 share these geometry tokens so the public
+     appearance slots and native components cannot drift independently. */
+  --okou-auth-card-max-width: 25rem;
+  --okou-auth-card-page-width: calc(100% + 0.5rem);
+  --okou-auth-card-padding-inline: 2.5rem;
+  --okou-auth-card-padding-block: 2rem;
+  --okou-auth-card-footer-padding-block: 1rem;
+  --okou-auth-card-logo-height: 1.25rem;
+  --okou-auth-card-logo-gap: 1.25rem;
   --okou-card-radius: 1.25rem;
   /* Cards rendered inside a chat message sit one level in from the page, so
      they take one step down the radius scale. */
