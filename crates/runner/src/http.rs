@@ -468,7 +468,7 @@ mod tests {
     use api_contracts::generated::routes;
     use reqwest::header::AUTHORIZATION;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
+    use tokio::net::{TcpListener, TcpSocket};
 
     use super::*;
     use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer};
@@ -753,9 +753,9 @@ mod tests {
 
     #[tokio::test]
     async fn send_connection_refused_exposes_stable_io_cause() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let api_url = format!("http://{}", listener.local_addr().unwrap());
-        drop(listener);
+        let socket = TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let api_url = format!("http://{}", socket.local_addr().unwrap());
 
         let error = http_client(&api_url)
             .request_route(routes::runners::heartbeat::HEARTBEAT, "runner-token")
