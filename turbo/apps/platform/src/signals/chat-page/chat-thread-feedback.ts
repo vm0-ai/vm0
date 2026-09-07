@@ -20,7 +20,7 @@ import type {
   FeedbackSource,
 } from "../okou-page/chat-feedback.ts";
 import { writeToClipboard } from "../okou-page/clipboard.ts";
-import { setChatListQuery$ } from "../okou-page/sidebar-state.ts";
+import { clearChatListQuery$ } from "../okou-page/sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
   ChatForwardTarget,
@@ -609,14 +609,14 @@ function createForwardState(closeSelection$: Command<void, []>) {
   );
   const openForward$ = command(
     ({ set }, selection: ChatForwardSelection): void => {
-      set(setChatListQuery$, "");
+      set(clearChatListQuery$);
       set(internalForwardSelection$, selection);
       set(resetForwardTarget$);
       set(closeSelection$);
     },
   );
   const closeForward$ = command(({ set }): void => {
-    set(setChatListQuery$, "");
+    set(clearChatListQuery$);
     set(internalForwardSelection$, null);
     set(resetForwardTarget$);
   });

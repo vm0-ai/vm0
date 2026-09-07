@@ -10,7 +10,7 @@ import { apiClient$ } from "../api-client.ts";
 import { chatThreads$ } from "../agent-chat.ts";
 import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { stableChatThreadNavigationEnabled$ } from "../external/feature-switch.ts";
-import { chatListQuery$ } from "./sidebar-state.ts";
+import { chatListQuery$, debouncedChatListQuery$ } from "./sidebar-state.ts";
 
 const MAX_VISIBLE_CHAT_THREAD_RESULTS = 25;
 const MAX_CHAT_SEARCH_RESULTS = 25;
@@ -145,7 +145,7 @@ export const threeColumnSearchChatThreads$ = computed(
 
 export const workspaceSearchChatMessages$ = computed(
   async (get): Promise<WorkspaceSearchChatMessageResult> => {
-    const query = get(chatListQuery$).trim().toLowerCase();
+    const query = await get(debouncedChatListQuery$);
     if (!query) {
       return { query, chatMessages: [] };
     }
