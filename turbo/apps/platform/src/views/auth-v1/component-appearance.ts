@@ -20,6 +20,7 @@ import {
 } from "../auth/auth-action-styles.ts";
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
+type AuthV1ComponentMode = "sign-in" | "sign-up";
 
 const authV1OutlineActionClass = cn(
   buttonVariants({ size: "default", variant: "outline" }),
@@ -64,7 +65,7 @@ const authV1BackLinkClass = cn(
   AUTH_LINK_ACTION_CLASS,
 );
 const authV1ResendCodeLinkClass = cn(
-  "h-auto w-fit p-0 okou-auth-action-text",
+  "h-auto p-0 okou-auth-action-text",
   AUTH_LINK_ACTION_CLASS,
 );
 
@@ -101,6 +102,7 @@ export function getAuthV1ComponentAppearance(
   theme: "light" | "dark",
   authBrand: AuthBrandContext,
   currentOrigin: string,
+  mode: AuthV1ComponentMode,
 ): ClerkAppearance {
   const logoImageUrl = authV1LogoImageUrl(theme, authBrand.brandName);
   const usesNativeLogoImage =
@@ -194,7 +196,13 @@ export function getAuthV1ComponentAppearance(
         "flex min-h-6 w-full items-center justify-center gap-2 text-sm leading-5 text-muted-foreground",
       identityPreviewText: "min-w-0 flex-1 truncate text-center",
       identityPreviewEditButton: authV1IdentityPreviewEditClass,
-      formResendCodeLink: authV1ResendCodeLinkClass,
+      // AuthV2 sign-up exposes the resend action across the form width, while
+      // sign-in keeps its compact link geometry. Clerk's public element is
+      // shared across states, so scope the width at the route appearance.
+      formResendCodeLink: cn(
+        authV1ResendCodeLinkClass,
+        mode === "sign-up" ? "w-full" : "w-fit",
+      ),
       otpCodeFieldInputs: "gap-2",
       otpCodeFieldInput: authV1OtpInputClass,
       otpCodeFieldErrorText: cn(

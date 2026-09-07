@@ -53,6 +53,7 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
     "light",
     OKOU_AUTH_BRAND,
     "https://app.okou.ai",
+    "sign-in",
   );
 
   expect(appearance.theme).toBe("simple");
@@ -191,9 +192,41 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
 
 test("Hosted auth selects the theme-aware Okou logo", () => {
   expect(
-    getAuthV1ComponentAppearance("dark", OKOU_AUTH_BRAND, "https://app.okou.ai")
-      .options?.logoImageUrl,
+    getAuthV1ComponentAppearance(
+      "dark",
+      OKOU_AUTH_BRAND,
+      "https://app.okou.ai",
+      "sign-in",
+    ).options?.logoImageUrl,
   ).toBe(platformOkouWordmarkLightImg);
+});
+
+test("Hosted sign-up alone expands the public resend action", () => {
+  const signInAppearance = getAuthV1ComponentAppearance(
+    "light",
+    OKOU_AUTH_BRAND,
+    "https://app.okou.ai",
+    "sign-in",
+  );
+  const signUpAppearance = getAuthV1ComponentAppearance(
+    "light",
+    OKOU_AUTH_BRAND,
+    "https://app.okou.ai",
+    "sign-up",
+  );
+
+  expect(elementClasses(signInAppearance, "formResendCodeLink")).toContain(
+    "w-fit",
+  );
+  expect(elementClasses(signInAppearance, "formResendCodeLink")).not.toContain(
+    "w-full",
+  );
+  expect(elementClasses(signUpAppearance, "formResendCodeLink")).toContain(
+    "w-full",
+  );
+  expect(elementClasses(signUpAppearance, "formResendCodeLink")).not.toContain(
+    "w-fit",
+  );
 });
 
 test("Preview origins retain the CORS-safe logo fallback", () => {
@@ -201,6 +234,7 @@ test("Preview origins retain the CORS-safe logo fallback", () => {
     "light",
     OKOU_AUTH_BRAND,
     "https://pr-32278-app-okou-app-preview.vm0.workers.dev",
+    "sign-in",
   );
 
   expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml,/u);
@@ -218,6 +252,7 @@ test("The dormant VM0 brand retains the CORS-safe logo fallback", () => {
       homeUrl: "https://app.vm0.ai",
     },
     "https://app.vm0.ai",
+    "sign-in",
   );
 
   expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml,/u);

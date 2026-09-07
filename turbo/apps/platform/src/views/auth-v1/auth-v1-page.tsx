@@ -72,6 +72,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
                 theme,
                 authBrand,
                 location.origin,
+                mode,
               )}
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
@@ -105,6 +106,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
             theme,
             authBrand,
             location.origin,
+            mode,
           )}
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
