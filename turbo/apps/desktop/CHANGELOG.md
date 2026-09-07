@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.46.29](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.28...desktop-v0.46.29) (2026-09-07)
+
+
+### Bug Fixes
+
+* **desktop:** move okou authentication to an isolated app session ([#32062](https://github.com/vm0-ai/vm0/issues/32062)) ([21c1b15](https://github.com/vm0-ai/vm0/commit/21c1b15d7d6b4dede89fb7e9bc0e23c534b50b45))
+* **desktop:** require app bearer for okou computer use requests ([#32064](https://github.com/vm0-ai/vm0/issues/32064)) ([60adb1e](https://github.com/vm0-ai/vm0/commit/60adb1e283e4850a48aad38a75b104ccb98f580e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.2
+
 ## [0.46.28](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.27...desktop-v0.46.28) (2026-09-06)
 
 
